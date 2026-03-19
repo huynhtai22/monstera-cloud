@@ -21,6 +21,6 @@ export const config = {
      * - login, register, pricing, solutions, success (marketing & auth pages)
      * - legal (legal and compliance pages)
      */
-    "/((?!api|_next/static|_next/image|favicon.ico|login|register|pricing|solutions|success|legal|$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|logo.png|favicon.png|login|register|pricing|solutions|success|legal|$).*)",
   ],
 };
