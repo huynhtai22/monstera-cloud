@@ -1,4 +1,5 @@
 import Link from "next/link";
+import NextImage from "next/image";
 import { ArrowRight } from "lucide-react";
 
 export function MarketingNavbar() {
@@ -7,8 +8,15 @@ export function MarketingNavbar() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between items-center h-16">
                     <div className="flex-shrink-0 flex items-center">
-                        <Link href="/" className="font-bold text-xl text-gray-900 dark:text-white">
-                            Monstera
+                        <Link href="/" className="flex items-center gap-2 font-bold text-xl text-gray-900 dark:text-white">
+                            <NextImage 
+                                src="/logo.png" 
+                                alt="Monstera Cloud Logo" 
+                                width={32} 
+                                height={32} 
+                                className="w-8 h-8 rounded-full shadow-sm"
+                            />
+                            <span>Monstera</span>
                         </Link>
                     </div>
                     <div className="hidden md:flex items-center space-x-8">

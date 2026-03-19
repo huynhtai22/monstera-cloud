@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import NextImage from "next/image";
 import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import {
@@ -113,12 +114,14 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                     className="flex items-center justify-between w-full px-3 py-2 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm hover:border-emerald-500/30 dark:hover:border-emerald-500/50 hover:shadow-md transition-all group"
                 >
                     <div className="flex items-center">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center mr-3 shadow-inner shadow-black/10">
-                            {workspacesError || !activeWorkspace ? (
-                                <DatabaseZap className="w-4 h-4 text-white animate-pulse" />
-                            ) : (
-                                <span className="text-white font-bold text-sm uppercase">{activeWorkspace.name.charAt(0)}</span>
-                            )}
+                        <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center mr-3 shadow-sm border border-gray-100 dark:border-slate-700">
+                            <NextImage 
+                                src="/logo.png" 
+                                alt="Logo" 
+                                width={32} 
+                                height={32} 
+                                className="w-full h-full object-cover"
+                            />
                         </div>
                         <div className="text-left">
                             <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 tracking-wide uppercase">Workspace</div>

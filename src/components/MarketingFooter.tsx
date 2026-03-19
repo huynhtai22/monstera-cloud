@@ -1,4 +1,5 @@
 import Link from "next/link";
+import NextImage from "next/image";
 
 export function MarketingFooter() {
     return (
@@ -43,9 +44,18 @@ export function MarketingFooter() {
                     </div>
                 </div>
                 <div className="border-t border-gray-200 dark:border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                        © {new Date().getFullYear()} Monstera Cloud Inc. All rights reserved.
-                    </p>
+                    <div className="flex items-center gap-2 mb-4 md:mb-0">
+                        <NextImage 
+                            src="/logo.png" 
+                            alt="Logo" 
+                            width={24} 
+                            height={24} 
+                            className="w-6 h-6 rounded-full opacity-80"
+                        />
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                            © {new Date().getFullYear()} Monstera Cloud Inc. All rights reserved.
+                        </p>
+                    </div>
                     <div className="flex space-x-6 mt-4 md:mt-0">
                         <Link href="/legal/privacy-policy" className="text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white">Privacy Policy</Link>
                         <Link href="/legal/terms-of-service" className="text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white">Terms of Service</Link>

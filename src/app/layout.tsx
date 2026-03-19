@@ -26,6 +26,11 @@ export const metadata: Metadata = {
       title: "Monstera Cloud | Effortless Data Integration",
       description: "Connect data, validate quality, and deliver insights without complex engineering setup.",
     },
+    icons: {
+      icon: "/favicon.png",
+      shortcut: "/favicon.png",
+      apple: "/favicon.png",
+    },
 };
 
 export default function RootLayout({
