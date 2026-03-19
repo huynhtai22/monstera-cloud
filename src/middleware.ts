@@ -1,13 +1,27 @@
 import { withAuth } from "next-auth/middleware";
+import { NextResponse } from "next/server";
 
-export default withAuth({
-  callbacks: {
-    authorized: ({ token }) => !!token,
+export default withAuth(
+  function middleware(req) {
+    const { pathname } = req.nextUrl;
+    // Public paths that should bypass auth
+    if (
+      pathname === "/logo.png" || 
+      pathname === "/favicon.png" || 
+      pathname === "/favicon.ico"
+    ) {
+      return NextResponse.next();
+    }
   },
-  pages: {
-    signIn: "/login",
-  },
-});
+  {
+    callbacks: {
+      authorized: ({ token }) => !!token,
+    },
+    pages: {
+      signIn: "/login",
+    },
+  }
+);
 
 export const config = {
   matcher: [
