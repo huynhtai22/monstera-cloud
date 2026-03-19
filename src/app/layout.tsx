@@ -27,9 +27,9 @@ export const metadata: Metadata = {
       description: "Connect data, validate quality, and deliver insights without complex engineering setup.",
     },
     icons: {
-      icon: "/favicon.png",
-      shortcut: "/favicon.png",
-      apple: "/favicon.png",
+      icon: "/favicon.svg",
+      shortcut: "/favicon.svg",
+      apple: "/favicon.svg",
     },
 };
 

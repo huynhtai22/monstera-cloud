@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import NextImage from "next/image";
+import { Logo } from "./Logo";
 import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import {
@@ -114,14 +114,8 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                     className="flex items-center justify-between w-full px-3 py-2 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm hover:border-emerald-500/30 dark:hover:border-emerald-500/50 hover:shadow-md transition-all group"
                 >
                     <div className="flex items-center">
-                        <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center mr-3 shadow-sm border border-gray-100 dark:border-slate-700">
-                            <NextImage 
-                                src="/logo.png" 
-                                alt="Logo" 
-                                width={32} 
-                                height={32} 
-                                className="w-full h-full object-cover"
-                            />
+                        <div className="mr-3 scale-95 origin-left">
+                            <Logo className="w-8 h-8" textClassName="hidden" />
                         </div>
                         <div className="text-left">
                             <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 tracking-wide uppercase">Workspace</div>
