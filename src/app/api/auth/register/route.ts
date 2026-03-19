@@ -28,18 +28,35 @@ export async function POST(req: Request) {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
-    // @ts-ignore: NextAuth auto-generated schema type mismatch with DB
-    const newUser = await prisma.user.create({
-      data: {
-        name,
-        email,
-        hashedPassword,
-      },
+    // Create user and a default workspace in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name,
+          email,
+          hashedPassword,
+        },
+      });
+
+      const workspace = await tx.workspace.create({
+        data: {
+          name: "Personal Workspace",
+          slug: `personal-${user.id.slice(0, 8)}`, // Simple unique slug
+          ownerId: user.id,
+          members: {
+            create: {
+              userId: user.id,
+              role: "owner"
+            }
+          }
+        }
+      });
+
+      return { user, workspace };
     });
 
     return NextResponse.json(
-      { message: "User created successfully." },
+      { message: "User created successfully with workspace." },
       { status: 201 }
     );
   } catch (error) {

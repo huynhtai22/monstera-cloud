@@ -117,10 +117,10 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                         <div className="mr-3 scale-95 origin-left">
                             <Logo className="w-8 h-8" textClassName="hidden" />
                         </div>
-                        <div className="text-left">
+                        <div className="flex-1 min-w-0">
                             <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 tracking-wide uppercase">Workspace</div>
-                            <div className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
-                                {activeWorkspace ? activeWorkspace.name : "Loading..."}
+                            <div className="text-sm font-bold text-gray-900 dark:text-white truncate">
+                                {activeWorkspace?.name || "No Workspace"}
                             </div>
                         </div>
                     </div>
