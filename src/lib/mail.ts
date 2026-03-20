@@ -9,7 +9,7 @@ const resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
 export const sendOtpEmail = async (email: string, otp: string) => {
   try {
     const { data, error } = await resend.emails.send({
-      from: 'Monstera Cloud <onboarding@resend.dev>', // You should update this to your verified domain later
+      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [email],
       subject: 'Verify your email - Monstera Cloud',
       html: `
