@@ -8,8 +8,7 @@ export async function GET() {
     const workspaceCount = await prisma.workspace.count();
     const lastUsers = await prisma.user.findMany({
         take: 5,
-        orderBy: { createdAt: 'desc' },
-        select: { email: true, name: true, createdAt: true }
+        select: { email: true, name: true }
     });
 
     return NextResponse.json({
