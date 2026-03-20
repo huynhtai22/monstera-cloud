@@ -1,6 +1,10 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Vercel build phase evaluates this file statically. If RESEND_API_KEY is missing during
+// the build phase, the Resend constructor throws a fatal error and breaks the build.
+// Providing a fallback string "re_dummy" prevents this build crash.
+const resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
+
 
 export const sendOtpEmail = async (email: string, otp: string) => {
   try {
