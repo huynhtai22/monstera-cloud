@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import Link from "next/link";
 import { Loader2, Phone } from "lucide-react";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
@@ -16,10 +16,6 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const isRegistered = searchParams.get("registered") === "true";
-
-  // We are mimicking the clean ChatGPT interface. 
-  // ChatGPT initially only shows the email field, then shows password.
-  // We'll show both for now to keep the logic simple, but style it exactly like the screenshot.
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,5 +191,17 @@ export default function LoginPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="w-8 h-8 animate-spin text-[#1ba177]" />
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }
