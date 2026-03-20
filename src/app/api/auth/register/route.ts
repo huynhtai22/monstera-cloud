@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
+import { sendOtpEmail } from "@/lib/mail";
 
 export async function POST(req: Request) {
   try {
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
 
     // Create user and a default workspace in a transaction
-    const result = await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
           name,
@@ -44,10 +45,10 @@ export async function POST(req: Request) {
         },
       });
 
-      const workspace = await tx.workspace.create({
+      await tx.workspace.create({
         data: {
           name: "Personal Workspace",
-          slug: `personal-${user.id.slice(0, 8)}`, // Simple unique slug
+          slug: `personal-${user.id.slice(0, 8)}`,
           ownerId: user.id,
           members: {
             create: {
@@ -57,23 +58,19 @@ export async function POST(req: Request) {
           }
         }
       });
-
-      return { user, workspace };
     });
 
-    console.log(`[AUTH] OTP for ${email}: ${otp}`); // Log for safety
+    console.log(`[AUTH] OTP for ${email}: ${otp}`); 
     
     // Send Real Email via Resend
     try {
-      const { sendOtpEmail } = await import("@/lib/mail");
       await sendOtpEmail(email, otp);
     } catch (mailError) {
       console.error("[AUTH] Mail Sending Failed:", mailError);
-      // We don't block registration if mail fails, but we log it.
     }
 
     return NextResponse.json(
-      { message: "User created successfully with workspace. Verification code sent." },
+      { message: "User created successfully. Verification code sent." },
       { status: 201 }
     );
   } catch (error) {
