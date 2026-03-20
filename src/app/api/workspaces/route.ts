@@ -13,7 +13,7 @@ export async function GET() {
             });
         }
 
-        const workspaces = await prisma.workspace.findMany({
+        let workspaces = await prisma.workspace.findMany({
             where: {
                 members: {
                     some: {
@@ -27,6 +27,29 @@ export async function GET() {
                 pipelines: true
             }
         });
+
+        // Fail-safe: If no workspaces exist for the user, create a default one on the fly
+        if (workspaces.length === 0) {
+            const newWorkspace = await prisma.workspace.create({
+                data: {
+                    name: "Personal Workspace",
+                    slug: `personal-${session.user.id.slice(0, 8)}`,
+                    ownerId: session.user.id,
+                    members: {
+                        create: {
+                            userId: session.user.id,
+                            role: "owner"
+                        }
+                    }
+                },
+                include: {
+                    members: true,
+                    connections: true,
+                    pipelines: true
+                }
+            });
+            workspaces = [newWorkspace];
+        }
 
         return NextResponse.json(workspaces);
     } catch (error) {
