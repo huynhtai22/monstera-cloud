@@ -35,18 +35,7 @@ export default function RegisterPage() {
         throw new Error(registerData.message || "Registration failed");
       }
 
-      const res = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
-      });
-
-      if (res?.error) {
-        setError("Account created, but could not log in automatically.");
-      } else {
-        router.push("/dashboard");
-        router.refresh();
-      }
+      router.push("/login?registered=true");
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred. Please try again.");
     } finally {
