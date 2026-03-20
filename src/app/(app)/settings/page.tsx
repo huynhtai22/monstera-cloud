@@ -42,9 +42,13 @@ export default function SettingsPage() {
                 const newKey = await res.json();
                 setNewlyGeneratedKey(newKey.key); // Show the raw key just once
                 fetchApiKeys(); // Refresh list
+            } else {
+                const errData = await res.json().catch(() => ({}));
+                alert(`Failed to generate key: ${errData.error || res.statusText}`);
             }
-        } catch (error) {
-            console.error("Failed to generate key");
+        } catch (error: any) {
+            console.error("Failed to generate key", error);
+            alert(`Network or server error: ${error.message}`);
         }
         setIsGenerating(false);
     };
