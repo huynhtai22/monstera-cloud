@@ -2,17 +2,20 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Logo } from "@/components/Logo";
 import Link from "next/link";
 import { Loader2, Phone } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const isRegistered = searchParams.get("registered") === "true";
 
   // We are mimicking the clean ChatGPT interface. 
   // ChatGPT initially only shows the email field, then shows password.
@@ -56,26 +59,17 @@ export default function LoginPage() {
     <div className="w-full flex flex-col items-center bg-white dark:bg-slate-950 min-h-screen pt-16 sm:pt-24 px-4">
       <div className="w-full max-w-[400px] pb-10">
         
-        <div className="flex flex-col items-center text-center mb-10">
-          {/* Minimalist Monstera Logo */}
           <div className="mb-6 text-gray-900 dark:text-white">
-            <svg 
-              width="32" 
-              height="32" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round"
-            >
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
-              <path d="M12 7v10M8 12h8" />
-            </svg>
+            <Logo className="w-8 h-8" textClassName="hidden" />
           </div>
           <h2 className="text-[32px] font-semibold tracking-tight text-gray-900 dark:text-white">
             Welcome back
           </h2>
+          {isRegistered && (
+            <div className="mt-4 p-3 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-sm font-medium w-full">
+               Account created successfully! Please sign in to continue.
+            </div>
+          )}
         </div>
 
         {/* Social Buttons Stack */}
