@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { google } from "googleapis";
+import { ShopeeClient } from "@/lib/shopee";
 
 export async function POST(req: Request, context: { params: any }) {
     let syncLogId;
@@ -48,21 +49,63 @@ export async function POST(req: Request, context: { params: any }) {
             return NextResponse.json({ error: "Google Account not linked or missing access token" }, { status: 403 });
         }
 
-        // 3. Extract: Pull Data from Mock Shopee API
-        // Parse source credentials to get the API Key (simulated)
+        // 3. Extract: Pull Data from Shopee API
         const sourceCreds = JSON.parse(pipeline.sourceConnection.credentials);
-        const apiKey = sourceCreds.apiKey || "mock-api-key";
+        let orders: any[] = [];
 
-        const shopeeRes = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/mock/shopee/orders?page=1&limit=50`, {
-            headers: { 'Authorization': `Bearer ${apiKey}` }
-        });
+        if (sourceCreds.access_token && sourceCreds.shop_id) {
+            console.log("[PIPELINE] Detected real Shopee OAuth credentials. Fetching live data...");
+            try {
+                const shopee = new ShopeeClient();
+                const path = '/api/v2/order/get_order_list';
+                const timeTo = Math.floor(Date.now() / 1000);
+                const timeFrom = timeTo - (14 * 24 * 60 * 60); // Past 14 days maximum
 
-        if (!shopeeRes.ok) {
-            throw new Error(`Shopee API Error: ${shopeeRes.status}`);
+                const requestUrl = shopee.buildRequestUrl(path, sourceCreds.access_token, sourceCreds.shop_id, {
+                    time_range_field: 'create_time',
+                    time_from: timeFrom,
+                    time_to: timeTo,
+                    page_size: 50
+                });
+
+                const shopeeRes = await fetch(requestUrl);
+                const shopeeData = await shopeeRes.json();
+
+                if (shopeeData.error) {
+                    console.warn("[PIPELINE] Live Shopee API returned an error:", shopeeData.message);
+                } else if (shopeeData.response && shopeeData.response.order_list) {
+                    // Map Real Shopee Response to normalized format
+                    orders = shopeeData.response.order_list.map((o: any) => ({
+                        order_id: o.order_sn,
+                        customer_name: "Hidden by Shopee Privacy",
+                        status: o.order_status,
+                        total_amount: o.total_amount,
+                        currency: o.currency || "Local",
+                        items_count: 1, // Detailed items require another API call
+                        created_at: new Date(o.create_time * 1000).toISOString()
+                    }));
+                }
+            } catch (liveErr) {
+                console.error("[PIPELINE] Live pull failed. Falling back to mock.", liveErr);
+            }
         }
 
-        const shopeeData = await shopeeRes.json();
-        const orders = shopeeData.data || [];
+        // Fallback to Mock API
+        if (orders.length === 0) {
+            console.log("[PIPELINE] Utilizing Mock Shopee API.");
+            const apiKey = sourceCreds.apiKey || "mock-api-key";
+            const shopeeRes = await fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/mock/shopee/orders?page=1&limit=50`, {
+                headers: { 'Authorization': `Bearer ${apiKey}` }
+            });
+
+            if (!shopeeRes.ok) {
+                throw new Error(`Shopee Mock API Error: ${shopeeRes.status}`);
+            }
+
+            const shopeeData = await shopeeRes.json();
+            orders = shopeeData.data || [];
+        }
+
 
         if (orders.length === 0) {
             return NextResponse.json({ message: "No new data to sync." });
