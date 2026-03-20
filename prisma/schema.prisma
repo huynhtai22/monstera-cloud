@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,26 +7,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// -----------------------------------------------------------------------------
-// NextAuth.js Models (Standard configuration)
-// -----------------------------------------------------------------------------
-
 model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String?
-  session_state     String?
+  id                       String  @id @default(cuid())
+  userId                   String
+  type                     String
+  provider                 String
+  providerAccountId        String
+  refresh_token            String?
+  access_token             String?
+  expires_at               Int?
+  token_type               String?
+  scope                    String?
+  id_token                 String?
+  session_state            String?
   refresh_token_expires_in Int?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -50,44 +42,35 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// -----------------------------------------------------------------------------
-// Application Models
-// -----------------------------------------------------------------------------
-
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
+  id             String            @id @default(cuid())
+  name           String?
+  email          String?           @unique
   hashedPassword String?
-  emailVerified DateTime?
-  image         String?
-  
-  // Relations
-  accounts      Account[]
-  sessions      Session[]
-  workspaces    WorkspaceMember[]
+  emailVerified  DateTime?
+  image          String?
+  accounts       Account[]
+  sessions       Session[]
+  workspaces     WorkspaceMember[]
 }
 
 model Workspace {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  ownerId   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  // Relations
-  members     WorkspaceMember[]
+  id          String            @id @default(cuid())
+  name        String
+  slug        String            @unique
+  ownerId     String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
   connections Connection[]
   pipelines   Pipeline[]
+  members     WorkspaceMember[]
 }
 
 model WorkspaceMember {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   userId      String
-  role        String   @default("member") // owner, admin, member
-  
+  role        String    @default("member")
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -95,63 +78,56 @@ model WorkspaceMember {
 }
 
 model Connection {
-  id          String   @id @default(cuid())
-  workspaceId String
-  name        String
-  type        String   // "source" or "destination"
-  provider    String   // "shopee", "postgres", "google_sheets", etc.
-  credentials String   // JSON string of encrypted credentials
-  status      String   @default("connected") // connected, error
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  
-  // Relations for Pipelines
-  sourcePipelines      Pipeline[] @relation("SourceConnection")
+  id                   String     @id @default(cuid())
+  workspaceId          String
+  name                 String
+  type                 String
+  provider             String
+  credentials          String
+  status               String     @default("connected")
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  workspace            Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   destinationPipelines Pipeline[] @relation("DestinationConnection")
+  sourcePipelines      Pipeline[] @relation("SourceConnection")
 }
 
 model Pipeline {
-  id                      String   @id @default(cuid())
+  id                      String               @id @default(cuid())
   workspaceId             String
   name                    String
   sourceConnectionId      String
   destinationConnectionId String
-  scheduleCron            String   @default("0 * * * *") // Hourly by default
-  status                  String   @default("active") // active, paused, error
+  scheduleCron            String               @default("0 * * * *")
+  status                  String               @default("active")
   lastSyncedAt            DateTime?
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
-  
-  workspace               Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  sourceConnection        Connection @relation("SourceConnection", fields: [sourceConnectionId], references: [id])
-  destinationConnection   Connection @relation("DestinationConnection", fields: [destinationConnectionId], references: [id])
-  
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  destinationConnection   Connection           @relation("DestinationConnection", fields: [destinationConnectionId], references: [id])
+  sourceConnection        Connection           @relation("SourceConnection", fields: [sourceConnectionId], references: [id])
+  workspace               Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   logs                    SyncLog[]
   transformations         TransformationRule[]
 }
 
 model SyncLog {
-  id          String   @id @default(cuid())
-  pipelineId  String
-  status      String   // "success", "error"
-  rowsSynced  Int      @default(0)
-  durationMs  Int      @default(0)
-  errorMsg    String?
-  createdAt   DateTime @default(now())
-  
-  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  pipelineId String
+  status     String
+  rowsSynced Int      @default(0)
+  durationMs Int      @default(0)
+  errorMsg   String?
+  createdAt  DateTime @default(now())
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 }
 
 model TransformationRule {
-  id            String   @id @default(cuid())
-  pipelineId    String
-  type          String   // "rename_column", "mask_pii", "cast_type", "drop_column"
-  config        String   // JSON string of rule configuration (e.g. {"source": "email", "target": "user_email"})
-  orderIndex    Int      @default(0) // Order of applying the rule
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  pipeline      Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  pipelineId String
+  type       String
+  config     String
+  orderIndex Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 }
