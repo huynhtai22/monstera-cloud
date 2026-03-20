@@ -49,6 +49,8 @@ model User {
   hashedPassword String?
   emailVerified  DateTime?
   image          String?
+  otp            String?
+  otpExpires     DateTime?
   accounts       Account[]
   sessions       Session[]
   workspaces     WorkspaceMember[]

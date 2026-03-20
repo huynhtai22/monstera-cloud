@@ -35,7 +35,7 @@ export default function RegisterPage() {
         throw new Error(registerData.message || "Registration failed");
       }
 
-      router.push("/login?registered=true");
+      router.push(`/verify?email=${encodeURIComponent(email)}`);
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred. Please try again.");
     } finally {

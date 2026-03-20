@@ -28,6 +28,10 @@ export async function POST(req: Request) {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Generate a 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+
     // Create user and a default workspace in a transaction
     const result = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -35,6 +39,8 @@ export async function POST(req: Request) {
           name,
           email,
           hashedPassword,
+          otp,
+          otpExpires,
         },
       });
 
@@ -55,8 +61,19 @@ export async function POST(req: Request) {
       return { user, workspace };
     });
 
+    console.log(`[AUTH] OTP for ${email}: ${otp}`); // Log for safety
+    
+    // Send Real Email via Resend
+    try {
+      const { sendOtpEmail } = await import("@/lib/mail");
+      await sendOtpEmail(email, otp);
+    } catch (mailError) {
+      console.error("[AUTH] Mail Sending Failed:", mailError);
+      // We don't block registration if mail fails, but we log it.
+    }
+
     return NextResponse.json(
-      { message: "User created successfully with workspace." },
+      { message: "User created successfully with workspace. Verification code sent." },
       { status: 201 }
     );
   } catch (error) {
