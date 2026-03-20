@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <!-- Load Inter font to mimic Monstera Cloud UI -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        margin: 0;
+        padding: 16px;
+        background-color: #f8fafc; /* slate-50 */
+        color: #0f172a; /* slate-900 */
+      }
+      .header {
+        text-align: center;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .header h1 {
+        font-size: 20px;
+        font-weight: 700;
+        margin: 0 0 4px 0;
+        color: #059669; /* emerald-600 */
+      }
+      .header p {
+        font-size: 13px;
+        margin: 0;
+        color: #64748b; /* slate-500 */
+      }
+      .section {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+      }
+      .section h2 {
+        font-size: 14px;
+        font-weight: 600;
+        margin: 0 0 12px 0;
+        display: flex;
+        align-items: center;
+      }
+      label {
+        font-size: 12px;
+        font-weight: 500;
+        color: #475569;
+        display: block;
+        margin-bottom: 6px;
+      }
+      input[type="password"] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 12px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 13px;
+        margin-bottom: 12px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      input[type="password"]:focus {
+        border-color: #059669;
+      }
+      button {
+        width: 100%;
+        padding: 10px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: none;
+      }
+      button.primary {
+        background-color: #059669; /* emerald-600 */
+        color: white;
+      }
+      button.primary:hover:not(:disabled) {
+        background-color: #047857; /* emerald-700 */
+      }
+      button.secondary {
+        background-color: #f1f5f9;
+        color: #334155;
+        border: 1px solid #e2e8f0;
+      }
+      button.secondary:hover:not(:disabled) {
+        background-color: #e2e8f0;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      #status {
+        font-size: 13px;
+        margin-top: 12px;
+        padding: 10px;
+        border-radius: 6px;
+        display: none;
+      }
+      #status.success {
+        display: block;
+        background-color: #ecfdf5;
+        color: #065f46;
+        border: 1px solid #a7f3d0;
+      }
+      #status.error {
+        display: block;
+        background-color: #fef2f2;
+        color: #991b1b;
+        border: 1px solid #fecaca;
+      }
+      .loader {
+        display: none;
+        margin: 8px auto;
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #059669;
+        border-radius: 50%;
+        width: 14px;
+        height: 14px;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body>
+
+    <div class="header">
+      <h1>Monstera Cloud</h1>
+      <p>Data Workspace Connector</p>
+    </div>
+
+    <!-- AUTHENTICATION SECTION -->
+    <div class="section" id="authSection">
+      <h2>🔑 Authentication</h2>
+      <label for="apiKey">Workspace API Key</label>
+      <input type="password" id="apiKey" placeholder="mc_xxxxxxx..." autocomplete="off">
+      <div style="display: flex; gap: 8px;">
+        <button class="secondary" id="btnSave" onclick="saveKey()">Save Key</button>
+        <button class="secondary" id="btnClear" onclick="clearKey()" style="color:#dc2626;">Clear</button>
+      </div>
+    </div>
+
+    <!-- ACTION SECTION -->
+    <div class="section" id="actionSection">
+      <h2>📥 Live Data Extraction</h2>
+      <p style="font-size: 12px; color: #64748b; margin-top: 0; margin-bottom: 12px;">Pull the latest consolidated data from your Monstera workspace directly into this active sheet.</p>
+      
+      <button class="primary" id="btnPull" onclick="pullData()">
+        Pull Latest Data
+      </button>
+      <div id="pullLoader" class="loader"></div>
+    </div>
+
+    <!-- NOTIFICATION AREA -->
+    <div id="status"></div>
+
+    <script>
+      // Automatically load the saved API key when the sidebar opens
+      window.onload = function() {
+        google.script.run
+          .withSuccessHandler(function(key) {
+            if (key) {
+              document.getElementById('apiKey').value = key;
+            }
+          })
+          .getApiKey();
+      };
+
+      function showStatus(msg, type) {
+        const el = document.getElementById('status');
+        el.textContent = msg;
+        el.className = type; // 'success' or 'error'
+      }
+
+      function clearStatus() {
+        document.getElementById('status').style.display = 'none';
+      }
+
+      function saveKey() {
+        clearStatus();
+        const key = document.getElementById('apiKey').value.trim();
+        if (!key) {
+          showStatus('Please enter an API Key first.', 'error');
+          return;
+        }
+        
+        const btn = document.getElementById('btnSave');
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+
+        // Call server-side GAS function
+        google.script.run
+          .withSuccessHandler(function(msg) {
+            showStatus(msg, 'success');
+            btn.disabled = false;
+            btn.textContent = 'Save Key';
+          })
+          .withFailureHandler(function(err) {
+            showStatus(err.message, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Save Key';
+          })
+          .saveApiKey(key);
+      }
+
+      function clearKey() {
+        clearStatus();
+        document.getElementById('apiKey').value = '';
+        google.script.run
+          .withSuccessHandler(function(msg) {
+            showStatus(msg, 'success');
+          })
+          .clearApiKey();
+      }
+
+      function pullData() {
+        clearStatus();
+        if (!document.getElementById('apiKey').value) {
+          showStatus('Please enter and save your API Key before pulling data.', 'error');
+          return;
+        }
+
+        const btn = document.getElementById('btnPull');
+        const loader = document.getElementById('pullLoader');
+        
+        btn.disabled = true;
+        btn.textContent = 'Extracting...';
+        loader.style.display = 'block';
+
+        // Call the mighty UrlFetchApp via GAS server script
+        google.script.run
+          .withSuccessHandler(function(msg) {
+            showStatus(msg, 'success');
+            btn.disabled = false;
+            btn.textContent = 'Pull Latest Data';
+            loader.style.display = 'none';
+          })
+          .withFailureHandler(function(err) {
+            showStatus('Error: ' + err.message, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Pull Latest Data';
+            loader.style.display = 'none';
+          })
+          .pullDataFromMonstera();
+      }
+    </script>
+  </body>
+</html>

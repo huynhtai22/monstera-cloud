@@ -1,10 +1,73 @@
 "use client";
 
-import React, { useState } from 'react';
-import { Settings2, Building2, Users, CreditCard, KeyRound, Save, Plus, AlertCircle, CheckCircle2 } from "lucide-react";
+import React, { useState, useEffect } from 'react';
+import { Settings2, Building2, Users, CreditCard, KeyRound, Save, Plus, AlertCircle, CheckCircle2, Copy } from "lucide-react";
+import { useWorkspaceStore } from "@/store/workspace";
 
 export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState<'workspace' | 'team' | 'billing' | 'api'>('workspace');
+    const { activeWorkspaceId } = useWorkspaceStore();
+    const [apiKeys, setApiKeys] = useState<any[]>([]);
+    const [newlyGeneratedKey, setNewlyGeneratedKey] = useState<string | null>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+
+    useEffect(() => {
+        if (activeTab === 'api' && activeWorkspaceId) {
+            fetchApiKeys();
+        }
+    }, [activeTab, activeWorkspaceId]);
+
+    const fetchApiKeys = async () => {
+        try {
+            const res = await fetch(`/api/settings/api-keys?workspaceId=${activeWorkspaceId}`);
+            if (res.ok) {
+                const data = await res.json();
+                setApiKeys(data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch API keys");
+        }
+    };
+
+    const handleGenerateKey = async () => {
+        if (!activeWorkspaceId) return;
+        setIsGenerating(true);
+        try {
+            const res = await fetch('/api/settings/api-keys', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Google Sheets Add-on Key" })
+            });
+            if (res.ok) {
+                const newKey = await res.json();
+                setNewlyGeneratedKey(newKey.key); // Show the raw key just once
+                fetchApiKeys(); // Refresh list
+            }
+        } catch (error) {
+            console.error("Failed to generate key");
+        }
+        setIsGenerating(false);
+    };
+
+    const handleRevokeKey = async (id: string) => {
+        if (!activeWorkspaceId) return;
+        try {
+            const res = await fetch(`/api/settings/api-keys?id=${id}&workspaceId=${activeWorkspaceId}`, {
+                method: 'DELETE'
+            });
+            if (res.ok) fetchApiKeys();
+        } catch (error) {
+            console.error("Failed to revoke key");
+        }
+    };
+
+    const copyToClipboard = () => {
+        if (newlyGeneratedKey) {
+            navigator.clipboard.writeText(newlyGeneratedKey);
+            alert("API Key copied to clipboard! Keep it safe.");
+            setNewlyGeneratedKey(null); // Hide after copy
+        }
+    };
 
     return (
         <div className="relative max-w-5xl mx-auto px-8 py-10 w-full animate-in fade-in duration-300">
@@ -219,11 +282,14 @@ export default function SettingsPage() {
                             <div className="flex items-center justify-between mb-2">
                                 <div>
                                     <h3 className="text-lg font-bold text-gray-900 mb-1">Developer API Keys</h3>
-                                    <p className="text-sm text-gray-500">Create programmatic access tokens for the Monstera API.</p>
+                                    <p className="text-sm text-gray-500">Create programmatic access tokens for the Monstera API (e.g., Google Sheets Add-on).</p>
                                 </div>
-                                <button className="flex items-center px-4 py-2 bg-gray-900 hover:bg-black text-white text-sm font-bold rounded-xl shadow-sm transition-colors">
+                                <button 
+                                    onClick={handleGenerateKey}
+                                    disabled={isGenerating}
+                                    className="flex items-center px-4 py-2 bg-gray-900 hover:bg-black text-white text-sm font-bold rounded-xl shadow-sm transition-colors disabled:opacity-50">
                                     <Plus className="w-4 h-4 mr-2" />
-                                    Generate Key
+                                    {isGenerating ? "Generating..." : "Generate Key"}
                                 </button>
                             </div>
 
@@ -235,18 +301,52 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
-                            <div className="bg-white border border-gray-200/60 rounded-2xl shadow-sm overflow-hidden p-4 flex items-center justify-between">
-                                <div>
-                                    <div className="text-sm font-bold text-gray-900 mb-1">Production Sync Key</div>
-                                    <div className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded">mc_prod_8f92j***********</div>
+                            {newlyGeneratedKey && (
+                                <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-5 mb-6">
+                                    <h4 className="font-semibold text-emerald-900 text-sm mb-2 flex items-center">
+                                        <CheckCircle2 className="w-4 h-4 mr-1 text-emerald-600" /> Key Generated Successfully
+                                    </h4>
+                                    <p className="text-sm text-emerald-700 mb-3">Please copy this value now. You won't be able to see it again.</p>
+                                    <div className="flex items-center space-x-2">
+                                        <code className="flex-1 bg-white border border-emerald-100 px-3 py-2 rounded-lg text-sm text-emerald-900 font-mono select-all">
+                                            {newlyGeneratedKey}
+                                        </code>
+                                        <button onClick={copyToClipboard} className="p-2 border border-emerald-200 bg-white rounded-lg text-emerald-700 hover:bg-emerald-100 transition-colors">
+                                            <Copy className="w-4 h-4" />
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="flex items-center space-x-3">
-                                    <div className="text-xs font-medium text-gray-400">Created Oct 12</div>
-                                    <button className="text-sm font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors">
-                                        Revoke
-                                    </button>
+                            )}
+
+                            {apiKeys.length === 0 ? (
+                                <div className="text-center py-10 border border-dashed border-gray-200 rounded-2xl">
+                                    <KeyRound className="w-8 h-8 text-gray-300 mx-auto mb-3" />
+                                    <p className="text-gray-500 text-sm">No API Keys generated yet.</p>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {apiKeys.map((keyObj) => (
+                                        <div key={keyObj.id} className="bg-white border border-gray-200/60 rounded-2xl shadow-sm overflow-hidden p-4 flex items-center justify-between">
+                                            <div>
+                                                <div className="text-sm font-bold text-gray-900 mb-1">{keyObj.name}</div>
+                                                <div className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                                    {keyObj.key.slice(0, 7)}...{keyObj.key.slice(-4)}
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center space-x-3">
+                                                <div className="text-[11px] font-medium text-gray-400">
+                                                    Created {new Date(keyObj.createdAt).toLocaleDateString()}
+                                                </div>
+                                                <button 
+                                                    onClick={() => handleRevokeKey(keyObj.id)}
+                                                    className="text-sm font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors">
+                                                    Revoke
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
 

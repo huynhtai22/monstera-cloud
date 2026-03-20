@@ -66,6 +66,7 @@ model Workspace {
   connections Connection[]
   pipelines   Pipeline[]
   members     WorkspaceMember[]
+  apiKeys     ApiKey[]
 }
 
 model WorkspaceMember {
@@ -132,4 +133,15 @@ model TransformationRule {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  name        String    @default("Default Key")
+  workspaceId String
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
