@@ -133,8 +133,8 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        {/* Name, Email & Password Form */}
         <form className="space-y-6" onSubmit={handleSubmit}>
+          <div className="hidden">BUILD_ID: v1.0.1-manual-login</div>
           {error && (
             <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center">
               {error}
