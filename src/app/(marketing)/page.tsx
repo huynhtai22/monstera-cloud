@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Database, Zap, Lock, BarChart3, ChevronRight, Activity, Terminal, CheckCircle2, Check, ExternalLink } from "lucide-react";
+import { ArrowRight, Database, Zap, Lock, BarChart3, ChevronRight, Activity, Terminal, CheckCircle2, Check, ExternalLink, BellRing, PieChart } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { DataStreamBackground } from "@/components/DataStreamBackground";
 
@@ -126,7 +126,42 @@ export default function MarketingPage() {
                                         <p className="text-gray-500">AUTH: VERIFIED via HMAC_256</p>
                                         <p>[DATA] EXTRACTING /orders/v2 [1480 ROWS]</p>
                                         <p className="text-blue-500">[DEST] WRITING TO BIGQUERY _PRD...</p>
-                                        <p className="text-emerald-500 font-bold">SUCCESS: 200 OK (1.2s LATENCY)</p>
+                                        <p className="text-emerald-500 block font-bold">SUCCESS: 200 OK (1.2s LATENCY)</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Bento Item 5 - Alerting */}
+                        <div className="relative group bg-[#18181b] rounded-xl border border-white/10 p-8 overflow-hidden hover:border-white/20 transition-colors">
+                            <BellRing className="w-8 h-8 text-rose-500 mb-6" />
+                            <h3 className="text-xl font-bold text-white mb-3 tracking-tight">Critical Alerting</h3>
+                            <p className="text-sm text-gray-400">Instantly route pipeline failures, API timeouts, and schema drift warnings directly to your engineering team's Slack or Discord channels.</p>
+                        </div>
+
+                        {/* Bento Item 6 - Templates */}
+                        <div className="md:col-span-2 relative group bg-[#18181b] rounded-xl border border-white/10 p-0 overflow-hidden hover:border-white/20 transition-colors flex flex-col md:flex-row items-center border-l-4 border-l-purple-500/30 hover:border-l-purple-500 transition-all">
+                            <div className="p-8 md:w-1/2 z-10">
+                                <PieChart className="w-8 h-8 text-purple-500 mb-6" />
+                                <h3 className="text-xl font-bold text-white mb-3 tracking-tight">1-Click ROI Templates</h3>
+                                <p className="text-sm text-gray-400 mb-6">Stop staring at raw JSON arrays. Instantly overlay pre-built Looker Studio and Metabase templates on your BigQuery datasets for out-of-the-box e-commerce analytics.</p>
+                                <Link href="/templates" className="text-white text-sm font-bold flex items-center hover:text-purple-400 transition-colors">
+                                    Browse BI Templates <ArrowRight className="w-4 h-4 ml-1" />
+                                </Link>
+                            </div>
+                            <div className="md:w-1/2 h-full flex items-center justify-end p-4 z-0">
+                                {/* Visual Mockup for Dashboards */}
+                                <div className="w-full h-48 bg-[#09090b] rounded border border-white/10 relative overflow-hidden flex flex-col p-5 opacity-70 group-hover:opacity-100 transition-opacity shadow-[inset_0_0_20px_rgba(168,85,247,0.05)]">
+                                    <div className="w-1/2 h-2.5 bg-white/10 rounded mb-6"></div>
+                                    <div className="flex space-x-3 h-20 items-end mb-4">
+                                        <div className="w-1/4 h-8 bg-purple-500/20 rounded-t border-t border-purple-500/50 hover:bg-purple-500/30 transition-colors"></div>
+                                        <div className="w-1/4 h-12 bg-purple-500/20 rounded-t border-t border-purple-500/50 hover:bg-purple-500/30 transition-colors"></div>
+                                        <div className="w-1/4 h-16 bg-emerald-500/20 rounded-t border-t border-emerald-500/50 hover:bg-emerald-500/30 transition-colors"></div>
+                                        <div className="w-1/4 h-full bg-emerald-500/40 rounded-t border-t border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:bg-emerald-500/50 transition-colors"></div>
+                                    </div>
+                                    <div className="flex justify-between items-center mt-auto border-t border-white/5 pt-3">
+                                        <div className="w-1/3 h-1.5 bg-white/5 rounded"></div>
+                                        <div className="text-[10px] text-emerald-500 font-bold tracking-wider">+28% GMV Surge</div>
                                     </div>
                                 </div>
                             </div>
