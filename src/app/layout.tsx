@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { AppLayout } from "@/components/AppLayout";
 import { NextAuthProvider } from "@/components/NextAuthProvider";
 import { LiveChatWidget } from "@/components/LiveChatWidget";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
-const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
     title: {
@@ -42,7 +41,7 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" className="antialiased">
-            <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans`}>
+            <body className={inter.className}>
                 <NextAuthProvider>
                     {children}
                     <LiveChatWidget />
