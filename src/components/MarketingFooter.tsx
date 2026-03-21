@@ -9,10 +9,10 @@ export function MarketingFooter() {
                     <div>
                         <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">Product</h3>
                         <ul className="space-y-3">
-                            <li className="text-sm text-gray-500">Platform Overview <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
+                            <li><Link href="/docs#architecture" className="text-sm text-gray-400 hover:text-white transition-colors">Platform Overview</Link></li>
                             <li><Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link></li>
-                            <li className="text-sm text-gray-500">Connectors <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
-                            <li className="text-sm text-gray-500">Security <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
+                            <li><Link href="/docs#sources" className="text-sm text-gray-400 hover:text-white transition-colors">Connectors</Link></li>
+                            <li><Link href="/docs#authentication" className="text-sm text-gray-400 hover:text-white transition-colors">Security</Link></li>
                         </ul>
                     </div>
                     <div>
@@ -28,9 +28,9 @@ export function MarketingFooter() {
                         <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">Resources</h3>
                         <ul className="space-y-3">
                             <li className="text-sm text-gray-500">Blog <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
-                            <li className="text-sm text-gray-500">Documentation <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
+                            <li><Link href="/docs" className="text-sm text-gray-400 hover:text-white transition-colors">Documentation</Link></li>
                             <li className="text-sm text-gray-500">Help Center <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
-                            <li className="text-sm text-gray-500">API Reference <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
+                            <li><Link href="/docs#api" className="text-sm text-gray-400 hover:text-white transition-colors">API Reference</Link></li>
                         </ul>
                     </div>
                     <div>
