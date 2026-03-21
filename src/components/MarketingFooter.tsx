@@ -12,6 +12,7 @@ export function MarketingFooter() {
                         <ul className="space-y-3">
                             <li><Link href="/docs#architecture" className="text-sm text-gray-400 hover:text-white transition-colors">Platform Overview</Link></li>
                             <li><Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link></li>
+                            <li><Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">BI Templates</Link></li>
                             <li><Link href="/docs#sources" className="text-sm text-gray-400 hover:text-white transition-colors">Connectors</Link></li>
                             <li><Link href="/docs#authentication" className="text-sm text-gray-400 hover:text-white transition-colors">Security</Link></li>
                         </ul>
@@ -19,7 +20,7 @@ export function MarketingFooter() {
                     <div>
                         <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">Solutions</h3>
                         <ul className="space-y-3">
-                            <li className="text-sm text-gray-500">For Marketing Agencies <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
+                            <li><Link href="/solutions/agencies" className="text-sm text-gray-400 hover:text-white transition-colors">For Marketing Agencies</Link></li>
                             <li className="text-sm text-gray-500">For E-commerce <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
                             <li className="text-sm text-gray-500">For Enterprises <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
                             <li className="text-sm text-gray-500">Data Warehousing <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
