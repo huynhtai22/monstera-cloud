@@ -2,18 +2,22 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Database, Zap, Lock, BarChart3, ChevronRight, Activity, Terminal } from "lucide-react";
+import { ArrowRight, Database, Zap, Lock, BarChart3, ChevronRight, Activity, Terminal, CheckCircle2, Check, ExternalLink } from "lucide-react";
 import { Logo } from "@/components/Logo";
+import { DataStreamBackground } from "@/components/DataStreamBackground";
 
 export default function MarketingPage() {
     return (
         <div className="flex flex-col items-center bg-[#09090b] text-slate-200 w-full selection:bg-emerald-500/30 overflow-hidden font-sans">
             
             {/* HER0 SECTION */}
-            <section className="relative w-full min-h-[90vh] flex flex-col items-center justify-center pt-32 pb-20 px-4 sm:px-6 lg:px-8 overflow-hidden border-b border-white/5">
+            <section className="relative w-full min-h-[90vh] flex flex-col items-center justify-center pt-32 pb-20 px-4 sm:px-6 lg:px-8 overflow-hidden border-b border-white/5 bg-[#09090b]">
                 
-                {/* Refined enterprise background pattern, no neon glows */}
-                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_60%,transparent_100%)] pointer-events-none opacity-50" />
+                {/* Animated Data Stream Background Layer */}
+                <DataStreamBackground />
+
+                {/* Refined enterprise background grid pattern */}
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_60%,transparent_100%)] pointer-events-none opacity-50 z-0" />
 
                 <div className="relative z-10 w-full max-w-5xl mx-auto text-center flex flex-col items-center">
                     
