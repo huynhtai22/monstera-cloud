@@ -201,7 +201,7 @@ export default function DocsPage() {
                     <h4 className="text-white font-bold mb-1">Explore Dashboard</h4>
                     <p className="text-sm text-gray-400">Put theory into practice. Initialize your first pipeline.</p>
                 </div>
-                <Link href="/dashboard" className="px-6 py-3 bg-white text-black text-sm font-bold rounded hover:bg-gray-200 transition-colors">
+                <Link href="/register" className="px-6 py-3 bg-white text-black text-sm font-bold rounded hover:bg-gray-200 transition-colors">
                     Open Console
                 </Link>
             </div>

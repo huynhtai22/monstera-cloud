@@ -105,7 +105,7 @@ export default function SolutionsPage() {
                     <p className="text-xl text-gray-600 dark:text-gray-400 mb-10">
                         Stop flying blind. Connect your APAC commerce stack in minutes.
                     </p>
-                    <Link href="/dashboard" className="inline-flex items-center px-8 py-4 text-lg font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-lg transition-all">
+                    <Link href="/register" className="inline-flex items-center px-8 py-4 text-lg font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-lg transition-all">
                         Start your 14-day free trial
                     </Link>
                 </div>

@@ -69,7 +69,7 @@ export default function PricingPage() {
                                 Weekly Sync Batch
                             </li>
                         </ul>
-                        <Link href="/dashboard" className="text-center w-full py-3 rounded-lg border border-white/10 text-white font-semibold hover:bg-white/5 transition-colors">
+                        <Link href="/register" className="text-center w-full py-3 rounded-lg border border-white/10 text-white font-semibold hover:bg-white/5 transition-colors">
                             Initialize Node
                         </Link>
                     </div>

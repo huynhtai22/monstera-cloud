@@ -30,7 +30,7 @@ export function MarketingNavbar() {
                         <Link href="/api/auth/signin" className="hidden sm:block text-gray-400 hover:text-white text-sm font-medium transition-colors">
                             Log in
                         </Link>
-                        <Link href="/dashboard" className="group inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm hover:shadow-md transition-all">
+                        <Link href="/register" className="group inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm hover:shadow-md transition-all">
                             Start free trial
                             <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
                         </Link>
