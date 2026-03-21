@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Menu, Moon, Sun } from 'lucide-react';
+import { CommandPalette } from './CommandPalette';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -64,13 +65,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 </main>
             </div>
 
-            {/* Mobile Overlay */}
             {isSidebarOpen && (
                 <div
                     className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-40 lg:hidden transition-opacity"
                     onClick={() => setIsSidebarOpen(false)}
                 />
             )}
+            {/* Global Command Menu */}
+            <CommandPalette />
         </div>
     );
 }
