@@ -42,3 +42,43 @@ export const sendOtpEmail = async (email: string, otp: string) => {
     return { success: false, error: err };
   }
 };
+
+export const sendPasswordResetEmail = async (email: string, resetUrl: string) => {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+      to: [email],
+      subject: 'Reset your password – Monstera Cloud',
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #1a1a1a; margin-bottom: 8px;">Reset your password</h2>
+          <p style="color: #4a5568; line-height: 1.6; margin-bottom: 24px;">
+            We received a request to reset the password for your Monstera Cloud account associated with <strong>${email}</strong>.
+            Click the button below to set a new password. This link expires in <strong>1 hour</strong>.
+          </p>
+          <a href="${resetUrl}"
+             style="display: inline-block; background-color: #1ba177; color: #ffffff; text-decoration: none;
+                    padding: 14px 28px; border-radius: 6px; font-weight: 600; font-size: 15px; margin-bottom: 24px;">
+            Reset Password
+          </a>
+          <p style="color: #718096; font-size: 13px; margin-top: 16px;">
+            If you did not request this, you can safely ignore this email. Your password will not change.
+          </p>
+          <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #a0aec0;">
+            © 2026 Monstera Cloud. All rights reserved.
+          </div>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error('[MAIL] Resend Error:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, data };
+  } catch (err) {
+    console.error('[MAIL] Unexpected Error:', err);
+    return { success: false, error: err };
+  }
+};
