@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AppLayout } from "@/components/AppLayout";
 import { NextAuthProvider } from "@/components/NextAuthProvider";
+import { LiveChatWidget } from "@/components/LiveChatWidget";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -43,6 +44,7 @@ export default function RootLayout({
             <body className={inter.className}>
                 <NextAuthProvider>
                     {children}
+                    <LiveChatWidget />
                 </NextAuthProvider>
             </body>
         </html>

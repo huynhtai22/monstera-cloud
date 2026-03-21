@@ -9,37 +9,37 @@ export function MarketingFooter() {
                     <div>
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 uppercase tracking-wider">Product</h3>
                         <ul className="space-y-3">
-                            <li><Link href="/platform" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Platform Overview</Link></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">Platform Overview <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
                             <li><Link href="/pricing" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Pricing</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Connectors</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Security</Link></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">Connectors <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">Security <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
                         </ul>
                     </div>
                     <div>
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 uppercase tracking-wider">Solutions</h3>
                         <ul className="space-y-3">
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">For Marketing Agencies</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">For E-commerce</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">For Enterprises</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Data Warehousing</Link></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">For Marketing Agencies <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">For E-commerce <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">For Enterprises <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">Data Warehousing <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
                         </ul>
                     </div>
                     <div>
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 uppercase tracking-wider">Resources</h3>
                         <ul className="space-y-3">
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Blog</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Documentation</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Help Center</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">API Reference</Link></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">Blog <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">Documentation <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">Help Center <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">API Reference <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
                         </ul>
                     </div>
                     <div>
                         <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 uppercase tracking-wider">Company</h3>
                         <ul className="space-y-3">
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">About Us</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Careers</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Contact Sales</Link></li>
-                            <li><Link href="#" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Partners</Link></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">About Us <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">Careers <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">Contact Sales <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
+                            <li className="text-sm text-gray-400 dark:text-gray-600">Partners <span className="text-[10px] ml-1 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span></li>
                         </ul>
                     </div>
                 </div>

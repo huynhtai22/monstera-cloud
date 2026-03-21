@@ -13,9 +13,6 @@ export function MarketingNavbar() {
                         </Link>
                     </div>
                     <div className="hidden md:flex items-center space-x-8">
-                        <Link href="/platform" className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white text-sm font-medium transition-colors">
-                            Platform
-                        </Link>
                         <Link href="/solutions" className="text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white text-sm font-medium transition-colors">
                             Solutions
                         </Link>

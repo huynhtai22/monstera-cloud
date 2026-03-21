@@ -27,26 +27,35 @@ export default function LandingPage() {
                     </h1>
 
                     <p className="mt-4 text-xl md:text-2xl text-gray-600 dark:text-gray-400 max-w-3xl mx-auto mb-10 font-light">
-                        Move data from 100+ platforms into Google Sheets, Looker Studio, and BiqQuery in minutes. No coding required.
+                        Move data from 100+ platforms into Google Sheets, Looker Studio, and BigQuery in minutes. No coding required.
                     </p>
 
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
                         <Link href="/dashboard" className="w-full sm:w-auto px-8 py-4 text-lg font-medium text-white bg-slate-900 dark:bg-emerald-600 hover:bg-slate-800 dark:hover:bg-emerald-700 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center group">
-                            Start your 14-day free trial
+                            Start for free
                             <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
                         </Link>
-                        <Link href="/platform" className="w-full sm:w-auto px-8 py-4 text-lg font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all flex items-center justify-center">
+                        <Link href="/dashboard" className="w-full sm:w-auto px-8 py-4 text-lg font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all flex items-center justify-center">
                             See how it works
                         </Link>
                     </div>
-                    <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">No credit card required. Cancel anytime.</p>
+
+                    {/* Product Screenshot */}
+                    <div className="relative max-w-5xl mx-auto rounded-xl border border-gray-200/50 dark:border-slate-800/50 shadow-2xl overflow-hidden bg-white/50 backdrop-blur-sm">
+                        <div className="absolute inset-0 bg-gradient-to-t from-white/20 to-transparent pointer-events-none"></div>
+                        <img 
+                            src="/hero-dashboard.png" 
+                            alt="Monstera Cloud Pipeline Dashboard" 
+                            className="w-full h-auto rounded-xl object-cover"
+                        />
+                    </div>
                 </div>
             </section>
 
-            {/* Trusted By Section (Logos) */}
+            {/* Worked With Section (Logos) */}
             <section className="py-10 border-y border-gray-200/50 dark:border-slate-800/50 bg-white/50 dark:bg-slate-900/20 backdrop-blur-sm">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <p className="text-center text-sm font-semibold text-gray-500 uppercase tracking-widest mb-8">Trusted by data teams at</p>
+                    <p className="text-center text-sm font-semibold text-gray-500 uppercase tracking-widest mb-8">Works seamlessly with</p>
                     <div className="flex flex-wrap justify-center items-center gap-12 md:gap-24 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
                         {/* Actual Logos reflecting APAC focus */}
                         <div className="text-2xl font-bold flex items-center gap-2 text-orange-500"><div className="w-8 h-8 bg-orange-500 rounded-md"></div> Shopee</div>
