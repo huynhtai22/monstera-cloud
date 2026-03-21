@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ShieldCheck } from "lucide-react";
 import { Logo } from "./Logo";
 
 export function MarketingFooter() {
@@ -50,9 +51,10 @@ export function MarketingFooter() {
                             © {new Date().getFullYear()} Monstera Cloud Inc. All rights reserved.
                         </p>
                     </div>
-                    <div className="flex space-x-6 mt-4 md:mt-0">
+                    <div className="flex space-x-6 mt-4 md:mt-0 items-center">
                         <Link href="/legal/privacy-policy" className="text-sm text-gray-400 hover:text-white transition-colors">Privacy Policy</Link>
                         <Link href="/legal/terms-of-service" className="text-sm text-gray-400 hover:text-white transition-colors">Terms of Service</Link>
+                        <Link href="/docs#security" className="text-xs text-emerald-500 font-medium hover:text-emerald-400 transition-colors flex items-center bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20"><ShieldCheck className="w-3 h-3 mr-1"/> Vietnam PDPA Compliant</Link>
                     </div>
                 </div>
             </div>

@@ -13,14 +13,14 @@ export default function PricingPage() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
 
                 <div className="text-center space-y-4 mb-16">
-                    <div className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold text-gray-400 border border-white/10 bg-white/5 tracking-widest uppercase mb-6">
-                        Transparent Licensing
+                    <div className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 tracking-widest uppercase mb-6 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+                        Flash-Sale Proof Pricing
                     </div>
                     <h1 className="text-white text-4xl md:text-6xl font-extrabold leading-[1.05] tracking-tighter">
                         Stop paying per row.
                     </h1>
                     <p className="text-gray-400 text-lg md:text-xl font-normal max-w-2xl mx-auto mt-4">
-                        Legacy middleware punishes you for scale. Monstera Cloud provides <span className="font-semibold text-white">unlimited data synchronizations</span> for a flat architectural fee.
+                        Legacy ELT punishes you for scale. Monstera Cloud charges a flat architectural fee based on GMV order volume. <span className="font-semibold text-white">Zero overage penalties during 11.11 spikes.</span>
                     </p>
                 </div>
 
@@ -127,19 +127,19 @@ export default function PricingPage() {
                         <ul className="space-y-4 mb-8 flex-1 z-10 relative">
                             <li className="flex items-start gap-3 text-white text-sm font-semibold">
                                 <Check className="text-emerald-500 w-5 h-5 shrink-0 stroke-[3]" />
+                                Up to 250,000 Orders/Mo
+                            </li>
+                            <li className="flex items-start gap-3 text-white text-sm font-semibold">
+                                <Check className="text-emerald-500 w-5 h-5 shrink-0 stroke-[3]" />
+                                11.11 Flash-Sale Protection
+                            </li>
+                            <li className="flex items-start gap-3 text-white text-sm font-semibold">
+                                <Check className="text-emerald-500 w-5 h-5 shrink-0 stroke-[3]" />
                                 15 Active Pipelines
                             </li>
                             <li className="flex items-start gap-3 text-white text-sm font-semibold">
                                 <Check className="text-emerald-500 w-5 h-5 shrink-0 stroke-[3]" />
-                                Hourly Synchronization
-                            </li>
-                            <li className="flex items-start gap-3 text-white text-sm font-semibold">
-                                <Check className="text-emerald-500 w-5 h-5 shrink-0 stroke-[3]" />
                                 PII Masking & Cryptography
-                            </li>
-                            <li className="flex items-start gap-3 text-white text-sm font-semibold">
-                                <Check className="text-emerald-500 w-5 h-5 shrink-0 stroke-[3]" />
-                                Priority Telemetry Support
                             </li>
                         </ul>
                         <div className="z-10 relative">
@@ -232,15 +232,15 @@ export default function PricingPage() {
                     <div className="flex justify-center gap-16 text-gray-400">
                         <div className="flex flex-col items-center gap-3 opacity-60 hover:opacity-100 transition-opacity">
                             <ShieldCheck className="w-8 h-8 text-white" />
-                            <span className="text-[10px] font-mono tracking-widest uppercase">SOC2 Type II</span>
+                            <span className="text-[10px] font-mono tracking-widest uppercase">Vietnam PDPA Compliant</span>
                         </div>
                         <div className="flex flex-col items-center gap-3 opacity-60 hover:opacity-100 transition-opacity">
                             <Shield className="w-8 h-8 text-white" />
-                            <span className="text-[10px] font-mono tracking-widest uppercase">GDPR Compliant</span>
+                            <span className="text-[10px] font-mono tracking-widest uppercase">PII Masking Ready</span>
                         </div>
                         <div className="flex flex-col items-center gap-3 opacity-60 hover:opacity-100 transition-opacity">
                             <Zap className="w-8 h-8 text-white" />
-                            <span className="text-[10px] font-mono tracking-widest uppercase">PCI-DSS Ready</span>
+                            <span className="text-[10px] font-mono tracking-widest uppercase">SOC2 Type II</span>
                         </div>
                     </div>
                 </div>
