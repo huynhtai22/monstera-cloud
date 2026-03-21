@@ -95,4 +95,48 @@ export class ShopeeClient {
 
         return url.toString();
     }
+
+    /**
+     * Exchanges a refresh token for a new access token via Shopee V2 API.
+     */
+    public async refreshAccessToken(refreshToken: string, shopId: string): Promise<any> {
+        const path = '/api/v2/auth/access_token/get';
+        const { timestamp, sign } = this.generateSignature(path);
+        
+        const url = `${this.host}${path}?partner_id=${this.partnerId}&timestamp=${timestamp}&sign=${sign}`;
+
+        const body = {
+            refresh_token: refreshToken,
+            shop_id: parseInt(shopId, 10),
+            partner_id: parseInt(this.partnerId, 10)
+        };
+
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+
+        if (!res.ok) {
+            throw new Error(`Shopee Token Refresh Failed: ${res.status}`);
+        }
+
+        return await res.json();
+    }
+
+    /**
+     * Validates an incoming Shopee V2 Push webhook signature.
+     * Shopee Webhook Signature = HMAC-SHA256(partnerKey, webhook_url + request_body)
+     */
+    public validateWebhookSignature(authorizationHeader: string, webhookUrl: string, rawBody: string): boolean {
+        if (!authorizationHeader) return false;
+        
+        const baseString = `${webhookUrl}|${rawBody}`;
+        const computedSignature = crypto
+            .createHmac('sha256', this.partnerKey)
+            .update(baseString)
+            .digest('hex');
+
+        return computedSignature === authorizationHeader;
+    }
 }
