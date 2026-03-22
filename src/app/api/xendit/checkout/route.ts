@@ -27,7 +27,9 @@ export async function POST(req: Request) {
       amountUsd = Math.round(monthlyAmountUsd * 0.8 * 12); // 20% discount * 12 months
     }
 
-    const currency = (process.env.XENDIT_DEFAULT_CURRENCY || 'USD').toUpperCase();
+    // Many Xendit merchant accounts (ID / regional) are IDR-only; USD often returns SERVER_ERROR until
+    // USD invoicing is enabled in the Xendit Dashboard. Override with XENDIT_DEFAULT_CURRENCY=USD if yours supports it.
+    const currency = (process.env.XENDIT_DEFAULT_CURRENCY || 'IDR').toUpperCase();
     // Xendit external_id only allows certain characters — never put raw emails here (no @ / .).
     const externalId = `mc-${plan}-${randomUUID()}`;
 
@@ -36,11 +38,24 @@ export async function POST(req: Request) {
         ? Math.round(amountUsd * Number(process.env.XENDIT_IDR_PER_USD || '16500'))
         : amountUsd;
 
+    // IDR invoices must be whole rupiah; enforce integer for all currencies to match Xendit expectations.
+    amount = Math.round(amount);
+    if (currency === 'IDR' && amount < 10000) {
+      amount = 10000; // stay above common Xendit minimums for IDR
+    }
+
     const description = `Monstera Cloud ${plan === 'professional' ? 'Professional' : 'Starter'} Plan (${billingCycle})`;
 
     console.log(
       `Creating Xendit invoice ${externalId}: ${plan} ${billingCycle}, amount=${amount} ${currency}, payer=${session.user.email}`
     );
+
+    const metadata: Record<string, string> = {
+      plan: String(plan),
+      billingCycle: String(billingCycle),
+      amount_usd: String(amountUsd),
+    };
+    if (session.user.id) metadata.user_id = String(session.user.id);
 
     const invoiceData = {
       external_id: externalId,
@@ -49,17 +64,9 @@ export async function POST(req: Request) {
       payer_email: session.user.email,
       success_redirect_url: `${origin}/dashboard?payment=success`,
       failure_redirect_url: `${origin}/pricing?payment=failed`,
-      customer: {
-        given_names: session.user.name || 'Customer',
-        email: session.user.email,
-      },
+      // Omit nested `customer` — payer_email is enough; some accounts error on customer payload shape.
       currency,
-      metadata: {
-        plan: String(plan),
-        billingCycle: String(billingCycle),
-        amount_usd: String(amountUsd),
-        user_id: session.user.id ? String(session.user.id) : '',
-      },
+      metadata,
     };
 
     console.log('Sending to Xendit:', JSON.stringify(invoiceData, null, 2));
@@ -70,9 +77,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ url: invoice.invoice_url });
   } catch (err: any) {
     console.error('Error creating Xendit Invoice:', err);
-    return NextResponse.json(
-      { error: { message: err.message } },
-      { status: 500 }
-    );
+    let message = err.message || 'Failed to create invoice';
+    if (typeof message === 'string' && message.includes('SERVER_ERROR')) {
+      message += ' — Try XENDIT_DEFAULT_CURRENCY=IDR in Vercel (Production), or enable USD invoicing in Xendit Dashboard.';
+    }
+    return NextResponse.json({ error: { message } }, { status: 500 });
   }
 }

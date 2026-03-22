@@ -85,7 +85,7 @@ export class XenditClient {
       description: data.description,
       successRedirectUrl: data.success_redirect_url,
       failureRedirectUrl: data.failure_redirect_url,
-      currency: (data.currency || process.env.XENDIT_DEFAULT_CURRENCY || 'USD').toUpperCase(),
+      currency: (data.currency || process.env.XENDIT_DEFAULT_CURRENCY || 'IDR').toUpperCase(),
       customer:
         data.customer?.given_names || data.customer?.email
           ? {
@@ -119,7 +119,7 @@ export class XenditClient {
         should_send_email: inv.shouldSendEmail ?? false,
         created: toIsoString(inv.created),
         updated: toIsoString(inv.updated),
-        currency: inv.currency ?? payload.currency ?? 'USD',
+        currency: inv.currency ?? payload.currency ?? 'IDR',
       };
     } catch (e: unknown) {
       if (e instanceof XenditSdkError) {
