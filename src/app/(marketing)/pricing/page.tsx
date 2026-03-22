@@ -7,6 +7,8 @@ import { useState } from "react";
 
 export default function PricingPage() {
     const [isAnnual, setIsAnnual] = useState(true);
+    /** Checkout with Xendit: VNĐ first, USD second (matches product default). */
+    const [payCurrency, setPayCurrency] = useState<"VND" | "USD">("VND");
 
     return (
         <div className="min-h-screen pt-32 pb-24 bg-[#09090b] font-sans overflow-hidden">
@@ -38,6 +40,28 @@ export default function PricingPage() {
                     >
                         <span className="flex items-center gap-1.5">Annual <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-400 font-bold border border-emerald-500/10">SAVE 20%</span></span>
                     </button>
+                </div>
+
+                <div className="flex flex-col items-center gap-2 mb-12 relative z-10">
+                    <p className="text-gray-500 text-xs uppercase tracking-widest font-semibold">
+                        Pay in
+                    </p>
+                    <div className="flex p-1 bg-[#18181b] border border-white/10 rounded-lg max-w-[280px] w-full font-medium text-sm">
+                        <button
+                            type="button"
+                            onClick={() => setPayCurrency("VND")}
+                            className={`flex h-10 grow items-center justify-center rounded-md px-2 transition-all ${payCurrency === "VND" ? "bg-white/10 text-white shadow-sm" : "text-gray-400 hover:text-gray-200"}`}
+                        >
+                            VNĐ
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setPayCurrency("USD")}
+                            className={`flex h-10 grow items-center justify-center rounded-md px-2 transition-all ${payCurrency === "USD" ? "bg-white/10 text-white shadow-sm" : "text-gray-400 hover:text-gray-200"}`}
+                        >
+                            USD
+                        </button>
+                    </div>
                 </div>
 
                 {/* Pricing Cards */}
@@ -102,7 +126,12 @@ export default function PricingPage() {
                                 Basic Transformations
                             </li>
                         </ul>
-                        <CheckoutButton plan="starter" className="w-full py-3 rounded-lg border border-white/10 text-white font-semibold hover:bg-white/5 transition-colors">
+                        <CheckoutButton 
+                            plan="starter" 
+                            billingCycle={isAnnual ? 'annual' : 'monthly'}
+                            invoiceCurrency={payCurrency}
+                            className="w-full py-3 rounded-lg border border-white/10 text-white font-semibold hover:bg-white/5 transition-colors"
+                        >
                             Upgrade Node
                         </CheckoutButton>
                     </div>
@@ -143,7 +172,12 @@ export default function PricingPage() {
                             </li>
                         </ul>
                         <div className="z-10 relative">
-                            <CheckoutButton plan="professional" className="w-full py-3 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-500 transition-all">
+                            <CheckoutButton 
+                                plan="professional" 
+                                billingCycle={isAnnual ? 'annual' : 'monthly'}
+                                invoiceCurrency={payCurrency}
+                                className="w-full py-3 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-500 transition-all"
+                            >
                                 Deploy Pro Server
                             </CheckoutButton>
                         </div>

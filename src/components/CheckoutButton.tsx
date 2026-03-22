@@ -7,11 +7,19 @@ import { Loader2 } from 'lucide-react';
 interface CheckoutButtonProps {
   plan: 'starter' | 'professional';
   billingCycle?: 'monthly' | 'annual';
+  /** Sent to /api/xendit/checkout — VNĐ or USD (default follows server env, usually VND). */
+  invoiceCurrency?: 'VND' | 'USD';
   className?: string;
   children: React.ReactNode;
 }
 
-export function CheckoutButton({ plan, billingCycle = 'monthly', className, children }: CheckoutButtonProps) {
+export function CheckoutButton({
+  plan,
+  billingCycle = 'monthly',
+  invoiceCurrency,
+  className,
+  children,
+}: CheckoutButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleCheckout = async () => {
@@ -26,6 +34,7 @@ export function CheckoutButton({ plan, billingCycle = 'monthly', className, chil
         body: JSON.stringify({
           plan,
           billingCycle,
+          ...(invoiceCurrency ? { currency: invoiceCurrency } : {}),
         }),
       });
 
