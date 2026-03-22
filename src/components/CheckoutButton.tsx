@@ -6,11 +6,12 @@ import { Loader2 } from 'lucide-react';
 
 interface CheckoutButtonProps {
   plan: 'starter' | 'professional';
+  billingCycle?: 'monthly' | 'annual';
   className?: string;
   children: React.ReactNode;
 }
 
-export function CheckoutButton({ plan, className, children }: CheckoutButtonProps) {
+export function CheckoutButton({ plan, billingCycle = 'monthly', className, children }: CheckoutButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleCheckout = async () => {
@@ -24,19 +25,30 @@ export function CheckoutButton({ plan, className, children }: CheckoutButtonProp
         },
         body: JSON.stringify({
           plan,
+          billingCycle,
         }),
       });
 
       const data = await response.json();
       
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Redirect to login if unauthorized
+          window.location.href = `/login?callbackUrl=${encodeURIComponent(window.location.pathname)}`;
+          return;
+        }
+        throw new Error(data.error?.message || 'Failed to create checkout session');
+      }
+
       if (data.url) {
         // Redirect standard browser location to Xendit invoice URL
         window.location.href = data.url;
       } else {
         console.error('No redirect URL returned from Xendit', data);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error during checkout:', error);
+      alert(error.message || 'Something went wrong during checkout. Please try again.');
     } finally {
       setIsLoading(false);
     }

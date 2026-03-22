@@ -1,14 +1,14 @@
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
-
-const webhookToken = process.env.XENDIT_WEBHOOK_TOKEN as string;
+import { XenditClient } from '@/lib/xendit';
+import prisma from '@/lib/prisma';
 
 export async function POST(req: Request) {
   try {
     const headersList = await headers();
     const callbackToken = headersList.get('x-callback-token');
 
-    if (callbackToken !== webhookToken) {
+    if (!XenditClient.verifyWebhookToken(callbackToken)) {
       console.error('Invalid Xendit Webhook Token');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -17,19 +17,33 @@ export async function POST(req: Request) {
 
     // Handle Invoice Paid Event
     if (event.status === 'PAID') {
-      console.log('Xendit Invoice Paid:', event.id, event.external_id);
-      
-      const externalId = event.external_id as string; // e.g. "invoice-starter-12345"
+      const externalId = event.external_id as string; // e.g. "invoice-starter-user@example.com-12345"
       const payerEmail = event.payer_email;
+      const invoiceId = event.id;
       
-      // Parse the plan from external_id if needed
-      let plan = 'starter';
-      if (externalId.includes('professional')) plan = 'professional';
+      console.log(`Xendit Invoice Paid: ${invoiceId} for ${payerEmail} (${externalId})`);
       
-      // TODO: Update your database here to mark the user as subscribed
-      // Example: await db.user.update({ where: { email: payerEmail }, data: { plan: plan } });
+      // Parse the plan from external_id
+      let plan = 'free';
+      if (externalId.includes('professional')) {
+        plan = 'professional';
+      } else if (externalId.includes('starter')) {
+        plan = 'starter';
+      }
+      
+      // Update the user's plan in the database
+      if (payerEmail) {
+        await (prisma.user as any).update({
+          where: { email: payerEmail },
+          data: { 
+            plan: plan,
+            subscriptionId: invoiceId // Use Xendit Invoice ID as subscription reference
+          }
+        });
+        console.log(`User ${payerEmail} upgraded to ${plan} plan.`);
+      }
     } else {
-      console.log(`Unhandled Xendit Invoice Status: ${event.status}`);
+      console.log(`Unhandled Xendit Invoice Status: ${event.status} for ${event.id}`);
     }
 
     return NextResponse.json({ received: true });
