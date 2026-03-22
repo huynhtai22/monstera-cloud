@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
@@ -19,29 +20,46 @@ export async function POST(req: Request) {
     // Determine price based on plan and cycle
     // Starter: $49/mo or $39/mo (annual)
     // Pro: $149/mo or $119/mo (annual)
-    let monthlyAmount = plan === 'professional' ? 149 : 49;
-    let amount = monthlyAmount;
-    
+    const monthlyAmountUsd = plan === 'professional' ? 149 : 49;
+    let amountUsd = monthlyAmountUsd;
+
     if (billingCycle === 'annual') {
-      amount = Math.round(monthlyAmount * 0.8 * 12); // 20% discount * 12 months
+      amountUsd = Math.round(monthlyAmountUsd * 0.8 * 12); // 20% discount * 12 months
     }
-    
+
+    const currency = (process.env.XENDIT_DEFAULT_CURRENCY || 'USD').toUpperCase();
+    // Xendit external_id only allows certain characters — never put raw emails here (no @ / .).
+    const externalId = `mc-${plan}-${randomUUID()}`;
+
+    let amount =
+      currency === 'IDR'
+        ? Math.round(amountUsd * Number(process.env.XENDIT_IDR_PER_USD || '16500'))
+        : amountUsd;
+
     const description = `Monstera Cloud ${plan === 'professional' ? 'Professional' : 'Starter'} Plan (${billingCycle})`;
-    
-    console.log(`Creating Xendit invoice for ${plan} ${billingCycle} plan at $${amount} for ${session.user.email}`);
+
+    console.log(
+      `Creating Xendit invoice ${externalId}: ${plan} ${billingCycle}, amount=${amount} ${currency}, payer=${session.user.email}`
+    );
 
     const invoiceData = {
-      external_id: `invoice-${plan}-${session.user.email}-${Date.now()}`,
-      amount: amount,
+      external_id: externalId,
+      amount,
       description: description,
       payer_email: session.user.email,
       success_redirect_url: `${origin}/dashboard?payment=success`,
       failure_redirect_url: `${origin}/pricing?payment=failed`,
       customer: {
-          given_names: session.user.name || 'Customer',
-          email: session.user.email,
+        given_names: session.user.name || 'Customer',
+        email: session.user.email,
       },
-      currency: process.env.XENDIT_DEFAULT_CURRENCY || 'USD',
+      currency,
+      metadata: {
+        plan: String(plan),
+        billingCycle: String(billingCycle),
+        amount_usd: String(amountUsd),
+        user_id: session.user.id ? String(session.user.id) : '',
+      },
     };
 
     console.log('Sending to Xendit:', JSON.stringify(invoiceData, null, 2));

@@ -17,15 +17,19 @@ export async function POST(req: Request) {
 
     // Handle Invoice Paid Event
     if (event.status === 'PAID') {
-      const externalId = event.external_id as string; // e.g. "invoice-starter-user@example.com-12345"
+      const externalId = event.external_id as string;
       const payerEmail = event.payer_email;
       const invoiceId = event.id;
-      
+      const meta = event.metadata as Record<string, string> | undefined;
+
       console.log(`Xendit Invoice Paid: ${invoiceId} for ${payerEmail} (${externalId})`);
-      
-      // Parse the plan from external_id
+
+      // Prefer metadata.plan (new invoices); fall back to external_id (legacy)
       let plan = 'free';
-      if (externalId.includes('professional')) {
+      const metaPlan = meta?.plan;
+      if (metaPlan === 'professional' || metaPlan === 'starter') {
+        plan = metaPlan;
+      } else if (externalId.includes('professional')) {
         plan = 'professional';
       } else if (externalId.includes('starter')) {
         plan = 'starter';
