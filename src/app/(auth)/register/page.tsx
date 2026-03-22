@@ -4,7 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Phone } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -48,10 +48,6 @@ export default function RegisterPage() {
     await signIn("google", { callbackUrl: "/dashboard" });
   };
 
-  const dummySocialClick = (provider: string) => {
-    alert(`${provider} login will be implemented once developer accounts are configured!`);
-  }
-
   return (
     <div className="w-full flex flex-col items-center bg-white dark:bg-slate-950 min-h-screen pt-16 sm:pt-24 px-4">
       <div className="w-full max-w-[400px] pb-10">
@@ -78,12 +74,12 @@ export default function RegisterPage() {
           </h2>
         </div>
 
-        {/* Social Buttons Stack */}
-        <div className="flex flex-col space-y-4 mb-6">
+        {/* Google sign-in (only social provider) */}
+        <div className="mb-6">
           <button
             onClick={signInWithGoogle}
             disabled={isLoading || isGoogleLoading}
-            className="flex items-center justify-center w-full px-6 py-[16px] text-[15px] font-medium text-gray-700 bg-white border border-gray-300 rounded-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200 transition-colors"
+            className="flex items-center justify-center w-full px-6 py-[16px] text-[15px] font-medium text-gray-700 bg-white border border-gray-300 rounded-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {isGoogleLoading ? (
               <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
@@ -98,26 +94,6 @@ export default function RegisterPage() {
                 Continue with Google
               </>
             )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => dummySocialClick("Apple")}
-            className="flex items-center justify-center w-full px-6 py-[16px] text-[15px] font-medium text-gray-700 bg-white border border-gray-300 rounded-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200 transition-colors"
-          >
-            <svg className="w-5 h-5 mr-3 text-black" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M16.365 7.112c.677-.82 1.134-1.97 1.01-3.112-1.013.04-2.21.674-2.91 1.493-.556.65-1.096 1.817-.954 2.946 1.137.088 2.213-.505 2.854-1.327zM16.635 8.16C15.006 8.086 13.57 9.074 12.75 9.074c-.815 0-2.008-.888-3.364-.863-1.747.025-3.364.965-4.264 2.533-1.816 3.16-.464 7.842 1.303 10.4 8.868 1.258 2.457 1.383 3.65 2.659 1.265.127 1.187.75 1.187 2.115 1.288 1.34 0 2.583-.127 3.424-.127 1.87-.276 3.674 2.558 5.49 2.632.846-.43 1.956-1.316 2.057-3.112.1-1.796 1.233-2.847 2.133-2.973.9-2.03-3.085-3.23-3.28-3.28-1.554-3.95-3.75-3.95-3.775z"/>
-            </svg>
-            Continue with Apple
-          </button>
-
-          <button
-            type="button"
-            onClick={() => dummySocialClick("Phone")}
-            className="flex items-center justify-center w-full px-6 py-[16px] text-[15px] font-medium text-gray-700 bg-white border border-gray-300 rounded-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200 transition-colors"
-          >
-            <Phone className="w-6 h-6 mr-3 text-gray-700" />
-            Continue with phone
           </button>
         </div>
 

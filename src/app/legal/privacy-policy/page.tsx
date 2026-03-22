@@ -28,7 +28,7 @@ export default function PrivacyPolicyPage() {
           <ul className="list-disc pl-6 mb-4 text-slate-600 dark:text-slate-400 space-y-2">
             <li><strong>Personal Information:</strong> Includes your name, email address, passwords, and similar contact data.</li>
             <li><strong>Payment Data:</strong> We may collect data necessary to process your payment if you make purchases, such as your payment instrument number (such as a credit card number), and the security code associated with your payment instrument. All payment data is stored by our payment processors (e.g., Stripe, Xendit).</li>
-            <li><strong>Social Media Login Data:</strong> We may provide you with the option to register using social media account details, like your Google or Apple account.</li>
+            <li><strong>Social Media Login Data:</strong> We may provide you with the option to register or sign in using your Google account.</li>
           </ul>
         </section>
 
