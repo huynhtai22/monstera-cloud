@@ -132,8 +132,21 @@ export default function TikTokAdsPage() {
   const [sandboxError, setSandboxError] = useState<string | null>(null);
 
   const handleSandboxConnect = async () => {
-    if (!sandboxToken || !sandboxAdvertiserId || !activeWorkspaceId) {
-      setSandboxError("Access token and Advertiser ID are required.");
+    // Fall back to first available workspace if the store hasn't been set yet
+    const wsId =
+      activeWorkspaceId ||
+      (Array.isArray(workspaces) && workspaces.length > 0 ? workspaces[0].id : null);
+
+    if (!sandboxToken.trim()) {
+      setSandboxError("Access token is required — click Generate in the TikTok portal.");
+      return;
+    }
+    if (!sandboxAdvertiserId.trim()) {
+      setSandboxError("Advertiser ID is required.");
+      return;
+    }
+    if (!wsId) {
+      setSandboxError("No workspace found. Please refresh the page and try again.");
       return;
     }
     setSandboxSaving(true);
@@ -143,9 +156,9 @@ export default function TikTokAdsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          workspaceId: activeWorkspaceId,
-          accessToken: sandboxToken,
-          advertiserId: sandboxAdvertiserId,
+          workspaceId: wsId,
+          accessToken: sandboxToken.trim(),
+          advertiserId: sandboxAdvertiserId.trim(),
           accountName: sandboxName || `TikTok Ads Sandbox (${sandboxAdvertiserId})`,
         }),
       });
