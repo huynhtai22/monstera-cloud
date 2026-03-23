@@ -9,11 +9,22 @@ import { useWorkspaceStore } from '@/store/workspace';
 interface ConnectSourceModalProps {
     isOpen: boolean;
     onClose: () => void;
+    integration: {
+        id: string;
+        name: string;
+        logoSrc: string;
+        description: string;
+    } | null;
 }
 
-export function ConnectSourceModal({ isOpen, onClose }: ConnectSourceModalProps) {
+export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSourceModalProps) {
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [isProcessing, setIsProcessing] = useState(false);
+
+    // Default to Shopee if null, though dashboard should always pass one
+    const id = integration?.id || 'shopee';
+    const name = integration?.name || 'Shopee';
+    const logoSrc = integration?.logoSrc || '/logos/shopee.svg';
 
     // Hooks for network invalidation and global state
     const { mutate } = useSWRConfig();
@@ -23,10 +34,32 @@ export function ConnectSourceModal({ isOpen, onClose }: ConnectSourceModalProps)
 
     const handleAuthenticate = () => {
         setIsProcessing(true);
-        // Simulate OAuth redirect and return
+
+        // Calculate OAuth URL based on provider
+        let authUrl = "";
+        if (id === 'shopee') {
+            // This would normally come from an API or lib
+            authUrl = `https://partner.shopeemobile.com/api/v2/shop/auth_partner?partner_id=${process.env.NEXT_PUBLIC_SHOPEE_PARTNER_ID}&redirect=https://monsteracloud.com/api/auth/shopee/callback&state=${activeWorkspaceId}`;
+        } else if (id === 'tiktok') {
+            if (!activeWorkspaceId) {
+                setIsProcessing(false);
+                alert('Select a workspace first');
+                return;
+            }
+            // Server builds authorize URL (app key stays server-side only)
+            window.location.href = `/api/auth/tiktok/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
+            return;
+        }
+
+        // Shopee / others: redirect when authUrl is set
+        if (authUrl) {
+            window.location.href = authUrl;
+            return;
+        }
+
         setTimeout(() => {
             setIsProcessing(false);
-            setStep(2); // Move to Configure step
+            setStep(2);
         }, 1500);
     };
 
@@ -39,10 +72,10 @@ export function ConnectSourceModal({ isOpen, onClose }: ConnectSourceModalProps)
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     workspaceId: activeWorkspaceId,
-                    name: "Shopee SG",
+                    name: `${name} (${id === 'shopee' ? 'SG' : 'Global'})`,
                     type: "source",
-                    provider: "shopee",
-                    credentials: JSON.stringify({ shopId: "49281" })
+                    provider: id,
+                    credentials: JSON.stringify({ shopId: id === 'shopee' ? "49281" : "742109" })
                 })
             });
 
@@ -78,9 +111,9 @@ export function ConnectSourceModal({ isOpen, onClose }: ConnectSourceModalProps)
                 <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-gray-50 dark:bg-slate-800/80">
                     <div className="flex items-center space-x-2">
                         <div className="w-8 h-8 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm relative overflow-hidden">
-                            <Image src="/logos/shopee.svg" alt="Shopee" width={20} height={20} className="object-contain" />
+                            <Image src={logoSrc} alt={name} width={20} height={20} className="object-contain" />
                         </div>
-                        <h3 className="font-bold text-gray-900 dark:text-white">Connect Shopee Seller</h3>
+                        <h3 className="font-bold text-gray-900 dark:text-white">Connect {name}</h3>
                     </div>
                     <button
                         onClick={handleClose}
@@ -102,7 +135,7 @@ export function ConnectSourceModal({ isOpen, onClose }: ConnectSourceModalProps)
                         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                             <div className="text-center mb-6">
                                 <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Authorize Access</h4>
-                                <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">You need to authenticate via Shopee's Open Platform to grant Monstera Cloud read-only access to your data.</p>
+                                <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">You need to authenticate via {name}&apos;s Open Platform to grant Monstera Cloud read-only access to your data.</p>
                             </div>
 
                             <div className="bg-blue-50/50 rounded-xl p-5 border border-blue-100 space-y-3">
@@ -124,15 +157,15 @@ export function ConnectSourceModal({ isOpen, onClose }: ConnectSourceModalProps)
                         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                             <div className="mb-4">
                                 <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Configure Pipeline</h4>
-                                <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">Define how data should be ingested from Shopee.</p>
+                                <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">Define how data should be ingested from {name}.</p>
                             </div>
 
                             <div className="space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5 border-none">Select Shop</label>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5 border-none">Select {id === 'shopee' ? 'Shop' : 'Store'}</label>
                                     <select className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 shadow-sm">
-                                        <option>SuperStore Official (ID: #49281)</option>
-                                        <option>SuperStore Outlet (ID: #55910)</option>
+                                        <option>SuperStore Official (ID: #{id === 'shopee' ? '49281' : '742109'})</option>
+                                        <option>SuperStore Outlet (ID: #{id === 'shopee' ? '55910' : '748221'})</option>
                                     </select>
                                 </div>
 
@@ -168,7 +201,7 @@ export function ConnectSourceModal({ isOpen, onClose }: ConnectSourceModalProps)
                             </div>
                             <div className="text-center">
                                 <h4 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Pipeline Active!</h4>
-                                <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm max-w-xs mx-auto">Your Shopee data is now securely flowing into Monstera Cloud. The initial historical sync has begun.</p>
+                                <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm max-w-xs mx-auto">Your {name} data is now securely flowing into Monstera Cloud. The initial historical sync has begun.</p>
                             </div>
                         </div>
                     )}
@@ -195,7 +228,7 @@ export function ConnectSourceModal({ isOpen, onClose }: ConnectSourceModalProps)
                             {isProcessing ? (
                                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Authenticating...</>
                             ) : (
-                                <>Continue to Shopee <ChevronRight className="w-4 h-4 ml-1" /></>
+                                <>Continue to {name} <ChevronRight className="w-4 h-4 ml-1" /></>
                             )}
                         </button>
                     )}
