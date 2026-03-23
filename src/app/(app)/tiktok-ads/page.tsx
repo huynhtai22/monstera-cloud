@@ -552,9 +552,13 @@ export default function TikTokAdsPage() {
           {/* Dimensions */}
           <div className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border border-white dark:border-slate-700/60 rounded-2xl p-5 shadow-sm">
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Dimensions</h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
-              Name fields (e.g. campaign name) are returned automatically alongside each ID.
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">
+              Available dimensions depend on the <strong>Data Level</strong> selected above.
             </p>
+            <div className="mb-3 text-xs text-gray-400 dark:text-gray-500 space-y-0.5">
+              <p>• <span className="font-medium text-gray-500">Ad Group ID</span> → switch to <em>Ad Group</em> level</p>
+              <p>• <span className="font-medium text-gray-500">Ad ID</span> → switch to <em>Ad</em> level</p>
+            </div>
             <div className="space-y-1.5">
               {availableDims.map((d) => (
                 <label key={d.value} className="flex items-center gap-2 cursor-pointer group">
@@ -565,6 +569,16 @@ export default function TikTokAdsPage() {
                 </label>
               ))}
             </div>
+            {/* Show locked dimensions for higher levels as a hint */}
+            {DIMENSION_OPTIONS.filter((d) => !d.levels.includes(dataLevel)).map((d) => (
+              <div key={d.value} className="flex items-center gap-2 mt-1.5 opacity-35 cursor-not-allowed select-none">
+                <input type="checkbox" disabled className="w-4 h-4 rounded" />
+                <span className="text-sm text-gray-400 dark:text-gray-500 line-through">{d.label}</span>
+                <span className="text-[10px] text-gray-400 ml-auto">
+                  {d.value === "adgroup_id" ? "Ad Group level" : d.value === "ad_id" ? "Ad level" : ""}
+                </span>
+              </div>
+            ))}
           </div>
 
           {/* Metrics */}
