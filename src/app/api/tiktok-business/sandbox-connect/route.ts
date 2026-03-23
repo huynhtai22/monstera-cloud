@@ -16,27 +16,28 @@ export async function POST(req: Request) {
 
   const { workspaceId, accessToken, advertiserId, accountName } = await req.json();
 
-  if (!workspaceId || !accessToken || !advertiserId) {
+  if (!accessToken || !advertiserId) {
     return NextResponse.json(
-      { error: 'workspaceId, accessToken, and advertiserId are required' },
+      { error: 'accessToken and advertiserId are required' },
       { status: 400 }
     );
   }
 
-  // Verify workspace belongs to current user
+  // Use provided workspaceId, or auto-pick the first workspace for this user
   const workspace = await (prisma.workspace as any).findFirst({
     where: {
-      id: workspaceId,
       members: { some: { userId: session.user.id } },
+      ...(workspaceId ? { id: workspaceId } : {}),
     },
+    orderBy: { createdAt: 'asc' },
   });
   if (!workspace) {
-    return NextResponse.json({ error: 'Workspace not found' }, { status: 404 });
+    return NextResponse.json({ error: 'No workspace found for this account' }, { status: 404 });
   }
 
   const conn = await (prisma.connection as any).create({
     data: {
-      workspaceId,
+      workspaceId: workspace.id,
       name: accountName || `TikTok Ads Sandbox (${advertiserId})`,
       type: 'source',
       provider: 'tiktok_business',
