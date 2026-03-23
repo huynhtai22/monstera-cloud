@@ -88,13 +88,21 @@ export default function TikTokAdsPage() {
   const { data: workspaces } = useSWR("/api/workspaces", fetcher);
 
   // Derive TikTok Business connections from current workspace
-  const tiktokConnections: Array<{ id: string; name: string }> = React.useMemo(() => {
-    if (!Array.isArray(workspaces) || !activeWorkspaceId) return [];
-    const ws = workspaces.find((w: any) => w.id === activeWorkspaceId);
-    return (ws?.connections || []).filter(
-      (c: any) => c.provider === "tiktok_business" && c.status === "connected"
-    );
-  }, [workspaces, activeWorkspaceId]);
+  const tiktokConnections: Array<{ id: string; name: string; advertiserIds: string[] }> =
+    React.useMemo(() => {
+      if (!Array.isArray(workspaces) || !activeWorkspaceId) return [];
+      const ws = workspaces.find((w: any) => w.id === activeWorkspaceId);
+      return (ws?.connections || [])
+        .filter((c: any) => c.provider === "tiktok_business" && c.status === "connected")
+        .map((c: any) => {
+          let advertiserIds: string[] = [];
+          try {
+            const creds = JSON.parse(c.credentials || "{}");
+            advertiserIds = creds.advertiserIds ?? [];
+          } catch {}
+          return { id: c.id, name: c.name, advertiserIds };
+        });
+    }, [workspaces, activeWorkspaceId]);
 
   // Form state
   const [connectionId, setConnectionId] = useState("");
@@ -237,7 +245,13 @@ export default function TikTokAdsPage() {
             <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">TikTok Business Account</label>
             <select
               value={connectionId}
-              onChange={(e) => setConnectionId(e.target.value)}
+              onChange={(e) => {
+                setConnectionId(e.target.value);
+                const conn = tiktokConnections.find((c) => c.id === e.target.value);
+                if (conn?.advertiserIds?.[0]) {
+                  setAdvertiserId(conn.advertiserIds[0]);
+                }
+              }}
               className="w-full text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
             >
               <option value="">Select connection…</option>
@@ -247,15 +261,31 @@ export default function TikTokAdsPage() {
             </select>
 
             <label className="block text-xs text-gray-500 dark:text-gray-400 mt-4 mb-1 font-medium">Advertiser ID</label>
-            <input
-              type="text"
-              placeholder="e.g. 7123456789012345"
-              value={advertiserId}
-              onChange={(e) => setAdvertiserId(e.target.value)}
-              className="w-full text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-            />
+            {/* If the connection stored multiple advertiser IDs, show a dropdown; otherwise free-text */}
+            {(tiktokConnections.find((c) => c.id === connectionId)?.advertiserIds?.length ?? 0) > 1 ? (
+              <select
+                value={advertiserId}
+                onChange={(e) => setAdvertiserId(e.target.value)}
+                className="w-full text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              >
+                <option value="">Select advertiser…</option>
+                {tiktokConnections
+                  .find((c) => c.id === connectionId)
+                  ?.advertiserIds.map((aid) => (
+                    <option key={aid} value={aid}>{aid}</option>
+                  ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                placeholder="Auto-filled on connect, or enter manually"
+                value={advertiserId}
+                onChange={(e) => setAdvertiserId(e.target.value)}
+                className="w-full text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              />
+            )}
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              Find in TikTok Ads Manager → Account info
+              Auto-filled from your TikTok Ads account on connect
             </p>
           </div>
 

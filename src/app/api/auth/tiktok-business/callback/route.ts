@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { tiktokBusinessClient } from '@/lib/tiktok-business';
 import prisma from '@/lib/prisma';
 import { isTikTokBusinessConnectEnabled } from '@/lib/integration-flags';
@@ -18,62 +17,62 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const code = searchParams.get('code');
-  const state = searchParams.get('state');
+
+  // Marketing API returns auth_code (not code), plus state
+  const authCode = searchParams.get('auth_code');
+  const state = searchParams.get('state');       // workspace id we passed
   const err = searchParams.get('error');
   const errDesc = searchParams.get('error_description');
+
+  const base = publicBaseUrl(request);
 
   if (err) {
     console.error('[TIKTOK_BUSINESS_OAUTH]', err, errDesc);
     return NextResponse.redirect(
-      new URL(`/dashboard?tiktok_business_error=${encodeURIComponent(err)}`, publicBaseUrl(request))
+      new URL(`/dashboard?tiktok_business_error=${encodeURIComponent(err)}`, base)
     );
   }
 
-  if (!code) {
-    return NextResponse.json({ error: 'No authorization code provided' }, { status: 400 });
+  if (!authCode) {
+    return NextResponse.json({ error: 'No auth_code provided by TikTok' }, { status: 400 });
   }
 
-  // Retrieve the PKCE code_verifier from the cookie set during /authorize
-  const cookieStore = await cookies();
-  const codeVerifier = cookieStore.get('tiktok_pkce_verifier')?.value;
-
-  const base = publicBaseUrl(request);
-  const redirectUri =
-    process.env.TIKTOK_BUSINESS_REDIRECT_URI?.trim() ||
-    `${base}/api/auth/tiktok-business/callback`;
+  const workspaceId = state || '';
+  if (!workspaceId) {
+    return NextResponse.json({ error: 'Invalid state / workspace session' }, { status: 400 });
+  }
 
   try {
-    const tokenData = await tiktokBusinessClient.exchangeCode(code, redirectUri, codeVerifier);
+    // Exchange auth_code → access_token using Marketing API endpoint
+    const tokenData = await tiktokBusinessClient.exchangeCode(authCode);
 
-    const workspaceId = state || '';
-    if (!workspaceId) {
-      return NextResponse.json({ error: 'Invalid state/workspace session' }, { status: 400 });
-    }
+    // advertiser_ids is the list of TikTok Ads accounts this user authorized
+    const advertiserIds: string[] = tokenData.advertiser_ids ?? [];
 
-    await prisma.connection.create({
+    await (prisma.connection as any).create({
       data: {
         workspaceId,
-        name: `TikTok Business (${tokenData.open_id?.slice(0, 8) || 'account'})`,
+        name: `TikTok Ads (${advertiserIds[0] ?? 'account'})`,
         type: 'source',
         provider: 'tiktok_business',
         status: 'connected',
         credentials: JSON.stringify({
           accessToken: tokenData.access_token,
           refreshToken: tokenData.refresh_token,
-          openId: tokenData.open_id,
+          advertiserIds,
           scope: tokenData.scope,
-          expiresAt: new Date(Date.now() + tokenData.expires_in * 1000).toISOString(),
-          refreshExpiresAt: new Date(Date.now() + tokenData.refresh_expires_in * 1000).toISOString(),
+          expiresAt: new Date(
+            Date.now() + (tokenData.expires_in ?? 86400) * 1000
+          ).toISOString(),
+          refreshExpiresAt: new Date(
+            Date.now() + (tokenData.refresh_token_expires_in ?? 2592000) * 1000
+          ).toISOString(),
           product: 'tiktok_business',
         }),
       },
     });
 
-    // Clear the PKCE cookie
-    const response = NextResponse.redirect(new URL('/dashboard', publicBaseUrl(request)));
-    response.cookies.delete('tiktok_pkce_verifier');
-    return response;
+    return NextResponse.redirect(new URL('/dashboard', base));
   } catch (error: any) {
     console.error('[TIKTOK_BUSINESS_AUTH_ERROR]', error);
     return NextResponse.json(

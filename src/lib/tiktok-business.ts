@@ -1,146 +1,109 @@
 /**
- * TikTok "account holder" / Login Kit OAuth (open.tiktokapis.com).
- * For Business insights, ads-related scopes, etc. — separate from TikTok Shop seller API.
- * @see https://developers.tiktok.com/doc/oauth-user-access-token-management
+ * TikTok for Business — Marketing API OAuth
+ * Portal: https://business-api.tiktok.com/portal
+ *
+ * This is DIFFERENT from Login Kit (developers.tiktok.com).
+ * Auth URL  : https://ads.tiktok.com/marketing_api/auth
+ * Token URL : https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/
+ * No PKCE, no scopes in the auth URL — scopes are pre-configured in the portal.
+ * The callback receives `auth_code` (not `code`).
+ *
+ * @see https://business-api.tiktok.com/portal/docs?id=1738373164380162
  */
 
-import crypto from 'crypto';
+/** app_id from business-api.tiktok.com/portal */
+function appId(): string {
+  return (process.env.TIKTOK_BUSINESS_APP_ID || process.env.TIKTOK_BUSINESS_CLIENT_KEY || '').trim();
+}
+
+/** secret from business-api.tiktok.com/portal */
+function appSecret(): string {
+  return (process.env.TIKTOK_BUSINESS_APP_SECRET || process.env.TIKTOK_BUSINESS_CLIENT_SECRET || '').trim();
+}
 
 export interface TikTokBusinessTokenResponse {
   access_token: string;
   refresh_token: string;
+  /** Access token TTL in seconds */
   expires_in: number;
-  refresh_expires_in: number;
-  open_id: string;
+  /** Refresh token TTL in seconds */
+  refresh_token_expires_in: number;
+  /** Advertiser accounts this token has access to */
+  advertiser_ids: string[];
   scope: string;
   token_type: string;
 }
 
-function clientKey(): string {
-  return (process.env.TIKTOK_BUSINESS_CLIENT_KEY || process.env.TIKTOK_BUSINESS_APP_ID || '').trim();
-}
-
-function clientSecret(): string {
-  return (process.env.TIKTOK_BUSINESS_CLIENT_SECRET || process.env.TIKTOK_BUSINESS_APP_SECRET || '').trim();
-}
-
-/** Space-separated scopes as required in the authorize URL (encodeURIComponent applied by URL API). */
-export function getTikTokBusinessScopes(): string {
-  const raw =
-    process.env.TIKTOK_BUSINESS_OAUTH_SCOPES?.trim() ||
-    'user.info.basic,video.list,video.insights';
-  return raw.replace(/\s+/g, ',').replace(/,+/g, ',');
-}
-
-// ── PKCE helpers ────────────────────────────────────────────────────────
-/** Generate a random code_verifier (43–128 chars, URL-safe). */
-export function generateCodeVerifier(): string {
-  return crypto.randomBytes(32).toString('base64url');
-}
-
-/** SHA-256 hash → base64url = code_challenge (S256 method). */
-export function generateCodeChallenge(verifier: string): string {
-  return crypto.createHash('sha256').update(verifier).digest('base64url');
-}
-
 export class TikTokBusinessClient {
   /**
-   * Build the authorization URL. Returns both the URL and the code_verifier
-   * that MUST be stored (e.g. in a cookie) and sent again in the token exchange.
+   * Step 1 — Redirect the user here to grant access.
+   * No PKCE, no scopes param — TikTok reads scopes from your portal configuration.
    */
-  getAuthorizeUrl(
-    state: string,
-    redirectUri: string,
-  ): { url: string; codeVerifier: string } {
-    const key = clientKey();
-    if (!key) throw new Error('TIKTOK_BUSINESS_CLIENT_KEY is not configured');
+  getAuthorizeUrl(state: string, redirectUri: string): { url: string } {
+    const id = appId();
+    if (!id) throw new Error('TIKTOK_BUSINESS_APP_ID is not configured');
 
-    const codeVerifier = generateCodeVerifier();
-    const codeChallenge = generateCodeChallenge(codeVerifier);
-
-    const url = new URL('https://www.tiktok.com/v2/auth/authorize/');
-    url.searchParams.set('client_key', key);
-    url.searchParams.set('response_type', 'code');
-    url.searchParams.set('scope', getTikTokBusinessScopes());
-    url.searchParams.set('redirect_uri', redirectUri);
+    const url = new URL('https://ads.tiktok.com/marketing_api/auth');
+    url.searchParams.set('app_id', id);
     url.searchParams.set('state', state);
-    url.searchParams.set('code_challenge', codeChallenge);
-    url.searchParams.set('code_challenge_method', 'S256');
+    url.searchParams.set('redirect_uri', redirectUri);
 
-    return { url: url.toString(), codeVerifier };
+    return { url: url.toString() };
   }
 
-  async exchangeCode(code: string, redirectUri: string, codeVerifier?: string): Promise<TikTokBusinessTokenResponse> {
-    const key = clientKey();
-    const secret = clientSecret();
-    if (!key || !secret) {
-      throw new Error('TIKTOK_BUSINESS_CLIENT_KEY or TIKTOK_BUSINESS_CLIENT_SECRET not configured');
+  /**
+   * Step 2 — Exchange the `auth_code` (NOT `code`) returned by TikTok.
+   * Uses JSON body, endpoint on business-api.tiktok.com.
+   */
+  async exchangeCode(authCode: string): Promise<TikTokBusinessTokenResponse> {
+    const id = appId();
+    const secret = appSecret();
+    if (!id || !secret) {
+      throw new Error('TIKTOK_BUSINESS_APP_ID or TIKTOK_BUSINESS_APP_SECRET not configured');
     }
 
-    const params: Record<string, string> = {
-      client_key: key,
-      client_secret: secret,
-      code,
-      grant_type: 'authorization_code',
-      redirect_uri: redirectUri,
-    };
+    const res = await fetch(
+      'https://business-api.tiktok.com/open_api/v1.3/oauth2/access_token/',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_id: id, secret, auth_code: authCode }),
+      }
+    );
 
-    // Include code_verifier for PKCE
-    if (codeVerifier) {
-      params.code_verifier = codeVerifier;
+    const json = (await res.json()) as Record<string, unknown>;
+    if ((json.code as number) !== 0 || !json.data) {
+      const msg = (json.message as string) || JSON.stringify(json);
+      throw new Error(`TikTok Marketing API token error ${json.code}: ${msg}`);
     }
 
-    const body = new URLSearchParams(params);
-
-    const res = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Cache-Control': 'no-cache',
-      },
-      body: body.toString(),
-    });
-
-    const data = (await res.json()) as Record<string, unknown>;
-
-    if (data.error || !data.access_token) {
-      const desc = (data.error_description as string) || (data.message as string) || JSON.stringify(data);
-      throw new Error(`TikTok Business token error: ${data.error || res.status} — ${desc}`);
-    }
-
-    return data as unknown as TikTokBusinessTokenResponse;
+    return json.data as unknown as TikTokBusinessTokenResponse;
   }
 
+  /** Refresh an expired access token. */
   async refreshAccessToken(refreshToken: string): Promise<TikTokBusinessTokenResponse> {
-    const key = clientKey();
-    const secret = clientSecret();
-    if (!key || !secret) {
-      throw new Error('TIKTOK_BUSINESS_CLIENT_KEY or TIKTOK_BUSINESS_CLIENT_SECRET not configured');
+    const id = appId();
+    const secret = appSecret();
+    if (!id || !secret) {
+      throw new Error('TIKTOK_BUSINESS_APP_ID or TIKTOK_BUSINESS_APP_SECRET not configured');
     }
 
-    const body = new URLSearchParams({
-      client_key: key,
-      client_secret: secret,
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-    });
+    const res = await fetch(
+      'https://business-api.tiktok.com/open_api/v1.3/oauth2/refresh_token/',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app_id: id, secret, refresh_token: refreshToken }),
+      }
+    );
 
-    const res = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Cache-Control': 'no-cache',
-      },
-      body: body.toString(),
-    });
-
-    const data = (await res.json()) as Record<string, unknown>;
-    if (data.error || !data.access_token) {
-      const desc = (data.error_description as string) || JSON.stringify(data);
-      throw new Error(`TikTok Business refresh error: ${data.error || res.status} — ${desc}`);
+    const json = (await res.json()) as Record<string, unknown>;
+    if ((json.code as number) !== 0 || !json.data) {
+      const msg = (json.message as string) || JSON.stringify(json);
+      throw new Error(`TikTok Marketing API refresh error ${json.code}: ${msg}`);
     }
 
-    return data as unknown as TikTokBusinessTokenResponse;
+    return json.data as unknown as TikTokBusinessTokenResponse;
   }
 }
 
