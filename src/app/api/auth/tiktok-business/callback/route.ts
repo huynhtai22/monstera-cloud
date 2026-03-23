@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import { tiktokBusinessClient } from '@/lib/tiktok-business';
 import prisma from '@/lib/prisma';
 import { isTikTokBusinessConnectEnabled } from '@/lib/integration-flags';
@@ -33,13 +34,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'No authorization code provided' }, { status: 400 });
   }
 
+  // Retrieve the PKCE code_verifier from the cookie set during /authorize
+  const cookieStore = await cookies();
+  const codeVerifier = cookieStore.get('tiktok_pkce_verifier')?.value;
+
   const base = publicBaseUrl(request);
   const redirectUri =
     process.env.TIKTOK_BUSINESS_REDIRECT_URI?.trim() ||
     `${base}/api/auth/tiktok-business/callback`;
 
   try {
-    const tokenData = await tiktokBusinessClient.exchangeCode(code, redirectUri);
+    const tokenData = await tiktokBusinessClient.exchangeCode(code, redirectUri, codeVerifier);
 
     const workspaceId = state || '';
     if (!workspaceId) {
@@ -65,7 +70,10 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.redirect(new URL('/dashboard', publicBaseUrl(request)));
+    // Clear the PKCE cookie
+    const response = NextResponse.redirect(new URL('/dashboard', publicBaseUrl(request)));
+    response.cookies.delete('tiktok_pkce_verifier');
+    return response;
   } catch (error: any) {
     console.error('[TIKTOK_BUSINESS_AUTH_ERROR]', error);
     return NextResponse.json(

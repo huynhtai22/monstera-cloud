@@ -17,6 +17,7 @@ import {
     Check,
     LogOut,
     KeyRound,
+    TrendingUp,
     Sun,
     Moon
 } from "lucide-react";
@@ -100,6 +101,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                 { name: "Overview", href: "/overview", icon: LayoutDashboard },
                 { name: "Data Explorer", href: "/explorer", icon: FileEdit },
                 { name: "Reports", href: "/reports", icon: LineChart },
+                { name: "TikTok Ads", href: "/tiktok-ads", icon: TrendingUp },
                 { name: "Templates", href: "/templates", icon: Wand2 },
             ]
         }

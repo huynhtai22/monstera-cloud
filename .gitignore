@@ -13,3 +13,4 @@ tmp/
 .DS_Store
 
 /generated/prisma
+.vercel

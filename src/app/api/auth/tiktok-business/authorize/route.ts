@@ -36,8 +36,19 @@ export async function GET(request: Request) {
     `${base}/api/auth/tiktok-business/callback`;
 
   try {
-    const url = tiktokBusinessClient.getAuthorizeUrl(state, redirectUri);
-    return NextResponse.redirect(url);
+    const { url, codeVerifier } = tiktokBusinessClient.getAuthorizeUrl(state, redirectUri);
+
+    // Store the code_verifier in a secure httpOnly cookie so the callback can use it
+    const response = NextResponse.redirect(url);
+    response.cookies.set('tiktok_pkce_verifier', codeVerifier, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 600, // 10 minutes — plenty of time for the OAuth round-trip
+    });
+
+    return response;
   } catch (e: any) {
     return NextResponse.json({ error: e.message || 'TikTok Business OAuth not configured' }, { status: 500 });
   }

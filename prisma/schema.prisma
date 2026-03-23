@@ -59,6 +59,8 @@ model User {
   image          String?
   otp            String?
   otpExpires     DateTime?
+  plan           String            @default("free")
+  subscriptionId String?           @unique
   accounts       Account[]
   sessions       Session[]
   workspaces     WorkspaceMember[]

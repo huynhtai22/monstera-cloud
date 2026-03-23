@@ -92,8 +92,8 @@ export default function DocsPage() {
                 <div className="p-4 border border-white/10 rounded-lg bg-white/5 text-center text-sm font-bold text-white uppercase tracking-wider">Shopee V2</div>
                 <div className="p-4 border border-white/10 rounded-lg bg-white/5 text-center text-sm font-bold text-white uppercase tracking-wider">Xendit</div>
                 <div className="p-4 border border-white/10 rounded-lg bg-white/5 text-center text-sm font-bold text-white uppercase tracking-wider">Lazada</div>
+                <div className="p-4 border border-white/10 rounded-lg bg-white/5 text-center text-sm font-bold text-white uppercase tracking-wider">TikTok Shop</div>
                 <div className="p-4 border border-white/10 rounded-lg bg-[#18181b] text-center text-sm font-bold text-gray-500 uppercase tracking-wider border-dashed">Shopify (Beta)</div>
-                <div className="p-4 border border-white/10 rounded-lg bg-[#18181b] text-center text-sm font-bold text-gray-500 uppercase tracking-wider border-dashed">TikTok Shop (WIP)</div>
             </div>
 
             <hr className="border-white/5 my-12" />

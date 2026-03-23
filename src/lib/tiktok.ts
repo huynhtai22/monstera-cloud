@@ -13,7 +13,7 @@ export interface TikTokTokenResponse {
 export class TikTokClient {
   private appId: string;
   private appSecret: string;
-  private baseUrl = "https://open-api.tiktokglobalshop.com";
+  private baseUrl = "https://open-api.tiktokshop.com";
 
   constructor() {
     this.appId = (process.env.TIKTOK_SHOP_APP_KEY || "").trim();
@@ -33,7 +33,7 @@ export class TikTokClient {
    */
   getAuthUrl(state: string): string {
     // Current TikTok Shop Auth V2 URL pattern
-    return `https://services.tiktokglobalshop.com/open/authorize?app_key=${this.appId}&state=${state}`;
+    return `https://services.tiktokshop.com/open/authorize?service_id=${this.appId}&state=${state}`;
   }
 
   /**

@@ -42,8 +42,8 @@ export async function GET(request: Request) {
   const redirectUri =
     process.env.TIKTOK_SHOP_REDIRECT_URI?.trim() || `${base}/api/auth/tiktok/callback`;
 
-  const url = new URL('https://services.tiktokglobalshop.com/open/authorize');
-  url.searchParams.set('app_key', appKey);
+  const url = new URL('https://services.tiktokshop.com/open/authorize');
+  url.searchParams.set('service_id', appKey); // TikTok uses service_id (same value as app_key) for authorization
   url.searchParams.set('state', state);
   url.searchParams.set('redirect_uri', redirectUri);
 
