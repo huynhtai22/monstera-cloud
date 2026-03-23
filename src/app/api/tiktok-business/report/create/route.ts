@@ -7,7 +7,11 @@ import prisma from '@/lib/prisma';
 /**
  * POST /api/tiktok-business/report/create
  * Body: { connectionId, advertiser_id, report_type, data_level, dimensions, metrics, start_date, end_date }
- * Returns: { task_id }
+ *
+ * Sandbox connections use the synchronous /report/integrated/get/ endpoint
+ * and return rows directly: { mode: "sync", rows: [...] }
+ *
+ * Production connections start an async task and return: { mode: "async", task_id }
  */
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -25,7 +29,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'connectionId and advertiser_id are required' }, { status: 400 });
     }
 
-    // Load TikTok Business connection and get access token
     const conn = await (prisma.connection as any).findFirst({
       where: { id: connectionId, provider: 'tiktok_business', status: 'connected' },
     });
@@ -36,16 +39,24 @@ export async function POST(req: Request) {
     const creds = JSON.parse(conn.credentials) as {
       accessToken: string;
       sandbox?: boolean;
-      expiresAt?: string;
     };
 
+    // Sandbox: use synchronous report endpoint (async tasks not supported)
+    if (creds.sandbox === true) {
+      const rows = await tiktokReportClient.getSyncReport(creds.accessToken, {
+        advertiser_id,
+        ...reportParams,
+      });
+      return NextResponse.json({ mode: 'sync', rows });
+    }
+
+    // Production: create async task
     const taskId = await tiktokReportClient.createTask(
       creds.accessToken,
       { advertiser_id, ...reportParams },
-      creds.sandbox === true,
+      false,
     );
-
-    return NextResponse.json({ task_id: taskId });
+    return NextResponse.json({ mode: 'async', task_id: taskId });
   } catch (err: any) {
     console.error('[TIKTOK_REPORT_CREATE]', err);
     return NextResponse.json({ error: err.message || 'Failed to create report task' }, { status: 500 });

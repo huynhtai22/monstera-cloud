@@ -218,6 +218,54 @@ export class TikTokReportClient {
       .filter(Boolean)
       .map((line) => JSON.parse(line) as ReportRow);
   }
+
+  /**
+   * Sandbox-only: synchronous report via /report/integrated/get/.
+   * Async tasks (createTask) are not supported in the sandbox environment (error 40009).
+   * Fetches all pages and returns a flat array of rows.
+   */
+  async getSyncReport(
+    accessToken: string,
+    params: CreateReportTaskParams,
+  ): Promise<ReportRow[]> {
+    const base = this.getBase(true); // always sandbox URL
+    const allRows: ReportRow[] = [];
+    let page = 1;
+    const pageSize = Math.min(params.page_size ?? 100, 1000);
+
+    while (true) {
+      const url = new URL(`${base}/report/integrated/get/`);
+      url.searchParams.set('advertiser_id', params.advertiser_id);
+      url.searchParams.set('report_type', params.report_type);
+      url.searchParams.set('data_level', params.data_level);
+      url.searchParams.set('dimensions', JSON.stringify(params.dimensions));
+      url.searchParams.set('metrics', JSON.stringify(params.metrics));
+      url.searchParams.set('start_date', params.start_date);
+      url.searchParams.set('end_date', params.end_date);
+      url.searchParams.set('page', String(page));
+      url.searchParams.set('page_size', String(pageSize));
+
+      const res = await fetch(url.toString(), {
+        headers: { 'Access-Token': accessToken },
+      });
+
+      const json = (await res.json()) as Record<string, unknown>;
+      if ((json.code as number) !== 0) {
+        throw new Error(`TikTok getSyncReport error ${json.code}: ${json.message}`);
+      }
+
+      const data = json.data as Record<string, unknown>;
+      const list = (data.list as ReportRow[]) ?? [];
+      allRows.push(...list);
+
+      const pageInfo = data.page_info as Record<string, number> | undefined;
+      const totalPage = pageInfo?.total_page ?? 1;
+      if (page >= totalPage) break;
+      page++;
+    }
+
+    return allRows;
+  }
 }
 
 export const tiktokReportClient = new TikTokReportClient();

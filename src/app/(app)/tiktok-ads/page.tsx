@@ -235,9 +235,16 @@ export default function TikTokAdsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create task");
 
-      setTaskId(data.task_id);
-      setTaskStatus("INIT");
-      poll(data.task_id, connectionId, advertiserId);
+      if (data.mode === "sync") {
+        // Sandbox: rows returned immediately, no polling needed
+        setTaskStatus("COMPLETED");
+        setRows(data.rows ?? []);
+      } else {
+        // Production: async task, start polling
+        setTaskId(data.task_id);
+        setTaskStatus("INIT");
+        poll(data.task_id, connectionId, advertiserId);
+      }
     } catch (e: any) {
       setError(e.message || "Something went wrong");
     } finally {
