@@ -40,14 +40,21 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
         if (id === 'shopee') {
             // This would normally come from an API or lib
             authUrl = `https://partner.shopeemobile.com/api/v2/shop/auth_partner?partner_id=${process.env.NEXT_PUBLIC_SHOPEE_PARTNER_ID}&redirect=https://monsteracloud.com/api/auth/shopee/callback&state=${activeWorkspaceId}`;
-        } else if (id === 'tiktok') {
+        } else if (id === 'tiktok_shop') {
             if (!activeWorkspaceId) {
                 setIsProcessing(false);
                 alert('Select a workspace first');
                 return;
             }
-            // Server builds authorize URL (app key stays server-side only)
             window.location.href = `/api/auth/tiktok/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
+            return;
+        } else if (id === 'tiktok_business') {
+            if (!activeWorkspaceId) {
+                setIsProcessing(false);
+                alert('Select a workspace first');
+                return;
+            }
+            window.location.href = `/api/auth/tiktok-business/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
 
@@ -72,10 +79,12 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     workspaceId: activeWorkspaceId,
-                    name: `${name} (${id === 'shopee' ? 'SG' : 'Global'})`,
+                    name: `${name} (${id === 'shopee' ? 'SG' : id === 'tiktok_shop' ? 'Shop' : id === 'tiktok_business' ? 'Business' : 'Global'})`,
                     type: "source",
                     provider: id,
-                    credentials: JSON.stringify({ shopId: id === 'shopee' ? "49281" : "742109" })
+                    credentials: JSON.stringify({
+                        shopId: id === 'shopee' ? '49281' : id === 'tiktok_shop' ? 'tiktok_shop_demo' : id === 'tiktok_business' ? 'tiktok_business_demo' : '742109',
+                    })
                 })
             });
 

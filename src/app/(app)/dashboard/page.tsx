@@ -6,6 +6,7 @@ import { Database, Search, ArrowRight, Plus, RefreshCw, AlertCircle, Loader2, Ch
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
 import useSWR from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
+import { integrationCatalogId } from "@/lib/integration-catalog";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
@@ -16,15 +17,16 @@ const fetcher = async (url: string) => {
     return data;
 };
 
-// Available integrations that are not connected
-const availableIntegrations = [
-    { id: 'tiktok', name: 'TikTok Shop', description: 'Affiliate metrics and video GMV.', status: 'available', logoSrc: '/logos/tiktok.svg' },
-    { id: 'lazada', name: 'Lazada Seller', description: 'Order fulfillments and finance.', status: 'available', logoSrc: '/logos/lazada.svg' },
-    { id: 'shopify', name: 'Shopify', description: 'E-commerce platform orders.', status: 'available', logoSrc: '/logos/shopify.svg' },
+const ALL_CATALOG_INTEGRATIONS = [
+    { id: 'tiktok_shop', name: 'TikTok Shop', description: 'Seller catalog, orders, and Shop analytics.', status: 'available' as const, logoSrc: '/logos/tiktok.svg' },
+    { id: 'tiktok_business', name: 'TikTok Business', description: 'TikTok account and marketing data (Login Kit OAuth).', status: 'available' as const, logoSrc: '/logos/tiktok.svg' },
+    { id: 'lazada', name: 'Lazada Seller', description: 'Order fulfillments and finance.', status: 'available' as const, logoSrc: '/logos/lazada.svg' },
+    { id: 'shopify', name: 'Shopify', description: 'E-commerce platform orders.', status: 'available' as const, logoSrc: '/logos/shopify.svg' },
 ];
 
 export default function DashboardPage() {
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+    const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('all');
 
@@ -33,48 +35,54 @@ export default function DashboardPage() {
 
     // Fetch Data
     const { data: workspaces, error, isLoading } = useSWR("/api/workspaces", fetcher);
+    const { data: intConfig } = useSWR("/api/integrations/config", fetcher);
+
+    const availableIntegrations = useMemo(() => {
+        if (!intConfig) return ALL_CATALOG_INTEGRATIONS;
+        return ALL_CATALOG_INTEGRATIONS.filter((item) => {
+            if (item.id === 'tiktok_shop') return intConfig.tiktokShop !== false;
+            if (item.id === 'tiktok_business') return intConfig.tiktokBusiness !== false;
+            return true;
+        });
+    }, [intConfig]);
 
     // Filter logic
     const filteredIntegrations = useMemo(() => {
-        if (!Array.isArray(workspaces) || !activeWorkspaceId) return availableIntegrations; // Fallback to available
+        if (!Array.isArray(workspaces) || !activeWorkspaceId) return availableIntegrations;
 
-        // Find active workspace
         const workspace = workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0];
+        const sourceConnections = (workspace?.connections || []).filter((c: any) => c.type === 'source');
 
-        // Map connected sources from database
-        const connectedSources = workspace?.connections
-            ?.filter((c: any) => c.type === 'source')
-            .map((conn: any) => {
-                // Try to figure out the right logo based on provider string
-                let logo = '/logos/postgres.svg';
-                if (conn.provider.includes('shopee')) logo = '/logos/shopee.svg';
-                else if (conn.provider.includes('facebook') || conn.provider.includes('fb')) logo = '/logos/facebook.svg';
-                else if (conn.provider.includes('google') || conn.provider.includes('ga4')) logo = '/logos/ga4.svg';
+        const connectedCatalogIds = new Set(
+            sourceConnections.map((c: any) => integrationCatalogId(c.provider))
+        );
 
-                // Mock a description since it's not in the DB model
-                const desc = `Connected to ${conn.provider} via workspace credentials.`;
+        const connectedSources = sourceConnections.map((conn: any) => {
+            let logo = '/logos/postgres.svg';
+            if (conn.provider.includes('shopee')) logo = '/logos/shopee.svg';
+            else if (conn.provider.includes('facebook') || conn.provider.includes('fb')) logo = '/logos/facebook.svg';
+            else if (conn.provider.includes('google') || conn.provider.includes('ga4')) logo = '/logos/ga4.svg';
+            else if (conn.provider.includes('tiktok_business')) logo = '/logos/tiktok.svg';
+            else if (conn.provider.includes('tiktok_shop') || conn.provider === 'tiktok') logo = '/logos/tiktok.svg';
 
-                // Find if there is a pipeline mapped to this source
-                const relatedPipeline = workspace?.pipelines?.find((p: any) => p.sourceConnectionId === conn.id);
+            const desc = `Connected to ${conn.provider} via workspace credentials.`;
+            const relatedPipeline = workspace?.pipelines?.find((p: any) => p.sourceConnectionId === conn.id);
 
-                return {
-                    id: conn.id,
-                    name: conn.name,
-                    description: desc,
-                    status: conn.status === 'connected' ? 'connected' : 'error',
-                    lastSync: relatedPipeline?.lastSyncedAt
-                        ? new Date(relatedPipeline.lastSyncedAt).toLocaleString()
-                        : 'Never',
-                    logoSrc: logo,
-                    pipelineId: relatedPipeline?.id
-                };
-            }) || [];
+            return {
+                id: conn.id,
+                catalogId: integrationCatalogId(conn.provider),
+                name: conn.name,
+                description: desc,
+                status: conn.status === 'connected' ? 'connected' : 'error',
+                lastSync: relatedPipeline?.lastSyncedAt
+                    ? new Date(relatedPipeline.lastSyncedAt).toLocaleString()
+                    : 'Never',
+                logoSrc: logo,
+                pipelineId: relatedPipeline?.id,
+            };
+        });
 
-        // Combine Connected + Available
-        // Avoid duplicate available elements if connected already
-        const connectedProviderIds = new Set(connectedSources.map((c: any) => c.id));
-        const filteredAvailable = availableIntegrations.filter(a => !connectedProviderIds.has(a.id));
-
+        const filteredAvailable = availableIntegrations.filter((a) => !connectedCatalogIds.has(a.id));
         const combined = [...connectedSources, ...filteredAvailable];
 
         return combined.filter((integration: any) => {
@@ -87,7 +95,7 @@ export default function DashboardPage() {
             if (activeFilter === 'available') return integration.status === 'available';
             return true;
         });
-    }, [searchQuery, activeFilter, workspaces, activeWorkspaceId]);
+    }, [searchQuery, activeFilter, workspaces, activeWorkspaceId, availableIntegrations]);
 
     // Error State
     if (error) {
@@ -300,7 +308,11 @@ export default function DashboardPage() {
                                     </button>
                                 ) : (
                                     <button
-                                        onClick={(e) => { e.stopPropagation(); setIsSourceModalOpen(true); }}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedIntegration(integration);
+                                            setIsSourceModalOpen(true);
+                                        }}
                                         className="w-full py-2 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-white dark:border-slate-700/60 dark:border-slate-700/40 text-gray-600 dark:text-gray-300 dark:text-gray-600 text-sm font-medium rounded-lg transition-colors group-hover:border-white dark:border-slate-700 group-hover:bg-white/80 dark:bg-slate-900/80 shadow-sm"
                                     >
                                         Connect
@@ -324,6 +336,7 @@ export default function DashboardPage() {
             <ConnectSourceModal
                 isOpen={isSourceModalOpen}
                 onClose={() => setIsSourceModalOpen(false)}
+                integration={selectedIntegration}
             />
         </div>
     );
