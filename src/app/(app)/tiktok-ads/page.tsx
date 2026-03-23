@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from "react";
 import Image from "next/image";
-import { Loader2, Play, CheckCircle2, AlertCircle, Download, RefreshCw, FlaskConical, Plus } from "lucide-react";
+import { Loader2, Play, CheckCircle2, AlertCircle, Download, RefreshCw, FlaskConical, Plus, Sparkles } from "lucide-react";
 import useSWR, { mutate } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 
@@ -133,6 +133,38 @@ export default function TikTokAdsPage() {
   const [sandboxSaving, setSandboxSaving] = useState(false);
   const [sandboxError, setSandboxError] = useState<string | null>(null);
   const [sandboxSuccess, setSandboxSuccess] = useState<string | null>(null);
+
+  // Sandbox seed state
+  const [isSeeding, setIsSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState<string | null>(null);
+  const [seedError, setSeedError] = useState<string | null>(null);
+
+  const handleSeedData = async () => {
+    if (!connectionId) { setSeedError("Select a connection first."); return; }
+    setIsSeeding(true);
+    setSeedResult(null);
+    setSeedError(null);
+    try {
+      const res = await fetch("/api/tiktok-business/sandbox-seed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Seed failed");
+      const adv = data.advertiser as Record<string, string> | null;
+      const advName = adv?.name ?? "account";
+      if (data.campaign_id) {
+        setSeedResult(`✅ Account verified (${advName}). Test campaign created (ID: ${data.campaign_id}). Wait 1–2 min then click Run Report.`);
+      } else {
+        setSeedResult(`✅ Account "${advName}" verified. ${data.warning ?? ""}`);
+      }
+    } catch (e: any) {
+      setSeedError(e.message);
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
   const handleSandboxConnect = async () => {
     if (!sandboxToken.trim()) {
@@ -453,6 +485,32 @@ export default function TikTokAdsPage() {
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
               Auto-filled from your TikTok Ads account on connect
             </p>
+
+            {/* Sandbox helper: verify token + seed test campaign */}
+            {tiktokConnections.find((c) => c.id === connectionId)?.sandbox && (
+              <div className="mt-4 pt-4 border-t border-purple-100 dark:border-purple-900/30">
+                <p className="text-xs text-purple-600 dark:text-purple-400 mb-2 font-medium">
+                  Sandbox — no data yet? Seed a test campaign first.
+                </p>
+                <button
+                  onClick={handleSeedData}
+                  disabled={isSeeding}
+                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white transition-colors disabled:opacity-60"
+                >
+                  {isSeeding
+                    ? <><Loader2 className="w-3 h-3 animate-spin" /> Creating…</>
+                    : <><Sparkles className="w-3 h-3" /> Verify &amp; Seed Test Data</>}
+                </button>
+                {seedResult && (
+                  <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400 leading-relaxed">{seedResult}</p>
+                )}
+                {seedError && (
+                  <p className="mt-2 text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />{seedError}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Date & Level */}
