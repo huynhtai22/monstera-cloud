@@ -130,6 +130,7 @@ export default function TikTokAdsPage() {
   const [sandboxName, setSandboxName] = useState("Monstera SandBox");
   const [sandboxSaving, setSandboxSaving] = useState(false);
   const [sandboxError, setSandboxError] = useState<string | null>(null);
+  const [sandboxSuccess, setSandboxSuccess] = useState<string | null>(null);
 
   const handleSandboxConnect = async () => {
     if (!sandboxToken.trim()) {
@@ -158,6 +159,7 @@ export default function TikTokAdsPage() {
       mutate("/api/workspaces");
       setShowSandboxForm(false);
       setSandboxToken("");
+      setSandboxSuccess(`Connected! "${data.name}" is ready. Select it in the dropdown below to run a report.`);
     } catch (e: any) {
       setSandboxError(e.message);
     } finally {
@@ -287,6 +289,14 @@ export default function TikTokAdsPage() {
           <FlaskConical className="w-4 h-4" />
           {showSandboxForm ? "Hide Sandbox Setup" : "Connect Sandbox Ad Account"}
         </button>
+
+        {sandboxSuccess && (
+          <div className="mt-3 flex items-start gap-3 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/50 text-emerald-800 dark:text-emerald-300 text-sm font-medium">
+            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
+            <span>{sandboxSuccess}</span>
+            <button onClick={() => setSandboxSuccess(null)} className="ml-auto text-emerald-500 hover:text-emerald-700 text-xs">✕</button>
+          </div>
+        )}
 
         {showSandboxForm && (
           <div className="mt-3 bg-purple-50/60 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-700/40 rounded-2xl p-5">
