@@ -140,15 +140,21 @@ export interface ReportRow {
 }
 
 // ── Async Report methods (Marketing API v1.3) ────────────────────────────────
-// Base: https://business-api.tiktok.com/open_api/v1.3
+// Production : https://business-api.tiktok.com/open_api/v1.3
+// Sandbox    : https://sandbox-ads.tiktok.com/open_api/v1.3
 export class TikTokReportClient {
-  private base = 'https://business-api.tiktok.com/open_api/v1.3';
+  private getBase(sandbox = false): string {
+    return sandbox
+      ? 'https://sandbox-ads.tiktok.com/open_api/v1.3'
+      : 'https://business-api.tiktok.com/open_api/v1.3';
+  }
 
   /**
    * Step 1 — Create an async report task. Returns task_id.
    */
-  async createTask(accessToken: string, params: CreateReportTaskParams): Promise<string> {
-    const res = await fetch(`${this.base}/report/task/create/`, {
+  async createTask(accessToken: string, params: CreateReportTaskParams, sandbox = false): Promise<string> {
+    const base = this.getBase(sandbox);
+    const res = await fetch(`${base}/report/task/create/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -180,8 +186,9 @@ export class TikTokReportClient {
   /**
    * Step 2 — Poll task status. Returns status + download URL when COMPLETED.
    */
-  async checkTask(accessToken: string, advertiser_id: string, task_id: string): Promise<ReportTaskStatus_Response> {
-    const url = new URL(`${this.base}/report/task/check/`);
+  async checkTask(accessToken: string, advertiser_id: string, task_id: string, sandbox = false): Promise<ReportTaskStatus_Response> {
+    const base = this.getBase(sandbox);
+    const url = new URL(`${base}/report/task/check/`);
     url.searchParams.set('advertiser_id', advertiser_id);
     url.searchParams.set('task_id', task_id);
 

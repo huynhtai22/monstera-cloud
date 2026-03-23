@@ -35,13 +35,15 @@ export async function POST(req: Request) {
 
     const creds = JSON.parse(conn.credentials) as {
       accessToken: string;
+      sandbox?: boolean;
       expiresAt?: string;
     };
 
-    const taskId = await tiktokReportClient.createTask(creds.accessToken, {
-      advertiser_id,
-      ...reportParams,
-    });
+    const taskId = await tiktokReportClient.createTask(
+      creds.accessToken,
+      { advertiser_id, ...reportParams },
+      creds.sandbox === true,
+    );
 
     return NextResponse.json({ task_id: taskId });
   } catch (err: any) {

@@ -2,8 +2,8 @@
 
 import React, { useState, useCallback } from "react";
 import Image from "next/image";
-import { Loader2, Play, CheckCircle2, AlertCircle, Download, RefreshCw } from "lucide-react";
-import useSWR from "swr";
+import { Loader2, Play, CheckCircle2, AlertCircle, Download, RefreshCw, FlaskConical, Plus } from "lucide-react";
+import useSWR, { mutate } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -88,7 +88,7 @@ export default function TikTokAdsPage() {
   const { data: workspaces } = useSWR("/api/workspaces", fetcher);
 
   // Derive TikTok Business connections from current workspace
-  const tiktokConnections: Array<{ id: string; name: string; advertiserIds: string[] }> =
+  const tiktokConnections: Array<{ id: string; name: string; advertiserIds: string[]; sandbox: boolean }> =
     React.useMemo(() => {
       if (!Array.isArray(workspaces) || !activeWorkspaceId) return [];
       const ws = workspaces.find((w: any) => w.id === activeWorkspaceId);
@@ -96,11 +96,13 @@ export default function TikTokAdsPage() {
         .filter((c: any) => c.provider === "tiktok_business" && c.status === "connected")
         .map((c: any) => {
           let advertiserIds: string[] = [];
+          let sandbox = false;
           try {
             const creds = JSON.parse(c.credentials || "{}");
             advertiserIds = creds.advertiserIds ?? [];
+            sandbox = creds.sandbox === true;
           } catch {}
-          return { id: c.id, name: c.name, advertiserIds };
+          return { id: c.id, name: c.name, advertiserIds, sandbox };
         });
     }, [workspaces, activeWorkspaceId]);
 
@@ -120,6 +122,45 @@ export default function TikTokAdsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
+
+  // Sandbox connect form
+  const [showSandboxForm, setShowSandboxForm] = useState(false);
+  const [sandboxToken, setSandboxToken] = useState("");
+  const [sandboxAdvertiserId, setSandboxAdvertiserId] = useState("7620367281593548818");
+  const [sandboxName, setSandboxName] = useState("Monstera SandBox");
+  const [sandboxSaving, setSandboxSaving] = useState(false);
+  const [sandboxError, setSandboxError] = useState<string | null>(null);
+
+  const handleSandboxConnect = async () => {
+    if (!sandboxToken || !sandboxAdvertiserId || !activeWorkspaceId) {
+      setSandboxError("Access token and Advertiser ID are required.");
+      return;
+    }
+    setSandboxSaving(true);
+    setSandboxError(null);
+    try {
+      const res = await fetch("/api/tiktok-business/sandbox-connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: activeWorkspaceId,
+          accessToken: sandboxToken,
+          advertiserId: sandboxAdvertiserId,
+          accountName: sandboxName || `TikTok Ads Sandbox (${sandboxAdvertiserId})`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save sandbox connection");
+      // Refresh workspace data so the new connection appears in the dropdown
+      mutate("/api/workspaces");
+      setShowSandboxForm(false);
+      setSandboxToken("");
+    } catch (e: any) {
+      setSandboxError(e.message);
+    } finally {
+      setSandboxSaving(false);
+    }
+  };
 
   const toggleItem = (list: string[], setList: (v: string[]) => void, val: string) => {
     setList(list.includes(val) ? list.filter((x) => x !== val) : [...list, val]);
@@ -226,13 +267,107 @@ export default function TikTokAdsPage() {
 
       {/* No connections notice */}
       {tiktokConnections.length === 0 && (
-        <div className="mb-6 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 text-amber-800 dark:text-amber-300 text-sm font-medium">
+        <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 text-amber-800 dark:text-amber-300 text-sm font-medium">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          No TikTok Business connection found. Go to{" "}
+          No TikTok Business connection found. Connect via OAuth on the{" "}
           <a href="/dashboard" className="underline font-semibold">Data Sources</a>{" "}
-          and connect TikTok Business first.
+          page, or add a sandbox account below.
         </div>
       )}
+
+      {/* Sandbox connect panel */}
+      <div className="mb-6">
+        <button
+          onClick={() => setShowSandboxForm((v) => !v)}
+          className="flex items-center gap-2 text-sm font-medium text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700/50 px-4 py-2 rounded-xl hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+        >
+          <FlaskConical className="w-4 h-4" />
+          {showSandboxForm ? "Hide Sandbox Setup" : "Connect Sandbox Ad Account"}
+        </button>
+
+        {showSandboxForm && (
+          <div className="mt-3 bg-purple-50/60 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-700/40 rounded-2xl p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <FlaskConical className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              <h3 className="text-sm font-semibold text-purple-800 dark:text-purple-300">
+                Sandbox Ad Account Setup
+              </h3>
+              <span className="ml-auto text-xs text-purple-500 dark:text-purple-400">
+                Sandbox data is isolated — safe to test
+              </span>
+            </div>
+
+            <p className="text-xs text-purple-700 dark:text-purple-400 mb-4 leading-relaxed">
+              Go to{" "}
+              <a
+                href="https://business-api.tiktok.com/portal/apps/7620309837959675921"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline font-semibold"
+              >
+                business-api.tiktok.com → your app → Sandbox Ad Account
+              </a>
+              , click <strong>Generate</strong> under Access Token, then paste it below.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-medium text-purple-700 dark:text-purple-300 mb-1">
+                  Account Name
+                </label>
+                <input
+                  type="text"
+                  value={sandboxName}
+                  onChange={(e) => setSandboxName(e.target.value)}
+                  className="w-full text-sm rounded-lg border border-purple-200 dark:border-purple-700/60 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-400/40"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-purple-700 dark:text-purple-300 mb-1">
+                  Advertiser ID
+                </label>
+                <input
+                  type="text"
+                  value={sandboxAdvertiserId}
+                  onChange={(e) => setSandboxAdvertiserId(e.target.value)}
+                  className="w-full text-sm rounded-lg border border-purple-200 dark:border-purple-700/60 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-400/40"
+                />
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-purple-700 dark:text-purple-300 mb-1">
+                Access Token <span className="font-normal">(from Generate button in portal)</span>
+              </label>
+              <input
+                type="password"
+                placeholder="Paste the generated token here…"
+                value={sandboxToken}
+                onChange={(e) => setSandboxToken(e.target.value)}
+                className="w-full text-sm rounded-lg border border-purple-200 dark:border-purple-700/60 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-400/40"
+              />
+            </div>
+
+            {sandboxError && (
+              <p className="text-xs text-red-600 dark:text-red-400 mb-3 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" /> {sandboxError}
+              </p>
+            )}
+
+            <button
+              onClick={handleSandboxConnect}
+              disabled={sandboxSaving}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold transition-colors disabled:opacity-60"
+            >
+              {sandboxSaving ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+              ) : (
+                <><Plus className="w-4 h-4" /> Add Sandbox Connection</>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ── Left: config panel ── */}
@@ -256,7 +391,9 @@ export default function TikTokAdsPage() {
             >
               <option value="">Select connection…</option>
               {tiktokConnections.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>
+                  {c.sandbox ? "🧪 " : ""}{c.name}
+                </option>
               ))}
             </select>
 

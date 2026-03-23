@@ -34,8 +34,13 @@ export async function GET(
       return NextResponse.json({ error: 'TikTok Business connection not found' }, { status: 404 });
     }
 
-    const creds = JSON.parse(conn.credentials) as { accessToken: string };
-    const taskInfo = await tiktokReportClient.checkTask(creds.accessToken, advertiserId, taskId);
+    const creds = JSON.parse(conn.credentials) as { accessToken: string; sandbox?: boolean };
+    const taskInfo = await tiktokReportClient.checkTask(
+      creds.accessToken,
+      advertiserId,
+      taskId,
+      creds.sandbox === true,
+    );
 
     if (taskInfo.status === 'COMPLETED' && taskInfo.url) {
       const rows = await tiktokReportClient.downloadRows(taskInfo.url);
