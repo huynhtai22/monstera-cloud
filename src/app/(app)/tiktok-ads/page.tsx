@@ -9,14 +9,13 @@ import { useWorkspaceStore } from "@/store/workspace";
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 // ── Preset metrics / dimensions ──────────────────────────────────────────────
-const DIMENSION_OPTIONS = [
-  { value: "stat_time_day", label: "Day" },
-  { value: "campaign_id", label: "Campaign ID" },
-  { value: "campaign_name", label: "Campaign Name" },
-  { value: "adgroup_id", label: "Ad Group ID" },
-  { value: "adgroup_name", label: "Ad Group Name" },
-  { value: "ad_id", label: "Ad ID" },
-  { value: "ad_name", label: "Ad Name" },
+// TikTok only accepts ID + time dimensions. Name fields (campaign_name etc.)
+// are returned automatically in the response alongside their ID dimension.
+const DIMENSION_OPTIONS: Array<{ value: string; label: string; levels: string[] }> = [
+  { value: "stat_time_day",  label: "Day",         levels: ["AUCTION_ADVERTISER","AUCTION_CAMPAIGN","AUCTION_ADGROUP","AUCTION_AD"] },
+  { value: "campaign_id",   label: "Campaign ID",  levels: ["AUCTION_CAMPAIGN","AUCTION_ADGROUP","AUCTION_AD"] },
+  { value: "adgroup_id",    label: "Ad Group ID",  levels: ["AUCTION_ADGROUP","AUCTION_AD"] },
+  { value: "ad_id",         label: "Ad ID",        levels: ["AUCTION_AD"] },
 ];
 
 const METRIC_OPTIONS = [
@@ -110,9 +109,12 @@ export default function TikTokAdsPage() {
   const [connectionId, setConnectionId] = useState("");
   const [advertiserId, setAdvertiserId] = useState("");
   const [dataLevel, setDataLevel] = useState("AUCTION_CAMPAIGN");
+
+  // Valid dimensions for the currently selected data level
+  const availableDims = DIMENSION_OPTIONS.filter((d) => d.levels.includes(dataLevel));
   const [startDate, setStartDate] = useState(daysAgo(7));
   const [endDate, setEndDate] = useState(today());
-  const [selectedDims, setSelectedDims] = useState<string[]>(["stat_time_day", "campaign_name"]);
+  const [selectedDims, setSelectedDims] = useState<string[]>(["stat_time_day", "campaign_id"]);
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>(["spend", "impressions", "clicks", "ctr", "conversion"]);
 
   // Task / result state
@@ -252,7 +254,14 @@ export default function TikTokAdsPage() {
     }
   };
 
-  const allColumns = [...selectedDims, ...selectedMetrics];
+  // Build column list from actual data so name fields (campaign_name etc.)
+  // that TikTok returns automatically are also shown
+  const allColumns = React.useMemo(() => {
+    if (!rows || rows.length === 0) return [...selectedDims, ...selectedMetrics];
+    const dimKeys = Object.keys(rows[0].dimensions ?? {});
+    const metricKeys = Object.keys(rows[0].metrics ?? {});
+    return [...dimKeys, ...metricKeys];
+  }, [rows, selectedDims, selectedMetrics]);
 
   return (
     <div className="relative max-w-7xl mx-auto px-6 py-10 w-full animate-in fade-in duration-300">
@@ -464,7 +473,17 @@ export default function TikTokAdsPage() {
             </div>
 
             <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Data Level</label>
-            <select value={dataLevel} onChange={(e) => setDataLevel(e.target.value)}
+            <select
+              value={dataLevel}
+              onChange={(e) => {
+                const newLevel = e.target.value;
+                setDataLevel(newLevel);
+                // Drop any selected dims that are invalid for the new level
+                const validForNew = DIMENSION_OPTIONS
+                  .filter((d) => d.levels.includes(newLevel))
+                  .map((d) => d.value);
+                setSelectedDims((prev) => prev.filter((d) => validForNew.includes(d)));
+              }}
               className="w-full text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30">
               {DATA_LEVELS.map((l) => (
                 <option key={l.value} value={l.value}>{l.label}</option>
@@ -474,9 +493,12 @@ export default function TikTokAdsPage() {
 
           {/* Dimensions */}
           <div className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border border-white dark:border-slate-700/60 rounded-2xl p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Dimensions</h2>
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Dimensions</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+              Name fields (e.g. campaign name) are returned automatically alongside each ID.
+            </p>
             <div className="space-y-1.5">
-              {DIMENSION_OPTIONS.map((d) => (
+              {availableDims.map((d) => (
                 <label key={d.value} className="flex items-center gap-2 cursor-pointer group">
                   <input type="checkbox" checked={selectedDims.includes(d.value)}
                     onChange={() => toggleItem(selectedDims, setSelectedDims, d.value)}
