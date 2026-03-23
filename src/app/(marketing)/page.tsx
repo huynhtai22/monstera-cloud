@@ -31,6 +31,7 @@ export default function MarketingPage() {
                     </div>
 
                     <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tighter leading-[1.05] mb-6 max-w-4xl">
+                        <span className="block text-2xl md:text-3xl font-bold text-emerald-400 mb-2 tracking-normal">Monstera Cloud</span>
                         Real-time synchronization. <br className="hidden md:block"/>
                         <span className="text-emerald-500">Zero middleware.</span>
                     </h1>
