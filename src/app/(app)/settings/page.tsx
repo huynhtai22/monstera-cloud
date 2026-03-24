@@ -1,12 +1,26 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import Link from "next/link";
 import { Settings2, Building2, Users, CreditCard, KeyRound, Save, Plus, AlertCircle, CheckCircle2, Copy } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
+import useSWR from "swr";
+import { useSession } from "next-auth/react";
+
+const fetcher = async (url: string) => {
+    const res = await fetch(url);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Failed to fetch');
+    return data;
+};
 
 export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState<'workspace' | 'team' | 'billing' | 'api'>('workspace');
     const { activeWorkspaceId } = useWorkspaceStore();
+    const { data: session } = useSession();
+    const { data: workspaces } = useSWR("/api/workspaces", fetcher);
+    const activeWorkspace = Array.isArray(workspaces) ? workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0] : null;
+    const userPlan = (session?.user as any)?.plan || 'free';
     const [apiKeys, setApiKeys] = useState<any[]>([]);
     const [newlyGeneratedKey, setNewlyGeneratedKey] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -77,18 +91,18 @@ export default function SettingsPage() {
         <div className="relative max-w-5xl mx-auto px-8 py-10 w-full animate-in fade-in duration-300">
             {/* Liquid Glass Background Effects */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-                <div className="absolute top-[10%] left-[20%] w-[30%] h-[30%] rounded-full bg-slate-200/40 blur-[100px]" />
+                <div className="absolute top-[10%] left-[20%] w-[30%] h-[30%] rounded-full bg-slate-200/40 dark:bg-slate-800/40 blur-[100px]" />
             </div>
 
             {/* Header Section */}
             <div className="mb-8 relative z-10">
                 <div className="flex items-center space-x-3 mb-2">
-                    <div className="w-10 h-10 bg-white/80 backdrop-blur-md border border-gray-200/60 rounded-xl flex items-center justify-center shadow-sm text-gray-700">
+                    <div className="w-10 h-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-gray-200/60 dark:border-slate-700 rounded-xl flex items-center justify-center shadow-sm text-gray-700 dark:text-slate-300">
                         <Settings2 className="w-5 h-5" />
                     </div>
-                    <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Settings</h1>
+                    <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Settings</h1>
                 </div>
-                <p className="text-gray-500 text-sm">
+                <p className="text-gray-500 dark:text-gray-400 text-sm">
                     Manage your workspace, team members, billing, and developer configuration.
                 </p>
             </div>
@@ -100,77 +114,79 @@ export default function SettingsPage() {
                     <nav className="space-y-1">
                         <button
                             onClick={() => setActiveTab('workspace')}
-                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'workspace' ? 'bg-white shadow-sm border border-gray-200/60 text-emerald-700' : 'text-gray-600 hover:bg-white/50 hover:text-gray-900 transparent border border-transparent'}`}
+                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'workspace' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
                         >
-                            <Building2 className={`w-4 h-4 mr-3 ${activeTab === 'workspace' ? 'text-emerald-600' : 'text-gray-400'}`} />
+                            <Building2 className={`w-4 h-4 mr-3 ${activeTab === 'workspace' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
                             Workspace
                         </button>
                         <button
                             onClick={() => setActiveTab('team')}
-                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'team' ? 'bg-white shadow-sm border border-gray-200/60 text-emerald-700' : 'text-gray-600 hover:bg-white/50 hover:text-gray-900 transparent border border-transparent'}`}
+                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'team' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
                         >
-                            <Users className={`w-4 h-4 mr-3 ${activeTab === 'team' ? 'text-emerald-600' : 'text-gray-400'}`} />
-                            Team <span className="ml-auto bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-[10px] font-bold">4</span>
+                            <Users className={`w-4 h-4 mr-3 ${activeTab === 'team' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
+                            Team
                         </button>
                         <button
                             onClick={() => setActiveTab('billing')}
-                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'billing' ? 'bg-white shadow-sm border border-gray-200/60 text-emerald-700' : 'text-gray-600 hover:bg-white/50 hover:text-gray-900 transparent border border-transparent'}`}
+                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'billing' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
                         >
-                            <CreditCard className={`w-4 h-4 mr-3 ${activeTab === 'billing' ? 'text-emerald-600' : 'text-gray-400'}`} />
+                            <CreditCard className={`w-4 h-4 mr-3 ${activeTab === 'billing' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
                             Billing
                         </button>
                         <button
                             onClick={() => setActiveTab('api')}
-                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'api' ? 'bg-white shadow-sm border border-gray-200/60 text-emerald-700' : 'text-gray-600 hover:bg-white/50 hover:text-gray-900 transparent border border-transparent'}`}
+                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'api' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
                         >
-                            <KeyRound className={`w-4 h-4 mr-3 ${activeTab === 'api' ? 'text-emerald-600' : 'text-gray-400'}`} />
+                            <KeyRound className={`w-4 h-4 mr-3 ${activeTab === 'api' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
                             API Keys
                         </button>
                     </nav>
                 </div>
 
                 {/* Main Settings Content area */}
-                <div className="flex-1 bg-white/60 backdrop-blur-xl border border-white/80 rounded-3xl shadow-sm p-6 sm:p-8 animate-in fade-in duration-300">
+                <div className="flex-1 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border border-white/80 dark:border-slate-700/60 rounded-3xl shadow-sm p-6 sm:p-8 animate-in fade-in duration-300">
 
                     {activeTab === 'workspace' && (
                         <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
                             <div>
-                                <h3 className="text-lg font-bold text-gray-900 mb-1">Workspace Profile</h3>
-                                <p className="text-sm text-gray-500 mb-6">Update your company name and workspace URL.</p>
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Workspace Profile</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Update your company name and workspace URL.</p>
 
                                 <div className="space-y-5 max-w-lg">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Workspace Name</label>
+                                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Workspace Name</label>
                                         <input
                                             type="text"
-                                            defaultValue="Acme Corp"
-                                            className="w-full bg-white border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 block p-2.5 shadow-sm"
+                                            defaultValue={activeWorkspace?.name || ''}
+                                            placeholder="Your workspace name"
+                                            className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 block p-2.5 shadow-sm"
                                         />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Workspace URL</label>
                                         <div className="flex bg-white rounded-xl shadow-sm border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500">
-                                            <span className="inline-flex items-center px-3 text-sm text-gray-500 bg-gray-50 border-r border-gray-200">
+                                            <span className="inline-flex items-center px-3 text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800 border-r border-gray-200 dark:border-slate-700">
                                                 monstera.cloud/
                                             </span>
                                             <input
                                                 type="text"
-                                                defaultValue="acme"
-                                                className="flex-1 min-w-0 block w-full px-3 py-2.5 sm:text-sm text-gray-900 focus:outline-none"
+                                                defaultValue={activeWorkspace?.name?.toLowerCase().replace(/\s+/g, '-') || ''}
+                                                placeholder="your-workspace"
+                                                className="flex-1 min-w-0 block w-full px-3 py-2.5 sm:text-sm text-gray-900 dark:text-white dark:bg-slate-800 focus:outline-none"
                                             />
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <hr className="border-gray-200/60" />
+                            <hr className="border-gray-200/60 dark:border-slate-700" />
 
                             <div>
-                                <h3 className="text-lg font-bold text-gray-900 mb-1">Data Retention</h3>
-                                <p className="text-sm text-gray-500 mb-6">Configure how long Monstera stores temporary sync logs.</p>
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Data Retention</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Configure how long Monstera stores temporary sync logs.</p>
 
                                 <div className="max-w-lg">
-                                    <select className="w-full bg-white border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 block p-2.5 shadow-sm">
+                                    <select className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 block p-2.5 shadow-sm">
                                         <option>7 Days (Default)</option>
                                         <option>30 Days</option>
                                         <option>90 Days</option>
@@ -189,47 +205,13 @@ export default function SettingsPage() {
 
                     {activeTab === 'team' && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-                            <div className="flex items-center justify-between mb-2">
-                                <div>
-                                    <h3 className="text-lg font-bold text-gray-900 mb-1">Team Members</h3>
-                                    <p className="text-sm text-gray-500">Manage who has access to this workspace.</p>
-                                </div>
-                                <button className="flex items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors">
-                                    <Plus className="w-4 h-4 mr-2" />
-                                    Invite Member
-                                </button>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Team Members</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">Manage who has access to this workspace.</p>
                             </div>
-
-                            <div className="bg-white border border-gray-200/60 rounded-2xl shadow-sm overflow-hidden">
-                                <div className="divide-y divide-gray-100">
-                                    {[
-                                        { name: 'Jane Taylor', role: 'Owner', email: 'jane@acme.co', status: 'Active' },
-                                        { name: 'Michael Chen', role: 'Admin', email: 'michael@acme.co', status: 'Active' },
-                                        { name: 'Sarah Wilson', role: 'Viewer', email: 'sarah@acme.co', status: 'Invited' },
-                                    ].map((user, i) => (
-                                        <div key={i} className="flex items-center justify-between p-4 hover:bg-gray-50/50 transition-colors">
-                                            <div className="flex items-center space-x-3">
-                                                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-sm border border-indigo-200">
-                                                    {user.name.split(' ').map(n => n[0]).join('')}
-                                                </div>
-                                                <div>
-                                                    <div className="text-sm font-bold text-gray-900">{user.name}</div>
-                                                    <div className="text-xs text-gray-500">{user.email}</div>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center space-x-4">
-                                                <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${user.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
-                                                    {user.status}
-                                                </span>
-                                                <select className="text-sm font-medium text-gray-700 bg-transparent border-none cursor-pointer focus:ring-0">
-                                                    <option>{user.role}</option>
-                                                    <option>Admin</option>
-                                                    <option>Viewer</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                            <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl">
+                                <span className="inline-flex items-center px-3 py-1 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">Coming Soon</span>
+                                <p className="text-gray-500 dark:text-gray-400 text-sm text-center max-w-sm">Team management with roles and invitations is coming in a future update.</p>
                             </div>
                         </div>
                     )}
@@ -237,46 +219,31 @@ export default function SettingsPage() {
                     {activeTab === 'billing' && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <div>
-                                <h3 className="text-lg font-bold text-gray-900 mb-1">Current Plan</h3>
-                                <p className="text-sm text-gray-500">You are currently on the Pro Tier.</p>
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Current Plan</h3>
+                                <p className="text-sm text-gray-500 dark:text-gray-400">You are currently on the <span className="font-semibold capitalize">{userPlan}</span> plan.</p>
                             </div>
 
-                            <div className="bg-gradient-to-br from-indigo-900 to-indigo-800 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-indigo-900/10">
-                                {/* Decorative elements */}
+                            <div className="bg-gradient-to-br from-emerald-900 to-emerald-800 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-emerald-900/10">
                                 <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
-                                <div className="absolute bottom-0 left-0 w-32 h-32 bg-emerald-400 opacity-20 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2"></div>
 
-                                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                    <div>
-                                        <div className="inline-flex items-center px-3 py-1 bg-white/10 rounded-full text-xs font-semibold tracking-wider uppercase mb-4 border border-white/20">
-                                            Pro Plan
-                                        </div>
-                                        <div className="text-4xl font-extrabold mb-2">$499 <span className="text-lg font-medium text-indigo-200">/mo</span></div>
-                                        <p className="text-indigo-200 text-sm max-w-sm">
-                                            Includes up to 10M rows synced per month, 15 active pipelines, and Priority Support.
-                                        </p>
+                                <div className="relative z-10">
+                                    <div className="inline-flex items-center px-3 py-1 bg-white/10 rounded-full text-xs font-semibold tracking-wider uppercase mb-4 border border-white/20">
+                                        {userPlan} Plan
                                     </div>
-                                    <div className="bg-white/10 backdrop-blur-md border border-white/20 p-5 rounded-2xl w-full md:w-64">
-                                        <div className="flex justify-between items-end mb-2">
-                                            <span className="text-sm font-medium text-indigo-100">Rows Used</span>
-                                            <span className="text-sm font-bold">4.8M / 10M</span>
-                                        </div>
-                                        <div className="w-full bg-black/20 rounded-full h-2">
-                                            <div className="bg-emerald-400 h-2 rounded-full" style={{ width: '48%' }}></div>
-                                        </div>
-                                        <p className="text-xs text-indigo-200 mt-3 text-center">Resets in 12 days</p>
-                                    </div>
+                                    <p className="text-emerald-200 text-sm max-w-sm mb-4">
+                                        {userPlan === 'free'
+                                            ? 'Upgrade to unlock more connections and faster refresh rates.'
+                                            : `You have access to all ${userPlan}-tier features including TikTok Ads reports and Shopee data.`}
+                                    </p>
+                                    <Link href="/pricing" className="inline-flex items-center px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-semibold border border-white/20 transition-colors">
+                                        {userPlan === 'free' ? 'Upgrade Plan' : 'View Plans'}
+                                    </Link>
                                 </div>
                             </div>
 
-                            <div className="pt-4 flex justify-between items-center">
-                                <div className="flex items-center text-sm text-gray-600 font-medium">
-                                    <CreditCard className="w-5 h-5 mr-2 text-gray-400" />
-                                    Visa ending in 4242
-                                </div>
-                                <button className="text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
-                                    Update Payment Method
-                                </button>
+                            <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl">
+                                <span className="inline-flex items-center px-3 py-1 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">Coming Soon</span>
+                                <p className="text-gray-500 dark:text-gray-400 text-sm text-center max-w-sm">Payment history, invoice downloads, and subscription management will appear here.</p>
                             </div>
                         </div>
                     )}
@@ -285,8 +252,8 @@ export default function SettingsPage() {
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <div className="flex items-center justify-between mb-2">
                                 <div>
-                                    <h3 className="text-lg font-bold text-gray-900 mb-1">Developer API Keys</h3>
-                                    <p className="text-sm text-gray-500">Create programmatic access tokens for the Monstera API (e.g., Google Sheets Add-on).</p>
+                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Developer API Keys</h3>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Create programmatic access tokens for the Monstera API (e.g., Google Sheets Add-on).</p>
                                 </div>
                                 <button 
                                     onClick={handleGenerateKey}

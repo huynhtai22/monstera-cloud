@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
+import { Logo } from "@/components/Logo";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -14,8 +15,6 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-
-  // Clean ChatGPT interface styling
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,21 +52,8 @@ export default function RegisterPage() {
       <div className="w-full max-w-[400px] pb-10">
         
         <div className="flex flex-col items-center text-center mb-10">
-          {/* Minimalist Monstera Logo */}
-          <div className="mb-6 text-gray-900 dark:text-white">
-            <svg 
-              width="32" 
-              height="32" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
-              strokeLinejoin="round"
-            >
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
-              <path d="M12 7v10M8 12h8" />
-            </svg>
+          <div className="mb-6">
+            <Logo className="w-8 h-8" textClassName="hidden" />
           </div>
           <h2 className="text-[32px] font-semibold tracking-tight text-gray-900 dark:text-white">
             Create your account
@@ -98,19 +84,18 @@ export default function RegisterPage() {
         </div>
 
         {/* OR Divider */}
-        <div className="relative mb-6">
+          <div className="relative mb-6">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-gray-200 dark:border-slate-800" />
           </div>
           <div className="relative flex justify-center text-xs">
-            <span className="px-3 bg-white dark:bg-slate-900 text-gray-400">
+            <span className="px-3 bg-white dark:bg-slate-950 text-gray-400">
               OR
             </span>
           </div>
         </div>
 
         <form className="space-y-6" onSubmit={handleSubmit}>
-          <div className="hidden">BUILD_ID: v1.0.1-manual-login</div>
           {error && (
             <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center">
               {error}

@@ -116,14 +116,14 @@ export default function DestinationsPage() {
             </div>
 
             {/* Active Pipelines Info Bar */}
-            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 mb-8 flex items-center justify-between shadow-sm">
-                <div className="flex items-center space-x-3 text-blue-800">
-                    <div className="p-2 bg-blue-100 rounded-lg shrink-0">
+            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-xl p-4 mb-8 flex items-center justify-between shadow-sm">
+                <div className="flex items-center space-x-3 text-blue-800 dark:text-blue-300">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg shrink-0">
                         <Send className="w-5 h-5" />
                     </div>
                     <div>
                         <p className="font-semibold text-sm">Active Data Pipelines</p>
-                        <p className="text-xs text-blue-600/80">You currently have 0 active pipelines sending data outward.</p>
+                        <p className="text-xs text-blue-600/80 dark:text-blue-400/80">You currently have 0 active pipelines sending data outward.</p>
                     </div>
                 </div>
             </div>

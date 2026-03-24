@@ -87,13 +87,13 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
             title: "Connect",
             items: [
                 { name: "Data Sources", href: "/dashboard", icon: DatabaseZap },
-                { name: "Destinations", href: "/destinations", icon: Send },
+                { name: "Destinations", href: "/destinations", icon: Send, comingSoon: true },
             ]
         },
         {
             title: "Manage",
             items: [
-                { name: "Transformations", href: "/transformations", icon: Wand2 },
+                { name: "Transformations", href: "/transformations", icon: Wand2, comingSoon: true },
             ]
         },
         {
@@ -101,10 +101,10 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
             items: [
                 { name: "Overview", href: "/overview", icon: LayoutDashboard },
                 { name: "Data Explorer", href: "/explorer", icon: FileEdit },
-                { name: "Reports", href: "/reports", icon: LineChart },
+                { name: "Reports", href: "/reports", icon: LineChart, comingSoon: true },
                 { name: "TikTok Ads", href: "/tiktok-ads", icon: TrendingUp },
                 { name: "Shopee", href: "/shopee", icon: ShoppingBag },
-                { name: "Templates", href: "/templates", icon: Wand2 },
+                { name: "Templates", href: "/templates", icon: Wand2, comingSoon: true },
             ]
         }
     ];
@@ -187,6 +187,9 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                                     >
                                         <item.icon className={`w-4 h-4 mr-3 transition-colors ${isActive ? "text-emerald-600" : "text-gray-400 group-hover:text-gray-500"}`} />
                                         {item.name}
+                                        {(item as any).comingSoon && (
+                                            <span className="ml-auto text-[9px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span>
+                                        )}
                                     </Link>
                                 );
                             })}

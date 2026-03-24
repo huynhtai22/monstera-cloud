@@ -7,8 +7,11 @@ import { useState } from "react";
 
 export default function PricingPage() {
     const [isAnnual, setIsAnnual] = useState(true);
-    /** Checkout with Xendit: VNĐ first, USD second (matches product default). */
     const [payCurrency, setPayCurrency] = useState<"VND" | "USD">("VND");
+
+    const VND_RATE = 25000;
+    const fmtVnd = (usd: number) => `${(usd * VND_RATE).toLocaleString('vi-VN')}đ`;
+    const fmtPrice = (usd: number) => payCurrency === 'VND' ? fmtVnd(usd) : `$${usd}`;
 
     return (
         <div className="min-h-screen pt-32 pb-24 bg-[#09090b] font-sans overflow-hidden">
@@ -16,13 +19,13 @@ export default function PricingPage() {
 
                 <div className="text-center space-y-4 mb-16">
                     <div className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 tracking-widest uppercase mb-6 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-                        Flash-Sale Proof Pricing
+                        Simple Pricing
                     </div>
                     <h1 className="text-white text-4xl md:text-6xl font-extrabold leading-[1.05] tracking-tighter">
                         Stop paying per row.
                     </h1>
                     <p className="text-gray-400 text-lg md:text-xl font-normal max-w-2xl mx-auto mt-4">
-                        Legacy ELT punishes you for scale. Monstera Cloud charges a flat architectural fee based on GMV order volume. <span className="font-semibold text-white">Zero overage penalties during 11.11 spikes.</span>
+                        Simple, flat-rate pricing for TikTok Ads reporting, Shopee data, and Google Sheets integration. <span className="font-semibold text-white">Pay in VND or USD.</span>
                     </p>
                 </div>
 
@@ -72,10 +75,10 @@ export default function PricingPage() {
                         <div className="flex justify-between items-start mb-6">
                             <div>
                                 <h3 className="text-white text-xl font-bold tracking-tight">Free</h3>
-                                <p className="text-gray-400 text-sm">Evaluation sandbox</p>
+                                <p className="text-gray-400 text-sm">Get started</p>
                             </div>
                             <div className="text-right">
-                                <span className="text-3xl font-bold text-white">$0</span>
+                                <span className="text-3xl font-bold text-white">{payCurrency === 'VND' ? '0đ' : '$0'}</span>
                                 <span className="text-gray-500 text-sm block">/month</span>
                             </div>
                         </div>
@@ -94,7 +97,7 @@ export default function PricingPage() {
                             </li>
                         </ul>
                         <Link href="/register" className="text-center w-full py-3 rounded-lg border border-white/10 text-white font-semibold hover:bg-white/5 transition-colors">
-                            Initialize Node
+                            Get Started
                         </Link>
                     </div>
 
@@ -103,11 +106,11 @@ export default function PricingPage() {
                         <div className="flex justify-between items-start mb-6">
                             <div>
                                 <h3 className="text-white text-xl font-bold tracking-tight">Starter</h3>
-                                <p className="text-gray-400 text-sm">Solo Operators</p>
+                                <p className="text-gray-400 text-sm">Solo sellers</p>
                             </div>
                             <div className="text-right">
                                 <span className="text-3xl font-bold text-white">
-                                    ${isAnnual ? '39' : '49'}
+                                    {fmtPrice(isAnnual ? 39 : 49)}
                                 </span>
                                 <span className="text-gray-500 text-sm block">/month</span>
                             </div>
@@ -132,7 +135,7 @@ export default function PricingPage() {
                             invoiceCurrency={payCurrency}
                             className="w-full py-3 rounded-lg border border-white/10 text-white font-semibold hover:bg-white/5 transition-colors"
                         >
-                            Upgrade Node
+                            Upgrade
                         </CheckoutButton>
                     </div>
 
@@ -144,11 +147,11 @@ export default function PricingPage() {
                         <div className="flex justify-between items-start mt-6 mb-6 z-10 relative">
                             <div>
                                 <h3 className="text-white text-xl font-bold tracking-tight">Pro</h3>
-                                <p className="text-emerald-500 text-sm">Scaling architectures</p>
+                                <p className="text-emerald-500 text-sm">Growing teams</p>
                             </div>
                             <div className="text-right">
                                 <span className="text-3xl font-bold text-white">
-                                    ${isAnnual ? '119' : '149'}
+                                    {fmtPrice(isAnnual ? 119 : 149)}
                                 </span>
                                 <span className="text-gray-500 text-sm block">/month</span>
                             </div>
@@ -188,10 +191,10 @@ export default function PricingPage() {
                         <div className="flex justify-between items-start mb-6">
                             <div>
                                 <h3 className="text-white text-xl font-bold tracking-tight">Enterprise</h3>
-                                <p className="text-gray-400 text-sm">Custom VPCs</p>
+                                <p className="text-gray-400 text-sm">Custom solutions</p>
                             </div>
                             <div className="text-right">
-                                <span className="text-2xl font-bold text-white block mt-1">from $499</span>
+                                <span className="text-2xl font-bold text-white block mt-1">from {fmtPrice(499)}</span>
                                 <span className="text-gray-500 text-sm block">/month</span>
                             </div>
                         </div>
@@ -213,8 +216,8 @@ export default function PricingPage() {
                                 Direct Slack Comm-Link
                             </li>
                         </ul>
-                        <Link href="/solutions" className="block text-center w-full py-3 rounded-lg border border-white/10 text-white font-semibold hover:bg-white/5 transition-colors">
-                            Contact Engineering
+                        <Link href="/register" className="block text-center w-full py-3 rounded-lg border border-white/10 text-white font-semibold hover:bg-white/5 transition-colors">
+                            Contact Us
                         </Link>
                     </div>
                 </div>
@@ -262,19 +265,19 @@ export default function PricingPage() {
 
                 {/* Trust Seals */}
                 <div className="mt-20 mb-16 text-center border-t border-white/10 pt-16">
-                    <p className="text-gray-500 text-xs mb-8 uppercase tracking-widest font-bold">Audited & Certified Infrastructure</p>
+                    <p className="text-gray-500 text-xs mb-8 uppercase tracking-widest font-bold">Secure Infrastructure</p>
                     <div className="flex justify-center gap-16 text-gray-400">
                         <div className="flex flex-col items-center gap-3 opacity-60 hover:opacity-100 transition-opacity">
                             <ShieldCheck className="w-8 h-8 text-white" />
-                            <span className="text-[10px] font-mono tracking-widest uppercase">Vietnam PDPA Compliant</span>
+                            <span className="text-[10px] font-mono tracking-widest uppercase">256-Bit Encrypted</span>
                         </div>
                         <div className="flex flex-col items-center gap-3 opacity-60 hover:opacity-100 transition-opacity">
                             <Shield className="w-8 h-8 text-white" />
-                            <span className="text-[10px] font-mono tracking-widest uppercase">PII Masking Ready</span>
+                            <span className="text-[10px] font-mono tracking-widest uppercase">OAuth 2.0 Authentication</span>
                         </div>
                         <div className="flex flex-col items-center gap-3 opacity-60 hover:opacity-100 transition-opacity">
                             <Zap className="w-8 h-8 text-white" />
-                            <span className="text-[10px] font-mono tracking-widest uppercase">SOC2 Type II</span>
+                            <span className="text-[10px] font-mono tracking-widest uppercase">VND + USD Billing</span>
                         </div>
                     </div>
                 </div>

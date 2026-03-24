@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
 import { Database, Search, ArrowRight, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Settings } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 import { integrationCatalogId } from "@/lib/integration-catalog";
 
@@ -33,6 +33,7 @@ export default function DashboardPage() {
 
     // Global State
     const { activeWorkspaceId } = useWorkspaceStore();
+    const { mutate } = useSWRConfig();
 
     // Fetch Data
     const { data: workspaces, error, isLoading } = useSWR("/api/workspaces", fetcher);
@@ -128,7 +129,9 @@ export default function DashboardPage() {
                     </p>
                 </div>
                 <div className="flex space-x-3">
-                    <button className="flex items-center space-x-2 px-4 py-2 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 dark:text-gray-600 hover:bg-gray-50 dark:bg-slate-800 hover:border-gray-300 dark:border-slate-600 transition-colors">
+                    <button
+                        onClick={() => mutate('/api/workspaces')}
+                        className="flex items-center space-x-2 px-4 py-2 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-300 dark:border-slate-600 transition-colors">
                         <RefreshCw className="w-4 h-4" />
                         <span>Refresh All</span>
                     </button>
@@ -142,17 +145,18 @@ export default function DashboardPage() {
                 </div>
             </div>
 
-            {/* Storage Info Bar (Liquid Glass) */}
+            {/* Connected Sources Summary */}
             <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-white dark:border-slate-700/60 dark:border-slate-700/40 shadow-[0_8px_30px_rgb(0,0,0,0.02)] rounded-xl p-3 mb-8 flex items-center justify-between">
                 <div className="flex items-center space-x-3 text-gray-700 dark:text-slate-300">
                     <Database className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                     <div className="flex items-center space-x-2">
-                        <span className="font-semibold text-sm">Storage out:</span>
-                        <span className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500">1.2 GB / 10 GB limit</span>
+                        <span className="font-semibold text-sm">Connected sources:</span>
+                        <span className="text-sm text-gray-500 dark:text-gray-400">
+                            {Array.isArray(workspaces)
+                                ? (workspaces.find((w: any) => w.id === activeWorkspaceId)?.connections?.filter((c: any) => c.type === 'source').length || 0)
+                                : 0}
+                        </span>
                     </div>
-                </div>
-                <div className="w-48 h-1.5 bg-gray-200 rounded-full overflow-hidden hidden sm:block">
-                    <div className="h-full bg-emerald-500 w-[12%] rounded-full"></div>
                 </div>
             </div>
 
@@ -328,10 +332,7 @@ export default function DashboardPage() {
                 <div className="w-full py-20 flex flex-col items-center justify-center text-center border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl bg-gray-50 dark:bg-slate-800/50">
                     <Database className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" />
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No integrations found</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 max-w-sm mb-6">We couldn't find any data sources matching "{searchQuery}". Try a different keyword or category.</p>
-                    <button className="text-sm font-medium text-emerald-600 hover:text-emerald-700">
-                        Suggest an integration &rarr;
-                    </button>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm mb-6">We couldn&apos;t find any data sources matching &quot;{searchQuery}&quot;. Try a different keyword or category.</p>
                 </div>
             )}
 
