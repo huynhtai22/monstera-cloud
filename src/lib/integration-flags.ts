@@ -16,6 +16,13 @@ export function isTikTokShopConnectEnabled(): boolean {
   return key.length > 0;
 }
 
+export function isShopeeConnectEnabled(): boolean {
+  const toggle = (process.env.SHOPEE_CONNECT_ENABLED || 'true').toLowerCase();
+  if (toggle === 'false') return false;
+  const key = (process.env.SHOPEE_PARTNER_ID || '').trim();
+  return key.length > 0;
+}
+
 export function isTikTokBusinessConnectEnabled(): boolean {
   const toggle = (process.env.TIKTOK_BUSINESS_CONNECT_ENABLED || 'true').toLowerCase();
   if (toggle === 'false') return false;

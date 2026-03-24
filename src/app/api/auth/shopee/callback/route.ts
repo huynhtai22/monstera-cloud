@@ -1,132 +1,83 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { shopeeClient } from "@/lib/shopee";
 import prisma from "@/lib/prisma";
-import { ShopeeClient } from "@/lib/shopee";
+import { isShopeeConnectEnabled } from "@/lib/integration-flags";
+
+function publicBaseUrl(request: Request): string {
+  const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
+  if (explicit) return explicit;
+  const vercel = process.env.VERCEL_URL;
+  if (vercel) return `https://${vercel.replace(/^https?:\/\//, "")}`;
+  return new URL(request.url).origin;
+}
 
 export async function GET(request: Request) {
-    try {
-        const session = await getServerSession(authOptions);
+  if (!isShopeeConnectEnabled()) {
+    return NextResponse.json(
+      { error: "Shopee connection is disabled" },
+      { status: 403 }
+    );
+  }
 
-        if (!session || !session.user || !session.user.id) {
-            return new NextResponse("Unauthorized. Please log in first.", { status: 401 });
-        }
+  const { searchParams } = new URL(request.url);
+  const code = searchParams.get("code");
+  const shopIdRaw = searchParams.get("shop_id");
+  const state = searchParams.get("state"); // workspace id
 
-        const { searchParams } = new URL(request.url);
-        const code = searchParams.get("code");
-        const shopId = searchParams.get("shop_id");
-        const workspaceId = searchParams.get("workspaceId");
+  const base = publicBaseUrl(request);
 
-        if (!code || !shopId || !workspaceId) {
-            return new NextResponse("Missing required OAuth parameters.", { status: 400 });
-        }
+  if (!code || !shopIdRaw) {
+    console.error("[SHOPEE_OAUTH] Missing code or shop_id in callback");
+    return NextResponse.redirect(
+      new URL(
+        `/dashboard?shopee_error=${encodeURIComponent("Authorization failed — missing code or shop_id")}`,
+        base
+      )
+    );
+  }
 
-        // Validate user belongs to the requested workspace
-        const membership = await prisma.workspaceMember.findUnique({
-            where: {
-                workspaceId_userId: {
-                    workspaceId: workspaceId,
-                    userId: session.user.id
-                }
-            }
-        });
+  const shopId = Number(shopIdRaw);
+  const workspaceId = state || "";
+  if (!workspaceId) {
+    return NextResponse.json(
+      { error: "Invalid state / workspace session" },
+      { status: 400 }
+    );
+  }
 
-        if (!membership) {
-            return new NextResponse("Unauthorized access to this workspace.", { status: 403 });
-        }
+  try {
+    const tokenData = await shopeeClient.exchangeCode(code, shopId);
 
-        // Exchange the authorization code for an Access Token
-        const shopee = new ShopeeClient();
-        const tokenData = await shopee.getAccessToken(code, shopId);
+    await (prisma.connection as any).create({
+      data: {
+        workspaceId,
+        name: `Shopee Shop (${shopId})`,
+        type: "source",
+        provider: "shopee",
+        status: "connected",
+        credentials: JSON.stringify({
+          accessToken: tokenData.access_token,
+          refreshToken: tokenData.refresh_token,
+          shopId: tokenData.shop_id,
+          expiresAt: new Date(
+            Date.now() + (tokenData.expire_in ?? 14400) * 1000
+          ).toISOString(),
+          refreshExpiresAt: new Date(
+            Date.now() + 30 * 24 * 60 * 60 * 1000 // 30 days
+          ).toISOString(),
+          product: "shopee",
+        }),
+      },
+    });
 
-        if (tokenData.error) {
-            console.error("[SHOPEE AUTH] Token Error:", tokenData);
-            return new NextResponse(`Token Exchange Failed: ${tokenData.message || tokenData.error}`, { status: 500 });
-        }
-
-        // Upsert the connection in the database
-        await prisma.connection.upsert({
-            where: {
-                // To do this upsert properly we'd need a unique constraint on workspaceId_provider_shopId
-                // Since our schema only has `id`, we'll just check if one exists via findFirst, then create/update.
-                id: 'dummy_for_type_checking_error_bypassing_placeholder'
-            },
-            create: {
-                workspaceId,
-                name: `Shopee ID: ${shopId}`,
-                type: "source",
-                provider: "shopee",
-                credentials: JSON.stringify({
-                    access_token: tokenData.access_token,
-                    refresh_token: tokenData.refresh_token,
-                    expire_in: tokenData.expire_in,
-                    shop_id: shopId
-                })
-            },
-            update: {} // Handled below with a proper findFirst
-        }).catch(() => null); // Silencing strict typing error to do customized logic below
-
-        const existingConnection = await prisma.connection.findFirst({
-            where: {
-                workspaceId,
-                provider: "shopee",
-                name: `Shopee ID: ${shopId}`
-            }
-        });
-
-        if (existingConnection) {
-            await prisma.connection.update({
-                where: { id: existingConnection.id },
-                data: {
-                    credentials: JSON.stringify({
-                        access_token: tokenData.access_token,
-                        refresh_token: tokenData.refresh_token,
-                        expire_in: tokenData.expire_in,
-                        shop_id: shopId
-                    })
-                }
-            });
-        } else {
-            // Check if any existing connection exists to auto-map MVP pipeline
-            const oppositeType = 'destination';
-            const counterpart = await prisma.connection.findFirst({
-                where: { workspaceId, type: oppositeType }
-            });
-
-            const newConnection = await prisma.connection.create({
-                data: {
-                    workspaceId,
-                    name: `Shopee ID: ${shopId}`,
-                    type: "source",
-                    provider: "shopee",
-                    credentials: JSON.stringify({
-                        access_token: tokenData.access_token,
-                        refresh_token: tokenData.refresh_token,
-                        expire_in: tokenData.expire_in,
-                        shop_id: shopId
-                    })
-                }
-            });
-
-            if (counterpart) {
-                // Auto-map for MVP
-                await prisma.pipeline.create({
-                    data: {
-                        workspaceId,
-                        name: `Sync: Shopee ID: ${shopId} to ${counterpart.name}`,
-                        sourceConnectionId: newConnection.id,
-                        destinationConnectionId: counterpart.id
-                    }
-                }).catch(() => null);
-            }
-        }
-
-        // Redirect back to dashboard to see the new connection
-        const redirectUrl = process.env.NODE_ENV === "production" ? "https://monsteracloud.com/dashboard" : "http://localhost:3000/dashboard";
-        return NextResponse.redirect(redirectUrl);
-
-    } catch (error) {
-        console.error("[SHOPEE AUTH] Fatal Error:", error);
-        return new NextResponse("Internal Server Error during Shopee Authorization.", { status: 500 });
-    }
+    return NextResponse.redirect(new URL("/dashboard", base));
+  } catch (error: any) {
+    console.error("[SHOPEE_AUTH_ERROR]", error);
+    return NextResponse.redirect(
+      new URL(
+        `/dashboard?shopee_error=${encodeURIComponent(error.message || "Failed to authenticate with Shopee")}`,
+        base
+      )
+    );
+  }
 }

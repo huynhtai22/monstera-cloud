@@ -38,8 +38,13 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
         // Calculate OAuth URL based on provider
         let authUrl = "";
         if (id === 'shopee') {
-            // This would normally come from an API or lib
-            authUrl = `https://partner.shopeemobile.com/api/v2/shop/auth_partner?partner_id=${process.env.NEXT_PUBLIC_SHOPEE_PARTNER_ID}&redirect=https://monsteracloud.com/api/auth/shopee/callback&state=${activeWorkspaceId}`;
+            if (!activeWorkspaceId) {
+                setIsProcessing(false);
+                alert('Select a workspace first');
+                return;
+            }
+            window.location.href = `/api/auth/shopee/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
+            return;
         } else if (id === 'tiktok_shop') {
             if (!activeWorkspaceId) {
                 setIsProcessing(false);

@@ -20,6 +20,7 @@ const fetcher = async (url: string) => {
 const ALL_CATALOG_INTEGRATIONS = [
     { id: 'tiktok_shop', name: 'TikTok Shop', description: 'Seller catalog, orders, and Shop analytics.', status: 'available' as const, logoSrc: '/logos/tiktok.svg' },
     { id: 'tiktok_business', name: 'TikTok Business', description: 'TikTok account and marketing data (Login Kit OAuth).', status: 'available' as const, logoSrc: '/logos/tiktok.svg' },
+    { id: 'shopee', name: 'Shopee', description: 'Orders, products, and shop analytics from Shopee Open Platform.', status: 'available' as const, logoSrc: '/logos/shopee.svg' },
     { id: 'lazada', name: 'Lazada Seller', description: 'Order fulfillments and finance.', status: 'available' as const, logoSrc: '/logos/lazada.svg' },
     { id: 'shopify', name: 'Shopify', description: 'E-commerce platform orders.', status: 'available' as const, logoSrc: '/logos/shopify.svg' },
 ];
@@ -42,6 +43,7 @@ export default function DashboardPage() {
         return ALL_CATALOG_INTEGRATIONS.filter((item) => {
             if (item.id === 'tiktok_shop') return intConfig.tiktokShop !== false;
             if (item.id === 'tiktok_business') return intConfig.tiktokBusiness !== false;
+            if (item.id === 'shopee') return intConfig.shopee !== false;
             return true;
         });
     }, [intConfig]);

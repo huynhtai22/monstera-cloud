@@ -2,5 +2,6 @@
 export function integrationCatalogId(provider: string): string {
   const p = (provider || '').toLowerCase();
   if (p === 'tiktok') return 'tiktok_shop';
+  if (p === 'shopee') return 'shopee';
   return provider;
 }

@@ -18,6 +18,7 @@ import {
     LogOut,
     KeyRound,
     TrendingUp,
+    ShoppingBag,
     Sun,
     Moon
 } from "lucide-react";
@@ -102,6 +103,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                 { name: "Data Explorer", href: "/explorer", icon: FileEdit },
                 { name: "Reports", href: "/reports", icon: LineChart },
                 { name: "TikTok Ads", href: "/tiktok-ads", icon: TrendingUp },
+                { name: "Shopee", href: "/shopee", icon: ShoppingBag },
                 { name: "Templates", href: "/templates", icon: Wand2 },
             ]
         }
