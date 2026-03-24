@@ -40,11 +40,8 @@ export async function GET(request: Request) {
                 if (expirationTimeMs - now < 86400000) {
                     console.log(`[CRON: SHOPEE REFRESH] Refreshing connection ID: ${conn.id}`);
                     
+                    // refreshAccessToken throws on API error, so no need to check fields
                     const newTokenData = await shopeeClient.refreshAccessToken(creds.refresh_token, creds.shop_id);
-                    
-                    if (newTokenData.error) {
-                        throw new Error(newTokenData.message || newTokenData.error);
-                    }
 
                     await prisma.connection.update({
                         where: { id: conn.id },

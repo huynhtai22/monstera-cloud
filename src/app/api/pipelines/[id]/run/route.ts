@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { google } from "googleapis";
-import { ShopeeClient } from "@/lib/shopee";
+import { shopeeDataClient } from "@/lib/shopee";
 
 export async function POST(req: Request, context: { params: any }) {
     let syncLogId;
@@ -56,32 +56,20 @@ export async function POST(req: Request, context: { params: any }) {
         if (sourceCreds.access_token && sourceCreds.shop_id) {
             console.log("[PIPELINE] Detected real Shopee OAuth credentials. Fetching live data...");
             try {
-                const shopee = new ShopeeClient();
-                const path = '/api/v2/order/get_order_list';
                 const timeTo = Math.floor(Date.now() / 1000);
-                const timeFrom = timeTo - (14 * 24 * 60 * 60); // Past 14 days maximum
+                const timeFrom = timeTo - (14 * 24 * 60 * 60);
+                const opts = { accessToken: sourceCreds.access_token, shopId: Number(sourceCreds.shop_id) };
 
-                const requestUrl = shopee.buildRequestUrl(path, sourceCreds.access_token, sourceCreds.shop_id, {
-                    time_range_field: 'create_time',
-                    time_from: timeFrom,
-                    time_to: timeTo,
-                    page_size: 50
-                });
+                const shopeeData = await shopeeDataClient.getOrderList(opts, timeFrom, timeTo);
 
-                const shopeeRes = await fetch(requestUrl);
-                const shopeeData = await shopeeRes.json();
-
-                if (shopeeData.error) {
-                    console.warn("[PIPELINE] Live Shopee API returned an error:", shopeeData.message);
-                } else if (shopeeData.response && shopeeData.response.order_list) {
-                    // Map Real Shopee Response to normalized format
+                if (shopeeData.response && shopeeData.response.order_list) {
                     orders = shopeeData.response.order_list.map((o: any) => ({
                         order_id: o.order_sn,
                         customer_name: "Hidden by Shopee Privacy",
                         status: o.order_status,
                         total_amount: o.total_amount,
                         currency: o.currency || "Local",
-                        items_count: 1, // Detailed items require another API call
+                        items_count: 1,
                         created_at: new Date(o.create_time * 1000).toISOString()
                     }));
                 }

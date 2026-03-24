@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { ShopeeClient } from "@/lib/shopee";
+import { shopeeDataClient } from "@/lib/shopee";
 
 /**
  * GET /api/export/rows
@@ -65,24 +65,13 @@ export async function GET(request: Request) {
         if (sourceConnection.provider === "shopee" && sourceCreds.access_token && sourceCreds.shop_id) {
             console.log("[EXPORT API] Pulling live Shopee data via extension request...");
             try {
-                const shopee = new ShopeeClient();
-                const path = '/api/v2/order/get_order_list';
                 const timeTo = Math.floor(Date.now() / 1000);
                 const timeFrom = timeTo - (14 * 24 * 60 * 60);
+                const opts = { accessToken: sourceCreds.access_token, shopId: Number(sourceCreds.shop_id) };
 
-                const requestUrl = shopee.buildRequestUrl(path, sourceCreds.access_token, sourceCreds.shop_id, {
-                    time_range_field: 'create_time',
-                    time_from: timeFrom,
-                    time_to: timeTo,
-                    page_size: 50
-                });
+                const shopeeData = await shopeeDataClient.getOrderList(opts, timeFrom, timeTo);
 
-                const shopeeRes = await fetch(requestUrl);
-                const shopeeData = await shopeeRes.json();
-
-                if (shopeeData.error) {
-                    console.warn("[EXPORT API] Live Shopee API returned an error:", shopeeData.message);
-                } else if (shopeeData.response && shopeeData.response.order_list) {
+                if (shopeeData.response && shopeeData.response.order_list) {
                     shopeeData.response.order_list.forEach((o: any) => {
                         rows.push([
                             o.order_sn,

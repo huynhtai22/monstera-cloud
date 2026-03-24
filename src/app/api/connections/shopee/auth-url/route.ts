@@ -25,7 +25,7 @@ export async function GET(request: Request) {
         const redirectUrl = `${protocol}://${host}/api/auth/shopee/callback?workspaceId=${workspaceId}`;
 
         const shopee = new ShopeeClient();
-        const authUrl = shopee.getAuthUrl(redirectUrl);
+        const authUrl = shopee.getAuthorizeUrl(redirectUrl, workspaceId);
 
         return NextResponse.json({ url: authUrl });
     } catch (error) {
