@@ -26,11 +26,16 @@ export function isShopeeConnectEnabled(): boolean {
 export function isTikTokBusinessConnectEnabled(): boolean {
   const toggle = (process.env.TIKTOK_BUSINESS_CONNECT_ENABLED || 'true').toLowerCase();
   if (toggle === 'false') return false;
-  // Require at least the client key to be present
+  // Require BOTH app_id and secret — without the secret, token exchange will fail
   const key = (
     process.env.TIKTOK_BUSINESS_CLIENT_KEY ||
     process.env.TIKTOK_BUSINESS_APP_ID ||
     ''
   ).trim();
-  return key.length > 0;
+  const secret = (
+    process.env.TIKTOK_BUSINESS_CLIENT_SECRET ||
+    process.env.TIKTOK_BUSINESS_APP_SECRET ||
+    ''
+  ).trim();
+  return key.length > 0 && secret.length > 0;
 }

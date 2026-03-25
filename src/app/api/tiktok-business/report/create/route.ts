@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { tiktokReportClient, CreateReportTaskParams } from '@/lib/tiktok-business';
+import { getValidTikTokToken } from '@/lib/tiktok-refresh';
 import prisma from '@/lib/prisma';
 
 /**
@@ -15,7 +16,7 @@ import prisma from '@/lib/prisma';
  */
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.email) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -29,21 +30,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'connectionId and advertiser_id are required' }, { status: 400 });
     }
 
+    // Scope the lookup to workspaces the current user belongs to (prevents IDOR)
     const conn = await (prisma.connection as any).findFirst({
-      where: { id: connectionId, provider: 'tiktok_business', status: 'connected' },
+      where: {
+        id: connectionId,
+        provider: 'tiktok_business',
+        status: 'connected',
+        workspace: { members: { some: { userId: session.user.id } } },
+      },
     });
     if (!conn) {
       return NextResponse.json({ error: 'TikTok Business connection not found' }, { status: 404 });
     }
 
-    const creds = JSON.parse(conn.credentials) as {
-      accessToken: string;
-      sandbox?: boolean;
-    };
+    // Auto-refresh access token if it is close to expiry
+    const accessToken = await getValidTikTokToken(conn);
+
+    const creds = JSON.parse(conn.credentials) as { sandbox?: boolean };
 
     // Sandbox: use synchronous report endpoint (async tasks not supported)
     if (creds.sandbox === true) {
-      const rows = await tiktokReportClient.getSyncReport(creds.accessToken, {
+      const rows = await tiktokReportClient.getSyncReport(accessToken, {
         advertiser_id,
         ...reportParams,
       });
@@ -52,7 +59,7 @@ export async function POST(req: Request) {
 
     // Production: create async task
     const taskId = await tiktokReportClient.createTask(
-      creds.accessToken,
+      accessToken,
       { advertiser_id, ...reportParams },
       false,
     );

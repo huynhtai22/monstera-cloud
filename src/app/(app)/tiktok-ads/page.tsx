@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import Image from "next/image";
 import { Loader2, Play, CheckCircle2, AlertCircle, Download, RefreshCw, FlaskConical, Plus, Sparkles } from "lucide-react";
 import useSWR, { mutate } from "swr";
@@ -59,12 +59,11 @@ function daysAgo(n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function exportCsv(rows: ReportRow[], dims: string[], metrics: string[]) {
-  const headers = [...dims, ...metrics];
+function exportCsv(rows: ReportRow[], columns: string[]) {
   const lines = [
-    headers.join(","),
+    columns.join(","),
     ...rows.map((r) =>
-      headers
+      columns
         .map((h) => {
           const v = r.dimensions[h] ?? r.metrics[h] ?? "";
           return `"${String(v).replace(/"/g, '""')}"`;
@@ -139,6 +138,14 @@ export default function TikTokAdsPage() {
   const [seedResult, setSeedResult] = useState<string | null>(null);
   const [seedError, setSeedError] = useState<string | null>(null);
 
+  // Polling interval ref — cleared on unmount to prevent memory leaks
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+    };
+  }, []);
+
   const handleSeedData = async () => {
     if (!connectionId) { setSeedError("Select a connection first."); return; }
     setIsSeeding(true);
@@ -178,6 +185,12 @@ export default function TikTokAdsPage() {
     setSandboxSaving(true);
     setSandboxError(null);
     try {
+      // Resolve workspace: use active workspace or fall back to first in the list
+      const wsId =
+        activeWorkspaceId ||
+        (Array.isArray(workspaces) && workspaces[0]?.id) ||
+        undefined;
+
       const res = await fetch("/api/tiktok-business/sandbox-connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -185,6 +198,7 @@ export default function TikTokAdsPage() {
           accessToken: sandboxToken.trim(),
           advertiserId: sandboxAdvertiserId.trim(),
           accountName: sandboxName || `TikTok Ads Sandbox (${sandboxAdvertiserId})`,
+          workspaceId: wsId,
         }),
       });
       const data = await res.json();
@@ -208,7 +222,8 @@ export default function TikTokAdsPage() {
   const poll = useCallback(
     async (tid: string, connId: string, advId: string) => {
       setIsPolling(true);
-      const interval = setInterval(async () => {
+      if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = setInterval(async () => {
         try {
           const res = await fetch(
             `/api/tiktok-business/report/${tid}?connectionId=${connId}&advertiser_id=${advId}`
@@ -218,16 +233,20 @@ export default function TikTokAdsPage() {
 
           if (data.status === "COMPLETED") {
             setRows(data.rows ?? []);
-            clearInterval(interval);
+            clearInterval(pollingIntervalRef.current!);
+            pollingIntervalRef.current = null;
             setIsPolling(false);
           } else if (data.status === "FAILED") {
             setError("Report task failed on TikTok side. Try a smaller date range.");
-            clearInterval(interval);
+            clearInterval(pollingIntervalRef.current!);
+            pollingIntervalRef.current = null;
             setIsPolling(false);
           }
-        } catch {
-          clearInterval(interval);
+        } catch (e: any) {
+          clearInterval(pollingIntervalRef.current!);
+          pollingIntervalRef.current = null;
           setIsPolling(false);
+          setError(e.message || "Polling interrupted. Please try again.");
         }
       }, 3000);
     },
@@ -640,7 +659,7 @@ export default function TikTokAdsPage() {
                 )}
                 {rows && rows.length > 0 && (
                   <button
-                    onClick={() => exportCsv(rows, selectedDims, selectedMetrics)}
+                    onClick={() => exportCsv(rows, allColumns)}
                     className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 px-2.5 py-1 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
                   >
                     <Download className="w-3 h-3" /> Export CSV

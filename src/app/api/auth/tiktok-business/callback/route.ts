@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
 import { tiktokBusinessClient } from '@/lib/tiktok-business';
 import prisma from '@/lib/prisma';
 import { isTikTokBusinessConnectEnabled } from '@/lib/integration-flags';
@@ -17,14 +19,13 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
+  const base = publicBaseUrl(request);
 
   // Marketing API returns auth_code (not code), plus state
   const authCode = searchParams.get('auth_code');
-  const state = searchParams.get('state');       // workspace id we passed
+  const state = searchParams.get('state'); // workspace id we passed
   const err = searchParams.get('error');
   const errDesc = searchParams.get('error_description');
-
-  const base = publicBaseUrl(request);
 
   if (err) {
     console.error('[TIKTOK_BUSINESS_OAUTH]', err, errDesc);
@@ -34,12 +35,33 @@ export async function GET(request: Request) {
   }
 
   if (!authCode) {
-    return NextResponse.json({ error: 'No auth_code provided by TikTok' }, { status: 400 });
+    return NextResponse.redirect(
+      new URL('/dashboard?tiktok_business_error=missing_auth_code', base)
+    );
   }
 
   const workspaceId = state || '';
   if (!workspaceId) {
-    return NextResponse.json({ error: 'Invalid state / workspace session' }, { status: 400 });
+    return NextResponse.redirect(
+      new URL('/dashboard?tiktok_business_error=invalid_state', base)
+    );
+  }
+
+  // Verify the currently logged-in user actually belongs to the workspace in state.
+  // This prevents an attacker from hijacking another user's OAuth flow.
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.redirect(new URL('/login', base));
+  }
+
+  const membership = await (prisma.workspaceMember as any).findFirst({
+    where: { workspaceId, userId: session.user.id },
+  });
+  if (!membership) {
+    console.warn('[TIKTOK_BUSINESS_OAUTH] User %s is not a member of workspace %s', session.user.id, workspaceId);
+    return NextResponse.redirect(
+      new URL('/dashboard?tiktok_business_error=workspace_access_denied', base)
+    );
   }
 
   try {
@@ -75,9 +97,8 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/dashboard', base));
   } catch (error: any) {
     console.error('[TIKTOK_BUSINESS_AUTH_ERROR]', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to authenticate with TikTok Business' },
-      { status: 500 }
+    return NextResponse.redirect(
+      new URL(`/dashboard?tiktok_business_error=${encodeURIComponent(error.message || 'auth_failed')}`, base)
     );
   }
 }
