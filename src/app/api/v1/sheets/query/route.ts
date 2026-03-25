@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { effectiveSheetsPlan } from '@/lib/sheets-reviewer';
 import { tiktokReportClient } from '@/lib/tiktok-business';
 import { metaReportClient, META_DEFAULT_FIELDS } from '@/lib/meta-ads';
 import { getValidMetaToken } from '@/lib/meta-refresh';
@@ -52,7 +53,9 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json({ error: 'no_account', message: 'No Monstera Cloud account for this email.' }, { status: 404 });
     }
-    if (user.plan !== 'starter' && user.plan !== 'professional') {
+
+    const plan = effectiveSheetsPlan(user.plan, googleUser.email);
+    if (plan !== 'starter' && plan !== 'professional') {
       return NextResponse.json({
         error: 'upgrade_required',
         message: 'This feature requires a paid plan. Upgrade at monstera-cloud.com/pricing',
@@ -173,7 +176,7 @@ export async function POST(req: Request) {
     const flatRows = rows; // already flattened above per source
 
     // Row limit based on plan
-    const maxRows = user.plan === 'professional' ? 100_000 : 10_000;
+    const maxRows = plan === 'professional' ? 100_000 : 10_000;
 
     const limited = flatRows.slice(0, maxRows);
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { effectiveSheetsPlan } from '@/lib/sheets-reviewer';
 
 /**
  * POST /api/v1/sheets/auth
@@ -47,7 +48,8 @@ export async function POST(req: Request) {
       }, { status: 404 });
     }
 
-    const isPaid = user.plan === 'starter' || user.plan === 'professional';
+    const plan = effectiveSheetsPlan(user.plan, googleUser.email);
+    const isPaid = plan === 'starter' || plan === 'professional';
 
     return NextResponse.json({
       authenticated: true,
@@ -56,11 +58,11 @@ export async function POST(req: Request) {
         name: user.name,
         email: user.email,
         image: user.image,
-        plan: user.plan,
+        plan,
       },
       features: {
         canQuery: isPaid,
-        maxRows: user.plan === 'professional' ? 100_000 : user.plan === 'starter' ? 10_000 : 0,
+        maxRows: plan === 'professional' ? 100_000 : plan === 'starter' ? 10_000 : 0,
         refreshIntervals: isPaid ? ['manual', '1h', '3h', '6h', '12h', 'daily'] : [],
       },
       upgradeUrl: isPaid ? null : 'https://monstera-cloud.vercel.app/pricing',
