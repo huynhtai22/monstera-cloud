@@ -10,8 +10,31 @@ function apiKey(): string {
   return (process.env.LEMONSQUEEZY_API_KEY || "").trim();
 }
 
-function storeId(): string {
-  return (process.env.LEMONSQUEEZY_STORE_ID || "").trim();
+/**
+ * Fetch the store ID from the LemonSqueezy API.
+ * Falls back to the LEMONSQUEEZY_STORE_ID env var if set.
+ * Auto-discovery avoids test/live mode store ID mismatches.
+ */
+async function resolveStoreId(): Promise<string> {
+  const envId = (process.env.LEMONSQUEEZY_STORE_ID || "").trim();
+
+  // Always verify against the API — env var may be stale or from wrong mode
+  try {
+    const res = await fetch("https://api.lemonsqueezy.com/v1/stores", {
+      headers: {
+        Authorization: `Bearer ${apiKey()}`,
+        Accept: "application/vnd.api+json",
+      },
+    });
+    const json = await res.json();
+    const firstStore = json?.data?.[0];
+    if (firstStore?.id) return String(firstStore.id);
+  } catch {
+    // Network failure — fall back to env var
+  }
+
+  if (envId) return envId;
+  throw new Error("Could not resolve LemonSqueezy Store ID. Check your API key.");
 }
 
 export function webhookSecret(): string {
@@ -44,14 +67,16 @@ export async function createCheckoutUrl(
   userId: string
 ): Promise<string> {
   const key = apiKey();
-  const store = storeId();
   const variant = variantIdForPlan(plan);
 
-  if (!key || !store || !variant) {
+  if (!key || !variant) {
     throw new Error(
-      "LemonSqueezy is not fully configured. Check LEMONSQUEEZY_API_KEY, LEMONSQUEEZY_STORE_ID, and variant ID env vars."
+      "LemonSqueezy is not fully configured. Check LEMONSQUEEZY_API_KEY and variant ID env vars."
     );
   }
+
+  // Auto-resolve store ID from the API to avoid test/live mode mismatches
+  const store = await resolveStoreId();
 
   const res = await fetch("https://api.lemonsqueezy.com/v1/checkouts", {
     method: "POST",
