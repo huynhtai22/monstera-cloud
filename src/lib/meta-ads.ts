@@ -1,0 +1,365 @@
+/**
+ * Meta Marketing API v23.0 client
+ * Docs: https://developers.facebook.com/docs/marketing-api
+ * Insights: https://developers.facebook.com/docs/marketing-api/insights
+ *
+ * Auth flow:
+ *   OAuth 2.0 → short-lived token → exchange for long-lived token (60 days)
+ *   For SaaS production: upgrade to System User Token (never expires) via Business Manager
+ *
+ * Rate limits:
+ *   Rolling 1hr window: 60 + (400 × active_ads) calls per ad account.
+ *   Check x-fb-ads-insights-throttle header — back off at >80% utilization.
+ */
+
+const META_API_VERSION = 'v23.0';
+const META_GRAPH_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
+const META_AUTH_BASE = 'https://www.facebook.com/dialog/oauth';
+const META_TOKEN_URL = `https://graph.facebook.com/${META_API_VERSION}/oauth/access_token`;
+
+function appId(): string {
+  return (process.env.META_ADS_APP_ID || '').trim();
+}
+
+function appSecret(): string {
+  return (process.env.META_ADS_APP_SECRET || '').trim();
+}
+
+// ── OAuth types ──────────────────────────────────────────────────────────────
+
+export interface MetaTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in?: number; // seconds — present on short-lived tokens
+}
+
+export interface MetaLongLivedTokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number; // ~5183944 seconds (~60 days)
+}
+
+export interface MetaTokenDebug {
+  app_id: string;
+  is_valid: boolean;
+  expires_at?: number; // unix timestamp
+  scopes: string[];
+}
+
+// ── Insights types ───────────────────────────────────────────────────────────
+
+export type MetaInsightsLevel = 'account' | 'campaign' | 'adset' | 'ad';
+
+export interface MetaInsightsParams {
+  adAccountId: string;
+  fields: string[];
+  level: MetaInsightsLevel;
+  datePreset?: string;           // last_7d, last_30d, last_month, etc.
+  timeRange?: { since: string; until: string }; // YYYY-MM-DD
+  timeIncrement?: number;        // 1 = daily, 7 = weekly
+  breakdowns?: string[];         // age, gender, country, placement, device
+  actionAttributionWindows?: string[];
+  limit?: number;
+  filtering?: Array<{ field: string; operator: string; value: unknown }>;
+}
+
+export interface MetaInsightsRow {
+  [key: string]: string | number | MetaAction[] | undefined;
+  date_start?: string;
+  date_stop?: string;
+  spend?: string;
+  impressions?: string;
+  clicks?: string;
+  reach?: string;
+  cpm?: string;
+  cpc?: string;
+  ctr?: string;
+  purchase_roas?: MetaAction[];
+  actions?: MetaAction[];
+  action_values?: MetaAction[];
+}
+
+export interface MetaAction {
+  action_type: string;
+  value: string;
+  '7d_click'?: string;
+  '1d_view'?: string;
+}
+
+export interface MetaAsyncReportStatus {
+  id: string;
+  account_id: string;
+  async_status: 'Job Not Started' | 'Job Started' | 'Job Running' | 'Job Completed' | 'Job Failed' | 'Job Skipped';
+  async_percent_completion: number;
+  date_start?: string;
+  date_stop?: string;
+}
+
+// ── Meta Ads OAuth client ────────────────────────────────────────────────────
+
+export class MetaAdsClient {
+  /**
+   * Step 1 — Build the Facebook OAuth URL.
+   * Scopes: ads_read (Standard Access, no review), business_management (needs Advanced Access).
+   */
+  getAuthorizeUrl(state: string, redirectUri: string): string {
+    const id = appId();
+    if (!id) throw new Error('META_ADS_APP_ID is not configured');
+
+    const url = new URL(META_AUTH_BASE);
+    url.searchParams.set('client_id', id);
+    url.searchParams.set('redirect_uri', redirectUri);
+    url.searchParams.set('state', state);
+    url.searchParams.set('scope', 'ads_read,business_management');
+    url.searchParams.set('response_type', 'code');
+
+    return url.toString();
+  }
+
+  /**
+   * Step 2 — Exchange the authorization code for a short-lived token,
+   * then immediately upgrade it to a long-lived token (~60 days).
+   */
+  async exchangeCode(code: string, redirectUri: string): Promise<MetaLongLivedTokenResponse> {
+    const id = appId();
+    const secret = appSecret();
+    if (!id || !secret) throw new Error('META_ADS_APP_ID or META_ADS_APP_SECRET not configured');
+
+    // Exchange for short-lived token
+    const shortUrl = new URL(META_TOKEN_URL);
+    shortUrl.searchParams.set('client_id', id);
+    shortUrl.searchParams.set('client_secret', secret);
+    shortUrl.searchParams.set('redirect_uri', redirectUri);
+    shortUrl.searchParams.set('code', code);
+
+    const shortRes = await fetch(shortUrl.toString());
+    const shortJson = await shortRes.json() as MetaTokenResponse & { error?: { message: string } };
+    if (shortJson.error) throw new Error(`Meta OAuth error: ${shortJson.error.message}`);
+
+    // Upgrade to long-lived token
+    return this.exchangeForLongLived(shortJson.access_token);
+  }
+
+  /**
+   * Upgrade a short-lived token to a long-lived token (~60 days).
+   */
+  async exchangeForLongLived(shortToken: string): Promise<MetaLongLivedTokenResponse> {
+    const id = appId();
+    const secret = appSecret();
+    if (!id || !secret) throw new Error('META_ADS_APP_ID or META_ADS_APP_SECRET not configured');
+
+    const url = new URL(META_TOKEN_URL);
+    url.searchParams.set('grant_type', 'fb_exchange_token');
+    url.searchParams.set('client_id', id);
+    url.searchParams.set('client_secret', secret);
+    url.searchParams.set('fb_exchange_token', shortToken);
+
+    const res = await fetch(url.toString());
+    const json = await res.json() as MetaLongLivedTokenResponse & { error?: { message: string } };
+    if (json.error) throw new Error(`Meta token exchange error: ${(json as any).error.message}`);
+
+    return json;
+  }
+
+  /**
+   * Debug a token to get expiry and scopes.
+   */
+  async debugToken(accessToken: string): Promise<MetaTokenDebug> {
+    const id = appId();
+    const secret = appSecret();
+    const url = new URL(`${META_GRAPH_BASE}/debug_token`);
+    url.searchParams.set('input_token', accessToken);
+    url.searchParams.set('access_token', `${id}|${secret}`);
+
+    const res = await fetch(url.toString());
+    const json = await res.json() as { data: MetaTokenDebug; error?: { message: string } };
+    if (json.error) throw new Error(`Meta debug_token error: ${(json as any).error.message}`);
+    return json.data;
+  }
+
+  /**
+   * Fetch the list of ad accounts the token has access to.
+   */
+  async getAdAccounts(accessToken: string): Promise<Array<{ id: string; name: string; currency: string; account_status: number }>> {
+    const url = new URL(`${META_GRAPH_BASE}/me/adaccounts`);
+    url.searchParams.set('fields', 'id,name,currency,account_status');
+    url.searchParams.set('access_token', accessToken);
+
+    const res = await fetch(url.toString());
+    const json = await res.json() as { data: Array<{ id: string; name: string; currency: string; account_status: number }>; error?: { message: string } };
+    if (json.error) throw new Error(`Meta adaccounts error: ${(json as any).error.message}`);
+    return json.data ?? [];
+  }
+}
+
+export const metaAdsClient = new MetaAdsClient();
+
+// ── Meta Insights (reporting) client ────────────────────────────────────────
+
+export class MetaReportClient {
+  /**
+   * Synchronous insights call — works well for short date ranges.
+   * For large date ranges use createAsyncReport instead.
+   */
+  async getInsights(
+    accessToken: string,
+    params: MetaInsightsParams,
+  ): Promise<MetaInsightsRow[]> {
+    const allRows: MetaInsightsRow[] = [];
+    let afterCursor: string | null = null;
+
+    do {
+      const url = new URL(`${META_GRAPH_BASE}/act_${params.adAccountId}/insights`);
+      url.searchParams.set('access_token', accessToken);
+      url.searchParams.set('fields', params.fields.join(','));
+      url.searchParams.set('level', params.level);
+      url.searchParams.set('limit', String(params.limit ?? 500));
+
+      if (params.datePreset) url.searchParams.set('date_preset', params.datePreset);
+      if (params.timeRange) url.searchParams.set('time_range', JSON.stringify(params.timeRange));
+      if (params.timeIncrement) url.searchParams.set('time_increment', String(params.timeIncrement));
+      if (params.breakdowns?.length) url.searchParams.set('breakdowns', params.breakdowns.join(','));
+      if (params.actionAttributionWindows?.length) {
+        url.searchParams.set('action_attribution_windows', JSON.stringify(params.actionAttributionWindows));
+      }
+      if (params.filtering?.length) url.searchParams.set('filtering', JSON.stringify(params.filtering));
+      if (afterCursor) url.searchParams.set('after', afterCursor);
+
+      const res = await fetch(url.toString());
+      const json = await res.json() as {
+        data: MetaInsightsRow[];
+        paging?: { cursors?: { after?: string }; next?: string };
+        error?: { message: string; code: number };
+      };
+
+      if (json.error) throw new Error(`Meta Insights error ${json.error.code}: ${json.error.message}`);
+
+      allRows.push(...(json.data ?? []));
+      afterCursor = json.paging?.next ? (json.paging.cursors?.after ?? null) : null;
+    } while (afterCursor);
+
+    return allRows;
+  }
+
+  /**
+   * Create an async report job for large datasets or wide date ranges.
+   * Returns a report_run_id to poll with checkAsyncReport.
+   */
+  async createAsyncReport(
+    accessToken: string,
+    params: MetaInsightsParams,
+  ): Promise<string> {
+    const url = new URL(`${META_GRAPH_BASE}/act_${params.adAccountId}/insights`);
+
+    const body = new URLSearchParams();
+    body.set('access_token', accessToken);
+    body.set('fields', params.fields.join(','));
+    body.set('level', params.level);
+    body.set('limit', String(params.limit ?? 500));
+
+    if (params.datePreset) body.set('date_preset', params.datePreset);
+    if (params.timeRange) body.set('time_range', JSON.stringify(params.timeRange));
+    if (params.timeIncrement) body.set('time_increment', String(params.timeIncrement));
+    if (params.breakdowns?.length) body.set('breakdowns', params.breakdowns.join(','));
+    if (params.actionAttributionWindows?.length) {
+      body.set('action_attribution_windows', JSON.stringify(params.actionAttributionWindows));
+    }
+    if (params.filtering?.length) body.set('filtering', JSON.stringify(params.filtering));
+
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      body,
+    });
+
+    const json = await res.json() as { report_run_id?: string; error?: { message: string; code: number } };
+    if (json.error) throw new Error(`Meta async report error ${json.error.code}: ${json.error.message}`);
+    if (!json.report_run_id) throw new Error('Meta async report did not return a report_run_id');
+
+    return json.report_run_id;
+  }
+
+  /**
+   * Poll the status of an async report job.
+   */
+  async checkAsyncReport(accessToken: string, reportRunId: string): Promise<MetaAsyncReportStatus> {
+    const url = new URL(`${META_GRAPH_BASE}/${reportRunId}`);
+    url.searchParams.set('access_token', accessToken);
+
+    const res = await fetch(url.toString());
+    const json = await res.json() as MetaAsyncReportStatus & { error?: { message: string; code: number } };
+    if ((json as any).error) throw new Error(`Meta async status error ${(json as any).error.code}: ${(json as any).error.message}`);
+
+    return json;
+  }
+
+  /**
+   * Fetch results of a completed async report job.
+   * Handles cursor pagination automatically.
+   */
+  async fetchAsyncResults(accessToken: string, reportRunId: string): Promise<MetaInsightsRow[]> {
+    const allRows: MetaInsightsRow[] = [];
+    let afterCursor: string | null = null;
+
+    do {
+      const url = new URL(`${META_GRAPH_BASE}/${reportRunId}/insights`);
+      url.searchParams.set('access_token', accessToken);
+      url.searchParams.set('limit', '500');
+      if (afterCursor) url.searchParams.set('after', afterCursor);
+
+      const res = await fetch(url.toString());
+      const json = await res.json() as {
+        data: MetaInsightsRow[];
+        paging?: { cursors?: { after?: string }; next?: string };
+        error?: { message: string; code: number };
+      };
+
+      if (json.error) throw new Error(`Meta fetch results error ${json.error.code}: ${json.error.message}`);
+
+      allRows.push(...(json.data ?? []));
+      afterCursor = json.paging?.next ? (json.paging.cursors?.after ?? null) : null;
+    } while (afterCursor);
+
+    return allRows;
+  }
+}
+
+export const metaReportClient = new MetaReportClient();
+
+// ── Default metrics and breakdowns ──────────────────────────────────────────
+
+export const META_DEFAULT_FIELDS = [
+  'campaign_name',
+  'adset_name',
+  'ad_name',
+  'spend',
+  'impressions',
+  'reach',
+  'clicks',
+  'cpm',
+  'cpc',
+  'ctr',
+  'frequency',
+  'purchase_roas',
+  'actions',
+  'action_values',
+  'cost_per_action_type',
+  'date_start',
+  'date_stop',
+];
+
+export const META_BREAKDOWN_OPTIONS = [
+  { value: 'age', label: 'Age' },
+  { value: 'gender', label: 'Gender' },
+  { value: 'country', label: 'Country' },
+  { value: 'region', label: 'Region' },
+  { value: 'device_platform', label: 'Device Platform' },
+  { value: 'publisher_platform', label: 'Publisher Platform' },
+  { value: 'platform_position', label: 'Placement' },
+];
+
+export const META_LEVEL_OPTIONS: Array<{ value: MetaInsightsLevel; label: string }> = [
+  { value: 'campaign', label: 'Campaign' },
+  { value: 'adset', label: 'Ad Set' },
+  { value: 'ad', label: 'Ad' },
+  { value: 'account', label: 'Account' },
+];

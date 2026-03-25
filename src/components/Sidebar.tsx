@@ -20,7 +20,9 @@ import {
     TrendingUp,
     ShoppingBag,
     Sun,
-    Moon
+    Moon,
+    Facebook,
+    Search
 } from "lucide-react";
 import useSWR from "swr";
 import { useSession, signOut } from "next-auth/react";
@@ -103,6 +105,8 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                 { name: "Data Explorer", href: "/explorer", icon: FileEdit },
                 { name: "Reports", href: "/reports", icon: LineChart, comingSoon: true },
                 { name: "TikTok Ads", href: "/tiktok-ads", icon: TrendingUp },
+                { name: "Meta Ads", href: "/meta-ads", icon: Facebook },
+                { name: "Google Ads", href: "/google-ads", icon: Search },
                 { name: "Shopee", href: "/shopee", icon: ShoppingBag },
                 { name: "Templates", href: "/templates", icon: Wand2, comingSoon: true },
             ]

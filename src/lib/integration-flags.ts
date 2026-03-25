@@ -23,6 +23,23 @@ export function isShopeeConnectEnabled(): boolean {
   return key.length > 0;
 }
 
+export function isMetaAdsConnectEnabled(): boolean {
+  const toggle = (process.env.META_ADS_CONNECT_ENABLED || 'true').toLowerCase();
+  if (toggle === 'false') return false;
+  const appId = (process.env.META_ADS_APP_ID || '').trim();
+  const secret = (process.env.META_ADS_APP_SECRET || '').trim();
+  return appId.length > 0 && secret.length > 0;
+}
+
+export function isGoogleAdsConnectEnabled(): boolean {
+  const toggle = (process.env.GOOGLE_ADS_CONNECT_ENABLED || 'true').toLowerCase();
+  if (toggle === 'false') return false;
+  const clientId = (process.env.GOOGLE_ADS_CLIENT_ID || '').trim();
+  const clientSecret = (process.env.GOOGLE_ADS_CLIENT_SECRET || '').trim();
+  const devToken = (process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '').trim();
+  return clientId.length > 0 && clientSecret.length > 0 && devToken.length > 0;
+}
+
 export function isTikTokBusinessConnectEnabled(): boolean {
   const toggle = (process.env.TIKTOK_BUSINESS_CONNECT_ENABLED || 'true').toLowerCase();
   if (toggle === 'false') return false;

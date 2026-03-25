@@ -13,6 +13,10 @@ export interface PlanLimits {
   syncIntervalMs: number;
   /** Minimum ms between TikTok report requests (anti-burst cache TTL) */
   tiktokReportCooldownMs: number;
+  /** Minimum ms between Meta Ads report requests */
+  metaReportCooldownMs: number;
+  /** Minimum ms between Google Ads report requests */
+  googleReportCooldownMs: number;
   /** Job queue priority — higher = processed first */
   priority: number;
   /** Human-readable sync cadence label */
@@ -24,6 +28,8 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     maxPipelines: 1,
     syncIntervalMs: 7 * 24 * 60 * 60 * 1000,   // 1 week
     tiktokReportCooldownMs: 60 * 60 * 1000,      // 1 hour cooldown on reports
+    metaReportCooldownMs: 60 * 60 * 1000,        // 1 hour cooldown
+    googleReportCooldownMs: 60 * 60 * 1000,      // 1 hour cooldown
     priority: 1,
     syncLabel: 'Weekly',
   },
@@ -31,6 +37,8 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     maxPipelines: 5,
     syncIntervalMs: 24 * 60 * 60 * 1000,         // 1 day
     tiktokReportCooldownMs: 15 * 60 * 1000,       // 15 min cooldown
+    metaReportCooldownMs: 15 * 60 * 1000,         // 15 min cooldown
+    googleReportCooldownMs: 15 * 60 * 1000,       // 15 min cooldown
     priority: 2,
     syncLabel: 'Daily',
   },
@@ -38,6 +46,8 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     maxPipelines: 15,
     syncIntervalMs: 60 * 60 * 1000,              // 1 hour
     tiktokReportCooldownMs: 15 * 60 * 1000,      // 15 min cooldown
+    metaReportCooldownMs: 15 * 60 * 1000,        // 15 min cooldown
+    googleReportCooldownMs: 15 * 60 * 1000,      // 15 min cooldown
     priority: 3,
     syncLabel: 'Hourly',
   },
@@ -45,6 +55,8 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     maxPipelines: Infinity,
     syncIntervalMs: 15 * 60 * 1000,              // 15 min
     tiktokReportCooldownMs: 5 * 60 * 1000,       // 5 min cooldown
+    metaReportCooldownMs: 5 * 60 * 1000,         // 5 min cooldown
+    googleReportCooldownMs: 5 * 60 * 1000,       // 5 min cooldown
     priority: 4,
     syncLabel: 'Real-time',
   },

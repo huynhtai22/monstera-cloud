@@ -61,6 +61,22 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
             }
             window.location.href = `/api/auth/tiktok-business/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
             return;
+        } else if (id === 'meta_ads') {
+            if (!activeWorkspaceId) {
+                setIsProcessing(false);
+                alert('Select a workspace first');
+                return;
+            }
+            window.location.href = `/api/auth/meta-ads/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
+            return;
+        } else if (id === 'google_ads') {
+            if (!activeWorkspaceId) {
+                setIsProcessing(false);
+                alert('Select a workspace first');
+                return;
+            }
+            window.location.href = `/api/auth/google-ads/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
+            return;
         }
 
         // Shopee / others: redirect when authUrl is set

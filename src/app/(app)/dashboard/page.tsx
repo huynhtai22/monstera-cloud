@@ -19,7 +19,9 @@ const fetcher = async (url: string) => {
 
 const ALL_CATALOG_INTEGRATIONS = [
     { id: 'tiktok_shop', name: 'TikTok Shop', description: 'Seller catalog, orders, and Shop analytics.', status: 'available' as const, logoSrc: '/logos/tiktok.svg' },
-    { id: 'tiktok_business', name: 'TikTok Business', description: 'TikTok account and marketing data (Login Kit OAuth).', status: 'available' as const, logoSrc: '/logos/tiktok.svg' },
+    { id: 'tiktok_business', name: 'TikTok Ads', description: 'TikTok Marketing API — campaign and ad performance reporting.', status: 'available' as const, logoSrc: '/logos/tiktok.svg' },
+    { id: 'meta_ads', name: 'Meta Ads', description: 'Facebook & Instagram Ads — campaign, ad set, and ad performance via Marketing API.', status: 'available' as const, logoSrc: '/logos/facebook.svg' },
+    { id: 'google_ads', name: 'Google Ads', description: 'Search, Shopping, and Performance Max reporting via Google Ads API.', status: 'available' as const, logoSrc: '/logos/google-ads.svg' },
     { id: 'shopee', name: 'Shopee', description: 'Orders, products, and shop analytics from Shopee Open Platform.', status: 'available' as const, logoSrc: '/logos/shopee.svg' },
     { id: 'lazada', name: 'Lazada Seller', description: 'Order fulfillments and finance.', status: 'available' as const, logoSrc: '/logos/lazada.svg' },
     { id: 'shopify', name: 'Shopify', description: 'E-commerce platform orders.', status: 'available' as const, logoSrc: '/logos/shopify.svg' },
@@ -45,6 +47,8 @@ export default function DashboardPage() {
             if (item.id === 'tiktok_shop') return intConfig.tiktokShop !== false;
             if (item.id === 'tiktok_business') return intConfig.tiktokBusiness !== false;
             if (item.id === 'shopee') return intConfig.shopee !== false;
+            if (item.id === 'meta_ads') return intConfig.metaAds !== false;
+            if (item.id === 'google_ads') return intConfig.googleAds !== false;
             return true;
         });
     }, [intConfig]);
@@ -62,7 +66,9 @@ export default function DashboardPage() {
 
         const connectedSources = sourceConnections.map((conn: any) => {
             let logo = '/logos/postgres.svg';
-            if (conn.provider.includes('shopee')) logo = '/logos/shopee.svg';
+            if (conn.provider === 'meta_ads') logo = '/logos/facebook.svg';
+            else if (conn.provider === 'google_ads') logo = '/logos/google-ads.svg';
+            else if (conn.provider.includes('shopee')) logo = '/logos/shopee.svg';
             else if (conn.provider.includes('facebook') || conn.provider.includes('fb')) logo = '/logos/facebook.svg';
             else if (conn.provider.includes('google') || conn.provider.includes('ga4')) logo = '/logos/ga4.svg';
             else if (conn.provider.includes('tiktok_business')) logo = '/logos/tiktok.svg';
