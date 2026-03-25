@@ -126,7 +126,7 @@ export default function PricingPage() {
                             </li>
                             <li className="flex items-start gap-3 text-gray-300 text-sm font-medium">
                                 <Check className="text-emerald-500 w-5 h-5 shrink-0" />
-                                Basic Transformations
+                                CSV + Excel Export
                             </li>
                         </ul>
                         <CheckoutButton 
@@ -159,19 +159,19 @@ export default function PricingPage() {
                         <ul className="space-y-4 mb-8 flex-1 z-10 relative">
                             <li className="flex items-start gap-3 text-white text-sm font-semibold">
                                 <Check className="text-emerald-500 w-5 h-5 shrink-0 stroke-[3]" />
-                                Up to 250,000 Orders/Mo
-                            </li>
-                            <li className="flex items-start gap-3 text-white text-sm font-semibold">
-                                <Check className="text-emerald-500 w-5 h-5 shrink-0 stroke-[3]" />
-                                11.11 Flash-Sale Protection
-                            </li>
-                            <li className="flex items-start gap-3 text-white text-sm font-semibold">
-                                <Check className="text-emerald-500 w-5 h-5 shrink-0 stroke-[3]" />
                                 15 Active Pipelines
                             </li>
                             <li className="flex items-start gap-3 text-white text-sm font-semibold">
                                 <Check className="text-emerald-500 w-5 h-5 shrink-0 stroke-[3]" />
-                                PII Masking & Cryptography
+                                Hourly Sync — TikTok Ads, Shopee, Sheets
+                            </li>
+                            <li className="flex items-start gap-3 text-white text-sm font-semibold">
+                                <Check className="text-emerald-500 w-5 h-5 shrink-0 stroke-[3]" />
+                                15 TikTok report runs / hour
+                            </li>
+                            <li className="flex items-start gap-3 text-white text-sm font-semibold">
+                                <Check className="text-emerald-500 w-5 h-5 shrink-0 stroke-[3]" />
+                                Priority job queue — your syncs run first
                             </li>
                         </ul>
                         <div className="z-10 relative">
