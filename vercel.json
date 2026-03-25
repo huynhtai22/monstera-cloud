@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/sync-jobs",
-      "schedule": "* * * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }
