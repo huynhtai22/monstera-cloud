@@ -44,8 +44,18 @@ export default function RootLayout({
 }>) {
     return (
         <html lang="en" className="antialiased">
-            <head>
-                {/* Google Tag Manager */}
+            <body className={inter.className}>
+                {/* Google Tag Manager (noscript fallback for users with JS disabled) */}
+                <noscript>
+                    <iframe
+                        src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}
+                        height="0"
+                        width="0"
+                        style={{ display: "none", visibility: "hidden" }}
+                    />
+                </noscript>
+
+                {/* Google Tag Manager — must be inside <body>, not <head>, in Next.js App Router */}
                 <Script
                     id="gtm-script"
                     strategy="afterInteractive"
@@ -57,17 +67,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 })(window,document,'script','dataLayer','${GTM_ID}');`,
                     }}
                 />
-            </head>
-            <body className={inter.className}>
-                {/* Google Tag Manager (noscript fallback) */}
-                <noscript>
-                    <iframe
-                        src={`https://www.googletagmanager.com/ns.html?id=${GTM_ID}`}
-                        height="0"
-                        width="0"
-                        style={{ display: "none", visibility: "hidden" }}
-                    />
-                </noscript>
+
                 <NextAuthProvider>
                     {children}
                     <LiveChatWidget />
