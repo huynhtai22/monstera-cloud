@@ -121,6 +121,7 @@ model Pipeline {
   workspace               Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   logs                    SyncLog[]
   transformations         TransformationRule[]
+  syncJobs                SyncJob[]
 }
 
 model SyncLog {
@@ -154,4 +155,25 @@ model ApiKey {
   lastUsedAt  DateTime?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+// Job queue for scheduled pipeline syncs.
+// Processed by /api/cron/sync-jobs every minute.
+// Priority: enterprise=4, professional=3, starter=2, free=1
+model SyncJob {
+  id          String    @id @default(cuid())
+  pipelineId  String
+  userId      String
+  plan        String    @default("free")
+  status      String    @default("queued")  // queued | running | done | failed
+  priority    Int       @default(1)
+  scheduledAt DateTime
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  errorMsg    String?
+  createdAt   DateTime  @default(now())
+
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  @@index([status, priority, scheduledAt])
 }

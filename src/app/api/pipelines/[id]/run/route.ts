@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { google } from "googleapis";
 import { shopeeDataClient } from "@/lib/shopee";
+import { getPlanLimits } from "@/lib/plan-config";
 
 export async function POST(req: Request, context: { params: any }) {
     let syncLogId;
@@ -35,6 +36,26 @@ export async function POST(req: Request, context: { params: any }) {
 
         if (!pipeline) {
             return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
+        }
+
+        // Enforce sync cooldown — prevent re-runs faster than the plan allows
+        const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { plan: true } });
+        const limits = getPlanLimits(user?.plan ?? "free");
+
+        if (pipeline.lastSyncedAt) {
+            const msSinceLast = Date.now() - pipeline.lastSyncedAt.getTime();
+            if (msSinceLast < limits.syncIntervalMs) {
+                const waitSec = Math.ceil((limits.syncIntervalMs - msSinceLast) / 1000);
+                const waitMin = Math.ceil(waitSec / 60);
+                return NextResponse.json(
+                    {
+                        error: `Your ${user?.plan ?? "free"} plan syncs ${limits.syncLabel.toLowerCase()}. Please wait ${waitMin} more minute${waitMin === 1 ? "" : "s"} before re-running.`,
+                        code: "SYNC_COOLDOWN",
+                        retry_after_seconds: waitSec,
+                    },
+                    { status: 429 }
+                );
+            }
         }
 
         // 2. Locate User's Google OAuth Account
