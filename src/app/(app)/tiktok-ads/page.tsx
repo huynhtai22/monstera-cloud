@@ -2,7 +2,9 @@
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import Image from "next/image";
-import { Loader2, Play, CheckCircle2, AlertCircle, Download, RefreshCw, FlaskConical, Plus, Sparkles } from "lucide-react";
+import { Loader2, Play, CheckCircle2, AlertCircle, RefreshCw, FlaskConical, Plus, Sparkles } from "lucide-react";
+import { ExportDropdown } from "@/components/ExportDropdown";
+import { downloadCsv, downloadExcel } from "@/lib/export-utils";
 import useSWR, { mutate } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 
@@ -59,25 +61,18 @@ function daysAgo(n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-function exportCsv(rows: ReportRow[], columns: string[]) {
-  const lines = [
-    columns.join(","),
-    ...rows.map((r) =>
-      columns
-        .map((h) => {
-          const v = r.dimensions[h] ?? r.metrics[h] ?? "";
-          return `"${String(v).replace(/"/g, '""')}"`;
-        })
-        .join(",")
-    ),
-  ];
-  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `tiktok_ads_report_${today()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+/** Flatten TikTok's nested { dimensions, metrics } row format into plain objects. */
+function flattenRows(
+  rows: ReportRow[],
+  columns: string[]
+): Record<string, unknown>[] {
+  return rows.map((r) => {
+    const obj: Record<string, unknown> = {};
+    for (const col of columns) {
+      obj[col] = r.dimensions[col] ?? r.metrics[col] ?? "";
+    }
+    return obj;
+  });
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -658,12 +653,20 @@ export default function TikTokAdsPage() {
                   </span>
                 )}
                 {rows && rows.length > 0 && (
-                  <button
-                    onClick={() => exportCsv(rows, allColumns)}
-                    className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 px-2.5 py-1 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
-                  >
-                    <Download className="w-3 h-3" /> Export CSV
-                  </button>
+                  <ExportDropdown
+                    onCsv={() =>
+                      downloadCsv(
+                        flattenRows(rows, allColumns),
+                        `tiktok_ads_report_${today()}`
+                      )
+                    }
+                    onExcel={() =>
+                      downloadExcel(
+                        flattenRows(rows, allColumns),
+                        `tiktok_ads_report_${today()}`
+                      )
+                    }
+                  />
                 )}
               </div>
             </div>

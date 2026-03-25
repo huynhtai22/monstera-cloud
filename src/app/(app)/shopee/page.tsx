@@ -7,7 +7,6 @@ import {
   Play,
   CheckCircle2,
   AlertCircle,
-  Download,
   RefreshCw,
   Package,
   ShoppingCart,
@@ -16,6 +15,8 @@ import {
 } from "lucide-react";
 import useSWR from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
+import { ExportDropdown } from "@/components/ExportDropdown";
+import { downloadCsv, downloadExcel } from "@/lib/export-utils";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -28,29 +29,6 @@ function daysAgo(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return d.toISOString().slice(0, 10);
-}
-
-function exportCsv(rows: any[], filename: string) {
-  if (rows.length === 0) return;
-  const headers = Object.keys(rows[0]);
-  const lines = [
-    headers.join(","),
-    ...rows.map((r) =>
-      headers
-        .map((h) => {
-          const v = r[h] ?? "";
-          return `"${String(v).replace(/"/g, '""')}"`;
-        })
-        .join(",")
-    ),
-  ];
-  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 function flattenOrder(order: any) {
@@ -419,27 +397,24 @@ export default function ShopeePage() {
               </span>
               <div className="flex items-center gap-2">
                 {activeTab === "orders" && flatOrders.length > 0 && (
-                  <button
-                    onClick={() =>
-                      exportCsv(flatOrders, `shopee_orders_${today()}.csv`)
+                  <ExportDropdown
+                    onCsv={() =>
+                      downloadCsv(flatOrders, `shopee_orders_${today()}`)
                     }
-                    className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 px-2.5 py-1 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
-                  >
-                    <Download className="w-3 h-3" /> Export CSV
-                  </button>
+                    onExcel={() =>
+                      downloadExcel(flatOrders, `shopee_orders_${today()}`)
+                    }
+                  />
                 )}
                 {activeTab === "products" && flatProducts.length > 0 && (
-                  <button
-                    onClick={() =>
-                      exportCsv(
-                        flatProducts,
-                        `shopee_products_${today()}.csv`
-                      )
+                  <ExportDropdown
+                    onCsv={() =>
+                      downloadCsv(flatProducts, `shopee_products_${today()}`)
                     }
-                    className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 px-2.5 py-1 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
-                  >
-                    <Download className="w-3 h-3" /> Export CSV
-                  </button>
+                    onExcel={() =>
+                      downloadExcel(flatProducts, `shopee_products_${today()}`)
+                    }
+                  />
                 )}
               </div>
             </div>
