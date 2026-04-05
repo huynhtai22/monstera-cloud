@@ -20,9 +20,14 @@
 7. Query config saved to sheet properties for one-click refresh
 8. Optional: set auto-refresh schedule (1h, 3h, 6h, 12h, daily)
 
-## Publishing
+## Publishing (Google Workspace Marketplace)
 
-To publish to Google Workspace Marketplace:
-1. Deploy → New deployment → Add-on
-2. Fill in listing details
-3. Submit for review (takes 3-7 days)
+Follow **[MARKETPLACE-CHECKLIST.md](./MARKETPLACE-CHECKLIST.md)** end-to-end: trademark attribution in the Marketplace SDK listing, identical OAuth scopes in Apps Script / GCP consent screen / Marketplace SDK, Google Sheets API enabled on the linked project, OAuth verification **before** resubmitting Marketplace, and no public install links to an unpublished listing.
+
+High level:
+
+1. Deploy → New deployment → Add-on (create a new deployment version after any `appsscript.json` change).
+2. Complete the Marketplace SDK listing using the checklist (including **Google Sheets™** / **Google Workspace™** where appropriate and the trademark footnote in the long description).
+3. After OAuth verification is approved for the same Cloud project, submit the listing for Marketplace review (typically several business days).
+
+Do **not** add clickable Google Workspace Marketplace or Chrome Web Store install URLs to your marketing site, privacy policy domain pages, or OAuth-linked README until the listing is approved.

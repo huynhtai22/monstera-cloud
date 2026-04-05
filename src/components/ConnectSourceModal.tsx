@@ -1,10 +1,17 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Image from 'next/image';
-import { X, Loader2, CheckCircle2, ChevronRight, Settings2, Clock, Database, Globe } from 'lucide-react';
-import { useSWRConfig } from 'swr';
+import { X, Loader2, CheckCircle2, ChevronRight, Clock, Database, Globe, Facebook, Copy, Check } from 'lucide-react';
+import useSWR, { useSWRConfig } from 'swr';
 import { useWorkspaceStore } from '@/store/workspace';
+
+async function integrationsConfigFetcher(url: string) {
+    const res = await fetch(url);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Failed to load');
+    return data;
+}
 
 interface ConnectSourceModalProps {
     isOpen: boolean;
@@ -20,6 +27,7 @@ interface ConnectSourceModalProps {
 export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSourceModalProps) {
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [copiedWhich, setCopiedWhich] = useState<null | 'production' | 'session'>(null);
 
     // Default to Shopee if null, though dashboard should always pass one
     const id = integration?.id || 'shopee';
@@ -29,6 +37,66 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
     // Hooks for network invalidation and global state
     const { mutate } = useSWRConfig();
     const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
+    const { data: intConfig } = useSWR(isOpen ? '/api/integrations/config' : null, integrationsConfigFetcher);
+
+    const oauthCallbackUrl =
+        id === 'meta_ads'
+            ? intConfig?.oauthCallbacks?.metaAds
+            : id === 'google_ads'
+              ? intConfig?.oauthCallbacks?.googleAds
+              : undefined;
+
+    /** MonsteraCloud.com — use in Meta / Google developer consoles for production. */
+    const productionOauthUrl =
+        id === 'meta_ads'
+            ? intConfig?.oauthCallbacksProduction?.metaAds
+            : id === 'google_ads'
+              ? intConfig?.oauthCallbacksProduction?.googleAds
+              : undefined;
+
+    const sessionDiffersFromProduction =
+        Boolean(
+            productionOauthUrl &&
+                oauthCallbackUrl &&
+                oauthCallbackUrl !== productionOauthUrl
+        );
+
+    const step1Content = useMemo(() => {
+        if (id === 'meta_ads') {
+            return {
+                title: 'Sign in with Facebook',
+                subtitle:
+                    "You'll use your Facebook account to authorize read-only access to Meta Ads (Facebook and Instagram) for reporting in Monstera Cloud.",
+                permissions: [
+                    'Read ad account structure (campaigns, ad sets, ads)',
+                    'Read performance metrics and insights for reporting',
+                ],
+                footnote: 'We never post to Facebook or change your ads on your behalf.',
+            };
+        }
+        if (id === 'google_ads') {
+            return {
+                title: 'Sign in with Google',
+                subtitle:
+                    "You'll use your Google account to authorize read-only access to Google Ads data for reporting in Monstera Cloud.",
+                permissions: [
+                    'Read accessible Google Ads customer accounts',
+                    'Read campaign and performance data for reporting',
+                ],
+                footnote: 'We never modify your Google Ads campaigns.',
+            };
+        }
+        return {
+            title: 'Authorize Access',
+            subtitle: `You need to authenticate via ${name}'s Open Platform to grant Monstera Cloud read-only access to your data.`,
+            permissions: [
+                'Read daily orders & fulfillment status',
+                'Read product inventory & variants',
+                'Read financial and payout data',
+            ],
+            footnote: '* Monstera Cloud will never modify your live store data.',
+        };
+    }, [id, name]);
 
     if (!isOpen) return null;
 
@@ -125,11 +193,22 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
 
     const handleClose = () => {
         if (!isProcessing) {
+            setCopiedWhich(null);
             onClose();
-            // Reset state after animation
             setTimeout(() => {
                 setStep(1);
             }, 300);
+        }
+    };
+
+    const copyOAuthCallback = async (url: string, which: 'production' | 'session') => {
+        if (!url) return;
+        try {
+            await navigator.clipboard.writeText(url);
+            setCopiedWhich(which);
+            setTimeout(() => setCopiedWhich(null), 2000);
+        } catch {
+            /* ignore */
         }
     };
 
@@ -164,22 +243,99 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                     {step === 1 && (
                         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                             <div className="text-center mb-6">
-                                <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Authorize Access</h4>
-                                <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">You need to authenticate via {name}&apos;s Open Platform to grant Monstera Cloud read-only access to your data.</p>
+                                <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{step1Content.title}</h4>
+                                <p className="text-gray-500 dark:text-gray-400 text-sm">{step1Content.subtitle}</p>
                             </div>
 
-                            <div className="bg-blue-50/50 rounded-xl p-5 border border-blue-100 space-y-3">
+                            <div
+                                className={
+                                    id === 'meta_ads'
+                                        ? 'bg-[#1877F2]/10 dark:bg-[#1877F2]/15 rounded-xl p-5 border border-[#1877F2]/25 space-y-3'
+                                        : id === 'google_ads'
+                                          ? 'bg-slate-50 dark:bg-slate-900/50 rounded-xl p-5 border border-slate-200 dark:border-slate-600 space-y-3'
+                                          : 'bg-blue-50/50 rounded-xl p-5 border border-blue-100 dark:border-blue-900/40 space-y-3'
+                                }
+                            >
                                 <p className="font-semibold text-gray-900 dark:text-white text-sm flex items-center">
-                                    <Globe className="w-4 h-4 text-blue-600 mr-2" />
-                                    Permissions Requested:
+                                    <Globe
+                                        className={`w-4 h-4 mr-2 shrink-0 ${
+                                            id === 'meta_ads'
+                                                ? 'text-[#1877F2]'
+                                                : id === 'google_ads'
+                                                  ? 'text-blue-600'
+                                                  : 'text-blue-600'
+                                        }`}
+                                    />
+                                    Permissions requested
                                 </p>
-                                <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300 dark:text-gray-600 ml-6">
-                                    <li className="flex items-start"><CheckCircle2 className="w-4 h-4 text-emerald-500 mr-2 shrink-0 mt-0.5" /> Read daily orders & fulfillment status</li>
-                                    <li className="flex items-start"><CheckCircle2 className="w-4 h-4 text-emerald-500 mr-2 shrink-0 mt-0.5" /> Read product inventory & variants</li>
-                                    <li className="flex items-start"><CheckCircle2 className="w-4 h-4 text-emerald-500 mr-2 shrink-0 mt-0.5" /> Read financial and payout data</li>
+                                <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300 ml-6">
+                                    {step1Content.permissions.map((line) => (
+                                        <li key={line} className="flex items-start">
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-500 mr-2 shrink-0 mt-0.5" />
+                                            {line}
+                                        </li>
+                                    ))}
                                 </ul>
-                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-4 italic">* Monstera Cloud will never modify your live store data.</p>
+                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-4 italic">{step1Content.footnote}</p>
                             </div>
+
+                            {(id === 'meta_ads' || id === 'google_ads') && (
+                                <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/90 dark:bg-slate-900/50 p-4 space-y-3">
+                                    <div>
+                                        <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">
+                                            {id === 'meta_ads'
+                                                ? 'Meta — Valid OAuth Redirect URI'
+                                                : 'Google Cloud — Authorized redirect URI'}
+                                        </p>
+                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mt-1">
+                                            Production domain <span className="font-medium text-gray-700 dark:text-slate-300">monsteracloud.com</span> — paste this full URL into your developer console (exact match, including{' '}
+                                            <code className="text-gray-700 dark:text-slate-300">https</code>).
+                                        </p>
+                                    </div>
+                                    {productionOauthUrl ? (
+                                        <div className="flex gap-2 items-start">
+                                            <code className="text-[11px] leading-relaxed break-all flex-1 text-gray-900 dark:text-slate-100 bg-white dark:bg-slate-800 px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-600">
+                                                {productionOauthUrl}
+                                            </code>
+                                            <button
+                                                type="button"
+                                                onClick={() => copyOAuthCallback(productionOauthUrl, 'production')}
+                                                className="shrink-0 p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                                                title="Copy production URL"
+                                            >
+                                                {copiedWhich === 'production' ? (
+                                                    <Check className="w-4 h-4 text-emerald-600" aria-hidden />
+                                                ) : (
+                                                    <Copy className="w-4 h-4" aria-hidden />
+                                                )}
+                                            </button>
+                                        </div>
+                                    ) : intConfig ? (
+                                        <p className="text-[11px] text-amber-600 dark:text-amber-500">Could not load production callback URL.</p>
+                                    ) : (
+                                        <p className="text-[11px] text-gray-400 dark:text-gray-500 animate-pulse">Loading…</p>
+                                    )}
+                                    {sessionDiffersFromProduction && oauthCallbackUrl && (
+                                        <div className="pt-2 border-t border-slate-200 dark:border-slate-600 space-y-1.5">
+                                            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                                This session (local / preview)
+                                            </p>
+                                            <div className="flex gap-2 items-start">
+                                                <code className="text-[11px] leading-relaxed break-all flex-1 text-gray-600 dark:text-slate-400 bg-white/70 dark:bg-slate-800/80 px-2 py-1.5 rounded border border-slate-200 dark:border-slate-600">
+                                                    {oauthCallbackUrl}
+                                                </code>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => copyOAuthCallback(oauthCallbackUrl, 'session')}
+                                                    className="shrink-0 p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-500 hover:bg-slate-50 dark:hover:bg-slate-700 text-[10px] px-2"
+                                                >
+                                                    {copiedWhich === 'session' ? 'Copied' : 'Copy'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -249,8 +405,57 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                         </button>
                     )}
 
-                    {step === 1 && (
+                    {step === 1 && id === 'meta_ads' && (
                         <button
+                            type="button"
+                            onClick={handleAuthenticate}
+                            disabled={isProcessing}
+                            className="px-5 py-2.5 text-sm font-semibold text-white bg-[#1877F2] rounded-xl hover:bg-[#166FE5] transition-all disabled:opacity-70 flex items-center justify-center gap-2 shadow-sm min-w-[200px]"
+                        >
+                            {isProcessing ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                                    Connecting…
+                                </>
+                            ) : (
+                                <>
+                                    <Facebook className="w-5 h-5 shrink-0" strokeWidth={2} aria-hidden />
+                                    Continue with Facebook
+                                </>
+                            )}
+                        </button>
+                    )}
+
+                    {step === 1 && id === 'google_ads' && (
+                        <button
+                            type="button"
+                            onClick={handleAuthenticate}
+                            disabled={isProcessing}
+                            className="px-5 py-2.5 text-sm font-semibold text-gray-800 dark:text-gray-100 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 transition-all disabled:opacity-70 flex items-center justify-center gap-2 shadow-sm min-w-[200px]"
+                        >
+                            {isProcessing ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                                    Connecting…
+                                </>
+                            ) : (
+                                <>
+                                    <Image
+                                        src="/logos/google-ads.svg"
+                                        alt=""
+                                        width={20}
+                                        height={20}
+                                        className="object-contain shrink-0"
+                                    />
+                                    Continue with Google
+                                </>
+                            )}
+                        </button>
+                    )}
+
+                    {step === 1 && id !== 'meta_ads' && id !== 'google_ads' && (
+                        <button
+                            type="button"
                             onClick={handleAuthenticate}
                             disabled={isProcessing}
                             className="px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-70 flex items-center shadow-sm"

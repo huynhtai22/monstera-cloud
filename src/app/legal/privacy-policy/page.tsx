@@ -47,9 +47,9 @@ export default function PrivacyPolicyPage() {
         </section>
 
         <section className="mb-10">
-          <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">4. Google Sheets Add-on &amp; Google User Data</h2>
+          <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">4. Google Sheets™ Add-on &amp; Google User Data</h2>
           <p className="mb-4 text-slate-600 dark:text-slate-400">
-            The Monstera Cloud Google Sheets Add-on requests limited access to your Google account. This section describes exactly what data we access, why, and how it is handled.
+            The Monstera Cloud Google Sheets™ Add-on requests limited access to your Google account. This section describes exactly what data we access, why, and how it is handled.
           </p>
           <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-3">4.1 What Google data we access</h3>
           <ul className="list-disc pl-6 mb-4 text-slate-600 dark:text-slate-400 space-y-2">
@@ -60,7 +60,7 @@ export default function PrivacyPolicyPage() {
           <ul className="list-disc pl-6 mb-4 text-slate-600 dark:text-slate-400 space-y-2">
             <li>Your email address is sent to our server to look up your account and check your subscription status. This is a transient lookup — we do not create a copy or log of your Google identity token.</li>
             <li>Advertising data (e.g., from TikTok Ads) that you request is passed through our server and written directly to your spreadsheet. We do not permanently store this advertising data.</li>
-            <li>Query configurations (which dimensions, metrics, and date range you selected) are saved locally within your Google Sheet properties so that you can refresh the query later. This data never leaves your spreadsheet.</li>
+            <li>Query configurations (which dimensions, metrics, and date range you selected) are saved locally within your Google Sheets™ spreadsheet properties so that you can refresh the query later. This data never leaves your spreadsheet.</li>
           </ul>
           <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-3">4.3 What we do NOT do</h3>
           <ul className="list-disc pl-6 mb-4 text-slate-600 dark:text-slate-400 space-y-2">
@@ -114,7 +114,7 @@ export default function PrivacyPolicyPage() {
             <li>Request correction of inaccurate personal data.</li>
             <li>Request deletion of your personal data and account.</li>
             <li>Withdraw consent for data processing at any time.</li>
-            <li>Revoke the Google Sheets Add-on permissions at any time via your <a href="https://myaccount.google.com/permissions" className="text-emerald-600 hover:underline" target="_blank" rel="noopener noreferrer">Google Account permissions page</a>.</li>
+            <li>Revoke the Google Sheets™ Add-on permissions at any time via your <a href="https://myaccount.google.com/permissions" className="text-emerald-600 hover:underline" target="_blank" rel="noopener noreferrer">Google Account permissions page</a>.</li>
           </ul>
         </section>
 
@@ -124,6 +124,10 @@ export default function PrivacyPolicyPage() {
             If you have questions or comments about this policy, you may email us at privacy@monsteracloud.com.
           </p>
         </section>
+
+        <p className="text-xs text-slate-500 dark:text-slate-500 not-prose">
+          Google Sheets™ and Google Workspace™ are trademarks of Google LLC.
+        </p>
       </div>
     </div>
   );

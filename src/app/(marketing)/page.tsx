@@ -29,11 +29,11 @@ export default function MarketingPage() {
                     <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tighter leading-[1.05] mb-6 max-w-4xl">
                         <span className="block text-2xl md:text-3xl font-bold text-emerald-400 mb-2 tracking-normal">Monstera Cloud</span>
                         Your e-commerce data. <br className="hidden md:block"/>
-                        <span className="text-emerald-500">In Google Sheets.</span>
+                        <span className="text-emerald-500">In Google Sheets™.</span>
                     </h1>
 
                     <p className="text-lg md:text-xl text-gray-400 max-w-2xl mb-10 leading-relaxed font-medium">
-                        Connect TikTok Ads, Shopee, and more. Pull ad performance, orders, and product data directly into Google Sheets or your dashboard. Built for sellers and agencies in Vietnam and Southeast Asia.
+                        Connect TikTok Ads, Shopee, and more. Pull ad performance, orders, and product data directly into Google Sheets™ or your dashboard. Built for sellers and agencies in Vietnam and Southeast Asia.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4 w-full">
@@ -61,7 +61,7 @@ export default function MarketingPage() {
                         <div className="flex items-center justify-center space-x-8 opacity-70 grayscale hover:grayscale-0 transition-all duration-500">
                             <Image src="/logos/tiktok.svg" alt="TikTok Ads" width={100} height={32} className="h-6 w-auto brightness-0 invert" />
                             <Image src="/logos/shopee.svg" alt="Shopee" width={100} height={32} className="h-6 w-auto brightness-0 invert" />
-                            <Image src="/logos/gsheets.svg" alt="Google Sheets" width={100} height={32} className="h-6 w-auto brightness-0 invert" />
+                            <Image src="/logos/gsheets.svg" alt="Google Sheets™" width={100} height={32} className="h-6 w-auto brightness-0 invert" />
                         </div>
                     </div>
                 </div>
@@ -98,8 +98,8 @@ export default function MarketingPage() {
                         <div className="md:col-span-2 relative group bg-[#18181b] rounded-xl border border-white/10 p-0 overflow-hidden hover:border-white/20 transition-colors flex flex-col md:flex-row items-center">
                             <div className="p-8 md:w-1/2">
                                 <Table2 className="w-8 h-8 text-cyan-500 mb-6" />
-                                <h3 className="text-xl font-bold text-white mb-3 tracking-tight">Google Sheets Add-on</h3>
-                                <p className="text-sm text-gray-400 mb-6">Install our Sheets add-on, pick your data source and metrics from a sidebar, and write results directly into your spreadsheet. Set auto-refresh from 1 hour to daily.</p>
+                                <h3 className="text-xl font-bold text-white mb-3 tracking-tight">Google Sheets™ Add-on</h3>
+                                <p className="text-sm text-gray-400 mb-6">Install our Google Sheets™ add-on, pick your data source and metrics from a sidebar, and write results directly into your spreadsheet. Set auto-refresh from 1 hour to daily.</p>
                                 <Link href="/register" className="text-white text-sm font-bold flex items-center hover:text-emerald-500 transition-colors">
                                     Try It Free <ArrowRight className="w-4 h-4 ml-1" />
                                 </Link>
@@ -132,7 +132,7 @@ export default function MarketingPage() {
                             <div className="p-8 md:w-1/2 z-10">
                                 <BarChart3 className="w-8 h-8 text-emerald-500 mb-6" />
                                 <h3 className="text-xl font-bold text-white mb-3 tracking-tight">Built for Southeast Asia</h3>
-                                <p className="text-sm text-gray-400 mb-6">Designed for Vietnamese sellers and agencies managing TikTok Shop and Shopee. Pay in VND or USD. More APAC connectors coming soon.</p>
+                                <p className="text-sm text-gray-400 mb-6">Designed for Vietnamese sellers and agencies managing TikTok Shop and Shopee. Pay in VND or USD. Additional APAC connectors are on the roadmap.</p>
                                 <Link href="/pricing" className="text-white text-sm font-bold flex items-center hover:text-emerald-400 transition-colors">
                                     See Plans <ArrowRight className="w-4 h-4 ml-1" />
                                 </Link>
@@ -176,6 +176,9 @@ export default function MarketingPage() {
                         <span>256-BIT ENCRYPTED</span>
                         <span className="w-1 h-1 rounded-full bg-gray-700"></span>
                         <span className="text-emerald-500">VND + USD BILLING</span>
+                    </p>
+                    <p className="mt-8 text-[10px] text-gray-600 max-w-xl mx-auto leading-relaxed">
+                        Google Sheets™ and Google Workspace™ are trademarks of Google LLC.
                     </p>
                 </div>
             </section>

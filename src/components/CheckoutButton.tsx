@@ -3,23 +3,35 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
+import { metaPixelCustom } from '@/lib/meta-pixel';
 
 interface CheckoutButtonProps {
   plan: 'starter' | 'professional';
   billingCycle?: 'monthly' | 'annual';
   invoiceCurrency?: 'VND' | 'USD'; // kept for API compatibility, LemonSqueezy bills in USD
+  /** Meta Pixel custom event — use for Custom Conversions in Events Manager */
+  metaPixelEvent?: string;
+  metaPixelParams?: Record<string, string | number | boolean>;
   className?: string;
   children: React.ReactNode;
 }
 
 export function CheckoutButton({
   plan,
+  metaPixelEvent,
+  metaPixelParams,
   className,
   children,
 }: CheckoutButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleCheckout = async () => {
+    if (metaPixelEvent) {
+      metaPixelCustom(metaPixelEvent, {
+        plan,
+        ...metaPixelParams,
+      });
+    }
     try {
       setIsLoading(true);
 

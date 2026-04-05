@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { sendPasswordResetEmail } from "@/lib/mail";
+import { PRODUCT_SITE_URL } from "@/lib/site-url";
 import crypto from "crypto";
 
 export async function POST(request: Request) {
@@ -29,15 +31,33 @@ export async function POST(request: Request) {
             data: { email, token, expires }
         });
 
-        const baseUrl = process.env.NEXTAUTH_URL || "https://monsteracloud.com";
+        const baseUrl = process.env.NEXTAUTH_URL || PRODUCT_SITE_URL;
         const resetUrl = `${baseUrl}/reset-password?token=${token}`;
 
-        await sendPasswordResetEmail(email, resetUrl);
+        const mail = await sendPasswordResetEmail(email, resetUrl);
+        if (!mail.success) {
+            console.error("[FORGOT PASSWORD] Resend failed:", mail.error);
+            // Still return success so response does not reveal whether the email exists
+        }
 
         return NextResponse.json({ success: true });
 
     } catch (error) {
         console.error("[FORGOT PASSWORD] Error:", error);
-        return NextResponse.json({ error: "Internal server error." }, { status: 500 });
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+            if (error.code === "P2021" || error.code === "P2003") {
+                return NextResponse.json(
+                    {
+                        error:
+                            "Password reset is temporarily unavailable. Run database migrations (PasswordResetToken table) or contact support.",
+                    },
+                    { status: 503 }
+                );
+            }
+        }
+        return NextResponse.json(
+            { error: "Something went wrong. Please try again later." },
+            { status: 500 }
+        );
     }
 }

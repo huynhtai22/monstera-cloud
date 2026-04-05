@@ -6,12 +6,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
+import { metaPixelCustom } from "@/lib/meta-pixel";
 
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  /** When true, session cookie lasts up to 30 days; when false, 24 hours. */
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -26,12 +29,14 @@ function LoginContent() {
       const res = await signIn("credentials", {
         email,
         password,
+        rememberMe: rememberMe ? "true" : "false",
         redirect: false,
       });
 
       if (res?.error) {
         setError("Invalid email or password");
       } else {
+        metaPixelCustom("MC_Login_Email_Success", { method: "email" });
         router.push("/dashboard");
         router.refresh();
       }
@@ -43,6 +48,7 @@ function LoginContent() {
   };
 
   const signInWithGoogle = async () => {
+    metaPixelCustom("MC_Login_Google_Click", { method: "google" });
     setIsGoogleLoading(true);
     await signIn("google", { callbackUrl: "/dashboard" });
   };
@@ -85,6 +91,9 @@ function LoginContent() {
               </>
             )}
           </button>
+          <p className="mt-2 text-center text-[12px] text-gray-400">
+            Google sign-in keeps you signed in for up to 30 days on this device.
+          </p>
         </div>
 
         {/* OR Divider */}
@@ -146,6 +155,19 @@ function LoginContent() {
               onChange={(e) => setPassword(e.target.value)}
               className="appearance-none block w-full px-5 py-4 border border-[#d2ddec] dark:border-slate-700 rounded-md placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#1ba177] focus:border-[#1ba177] sm:text-[16px] bg-[#f0f4f9] dark:bg-slate-800 text-gray-900 dark:text-white transition-colors"
             />
+          </div>
+
+          <div className="flex items-start gap-3 pt-2">
+            <input
+              id="rememberMe"
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-[#1ba177] focus:ring-[#1ba177]"
+            />
+            <label htmlFor="rememberMe" className="text-[14px] text-gray-600 dark:text-gray-400 leading-snug cursor-pointer select-none">
+              Keep me signed in for 30 days on this device
+            </label>
           </div>
 
           <div className="pt-4">

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { Logo } from "@/components/Logo";
+import { metaPixelCustom } from "@/lib/meta-pixel";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -34,6 +35,7 @@ export default function RegisterPage() {
         throw new Error(registerData.message || "Registration failed");
       }
 
+      metaPixelCustom("MC_SignUp_Email_AccountCreated", { method: "email" });
       router.push(`/verify?email=${encodeURIComponent(email)}`);
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred. Please try again.");
@@ -43,6 +45,7 @@ export default function RegisterPage() {
   };
 
   const signInWithGoogle = async () => {
+    metaPixelCustom("MC_SignUp_Google_Click", { method: "google" });
     setIsGoogleLoading(true);
     await signIn("google", { callbackUrl: "/dashboard" });
   };

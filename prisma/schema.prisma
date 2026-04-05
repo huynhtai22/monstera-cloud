@@ -67,16 +67,17 @@ model User {
 }
 
 model Workspace {
-  id          String            @id @default(cuid())
-  name        String
-  slug        String            @unique
-  ownerId     String
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  connections Connection[]
-  pipelines   Pipeline[]
-  members     WorkspaceMember[]
-  apiKeys     ApiKey[]
+  id              String            @id @default(cuid())
+  name            String
+  slug            String            @unique
+  ownerId         String
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  connections     Connection[]
+  pipelines       Pipeline[]
+  members         WorkspaceMember[]
+  apiKeys         ApiKey[]
+  campaignMetrics CampaignMetric[]
 }
 
 model WorkspaceMember {
@@ -91,18 +92,19 @@ model WorkspaceMember {
 }
 
 model Connection {
-  id                   String     @id @default(cuid())
+  id                   String           @id @default(cuid())
   workspaceId          String
   name                 String
   type                 String
   provider             String
   credentials          String
-  status               String     @default("connected")
-  createdAt            DateTime   @default(now())
-  updatedAt            DateTime   @updatedAt
-  workspace            Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  destinationPipelines Pipeline[] @relation("DestinationConnection")
-  sourcePipelines      Pipeline[] @relation("SourceConnection")
+  status               String           @default("connected")
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  destinationPipelines Pipeline[]       @relation("DestinationConnection")
+  sourcePipelines      Pipeline[]       @relation("SourceConnection")
+  campaignMetrics      CampaignMetric[]
 }
 
 model Pipeline {
@@ -176,4 +178,37 @@ model SyncJob {
   pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 
   @@index([status, priority, scheduledAt])
+}
+
+model CampaignMetric {
+  id           String     @id @default(cuid())
+  workspaceId  String
+  connectionId String
+  platform     String
+  accountId    String
+  accountName  String?
+  campaignId   String
+  campaignName String
+  adsetId      String?
+  adsetName    String?
+  date         DateTime
+  impressions  Int        @default(0)
+  clicks       Int        @default(0)
+  spend        Float      @default(0)
+  reach        Int?
+  cpc          Float?
+  ctr          Float?
+  conversions  Float?
+  revenue      Float?
+  roas         Float?
+  currency     String     @default("USD")
+  rawData      String?
+  pulledAt     DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+  workspace    Workspace  @relation(fields: [workspaceId], references: [id])
+  connection   Connection @relation(fields: [connectionId], references: [id])
+
+  @@unique([connectionId, campaignId, date])
+  @@index([workspaceId, platform, date])
+  @@index([connectionId, date])
 }

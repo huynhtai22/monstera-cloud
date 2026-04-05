@@ -6,6 +6,7 @@ import { metaReportClient, META_DEFAULT_FIELDS } from '@/lib/meta-ads';
 import { getValidMetaToken } from '@/lib/meta-refresh';
 import { googleAdsReportClient } from '@/lib/google-ads';
 import { getValidGoogleAdsToken } from '@/lib/google-ads-refresh';
+import { PRODUCT_SITE_URL } from '@/lib/site-url';
 
 /**
  * POST /api/v1/sheets/query
@@ -58,8 +59,8 @@ export async function POST(req: Request) {
     if (plan !== 'starter' && plan !== 'professional') {
       return NextResponse.json({
         error: 'upgrade_required',
-        message: 'This feature requires a paid plan. Upgrade at monstera-cloud.com/pricing',
-        upgradeUrl: 'https://monstera-cloud.vercel.app/pricing',
+        message: `This feature requires a paid plan. Upgrade at ${PRODUCT_SITE_URL.replace('https://', '')}/pricing`,
+        upgradeUrl: `${PRODUCT_SITE_URL}/pricing`,
       }, { status: 403 });
     }
 

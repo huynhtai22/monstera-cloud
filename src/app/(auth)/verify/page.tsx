@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { Logo } from "@/components/Logo";
+import { metaPixelCustom, metaPixelStandard } from "@/lib/meta-pixel";
 
 function VerifyContent() {
   const router = useRouter();
@@ -72,6 +73,8 @@ function VerifyContent() {
         throw new Error(data.message || "Verification failed");
       }
 
+      metaPixelStandard("CompleteRegistration", { content_name: "email_verified" });
+      metaPixelCustom("MC_SignUp_Email_Verified", { method: "email" });
       router.push("/login?registered=true");
     } catch (err: any) {
       setError(err.message || "An error occurred.");

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Check, CheckCircle2, Shield, ShieldCheck, Zap, MapPin } from "lucide-react";
 import { CheckoutButton } from "@/components/CheckoutButton";
 import { useState, useEffect } from "react";
+import { metaPixelCustom } from "@/lib/meta-pixel";
 
 export default function PricingPage() {
     const [isAnnual, setIsAnnual] = useState(true);
@@ -47,7 +48,7 @@ export default function PricingPage() {
                         Stop paying per row.
                     </h1>
                     <p className="text-gray-400 text-lg max-w-xl mx-auto mt-4">
-                        Flat-rate pricing for TikTok Ads reporting, Shopee data, and Google Sheets.
+                        Flat-rate pricing for TikTok Ads reporting, Shopee data, and Google Sheets™.
                     </p>
                 </div>
 
@@ -106,6 +107,13 @@ export default function PricingPage() {
                         </div>
                         <Link
                             href="/register"
+                            onClick={() =>
+                                metaPixelCustom("MC_Pricing_Free_GetStarted", {
+                                    plan: "free",
+                                    billing_cycle: isAnnual ? "annual" : "monthly",
+                                    currency: payCurrency,
+                                })
+                            }
                             className="w-full py-2.5 rounded-lg bg-white text-black text-sm font-semibold text-center hover:bg-gray-100 transition-colors mb-6"
                         >
                             Get started
@@ -116,7 +124,7 @@ export default function PricingPage() {
                                 <FeatureItem>1 active pipeline</FeatureItem>
                                 <FeatureItem>Weekly sync</FeatureItem>
                                 <FeatureItem>TikTok Ads &amp; Shopee connectors</FeatureItem>
-                                <FeatureItem>Google Sheets add-on</FeatureItem>
+                                <FeatureItem>Google Sheets™ add-on</FeatureItem>
                             </ul>
                         </div>
                     </div>
@@ -142,6 +150,11 @@ export default function PricingPage() {
                             plan="starter"
                             billingCycle={isAnnual ? "annual" : "monthly"}
                             invoiceCurrency={payCurrency}
+                            metaPixelEvent="MC_Pricing_Starter_Checkout"
+                            metaPixelParams={{
+                                billing_cycle: isAnnual ? "annual" : "monthly",
+                                currency: payCurrency,
+                            }}
                             className="w-full py-2.5 rounded-lg bg-white text-black text-sm font-semibold text-center hover:bg-gray-100 transition-colors mb-6"
                         >
                             Get started
@@ -182,6 +195,11 @@ export default function PricingPage() {
                             plan="professional"
                             billingCycle={isAnnual ? "annual" : "monthly"}
                             invoiceCurrency={payCurrency}
+                            metaPixelEvent="MC_Pricing_Pro_Checkout"
+                            metaPixelParams={{
+                                billing_cycle: isAnnual ? "annual" : "monthly",
+                                currency: payCurrency,
+                            }}
                             className="w-full py-3 rounded-lg bg-emerald-600 text-white text-sm font-bold text-center hover:bg-emerald-500 transition-colors mb-1 shadow-lg shadow-emerald-600/30"
                         >
                             Try for 14 days free
@@ -213,6 +231,12 @@ export default function PricingPage() {
                         </div>
                         <Link
                             href="mailto:hello@monsteracloud.com"
+                            onClick={() =>
+                                metaPixelCustom("MC_Pricing_Enterprise_Contact", {
+                                    plan: "enterprise",
+                                    currency: payCurrency,
+                                })
+                            }
                             className="w-full py-2.5 rounded-lg border border-white/20 text-white text-sm font-semibold text-center hover:bg-white/5 transition-colors mb-6"
                         >
                             Contact us
@@ -266,7 +290,7 @@ export default function PricingPage() {
                                 <CompareRow label="TikTok Report Cooldown" values={["60 min", "15 min", "15 min", "5 min"]} />
                                 <CompareRow label="Job Queue Priority" values={["Low", "Normal", "High", "Highest"]} />
                                 <CompareRow label="CSV / Excel Export" values={[false, true, true, true]} />
-                                <CompareRow label="Google Sheets Add-on" values={[true, true, true, true]} />
+                                <CompareRow label="Google Sheets™ Add-on" values={[true, true, true, true]} />
                                 <CompareRow label="Dedicated Hosting" values={[false, false, false, true]} />
                             </tbody>
                         </table>
@@ -289,6 +313,9 @@ export default function PricingPage() {
                             <span className="text-[10px] font-mono tracking-widest uppercase">VND + USD billing</span>
                         </div>
                     </div>
+                    <p className="mt-10 text-[10px] text-gray-600 max-w-xl mx-auto leading-relaxed">
+                        Google Sheets™ and Google Workspace™ are trademarks of Google LLC.
+                    </p>
                 </div>
 
             </div>

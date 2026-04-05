@@ -6,16 +6,29 @@ import {
   isMetaAdsConnectEnabled,
   isGoogleAdsConnectEnabled,
 } from '@/lib/integration-flags';
+import { googleAdsOAuthRedirectUri, metaAdsOAuthRedirectUri } from '@/lib/oauth-callback-urls';
+import { PRODUCT_SITE_URL } from '@/lib/site-url';
 
 /**
  * Public config for the dashboard (no secrets). Used to show/hide connect cards.
+ * oauthCallbacks — exact redirect URIs to register in Meta & Google Cloud consoles.
  */
-export async function GET() {
+export async function GET(request: Request) {
   return NextResponse.json({
     tiktokShop: isTikTokShopConnectEnabled(),
     tiktokBusiness: isTikTokBusinessConnectEnabled(),
     shopee: isShopeeConnectEnabled(),
     metaAds: isMetaAdsConnectEnabled(),
     googleAds: isGoogleAdsConnectEnabled(),
+    productDomain: PRODUCT_SITE_URL,
+    oauthCallbacks: {
+      metaAds: metaAdsOAuthRedirectUri(request),
+      googleAds: googleAdsOAuthRedirectUri(request),
+    },
+    /** Same paths on MonsteraCloud.com — paste these into Meta / Google Cloud consoles for production. */
+    oauthCallbacksProduction: {
+      metaAds: `${PRODUCT_SITE_URL}/api/auth/meta-ads/callback`,
+      googleAds: `${PRODUCT_SITE_URL}/api/auth/google-ads/callback`,
+    },
   });
 }

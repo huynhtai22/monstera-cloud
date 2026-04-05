@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { effectiveSheetsPlan } from '@/lib/sheets-reviewer';
+import { PRODUCT_SITE_URL } from '@/lib/site-url';
 
 /**
  * POST /api/v1/sheets/auth
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json({
         error: 'no_account',
-        message: `No Monstera Cloud account found for ${googleUser.email}. Sign up at monstera-cloud.com first.`,
+        message: `No Monstera Cloud account found for ${googleUser.email}. Sign up at ${PRODUCT_SITE_URL.replace('https://', '')} first.`,
       }, { status: 404 });
     }
 
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
         maxRows: plan === 'professional' ? 100_000 : plan === 'starter' ? 10_000 : 0,
         refreshIntervals: isPaid ? ['manual', '1h', '3h', '6h', '12h', 'daily'] : [],
       },
-      upgradeUrl: isPaid ? null : 'https://monstera-cloud.vercel.app/pricing',
+      upgradeUrl: isPaid ? null : `${PRODUCT_SITE_URL}/pricing`,
     });
   } catch (err: any) {
     console.error('[SHEETS_AUTH]', err);

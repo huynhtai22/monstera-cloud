@@ -2,11 +2,23 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
-import { AppLayout } from "@/components/AppLayout";
+import { PRODUCT_SITE_URL } from "@/lib/site-url";
 import { NextAuthProvider } from "@/components/NextAuthProvider";
 import { LiveChatWidget } from "@/components/LiveChatWidget";
+import { MetaPixelAnalytics } from "@/components/MetaPixelAnalytics";
 
 const GTM_ID = "GTM-KMLZHNVV";
+
+/** Meta Pixel — override via NEXT_PUBLIC_META_PIXEL_ID in Vercel */
+const META_PIXEL_ID =
+    process.env.NEXT_PUBLIC_META_PIXEL_ID?.trim() || "1678503466639816";
+
+/** Paste from Events Manager → Test events → “Confirm your website events” — shows hits in Test events tab */
+const META_TEST_EVENT_CODE = process.env.NEXT_PUBLIC_META_TEST_EVENT_CODE?.trim();
+const FBQ_INIT_OPTIONS =
+    META_TEST_EVENT_CODE && META_TEST_EVENT_CODE.length > 0
+        ? `, ${JSON.stringify({ test_event_code: META_TEST_EVENT_CODE })}`
+        : "";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -16,11 +28,11 @@ export const metadata: Metadata = {
       template: "%s | Monstera Cloud",
     },
     description: "Connect data, validate quality, and deliver insights without complex engineering setup. The modern data stack, simplified.",
-    metadataBase: new URL("https://monsteracloud.com"),
+    metadataBase: new URL(PRODUCT_SITE_URL),
     openGraph: {
       type: "website",
       locale: "en_US",
-      url: "https://monsteracloud.com",
+      url: PRODUCT_SITE_URL,
       title: "Monstera Cloud | Effortless Data Integration",
       description: "Connect data, validate quality, and deliver insights without complex engineering setup.",
       siteName: "Monstera Cloud",
@@ -53,6 +65,13 @@ export default function RootLayout({
                         width="0"
                         style={{ display: "none", visibility: "hidden" }}
                     />
+                    <img
+                        height="1"
+                        width="1"
+                        style={{ display: "none" }}
+                        src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
+                        alt=""
+                    />
                 </noscript>
 
                 {/* Google Tag Manager — must be inside <body>, not <head>, in Next.js App Router */}
@@ -68,8 +87,27 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
                     }}
                 />
 
+                {/* Meta Pixel — beforeInteractive so fbq exists before client hydration (avoids dropped events) */}
+                <Script
+                    id="meta-pixel"
+                    strategy="beforeInteractive"
+                    dangerouslySetInnerHTML={{
+                        __html: `!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '${META_PIXEL_ID}'${FBQ_INIT_OPTIONS});
+fbq('track', 'PageView');`,
+                    }}
+                />
+
                 <NextAuthProvider>
                     {children}
+                    <MetaPixelAnalytics />
                     <LiveChatWidget />
                 </NextAuthProvider>
             </body>

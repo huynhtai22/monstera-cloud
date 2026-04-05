@@ -166,7 +166,7 @@ export default function SettingsPage() {
                                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Workspace URL</label>
                                         <div className="flex bg-white rounded-xl shadow-sm border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500">
                                             <span className="inline-flex items-center px-3 text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800 border-r border-gray-200 dark:border-slate-700">
-                                                monstera.cloud/
+                                                monsteracloud.com/
                                             </span>
                                             <input
                                                 type="text"

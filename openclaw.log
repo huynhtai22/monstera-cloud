@@ -1,0 +1,4 @@
+Gateway service not loaded.
+Start with: openclaw gateway install
+Start with: openclaw gateway
+Start with: launchctl bootstrap gui/$UID ~/Library/LaunchAgents/ai.openclaw.gateway.plist

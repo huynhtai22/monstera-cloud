@@ -29,10 +29,13 @@ export async function POST(request: Request) {
         const bcrypt = await import("bcryptjs");
         const hashedPassword = await bcrypt.hash(password, 12);
 
-        // Update the user's password
+        // Update password and mark email verified — inbox link proves ownership (same as OTP verify).
         await prisma.user.update({
             where: { email: resetToken.email },
-            data: { hashedPassword }
+            data: {
+                hashedPassword,
+                emailVerified: new Date(),
+            },
         });
 
         // Delete the used token

@@ -5,6 +5,7 @@
  */
 
 import crypto from "crypto";
+import { PRODUCT_SITE_URL } from "@/lib/site-url";
 
 function apiKey(): string {
   return (process.env.LEMONSQUEEZY_API_KEY || "").trim();
@@ -94,7 +95,7 @@ export async function createCheckoutUrl(
             custom: { user_id: userId },
           },
           product_options: {
-            redirect_url: "https://monsteracloud.com/dashboard",
+            redirect_url: `${PRODUCT_SITE_URL}/dashboard`,
           },
         },
         relationships: {
