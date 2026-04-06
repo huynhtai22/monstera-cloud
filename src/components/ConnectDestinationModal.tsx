@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { X, Loader2, CheckCircle2, ChevronRight, Settings2, FileSpreadsheet, Lock, Globe, Copy } from 'lucide-react';
+import { X, Loader2, CheckCircle2, ChevronRight, Settings2, FileSpreadsheet, Lock, Globe, Copy, Plus } from 'lucide-react';
 import useSWR, { useSWRConfig } from 'swr';
 import { signIn } from 'next-auth/react';
 import { useWorkspaceStore } from '@/store/workspace';
@@ -34,6 +34,26 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
     const workspace = Array.isArray(workspaces) 
         ? (workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0]) 
         : null;
+
+    const activeConnections = React.useMemo(() => {
+        if (!workspace?.connections) return [];
+        let providerId = destinationId;
+        if (destinationId === 'gsheets') providerId = 'google_sheets';
+        return workspace.connections.filter((c: any) => c.type === 'destination' && c.provider === providerId);
+    }, [workspace, destinationId]);
+
+    const [forceSetup, setForceSetup] = useState(false);
+    const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+    
+    // Reset internal state when modal closes
+    React.useEffect(() => {
+        if (!isOpen) { 
+            setForceSetup(false); 
+            setStep(1); 
+        }
+    }, [isOpen]);
+
+    const isListView = destinationId !== 'looker' && activeConnections.length > 0 && !forceSetup;
         
     const apiKey = workspace?.apiKeys?.[0]?.key || "Generate an API Key in Workspace Settings";
 
@@ -41,6 +61,22 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
 
     const handleAuthenticate = () => {
         setStep(2); // Move to Configure step
+    };
+
+    const handleDisconnect = async (connectionId: string, displayName: string) => {
+        const ok = window.confirm(`Disconnect "${displayName}"?\n\nThis will remove it from Monstera Cloud.`);
+        if (!ok) return;
+        setDisconnectingId(connectionId);
+        try {
+            const res = await fetch(`/api/connections/${connectionId}`, { method: "DELETE" });
+            if (res.ok) {
+                await mutate('/api/workspaces');
+            }
+        } catch (error) {
+            console.error("Disconnect error", error);
+        } finally {
+            setDisconnectingId(null);
+        }
     };
 
     const handleCreateDestination = async () => {
@@ -156,7 +192,46 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                              >
                                 Get the Community Connector Script <ChevronRight className="w-4 h-4 ml-1" />
                              </a>
+                         </div>
+                    </div>
+                ) : isListView ? (
+                    <div className="p-6 space-y-6">
+                        <div className="text-center mb-2">
+                            <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Manage Accounts</h4>
+                            <p className="text-gray-500 dark:text-gray-400 text-sm">You have {activeConnections.length} account{activeConnections.length > 1 ? 's' : ''} connected.</p>
                         </div>
+
+                        <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1 custom-scrollbar">
+                            {activeConnections.map((conn: any) => (
+                                <div key={conn.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded-xl">
+                                    <div className="flex items-center space-x-3 overflow-hidden">
+                                        <div className="w-8 h-8 shrink-0 rounded bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 flex items-center justify-center pointer-events-none">
+                                            <Image src="/logos/gsheets.svg" alt="Google Sheets" width={16} height={16} />
+                                        </div>
+                                        <div className="truncate">
+                                            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{conn.name}</p>
+                                            <p className="text-xs text-gray-400">Connected</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleDisconnect(conn.id, conn.name)}
+                                        disabled={disconnectingId === conn.id}
+                                        className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg transition-colors disabled:opacity-50 shrink-0 ml-2"
+                                        title="Disconnect"
+                                    >
+                                        {disconnectingId === conn.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
+                        <button
+                            onClick={() => setForceSetup(true)}
+                            className="w-full py-3 border border-dashed border-gray-300 dark:border-slate-600 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 group"
+                        >
+                            <Plus className="w-4 h-4 group-hover:text-emerald-500 transition-colors" />
+                            <span>Add Another Account</span>
+                        </button>
                     </div>
                 ) : (
                     <>
@@ -241,11 +316,17 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                         <div className="px-6 py-4 border-t border-gray-100 dark:border-slate-700 flex justify-end space-x-3 bg-gray-50 dark:bg-slate-800/50">
                             {step < 3 && (
                                 <button
-                                    onClick={handleClose}
+                                    onClick={() => {
+                                        if (forceSetup && activeConnections.length > 0) {
+                                            setForceSetup(false);
+                                        } else {
+                                            handleClose();
+                                        }
+                                    }}
                                     disabled={isProcessing}
-                                    className="px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-xl hover:bg-gray-50 dark:bg-slate-800 transition-colors disabled:opacity-50"
+                                    className="px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
                                 >
-                                    Cancel
+                                    {forceSetup && activeConnections.length > 0 ? "Back" : "Cancel"}
                                 </button>
                             )}
 

@@ -27,35 +27,10 @@ export default function DestinationsPage() {
     const [setupDestinationId, setSetupDestinationId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('all');
-    const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
 
     const { mutate } = useSWRConfig();
-
-    // Global State
     const { activeWorkspaceId } = useWorkspaceStore();
 
-    async function disconnectDestination(connectionId: string, displayName: string) {
-        const ok = window.confirm(
-            `Disconnect "${displayName}"?\n\nMonstera will delete stored credentials for this destination and remove any pipelines that use it. You can set it up again later.`
-        );
-        if (!ok) return;
-        setDisconnectingId(connectionId);
-        try {
-            const res = await fetch(`/api/connections/${connectionId}`, { method: "DELETE" });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                throw new Error(typeof data.error === "string" ? data.error : "Disconnect failed");
-            }
-            await mutate("/api/workspaces");
-            if (data.message) {
-                alert(data.message);
-            }
-        } catch (e: unknown) {
-            alert(e instanceof Error ? e.message : "Could not disconnect.");
-        } finally {
-            setDisconnectingId(null);
-        }
-    }
 
     // Fetch Data
     const { data: workspaces, error, isLoading } = useSWR("/api/workspaces", fetcher);
@@ -65,32 +40,24 @@ export default function DestinationsPage() {
         if (!Array.isArray(workspaces) || !activeWorkspaceId) return availableDestinations;
 
         const workspace = workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0];
+        const workspaceConnections = workspace?.connections?.filter((c: any) => c.type === 'destination') || [];
 
-        const connectedDestinations = workspace?.connections
-            ?.filter((c: any) => c.type === 'destination')
-            .map((conn: any) => {
-                let logo = '/logos/postgres.svg';
-                if (conn.provider.includes('google_sheets')) logo = '/logos/gsheets.svg';
-                else if (conn.provider.includes('looker')) logo = '/logos/looker.svg';
-                else if (conn.provider.includes('bigquery')) logo = '/logos/bigquery.svg';
-                else if (conn.provider.includes('postgres') || conn.provider.includes('sql')) logo = '/logos/postgres.svg';
-                else if (conn.provider.includes('slack')) logo = '/logos/slack.svg';
+        const unifiedList = availableDestinations.map((dest) => {
+            // Map the internal provider id string
+            let providerId = dest.id;
+            if (dest.id === 'gsheets') providerId = 'google_sheets';
+            else if (dest.id === 'looker') providerId = 'looker_studio';
 
-                return {
-                    id: conn.id,
-                    name: conn.name,
-                    description: `Connected to ${conn.provider} via workspace credentials.`,
-                    status: conn.status === 'connected' ? 'connected' : 'error',
-                    logoSrc: logo,
-                };
-            }) || [];
+            const activeConnections = workspaceConnections.filter((c: any) => c.provider === providerId);
 
-        const connectedProviderIds = new Set(connectedDestinations.map((c: any) => c.id));
-        const filteredAvailable = availableDestinations.filter(a => !connectedProviderIds.has(a.id));
+            return {
+                ...dest,
+                connections: activeConnections,
+                status: activeConnections.length > 0 ? 'connected' : 'available'
+            };
+        });
 
-        const combined = [...connectedDestinations, ...filteredAvailable];
-
-        return combined.filter((dest: any) => {
+        return unifiedList.filter((dest: any) => {
             const matchesSearch = dest.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 dest.description.toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -201,7 +168,7 @@ export default function DestinationsPage() {
                 </div>
             ) : filteredDestinations.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
-                    {filteredDestinations.map((destination) => (
+                    {filteredDestinations.map((destination: any) => (
                         <div
                             key={destination.id}
                             className={`relative overflow-hidden bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl rounded-2xl border p-5 transition-all duration-300 group flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/60 dark:bg-slate-900/60
@@ -229,12 +196,12 @@ export default function DestinationsPage() {
 
                                 {/* Status Indicator */}
                                 {destination.status === 'connected' ? (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-emerald-50/80 text-emerald-700 border border-emerald-100/50 shadow-sm backdrop-blur-sm">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5"></span>
-                                        Connected
+                                    <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-emerald-50/80 text-emerald-700 border border-emerald-100/50 shadow-sm backdrop-blur-sm dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 dark:bg-emerald-400"></span>
+                                        {destination.connections?.length > 1 ? `Connected (${destination.connections.length})` : 'Connected'}
                                     </span>
                                 ) : destination.status === 'error' ? (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-red-50/80 text-red-700 border border-red-100/50 shadow-sm backdrop-blur-sm">
+                                    <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-red-50/80 text-red-700 border border-red-100/50 shadow-sm backdrop-blur-sm dark:bg-red-950/40 dark:text-red-400 dark:border-red-900/50">
                                         <AlertCircle className="w-3 h-3 mr-1" />
                                         Error
                                     </span>
@@ -254,24 +221,11 @@ export default function DestinationsPage() {
                                 ) : destination.status === 'connected' ? (
                                     <button
                                         type="button"
-                                        disabled={!!disconnectingId}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            void disconnectDestination(destination.id, destination.name);
-                                        }}
-                                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50/80 py-2 text-sm font-medium text-red-700 backdrop-blur-sm transition-colors hover:bg-red-100/90 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/60 disabled:pointer-events-none disabled:opacity-50"
+                                        onClick={() => setSetupDestinationId(destination.id)}
+                                        className="w-full py-2 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-700/60 dark:border-slate-700/40 text-slate-700 dark:text-slate-300 dark:text-gray-600 text-sm font-medium rounded-lg transition-colors hover:border-slate-300 dark:hover:border-slate-600 hover:bg-white/80 dark:bg-slate-900/80 shadow-sm flex items-center justify-center space-x-1"
                                     >
-                                        {disconnectingId === destination.id ? (
-                                            <>
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                                Disconnecting…
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Unplug className="h-4 w-4" />
-                                                Disconnect
-                                            </>
-                                        )}
+                                        <span className="w-4 h-4 mr-1.5 opacity-50"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg></span>
+                                        <span>Manage Accounts</span>
                                     </button>
                                 ) : (
                                     <button
