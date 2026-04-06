@@ -33,7 +33,7 @@ export default function MarketingPage() {
                     </h1>
 
                     <p className="text-lg md:text-xl text-gray-400 max-w-2xl mb-10 leading-relaxed font-medium">
-                        Connect TikTok Ads, Shopee, and more. Pull ad performance, orders, and product data directly into Google Sheets™ or your dashboard. Built for sellers and agencies in Vietnam and Southeast Asia.
+                        Connect TikTok Ads, Shopee, and more. Pull ad performance, orders, and product data directly into Google Sheets™ or your console. Built for sellers and agencies in Vietnam and Southeast Asia.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4 w-full">
@@ -124,7 +124,7 @@ export default function MarketingPage() {
 
                         <div className="relative group bg-[#18181b] rounded-xl border border-white/10 p-8 overflow-hidden hover:border-white/20 transition-colors">
                             <Database className="w-8 h-8 text-blue-500 mb-6" />
-                            <h3 className="text-xl font-bold text-white mb-3 tracking-tight">Multi-Platform Dashboard</h3>
+                            <h3 className="text-xl font-bold text-white mb-3 tracking-tight">Multi-Platform Console</h3>
                             <p className="text-sm text-gray-400">View TikTok Ads and Shopee data side by side. Connect multiple accounts per workspace. Export any view to CSV.</p>
                         </div>
 

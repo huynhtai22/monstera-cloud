@@ -60,7 +60,7 @@ export default function TemplatesGallery() {
                 </div>
                 <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white mb-3">Template Gallery</h1>
                 <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">
-                    Deploy pre-built, expert-crafted dashboards directly to your favorite BI tools in seconds. No complex SQL or manual joining required.
+                    Deploy pre-built, expert-crafted analytics templates directly to your favorite BI tools in seconds. No complex SQL or manual joining required.
                 </p>
             </div>
 

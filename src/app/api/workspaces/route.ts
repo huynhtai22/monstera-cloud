@@ -24,7 +24,8 @@ export async function GET() {
             include: {
                 members: true,
                 connections: true,
-                pipelines: true
+                pipelines: true,
+                apiKeys: true
             }
         });
 
@@ -45,7 +46,8 @@ export async function GET() {
                 include: {
                     members: true,
                     connections: true,
-                    pipelines: true
+                    pipelines: true,
+                    apiKeys: true
                 }
             });
             workspaces = [newWorkspace];

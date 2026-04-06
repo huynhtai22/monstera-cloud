@@ -95,7 +95,7 @@ export async function createCheckoutUrl(
             custom: { user_id: userId },
           },
           product_options: {
-            redirect_url: `${PRODUCT_SITE_URL}/dashboard`,
+            redirect_url: `${PRODUCT_SITE_URL}/console`,
           },
         },
         relationships: {

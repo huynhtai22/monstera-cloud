@@ -2,9 +2,10 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { Search, ArrowRight, Send, Plus, AlertCircle, Loader2 } from "lucide-react";
+import { Search, ArrowRight, Send, Plus, AlertCircle, Loader2, Unplug } from "lucide-react";
 import { ConnectDestinationModal } from "@/components/ConnectDestinationModal";
-import useSWR from "swr";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import useSWR, { useSWRConfig } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 
 const fetcher = async (url: string) => {
@@ -16,22 +17,45 @@ const fetcher = async (url: string) => {
     return data;
 };
 
-// Available destinations that are not connected
 const availableDestinations = [
     { id: 'gsheets', name: 'Google Sheets', description: 'Export data directly to spreadsheets.', status: 'available', logoSrc: '/logos/gsheets.svg' },
     { id: 'looker', name: 'Looker Studio', description: 'Visualize data in custom reports.', status: 'available', logoSrc: '/logos/looker.svg' },
-    { id: 'bigquery', name: 'Google BigQuery', description: 'Enterprise data warehouse.', status: 'available', logoSrc: '/logos/bigquery.svg' },
-    { id: 'sql', name: 'PostgreSQL', description: 'Sync directly to your database.', status: 'available', logoSrc: '/logos/postgres.svg' },
     { id: 'slack', name: 'Slack Alerts', description: 'Get daily summary notifications.', status: 'available', logoSrc: '/logos/slack.svg' },
 ];
 
 export default function DestinationsPage() {
-    const [isDestinationModalOpen, setIsDestinationModalOpen] = useState(false);
+    const [setupDestinationId, setSetupDestinationId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('all');
+    const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+
+    const { mutate } = useSWRConfig();
 
     // Global State
     const { activeWorkspaceId } = useWorkspaceStore();
+
+    async function disconnectDestination(connectionId: string, displayName: string) {
+        const ok = window.confirm(
+            `Disconnect "${displayName}"?\n\nMonstera will delete stored credentials for this destination and remove any pipelines that use it. You can set it up again later.`
+        );
+        if (!ok) return;
+        setDisconnectingId(connectionId);
+        try {
+            const res = await fetch(`/api/connections/${connectionId}`, { method: "DELETE" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(typeof data.error === "string" ? data.error : "Disconnect failed");
+            }
+            await mutate("/api/workspaces");
+            if (data.message) {
+                alert(data.message);
+            }
+        } catch (e: unknown) {
+            alert(e instanceof Error ? e.message : "Could not disconnect.");
+        } finally {
+            setDisconnectingId(null);
+        }
+    }
 
     // Fetch Data
     const { data: workspaces, error, isLoading } = useSWR("/api/workspaces", fetcher);
@@ -97,21 +121,29 @@ export default function DestinationsPage() {
             </div>
 
             {/* Header */}
-            <div className="mb-10 flex flex-col sm:flex-row sm:items-end justify-between space-y-4 sm:space-y-0 relative z-10">
-                <div>
-                    <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight mb-2">Destinations</h1>
-                    <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 max-w-2xl text-lg">
-                        Choose where Monstera Cloud should send your clean, transformed data.
-                    </p>
+            <div className="relative z-10 mb-10 flex flex-col justify-between space-y-4 sm:flex-row sm:items-start sm:space-y-0">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                        <Send className="h-5 w-5" aria-hidden />
+                    </div>
+                    <div>
+                        <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+                            Destinations
+                        </h1>
+                        <p className="max-w-2xl text-base text-gray-600 dark:text-gray-400">
+                            Choose where Monstera Cloud should send your clean, transformed data.
+                        </p>
+                    </div>
                 </div>
-                <div className="flex space-x-3">
-                    <button
-                        onClick={() => setIsDestinationModalOpen(true)}
-                        className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm"
+                <div className="flex shrink-0 space-x-3 sm:pt-1">
+                    <PrimaryButton
+                        type="button"
+                        onClick={() => setSetupDestinationId('gsheets')}
+                        className="flex items-center gap-2"
                     >
-                        <Plus className="w-4 h-4" />
-                        <span>Add Destination</span>
-                    </button>
+                        <Plus className="h-4 w-4" />
+                        Add Destination
+                    </PrimaryButton>
                 </div>
             </div>
 
@@ -220,12 +252,30 @@ export default function DestinationsPage() {
                                         Fix Connection
                                     </button>
                                 ) : destination.status === 'connected' ? (
-                                    <button className="w-full py-2 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border border-white dark:border-slate-700/60 dark:border-slate-700/40 group-hover:border-emerald-200/80 group-hover:bg-emerald-50/80 text-gray-700 dark:text-slate-300 group-hover:text-emerald-700 text-sm font-medium rounded-lg transition-colors shadow-sm">
-                                        Configure
+                                    <button
+                                        type="button"
+                                        disabled={!!disconnectingId}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            void disconnectDestination(destination.id, destination.name);
+                                        }}
+                                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50/80 py-2 text-sm font-medium text-red-700 backdrop-blur-sm transition-colors hover:bg-red-100/90 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/60 disabled:pointer-events-none disabled:opacity-50"
+                                    >
+                                        {disconnectingId === destination.id ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                Disconnecting…
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Unplug className="h-4 w-4" />
+                                                Disconnect
+                                            </>
+                                        )}
                                     </button>
                                 ) : (
                                     <button
-                                        onClick={() => setIsDestinationModalOpen(true)}
+                                        onClick={() => setSetupDestinationId(destination.id)}
                                         className="w-full py-2 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-white dark:border-slate-700/60 dark:border-slate-700/40 text-gray-600 dark:text-gray-300 dark:text-gray-600 text-sm font-medium rounded-lg transition-colors hover:border-white dark:border-slate-700 hover:bg-white/80 dark:bg-slate-900/80 shadow-sm flex items-center justify-center space-x-1"
                                     >
                                         <span>Setup</span>
@@ -244,8 +294,9 @@ export default function DestinationsPage() {
             )}
 
             <ConnectDestinationModal
-                isOpen={isDestinationModalOpen}
-                onClose={() => setIsDestinationModalOpen(false)}
+                isOpen={setupDestinationId !== null}
+                destinationId={setupDestinationId}
+                onClose={() => setSetupDestinationId(null)}
             />
         </div>
     );

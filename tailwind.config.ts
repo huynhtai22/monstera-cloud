@@ -12,6 +12,21 @@ export default {
             colors: {
                 background: "var(--background)",
                 foreground: "var(--foreground)",
+                /** Brand — semantic aliases over emerald scale */
+                primary: {
+                    DEFAULT: "#059669",
+                    foreground: "#ffffff",
+                    muted: "#ecfdf5",
+                    ring: "#10b981",
+                    hover: "#047857",
+                },
+                surface: {
+                    muted: "#f9fafb",
+                },
+            },
+            borderRadius: {
+                card: "0.75rem",
+                control: "0.5rem",
             },
         },
     },

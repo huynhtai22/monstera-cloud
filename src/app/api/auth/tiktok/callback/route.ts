@@ -55,8 +55,8 @@ export async function GET(request: Request) {
       },
     });
 
-    // 4. Redirect back to dashboard connections
-    return NextResponse.redirect(new URL("/dashboard", publicBaseUrl(request)));
+    // 4. Redirect back to console (data sources)
+    return NextResponse.redirect(new URL("/console", publicBaseUrl(request)));
   } catch (error: any) {
     console.error("[TIKTOK_AUTH_ERROR]", error);
     return NextResponse.json({ error: error.message || "Failed to authenticate with TikTok" }, { status: 500 });

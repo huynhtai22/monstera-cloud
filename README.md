@@ -73,10 +73,10 @@ The application will be available at [http://localhost:3000](http://localhost:30
 *   **/src/app:** Next.js App Router endpoints, pages, and layouts.
     *   `/(marketing)`: The public-facing landing page, pricing, and documentation hub.
     *   `/(auth)`: Custom login and registration flows.
-    *   `/dashboard`: The protected application core for managing pipelines and workspaces.
+    *   `/console`: The protected application core for managing pipelines and workspaces.
     *   `/api`: REST endpoints and webhook listeners.
 *   **/src/components:** Reusable React UI components (Navbar, Footer, SVGs).
 *   **/prisma:** Database schema and migration files.
 
 ## 🔒 Security
-All API routes are protected via NextAuth. Ensure your testing environment has a valid user registered before attempting to access `/dashboard` or trigger `/api/pipelines`.
+All API routes are protected via NextAuth. Ensure your testing environment has a valid user registered before attempting to access `/console` or trigger `/api/pipelines`.

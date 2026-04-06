@@ -18,7 +18,7 @@ export default function TemplatesPage() {
                         <span className="text-purple-500">Business Intelligence.</span>
                     </h1>
                     <p className="text-gray-400 text-lg md:text-xl font-normal max-w-2xl mx-auto mt-4">
-                        Stop reverse-engineering Shopee and Lazada APIs. Deploy our opinionated BigQuery schemas and Looker Studio dashboards in 60 seconds.
+                        Stop reverse-engineering Shopee and Lazada APIs. Deploy our opinionated BigQuery schemas and Looker Studio reports in 60 seconds.
                     </p>
                 </div>
 
@@ -38,7 +38,7 @@ export default function TemplatesPage() {
                                 <span>Includes</span>
                             </div>
                             <ul className="space-y-2 mb-6">
-                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-emerald-500 before:rounded-full before:mr-2">Looker Studio Dashboard</li>
+                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-emerald-500 before:rounded-full before:mr-2">Looker Studio report</li>
                                 <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-emerald-500 before:rounded-full before:mr-2">dbt Core Models</li>
                             </ul>
                             <Link href="/register" className="inline-flex items-center text-sm font-semibold text-white hover:text-purple-400 transition-colors">
@@ -85,7 +85,7 @@ export default function TemplatesPage() {
                                 <span>Includes</span>
                             </div>
                             <ul className="space-y-2 mb-6">
-                                <li className="text-sm text-white font-medium flex items-center before:content-[''] before:w-1.5 before:h-1.5 before:bg-purple-500 before:rounded-full before:mr-2">Live Looker Dashboard</li>
+                                <li className="text-sm text-white font-medium flex items-center before:content-[''] before:w-1.5 before:h-1.5 before:bg-purple-500 before:rounded-full before:mr-2">Live Looker report</li>
                                 <li className="text-sm text-white font-medium flex items-center before:content-[''] before:w-1.5 before:h-1.5 before:bg-purple-500 before:rounded-full before:mr-2">Slack Alerting Integration</li>
                             </ul>
                             <Link href="/register" className="w-full inline-flex items-center justify-center p-3 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-lg transition-all shadow-[0_0_15px_rgba(168,85,247,0.4)]">

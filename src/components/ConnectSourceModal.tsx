@@ -29,7 +29,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
     const [isProcessing, setIsProcessing] = useState(false);
     const [copiedWhich, setCopiedWhich] = useState<null | 'production' | 'session'>(null);
 
-    // Default to Shopee if null, though dashboard should always pass one
+    // Default to Shopee if null, though console should always pass one
     const id = integration?.id || 'shopee';
     const name = integration?.name || 'Shopee';
     const logoSrc = integration?.logoSrc || '/logos/shopee.svg';
@@ -178,7 +178,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
             });
 
             if (res.ok) {
-                // Invalidate SWR cache so the Dashboard automatically re-fetches
+                // Invalidate SWR cache so the console view re-fetches
                 await mutate('/api/workspaces');
                 setStep(3); // Move to Success
             } else {
@@ -487,7 +487,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                             onClick={handleClose}
                             className="w-full px-5 py-3 text-sm font-bold text-white bg-gray-900 dark:bg-slate-800 rounded-xl hover:bg-black transition-all shadow-sm"
                         >
-                            Back to Dashboard
+                            Back to Console
                         </button>
                     )}
                 </div>

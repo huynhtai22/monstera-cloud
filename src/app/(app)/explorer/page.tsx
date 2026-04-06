@@ -10,6 +10,7 @@ import 'ag-grid-community/styles/ag-theme-alpine.css';
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 import { UploadCloud, Database, Loader2, ArrowRight, Table, Download } from 'lucide-react';
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { useWorkspaceStore } from "@/store/workspace";
 
 export default function DataExplorerPage() {
@@ -114,12 +115,19 @@ export default function DataExplorerPage() {
     return (
         <div className="relative max-w-7xl mx-auto px-8 py-10 w-full animate-in fade-in duration-300 flex flex-col h-[calc(100vh-80px)]">
             {/* Header */}
-            <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between space-y-4 sm:space-y-0 relative z-10 shrink-0">
-                <div>
-                    <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white mb-2">Data Explorer</h1>
-                    <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-base max-w-2xl">
-                        Upload massive raw datasets directly into the temporary Data Lake. Our virtualized grid handles 500,000+ rows directly in your browser without crashing.
-                    </p>
+            <div className="relative z-10 mb-6 flex shrink-0 flex-col justify-between space-y-4 sm:flex-row sm:items-start sm:space-y-0">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                        <Table className="h-5 w-5" aria-hidden />
+                    </div>
+                    <div>
+                        <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+                            Data Explorer
+                        </h1>
+                        <p className="max-w-2xl text-base text-gray-600 dark:text-gray-400">
+                            Upload massive raw datasets directly into the temporary Data Lake. Our virtualized grid handles 500,000+ rows directly in your browser without crashing.
+                        </p>
+                    </div>
                 </div>
                 {datasetId && (
                     <div className="flex space-x-3">
@@ -177,17 +185,19 @@ export default function DataExplorerPage() {
                         </button>
                     ) : (
                         <div className="flex flex-col items-center">
-                            <button
+                            <PrimaryButton
+                                type="button"
                                 onClick={handleUpload}
                                 disabled={isUploading}
-                                className="px-6 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-70 flex items-center shadow-md shadow-emerald-500/20"
+                                loading={isUploading}
+                                className="rounded-xl px-6 py-3 text-base font-bold shadow-md shadow-emerald-500/20"
                             >
-                                {isUploading ? (
-                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Ingesting to Lake...</>
-                                ) : (
-                                    <>Explode Data <ArrowRight className="w-4 h-4 ml-2" /></>
+                                {isUploading ? "Ingesting to Lake..." : (
+                                    <>
+                                        Explode Data <ArrowRight className="ml-2 h-4 w-4" />
+                                    </>
                                 )}
-                            </button>
+                            </PrimaryButton>
                             {uploadError && (
                                 <div className="mt-4 p-3 bg-red-50 text-red-600 border border-red-100 rounded-lg text-sm max-w-md w-full animate-in fade-in">
                                     <p className="font-semibold mb-1">Upload Failed</p>

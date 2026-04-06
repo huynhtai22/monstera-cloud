@@ -1,0 +1,15 @@
+{
+  "timeZone": "America/New_York",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "dataStudio": {
+    "name": "Monstera Cloud",
+    "logoUrl": "https://raw.githubusercontent.com/monstera/monstera-docs/main/logo.png",
+    "company": "Monstera",
+    "companyUrl": "https://www.monsteracloud.com",
+    "addonUrl": "https://www.monsteracloud.com",
+    "supportUrl": "https://www.monsteracloud.com/support",
+    "description": "Visualize your multi-platform ad campaign data natively in Looker Studio."
+  }
+}

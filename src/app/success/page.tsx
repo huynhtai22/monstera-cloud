@@ -16,10 +16,10 @@ export default function SuccessPage() {
         </p>
         
         <a 
-          href="/dashboard" 
+          href="/console" 
           className="inline-block w-full py-4 px-6 rounded-xl font-medium text-white bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all"
         >
-          Go to Dashboard
+          Go to Console
         </a>
       </div>
     </div>

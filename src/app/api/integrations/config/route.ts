@@ -10,7 +10,7 @@ import { googleAdsOAuthRedirectUri, metaAdsOAuthRedirectUri } from '@/lib/oauth-
 import { PRODUCT_SITE_URL } from '@/lib/site-url';
 
 /**
- * Public config for the dashboard (no secrets). Used to show/hide connect cards.
+ * Public config for the console (no secrets). Used to show/hide connect cards.
  * oauthCallbacks — exact redirect URIs to register in Meta & Google Cloud consoles.
  */
 export async function GET(request: Request) {

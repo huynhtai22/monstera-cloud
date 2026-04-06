@@ -5,7 +5,7 @@ import { Logo } from "./Logo";
 import { usePathname } from "next/navigation";
 import { useState, useRef, useEffect } from "react";
 import {
-    LayoutDashboard,
+    LayoutGrid,
     DatabaseZap,
     Send,
     Wand2,
@@ -56,9 +56,11 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
     // Fetch Data
     const { data: workspaces, error: workspacesError } = useSWR("/api/workspaces", fetcher);
 
-    // Set initial active workspace if none exists
+    // Set active workspace if missing, or clear stale ID (e.g. after sign-in as another user — persisted localStorage)
     useEffect(() => {
-        if (!activeWorkspaceId && Array.isArray(workspaces) && workspaces.length > 0) {
+        if (!Array.isArray(workspaces) || workspaces.length === 0) return;
+        const memberIds = new Set(workspaces.map((w: { id: string }) => w.id));
+        if (!activeWorkspaceId || !memberIds.has(activeWorkspaceId)) {
             setActiveWorkspaceId(workspaces[0].id);
         }
     }, [workspaces, activeWorkspaceId, setActiveWorkspaceId]);
@@ -88,7 +90,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
         {
             title: "Connect",
             items: [
-                { name: "Data Sources", href: "/dashboard", icon: DatabaseZap },
+                { name: "Data Sources", href: "/console", icon: DatabaseZap },
                 { name: "Destinations", href: "/destinations", icon: Send, comingSoon: true },
             ]
         },
@@ -101,7 +103,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
         {
             title: "Analyze",
             items: [
-                { name: "Overview", href: "/overview", icon: LayoutDashboard },
+                { name: "Overview", href: "/overview", icon: LayoutGrid },
                 { name: "Data Explorer", href: "/explorer", icon: FileEdit },
                 { name: "Reports", href: "/reports", icon: LineChart, comingSoon: true },
                 { name: "TikTok Ads", href: "/tiktok-ads", icon: TrendingUp },

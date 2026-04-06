@@ -101,7 +101,7 @@ export default function AgenciesSolutionPage() {
                         <ul className="space-y-4 mb-8">
                             <li className="flex items-start gap-3">
                                 <CheckCircle2 className="w-5 h-5 text-cyan-500 shrink-0" />
-                                <span className="text-gray-300 text-sm">Deploy unified Looker Studio dashboards across multiple clients.</span>
+                                <span className="text-gray-300 text-sm">Deploy unified Looker Studio reports across multiple clients.</span>
                             </li>
                             <li className="flex items-start gap-3">
                                 <CheckCircle2 className="w-5 h-5 text-cyan-500 shrink-0" />

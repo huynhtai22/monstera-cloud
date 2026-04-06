@@ -2,8 +2,9 @@
 
 import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
-import { Database, Search, ArrowRight, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Settings } from "lucide-react";
+import { Database, Search, ArrowRight, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Unplug } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import useSWR, { useSWRConfig } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 import { integrationCatalogId } from "@/lib/integration-catalog";
@@ -27,15 +28,39 @@ const ALL_CATALOG_INTEGRATIONS = [
     { id: 'shopify', name: 'Shopify', description: 'E-commerce platform orders.', status: 'available' as const, logoSrc: '/logos/shopify.svg' },
 ];
 
-export default function DashboardPage() {
+export default function ConsolePage() {
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
     const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('all');
+    const [outgoingActionId, setOutgoingActionId] = useState<string | null>(null);
 
     // Global State
     const { activeWorkspaceId } = useWorkspaceStore();
     const { mutate } = useSWRConfig();
+
+    async function disconnectSource(connectionId: string, displayName: string) {
+        const ok = window.confirm(
+            `Disconnect "${displayName}"?\n\nMonstera will delete stored credentials for this source and remove any pipelines that use it. You can connect again later. You can also revoke the app in your ad or shop platform settings if you want it fully removed there.`
+        );
+        if (!ok) return;
+        setOutgoingActionId(connectionId);
+        try {
+            const res = await fetch(`/api/connections/${connectionId}`, { method: "DELETE" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(typeof data.error === "string" ? data.error : "Disconnect failed");
+            }
+            await mutate("/api/workspaces");
+            if (data.message) {
+                alert(data.message);
+            }
+        } catch (e: unknown) {
+            alert(e instanceof Error ? e.message : "Could not disconnect.");
+        } finally {
+            setOutgoingActionId(null);
+        }
+    }
 
     // Fetch Data
     const { data: workspaces, error, isLoading } = useSWR("/api/workspaces", fetcher);
@@ -141,13 +166,14 @@ export default function DashboardPage() {
                         <RefreshCw className="w-4 h-4" />
                         <span>Refresh All</span>
                     </button>
-                    <button
+                    <PrimaryButton
+                        type="button"
                         onClick={() => setIsSourceModalOpen(true)}
-                        className="flex items-center space-x-2 px-4 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 transition-all shadow-sm hover:shadow"
+                        className="flex items-center gap-2 shadow-sm hover:shadow"
                     >
-                        <Plus className="w-4 h-4" />
-                        <span>New Data Source</span>
-                    </button>
+                        <Plus className="h-4 w-4" />
+                        New Data Source
+                    </PrimaryButton>
                 </div>
             </div>
 
@@ -256,12 +282,6 @@ export default function DashboardPage() {
                                             Error
                                         </div>
                                     )}
-                                    {/* Quick Hover Action for Connected */}
-                                    {integration.status === 'connected' && (
-                                        <button className="absolute right-0 top-8 p-1.5 opacity-0 group-hover:opacity-100 group-hover:-translate-y-1 transition-all text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm rounded-md z-10">
-                                            <Settings className="w-3.5 h-3.5" />
-                                        </button>
-                                    )}
                                 </div>
                             </div>
 
@@ -293,31 +313,65 @@ export default function DashboardPage() {
                                         <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Syncing...
                                     </button>
                                 ) : integration.status === 'connected' ? (
-                                    <button
-                                        onClick={async (e) => {
-                                            e.stopPropagation();
-                                            if (!integration.pipelineId) {
-                                                alert("Please complete the destination mapping first.");
-                                                return;
-                                            }
-
-                                            // Optimistic UI loading state could be added here
-                                            try {
-                                                const res = await fetch(`/api/pipelines/${integration.pipelineId}/run`, { method: 'POST' });
-                                                const data = await res.json();
-                                                if (res.ok) {
-                                                    alert(data.message || "Sync complete!");
-                                                } else {
-                                                    alert("Sync failed: " + data.error);
+                                    <div className="flex flex-col gap-2">
+                                        <button
+                                            type="button"
+                                            disabled={!!outgoingActionId}
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                if (!integration.pipelineId) {
+                                                    alert("Please complete the destination mapping first.");
+                                                    return;
                                                 }
-                                            } catch (err) {
-                                                alert("Network error occurred during sync.");
-                                            }
-                                        }}
-                                        className="w-full py-2 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border border-white dark:border-slate-700/60 border-slate-700/40 group-hover:border-emerald-200/80 group-hover:bg-emerald-500 text-gray-700 dark:text-slate-300 group-hover:text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
-                                    >
-                                        Sync Now
-                                    </button>
+
+                                                setOutgoingActionId(`sync:${integration.pipelineId}`);
+                                                try {
+                                                    const res = await fetch(`/api/pipelines/${integration.pipelineId}/run`, { method: 'POST' });
+                                                    const data = await res.json();
+                                                    if (res.ok) {
+                                                        alert(data.message || "Sync complete!");
+                                                    } else {
+                                                        alert("Sync failed: " + data.error);
+                                                    }
+                                                } catch {
+                                                    alert("Network error occurred during sync.");
+                                                } finally {
+                                                    setOutgoingActionId(null);
+                                                }
+                                            }}
+                                            className="w-full py-2 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border border-white dark:border-slate-700/60 border-slate-700/40 group-hover:border-emerald-200/80 group-hover:bg-emerald-500 text-gray-700 dark:text-slate-300 group-hover:text-white text-sm font-semibold rounded-lg transition-colors shadow-sm disabled:pointer-events-none disabled:opacity-50"
+                                        >
+                                            {outgoingActionId?.startsWith("sync:") ? (
+                                                <span className="inline-flex items-center justify-center gap-2">
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    Syncing…
+                                                </span>
+                                            ) : (
+                                                "Sync Now"
+                                            )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={!!outgoingActionId}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                void disconnectSource(integration.id, integration.name);
+                                            }}
+                                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50/80 py-2 text-sm font-medium text-red-700 backdrop-blur-sm transition-colors hover:bg-red-100/90 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/60 disabled:pointer-events-none disabled:opacity-50"
+                                        >
+                                            {outgoingActionId === integration.id ? (
+                                                <>
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    Disconnecting…
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Unplug className="h-4 w-4" />
+                                                    Disconnect
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
                                 ) : (
                                     <button
                                         onClick={(e) => {

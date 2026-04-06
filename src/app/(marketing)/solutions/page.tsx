@@ -32,7 +32,7 @@ export default function SolutionsPage() {
                             </div>
                             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-6">Stop manually downloading Seller Center CSVs</h2>
                             <p className="text-lg text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
-                                Managing inventory and tracking ROAS across Shopee, Lazada, and TikTok is a nightmare when your data is splintered across multiple dashboards.
+                                Managing inventory and tracking ROAS across Shopee, Lazada, and TikTok is a nightmare when your data is splintered across multiple tools and spreadsheets.
                             </p>
                             <p className="text-lg text-gray-600 dark:text-gray-400 mb-8 leading-relaxed">
                                 Monstera Cloud automatically fetches Orders, Products, and Financials every hour and pushes them into your central Google Sheet or BigQuery warehouse.

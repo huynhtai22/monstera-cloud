@@ -66,7 +66,7 @@ export default function PixelTestPage() {
                 </li>
                 <li>
                     <strong className="text-zinc-400">Pixel Helper:</strong> Install the &quot;Meta Pixel
-                    Helper&quot; Chrome extension — it shows fires on the page even when the dashboard lags.
+                    Helper&quot; Chrome extension — it shows fires on the page even when the console lags.
                 </li>
                 <li>
                     <strong className="text-zinc-400">Ad blockers:</strong> Disable uBlock / Privacy Badger /

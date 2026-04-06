@@ -89,7 +89,7 @@ export async function POST(req: Request) {
       amount,
       description: description,
       payer_email: session.user.email,
-      success_redirect_url: `${origin}/dashboard?payment=success`,
+      success_redirect_url: `${origin}/console?payment=success`,
       failure_redirect_url: `${origin}/pricing?payment=failed`,
       currency,
       metadata,

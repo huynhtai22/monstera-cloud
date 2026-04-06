@@ -7,8 +7,18 @@ import { ExportDropdown } from "@/components/ExportDropdown";
 import { downloadCsv, downloadExcel } from "@/lib/export-utils";
 import useSWR, { mutate } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
+import { IntegrationPageLayout, inputFocus } from "@/components/ui/IntegrationPageLayout";
+import { IntegrationSectionCard } from "@/components/ui/IntegrationSectionCard";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { SecondaryButton } from "@/components/ui/SecondaryButton";
+import { cn } from "@/lib/utils";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
+
+const selectClass = cn(
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white",
+  inputFocus
+);
 
 // ── Preset metrics / dimensions ──────────────────────────────────────────────
 // TikTok only accepts ID + time dimensions. Name fields (campaign_name etc.)
@@ -309,441 +319,252 @@ export default function TikTokAdsPage() {
     return [...dimKeys, ...metricKeys];
   }, [rows, selectedDims, selectedMetrics]);
 
+
   return (
-    <div className="relative max-w-7xl mx-auto px-6 py-10 w-full animate-in fade-in duration-300">
-      {/* Background blobs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-        <div className="absolute top-0 right-[10%] w-[40%] h-[40%] rounded-full bg-pink-200/20 dark:bg-pink-900/20 blur-[120px]" />
-        <div className="absolute bottom-[10%] left-0 w-[40%] h-[50%] rounded-full bg-emerald-200/20 dark:bg-emerald-900/20 blur-[120px]" />
-      </div>
-
-      {/* Header */}
-      <div className="mb-8 flex items-center gap-4">
-        <div className="w-10 h-10 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-white dark:border-slate-700/60 flex items-center justify-center shadow-sm">
-          <Image src="/logos/tiktok.svg" alt="TikTok" width={22} height={22} />
-        </div>
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
-            TikTok Ads Report
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Pull async ad performance reports from TikTok Business API into your workspace.
-          </p>
-        </div>
-      </div>
-
-      {/* No connections notice */}
-      {tiktokConnections.length === 0 && (
-        <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 text-amber-800 dark:text-amber-300 text-sm font-medium">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          No TikTok Business connection found. Connect via OAuth on the{" "}
-          <a href="/dashboard" className="underline font-semibold">Data Sources</a>{" "}
-          page, or add a sandbox account below.
-        </div>
-      )}
-
-      {/* Sandbox connect panel */}
-      <div className="mb-6">
-        <button
-          onClick={() => setShowSandboxForm((v) => !v)}
-          className="flex items-center gap-2 text-sm font-medium text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700/50 px-4 py-2 rounded-xl hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
-        >
-          <FlaskConical className="w-4 h-4" />
-          {showSandboxForm ? "Hide Sandbox Setup" : "Connect Sandbox Ad Account"}
-        </button>
-
-        {sandboxSuccess && (
-          <div className="mt-3 flex items-start gap-3 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/50 text-emerald-800 dark:text-emerald-300 text-sm font-medium">
-            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600" />
-            <span>{sandboxSuccess}</span>
-            <button onClick={() => setSandboxSuccess(null)} className="ml-auto text-emerald-500 hover:text-emerald-700 text-xs">✕</button>
+    <IntegrationPageLayout
+      title="TikTok Ads Report"
+      description="Pull async ad performance reports from TikTok Business API into your workspace."
+      icon={<Image src="/logos/tiktok.svg" alt="TikTok" width={22} height={22} />}
+      banner={
+        tiktokConnections.length === 0 ? (
+          <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            No TikTok Business connection found. Connect via OAuth on the{" "}
+            <a href="/console" className="font-semibold underline">Data Sources</a> page, or add a sandbox account in Connection below.
           </div>
-        )}
-
-        {showSandboxForm && (
-          <div className="mt-3 bg-purple-50/60 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-700/40 rounded-2xl p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <FlaskConical className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-              <h3 className="text-sm font-semibold text-purple-800 dark:text-purple-300">
-                Sandbox Ad Account Setup
-              </h3>
-              <span className="ml-auto text-xs text-purple-500 dark:text-purple-400">
-                Sandbox data is isolated — safe to test
-              </span>
-            </div>
-
-            <p className="text-xs text-purple-700 dark:text-purple-400 mb-4 leading-relaxed">
-              Go to{" "}
-              <a
-                href="https://business-api.tiktok.com/portal/apps/7620309837959675921"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline font-semibold"
-              >
-                business-api.tiktok.com → your app → Sandbox Ad Account
-              </a>
-              , click <strong>Generate</strong> under Access Token, then paste it below.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-xs font-medium text-purple-700 dark:text-purple-300 mb-1">
-                  Account Name
-                </label>
-                <input
-                  type="text"
-                  value={sandboxName}
-                  onChange={(e) => setSandboxName(e.target.value)}
-                  className="w-full text-sm rounded-lg border border-purple-200 dark:border-purple-700/60 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-400/40"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-purple-700 dark:text-purple-300 mb-1">
-                  Advertiser ID
-                </label>
-                <input
-                  type="text"
-                  value={sandboxAdvertiserId}
-                  onChange={(e) => setSandboxAdvertiserId(e.target.value)}
-                  className="w-full text-sm rounded-lg border border-purple-200 dark:border-purple-700/60 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-400/40"
-                />
-              </div>
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-xs font-medium text-purple-700 dark:text-purple-300 mb-1">
-                Access Token <span className="font-normal">(from Generate button in portal)</span>
-              </label>
-              <input
-                type="password"
-                placeholder="Paste the generated token here…"
-                value={sandboxToken}
-                onChange={(e) => setSandboxToken(e.target.value)}
-                className="w-full text-sm rounded-lg border border-purple-200 dark:border-purple-700/60 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-400/40"
-              />
-            </div>
-
-            {sandboxError && (
-              <p className="text-xs text-red-600 dark:text-red-400 mb-3 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" /> {sandboxError}
-              </p>
-            )}
-
-            <button
-              onClick={handleSandboxConnect}
-              disabled={sandboxSaving}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-sm font-semibold transition-colors disabled:opacity-60"
-            >
-              {sandboxSaving ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
-              ) : (
-                <><Plus className="w-4 h-4" /> Add Sandbox Connection</>
-              )}
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ── Left: config panel ── */}
-        <div className="lg:col-span-1 space-y-5">
-
-          {/* Connection */}
-          <div className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border border-white dark:border-slate-700/60 rounded-2xl p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-4">Connection</h2>
-
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">TikTok Business Account</label>
+        ) : null
+      }
+      leftColumn={
+        <>
+          <IntegrationSectionCard title="Connection">
+            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">TikTok Business Account</label>
             <select
               value={connectionId}
               onChange={(e) => {
                 setConnectionId(e.target.value);
                 const conn = tiktokConnections.find((c) => c.id === e.target.value);
-                if (conn?.advertiserIds?.[0]) {
-                  setAdvertiserId(conn.advertiserIds[0]);
-                }
+                if (conn?.advertiserIds?.[0]) setAdvertiserId(conn.advertiserIds[0]);
               }}
-              className="w-full text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+              className={cn(selectClass, "mb-4")}
             >
               <option value="">Select connection…</option>
               {tiktokConnections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.sandbox ? "🧪 " : ""}{c.name}
-                </option>
+                <option key={c.id} value={c.id}>{c.sandbox ? "🧪 " : ""}{c.name}</option>
               ))}
             </select>
-
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mt-4 mb-1 font-medium">Advertiser ID</label>
-            {/* If the connection stored multiple advertiser IDs, show a dropdown; otherwise free-text */}
+            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Advertiser ID</label>
             {(tiktokConnections.find((c) => c.id === connectionId)?.advertiserIds?.length ?? 0) > 1 ? (
-              <select
-                value={advertiserId}
-                onChange={(e) => setAdvertiserId(e.target.value)}
-                className="w-full text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-              >
+              <select value={advertiserId} onChange={(e) => setAdvertiserId(e.target.value)} className={selectClass}>
                 <option value="">Select advertiser…</option>
-                {tiktokConnections
-                  .find((c) => c.id === connectionId)
-                  ?.advertiserIds.map((aid) => (
-                    <option key={aid} value={aid}>{aid}</option>
-                  ))}
+                {tiktokConnections.find((c) => c.id === connectionId)?.advertiserIds.map((aid) => (
+                  <option key={aid} value={aid}>{aid}</option>
+                ))}
               </select>
             ) : (
-              <input
-                type="text"
-                placeholder="Auto-filled on connect, or enter manually"
-                value={advertiserId}
-                onChange={(e) => setAdvertiserId(e.target.value)}
-                className="w-full text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-              />
+              <input type="text" placeholder="Auto-filled on connect, or enter manually" value={advertiserId} onChange={(e) => setAdvertiserId(e.target.value)} className={selectClass} />
             )}
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              Auto-filled from your TikTok Ads account on connect
-            </p>
-
-            {/* Sandbox helper: verify token + seed test campaign */}
-            {tiktokConnections.find((c) => c.id === connectionId)?.sandbox && (
-              <div className="mt-4 pt-4 border-t border-purple-100 dark:border-purple-900/30">
-                <p className="text-xs text-purple-600 dark:text-purple-400 mb-2 font-medium">
-                  Sandbox — no data yet? Seed a test campaign first.
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Auto-filled from your TikTok Ads account on connect</p>
+            <div className="mt-4 border-t border-gray-100 pt-4 dark:border-slate-700">
+              <SecondaryButton type="button" className="w-full" onClick={() => setShowSandboxForm((v) => !v)}>
+                <FlaskConical className="h-4 w-4" />
+                {showSandboxForm ? "Hide sandbox setup" : "Connect Sandbox Ad Account"}
+              </SecondaryButton>
+            </div>
+            {sandboxSuccess && (
+              <div className="mt-3 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-700/50 dark:bg-emerald-900/20 dark:text-emerald-300">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                <span className="flex-1">{sandboxSuccess}</span>
+                <button type="button" onClick={() => setSandboxSuccess(null)} className="text-xs text-emerald-600 hover:text-emerald-800">✕</button>
+              </div>
+            )}
+            {showSandboxForm && (
+              <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50/80 p-4 dark:border-slate-600 dark:bg-slate-800/50">
+                <h3 className="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-100">Sandbox Ad Account Setup</h3>
+                <p className="mb-3 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+                  Go to{" "}
+                  <a href="https://business-api.tiktok.com/portal/apps/7620309837959675921" target="_blank" rel="noopener noreferrer" className="font-semibold underline">business-api.tiktok.com → your app → Sandbox Ad Account</a>
+                  , click <strong>Generate</strong> under Access Token, then paste it below.
                 </p>
-                <button
-                  onClick={handleSeedData}
-                  disabled={isSeeding}
-                  className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white transition-colors disabled:opacity-60"
-                >
-                  {isSeeding
-                    ? <><Loader2 className="w-3 h-3 animate-spin" /> Creating…</>
-                    : <><Sparkles className="w-3 h-3" /> Verify &amp; Seed Test Data</>}
-                </button>
-                {seedResult && (
-                  <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-400 leading-relaxed">{seedResult}</p>
-                )}
-                {seedError && (
-                  <p className="mt-2 text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />{seedError}
-                  </p>
-                )}
+                <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Account Name</label>
+                    <input type="text" value={sandboxName} onChange={(e) => setSandboxName(e.target.value)} className={selectClass} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Advertiser ID</label>
+                    <input type="text" value={sandboxAdvertiserId} onChange={(e) => setSandboxAdvertiserId(e.target.value)} className={selectClass} />
+                  </div>
+                </div>
+                <div className="mb-3">
+                  <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">Access Token</label>
+                  <input type="password" placeholder="Paste the generated token…" value={sandboxToken} onChange={(e) => setSandboxToken(e.target.value)} className={selectClass} />
+                </div>
+                {sandboxError && <p className="mb-2 flex items-center gap-1 text-xs text-red-600 dark:text-red-400"><AlertCircle className="h-3 w-3" />{sandboxError}</p>}
+                <SecondaryButton type="button" className="w-full" onClick={handleSandboxConnect} disabled={sandboxSaving}>
+                  {sandboxSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  {sandboxSaving ? "Saving…" : "Add Sandbox Connection"}
+                </SecondaryButton>
               </div>
             )}
-          </div>
-
-          {/* Date & Level */}
-          <div className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border border-white dark:border-slate-700/60 rounded-2xl p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-4">Date Range &amp; Level</h2>
-
-            <div className="grid grid-cols-2 gap-3 mb-4">
+            {tiktokConnections.find((c) => c.id === connectionId)?.sandbox && (
+              <div className="mt-4 border-t border-gray-100 pt-4 dark:border-slate-700">
+                <p className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">Sandbox — no data yet? Seed a test campaign first.</p>
+                <SecondaryButton type="button" onClick={handleSeedData} disabled={isSeeding}>
+                  {isSeeding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  {isSeeding ? "Creating…" : "Verify & Seed Test Data"}
+                </SecondaryButton>
+                {seedResult && <p className="mt-2 text-xs leading-relaxed text-emerald-700 dark:text-emerald-400">{seedResult}</p>}
+                {seedError && <p className="mt-2 flex items-center gap-1 text-xs text-red-600 dark:text-red-400"><AlertCircle className="h-3 w-3" />{seedError}</p>}
+              </div>
+            )}
+          </IntegrationSectionCard>
+          <IntegrationSectionCard title="Date range & level">
+            <div className="mb-4 grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Start</label>
-                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30" />
+                <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Start</label>
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={selectClass} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">End</label>
-                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30" />
+                <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">End</label>
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={selectClass} />
               </div>
             </div>
-
-            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Data Level</label>
+            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Data Level</label>
             <select
               value={dataLevel}
               onChange={(e) => {
                 const newLevel = e.target.value;
                 setDataLevel(newLevel);
-                // Drop any selected dims that are invalid for the new level
-                const validForNew = DIMENSION_OPTIONS
-                  .filter((d) => d.levels.includes(newLevel))
-                  .map((d) => d.value);
+                const validForNew = DIMENSION_OPTIONS.filter((d) => d.levels.includes(newLevel)).map((d) => d.value);
                 setSelectedDims((prev) => prev.filter((d) => validForNew.includes(d)));
               }}
-              className="w-full text-sm rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30">
-              {DATA_LEVELS.map((l) => (
-                <option key={l.value} value={l.value}>{l.label}</option>
-              ))}
+              className={selectClass}
+            >
+              {DATA_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
             </select>
-          </div>
-
-          {/* Dimensions */}
-          <div className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border border-white dark:border-slate-700/60 rounded-2xl p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Dimensions</h2>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">
-              Available dimensions depend on the <strong>Data Level</strong> selected above.
-            </p>
-            <div className="mb-3 text-xs text-gray-400 dark:text-gray-500 space-y-0.5">
+          </IntegrationSectionCard>
+          <IntegrationSectionCard title="Dimensions">
+            <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">Available dimensions depend on the Data Level above.</p>
+            <div className="mb-3 space-y-0.5 text-xs text-gray-400 dark:text-gray-500">
               <p>• <span className="font-medium text-gray-500">Ad Group ID</span> → switch to <em>Ad Group</em> level</p>
               <p>• <span className="font-medium text-gray-500">Ad ID</span> → switch to <em>Ad</em> level</p>
             </div>
             <div className="space-y-1.5">
               {availableDims.map((d) => (
-                <label key={d.value} className="flex items-center gap-2 cursor-pointer group">
-                  <input type="checkbox" checked={selectedDims.includes(d.value)}
-                    onChange={() => toggleItem(selectedDims, setSelectedDims, d.value)}
-                    className="w-4 h-4 rounded accent-emerald-500" />
-                  <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{d.label}</span>
+                <label key={d.value} className="group flex cursor-pointer items-center gap-2">
+                  <input type="checkbox" checked={selectedDims.includes(d.value)} onChange={() => toggleItem(selectedDims, setSelectedDims, d.value)} className="h-4 w-4 rounded accent-emerald-600" />
+                  <span className="text-sm text-gray-700 transition-colors group-hover:text-primary dark:text-gray-300">{d.label}</span>
                 </label>
               ))}
             </div>
-            {/* Show locked dimensions for higher levels as a hint */}
             {DIMENSION_OPTIONS.filter((d) => !d.levels.includes(dataLevel)).map((d) => (
-              <div key={d.value} className="flex items-center gap-2 mt-1.5 opacity-35 cursor-not-allowed select-none">
-                <input type="checkbox" disabled className="w-4 h-4 rounded" />
-                <span className="text-sm text-gray-400 dark:text-gray-500 line-through">{d.label}</span>
-                <span className="text-[10px] text-gray-400 ml-auto">
-                  {d.value === "adgroup_id" ? "Ad Group level" : d.value === "ad_id" ? "Ad level" : ""}
-                </span>
+              <div key={d.value} className="mt-1.5 flex cursor-not-allowed select-none items-center gap-2 opacity-35">
+                <input type="checkbox" disabled className="h-4 w-4 rounded" />
+                <span className="text-sm text-gray-400 line-through dark:text-gray-500">{d.label}</span>
+                <span className="ml-auto text-[10px] text-gray-400">{d.value === "adgroup_id" ? "Ad Group level" : d.value === "ad_id" ? "Ad level" : ""}</span>
               </div>
             ))}
-          </div>
-
-          {/* Metrics */}
-          <div className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border border-white dark:border-slate-700/60 rounded-2xl p-5 shadow-sm">
-            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Metrics</h2>
+          </IntegrationSectionCard>
+          <IntegrationSectionCard title="Metrics">
             <div className="space-y-1.5">
               {METRIC_OPTIONS.map((m) => (
-                <label key={m.value} className="flex items-center gap-2 cursor-pointer group">
-                  <input type="checkbox" checked={selectedMetrics.includes(m.value)}
-                    onChange={() => toggleItem(selectedMetrics, setSelectedMetrics, m.value)}
-                    className="w-4 h-4 rounded accent-emerald-500" />
-                  <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{m.label}</span>
+                <label key={m.value} className="group flex cursor-pointer items-center gap-2">
+                  <input type="checkbox" checked={selectedMetrics.includes(m.value)} onChange={() => toggleItem(selectedMetrics, setSelectedMetrics, m.value)} className="h-4 w-4 rounded accent-emerald-600" />
+                  <span className="text-sm text-gray-700 group-hover:text-primary dark:text-gray-300">{m.label}</span>
                 </label>
               ))}
             </div>
+          </IntegrationSectionCard>
+        </>
+      }
+      primaryAction={
+        <PrimaryButton className="w-full py-3" onClick={handleRun} disabled={isSubmitting || isPolling} loading={isSubmitting || isPolling}>
+          {isSubmitting || isPolling ? (isSubmitting ? "Creating task…" : "Waiting for TikTok…") : (<><Play className="h-4 w-4" /> Run Report</>)}
+        </PrimaryButton>
+      }
+      resultsHeader={
+        <div className="flex w-full min-w-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="text-sm font-semibold text-gray-800 dark:text-white">Results</span>
+            {taskId && <span className="truncate font-mono text-xs text-gray-400 dark:text-gray-500">task: {taskId.slice(0, 14)}…</span>}
           </div>
-
-          {/* Run button */}
-          <button
-            onClick={handleRun}
-            disabled={isSubmitting || isPolling}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {isSubmitting || isPolling ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> {isSubmitting ? "Creating task…" : "Waiting for TikTok…"}</>
-            ) : (
-              <><Play className="w-4 h-4" /> Run Report</>
+          <div className="flex shrink-0 items-center gap-2">
+            {taskStatus && taskStatus !== "COMPLETED" && taskStatus !== "FAILED" && (
+              <span className="flex items-center gap-1.5 rounded-full bg-primary-muted px-2.5 py-1 text-xs font-medium text-primary-hover dark:bg-emerald-950/40 dark:text-emerald-300">
+                <Loader2 className="h-3 w-3 animate-spin" />{taskStatus}
+              </span>
             )}
-          </button>
-        </div>
-
-        {/* ── Right: results panel ── */}
-        <div className="lg:col-span-2">
-          <div className="bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border border-white dark:border-slate-700/60 rounded-2xl shadow-sm overflow-hidden h-full min-h-[420px] flex flex-col">
-
-            {/* Panel header */}
-            <div className="px-5 py-4 border-b border-gray-100 dark:border-slate-700/60 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-semibold text-gray-800 dark:text-white">Results</span>
-                {taskId && (
-                  <span className="text-xs font-mono text-gray-400 dark:text-gray-500">task: {taskId.slice(0, 14)}…</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {taskStatus && taskStatus !== "COMPLETED" && taskStatus !== "FAILED" && (
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-2.5 py-1 rounded-full">
-                    <Loader2 className="w-3 h-3 animate-spin" /> {taskStatus}
-                  </span>
-                )}
-                {taskStatus === "COMPLETED" && (
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 px-2.5 py-1 rounded-full">
-                    <CheckCircle2 className="w-3 h-3" /> Ready
-                  </span>
-                )}
-                {taskStatus === "FAILED" && (
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-red-700 bg-red-50 dark:bg-red-900/20 px-2.5 py-1 rounded-full">
-                    <AlertCircle className="w-3 h-3" /> Failed
-                  </span>
-                )}
-                {rows && rows.length > 0 && (
-                  <ExportDropdown
-                    onCsv={() =>
-                      downloadCsv(
-                        flattenRows(rows, allColumns),
-                        `tiktok_ads_report_${today()}`
-                      )
-                    }
-                    onExcel={() =>
-                      downloadExcel(
-                        flattenRows(rows, allColumns),
-                        `tiktok_ads_report_${today()}`
-                      )
-                    }
-                  />
-                )}
-              </div>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-auto">
-              {error && (
-                <div className="m-5 flex items-start gap-3 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/50 text-red-700 dark:text-red-300 text-sm">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  {error}
-                </div>
-              )}
-
-              {!taskStatus && !error && (
-                <div className="flex flex-col items-center justify-center h-full py-20 text-center">
-                  <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-                    <RefreshCw className="w-5 h-5 text-gray-400 dark:text-gray-500" />
-                  </div>
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Configure your report and click <strong>Run Report</strong>
-                  </p>
-                </div>
-              )}
-
-              {(taskStatus === "INIT" || taskStatus === "RUNNING") && (
-                <div className="flex flex-col items-center justify-center h-full py-20 text-center">
-                  <Loader2 className="w-8 h-8 text-emerald-500 animate-spin mb-4" />
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-300">
-                    TikTok is generating your report…
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    Usually takes 5–30 seconds. Polling every 3s.
-                  </p>
-                </div>
-              )}
-
-              {rows && rows.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-full py-20 text-center">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Report returned 0 rows for this date range.
-                  </p>
-                </div>
-              )}
-
-              {rows && rows.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-xs min-w-[600px]">
-                    <thead className="bg-gray-50/80 dark:bg-slate-800/80 sticky top-0">
-                      <tr>
-                        {allColumns.map((col) => (
-                          <th key={col} className="px-4 py-3 font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider whitespace-nowrap border-b border-gray-100 dark:border-slate-700/60">
-                            {col}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-slate-700/40">
-                      {rows.map((row, i) => (
-                        <tr key={i} className="hover:bg-gray-50/60 dark:hover:bg-slate-800/40 transition-colors">
-                          {allColumns.map((col) => (
-                            <td key={col} className="px-4 py-2.5 text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                              {String(row.dimensions[col] ?? row.metrics[col] ?? "—")}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 px-5 py-3">
-                    {rows.length} rows returned
-                  </p>
-                </div>
-              )}
-            </div>
+            {taskStatus === "COMPLETED" && (
+              <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400">
+                <CheckCircle2 className="h-3 w-3" /> Ready
+              </span>
+            )}
+            {taskStatus === "FAILED" && (
+              <span className="flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                <AlertCircle className="h-3 w-3" /> Failed
+              </span>
+            )}
+            {rows && rows.length > 0 && (
+              <ExportDropdown
+                onCsv={() => downloadCsv(flattenRows(rows, allColumns), `tiktok_ads_report_${today()}`)}
+                onExcel={() => downloadExcel(flattenRows(rows, allColumns), `tiktok_ads_report_${today()}`)}
+              />
+            )}
           </div>
         </div>
-      </div>
-    </div>
+      }
+      results={
+        <>
+          {error && (
+            <div className="m-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-700/50 dark:bg-red-900/20 dark:text-red-300">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}
+            </div>
+          )}
+          {!taskStatus && !error && (
+            <div className="flex min-h-[280px] flex-col items-center justify-center py-20 text-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gray-100 dark:bg-slate-800">
+                <RefreshCw className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+              </div>
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Configure your report and click <strong>Run Report</strong></p>
+            </div>
+          )}
+          {(taskStatus === "INIT" || taskStatus === "RUNNING") && (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <Loader2 className="mb-4 h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-300">TikTok is generating your report…</p>
+              <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Usually takes 5–30 seconds. Polling every 3s.</p>
+            </div>
+          )}
+          {rows && rows.length === 0 && taskStatus === "COMPLETED" && (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Report returned 0 rows for this date range.</p>
+            </div>
+          )}
+          {rows && rows.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="min-w-[600px] w-full border-collapse text-left text-xs">
+                <thead className="sticky top-0 bg-gray-50/80 dark:bg-slate-800/80">
+                  <tr>
+                    {allColumns.map((col) => (
+                      <th key={col} className="whitespace-nowrap border-b border-gray-100 px-4 py-3 font-semibold uppercase tracking-wider text-gray-600 dark:border-slate-700/60 dark:text-gray-300">{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-700/40">
+                  {rows.map((row, i) => (
+                    <tr key={i} className="transition-colors hover:bg-gray-50/60 dark:hover:bg-slate-800/40">
+                      {allColumns.map((col) => (
+                        <td key={col} className="whitespace-nowrap px-4 py-2.5 text-gray-700 dark:text-gray-300">{String(row.dimensions[col] ?? row.metrics[col] ?? "—")}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="px-5 py-3 text-xs text-gray-400 dark:text-gray-500">{rows.length} rows returned</p>
+            </div>
+          )}
+        </>
+      }
+    />
   );
 }

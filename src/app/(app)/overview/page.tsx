@@ -1,20 +1,35 @@
 "use client";
 
-import React from 'react';
-import { Activity, Database, Clock, AlertCircle, Loader2 } from "lucide-react";
+import React from "react";
+import Link from "next/link";
+import {
+    Activity,
+    Database,
+    Clock,
+    AlertCircle,
+    Loader2,
+    CheckCircle2,
+    Circle,
+    ListChecks,
+    Zap,
+    ArrowRight,
+} from "lucide-react";
 import useSWR from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
+import { cn } from "@/lib/utils";
+import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
+import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-        throw new Error(data.error || 'Failed to fetch data');
+        throw new Error(data.error || "Failed to fetch data");
     }
     return data;
 };
 
-export default function OverviewDashboard() {
+export default function OverviewPage() {
     const { activeWorkspaceId } = useWorkspaceStore();
     const { data: pipelines, error, isLoading } = useSWR(
         activeWorkspaceId ? `/api/pipelines?workspaceId=${activeWorkspaceId}` : null,
@@ -24,154 +39,235 @@ export default function OverviewDashboard() {
     const activePipelinesCount = Array.isArray(pipelines) ? pipelines.length : 0;
 
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
-    const connectedSourcesCount = React.useMemo(() => {
-        if (!Array.isArray(workspaces) || !activeWorkspaceId) return 0;
+
+    const { connectedSourcesCount, connectedDestinationsCount } = React.useMemo(() => {
+        if (!Array.isArray(workspaces) || !activeWorkspaceId) {
+            return { connectedSourcesCount: 0, connectedDestinationsCount: 0 };
+        }
         const ws = workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0];
-        return ws?.connections?.filter((c: any) => c.type === 'source').length || 0;
+        const conns = ws?.connections || [];
+        return {
+            connectedSourcesCount: conns.filter((c: any) => c.type === "source").length,
+            connectedDestinationsCount: conns.filter((c: any) => c.type === "destination").length,
+        };
     }, [workspaces, activeWorkspaceId]);
 
+    const hasSource = connectedSourcesCount > 0;
+    const hasDestination = connectedDestinationsCount > 0;
+    const hasPipeline = activePipelinesCount > 0;
+
     return (
-        <div className="relative max-w-7xl mx-auto px-8 py-10 w-full animate-in fade-in duration-300">
-            {/* Liquid Glass Background Effects */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-                <div className="absolute top-[-10%] left-[10%] w-[50%] h-[50%] rounded-full bg-emerald-200/20 dark:bg-emerald-900/20 blur-[120px]" />
-                <div className="absolute top-[30%] right-[0%] w-[40%] h-[60%] rounded-full bg-blue-200/20 dark:bg-blue-900/20 blur-[120px]" />
+        <div className="relative mx-auto w-full max-w-7xl animate-in px-8 py-10 fade-in duration-300">
+            <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+                <div className="absolute left-[10%] top-[-10%] h-[50%] w-[50%] rounded-full bg-emerald-200/20 blur-[120px] dark:bg-emerald-900/20" />
+                <div className="absolute right-[0%] top-[30%] h-[60%] w-[40%] rounded-full bg-blue-200/20 blur-[120px] dark:bg-blue-900/20" />
             </div>
 
-            {/* Header Section */}
-            <div className="mb-10 flex flex-col sm:flex-row sm:items-end justify-between space-y-4 sm:space-y-0 relative z-10">
+            <div className="relative z-10 mb-10 flex flex-col justify-between space-y-4 sm:flex-row sm:items-start sm:space-y-0">
                 <div>
-                    <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white mb-2">Platform Overview</h1>
-                    <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-lg max-w-2xl">
+                    <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+                        Platform Overview
+                    </h1>
+                    <p className="max-w-2xl text-base text-gray-600 dark:text-gray-400">
                         Monitor your workspace health, recent pipeline activity, and total data throughput.
                     </p>
                 </div>
-                <div className="flex items-center space-x-3">
-                    <span className="flex items-center text-sm font-medium text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2 animate-pulse"></span>
-                        All Systems Operational
-                    </span>
-                </div>
+                <span className="inline-flex shrink-0 items-center rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
+                    <span className="mr-2 h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                    All Systems Operational
+                </span>
             </div>
 
-            {/* Top Stat Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 relative z-10">
-                {/* Connected Sources */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white dark:border-slate-700/60 dark:border-slate-700/40 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all group overflow-hidden relative">
-                    <div className="absolute -right-4 -top-4 w-24 h-24 bg-gradient-to-br from-emerald-100 to-transparent rounded-full opacity-50 blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-                    <div className="flex items-start justify-between mb-4">
-                        <div className="p-2.5 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-gray-700 dark:text-slate-300 border border-gray-100 dark:border-slate-700">
-                            <Database className="w-5 h-5" />
+            <div className="relative z-10 mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
+                <div className="group relative overflow-hidden rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl transition-all hover:shadow-md dark:border-slate-700/40 dark:bg-slate-900/40">
+                    <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-gradient-to-br from-emerald-100 to-transparent opacity-50 blur-2xl transition-transform duration-700 group-hover:scale-150" />
+                    <div className="relative mb-4 flex items-start justify-between">
+                        <div className="rounded-xl border border-gray-100 bg-white p-2.5 text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            <Database className="h-5 w-5" />
                         </div>
                     </div>
-                    <div>
-                        <h3 className="text-gray-500 dark:text-gray-400 font-medium text-sm mb-1">Connected Sources</h3>
-                        <p className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">{connectedSourcesCount}</p>
-                    </div>
+                    <h3 className="mb-1 text-sm font-medium text-gray-500 dark:text-gray-400">Connected Sources</h3>
+                    <p className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">{connectedSourcesCount}</p>
                 </div>
 
-                {/* Active Pipelines */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white dark:border-slate-700/60 dark:border-slate-700/40 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all group overflow-hidden relative">
-                    <div className="absolute -right-4 -top-4 w-24 h-24 bg-gradient-to-br from-blue-100 to-transparent rounded-full opacity-50 blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-                    <div className="flex items-start justify-between mb-4">
-                        <div className="p-2.5 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-gray-700 dark:text-slate-300 border border-gray-100 dark:border-slate-700">
-                            <Activity className="w-5 h-5" />
+                <div className="group relative overflow-hidden rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl transition-all hover:shadow-md dark:border-slate-700/40 dark:bg-slate-900/40">
+                    <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-gradient-to-br from-blue-100 to-transparent opacity-50 blur-2xl transition-transform duration-700 group-hover:scale-150" />
+                    <div className="relative mb-4 flex items-start justify-between">
+                        <div className="rounded-xl border border-gray-100 bg-white p-2.5 text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            <Activity className="h-5 w-5" />
                         </div>
                     </div>
-                    <div>
-                        <h3 className="text-gray-500 dark:text-gray-400 font-medium text-sm mb-1">Active Pipelines</h3>
-                        <p className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
-                            {isLoading ? '...' : activePipelinesCount}
-                            <span className="text-lg text-gray-400 dark:text-gray-500 font-normal"> connected</span>
-                        </p>
-                    </div>
-                </div>
-
-                {/* Workspace Status */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white dark:border-slate-700/60 dark:border-slate-700/40 rounded-2xl p-6 shadow-sm hover:shadow-md transition-all group overflow-hidden relative">
-                    <div className="absolute -right-4 -top-4 w-24 h-24 bg-gradient-to-br from-indigo-100 to-transparent rounded-full opacity-50 blur-2xl group-hover:scale-150 transition-transform duration-700"></div>
-                    <div className="flex items-start justify-between mb-4">
-                        <div className="p-2.5 bg-white dark:bg-slate-800 rounded-xl shadow-sm text-gray-700 dark:text-slate-300 border border-gray-100 dark:border-slate-700">
-                            <Clock className="w-5 h-5" />
-                        </div>
-                    </div>
-                    <div>
-                        <h3 className="text-gray-500 dark:text-gray-400 font-medium text-sm mb-1">Workspace Status</h3>
-                        <p className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Active</p>
-                    </div>
-                </div>
-            </div>
-
-            {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 relative z-10">
-
-                {/* Analytics Chart - Coming Soon */}
-                <div className="lg:col-span-2 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white dark:border-slate-700/60 dark:border-slate-700/40 rounded-2xl p-6 shadow-sm flex flex-col items-center justify-center min-h-[400px]">
-                    <span className="inline-flex items-center px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 text-xs font-bold uppercase tracking-wider mb-4">
-                        Coming Soon
-                    </span>
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Sync Volume Analytics</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 text-center max-w-sm">
-                        Visual charts for row throughput and sync history will appear here once pipeline analytics are enabled.
+                    <h3 className="mb-1 text-sm font-medium text-gray-500 dark:text-gray-400">Active Pipelines</h3>
+                    <p className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+                        {isLoading ? "…" : activePipelinesCount}
+                        <span className="ml-1 text-lg font-normal text-gray-400 dark:text-gray-500">connected</span>
                     </p>
                 </div>
 
-                {/* Recent Activity Feed */}
-                <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white dark:border-slate-700/60 dark:border-slate-700/40 rounded-2xl p-6 shadow-sm flex flex-col h-[400px]">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Recent Activity</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-6 border-b border-gray-100 dark:border-slate-700 pb-4">Latest events from your pipelines.</p>
+                <div className="group relative overflow-hidden rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl transition-all hover:shadow-md dark:border-slate-700/40 dark:bg-slate-900/40">
+                    <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-gradient-to-br from-indigo-100 to-transparent opacity-50 blur-2xl transition-transform duration-700 group-hover:scale-150" />
+                    <div className="relative mb-4 flex items-start justify-between">
+                        <div className="rounded-xl border border-gray-100 bg-white p-2.5 text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            <Clock className="h-5 w-5" />
+                        </div>
+                    </div>
+                    <h3 className="mb-1 text-sm font-medium text-gray-500 dark:text-gray-400">Workspace Status</h3>
+                    <p className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Active</p>
+                </div>
+            </div>
 
-                    <div className="flex-1 overflow-y-auto pr-2 space-y-5">
+            <div className="relative z-10 mb-6 rounded-lg border border-dashed border-gray-200 bg-gray-50/80 px-4 py-3 text-sm text-gray-600 dark:border-slate-600 dark:bg-slate-800/50 dark:text-gray-400">
+                <span className="mr-2 inline-flex items-center rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                    Soon
+                </span>
+                Sync Volume Analytics — charts for row throughput and sync history will appear here when pipeline analytics ship.
+            </div>
+
+            <div className="relative z-10 grid grid-cols-1 gap-8 lg:grid-cols-3">
+                <div className="flex flex-col gap-6 lg:col-span-2">
+                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
+                            <div className="mb-4 flex items-center gap-2">
+                                <ListChecks className="h-5 w-5 text-primary" />
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Getting Started</h3>
+                            </div>
+                            <ul className="space-y-3">
+                                <li className="flex items-start gap-2 text-sm">
+                                    {hasSource ? (
+                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                                    ) : (
+                                        <Circle className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+                                    )}
+                                    <span className={hasSource ? "text-gray-700 dark:text-gray-200" : "text-gray-500"}>
+                                        Connect a data source
+                                    </span>
+                                </li>
+                                <li className="flex items-start gap-2 text-sm">
+                                    {hasDestination ? (
+                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                                    ) : (
+                                        <Circle className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+                                    )}
+                                    <span className={hasDestination ? "text-gray-700 dark:text-gray-200" : "text-gray-500"}>
+                                        Set a destination
+                                    </span>
+                                </li>
+                                <li className="flex items-start gap-2 text-sm">
+                                    {hasPipeline ? (
+                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                                    ) : (
+                                        <Circle className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+                                    )}
+                                    <span className={hasPipeline ? "text-gray-700 dark:text-gray-200" : "text-gray-500"}>
+                                        Deploy a transformation / pipeline
+                                    </span>
+                                </li>
+                                <li className="flex items-start gap-2 text-sm text-gray-400 dark:text-gray-500">
+                                    <Circle className="mt-0.5 h-4 w-4 shrink-0" />
+                                    <span>Schedule sync (coming soon)</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
+                            <div className="mb-4 flex items-center gap-2">
+                                <Zap className="h-5 w-5 text-primary" />
+                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Quick Actions</h3>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <Link
+                                    href="/console"
+                                    className={cn(primaryButtonLinkClassName, "w-full justify-between")}
+                                >
+                                    Connect Source
+                                    <ArrowRight className="h-4 w-4" />
+                                </Link>
+                                <Link
+                                    href="/transformations"
+                                    className={cn(secondaryButtonLinkClassName, "w-full justify-between")}
+                                >
+                                    Create Pipeline
+                                    <ArrowRight className="h-4 w-4" />
+                                </Link>
+                                <Link
+                                    href="/docs"
+                                    className={cn(secondaryButtonLinkClassName, "w-full justify-between")}
+                                >
+                                    View Docs
+                                    <ArrowRight className="h-4 w-4" />
+                                </Link>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex h-[400px] flex-col rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/40">
+                    <h3 className="mb-1 text-lg font-bold text-gray-900 dark:text-white">Recent Activity</h3>
+                    <p className="mb-6 border-b border-gray-100 pb-4 text-sm text-gray-500 dark:border-slate-700 dark:text-gray-400">
+                        Latest events from your pipelines.
+                    </p>
+
+                    <div className="flex-1 space-y-5 overflow-y-auto pr-2">
                         {isLoading ? (
-                            <div className="flex flex-col items-center justify-center h-full text-center py-10">
-                                <Loader2 className="w-6 h-6 text-emerald-500 animate-spin mb-3" />
+                            <div className="flex h-full flex-col items-center justify-center py-10 text-center">
+                                <Loader2 className="mb-3 h-6 w-6 animate-spin text-emerald-500" />
                                 <span className="text-sm text-gray-500">Loading activity...</span>
                             </div>
                         ) : error ? (
-                            <div className="flex flex-col items-center justify-center h-full text-center flex-1 py-10 text-red-500">
-                                <AlertCircle className="w-6 h-6 mb-2" />
+                            <div className="flex h-full flex-col items-center justify-center py-10 text-center text-red-500">
+                                <AlertCircle className="mb-2 h-6 w-6" />
                                 <span className="text-sm">Failed to load activity feed.</span>
                             </div>
                         ) : Array.isArray(pipelines) && pipelines.length > 0 ? (
                             pipelines.map((pipeline: any, index: number) => {
                                 const isLast = index === pipelines.length - 1;
-                                const isError = pipeline.status === 'error';
+                                const isError = pipeline.status === "error";
                                 const latestLog = pipeline.logs?.[0];
 
                                 return (
-                                    <div key={pipeline.id} className={`flex items-start space-x-3 ${isLast ? 'opacity-80' : ''}`}>
+                                    <div key={pipeline.id} className={`flex items-start space-x-3 ${isLast ? "opacity-80" : ""}`}>
                                         <div className="relative mt-1 shrink-0">
-                                            <div className={`w-2.5 h-2.5 rounded-full ${isError ? 'bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.1)]' : 'bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.1)]'}`}></div>
-                                            {!isLast && <div className="absolute top-4 bottom-[-16px] left-[5px] w-[1px] bg-gray-200 dark:bg-slate-700"></div>}
+                                            <div
+                                                className={`h-2.5 w-2.5 rounded-full ${isError ? "bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.1)]" : "bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.1)]"}`}
+                                            />
+                                            {!isLast && (
+                                                <div className="absolute bottom-[-16px] left-[5px] top-4 w-px bg-gray-200 dark:bg-slate-700" />
+                                            )}
                                         </div>
                                         <div>
                                             <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                                                {pipeline.name} {isError ? 'Failed' : 'Synced'}
+                                                {pipeline.name} {isError ? "Failed" : "Synced"}
                                             </p>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">
                                                 {isError
                                                     ? `Error connecting ${pipeline.sourceConnection?.name} to ${pipeline.destinationConnection?.name}.`
                                                     : latestLog
-                                                        ? `Successfully synced ${latestLog.rowsSynced} rows to ${pipeline.destinationConnection?.name}.`
-                                                        : `Pipeline established: ${pipeline.sourceConnection?.name} → ${pipeline.destinationConnection?.name}`
-                                                }
+                                                      ? `Successfully synced ${latestLog.rowsSynced} rows to ${pipeline.destinationConnection?.name}.`
+                                                      : `Pipeline established: ${pipeline.sourceConnection?.name} → ${pipeline.destinationConnection?.name}`}
                                             </p>
-                                            <div className="flex items-center text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 mt-1">
-                                                <Clock className="w-3 h-3 mr-1" />
-                                                {new Date(pipeline.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            <div className="mt-1 flex items-center text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500">
+                                                <Clock className="mr-1 h-3 w-3" />
+                                                {new Date(pipeline.updatedAt).toLocaleTimeString([], {
+                                                    hour: "2-digit",
+                                                    minute: "2-digit",
+                                                })}
                                             </div>
                                         </div>
                                     </div>
                                 );
                             })
                         ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-center flex-1 py-10">
-                                <span className="text-sm text-gray-500 dark:text-gray-400">No recent pipeline activity found.</span>
+                            <div className="flex flex-1 flex-col items-center justify-center px-2 py-10 text-center">
+                                <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+                                    No pipeline runs yet. Connect a source and destination to see sync activity here.
+                                </p>
+                                <Link href="/console" className={cn(primaryButtonLinkClassName, "text-sm")}>
+                                    Go to Data Sources
+                                </Link>
                             </div>
                         )}
                     </div>
                 </div>
-
             </div>
         </div>
     );

@@ -28,7 +28,7 @@ export default function DocsPage() {
                 <div className="bg-amber-950/20 border border-amber-500/20 rounded-xl p-6">
                     <ShieldAlert className="w-6 h-6 text-amber-500 mb-4" />
                     <h3 className="text-white font-bold mb-2">Immutable Logs</h3>
-                    <p className="text-sm text-gray-400">Every byte of data synced is cryptographically signed and logged. Replay failed webhooks unconditionally from your dashboard.</p>
+                    <p className="text-sm text-gray-400">Every byte of data synced is cryptographically signed and logged. Replay failed webhooks unconditionally from your console.</p>
                 </div>
             </div>
 
@@ -116,7 +116,7 @@ export default function DocsPage() {
                 Synchronization Logic
             </h2>
             <p className="text-gray-400 leading-relaxed mb-6">
-                Monstera Cloud employs a watermark-based incremental synchronization strategy. By default, pipelines cursor through the `updated_at` timestamps of the source API, ensuring only mutated records are fetched and merged (`UPSERT`) into your destination tables. Full Historical Resyncs can be triggered via the dashboard.
+                Monstera Cloud employs a watermark-based incremental synchronization strategy. By default, pipelines cursor through the `updated_at` timestamps of the source API, ensuring only mutated records are fetched and merged (`UPSERT`) into your destination tables. Full Historical Resyncs can be triggered via the console.
             </p>
 
             <hr className="border-white/5 my-12" />
@@ -198,7 +198,7 @@ export default function DocsPage() {
             {/* Bottom Nav */}
             <div className="mt-24 p-8 bg-gradient-to-r from-emerald-950/20 to-transparent border border-emerald-500/20 rounded-xl flex items-center justify-between">
                 <div>
-                    <h4 className="text-white font-bold mb-1">Explore Dashboard</h4>
+                    <h4 className="text-white font-bold mb-1">Explore Console</h4>
                     <p className="text-sm text-gray-400">Put theory into practice. Initialize your first pipeline.</p>
                 </div>
                 <Link href="/register" className="px-6 py-3 bg-white text-black text-sm font-bold rounded hover:bg-gray-200 transition-colors">

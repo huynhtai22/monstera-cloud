@@ -47,7 +47,7 @@ export default function RegisterPage() {
   const signInWithGoogle = async () => {
     metaPixelCustom("MC_SignUp_Google_Click", { method: "google" });
     setIsGoogleLoading(true);
-    await signIn("google", { callbackUrl: "/dashboard" });
+    await signIn("google", { callbackUrl: "/console" });
   };
 
   return (

@@ -30,20 +30,20 @@ export async function GET(request: Request) {
   if (err) {
     console.error('[TIKTOK_BUSINESS_OAUTH]', err, errDesc);
     return NextResponse.redirect(
-      new URL(`/dashboard?tiktok_business_error=${encodeURIComponent(err)}`, base)
+      new URL(`/console?tiktok_business_error=${encodeURIComponent(err)}`, base)
     );
   }
 
   if (!authCode) {
     return NextResponse.redirect(
-      new URL('/dashboard?tiktok_business_error=missing_auth_code', base)
+      new URL('/console?tiktok_business_error=missing_auth_code', base)
     );
   }
 
   const workspaceId = state || '';
   if (!workspaceId) {
     return NextResponse.redirect(
-      new URL('/dashboard?tiktok_business_error=invalid_state', base)
+      new URL('/console?tiktok_business_error=invalid_state', base)
     );
   }
 
@@ -60,7 +60,7 @@ export async function GET(request: Request) {
   if (!membership) {
     console.warn('[TIKTOK_BUSINESS_OAUTH] User %s is not a member of workspace %s', session.user.id, workspaceId);
     return NextResponse.redirect(
-      new URL('/dashboard?tiktok_business_error=workspace_access_denied', base)
+      new URL('/console?tiktok_business_error=workspace_access_denied', base)
     );
   }
 
@@ -94,11 +94,11 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.redirect(new URL('/dashboard', base));
+    return NextResponse.redirect(new URL('/console', base));
   } catch (error: any) {
     console.error('[TIKTOK_BUSINESS_AUTH_ERROR]', error);
     return NextResponse.redirect(
-      new URL(`/dashboard?tiktok_business_error=${encodeURIComponent(error.message || 'auth_failed')}`, base)
+      new URL(`/console?tiktok_business_error=${encodeURIComponent(error.message || 'auth_failed')}`, base)
     );
   }
 }

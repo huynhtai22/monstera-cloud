@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, Suspense } from "react";
-import { signIn } from "next-auth/react";
+import { useState, Suspense, useEffect } from "react";
+import { signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import Link from "next/link";
@@ -11,6 +11,7 @@ import { metaPixelCustom } from "@/lib/meta-pixel";
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { status } = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   /** When true, session cookie lasts up to 30 days; when false, 24 hours. */
@@ -19,6 +20,28 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const isRegistered = searchParams.get("registered") === "true";
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      router.replace("/console");
+    }
+  }, [status, router]);
+
+  if (status === "loading") {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-white dark:bg-slate-950">
+        <Loader2 className="w-8 h-8 animate-spin text-[#1ba177]" />
+      </div>
+    );
+  }
+
+  if (status === "authenticated") {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-white dark:bg-slate-950">
+        <Loader2 className="w-8 h-8 animate-spin text-[#1ba177]" />
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +60,7 @@ function LoginContent() {
         setError("Invalid email or password");
       } else {
         metaPixelCustom("MC_Login_Email_Success", { method: "email" });
-        router.push("/dashboard");
+        router.push("/console");
         router.refresh();
       }
     } catch {
@@ -50,7 +73,7 @@ function LoginContent() {
   const signInWithGoogle = async () => {
     metaPixelCustom("MC_Login_Google_Click", { method: "google" });
     setIsGoogleLoading(true);
-    await signIn("google", { callbackUrl: "/dashboard" });
+    await signIn("google", { callbackUrl: "/console" });
   };
 
   return (

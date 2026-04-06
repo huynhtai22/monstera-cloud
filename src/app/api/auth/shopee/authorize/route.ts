@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     const login = new URL("/login", publicBaseUrl(request));
-    login.searchParams.set("callbackUrl", "/dashboard");
+    login.searchParams.set("callbackUrl", "/console");
     return NextResponse.redirect(login);
   }
 

@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     console.error("[SHOPEE_OAUTH] Missing code or shop_id in callback");
     return NextResponse.redirect(
       new URL(
-        `/dashboard?shopee_error=${encodeURIComponent("Authorization failed — missing code or shop_id")}`,
+        `/console?shopee_error=${encodeURIComponent("Authorization failed — missing code or shop_id")}`,
         base
       )
     );
@@ -70,12 +70,12 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.redirect(new URL("/dashboard", base));
+    return NextResponse.redirect(new URL("/console", base));
   } catch (error: any) {
     console.error("[SHOPEE_AUTH_ERROR]", error);
     return NextResponse.redirect(
       new URL(
-        `/dashboard?shopee_error=${encodeURIComponent(error.message || "Failed to authenticate with Shopee")}`,
+        `/console?shopee_error=${encodeURIComponent(error.message || "Failed to authenticate with Shopee")}`,
         base
       )
     );
