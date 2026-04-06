@@ -107,9 +107,11 @@ function ResetPasswordContent() {
                             <div className="relative">
                                 <input
                                     id="password"
+                                    name="password"
                                     type={showPassword ? "text" : "password"}
                                     placeholder="Min. 8 characters"
                                     required
+                                    autoComplete="new-password"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="appearance-none block w-full px-5 py-4 pr-12 border border-[#d2ddec] dark:border-slate-700 rounded-md placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#1ba177] focus:border-[#1ba177] sm:text-[16px] bg-[#f0f4f9] dark:bg-slate-800 text-gray-900 dark:text-white transition-colors"
@@ -130,9 +132,11 @@ function ResetPasswordContent() {
                             </label>
                             <input
                                 id="confirmPassword"
+                                name="confirmPassword"
                                 type={showPassword ? "text" : "password"}
                                 placeholder="••••••••••••"
                                 required
+                                autoComplete="new-password"
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                 className="appearance-none block w-full px-5 py-4 border border-[#d2ddec] dark:border-slate-700 rounded-md placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#1ba177] focus:border-[#1ba177] sm:text-[16px] bg-[#f0f4f9] dark:bg-slate-800 text-gray-900 dark:text-white transition-colors"
