@@ -56,6 +56,6 @@ export async function GET() {
         return NextResponse.json(workspaces);
     } catch (error) {
         console.error("Error fetching workspaces:", error);
-        return NextResponse.json({ error: "Failed to fetch workspaces" }, { status: 500 });
+        return NextResponse.json({ error: "Failed to fetch workspaces", details: error instanceof Error ? error.message : String(error) }, { status: 500 });
     }
 }
