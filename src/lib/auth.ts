@@ -4,6 +4,7 @@ import GoogleProvider from "next-auth/providers/google"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import { encode as jwtEncode, decode as jwtDecode } from "next-auth/jwt"
 import prisma from "@/lib/prisma"
+import bcrypt from "bcryptjs"
 
 /** Long session when “Keep me signed in” is enabled (or OAuth). */
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
@@ -39,21 +40,41 @@ export const authOptions: NextAuthOptions = {
                 }
 
                 const email = credentials.email.trim();
+                console.log("[LOGIN_ATTEMPT] Email:", email);
+
                 // Case-insensitive match (Postgres) — avoids login failures when casing differs from DB
                 const dbUser = (await prisma.user.findFirst({
                     where: { email: { equals: email, mode: "insensitive" } },
                 })) as any;
 
-                if (!dbUser || !dbUser.hashedPassword || !dbUser.emailVerified) {
+                if (!dbUser) {
+                    console.log("[LOGIN_FAILED] User not found for email:", email);
                     return null;
                 }
 
-                const bcrypt = await import("bcryptjs");
-                const isPasswordValid = await bcrypt.compare(credentials.password, dbUser.hashedPassword);
-
-                if (!isPasswordValid) {
+                if (!dbUser.hashedPassword) {
+                    console.log("[LOGIN_FAILED] No hashed password for user:", email);
                     return null;
                 }
+
+                if (!dbUser.emailVerified) {
+                    console.log("[LOGIN_FAILED] Email not verified for user:", email);
+                    return null;
+                }
+
+                try {
+                    const isPasswordValid = await bcrypt.compare(credentials.password, dbUser.hashedPassword);
+
+                    if (!isPasswordValid) {
+                        console.log("[LOGIN_FAILED] Password compare failed for user:", email);
+                        return null;
+                    }
+                } catch (err: any) {
+                    console.error("[LOGIN_CRASH] bcrypt failed:", err);
+                    return null;
+                }
+
+                console.log("[LOGIN_SUCCESS] User logged in:", email);
 
                 const rememberMe = credentials.rememberMe !== "false";
 
