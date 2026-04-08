@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { shopeeDataClient } from "@/lib/shopee";
+import { safeDecrypt } from "@/lib/encryption";
 
 /**
  * GET /api/export/rows
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: "No active source connections found in this workspace." }, { status: 404 });
         }
 
-        const sourceCreds = JSON.parse(sourceConnection.credentials);
+        const sourceCreds = JSON.parse(safeDecrypt(sourceConnection.credentials));
         let rows: any[] = [];
         const headers = ["Order ID", "Customer Name", "Status", "Total Amount", "Currency", "Item Count", "Created At"];
         rows.push(headers);

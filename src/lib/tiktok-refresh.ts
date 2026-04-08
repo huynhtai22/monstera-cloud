@@ -8,12 +8,13 @@
 
 import prisma from "@/lib/prisma";
 import { tiktokBusinessClient } from "@/lib/tiktok-business";
+import { encrypt, safeDecrypt } from "@/lib/encryption";
 
 export async function getValidTikTokToken(conn: {
   id: string;
   credentials: string;
 }): Promise<string> {
-  const creds = JSON.parse(conn.credentials) as {
+  const creds = JSON.parse(safeDecrypt(conn.credentials)) as {
     accessToken: string;
     refreshToken?: string;
     expiresAt?: string;
@@ -70,7 +71,7 @@ export async function getValidTikTokToken(conn: {
 
   await (prisma.connection as any).update({
     where: { id: conn.id },
-    data: { credentials: JSON.stringify(updatedCreds) },
+    data: { credentials: encrypt(JSON.stringify(updatedCreds)) },
   });
 
   return newToken.access_token;

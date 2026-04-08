@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { tiktokBusinessClient } from '@/lib/tiktok-business';
 import prisma from '@/lib/prisma';
 import { isTikTokBusinessConnectEnabled } from '@/lib/integration-flags';
+import { encrypt } from '@/lib/encryption';
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, '');
@@ -78,7 +79,7 @@ export async function GET(request: Request) {
         type: 'source',
         provider: 'tiktok_business',
         status: 'connected',
-        credentials: JSON.stringify({
+        credentials: encrypt(JSON.stringify({
           accessToken: tokenData.access_token,
           refreshToken: tokenData.refresh_token,
           advertiserIds,
@@ -90,7 +91,7 @@ export async function GET(request: Request) {
             Date.now() + (tokenData.refresh_token_expires_in ?? 2592000) * 1000
           ).toISOString(),
           product: 'tiktok_business',
-        }),
+        })),
       },
     });
 

@@ -7,6 +7,7 @@ import { getValidMetaToken } from '@/lib/meta-refresh';
 import { googleAdsReportClient } from '@/lib/google-ads';
 import { getValidGoogleAdsToken } from '@/lib/google-ads-refresh';
 import { PRODUCT_SITE_URL } from '@/lib/site-url';
+import { safeDecrypt } from '@/lib/encryption';
 
 /**
  * POST /api/v1/sheets/query
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
       });
       if (!conn) return NextResponse.json({ error: 'TikTok connection not found' }, { status: 404 });
 
-      const creds = JSON.parse(conn.credentials) as { accessToken: string; sandbox?: boolean };
+      const creds = JSON.parse(safeDecrypt(conn.credentials)) as { accessToken: string; sandbox?: boolean };
       const reportParams = { advertiser_id, report_type: 'BASIC' as const, data_level, dimensions, metrics, start_date, end_date };
 
       if (creds.sandbox) {
@@ -155,7 +156,7 @@ export async function POST(req: Request) {
       if (!conn) return NextResponse.json({ error: 'Google Ads connection not found' }, { status: 404 });
 
       const accessToken = await getValidGoogleAdsToken(conn);
-      const creds = JSON.parse(conn.credentials) as { mccId?: string };
+      const creds = JSON.parse(safeDecrypt(conn.credentials)) as { mccId?: string };
 
       let googleRows;
       switch (reportType ?? 'campaign') {

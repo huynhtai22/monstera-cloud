@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { encrypt } from "@/lib/encryption";
 
 export async function POST(request: Request) {
     try {
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
                 name,
                 type,
                 provider,
-                credentials: credentials || "{}"
+                credentials: encrypt(credentials || "{}")
             }
         });
 

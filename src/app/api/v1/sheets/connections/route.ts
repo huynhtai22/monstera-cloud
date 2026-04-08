@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { safeDecrypt } from '@/lib/encryption';
 
 /**
  * POST /api/v1/sheets/connections
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
       let advertiserIds: string[] = [];
       let sandbox = false;
       try {
-        const creds = JSON.parse(c.credentials);
+        const creds = JSON.parse(safeDecrypt(c.credentials));
         advertiserIds = creds.advertiserIds ?? [];
         sandbox = creds.sandbox === true;
       } catch {}

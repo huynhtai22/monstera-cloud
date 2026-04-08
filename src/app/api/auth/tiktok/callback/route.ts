@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { tiktokClient } from "@/lib/tiktok";
 import prisma from "@/lib/prisma";
 import { isTikTokShopConnectEnabled } from "@/lib/integration-flags";
+import { encrypt } from "@/lib/encryption";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
@@ -43,7 +44,7 @@ export async function GET(request: Request) {
         type: "source",
         provider: "tiktok_shop",
         status: "connected",
-        credentials: JSON.stringify({
+        credentials: encrypt(JSON.stringify({
           accessToken: tokenData.access_token,
           refreshToken: tokenData.refresh_token,
           openId: tokenData.open_id,
@@ -51,7 +52,7 @@ export async function GET(request: Request) {
           expiresAt: new Date(Date.now() + tokenData.access_token_expire_in * 1000),
           refreshExpiresAt: new Date(Date.now() + tokenData.refresh_token_expire_in * 1000),
           product: "tiktok_shop",
-        }),
+        })),
       },
     });
 

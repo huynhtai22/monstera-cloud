@@ -21,6 +21,8 @@
     "@types/node": "^25.3.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.37.0",
     "ag-grid-community": "^35.1.0",
     "ag-grid-react": "^35.1.0",
     "autoprefixer": "^10.4.27",

@@ -51,6 +51,12 @@ export async function GET(req: Request) {
 
   const results: { jobId: string; pipelineId: string; status: string; error?: string }[] = [];
 
+  const computeBackoffMs = (retryCount: number) => {
+    // retryCount starts at 0 → first retry waits 2^0 * 60s = 60s
+    const minutes = Math.pow(2, Math.max(0, retryCount));
+    return minutes * 60_000;
+  };
+
   for (const job of jobs) {
     try {
       const baseUrl = process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? "";
@@ -71,18 +77,68 @@ export async function GET(req: Request) {
         results.push({ jobId: job.id, pipelineId: job.pipelineId, status: "done" });
       } else {
         const err = await res.text();
-        await (prisma.syncJob as any).update({
-          where: { id: job.id },
-          data: { status: "failed", finishedAt: new Date(), errorMsg: err.slice(0, 500) },
-        });
-        results.push({ jobId: job.id, pipelineId: job.pipelineId, status: "failed", error: err.slice(0, 200) });
+        const errorMsg = err.slice(0, 500);
+        const retryCount = Number(job.retryCount ?? 0);
+        const maxRetries = Number(job.maxRetries ?? 3);
+
+        if (retryCount < maxRetries) {
+          const nextRetryCount = retryCount + 1;
+          const delayMs = computeBackoffMs(retryCount);
+          await (prisma.syncJob as any).update({
+            where: { id: job.id },
+            data: {
+              status: "queued",
+              retryCount: nextRetryCount,
+              scheduledAt: new Date(Date.now() + delayMs),
+              finishedAt: null,
+              errorMsg,
+            },
+          });
+          results.push({
+            jobId: job.id,
+            pipelineId: job.pipelineId,
+            status: "queued",
+            error: `retry ${nextRetryCount}/${maxRetries} in ${Math.round(delayMs / 1000)}s: ${err.slice(0, 120)}`,
+          });
+        } else {
+          await (prisma.syncJob as any).update({
+            where: { id: job.id },
+            data: { status: "failed", finishedAt: new Date(), errorMsg },
+          });
+          results.push({ jobId: job.id, pipelineId: job.pipelineId, status: "failed", error: err.slice(0, 200) });
+        }
       }
     } catch (err: any) {
-      await (prisma.syncJob as any).update({
-        where: { id: job.id },
-        data: { status: "failed", finishedAt: new Date(), errorMsg: err.message?.slice(0, 500) },
-      });
-      results.push({ jobId: job.id, pipelineId: job.pipelineId, status: "failed", error: err.message });
+      const msg = String(err?.message ?? err).slice(0, 500);
+      const retryCount = Number(job.retryCount ?? 0);
+      const maxRetries = Number(job.maxRetries ?? 3);
+
+      if (retryCount < maxRetries) {
+        const nextRetryCount = retryCount + 1;
+        const delayMs = computeBackoffMs(retryCount);
+        await (prisma.syncJob as any).update({
+          where: { id: job.id },
+          data: {
+            status: "queued",
+            retryCount: nextRetryCount,
+            scheduledAt: new Date(Date.now() + delayMs),
+            finishedAt: null,
+            errorMsg: msg,
+          },
+        });
+        results.push({
+          jobId: job.id,
+          pipelineId: job.pipelineId,
+          status: "queued",
+          error: `retry ${nextRetryCount}/${maxRetries} in ${Math.round(delayMs / 1000)}s: ${msg.slice(0, 120)}`,
+        });
+      } else {
+        await (prisma.syncJob as any).update({
+          where: { id: job.id },
+          data: { status: "failed", finishedAt: new Date(), errorMsg: msg },
+        });
+        results.push({ jobId: job.id, pipelineId: job.pipelineId, status: "failed", error: msg.slice(0, 200) });
+      }
     }
   }
 

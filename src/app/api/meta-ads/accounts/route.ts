@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { metaAdsClient } from '@/lib/meta-ads';
 import { getValidMetaToken } from '@/lib/meta-refresh';
 import prisma from '@/lib/prisma';
+import { safeDecrypt } from '@/lib/encryption';
 
 /**
  * GET /api/meta-ads/accounts?connectionId=
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const creds = JSON.parse(conn.credentials) as { adAccounts?: Array<{ id: string; name: string; currency: string }> };
+    const creds = JSON.parse(safeDecrypt(conn.credentials)) as { adAccounts?: Array<{ id: string; name: string; currency: string }> };
 
     // Return cached account list from credentials first; refresh from API if not available
     if (creds.adAccounts?.length) {

@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { tiktokReportClient } from '@/lib/tiktok-business';
 import { getValidTikTokToken } from '@/lib/tiktok-refresh';
 import prisma from '@/lib/prisma';
+import { safeDecrypt } from '@/lib/encryption';
 
 /**
  * GET /api/tiktok-business/report/[taskId]?connectionId=...&advertiser_id=...
@@ -43,7 +44,7 @@ export async function GET(
 
     // Auto-refresh access token if it is close to expiry
     const accessToken = await getValidTikTokToken(conn);
-    const creds = JSON.parse(conn.credentials) as { sandbox?: boolean };
+    const creds = JSON.parse(safeDecrypt(conn.credentials)) as { sandbox?: boolean };
 
     const taskInfo = await tiktokReportClient.checkTask(
       accessToken,

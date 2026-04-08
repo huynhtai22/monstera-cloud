@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { googleAdsOAuthClient } from '@/lib/google-ads';
 import prisma from '@/lib/prisma';
 import { isGoogleAdsConnectEnabled } from '@/lib/integration-flags';
+import { encrypt } from '@/lib/encryption';
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, '');
@@ -89,14 +90,14 @@ export async function GET(request: Request) {
         type: 'source',
         provider: 'google_ads',
         status: 'connected',
-        credentials: JSON.stringify({
+        credentials: encrypt(JSON.stringify({
           accessToken: tokenData.access_token,
           refreshToken: tokenData.refresh_token,
           expiresAt: new Date(Date.now() + (tokenData.expires_in ?? 3600) * 1000).toISOString(),
           customerIds,
           mccId,
           product: 'google_ads',
-        }),
+        })),
       },
     });
 

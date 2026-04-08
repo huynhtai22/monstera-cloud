@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { metaAdsClient } from '@/lib/meta-ads';
 import prisma from '@/lib/prisma';
 import { isMetaAdsConnectEnabled } from '@/lib/integration-flags';
+import { encrypt } from '@/lib/encryption';
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, '');
@@ -84,7 +85,7 @@ export async function GET(request: Request) {
         type: 'source',
         provider: 'meta_ads',
         status: 'connected',
-        credentials: JSON.stringify({
+        credentials: encrypt(JSON.stringify({
           accessToken: tokenData.access_token,
           adAccountIds,
           adAccounts,
@@ -92,7 +93,7 @@ export async function GET(request: Request) {
             Date.now() + (tokenData.expires_in ?? 5183944) * 1000
           ).toISOString(),
           product: 'meta_ads',
-        }),
+        })),
       },
     });
 

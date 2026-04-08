@@ -10,12 +10,13 @@
 
 import prisma from '@/lib/prisma';
 import { metaAdsClient } from '@/lib/meta-ads';
+import { encrypt, safeDecrypt } from '@/lib/encryption';
 
 export async function getValidMetaToken(conn: {
   id: string;
   credentials: string;
 }): Promise<string> {
-  const creds = JSON.parse(conn.credentials) as {
+  const creds = JSON.parse(safeDecrypt(conn.credentials)) as {
     accessToken: string;
     expiresAt?: string;
     systemUser?: boolean;
@@ -50,7 +51,7 @@ export async function getValidMetaToken(conn: {
 
   await (prisma.connection as any).update({
     where: { id: conn.id },
-    data: { credentials: JSON.stringify(updatedCreds) },
+    data: { credentials: encrypt(JSON.stringify(updatedCreds)) },
   });
 
   return newToken.access_token;

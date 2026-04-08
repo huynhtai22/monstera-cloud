@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
+import { safeDecrypt } from "@/lib/encryption";
 
 export async function GET() {
     try {
@@ -53,7 +54,47 @@ export async function GET() {
             workspaces = [newWorkspace];
         }
 
-        return NextResponse.json(workspaces);
+        // Redact/enrich connection credentials for client use.
+        // DB stores encrypted credentials; client should only receive non-sensitive metadata.
+        const sanitizeCredentials = (raw: string) => {
+            try {
+                const parsed = JSON.parse(safeDecrypt(raw ?? "{}")) as Record<string, unknown>;
+                const {
+                    spreadsheetId,
+                    shopId,
+                    advertiserIds,
+                    adAccountIds,
+                    adAccounts,
+                    customerIds,
+                    mccId,
+                    sandbox,
+                    product,
+                } = parsed as any;
+                return JSON.stringify({
+                    spreadsheetId,
+                    shopId,
+                    advertiserIds,
+                    adAccountIds,
+                    adAccounts,
+                    customerIds,
+                    mccId,
+                    sandbox,
+                    product,
+                });
+            } catch {
+                return "{}";
+            }
+        };
+
+        const safeWorkspaces = workspaces.map((w: any) => ({
+            ...w,
+            connections: (w.connections ?? []).map((c: any) => ({
+                ...c,
+                credentials: sanitizeCredentials(c.credentials),
+            })),
+        }));
+
+        return NextResponse.json(safeWorkspaces);
     } catch (error) {
         console.error("Error fetching workspaces:", error);
         return NextResponse.json({ error: "Failed to fetch workspaces", details: error instanceof Error ? error.message : String(error) }, { status: 500 });

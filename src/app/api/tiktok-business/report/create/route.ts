@@ -5,6 +5,7 @@ import { tiktokReportClient, CreateReportTaskParams } from '@/lib/tiktok-busines
 import { getValidTikTokToken } from '@/lib/tiktok-refresh';
 import { getPlanLimits } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
+import { safeDecrypt } from '@/lib/encryption';
 
 /**
  * POST /api/tiktok-business/report/create
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
 
     // Auto-refresh access token if it is close to expiry
     const accessToken = await getValidTikTokToken(conn);
-    const creds = JSON.parse(conn.credentials) as { sandbox?: boolean };
+    const creds = JSON.parse(safeDecrypt(conn.credentials)) as { sandbox?: boolean };
 
     let responsePayload: any;
 

@@ -1,6 +1,7 @@
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+  // Keep "native" for local dev, add Vercel's Linux runtime target.
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
@@ -170,6 +171,8 @@ model SyncJob {
   plan        String    @default("free")
   status      String    @default("queued")  // queued | running | done | failed
   priority    Int       @default(1)
+  retryCount  Int       @default(0)
+  maxRetries  Int       @default(3)
   scheduledAt DateTime
   startedAt   DateTime?
   finishedAt  DateTime?

@@ -5,6 +5,7 @@ import { googleAdsReportClient, GOOGLE_REPORT_TYPES } from '@/lib/google-ads';
 import { getValidGoogleAdsToken } from '@/lib/google-ads-refresh';
 import { getPlanLimits } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
+import { safeDecrypt } from '@/lib/encryption';
 
 /**
  * POST /api/google-ads/report
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
     }
 
     const accessToken = await getValidGoogleAdsToken(conn);
-    const creds = JSON.parse(conn.credentials) as { mccId?: string };
+    const creds = JSON.parse(safeDecrypt(conn.credentials)) as { mccId?: string };
 
     let rows: unknown[];
     switch (reportType) {

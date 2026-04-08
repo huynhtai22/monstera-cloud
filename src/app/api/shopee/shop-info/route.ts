@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { shopeeDataClient } from "@/lib/shopee";
 import prisma from "@/lib/prisma";
+import { safeDecrypt } from "@/lib/encryption";
 
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const creds = JSON.parse(connection.credentials);
+    const creds = JSON.parse(safeDecrypt(connection.credentials));
     const data = await shopeeDataClient.getShopInfo({
       accessToken: creds.accessToken,
       shopId: creds.shopId,

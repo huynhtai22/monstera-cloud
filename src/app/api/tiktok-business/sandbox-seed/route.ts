@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { safeDecrypt } from '@/lib/encryption';
 
 const SANDBOX_BASE = 'https://sandbox-ads.tiktok.com/open_api/v1.3';
 
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
   }
 
-  const creds = JSON.parse(conn.credentials) as { accessToken: string; advertiserIds: string[] };
+  const creds = JSON.parse(safeDecrypt(conn.credentials)) as { accessToken: string; advertiserIds: string[] };
   const token = creds.accessToken;
   const advertiserId = creds.advertiserIds?.[0];
   if (!advertiserId) {

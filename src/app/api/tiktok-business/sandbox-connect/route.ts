@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { encrypt } from '@/lib/encryption';
 
 /**
  * POST /api/tiktok-business/sandbox-connect
@@ -45,12 +46,12 @@ export async function POST(req: Request) {
       type: 'source',
       provider: 'tiktok_business',
       status: 'connected',
-      credentials: JSON.stringify({
+      credentials: encrypt(JSON.stringify({
         accessToken,
         advertiserIds: [advertiserId],
         sandbox: true,
         product: 'tiktok_business',
-      }),
+      })),
     },
   });
 

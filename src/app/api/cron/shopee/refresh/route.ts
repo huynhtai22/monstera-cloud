@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { ShopeeClient } from "@/lib/shopee";
+import { encrypt, safeDecrypt } from "@/lib/encryption";
 
 // Vercel Cron Jobs send a specific authorization header.
 // It's recommended to secure cron endpoints using the CRON_SECRET envar.
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
 
         for (const conn of connections) {
             try {
-                const creds = JSON.parse(conn.credentials);
+                const creds = JSON.parse(safeDecrypt(conn.credentials));
                 const expireInSecs = creds.expire_in || 259200; // Default to 3 days if missing
                 
                 // Calculate exactly when the token expires
@@ -46,12 +47,12 @@ export async function GET(request: Request) {
                     await prisma.connection.update({
                         where: { id: conn.id },
                         data: {
-                            credentials: JSON.stringify({
+                            credentials: encrypt(JSON.stringify({
                                 access_token: newTokenData.access_token,
                                 refresh_token: newTokenData.refresh_token,
                                 expire_in: newTokenData.expire_in,
                                 shop_id: creds.shop_id
-                            })
+                            }))
                         }
                     });
                     

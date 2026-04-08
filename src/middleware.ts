@@ -1,7 +1,34 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { apiRatelimit } from "@/lib/ratelimit";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
+  // Global rate limit for all /api/* routes (excluding add-on endpoints)
+  // Uses Upstash if configured; otherwise no-op.
+  if (
+    apiRatelimit &&
+    request.nextUrl.pathname.startsWith("/api/") &&
+    !request.nextUrl.pathname.startsWith("/api/v1/sheets")
+  ) {
+    const ip =
+      request.ip ||
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      "unknown";
+    const result = await apiRatelimit.limit(ip);
+    if (!result.success) {
+      const res = NextResponse.json(
+        { error: "Too Many Requests" },
+        { status: 429 }
+      );
+      if (result.reset) {
+        res.headers.set("x-ratelimit-reset", String(result.reset));
+      }
+      res.headers.set("x-ratelimit-limit", String(result.limit));
+      res.headers.set("x-ratelimit-remaining", String(result.remaining));
+      return res;
+    }
+  }
+
   // Add CORS headers for /api/v1/sheets/* routes (called by Google Apps Script)
   if (request.nextUrl.pathname.startsWith('/api/v1/sheets')) {
     if (request.method === 'OPTIONS') {
@@ -27,5 +54,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: '/api/v1/sheets/:path*',
+  matcher: ['/api/:path*'],
 };

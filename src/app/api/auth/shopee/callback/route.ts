@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { shopeeClient } from "@/lib/shopee";
 import prisma from "@/lib/prisma";
 import { isShopeeConnectEnabled } from "@/lib/integration-flags";
+import { encrypt } from "@/lib/encryption";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
         type: "source",
         provider: "shopee",
         status: "connected",
-        credentials: JSON.stringify({
+        credentials: encrypt(JSON.stringify({
           accessToken: tokenData.access_token,
           refreshToken: tokenData.refresh_token,
           shopId: tokenData.shop_id,
@@ -66,7 +67,7 @@ export async function GET(request: Request) {
             Date.now() + 30 * 24 * 60 * 60 * 1000 // 30 days
           ).toISOString(),
           product: "shopee",
-        }),
+        })),
       },
     });
 

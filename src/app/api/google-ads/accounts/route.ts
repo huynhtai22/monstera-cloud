@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { getValidGoogleAdsToken } from '@/lib/google-ads-refresh';
 import { googleAdsOAuthClient } from '@/lib/google-ads';
 import prisma from '@/lib/prisma';
+import { safeDecrypt } from '@/lib/encryption';
 
 /**
  * GET /api/google-ads/accounts?connectionId=
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const creds = JSON.parse(conn.credentials) as { customerIds?: string[] };
+    const creds = JSON.parse(safeDecrypt(conn.credentials)) as { customerIds?: string[] };
 
     if (creds.customerIds?.length) {
       return NextResponse.json({ customerIds: creds.customerIds });
