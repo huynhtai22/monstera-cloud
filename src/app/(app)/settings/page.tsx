@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from "next/link";
-import { Settings2, Building2, Users, CreditCard, KeyRound, Save, Plus, AlertCircle, CheckCircle2, Copy, Briefcase, Trash2, Activity, Database } from "lucide-react";
+import { Settings2, Building2, Users, CreditCard, KeyRound, Save, Plus, AlertCircle, CheckCircle2, Copy, Briefcase, Trash2, Activity, Database, ShieldAlert } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
@@ -29,6 +29,7 @@ export default function SettingsPage() {
 
     // Client Management State
     const [clients, setClients] = useState<any[]>([]);
+    const [unassignedConns, setUnassignedConns] = useState<any[]>([]);
     const [isAddingClient, setIsAddingClient] = useState(false);
     const [newClientName, setNewClientName] = useState('');
 
@@ -38,8 +39,37 @@ export default function SettingsPage() {
         }
         if (activeTab === 'clients' && activeWorkspaceId) {
             fetchClients();
+            fetchUnassigned();
         }
     }, [activeTab, activeWorkspaceId]);
+
+    const fetchUnassigned = async () => {
+        try {
+            const res = await fetch(`/api/workspaces/${activeWorkspaceId}/connections?unassigned=true`);
+            if (res.ok) {
+                const data = await res.json();
+                setUnassignedConns(data);
+            }
+        } catch (e) {
+            console.error("Failed to fetch unassigned connections");
+        }
+    };
+
+    const handleAssignClient = async (connId: string, clientId: string) => {
+        try {
+            const res = await fetch(`/api/connections/${connId}/assign-client`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clientId, workspaceId: activeWorkspaceId })
+            });
+            if (res.ok) {
+                fetchUnassigned();
+                fetchClients();
+            }
+        } catch (e) {
+            console.error("Failed to assign client");
+        }
+    };
 
     const fetchClients = async () => {
         try {
@@ -322,6 +352,40 @@ export default function SettingsPage() {
                                             </button>
                                         </div>
                                     ))}
+                                </div>
+                            )}
+
+                            {unassignedConns.length > 0 && (
+                                <div className="mt-12">
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <ShieldAlert className="w-4 h-4 text-amber-500" />
+                                        <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-tight">Organize Unassigned Connections</h3>
+                                    </div>
+                                    <div className="bg-amber-50/50 border border-amber-100 rounded-3xl p-6">
+                                        <div className="space-y-3">
+                                            {unassignedConns.map((conn) => (
+                                                <div key={conn.id} className="flex items-center justify-between p-3 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 shadow-sm">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-gray-50 rounded-lg">
+                                                            <Database className="w-3.5 h-3.5 text-gray-400" />
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs font-bold text-gray-900 dark:text-white">{conn.name}</p>
+                                                            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tighter">{conn.provider}</p>
+                                                        </div>
+                                                    </div>
+                                                    <select 
+                                                        onChange={(e) => handleAssignClient(conn.id, e.target.value)}
+                                                        className="text-[10px] font-bold bg-gray-50 border-none rounded-lg focus:ring-emerald-500"
+                                                        defaultValue=""
+                                                    >
+                                                        <option value="" disabled>Select Client...</option>
+                                                        {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                    </select>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>

@@ -8,11 +8,14 @@ import { sendSyncFailureEmail } from "@/lib/mail";
 import { runEtlPipeline } from "@/etl/runner";
 import type { EtlProvider } from "@/etl/types";
 
+import { sendAgencyAlert } from "@/lib/alerts";
+
 export async function POST(req: Request, context: { params: any }) {
     let syncLogId;
     let pipelineId: string | undefined;
     let notifyEmail: string | undefined;
     let pipelineNameForNotify: string | undefined;
+    let pipeline: any = null;
 
     try {
         const syncStartTime = Date.now();
@@ -39,7 +42,7 @@ export async function POST(req: Request, context: { params: any }) {
         }
 
         // 1. Fetch Pipeline with Relations
-        const pipeline = await prisma.pipeline.findUnique({
+        pipeline = await prisma.pipeline.findUnique({
             where: { id: String(pipelineId) },
             include: {
                 sourceConnection: true,
@@ -142,6 +145,16 @@ export async function POST(req: Request, context: { params: any }) {
                 pipelineNameForNotify ?? "Pipeline",
                 error?.message || "Unknown error occurred"
             ).catch(() => { });
+        }
+
+        // Agency Polish: Send Telegram Alert
+        if (pipeline) {
+            await sendAgencyAlert({
+                workspaceId: pipeline.workspaceId,
+                pipelineName: pipeline.name,
+                errorMsg: error?.message || "Unknown error",
+                clientId: pipeline.clientId
+            }).catch(() => { });
         }
 
         // Optionally log the error to the database
