@@ -19,6 +19,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
 import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
+import { HealthDashboard } from "@/components/HealthDashboard";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
@@ -31,6 +32,8 @@ const fetcher = async (url: string) => {
 
 export default function OverviewPage() {
     const { activeWorkspaceId } = useWorkspaceStore();
+    const [syncingPipelineId, setSyncingPipelineId] = React.useState<string | null>(null);
+    const [syncMsg, setSyncMsg] = React.useState<string>("");
     const { data: pipelines, error, isLoading } = useSWR(
         activeWorkspaceId ? `/api/pipelines?workspaceId=${activeWorkspaceId}` : null,
         fetcher
@@ -39,6 +42,13 @@ export default function OverviewPage() {
     const activePipelinesCount = Array.isArray(pipelines) ? pipelines.length : 0;
 
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
+
+    const { data: attributionData } = useSWR(
+        activeWorkspaceId ? `/api/attribution/snapshots?workspaceId=${activeWorkspaceId}&days=14` : null,
+        fetcher
+    );
+    const snapshots = (attributionData?.snapshots ?? []) as Array<{ date: string; netRoas: number; adSpend: number; attributedRevenue: number }>;
+    const latest = snapshots.length ? snapshots[snapshots.length - 1] : null;
 
     const { connectedSourcesCount, connectedDestinationsCount } = React.useMemo(() => {
         if (!Array.isArray(workspaces) || !activeWorkspaceId) {
@@ -56,6 +66,23 @@ export default function OverviewPage() {
     const hasDestination = connectedDestinationsCount > 0;
     const hasPipeline = activePipelinesCount > 0;
 
+    const runPipeline = async (pipelineId: string) => {
+        setSyncMsg("");
+        setSyncingPipelineId(pipelineId);
+        try {
+            const res = await fetch(`/api/pipelines/${pipelineId}/run`, { method: "POST" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(typeof data.error === "string" ? data.error : "Sync failed");
+            }
+            setSyncMsg(typeof data.message === "string" ? data.message : "Sync started.");
+        } catch (e: any) {
+            setSyncMsg(e?.message || "Sync failed");
+        } finally {
+            setSyncingPipelineId(null);
+        }
+    };
+
     return (
         <div className="relative mx-auto w-full max-w-7xl animate-in px-8 py-10 fade-in duration-300">
             <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
@@ -66,61 +93,57 @@ export default function OverviewPage() {
             <div className="relative z-10 mb-10 flex flex-col justify-between space-y-4 sm:flex-row sm:items-start sm:space-y-0">
                 <div>
                     <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-                        Platform Overview
+                        Agency Command Center
                     </h1>
                     <p className="max-w-2xl text-base text-gray-600 dark:text-gray-400">
-                        Monitor your workspace health, recent pipeline activity, and total data throughput.
+                        Monitor health across your entire client portfolio. Real-time data freshness and throughput monitoring.
                     </p>
                 </div>
                 <span className="inline-flex shrink-0 items-center rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
                     <span className="mr-2 h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
-                    All Systems Operational
+                    Infrastructure Stable
                 </span>
+            </div>
+
+            {syncMsg ? (
+                <div className="relative z-10 mb-6 rounded-lg border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200">
+                    {syncMsg}
+                </div>
+            ) : null}
+
+            {/* LIVE HEALTH DASHBOARD */}
+            <div className="relative z-10 mb-12">
+                <HealthDashboard />
             </div>
 
             <div className="relative z-10 mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
-                <div className="group relative overflow-hidden rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl transition-all hover:shadow-md dark:border-slate-700/40 dark:bg-slate-900/40">
-                    <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-gradient-to-br from-emerald-100 to-transparent opacity-50 blur-2xl transition-transform duration-700 group-hover:scale-150" />
-                    <div className="relative mb-4 flex items-start justify-between">
-                        <div className="rounded-xl border border-gray-100 bg-white p-2.5 text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                            <Database className="h-5 w-5" />
-                        </div>
+                <div className="rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/40 md:col-span-2">
+                    <div className="mb-2 flex items-center justify-between">
+                        <div className="text-sm font-bold text-gray-900 dark:text-white">Net ROAS (last 14 days)</div>
+                        <Link href="/reports" className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">
+                            View reports
+                        </Link>
                     </div>
-                    <h3 className="mb-1 text-sm font-medium text-gray-500 dark:text-gray-400">Connected Sources</h3>
-                    <p className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">{connectedSourcesCount}</p>
+                    {!latest ? (
+                        <div className="text-sm text-gray-500 dark:text-gray-400">No attribution data yet.</div>
+                    ) : (
+                        <div className="flex flex-col gap-2">
+                            <div className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">
+                                {Number(latest.netRoas ?? 0).toFixed(2)}
+                                <span className="ml-2 text-sm font-semibold text-gray-400 dark:text-gray-500">Net ROAS</span>
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                                Latest: {new Date(latest.date).toLocaleDateString()} • Spend {Number(latest.adSpend ?? 0).toFixed(2)} • Revenue {Number(latest.attributedRevenue ?? 0).toFixed(2)}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                <div className="group relative overflow-hidden rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl transition-all hover:shadow-md dark:border-slate-700/40 dark:bg-slate-900/40">
-                    <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-gradient-to-br from-blue-100 to-transparent opacity-50 blur-2xl transition-transform duration-700 group-hover:scale-150" />
-                    <div className="relative mb-4 flex items-start justify-between">
-                        <div className="rounded-xl border border-gray-100 bg-white p-2.5 text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                            <Activity className="h-5 w-5" />
-                        </div>
-                    </div>
-                    <h3 className="mb-1 text-sm font-medium text-gray-500 dark:text-gray-400">Active Pipelines</h3>
-                    <p className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-                        {isLoading ? "…" : activePipelinesCount}
-                        <span className="ml-1 text-lg font-normal text-gray-400 dark:text-gray-500">connected</span>
-                    </p>
+                <div className="rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/40">
+                    <div className="text-sm font-bold text-gray-900 dark:text-white">Attribution Model</div>
+                    <div className="mt-2 text-sm text-gray-600 dark:text-gray-300">Time-decay</div>
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Weights decay with a 24h half-life.</div>
                 </div>
-
-                <div className="group relative overflow-hidden rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl transition-all hover:shadow-md dark:border-slate-700/40 dark:bg-slate-900/40">
-                    <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-gradient-to-br from-indigo-100 to-transparent opacity-50 blur-2xl transition-transform duration-700 group-hover:scale-150" />
-                    <div className="relative mb-4 flex items-start justify-between">
-                        <div className="rounded-xl border border-gray-100 bg-white p-2.5 text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                            <Clock className="h-5 w-5" />
-                        </div>
-                    </div>
-                    <h3 className="mb-1 text-sm font-medium text-gray-500 dark:text-gray-400">Workspace Status</h3>
-                    <p className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Active</p>
-                </div>
-            </div>
-
-            <div className="relative z-10 mb-6 rounded-lg border border-dashed border-gray-200 bg-gray-50/80 px-4 py-3 text-sm text-gray-600 dark:border-slate-600 dark:bg-slate-800/50 dark:text-gray-400">
-                <span className="mr-2 inline-flex items-center rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                    Soon
-                </span>
-                Sync Volume Analytics — charts for row throughput and sync history will appear here when pipeline analytics ship.
             </div>
 
             <div className="relative z-10 grid grid-cols-1 gap-8 lg:grid-cols-3">
@@ -251,6 +274,22 @@ export default function OverviewPage() {
                                                     hour: "2-digit",
                                                     minute: "2-digit",
                                                 })}
+                                            </div>
+
+                                            <div className="mt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => runPipeline(pipeline.id)}
+                                                    disabled={syncingPipelineId === pipeline.id}
+                                                    className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-800"
+                                                >
+                                                    {syncingPipelineId === pipeline.id ? (
+                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                    ) : (
+                                                        <Zap className="h-3.5 w-3.5" />
+                                                    )}
+                                                    Sync now
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
