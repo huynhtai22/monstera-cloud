@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { shopeeDataClient } from "@/lib/shopee";
+import { shopeeDataClient, getValidShopeeCreds } from "@/lib/shopee";
 import prisma from "@/lib/prisma";
-import { safeDecrypt } from "@/lib/encryption";
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
@@ -26,11 +25,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    const creds = JSON.parse(safeDecrypt(connection.credentials));
+    // getValidShopeeCreds refreshes the token inline if it's within 30 min of
+    // expiry — so we never hit a 4h-TTL wall mid-session.
+    const creds = await getValidShopeeCreds(connectionId);
     const opts = {
-      accessToken: creds.accessToken,
-      shopId: creds.shopId,
-      sandbox: creds.sandbox === true,
+      accessToken: creds.access_token,
+      shopId:      creds.shop_id,
+      sandbox:     creds.sandbox === true,
     };
 
     const timeFrom = startDate

@@ -14,6 +14,8 @@
  */
 
 import crypto from "crypto";
+import prisma from "@/lib/prisma";
+import { encrypt, safeDecrypt } from "@/lib/encryption";
 
 function partnerId(): number {
   const id = (process.env.SHOPEE_PARTNER_ID || "").trim();
@@ -291,3 +293,77 @@ export class ShopeeDataClient {
 }
 
 export const shopeeDataClient = new ShopeeDataClient();
+
+// ── Lazy token refresh ────────────────────────────────────────────────────────
+
+/**
+ * Shopee credentials as stored in the DB (both camelCase legacy + snake_case).
+ * We normalise to snake_case on write; support both on read.
+ */
+export interface ShopeeCreds {
+  access_token: string;
+  refresh_token: string;
+  expire_in: number;   // seconds — typically 14400 (4h)
+  shop_id: number;
+  sandbox?: boolean;
+}
+
+/**
+ * Returns always-valid Shopee credentials for a connection.
+ *
+ * — If the access token is still fresh (>30 min remaining), returns as-is.
+ * — If it's about to expire (≤30 min), refreshes it via the Shopee API,
+ *   persists the new tokens to the DB, and returns the fresh set.
+ *
+ * Call this before EVERY Shopee API request instead of reading raw credentials.
+ *
+ * @param connectionId  Prisma Connection.id
+ */
+export async function getValidShopeeCreds(connectionId: string): Promise<ShopeeCreds> {
+  const conn = await prisma.connection.findUnique({ where: { id: connectionId } });
+  if (!conn) throw new Error(`Shopee connection ${connectionId} not found`);
+
+  const raw = JSON.parse(safeDecrypt(conn.credentials)) as Record<string, any>;
+
+  // Normalise: support both camelCase (legacy) and snake_case
+  const creds: ShopeeCreds = {
+    access_token:  raw.access_token  ?? raw.accessToken,
+    refresh_token: raw.refresh_token ?? raw.refreshToken,
+    expire_in:     raw.expire_in     ?? raw.expireIn ?? 14400,
+    shop_id:       raw.shop_id       ?? raw.shopId,
+    sandbox:       raw.sandbox === true,
+  };
+
+  const tokenCreatedMs = new Date(conn.updatedAt).getTime();
+  const expiresAtMs    = tokenCreatedMs + creds.expire_in * 1000;
+  const thirtyMinMs    = 30 * 60 * 1000;
+  const needsRefresh   = expiresAtMs - Date.now() < thirtyMinMs;
+
+  if (!needsRefresh) return creds;
+
+  // ── Token is about to expire — refresh it now ──────────────────────────────
+  console.log(`[Shopee] Access token for connection ${connectionId} expiring soon — refreshing`);
+
+  const client = new ShopeeClient();
+  const fresh  = await client.refreshAccessToken(
+    creds.refresh_token,
+    creds.shop_id,
+    creds.sandbox
+  );
+
+  const updated: ShopeeCreds = {
+    access_token:  fresh.access_token,
+    refresh_token: fresh.refresh_token,
+    expire_in:     fresh.expire_in ?? 14400,
+    shop_id:       creds.shop_id,
+    sandbox:       creds.sandbox,
+  };
+
+  await prisma.connection.update({
+    where: { id: connectionId },
+    data:  { credentials: encrypt(JSON.stringify(updated)) },
+  });
+
+  console.log(`[Shopee] Token refreshed and saved for connection ${connectionId}`);
+  return updated;
+}
