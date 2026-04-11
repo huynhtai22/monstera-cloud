@@ -8,6 +8,7 @@ import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import useSWR, { useSWRConfig } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 import { integrationCatalogId } from "@/lib/integration-catalog";
+import { cn } from "@/lib/utils";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
@@ -65,6 +66,12 @@ export default function ConsolePage() {
     // Fetch Data
     const { data: workspaces, error, isLoading } = useSWR("/api/workspaces", fetcher);
     const { data: intConfig } = useSWR("/api/integrations/config", fetcher);
+
+    const { data: recentLogsData } = useSWR(
+        activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}` : null,
+        fetcher
+    );
+    const recentLogs = (recentLogsData?.logs ?? []).slice(0, 5) as Array<any>;
 
     const availableIntegrations = useMemo(() => {
         if (!intConfig) return ALL_CATALOG_INTEGRATIONS;
@@ -395,6 +402,64 @@ export default function ConsolePage() {
                     <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm mb-6">We couldn&apos;t find any data sources matching &quot;{searchQuery}&quot;. Try a different keyword or category.</p>
                 </div>
             )}
+
+            {/* Recent Syncs */}
+            <div className="mt-10">
+                <div className="mb-3 flex items-center justify-between">
+                    <h2 className="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Recent Syncs
+                    </h2>
+                    <a
+                        href="/reports"
+                        className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300"
+                    >
+                        View all logs
+                    </a>
+                </div>
+
+                <div className="rounded-2xl border border-white bg-white/40 p-5 shadow-sm backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/40">
+                    {recentLogs.length === 0 ? (
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                            No syncs yet. Create a pipeline and click “Sync Now”.
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {recentLogs.map((l: any) => (
+                                <div
+                                    key={l.id}
+                                    className={cn(
+                                        "flex items-start justify-between gap-3 rounded-xl border p-3",
+                                        l.status === "success"
+                                            ? "border-emerald-100 bg-emerald-50/40 dark:border-emerald-900/30 dark:bg-emerald-950/20"
+                                            : "border-red-100 bg-red-50/40 dark:border-red-900/30 dark:bg-red-950/20"
+                                    )}
+                                >
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            {l.status === "success" ? (
+                                                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+                                            ) : (
+                                                <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-300" />
+                                            )}
+                                            <div className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                                                {l.pipeline?.name ?? "Pipeline"}
+                                            </div>
+                                        </div>
+                                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                            {l.status === "success"
+                                                ? `Synced ${l.rowsSynced ?? 0} rows`
+                                                : `Failed: ${String(l.errorMsg ?? "").slice(0, 120)}`}
+                                        </div>
+                                    </div>
+                                    <div className="shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500">
+                                        {l.createdAt ? new Date(l.createdAt).toLocaleString() : ""}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
 
             <ConnectSourceModal
                 isOpen={isSourceModalOpen}

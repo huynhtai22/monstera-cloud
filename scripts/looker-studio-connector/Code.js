@@ -3,7 +3,7 @@
  */
 
 var cc = DataStudioApp.createCommunityConnector();
-var APP_URL = "https://app.monsteracloud.com";
+var APP_URL = "https://monsteracloud.com";
 
 function getAuthType() {
   var AuthTypes = cc.AuthType;
@@ -74,9 +74,9 @@ function getConfig(request) {
     .setHelpText("Filter by ad platform. Select 'All' to include every platform.")
     .setAllowOverride(true)
     .addOption(config.newOptionBuilder().setLabel("All").setValue("all"))
-    .addOption(config.newOptionBuilder().setLabel("Meta").setValue("meta"))
-    .addOption(config.newOptionBuilder().setLabel("Google Ads").setValue("google"))
-    .addOption(config.newOptionBuilder().setLabel("TikTok").setValue("tiktok"));
+    .addOption(config.newOptionBuilder().setLabel("Meta").setValue("meta_ads"))
+    .addOption(config.newOptionBuilder().setLabel("Google Ads").setValue("google_ads"))
+    .addOption(config.newOptionBuilder().setLabel("TikTok").setValue("tiktok_business"));
 
   return config.build();
 }
@@ -108,6 +108,7 @@ function getFields() {
   // FIX: Derived/ratio metrics should use AUTO aggregation — Looker Studio recalculates these
   fields.newMetric().setId("cpc").setName("CPC").setType(types.NUMBER).setAggregation(aggregations.AUTO);
   fields.newMetric().setId("ctr").setName("CTR").setType(types.NUMBER).setAggregation(aggregations.AUTO);
+  fields.newMetric().setId("cpm").setName("CPM").setType(types.NUMBER).setAggregation(aggregations.AUTO);
   fields.newMetric().setId("roas").setName("ROAS").setType(types.NUMBER).setAggregation(aggregations.AUTO);
 
   return fields;
@@ -221,6 +222,7 @@ function getData(request) {
         case "reach":       row.push(safeNumber(item.reach)); break;
         case "cpc":         row.push(safeNumber(item.cpc)); break;
         case "ctr":         row.push(safeNumber(item.ctr)); break;
+        case "cpm":         row.push(safeNumber(item.cpm)); break;
         case "conversions": row.push(safeNumber(item.conversions)); break;
         case "revenue":     row.push(safeNumber(item.revenue)); break;
         case "roas":        row.push(safeNumber(item.roas)); break;

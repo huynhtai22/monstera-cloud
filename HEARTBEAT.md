@@ -1,11 +1,11 @@
 # HEARTBEAT.md - Automated Morning Routine & Reliability Monitor
 
 # 3-Day Implementation Plan (Agent Tasks)
-- [ ] DAY 1: VERIFY_DEPLOY_BASE: Run `vercel ls`. Confirm project linked. Alert if build environment missing any critical ENV variables (DATABASE_URL, NEXTAUTH_SECRET).
-- [ ] DAY 1: VERTICAL_TEST: Verify `/console` and `/api/auth` are reachable. Scan for any 500 errors in `tmp/` logs.
-- [ ] DAY 2: SHEETS_SYNC: Audit `google-sheets-addon/` alignment with production API_BASE. Check if token exchange (OAuth) is logging any `401` errors in production logs.
-- [ ] DAY 3: MARKETPLACE_GUARD: Scan `src/` for any missing trademark symbols (™) in user-facing copy. Verify `oauthScopes` parity between `appsscript.json` and GCP console.
-- [ ] DAY 3: HERO_INGEST_HEALTH: Scan `tmp/` for ingestion errors on the primary path (e.g., TikTok/Shopee). Alert if error count > 5.
+- [x] DAY 1: VERIFY_DEPLOY_BASE: Run `vercel ls`. Confirm project linked. Alert if build environment missing any critical ENV variables (DATABASE_URL, NEXTAUTH_SECRET).
+- [x] DAY 1: VERTICAL_TEST: Verify `/console` and `/api/auth` are reachable. Scan for any 500 errors in `tmp/` logs.
+- [x] DAY 2: SHEETS_SYNC: Audit `google-sheets-addon/` alignment with production API_BASE. Check if token exchange (OAuth) is logging any `401` errors in production logs.
+- [x] DAY 3: MARKETPLACE_GUARD: Scan `src/` for any missing trademark symbols (™) in user-facing copy. Verify `oauthScopes` parity between `appsscript.json` and GCP console.
+- [x] DAY 3: HERO_INGEST_HEALTH: Scan `tmp/` for ingestion errors on the primary path (e.g., TikTok/Shopee). Alert if error count > 5.
 
 # Daily System Reliability Monitoring (The "Data Health Report")
 - [ ] CHECK_DATA_VALIDATION: Query DB/Logs to count records ingested in last 24h. Flag any connection that ingested 0 records unexpectedly.

@@ -14,6 +14,7 @@ import { getPlanLimits } from "@/lib/plan-config";
  */
 
 const BATCH_SIZE = 10;
+const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 
 export async function GET(req: Request) {
   // Verify this was called by Vercel Cron and not a public caller
@@ -23,6 +24,38 @@ export async function GET(req: Request) {
   }
 
   const now = new Date();
+
+  // Enqueue due pipelines for a ~4-hour cadence (respects plan cooldowns).
+  // This keeps the queue filled even if nothing explicitly enqueues jobs elsewhere.
+  const pipelines = await prisma.pipeline.findMany({
+    where: { status: "active" },
+    select: {
+      id: true,
+      lastSyncedAt: true,
+      workspace: { select: { ownerId: true } },
+    },
+  });
+
+  for (const p of pipelines) {
+    const ownerId = p.workspace?.ownerId;
+    if (!ownerId) continue;
+
+    const owner = await prisma.user.findUnique({ where: { id: ownerId }, select: { plan: true } });
+    const limits = getPlanLimits(owner?.plan ?? "free");
+    const cadenceMs = Math.max(FOUR_HOURS_MS, limits.syncIntervalMs);
+
+    const last = p.lastSyncedAt?.getTime() ?? 0;
+    if (Date.now() - last < cadenceMs) continue;
+
+    // Avoid duplicate queued/running jobs for the same pipeline
+    const existing = await (prisma.syncJob as any).findFirst({
+      where: { pipelineId: p.id, status: { in: ["queued", "running"] } },
+      select: { id: true },
+    });
+    if (existing) continue;
+
+    await enqueueSyncJob(p.id, ownerId, owner?.plan ?? "free", now);
+  }
 
   // Claim up to BATCH_SIZE queued jobs that are due, highest priority first
   const jobs = await (prisma.syncJob as any).findMany({

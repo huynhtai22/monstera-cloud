@@ -13,7 +13,7 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-        const { workspaceId, name, type, provider, credentials } = body;
+        const { workspaceId, clientId, name, type, provider, credentials } = body;
 
         if (!workspaceId || !name || !type || !provider) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -37,6 +37,7 @@ export async function POST(request: Request) {
         const connection = await prisma.connection.create({
             data: {
                 workspaceId,
+                clientId,
                 name,
                 type,
                 provider,

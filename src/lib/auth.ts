@@ -11,8 +11,34 @@ const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 /** Short session when user opts out of “keep signed in”. */
 const SESSION_SHORT_AGE_SECONDS = 24 * 60 * 60
 
+const isProduction = process.env.NODE_ENV === "production"
+
 export const authOptions: NextAuthOptions = {
     adapter: PrismaAdapter(prisma),
+    // Explicit cookie config: avoids __Secure-/__Host- prefix issues that break
+    // OAuth state/PKCE verification in incognito mode and on Vercel preview URLs.
+    cookies: {
+        sessionToken: {
+            name: "next-auth.session-token",
+            options: { httpOnly: true, sameSite: "lax", path: "/", secure: isProduction },
+        },
+        callbackUrl: {
+            name: "next-auth.callback-url",
+            options: { sameSite: "lax", path: "/", secure: isProduction },
+        },
+        csrfToken: {
+            name: "next-auth.csrf-token",
+            options: { httpOnly: true, sameSite: "lax", path: "/", secure: isProduction },
+        },
+        pkceCodeVerifier: {
+            name: "next-auth.pkce.code_verifier",
+            options: { httpOnly: true, sameSite: "lax", path: "/", secure: isProduction, maxAge: 60 * 15 },
+        },
+        state: {
+            name: "next-auth.state",
+            options: { httpOnly: true, sameSite: "lax", path: "/", secure: isProduction, maxAge: 60 * 15 },
+        },
+    },
     providers: [
         GoogleProvider({
             clientId: process.env.GOOGLE_CLIENT_ID || "",

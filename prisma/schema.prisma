@@ -75,11 +75,30 @@ model Workspace {
   ownerId         String
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
+  clients         Client[]
   connections     Connection[]
   pipelines       Pipeline[]
   members         WorkspaceMember[]
   apiKeys         ApiKey[]
   campaignMetrics CampaignMetric[]
+  orders          RetailOrder[]
+  utmRules        UtmMappingRule[]
+  attributionSnapshots AttributionSnapshot[]
+}
+
+model Client {
+  id          String     @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  logoUrl     String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pipelines   Pipeline[]
+  connections Connection[]
+
+  @@index([workspaceId])
 }
 
 model WorkspaceMember {
@@ -96,30 +115,39 @@ model WorkspaceMember {
 model Connection {
   id                   String           @id @default(cuid())
   workspaceId          String
+  clientId             String?          // Agency UX: Group by Client
   name                 String
   type                 String
   provider             String
   credentials          String
   status               String           @default("connected")
+  lastError            String?          // UX: Actionable Error Tracking
+  lastSyncAt           DateTime?        // UX: Freshness Tracking
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client               Client?          @relation(fields: [clientId], references: [id])
   destinationPipelines Pipeline[]       @relation("DestinationConnection")
   sourcePipelines      Pipeline[]       @relation("SourceConnection")
   campaignMetrics      CampaignMetric[]
+  orders              RetailOrder[]
 }
 
 model Pipeline {
   id                      String               @id @default(cuid())
   workspaceId             String
+  clientId                String?              // Agency UX: Group by Client
   name                    String
   sourceConnectionId      String
   destinationConnectionId String
   scheduleCron            String               @default("0 * * * *")
   status                  String               @default("active")
+  healthStatus            String               @default("healthy") // healthy | stale | error
   lastSyncedAt            DateTime?
+  syncCursor              String?
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
+  client                  Client?              @relation(fields: [clientId], references: [id])
   destinationConnection   Connection           @relation("DestinationConnection", fields: [destinationConnectionId], references: [id])
   sourceConnection        Connection           @relation("SourceConnection", fields: [sourceConnectionId], references: [id])
   workspace               Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -215,4 +243,80 @@ model CampaignMetric {
   @@unique([connectionId, campaignId, date])
   @@index([workspaceId, platform, date])
   @@index([connectionId, date])
+}
+
+model RetailOrder {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  connectionId  String
+  platform      String
+  orderId       String
+  createdAtIso  String
+  currency      String
+  grossRevenue  Float
+  netRevenue    Float?
+  utmSource     String?
+  utmMedium     String?
+  utmCampaign   String?
+  utmContent    String?
+  utmTerm       String?
+  rawData       String?
+  pulledAt      DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id])
+  connection Connection @relation(fields: [connectionId], references: [id])
+
+  @@unique([connectionId, orderId])
+  @@index([workspaceId, platform, createdAt])
+}
+
+model UtmMappingRule {
+  id          String   @id @default(cuid())
+  workspaceId String
+  type        String   // exact | regex
+  pattern     String
+  platform    String?  // optional constraint
+  campaignId  String?  // optional mapping target
+  campaignName String? // optional mapping target
+  weight      Float    @default(1.0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, type])
+}
+
+model AttributionTouch {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  orderId      String
+  platform     String
+  campaignId   String?
+  campaignName String?
+  touchAt      DateTime
+  weight       Float
+  spendPortion Float?
+  createdAt    DateTime @default(now())
+
+  @@index([workspaceId, orderId])
+  @@index([workspaceId, touchAt])
+}
+
+model AttributionSnapshot {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  date              DateTime
+  attributedRevenue Float    @default(0)
+  adSpend           Float    @default(0)
+  netRoas           Float    @default(0)
+  model             String   @default("time_decay")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, date, model])
+  @@index([workspaceId, date])
 }

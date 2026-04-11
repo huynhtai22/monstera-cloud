@@ -3,6 +3,16 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+function parseYyyymmddToUtcDate(s: string): Date | null {
+  const m = /^(\d{4})(\d{2})(\d{2})$/.exec(s);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return new Date(Date.UTC(y, mo - 1, d));
+}
+
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
@@ -35,7 +45,12 @@ export async function GET(req: NextRequest) {
     // Optional query params for filtering
     const startDateParam = req.nextUrl.searchParams.get("startDate");
     const endDateParam = req.nextUrl.searchParams.get("endDate");
-    const platform = req.nextUrl.searchParams.get("platform");
+    const platformRaw = req.nextUrl.searchParams.get("platform");
+    const platform =
+      platformRaw === "meta" ? "meta_ads" :
+      platformRaw === "google" ? "google_ads" :
+      platformRaw === "tiktok" ? "tiktok_business" :
+      platformRaw;
 
     const whereClause: any = {
       workspaceId: keyRecord.workspaceId,
@@ -43,11 +58,18 @@ export async function GET(req: NextRequest) {
 
     if (startDateParam || endDateParam) {
       whereClause.date = {};
-      if (startDateParam) whereClause.date.gte = new Date(startDateParam);
-      if (endDateParam) whereClause.date.lte = new Date(endDateParam);
+      if (startDateParam) {
+        const d = parseYyyymmddToUtcDate(startDateParam);
+        whereClause.date.gte = d ?? new Date(startDateParam);
+      }
+      if (endDateParam) {
+        const d = parseYyyymmddToUtcDate(endDateParam);
+        // inclusive end-of-day UTC
+        whereClause.date.lte = d ? new Date(d.getTime() + 24 * 60 * 60 * 1000 - 1) : new Date(endDateParam);
+      }
     }
     
-    if (platform) {
+    if (platform && platform !== "all") {
       whereClause.platform = platform;
     }
 
@@ -76,6 +98,7 @@ export async function GET(req: NextRequest) {
       reach: m.reach || 0,
       cpc: m.cpc || 0,
       ctr: m.ctr || 0,
+      cpm: m.impressions ? (m.spend / Math.max(1, m.impressions)) * 1000 : 0,
       conversions: m.conversions || 0,
       revenue: m.revenue || 0,
       roas: m.roas || 0,

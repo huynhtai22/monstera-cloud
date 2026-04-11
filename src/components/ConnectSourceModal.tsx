@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import Image from 'next/image';
-import { X, Loader2, CheckCircle2, ChevronRight, Clock, Database, Globe, Facebook, Copy, Check } from 'lucide-react';
+import { X, Loader2, CheckCircle2, ChevronRight, Clock, Database, Globe, Facebook, Copy, Check, Briefcase } from 'lucide-react';
 import useSWR, { useSWRConfig } from 'swr';
 import { useWorkspaceStore } from '@/store/workspace';
 
@@ -12,6 +12,8 @@ async function integrationsConfigFetcher(url: string) {
     if (!res.ok) throw new Error(data.error || 'Failed to load');
     return data;
 }
+
+const clientFetcher = (url: string) => fetch(url).then(res => res.json());
 
 interface ConnectSourceModalProps {
     isOpen: boolean;
@@ -28,6 +30,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [isProcessing, setIsProcessing] = useState(false);
     const [copiedWhich, setCopiedWhich] = useState<null | 'production' | 'session'>(null);
+    const [selectedClientId, setSelectedClientId] = useState<string>('');
 
     // Default to Shopee if null, though console should always pass one
     const id = integration?.id || 'shopee';
@@ -38,6 +41,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
     const { mutate } = useSWRConfig();
     const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
     const { data: intConfig } = useSWR(isOpen ? '/api/integrations/config' : null, integrationsConfigFetcher);
+    const { data: clients } = useSWR(isOpen && activeWorkspaceId ? `/api/clients?workspaceId=${activeWorkspaceId}` : null, clientFetcher);
 
     const oauthCallbackUrl =
         id === 'meta_ads'
@@ -104,7 +108,6 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
         setIsProcessing(true);
 
         // Calculate OAuth URL based on provider
-        let authUrl = "";
         if (id === 'shopee') {
             if (!activeWorkspaceId) {
                 setIsProcessing(false);
@@ -147,12 +150,6 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
             return;
         }
 
-        // Shopee / others: redirect when authUrl is set
-        if (authUrl) {
-            window.location.href = authUrl;
-            return;
-        }
-
         setTimeout(() => {
             setIsProcessing(false);
             setStep(2);
@@ -168,6 +165,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     workspaceId: activeWorkspaceId,
+                    clientId: selectedClientId || null,
                     name: `${name} (${id === 'shopee' ? 'SG' : id === 'tiktok_shop' ? 'Shop' : id === 'tiktok_business' ? 'Business' : 'Global'})`,
                     type: "source",
                     provider: id,
@@ -227,7 +225,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                     <button
                         onClick={handleClose}
                         disabled={isProcessing}
-                        className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-300 dark:text-gray-600 transition-colors disabled:opacity-50 flex-shrink-0"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-300 transition-colors disabled:opacity-50 flex-shrink-0"
                     >
                         <X className="w-5 h-5" />
                     </button>
@@ -261,9 +259,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                                         className={`w-4 h-4 mr-2 shrink-0 ${
                                             id === 'meta_ads'
                                                 ? 'text-[#1877F2]'
-                                                : id === 'google_ads'
-                                                  ? 'text-blue-600'
-                                                  : 'text-blue-600'
+                                                : 'text-blue-600'
                                         }`}
                                     />
                                     Permissions requested
@@ -343,10 +339,27 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                         <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                             <div className="mb-4">
                                 <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Configure Pipeline</h4>
-                                <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">Define how data should be ingested from {name}.</p>
+                                <p className="text-gray-500 dark:text-gray-400 text-sm">Define how data should be ingested from {name}.</p>
                             </div>
 
                             <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5 flex items-center">
+                                        <Briefcase className="w-4 h-4 mr-1.5 text-gray-400 dark:text-gray-500" /> Assign to Client
+                                    </label>
+                                    <select 
+                                        value={selectedClientId}
+                                        onChange={(e) => setSelectedClientId(e.target.value)}
+                                        className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 shadow-sm"
+                                    >
+                                        <option value="">No Client (Unassigned)</option>
+                                        {Array.isArray(clients) && clients.map((c: any) => (
+                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-gray-400 mt-1 italic">Optional: Group this connection for agency reporting.</p>
+                                </div>
+
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5 border-none">Select {id === 'shopee' ? 'Shop' : 'Store'}</label>
                                     <select className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 shadow-sm">
@@ -369,7 +382,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                                 <div className="pt-2 border-t border-gray-100 dark:border-slate-700 flex items-center justify-between">
                                     <div>
                                         <div className="text-sm font-medium text-gray-900 dark:text-white">Historical Sync</div>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Fetch past data up to 1 year back.</div>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">Fetch past data up to 1 year back.</div>
                                     </div>
                                     <label className="relative inline-flex items-center cursor-pointer">
                                         <input type="checkbox" value="" className="sr-only peer" defaultChecked />
@@ -387,7 +400,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                             </div>
                             <div className="text-center">
                                 <h4 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Pipeline Active!</h4>
-                                <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm max-w-xs mx-auto">Your {name} data is now securely flowing into Monstera Cloud. The initial historical sync has begun.</p>
+                                <p className="text-gray-500 dark:text-gray-400 text-sm max-w-xs mx-auto">Your {name} data is now securely flowing into Monstera Cloud. The initial historical sync has begun.</p>
                             </div>
                         </div>
                     )}
@@ -399,7 +412,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                         <button
                             onClick={handleClose}
                             disabled={isProcessing}
-                            className="px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-xl hover:bg-gray-50 dark:bg-slate-800 transition-colors disabled:opacity-50"
+                            className="px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
                         >
                             Cancel
                         </button>

@@ -11,7 +11,6 @@ export async function middleware(request: NextRequest) {
     !request.nextUrl.pathname.startsWith("/api/v1/sheets")
   ) {
     const ip =
-      request.ip ||
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       "unknown";
     const result = await apiRatelimit.limit(ip);
@@ -54,5 +53,7 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/api/:path*'],
+  // Exclude /api/auth/* — NextAuth handles its own OAuth callbacks and session
+  // cookies there; custom middleware intercepting those routes breaks Google sign-in.
+  matcher: ['/api/((?!auth/).*)', '/api/v1/sheets/:path*'],
 };

@@ -46,7 +46,7 @@ export default function TransformationsPage() {
                     <div className="flex flex-col">
                         <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Editing Pipeline</span>
                         <select className="bg-transparent text-gray-900 dark:text-white font-semibold focus:outline-none cursor-pointer">
-                            <option>Shopee Orders → Google Sheets</option>
+                            <option>Shopee Orders → Google Sheets™</option>
                             <option>Facebook Ads → Google BigQuery</option>
                         </select>
                     </div>
@@ -127,7 +127,7 @@ export default function TransformationsPage() {
                                     <Image src="/logos/gsheets.svg" alt="Destination" width={20} height={20} className="object-contain" />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-gray-900 dark:text-white text-sm">Google Sheets Tab</h3>
+                                    <h3 className="font-bold text-gray-900 dark:text-white text-sm">Google Sheets™ Tab</h3>
                                     <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Destination Columns</p>
                                 </div>
                             </div>

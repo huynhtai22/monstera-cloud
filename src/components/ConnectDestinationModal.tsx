@@ -88,7 +88,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     workspaceId: activeWorkspaceId,
-                    name: "Google Sheets",
+                    name: "Google Sheets™",
                     type: "destination",
                     provider: "google_sheets",
                     credentials: JSON.stringify({ spreadsheetId: "target_spreadsheet" })
@@ -130,14 +130,14 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                         <div className="w-8 h-8 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm relative overflow-hidden">
                             <Image 
                                 src={destinationId === 'looker' ? '/logos/looker.svg' : '/logos/gsheets.svg'} 
-                                alt={destinationId === 'looker' ? 'Looker Studio' : 'Google Sheets'} 
+                                alt={destinationId === 'looker' ? 'Looker Studio' : 'Google Sheets™'} 
                                 width={20} 
                                 height={20} 
                                 className="object-contain" 
                              />
                         </div>
                         <h3 className="font-bold text-gray-900 dark:text-white">
-                            {destinationId === 'looker' ? 'Connect Looker Studio' : 'Connect Google Sheets'}
+                            {destinationId === 'looker' ? 'Connect Looker Studio' : 'Connect Google Sheets™'}
                         </h3>
                     </div>
                     <button
@@ -206,7 +206,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                 <div key={conn.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded-xl">
                                     <div className="flex items-center space-x-3 overflow-hidden">
                                         <div className="w-8 h-8 shrink-0 rounded bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 flex items-center justify-center pointer-events-none">
-                                            <Image src="/logos/gsheets.svg" alt="Google Sheets" width={16} height={16} />
+                                            <Image src="/logos/gsheets.svg" alt="Google Sheets™" width={16} height={16} />
                                         </div>
                                         <div className="truncate">
                                             <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{conn.name}</p>
@@ -306,7 +306,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                     </div>
                                     <div className="text-center">
                                         <h4 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Destination Linked!</h4>
-                                        <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm max-w-xs mx-auto">Google Sheets is now ready to receive data. You can map a Data Source to it in the Console.</p>
+                                        <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm max-w-xs mx-auto">Google Sheets™ is now ready to receive data. You can map a Data Source to it in the Console.</p>
                                     </div>
                                 </div>
                             )}

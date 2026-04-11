@@ -110,6 +110,46 @@ export async function createSpreadsheet(
   };
 }
 
+/**
+ * Copy an existing spreadsheet (template) into the user's Drive.
+ * This is the recommended way to preserve charts, formulas, and named ranges.
+ */
+export async function copySpreadsheet(
+  userId: string,
+  templateSpreadsheetId: string,
+  title: string,
+): Promise<SheetInfo> {
+  const token = await refreshIfNeeded(userId);
+
+  const res = await fetch(`${DRIVE_BASE}/files/${templateSpreadsheetId}/copy`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: title,
+    }),
+  });
+
+  const data = await res.json();
+  if (!data?.id) {
+    throw new Error(`Failed to copy spreadsheet: ${data.error?.message || JSON.stringify(data)}`);
+  }
+
+  // Fetch webViewLink for convenience
+  const getUrl = new URL(`${DRIVE_BASE}/files/${data.id}`);
+  getUrl.searchParams.set('fields', 'id,name,webViewLink');
+  const res2 = await fetch(getUrl.toString(), { headers: { Authorization: `Bearer ${token}` } });
+  const info = await res2.json();
+
+  return {
+    spreadsheetId: info.id,
+    title: info.name,
+    url: info.webViewLink,
+  };
+}
+
 /** List spreadsheets the user owns or has edit access to. */
 export async function listSpreadsheets(userId: string): Promise<SheetInfo[]> {
   const token = await refreshIfNeeded(userId);

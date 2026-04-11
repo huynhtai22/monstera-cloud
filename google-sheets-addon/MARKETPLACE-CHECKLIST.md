@@ -30,7 +30,7 @@ Cross-check wording against the trademark list and API attribution guidance abov
 
 ## Phase 2 — OAuth scope parity (three places, identical)
 
-Canonical list is `oauthScopes` in **`appsscript.json`** in this folder. Copy these **exact** URLs (byte-for-byte, no extra scopes) into:
+Canonical list is `oauthScopes` in `**appsscript.json`** in this folder. Copy these **exact** URLs (byte-for-byte, no extra scopes) into:
 
 1. **Apps Script** — Project Settings → **OAuth consent** / **Overview** → Project OAuth Scopes (refresh by saving a **new deployment** after manifest changes).
 2. **Google Cloud Console** — APIs & Services → **OAuth consent screen** → Scopes.
@@ -52,7 +52,7 @@ https://www.googleapis.com/auth/script.scriptapp
 
 ### If reviewers still cite “default scopes only”
 
-Email **oauth-feedback@google.com** with screenshots: Sheets API enabled, scope list in consent screen, and cite core user features (Sheets).
+Email **[oauth-feedback@google.com](mailto:oauth-feedback@google.com)** with screenshots: Sheets API enabled, scope list in consent screen, and cite core user features (Sheets).
 
 ---
 
@@ -62,13 +62,13 @@ Complete **before** resubmitting the Marketplace listing.
 
 1. **OAuth consent screen:** App domain, authorized domains, privacy policy URL, support email, and **all** scopes listed.
 2. For each sensitive/restricted scope, add clear **justifications** (examples):
-   - **spreadsheets.currentonly** — Read/write the **current** spreadsheet to write connector output the user requests.
-   - **userinfo.email** — Map Google identity to the Monstera Cloud account and subscription.
-   - **script.external_request** — Call Monstera backend APIs.
-   - **script.container.ui** — Sidebar UI in Sheets.
-   - **script.scriptapp** — Runtime / OAuth token access for the add-on.
+  - **spreadsheets.currentonly** — Read/write the **current** spreadsheet to write connector output the user requests.
+  - **userinfo.email** — Map Google identity to the Monstera Cloud account and subscription.
+  - **script.external_request** — Call Monstera backend APIs.
+  - **script.container.ui** — Sidebar UI in Sheets.
+  - **script.scriptapp** — Runtime / OAuth token access for the add-on.
 3. **Submit for verification**; complete any demo/video steps.
-4. Watch for mail from **`api-oauth-dev-verification-reply+...@google.com`** and reply promptly.
+4. Watch for mail from `**api-oauth-dev-verification-reply+...@google.com`** and reply promptly.
 
 **Do not** resubmit Marketplace until verification is approved for this OAuth client/project.
 
@@ -96,8 +96,9 @@ Until the listing is **approved**:
 
 ## Suggested order
 
-1. Phase 1 (SDK listing text)  
-2. Phase 2 (scopes + Sheets API)  
-3. Phase 3 (verification)  
-4. Phase 4 (site / README / external pages)  
+1. Phase 1 (SDK listing text)
+2. Phase 2 (scopes + Sheets API)
+3. Phase 3 (verification)
+4. Phase 4 (site / README / external pages)
 5. Phase 5 (resubmit)
+

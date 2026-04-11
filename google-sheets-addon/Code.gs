@@ -6,7 +6,7 @@
  * No API key, no separate login — uses the user's existing Google identity.
  */
 
-var API_BASE = 'https://monstera-cloud.vercel.app/api/v1/sheets';
+var API_BASE = 'https://monsteracloud.com/api/v1/sheets';
 
 // ── Menu & Sidebar ──────────────────────────────────────────────────────────
 

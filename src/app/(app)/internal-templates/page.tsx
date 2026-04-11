@@ -23,7 +23,7 @@ const templates = [
         description: 'Track ad spend and ROAS across Meta, TikTok, and Google Ads in one unified view.',
         category: 'Marketing',
         sources: ['/logos/facebook.svg', '/logos/tiktok.svg'],
-        destinations: ['Looker Studio', 'Google Sheets'],
+        destinations: ['Looker Studio', 'Google Sheets™'],
         featured: false,
         icon: TrendingUp,
         color: 'blue'

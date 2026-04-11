@@ -82,3 +82,109 @@ export const sendPasswordResetEmail = async (email: string, resetUrl: string) =>
     return { success: false, error: err };
   }
 };
+
+export const sendSyncFailureEmail = async (to: string, pipelineName: string, errorMsg: string) => {
+  try {
+    const safeError = (errorMsg || "").slice(0, 2000);
+    const { data, error } = await resend.emails.send({
+      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+      to: [to],
+      subject: `Sync failed: ${pipelineName}`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #1a1a1a; margin-bottom: 8px;">Sync failed</h2>
+          <p style="color: #4a5568; line-height: 1.6; margin-bottom: 18px;">
+            Your pipeline <strong>${pipelineName}</strong> failed to sync.
+          </p>
+          <div style="background-color: #fff5f5; padding: 14px 16px; border-radius: 6px; border: 1px solid #fed7d7; color: #9b2c2c; white-space: pre-wrap;">
+${safeError}
+          </div>
+          <p style="color: #718096; font-size: 13px; margin-top: 18px;">
+            Open the Reports page to see full logs and retry the sync.
+          </p>
+          <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #a0aec0;">
+            © 2026 Monstera Cloud. All rights reserved.
+          </div>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error('[MAIL] SyncFailure Resend Error:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, data };
+  } catch (err) {
+    console.error('[MAIL] SyncFailure Unexpected Error:', err);
+    return { success: false, error: err };
+  }
+};
+
+export const sendDataFreshnessAlertEmail = async (to: string, workspaceName: string, hoursStale: number) => {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+      to: [to],
+      subject: `Data is stale: ${workspaceName}`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #1a1a1a; margin-bottom: 8px;">Your data is stale</h2>
+          <p style="color: #4a5568; line-height: 1.6; margin-bottom: 18px;">
+            We haven't seen a successful sync in <strong>${hoursStale} hours</strong> for workspace <strong>${workspaceName}</strong>.
+          </p>
+          <p style="color: #718096; font-size: 13px; margin-top: 18px;">
+            Open Monstera Cloud to review logs and re-run your pipeline(s).
+          </p>
+          <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #a0aec0;">
+            © 2026 Monstera Cloud. All rights reserved.
+          </div>
+        </div>
+      `,
+    });
+    if (error) {
+      console.error('[MAIL] Freshness Resend Error:', error);
+      return { success: false, error };
+    }
+    return { success: true, data };
+  } catch (err) {
+    console.error('[MAIL] Freshness Unexpected Error:', err);
+    return { success: false, error: err };
+  }
+};
+
+export const sendPerformanceAlertEmail = async (to: string, workspaceName: string, netRoas: number, spend: number, dateLabel: string) => {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+      to: [to],
+      subject: `Performance alert: Net ROAS ${netRoas.toFixed(2)} (${workspaceName})`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #1a1a1a; margin-bottom: 8px;">Performance alert</h2>
+          <p style="color: #4a5568; line-height: 1.6; margin-bottom: 18px;">
+            Workspace <strong>${workspaceName}</strong> has low Net ROAS on <strong>${dateLabel}</strong>.
+          </p>
+          <div style="background-color: #f8fafc; padding: 14px 16px; border-radius: 6px; border: 1px solid #e2e8f0;">
+            <div style="color:#0f172a; font-weight:600;">Net ROAS: ${netRoas.toFixed(2)}</div>
+            <div style="color:#475569; margin-top:6px;">Ad spend: ${spend.toFixed(2)}</div>
+          </div>
+          <p style="color: #718096; font-size: 13px; margin-top: 18px;">
+            Open the Reports page to investigate spend and attribution.
+          </p>
+          <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #a0aec0;">
+            © 2026 Monstera Cloud. All rights reserved.
+          </div>
+        </div>
+      `,
+    });
+    if (error) {
+      console.error('[MAIL] Performance Resend Error:', error);
+      return { success: false, error };
+    }
+    return { success: true, data };
+  } catch (err) {
+    console.error('[MAIL] Performance Unexpected Error:', err);
+    return { success: false, error: err };
+  }
+};

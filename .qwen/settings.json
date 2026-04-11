@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sleep *)",
+      "Bash(xargs *)"
+    ]
+  },
+  "$version": 3
+}

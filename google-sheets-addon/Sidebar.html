@@ -144,7 +144,7 @@
   </div>
 
   <div class="footer">
-    <p>Monstera Cloud · <a href="https://monstera-cloud.vercel.app" target="_blank">monstera-cloud.com</a></p>
+    <p>Monstera Cloud · <a href="https://monsteracloud.com" target="_blank">monsteracloud.com</a></p>
   </div>
 </div>
 
@@ -173,7 +173,7 @@
     document.getElementById('app').style.display = 'block';
 
     if (data.error === 'no_account' || data.error === 'invalid_token') {
-      showError(data.message || 'Please sign up at monstera-cloud.com');
+      showError(data.message || 'Please sign up at monsteracloud.com');
       return;
     }
 
@@ -191,7 +191,7 @@
 
     if (!data.features || !data.features.canQuery) {
       document.getElementById('upgradeBox').style.display = 'block';
-      document.getElementById('upgradeLink').href = data.upgradeUrl || 'https://monstera-cloud.vercel.app/pricing';
+      document.getElementById('upgradeLink').href = data.upgradeUrl || 'https://monsteracloud.com/pricing';
       return;
     }
 
@@ -229,7 +229,7 @@
         '<div style="font-size:20px;margin-bottom:4px">🔌</div>' +
         '<div style="font-weight:600;font-size:14px">No connections</div>' +
         '<div style="color:#6b7280;font-size:12px;margin-top:4px">Create your first data connection in the console.</div>' +
-        '<a href="https://monstera-cloud.vercel.app/console" target="_blank">Go to Console</a>';
+        '<a href="https://monsteracloud.com/console" target="_blank">Go to Console</a>';
       
       // Inject before the refresh divider or at the end of the form
       container.insertBefore(emptyNotice, document.querySelector('.divider'));

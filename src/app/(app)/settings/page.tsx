@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from "next/link";
-import { Settings2, Building2, Users, CreditCard, KeyRound, Save, Plus, AlertCircle, CheckCircle2, Copy } from "lucide-react";
+import { Settings2, Building2, Users, CreditCard, KeyRound, Save, Plus, AlertCircle, CheckCircle2, Copy, Briefcase, Trash2, Activity, Database } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import useSWR from "swr";
 import { useSession } from "next-auth/react";
+import { cn } from "@/lib/utils";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
@@ -15,21 +16,76 @@ const fetcher = async (url: string) => {
 };
 
 export default function SettingsPage() {
-    const [activeTab, setActiveTab] = useState<'workspace' | 'team' | 'billing' | 'api'>('workspace');
+    const [activeTab, setActiveTab] = useState<'workspace' | 'clients' | 'team' | 'billing' | 'api'>('workspace');
     const { activeWorkspaceId } = useWorkspaceStore();
     const { data: session } = useSession();
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const activeWorkspace = Array.isArray(workspaces) ? workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0] : null;
     const userPlan = (session?.user as any)?.plan || 'free';
+    
     const [apiKeys, setApiKeys] = useState<any[]>([]);
     const [newlyGeneratedKey, setNewlyGeneratedKey] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+
+    // Client Management State
+    const [clients, setClients] = useState<any[]>([]);
+    const [isAddingClient, setIsAddingClient] = useState(false);
+    const [newClientName, setNewClientName] = useState('');
 
     useEffect(() => {
         if (activeTab === 'api' && activeWorkspaceId) {
             fetchApiKeys();
         }
+        if (activeTab === 'clients' && activeWorkspaceId) {
+            fetchClients();
+        }
     }, [activeTab, activeWorkspaceId]);
+
+    const fetchClients = async () => {
+        try {
+            const res = await fetch(`/api/clients?workspaceId=${activeWorkspaceId}`);
+            if (res.ok) {
+                const data = await res.json();
+                setClients(data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch clients");
+        }
+    };
+
+    const handleAddClient = async () => {
+        if (!activeWorkspaceId || !newClientName.trim()) return;
+        setIsAddingClient(true);
+        try {
+            const res = await fetch('/api/clients', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    workspaceId: activeWorkspaceId, 
+                    name: newClientName 
+                })
+            });
+            if (res.ok) {
+                setNewClientName('');
+                fetchClients();
+            }
+        } catch (error) {
+            console.error("Failed to add client");
+        }
+        setIsAddingClient(false);
+    };
+
+    const handleDeleteClient = async (id: string) => {
+        if (!activeWorkspaceId || !confirm("Are you sure you want to remove this client? This won't delete their data, but they will no longer be grouped.")) return;
+        try {
+            const res = await fetch(`/api/clients?id=${id}&workspaceId=${activeWorkspaceId}`, {
+                method: 'DELETE'
+            });
+            if (res.ok) fetchClients();
+        } catch (error) {
+            console.error("Failed to delete client");
+        }
+    };
 
     const fetchApiKeys = async () => {
         try {
@@ -50,7 +106,7 @@ export default function SettingsPage() {
             const res = await fetch('/api/settings/api-keys', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Google Sheets Add-on Key" })
+                body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Google Sheets™ Add-on Key" })
             });
             if (res.ok) {
                 const newKey = await res.json();
@@ -103,7 +159,7 @@ export default function SettingsPage() {
                     <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Settings</h1>
                 </div>
                 <p className="text-gray-500 dark:text-gray-400 text-sm">
-                    Manage your workspace, team members, billing, and developer configuration.
+                    Manage your workspace, clients, team members, billing, and developer configuration.
                 </p>
             </div>
 
@@ -118,6 +174,13 @@ export default function SettingsPage() {
                         >
                             <Building2 className={`w-4 h-4 mr-3 ${activeTab === 'workspace' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
                             Workspace
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('clients')}
+                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'clients' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
+                        >
+                            <Briefcase className={`w-4 h-4 mr-3 ${activeTab === 'clients' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
+                            Clients
                         </button>
                         <button
                             onClick={() => setActiveTab('team')}
@@ -203,6 +266,67 @@ export default function SettingsPage() {
                         </div>
                     )}
 
+                    {activeTab === 'clients' && (
+                        <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Client Management</h3>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Group your pipelines and connections by agency client.</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <input 
+                                        type="text"
+                                        value={newClientName}
+                                        onChange={(e) => setNewClientName(e.target.value)}
+                                        placeholder="Client name (e.g. Nike VN)"
+                                        className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white text-xs rounded-xl p-2 w-48 shadow-sm focus:ring-emerald-500 focus:border-emerald-500"
+                                    />
+                                    <button 
+                                        onClick={handleAddClient}
+                                        disabled={isAddingClient || !newClientName.trim()}
+                                        className="flex items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-colors disabled:opacity-50">
+                                        <Plus className="w-3.5 h-3.5 mr-1.5" />
+                                        {isAddingClient ? "Adding..." : "Add Client"}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {clients.length === 0 ? (
+                                <div className="text-center py-16 border-2 border-dashed border-gray-100 dark:border-slate-800 rounded-3xl">
+                                    <Briefcase className="w-10 h-10 text-gray-200 dark:text-slate-700 mx-auto mb-4" />
+                                    <p className="text-gray-500 dark:text-gray-400 text-sm max-w-xs mx-auto">
+                                        No clients added yet. Grouping by client makes it easier to manage large agency portfolios.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {clients.map((client) => (
+                                        <div key={client.id} className="p-5 rounded-2xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 shadow-sm flex items-start justify-between group">
+                                            <div>
+                                                <h4 className="font-bold text-gray-900 dark:text-white mb-1">{client.name}</h4>
+                                                <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                                                    <span className="flex items-center gap-1">
+                                                        <Activity className="w-3 h-3" />
+                                                        {client._count?.pipelines || 0} Pipelines
+                                                    </span>
+                                                    <span className="flex items-center gap-1">
+                                                        <Database className="w-3 h-3" />
+                                                        {client._count?.connections || 0} Sources
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <button 
+                                                onClick={() => handleDeleteClient(client.id)}
+                                                className="p-2 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {activeTab === 'team' && (
                         <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                             <div>
@@ -253,7 +377,7 @@ export default function SettingsPage() {
                             <div className="flex items-center justify-between mb-2">
                                 <div>
                                     <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Developer API Keys</h3>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">Create programmatic access tokens for the Monstera API (e.g., Google Sheets Add-on).</p>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">Create programmatic access tokens for the Monstera API (e.g., Google Sheets™ Add-on).</p>
                                 </div>
                                 <button 
                                     onClick={handleGenerateKey}

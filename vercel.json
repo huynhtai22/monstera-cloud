@@ -1,12 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/cron/shopee/refresh",
-      "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/cron/sync-jobs",
-      "schedule": "0 2 * * *"
+      "path": "/api/cron/master",
+      "schedule": "* * * * *"
     }
   ]
 }

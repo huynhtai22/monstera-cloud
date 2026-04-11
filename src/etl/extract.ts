@@ -1,0 +1,22 @@
+import type { EtlProvider, ExtractResult, PipelineContext } from '@/etl/types';
+import { extractShopeeOrders } from '@/etl/extractors/shopee';
+import { extractCampaignMetricsFromDb } from '@/etl/extractors/campaignMetrics';
+
+export async function extractForProvider(opts: {
+  provider: EtlProvider;
+  ctx: PipelineContext;
+  sourceCreds: any;
+  cursorRaw: string | null;
+}): Promise<ExtractResult> {
+  switch (opts.provider) {
+    case 'shopee':
+      return extractShopeeOrders(opts.ctx, opts.sourceCreds, opts.cursorRaw);
+    case 'meta_ads':
+    case 'google_ads':
+    case 'tiktok_business':
+      return extractCampaignMetricsFromDb({ connectionId: opts.ctx.sourceConnectionId, cursorRaw: opts.cursorRaw });
+    default:
+      throw new Error(`Unsupported source provider: ${opts.provider}`);
+  }
+}
+
