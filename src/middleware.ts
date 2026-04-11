@@ -13,18 +13,30 @@ export async function middleware(request: NextRequest) {
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       "unknown";
-    const result = await apiRatelimit.limit(ip);
-    if (!result.success) {
-      const res = NextResponse.json(
-        { error: "Too Many Requests" },
-        { status: 429 }
-      );
-      if (result.reset) {
-        res.headers.set("x-ratelimit-reset", String(result.reset));
+
+    try {
+      const result = await Promise.race([
+        apiRatelimit.limit(ip),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("ratelimit timeout")), 3000)
+        ),
+      ]);
+
+      if (!result.success) {
+        const res = NextResponse.json(
+          { error: "Too Many Requests" },
+          { status: 429 }
+        );
+        if (result.reset) {
+          res.headers.set("x-ratelimit-reset", String(result.reset));
+        }
+        res.headers.set("x-ratelimit-limit", String(result.limit));
+        res.headers.set("x-ratelimit-remaining", String(result.remaining));
+        return res;
       }
-      res.headers.set("x-ratelimit-limit", String(result.limit));
-      res.headers.set("x-ratelimit-remaining", String(result.remaining));
-      return res;
+    } catch {
+      // Upstash Redis unavailable — skip rate limiting, don't block requests
+      console.warn("[middleware] Rate limiter unavailable, skipping");
     }
   }
 
