@@ -1,14 +1,14 @@
+import { fileURLToPath } from "url";
+import path from "path";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'cdn.simpleicons.org',
-        port: '',
-        pathname: '/**',
-      },
-    ],
+  // Pin workspace root explicitly so Next.js/Turbopack doesn't get confused
+  // by a stale package-lock.json sitting in a parent directory.
+  turbopack: {
+    root: __dirname,
   },
   async redirects() {
     return [
