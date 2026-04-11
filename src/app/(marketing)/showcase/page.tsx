@@ -27,6 +27,11 @@ export default function ShowcasePage() {
         <h2 className="text-base font-bold text-white">Helpful links</h2>
         <ul className="mt-3 space-y-2 text-sm text-slate-300">
           <li>
+            <Link className="text-emerald-400 hover:underline" href="/looker-studio">
+              Looker Studio connector (add-on page)
+            </Link>
+          </li>
+          <li>
             <Link className="text-emerald-400 hover:underline" href="/support">
               Support page
             </Link>
