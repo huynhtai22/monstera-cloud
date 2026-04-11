@@ -1,0 +1,23 @@
+# CODEOWNERS — automatically assigns reviewers based on which files changed.
+# The last matching rule wins. Add your GitHub usernames below.
+# Format: <file pattern>  <GitHub username or team>
+
+# ── Default: you review everything ──────────────────────────────────────────
+*                           @huynhtai22s
+
+# ── Auth & security → assign to whoever owns auth (e.g. Claude / you) ───────
+src/lib/auth.ts             @huynhtai22s
+src/middleware.ts           @huynhtai22s
+src/app/api/auth/**         @huynhtai22s
+
+# ── Database schema → high risk, always needs your eyes ─────────────────────
+prisma/schema.prisma        @huynhtai22s
+prisma/migrations/**        @huynhtai22s
+
+# ── UI pages → lower risk, can be reviewed by any agent ─────────────────────
+src/app/(app)/**            @huynhtai22s
+src/app/(marketing)/**      @huynhtai22s
+src/components/**           @huynhtai22s
+
+# ── API routes → medium risk ─────────────────────────────────────────────────
+src/app/api/**              @huynhtai22s
