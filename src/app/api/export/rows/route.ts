@@ -45,74 +45,117 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const sourceId = searchParams.get("sourceId");
 
+        // Build query that ALWAYS enforces workspace ownership
         const connectionQuery: any = { workspaceId, type: "source" };
-        if (sourceId) connectionQuery.id = sourceId;
+        if (sourceId) {
+            // Don't replace workspaceId — add id constraint alongside it
+            connectionQuery.id = sourceId;
+        }
 
         const sourceConnection = await prisma.connection.findFirst({
             where: connectionQuery,
             orderBy: { createdAt: "desc" }
         });
 
+        // If sourceId was specified but not found in this workspace, reject
+        if (!sourceConnection && sourceId) {
+            return NextResponse.json({ error: "Connection not found or access denied." }, { status: 404 });
+        }
+
         if (!sourceConnection) {
             return NextResponse.json({ error: "No active source connections found in this workspace." }, { status: 404 });
         }
 
+        const provider = sourceConnection.provider;
         const sourceCreds = JSON.parse(safeDecrypt(sourceConnection.credentials));
-        let rows: any[] = [];
-        const headers = ["Order ID", "Customer Name", "Status", "Total Amount", "Currency", "Item Count", "Created At"];
-        rows.push(headers);
 
-        // 3. Pull Data
-        if (sourceConnection.provider === "shopee" && sourceCreds.access_token && sourceCreds.shop_id) {
-            console.log("[EXPORT API] Pulling live Shopee data via extension request...");
-            try {
-                const timeTo = Math.floor(Date.now() / 1000);
-                const timeFrom = timeTo - (14 * 24 * 60 * 60);
-                const opts = { accessToken: sourceCreds.access_token, shopId: Number(sourceCreds.shop_id) };
+        // rows: array-of-arrays, first row is headers
+        const rows: any[][] = [];
 
-                const shopeeData = await shopeeDataClient.getOrderList(opts, timeFrom, timeTo);
+        if (provider === "shopee") {
+            const headers = ["Order ID", "Customer Name", "Status", "Total Amount", "Currency", "Item Count", "Created At"];
+            rows.push(headers);
 
-                if (shopeeData.response && shopeeData.response.order_list) {
-                    shopeeData.response.order_list.forEach((o: any) => {
+            // Pull live data if OAuth creds exist
+            if (sourceCreds.access_token && sourceCreds.shop_id) {
+                console.log("[EXPORT API] Pulling live Shopee data via extension request...");
+                try {
+                    const timeTo = Math.floor(Date.now() / 1000);
+                    const timeFrom = timeTo - (14 * 24 * 60 * 60);
+                    const opts = { accessToken: sourceCreds.access_token, shopId: Number(sourceCreds.shop_id) };
+
+                    const shopeeData = await shopeeDataClient.getOrderList(opts, timeFrom, timeTo);
+
+                    if (shopeeData.response && shopeeData.response.order_list) {
+                        shopeeData.response.order_list.forEach((o: any) => {
+                            rows.push([
+                                o.order_sn,
+                                "Hidden (Live API)",
+                                o.order_status,
+                                o.total_amount,
+                                o.currency || "Local",
+                                1,
+                                new Date(o.create_time * 1000).toISOString()
+                            ]);
+                        });
+                    }
+                } catch (liveErr) {
+                    console.error("[EXPORT API] Live pull failed.", liveErr);
+                }
+            }
+
+            // Fallback to Mock Data if actual pull yielded nothing (useful for trial testing)
+            if (rows.length === 1) {
+                console.log("[EXPORT API] Using Mock Data Fallback.");
+                const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
+                const host = request.headers.get("host") || "localhost:3000";
+
+                const shopeeRes = await fetch(`${protocol}://${host}/api/mock/shopee/orders?page=1&limit=50`);
+
+                if (shopeeRes.ok) {
+                    const shopeeData = await shopeeRes.json();
+                    const orders = shopeeData.data || [];
+                    orders.forEach((o: any) => {
                         rows.push([
-                            o.order_sn,
-                            "Hidden (Live API)",
-                            o.order_status,
+                            o.order_id,
+                            o.customer_name,
+                            o.status,
                             o.total_amount,
-                            o.currency || "Local",
-                            1,
-                            new Date(o.create_time * 1000).toISOString()
+                            o.currency,
+                            o.items_count,
+                            o.created_at
                         ]);
                     });
                 }
-            } catch (liveErr) {
-                console.error("[EXPORT API] Live pull failed.", liveErr);
             }
-        }
+        } else if (provider === "meta_ads" || provider === "google_ads" || provider === "tiktok_business") {
+            const headers = ["Date", "Campaign", "Impressions", "Clicks", "Spend", "CPC", "CTR", "Conversions", "ROAS"];
+            rows.push(headers);
 
-        // Fallback to Mock Data if actual pull yielded nothing (useful for trial testing)
-        if (rows.length === 1) {
-            console.log("[EXPORT API] Using Mock Data Fallback.");
-            const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
-            const host = request.headers.get("host") || "localhost:3000";
-            
-            const shopeeRes = await fetch(`${protocol}://${host}/api/mock/shopee/orders?page=1&limit=50`);
-            
-            if (shopeeRes.ok) {
-                const shopeeData = await shopeeRes.json();
-                const orders = shopeeData.data || [];
-                orders.forEach((o: any) => {
-                    rows.push([
-                        o.order_id,
-                        o.customer_name,
-                        o.status,
-                        o.total_amount,
-                        o.currency,
-                        o.items_count,
-                        o.created_at
-                    ]);
-                });
-            }
+            const metrics = await prisma.campaignMetric.findMany({
+                where: { connectionId: sourceConnection.id },
+                orderBy: { date: "desc" },
+                take: 10000,
+            });
+
+            metrics.forEach((m: any) => {
+                rows.push([
+                    new Date(m.date).toISOString().split("T")[0],
+                    m.campaignName,
+                    m.impressions,
+                    m.clicks,
+                    m.spend,
+                    m.cpc,
+                    m.ctr,
+                    m.conversions,
+                    m.roas,
+                ]);
+            });
+        } else {
+            return NextResponse.json(
+                { error: `Unsupported source provider: ${provider}` },
+                { status: 400 }
+            );
         }
 
         return NextResponse.json({ success: true, rows }, { status: 200 });
