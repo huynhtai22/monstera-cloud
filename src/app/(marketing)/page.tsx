@@ -59,9 +59,9 @@ export default function MarketingPage() {
                             Integrates With
                         </p>
                         <div className="flex items-center justify-center space-x-8 opacity-70 grayscale hover:grayscale-0 transition-all duration-500">
-                            <Image src="/logos/tiktok.svg" alt="TikTok Ads" width={100} height={32} className="h-6 w-auto brightness-0 invert" />
-                            <Image src="/logos/shopee.svg" alt="Shopee" width={100} height={32} className="h-6 w-auto brightness-0 invert" />
-                            <Image src="/logos/gsheets.svg" alt="Google Sheets™" width={100} height={32} className="h-6 w-auto brightness-0 invert" />
+                            <Image src="https://cdn.simpleicons.org/tiktok" alt="TikTok Ads" width={100} height={32} className="h-6 w-auto brightness-0 invert" />
+                            <Image src="https://cdn.simpleicons.org/shopee" alt="Shopee" width={100} height={32} className="h-6 w-auto brightness-0 invert" />
+                            <Image src="https://cdn.simpleicons.org/googlesheets" alt="Google Sheets™" width={100} height={32} className="h-6 w-auto brightness-0 invert" />
                         </div>
                     </div>
                 </div>

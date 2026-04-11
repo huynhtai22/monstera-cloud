@@ -324,7 +324,7 @@ export default function TikTokAdsPage() {
     <IntegrationPageLayout
       title="TikTok Ads Report"
       description="Pull async ad performance reports from TikTok Business API into your workspace."
-      icon={<Image src="/logos/tiktok.svg" alt="TikTok" width={22} height={22} />}
+      icon={<Image src="https://cdn.simpleicons.org/tiktok" alt="TikTok" width={22} height={22} />}
       banner={
         tiktokConnections.length === 0 ? (
           <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300">

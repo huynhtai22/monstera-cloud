@@ -79,7 +79,7 @@ export default function TransformationsPage() {
                         <div className="p-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-white/40 dark:bg-slate-900/40">
                             <div className="flex items-center space-x-3">
                                 <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 flex items-center justify-center p-1.5 shadow-sm">
-                                    <Image src="/logos/shopee.svg" alt="Source" width={20} height={20} className="object-contain" />
+                                    <Image src="https://cdn.simpleicons.org/shopee" alt="Source" width={20} height={20} className="object-contain" />
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-gray-900 dark:text-white text-sm">Shopee Orders API</h3>
@@ -124,7 +124,7 @@ export default function TransformationsPage() {
                         <div className="p-4 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-white/40 dark:bg-slate-900/40">
                             <div className="flex items-center space-x-3">
                                 <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 flex items-center justify-center p-1.5 shadow-sm">
-                                    <Image src="/logos/gsheets.svg" alt="Destination" width={20} height={20} className="object-contain" />
+                                    <Image src="https://cdn.simpleicons.org/googlesheets" alt="Destination" width={20} height={20} className="object-contain" />
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-gray-900 dark:text-white text-sm">Google Sheets™ Tab</h3>

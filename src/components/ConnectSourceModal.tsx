@@ -35,7 +35,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
     // Default to Shopee if null, though console should always pass one
     const id = integration?.id || 'shopee';
     const name = integration?.name || 'Shopee';
-    const logoSrc = integration?.logoSrc || '/logos/shopee.svg';
+    const logoSrc = integration?.logoSrc || 'https://cdn.simpleicons.org/shopee';
 
     // Hooks for network invalidation and global state
     const { mutate } = useSWRConfig();
@@ -454,7 +454,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                             ) : (
                                 <>
                                     <Image
-                                        src="/logos/google-ads.svg"
+                                        src="https://cdn.simpleicons.org/googleads"
                                         alt=""
                                         width={20}
                                         height={20}

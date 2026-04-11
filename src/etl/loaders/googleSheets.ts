@@ -1,6 +1,6 @@
 import prisma from '@/lib/prisma';
 import { encrypt, safeDecrypt } from '@/lib/encryption';
-import { copySpreadsheet, createSpreadsheet, writeToSheet } from '@/lib/google-sheets';
+import { copySpreadsheet, createSpreadsheet, writeToSheet, formatPremiumSheet } from '@/lib/google-sheets';
 
 export async function loadToGoogleSheets(opts: {
   userId: string;
@@ -28,14 +28,26 @@ export async function loadToGoogleSheets(opts: {
     });
   }
 
-  // Replace contents (clear + write)
+  // 1. Prepare data
+  const finalRows = opts.rows.map((r) => r.map((v) => (v === null ? '' : v)) as (string | number)[]);
+
+  // 2. Replace contents (clear + write)
   await writeToSheet(
     opts.userId,
     actualSpreadsheetId,
     sheetName,
     opts.columns,
-    opts.rows.map((r) => r.map((v) => (v === null ? '' : v)) as (string | number)[]),
+    finalRows,
   );
+
+  // 3. Apply Premium Formatting
+  await formatPremiumSheet({
+    userId: opts.userId,
+    spreadsheetId: actualSpreadsheetId,
+    sheetName,
+    rowCount: finalRows.length,
+    colCount: opts.columns.length
+  }).catch(e => console.error("[ETL][SHEETS] Formatting failed", e));
 
   return { spreadsheetId: actualSpreadsheetId };
 }

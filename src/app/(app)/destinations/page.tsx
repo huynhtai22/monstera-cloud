@@ -18,9 +18,9 @@ const fetcher = async (url: string) => {
 };
 
 const availableDestinations = [
-    { id: 'gsheets', name: 'Google Sheets', description: 'Export data directly to spreadsheets.', status: 'available', logoSrc: '/logos/gsheets.svg' },
-    { id: 'looker', name: 'Looker Studio', description: 'Visualize data in custom reports.', status: 'available', logoSrc: '/logos/looker.svg' },
-    { id: 'slack', name: 'Slack Alerts', description: 'Get daily summary notifications.', status: 'available', logoSrc: '/logos/slack.svg' },
+    { id: 'gsheets', name: 'Google Sheets', description: 'Export data directly to spreadsheets.', status: 'available', logoSrc: 'https://cdn.simpleicons.org/googlesheets' },
+    { id: 'looker', name: 'Looker Studio', description: 'Visualize data in custom reports.', status: 'available', logoSrc: 'https://cdn.simpleicons.org/looker' },
+    { id: 'slack', name: 'Slack Alerts', description: 'Get daily summary notifications.', status: 'available', logoSrc: 'https://cdn.simpleicons.org/slack' },
 ];
 
 export default function DestinationsPage() {

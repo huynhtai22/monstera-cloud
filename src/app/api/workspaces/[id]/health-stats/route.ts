@@ -3,14 +3,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
-/**
- * GET /api/workspaces/[id]/health-stats
- * 
- * Returns aggregated stats for the dashboard:
- * - Rows synced per day (last 7 days)
- * - Error breakdown
- * - Stale connection count
- */
 export async function GET(req: Request, context: { params: any }) {
     try {
         const session = await getServerSession(authOptions);
@@ -21,7 +13,6 @@ export async function GET(req: Request, context: { params: any }) {
         const params = await context.params;
         const workspaceId = params.id;
 
-        // Verify membership
         const membership = await prisma.workspaceMember.findUnique({
             where: {
                 workspaceId_userId: {
@@ -38,17 +29,14 @@ export async function GET(req: Request, context: { params: any }) {
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-        // 1. Get Row Counts per day
+        // 1. Chart Data (Aggregate)
         const logs = await prisma.syncLog.findMany({
             where: {
                 pipeline: { workspaceId },
                 createdAt: { gte: sevenDaysAgo },
                 status: "success"
             },
-            select: {
-                rowsSynced: true,
-                createdAt: true
-            }
+            select: { rowsSynced: true, createdAt: true }
         });
 
         const dailyStats: Record<string, number> = {};
@@ -57,54 +45,68 @@ export async function GET(req: Request, context: { params: any }) {
             d.setDate(d.getDate() - i);
             dailyStats[d.toISOString().split('T')[0]] = 0;
         }
-
         logs.forEach(log => {
             const dateStr = log.createdAt.toISOString().split('T')[0];
-            if (dailyStats[dateStr] !== undefined) {
-                dailyStats[dateStr] += log.rowsSynced;
-            }
+            if (dailyStats[dateStr] !== undefined) dailyStats[dateStr] += log.rowsSynced;
         });
 
         const chartData = Object.entries(dailyStats)
             .map(([date, count]) => ({ date, count }))
             .sort((a, b) => a.date.localeCompare(b.date));
 
-        // 2. Get Recent Errors
-        const errors = await prisma.syncLog.findMany({
-            where: {
-                pipeline: { workspaceId },
-                status: "error"
-            },
-            take: 5,
-            orderBy: { createdAt: "desc" },
+        // 2. Per-Client Health Breakdown
+        const clients = await prisma.client.findMany({
+            where: { workspaceId },
             include: {
-                pipeline: {
-                    select: { name: true }
+                connections: {
+                    select: { status: true, lastSyncAt: true, provider: true }
+                },
+                pipelines: {
+                    select: { healthStatus: true, lastSyncedAt: true }
                 }
             }
         });
 
-        // 3. Connection Health Summary
-        const connections = await prisma.connection.findMany({
-            where: { workspaceId },
-            select: { status: true, provider: true }
+        const clientHealth = clients.map(client => {
+            const totalConns = client.connections.length;
+            const offlineConns = client.connections.filter(c => c.status !== 'connected').length;
+            
+            // Check for stale data (any pipeline not synced in > 26h)
+            const now = Date.now();
+            const stalePipelines = client.pipelines.filter(p => {
+                if (!p.lastSyncedAt) return true;
+                return (now - p.lastSyncedAt.getTime()) > 26 * 60 * 60 * 1000;
+            }).length;
+
+            let status = 'healthy';
+            if (offlineConns > 0) status = 'error';
+            else if (stalePipelines > 0) status = 'stale';
+
+            return {
+                id: client.id,
+                name: client.name,
+                status,
+                totalConnections: totalConns,
+                staleCount: stalePipelines,
+                lastActivity: client.pipelines[0]?.lastSyncedAt || null
+            };
         });
 
-        const health = {
-            total: connections.length,
-            online: connections.filter(c => c.status === "connected").length,
-            offline: connections.filter(c => c.status !== "connected").length,
-        };
+        // 3. Unassigned Connections Health
+        const unassignedConns = await prisma.connection.findMany({
+            where: { workspaceId, clientId: null },
+            select: { status: true, lastSyncAt: true }
+        });
 
         return NextResponse.json({
             chartData,
-            recentErrors: errors.map(e => ({
-                id: e.id,
-                pipelineName: e.pipeline.name,
-                message: e.errorMsg,
-                at: e.createdAt
-            })),
-            health
+            clientHealth,
+            unassignedCount: unassignedConns.length,
+            overall: {
+                totalClients: clients.length,
+                healthyClients: clientHealth.filter(c => c.status === 'healthy').length,
+                totalConnections: (await prisma.connection.count({ where: { workspaceId } }))
+            }
         });
 
     } catch (error: any) {

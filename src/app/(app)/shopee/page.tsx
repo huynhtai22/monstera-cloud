@@ -554,7 +554,7 @@ export default function ShopeePage() {
       title="Shopee Data Explorer"
       description="Pull orders, products, and shop info from your connected Shopee store."
       icon={
-        <Image src="/logos/shopee.svg" alt="Shopee" width={22} height={22} />
+        <Image src="https://cdn.simpleicons.org/shopee" alt="Shopee" width={22} height={22} />
       }
       banner={
         shopeeConnections.length === 0 ? (

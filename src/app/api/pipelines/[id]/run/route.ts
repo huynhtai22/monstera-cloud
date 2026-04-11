@@ -15,7 +15,7 @@ export async function POST(req: Request, context: { params: any }) {
     let pipelineId: string | undefined;
     let notifyEmail: string | undefined;
     let pipelineNameForNotify: string | undefined;
-    let pipeline: any = null;
+    let activePipeline: any = null;
 
     try {
         const syncStartTime = Date.now();
@@ -42,7 +42,7 @@ export async function POST(req: Request, context: { params: any }) {
         }
 
         // 1. Fetch Pipeline with Relations
-        pipeline = await prisma.pipeline.findUnique({
+        const pipeline = await prisma.pipeline.findUnique({
             where: { id: String(pipelineId) },
             include: {
                 sourceConnection: true,
@@ -54,10 +54,12 @@ export async function POST(req: Request, context: { params: any }) {
         if (!pipeline) {
             return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
         }
+        activePipeline = pipeline;
         pipelineNameForNotify = pipeline.name ?? "Pipeline";
 
         // Enforce sync cooldown — prevent re-runs faster than the plan allows
-        const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { plan: true } });
+        const userIdForLimits = session?.user?.id || pipeline.workspace.ownerId;
+        const user = await prisma.user.findUnique({ where: { id: userIdForLimits }, select: { plan: true } });
         const limits = getPlanLimits(user?.plan ?? "free");
 
         if (pipeline.lastSyncedAt) {
@@ -79,7 +81,7 @@ export async function POST(req: Request, context: { params: any }) {
         // 2. Locate User's Google OAuth Account
         const googleAccount = await prisma.account.findFirst({
             where: {
-                userId: session.user.id,
+                userId: userIdForLimits,
                 provider: "google"
             }
         });
@@ -93,7 +95,7 @@ export async function POST(req: Request, context: { params: any }) {
 
         const requestOrigin = new URL(req.url).origin;
         const etl = await runEtlPipeline({
-            userId: session.user.id,
+            userId: userIdForLimits,
             provider,
             pipeline,
             ctx: {
@@ -148,12 +150,12 @@ export async function POST(req: Request, context: { params: any }) {
         }
 
         // Agency Polish: Send Telegram Alert
-        if (pipeline) {
+        if (activePipeline) {
             await sendAgencyAlert({
-                workspaceId: pipeline.workspaceId,
-                pipelineName: pipeline.name,
+                workspaceId: activePipeline.workspaceId,
+                pipelineName: activePipeline.name,
                 errorMsg: error?.message || "Unknown error",
-                clientId: pipeline.clientId
+                clientId: activePipeline.clientId
             }).catch(() => { });
         }
 

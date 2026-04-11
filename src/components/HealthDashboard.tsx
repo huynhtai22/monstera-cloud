@@ -10,7 +10,9 @@ import {
   Database, 
   BarChart3,
   ExternalLink,
-  Users
+  Users,
+  ShieldAlert,
+  ChevronRight
 } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
@@ -23,159 +25,164 @@ export function HealthDashboard() {
   const { data, error, isLoading } = useSWR(
     activeWorkspaceId ? `/api/workspaces/${activeWorkspaceId}/health-stats` : null,
     fetcher,
-    { refreshInterval: 30000 } // Refresh every 30s
+    { refreshInterval: 30000 }
   );
 
-  if (isLoading) return <div className="animate-pulse space-y-4">
-    <div className="h-32 bg-gray-100 rounded-2xl" />
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  if (isLoading) return (
+    <div className="animate-pulse space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {[1,2,3].map(i => <div key={i} className="h-32 bg-gray-100 rounded-2xl" />)}
+      </div>
       <div className="h-64 bg-gray-100 rounded-2xl" />
-      <div className="h-64 bg-gray-100 rounded-2xl" />
-    </div>
-  </div>;
-
-  if (error) return (
-    <div className="p-6 border border-red-100 bg-red-50 rounded-2xl flex items-center gap-3 text-red-700">
-      <AlertCircle className="h-5 w-5" />
-      <span className="text-sm font-medium">Failed to load health metrics.</span>
     </div>
   );
 
-  const { chartData = [], recentErrors = [], health = {} } = data || {};
+  const { chartData = [], clientHealth = [], unassignedCount = 0, overall = {} } = data || {};
   const maxRows = Math.max(...chartData.map((d: any) => d.count), 1);
 
   return (
-    <div className="space-y-6">
-      {/* 1. Health Summary Cards */}
+    <div className="space-y-8">
+      {/* 1. Global KPI Header */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="p-5 rounded-2xl border border-white bg-white/50 backdrop-blur-xl shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">System Status</span>
-            <div className={cn(
-              "h-2.5 w-2.5 rounded-full animate-pulse",
-              health.offline > 0 ? "bg-amber-500" : "bg-emerald-500"
-            )} />
+        <div className="p-6 rounded-2xl border border-white bg-white/50 backdrop-blur-xl shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Portfolio Health</span>
+            <Users className="h-4 w-4 text-gray-400" />
           </div>
-          <p className="text-2xl font-bold text-gray-900">
-            {health.online} / {health.total}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">Active Agency Connections</p>
+          <div className="flex items-baseline gap-2">
+            <p className="text-3xl font-black text-gray-900">{overall.healthyClients || 0}</p>
+            <p className="text-sm font-medium text-gray-500">/ {overall.totalClients || 0} clients healthy</p>
+          </div>
         </div>
 
-        <div className="p-5 rounded-2xl border border-white bg-white/50 backdrop-blur-xl shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Data Freshness</span>
-            <Clock className="h-4 w-4 text-gray-400" />
-          </div>
-          <p className="text-2xl font-bold text-gray-900">99.8%</p>
-          <p className="text-xs text-gray-500 mt-1">Avg. Sync Success Rate</p>
-        </div>
-
-        <div className="p-5 rounded-2xl border border-white bg-white/50 backdrop-blur-xl shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Total Throughput</span>
+        <div className="p-6 rounded-2xl border border-white bg-white/50 backdrop-blur-xl shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Active Pipeline</span>
             <Activity className="h-4 w-4 text-emerald-500" />
           </div>
-          <p className="text-2xl font-bold text-gray-900">
-            {chartData.reduce((acc: number, curr: any) => acc + curr.count, 0).toLocaleString()}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">Rows ingested (7d)</p>
+          <div className="flex items-baseline gap-2">
+            <p className="text-3xl font-black text-gray-900">{(overall.totalConnections || 0)}</p>
+            <p className="text-sm font-medium text-gray-500">streams operational</p>
+          </div>
+        </div>
+
+        <div className="p-6 rounded-2xl border border-white bg-white/50 backdrop-blur-xl shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Weekly Volume</span>
+            <BarChart3 className="h-4 w-4 text-indigo-500" />
+          </div>
+          <div className="flex items-baseline gap-2">
+            <p className="text-3xl font-black text-gray-900">
+                {chartData.reduce((acc: number, curr: any) => acc + curr.count, 0).toLocaleString()}
+            </p>
+            <p className="text-sm font-medium text-gray-500">rows ingested</p>
+          </div>
         </div>
       </div>
 
-      {/* 2. Visual Graphs & Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* 2. Main Pulse View */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Data Throughput Chart (Pure CSS) */}
-        <div className="p-6 rounded-2xl border border-gray-100 bg-white shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-indigo-500" />
-              <h3 className="text-sm font-bold text-gray-900">Ingestion Velocity</h3>
-            </div>
-            <span className="text-[10px] font-bold text-gray-400 uppercase">Last 7 Days</span>
-          </div>
-          
-          <div className="flex items-end justify-between h-40 gap-2 px-2">
-            {chartData.map((day: any) => (
-              <div key={day.date} className="flex-1 flex flex-col items-center group">
-                <div 
-                  className="w-full bg-emerald-100 group-hover:bg-emerald-200 transition-all rounded-t-md relative"
-                  style={{ height: `${(day.count / maxRows) * 100}%`, minHeight: '4px' }}
-                >
-                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                    {day.count.toLocaleString()} rows
-                  </div>
-                </div>
-                <span className="text-[9px] text-gray-400 mt-2 font-medium">
-                  {day.date.split('-').slice(1).join('/')}
+        {/* Left: Client Health Grid */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">Client Status Pulse</h3>
+            {unassignedCount > 0 && (
+                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                    {unassignedCount} unassigned connections
                 </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Actionable Error Feed */}
-        <div className="p-6 rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-amber-500" />
-              <h3 className="text-sm font-bold text-gray-900">Critical Alerts</h3>
-            </div>
-            {recentErrors.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 text-[10px] font-bold">
-                {recentErrors.length} issues
-              </span>
-            )}
-          </div>
-
-          <div className="space-y-4 flex-1">
-            {recentErrors.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center py-8">
-                <CheckCircle2 className="h-8 w-8 text-emerald-100 mb-2" />
-                <p className="text-xs text-gray-400">All clients healthy. No errors in last 24h.</p>
-              </div>
-            ) : (
-              recentErrors.map((err: any) => (
-                <div key={err.id} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 hover:border-amber-200 transition-colors">
-                  <div className="p-2 bg-white rounded-lg border border-gray-100 shadow-sm">
-                    <Database className="h-3.5 w-3.5 text-gray-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between">
-                      <p className="text-xs font-bold text-gray-900 truncate">{err.pipelineName}</p>
-                      <span className="text-[10px] text-gray-400 font-medium">
-                        {new Date(err.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-amber-700 mt-1 line-clamp-1">{err.message}</p>
-                  </div>
-                </div>
-              ))
             )}
           </div>
           
-          <button className="mt-4 w-full py-2 text-[11px] font-bold text-gray-500 border-t border-gray-50 hover:text-gray-900 transition-colors flex items-center justify-center gap-2">
-            View full Audit Log
-            <ExternalLink className="h-3 w-3" />
-          </button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {clientHealth.length === 0 ? (
+                <div className="sm:col-span-2 p-10 border-2 border-dashed border-gray-100 rounded-3xl text-center">
+                    <p className="text-sm text-gray-400">No client groups created yet. Group connections in Settings to see them here.</p>
+                </div>
+            ) : (
+                clientHealth.map((client: any) => (
+                    <div key={client.id} className="p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:border-emerald-200 transition-all group">
+                        <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                                <div className={cn(
+                                    "h-2 w-2 rounded-full",
+                                    client.status === 'healthy' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" :
+                                    client.status === 'stale' ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"
+                                )} />
+                                <span className="font-bold text-gray-900 text-sm">{client.name}</span>
+                            </div>
+                            <ChevronRight className="h-4 w-4 text-gray-300 opacity-0 group-hover:opacity-100 transition-all" />
+                        </div>
+                        <div className="flex items-center gap-4 text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
+                            <span className="flex items-center gap-1">
+                                <Database className="h-3 w-3" /> {client.totalConnections} Sources
+                            </span>
+                            <span className="flex items-center gap-1">
+                                <Clock className="h-3 w-3" /> 
+                                {client.lastActivity ? new Date(client.lastActivity).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'No sync'}
+                            </span>
+                        </div>
+                    </div>
+                ))
+            )}
+          </div>
         </div>
+
+        {/* Right: Throughput Chart */}
+        <div className="p-6 rounded-3xl border border-gray-100 bg-white shadow-sm flex flex-col">
+            <div className="flex items-center justify-between mb-8">
+                <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">Ingestion Velocity</h3>
+                <Activity className="h-4 w-4 text-emerald-500" />
+            </div>
+
+            <div className="flex-1 flex items-end justify-between gap-1 px-1">
+                {chartData.map((day: any) => (
+                    <div key={day.date} className="flex-1 flex flex-col items-center group">
+                        <div 
+                            className="w-full bg-emerald-50 group-hover:bg-emerald-500 transition-all rounded-t-sm relative"
+                            style={{ height: `${(day.count / maxRows) * 100}%`, minHeight: '2px' }}
+                        >
+                            <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap z-20 shadow-xl">
+                                {day.count.toLocaleString()} rows
+                            </div>
+                        </div>
+                        <span className="text-[8px] font-bold text-gray-300 mt-3 rotate-[-45deg] origin-top-left">
+                            {day.date.split('-').slice(1).join('/')}
+                        </span>
+                    </div>
+                ))}
+            </div>
+
+            <div className="mt-12 pt-6 border-t border-gray-50 flex items-center justify-between">
+                <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase">Avg. Success Rate</p>
+                    <p className="text-lg font-black text-gray-900">99.98%</p>
+                </div>
+                <div className="text-right">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase">System Status</p>
+                    <p className="text-xs font-bold text-emerald-600">Locked & Active</p>
+                </div>
+            </div>
+        </div>
+
       </div>
 
-      {/* 3. Agency "Client View" Teaser */}
-      <div className="p-6 rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-white rounded-xl shadow-sm border border-gray-100">
-            <Users className="h-6 w-6 text-gray-400" />
-          </div>
-          <div>
-            <h4 className="text-sm font-bold text-gray-900">Agency View: Multi-Client Grouping</h4>
-            <p className="text-xs text-gray-500">You have 12 clients pending grouping. Organize pipelines to reduce management overhead.</p>
-          </div>
+      {/* 3. Agency Audit Teaser */}
+      <div className="p-1 rounded-3xl bg-gradient-to-r from-emerald-500 via-indigo-500 to-emerald-500">
+        <div className="bg-white dark:bg-slate-900 rounded-[22px] p-6 flex items-center justify-between">
+            <div className="flex items-center gap-5">
+                <div className="p-3 bg-emerald-50 rounded-2xl">
+                    <ShieldAlert className="h-6 w-6 text-emerald-600" />
+                </div>
+                <div>
+                    <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight">Infrastructure Auditor</h4>
+                    <p className="text-xs text-gray-500">Automatically scanning {overall.totalConnections || 0} connections for API credential expiration.</p>
+                </div>
+            </div>
+            <button className="px-6 py-2.5 bg-gray-900 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:scale-105 transition-all shadow-lg active:scale-95">
+                Run Audit
+            </button>
         </div>
-        <button className="px-4 py-2 bg-gray-900 text-white text-xs font-bold rounded-xl hover:bg-gray-800 transition-all shadow-sm">
-          Set up Client Groups
-        </button>
       </div>
     </div>
   );

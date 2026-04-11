@@ -20,6 +20,17 @@ export async function runEtlPipeline(opts: {
     cursorRaw: opts.pipeline.syncCursor ?? null,
   });
 
+  // Data Drift Detection: compare columns with last sync
+  if (opts.pipeline.syncCursor && extracted.columns.length > 0) {
+    try {
+      const lastCursor = JSON.parse(opts.pipeline.syncCursor);
+      const lastCols = lastCursor.columns as string[] | undefined;
+      if (lastCols && JSON.stringify(lastCols) !== JSON.stringify(extracted.columns)) {
+          console.warn(`[ETL][DRIFT] Column schema changed for pipeline ${opts.pipeline.id}. Old: ${lastCols.length}, New: ${extracted.columns.length}`);
+      }
+    } catch (e) {}
+  }
+
   if (extracted.rows.length === 0) {
     return { rowsSynced: 0, spreadsheetId: '', nextCursor: extracted.nextCursor };
   }
@@ -34,7 +45,6 @@ export async function runEtlPipeline(opts: {
   return {
     rowsSynced: extracted.rows.length,
     spreadsheetId: loaded.spreadsheetId,
-    nextCursor: extracted.nextCursor,
+    nextCursor: { ...(extracted.nextCursor || {}), columns: extracted.columns },
   };
 }
-

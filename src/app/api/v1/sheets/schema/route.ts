@@ -11,7 +11,7 @@ const SCHEMA = {
     {
       id: 'tiktok_ads',
       name: 'TikTok Ads',
-      logo: '/logos/tiktok.svg',
+      logo: 'https://cdn.simpleicons.org/tiktok',
       dataLevels: [
         { value: 'AUCTION_ADVERTISER', label: 'Account' },
         { value: 'AUCTION_CAMPAIGN', label: 'Campaign' },

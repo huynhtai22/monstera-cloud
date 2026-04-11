@@ -281,7 +281,7 @@ export default function GoogleAdsPage() {
     <IntegrationPageLayout
       title="Google Ads"
       description="Campaign, ad group, and Shopping performance from Google Ads."
-      icon={<Image src="/logos/google-ads.svg" alt="Google Ads" width={22} height={22} />}
+      icon={<Image src="https://cdn.simpleicons.org/googleads" alt="Google Ads" width={22} height={22} />}
       primaryAction={
         hasConnection ? (
           <PrimaryButton className="w-full py-3" onClick={runReport} disabled={loading} loading={loading}>

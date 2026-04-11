@@ -250,3 +250,64 @@ export async function appendToSheet(
 
   return { updatedRows: data.updates?.updatedRows || rows.length };
 }
+
+/**
+ * Premium Polish: Format a sheet with branding and professional styling.
+ */
+export async function formatPremiumSheet(opts: {
+    userId: string;
+    spreadsheetId: string;
+    sheetName: string;
+    clientName?: string;
+    rowCount: number;
+    colCount: number;
+}) {
+    const token = await refreshIfNeeded(opts.userId);
+    
+    // 1. Get sheet ID
+    const metaRes = await fetch(`${SHEETS_BASE}/${opts.spreadsheetId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    const meta = await metaRes.json();
+    const sheet = meta.sheets.find((s: any) => s.properties.title === opts.sheetName);
+    if (!sheet) return;
+    const sheetId = sheet.properties.sheetId;
+
+    // 2. Apply formatting (Alternating colors + Bold Header + Freeze Top Row)
+    const requests = [
+        // Bold headers
+        {
+            repeatCell: {
+                range: { sheetId, startRowIndex: 0, endRowIndex: 1 },
+                cell: { userEnteredFormat: { textFormat: { bold: true }, backgroundColor: { red: 0.95, green: 0.95, blue: 0.95 } } },
+                fields: 'userEnteredFormat(textFormat,backgroundColor)'
+            }
+        },
+        // Freeze header
+        {
+            updateSheetProperties: {
+                properties: { sheetId, gridProperties: { frozenRowCount: 1 } },
+                fields: 'gridProperties.frozenRowCount'
+            }
+        },
+        // Alternating colors
+        {
+            addConditionalFormatRule: {
+                rule: {
+                    ranges: [{ sheetId, startRowIndex: 1, endRowIndex: opts.rowCount + 1 }],
+                    booleanRule: {
+                        condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: '=ISEVEN(ROW())' }] },
+                        format: { backgroundColor: { red: 0.98, green: 0.98, blue: 0.98 } }
+                    }
+                },
+                index: 0
+            }
+        }
+    ];
+
+    await fetch(`${SHEETS_BASE}/${opts.spreadsheetId}:batchUpdate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests })
+    });
+}

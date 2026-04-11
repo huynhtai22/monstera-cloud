@@ -20,13 +20,13 @@ const fetcher = async (url: string) => {
 };
 
 const ALL_CATALOG_INTEGRATIONS = [
-    { id: 'tiktok_shop', name: 'TikTok Shop', description: 'Seller catalog, orders, and Shop analytics.', status: 'available' as const, logoSrc: '/logos/tiktok.svg' },
-    { id: 'tiktok_business', name: 'TikTok Ads', description: 'TikTok Marketing API — campaign and ad performance reporting.', status: 'available' as const, logoSrc: '/logos/tiktok.svg' },
-    { id: 'meta_ads', name: 'Meta Ads', description: 'Facebook & Instagram Ads — campaign, ad set, and ad performance via Marketing API.', status: 'available' as const, logoSrc: '/logos/facebook.svg' },
-    { id: 'google_ads', name: 'Google Ads', description: 'Search, Shopping, and Performance Max reporting via Google Ads API.', status: 'available' as const, logoSrc: '/logos/google-ads.svg' },
-    { id: 'shopee', name: 'Shopee', description: 'Orders, products, and shop analytics from Shopee Open Platform.', status: 'available' as const, logoSrc: '/logos/shopee.svg' },
-    { id: 'lazada', name: 'Lazada Seller', description: 'Order fulfillments and finance.', status: 'available' as const, logoSrc: '/logos/lazada.svg' },
-    { id: 'shopify', name: 'Shopify', description: 'E-commerce platform orders.', status: 'available' as const, logoSrc: '/logos/shopify.svg' },
+    { id: 'tiktok_shop', name: 'TikTok Shop', description: 'Seller catalog, orders, and Shop analytics.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/tiktok' },
+    { id: 'tiktok_business', name: 'TikTok Ads', description: 'TikTok Marketing API — campaign and ad performance reporting.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/tiktok' },
+    { id: 'meta_ads', name: 'Meta Ads', description: 'Facebook & Instagram Ads — campaign, ad set, and ad performance via Marketing API.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/facebook' },
+    { id: 'google_ads', name: 'Google Ads', description: 'Search, Shopping, and Performance Max reporting via Google Ads API.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/googleads' },
+    { id: 'shopee', name: 'Shopee', description: 'Orders, products, and shop analytics from Shopee Open Platform.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/shopee' },
+    { id: 'lazada', name: 'Lazada Seller', description: 'Order fulfillments and finance.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/lazada' },
+    { id: 'shopify', name: 'Shopify', description: 'E-commerce platform orders.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/shopify' },
 ];
 
 export default function ConsolePage() {
@@ -97,14 +97,14 @@ export default function ConsolePage() {
         );
 
         const connectedSources = sourceConnections.map((conn: any) => {
-            let logo = '/logos/postgres.svg';
-            if (conn.provider === 'meta_ads') logo = '/logos/facebook.svg';
-            else if (conn.provider === 'google_ads') logo = '/logos/google-ads.svg';
-            else if (conn.provider.includes('shopee')) logo = '/logos/shopee.svg';
-            else if (conn.provider.includes('facebook') || conn.provider.includes('fb')) logo = '/logos/facebook.svg';
-            else if (conn.provider.includes('google') || conn.provider.includes('ga4')) logo = '/logos/ga4.svg';
-            else if (conn.provider.includes('tiktok_business')) logo = '/logos/tiktok.svg';
-            else if (conn.provider.includes('tiktok_shop') || conn.provider === 'tiktok') logo = '/logos/tiktok.svg';
+            let logo = 'https://cdn.simpleicons.org/postgresql';
+            if (conn.provider === 'meta_ads') logo = 'https://cdn.simpleicons.org/facebook';
+            else if (conn.provider === 'google_ads') logo = 'https://cdn.simpleicons.org/googleads';
+            else if (conn.provider.includes('shopee')) logo = 'https://cdn.simpleicons.org/shopee';
+            else if (conn.provider.includes('facebook') || conn.provider.includes('fb')) logo = 'https://cdn.simpleicons.org/facebook';
+            else if (conn.provider.includes('google') || conn.provider.includes('ga4')) logo = 'https://cdn.simpleicons.org/googleanalytics';
+            else if (conn.provider.includes('tiktok_business')) logo = 'https://cdn.simpleicons.org/tiktok';
+            else if (conn.provider.includes('tiktok_shop') || conn.provider === 'tiktok') logo = 'https://cdn.simpleicons.org/tiktok';
 
             const desc = `Connected to ${conn.provider} via workspace credentials.`;
             const relatedPipeline = workspace?.pipelines?.find((p: any) => p.sourceConnectionId === conn.id);
