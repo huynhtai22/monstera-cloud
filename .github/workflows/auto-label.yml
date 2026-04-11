@@ -1,0 +1,88 @@
+name: Auto-label PR by agent
+
+# Runs every time a PR is opened, reopened, or its branch changes.
+# Reads the branch name prefix (claude/, cursor/, qwen/, gemini/)
+# and applies the matching label automatically.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write   # needed to add labels
+      contents: read
+
+    steps:
+      - name: Apply agent label from branch name
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref;
+            console.log(`Branch: ${branch}`);
+
+            // Map branch prefixes → label names
+            const labelMap = {
+              'claude/'  : 'agent: claude',
+              'cursor/'  : 'agent: cursor',
+              'qwen/'    : 'agent: qwen',
+              'gemini/'  : 'agent: gemini',
+              'fix/'     : 'type: fix',
+              'feat/'    : 'type: feature',
+              'chore/'   : 'type: chore',
+              'hotfix/'  : 'type: hotfix',
+            };
+
+            const labelsToAdd = [];
+            for (const [prefix, label] of Object.entries(labelMap)) {
+              if (branch.startsWith(prefix)) {
+                labelsToAdd.push(label);
+              }
+            }
+
+            if (labelsToAdd.length === 0) {
+              console.log('No matching prefix found — no labels added.');
+              return;
+            }
+
+            // Ensure the labels exist before trying to apply them
+            for (const labelName of labelsToAdd) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: labelName,
+                });
+              } catch (e) {
+                // Label doesn't exist yet — create it
+                const colors = {
+                  'agent: claude'  : '7C3AED',
+                  'agent: cursor'  : '2563EB',
+                  'agent: qwen'    : 'D97706',
+                  'agent: gemini'  : '16A34A',
+                  'type: fix'      : 'EF4444',
+                  'type: feature'  : '10B981',
+                  'type: chore'    : '6B7280',
+                  'type: hotfix'   : 'DC2626',
+                };
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: labelName,
+                  color: colors[labelName] || 'CCCCCC',
+                });
+                console.log(`Created label: ${labelName}`);
+              }
+            }
+
+            // Apply labels to the PR
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              labels: labelsToAdd,
+            });
+
+            console.log(`Applied labels: ${labelsToAdd.join(', ')}`);
