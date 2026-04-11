@@ -7,30 +7,25 @@ import { safeDecrypt } from "@/lib/encryption";
 import { sendSyncFailureEmail } from "@/lib/mail";
 import { runEtlPipeline } from "@/etl/runner";
 import type { EtlProvider } from "@/etl/types";
-
 import { sendAgencyAlert } from "@/lib/alerts";
 
 export async function POST(req: Request, context: { params: any }) {
-    let syncLogId;
+    const syncStartTime = Date.now();
     let pipelineId: string | undefined;
     let notifyEmail: string | undefined;
     let pipelineNameForNotify: string | undefined;
     let activePipeline: any = null;
 
     try {
-        const syncStartTime = Date.now();
-        
         // 0. Auth Check: Allow either Session OR Cron Secret
         const session = await getServerSession(authOptions);
-        const authHeader = req.headers.get("x-cron-secret");
+        const authHeader = req.headers.get("x-cron-secret") || req.headers.get("Authorization")?.replace("Bearer ", "");
         const isCron = authHeader && authHeader === process.env.CRON_SECRET;
 
         if (!session?.user && !isCron) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
         
-        // Identify who is running this for logging/context
-        const runnerUserId = session?.user?.id || (isCron ? "SYSTEM_CRON" : null);
         notifyEmail = (session?.user as any)?.email;
 
         // Properly extract params safely for Next.js 15+
@@ -54,6 +49,7 @@ export async function POST(req: Request, context: { params: any }) {
         if (!pipeline) {
             return NextResponse.json({ error: "Pipeline not found" }, { status: 404 });
         }
+
         activePipeline = pipeline;
         pipelineNameForNotify = pipeline.name ?? "Pipeline";
 
@@ -111,7 +107,7 @@ export async function POST(req: Request, context: { params: any }) {
             return NextResponse.json({ message: "No new data to sync." });
         }
 
-        // 6. Log the Sync Job
+        // 3. Log the Sync Job
         const syncLog = await prisma.syncLog.create({
             data: {
                 pipelineId: pipeline.id,
@@ -126,6 +122,7 @@ export async function POST(req: Request, context: { params: any }) {
             where: { id: pipeline.id },
             data: {
                 lastSyncedAt: new Date(),
+                healthStatus: "healthy",
                 ...(etl.nextCursor ? { syncCursor: JSON.stringify(etl.nextCursor) } : {}),
             }
         });
@@ -159,15 +156,22 @@ export async function POST(req: Request, context: { params: any }) {
             }).catch(() => { });
         }
 
-        // Optionally log the error to the database
+        // Update health status to error
         if (pipelineId) {
-            await prisma.syncLog.create({
-                data: {
-                    pipelineId: String(pipelineId),
-                    status: "error",
-                    errorMsg: error.message || "Unknown error occurred"
-                }
-            }).catch(() => { });
+            try {
+                await prisma.pipeline.update({
+                    where: { id: String(pipelineId) },
+                    data: { healthStatus: "error" }
+                });
+
+                await prisma.syncLog.create({
+                    data: {
+                        pipelineId: String(pipelineId),
+                        status: "error",
+                        errorMsg: error.message || "Unknown error occurred"
+                    }
+                });
+            } catch (e) {}
         }
 
         return NextResponse.json({ error: error.message || "Pipeline execution failed" }, { status: 500 });
