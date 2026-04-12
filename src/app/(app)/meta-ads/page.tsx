@@ -12,6 +12,7 @@ import { IntegrationPageLayout, inputFocus } from "@/components/ui/IntegrationPa
 import { IntegrationSectionCard } from "@/components/ui/IntegrationSectionCard";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { cn } from "@/lib/utils";
+import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -449,9 +450,7 @@ export default function MetaAdsPage() {
       title="Meta Ads"
       description="Campaign and ad set performance from Facebook and Instagram Ads."
       icon={
-        <div className="flex h-[22px] w-[22px] items-center justify-center rounded bg-[#1877F2]">
-          <Facebook className="h-3.5 w-3.5 text-white" />
-        </div>
+        <img src={INTEGRATION_LOGOS.meta} alt="Meta" width={22} height={22} />
       }
       leftColumn={leftColumn}
       primaryAction={

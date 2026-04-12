@@ -3,6 +3,43 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { computeAttributionSnapshots } from '@/etl/attribution/engine';
+import {
+  buildMockAttributionSnapshots,
+  type WorkspaceDemoFlags,
+} from '@/lib/mock-console-data';
+
+function dateKey(d: Date | string): string {
+  const x = d instanceof Date ? d : new Date(d);
+  return x.toISOString().slice(0, 10);
+}
+
+function mergeAttributionRows(
+  real: Array<{
+    date: Date;
+    netRoas: number;
+    adSpend: number;
+    attributedRevenue: number;
+    model: string;
+  }>,
+  mock: Array<{
+    date: Date;
+    netRoas: number;
+    adSpend: number;
+    attributedRevenue: number;
+    model: string;
+  }>
+) {
+  const map = new Map<string, (typeof real)[0]>();
+  for (const m of mock) {
+    map.set(dateKey(m.date), m);
+  }
+  for (const r of real) {
+    map.set(dateKey(r.date), r);
+  }
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+}
 
 /**
  * GET /api/attribution/snapshots?workspaceId=...&days=14
@@ -36,6 +73,45 @@ export async function GET(req: Request) {
     take: 200,
   });
 
-  return NextResponse.json({ snapshots });
+  const ws = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: {
+      demoMockMode: true,
+      demoMockMeta: true,
+      demoMockShopee: true,
+      demoMockGoogleAds: true,
+    },
+  });
+  const demoFlags: WorkspaceDemoFlags = {
+    demoMockMode: ws?.demoMockMode ?? false,
+    demoMockMeta: ws?.demoMockMeta ?? false,
+    demoMockShopee: ws?.demoMockShopee ?? false,
+    demoMockGoogleAds: ws?.demoMockGoogleAds ?? false,
+  };
+
+  const dayCount = Math.max(1, Math.min(90, days));
+  const mockRows = buildMockAttributionSnapshots(dayCount, demoFlags);
+  const realRows = snapshots.map((s) => ({
+    date: s.date,
+    netRoas: s.netRoas,
+    adSpend: s.adSpend,
+    attributedRevenue: s.attributedRevenue,
+    model: s.model,
+  }));
+
+  const merged =
+    demoFlags.demoMockMode && mockRows.length > 0
+      ? mergeAttributionRows(realRows, mockRows)
+      : realRows;
+
+  const out = merged.map((row) => ({
+    ...row,
+    date: row.date,
+  }));
+
+  return NextResponse.json({
+    snapshots: out,
+    demoMockMode: demoFlags.demoMockMode,
+  });
 }
 

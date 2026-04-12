@@ -1,18 +1,17 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import useSWR from "swr";
 import { 
   Activity, 
-  AlertCircle, 
-  CheckCircle2, 
   Clock, 
   Database, 
   BarChart3,
   ExternalLink,
   Users,
   ShieldAlert,
-  ChevronRight
+  ChevronRight,
 } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
@@ -88,28 +87,45 @@ export function HealthDashboard() {
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">Client Status Pulse</h3>
             {unassignedCount > 0 && (
-                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                <Link
+                    href="/settings?tab=clients"
+                    className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full hover:bg-amber-100 transition-colors"
+                >
                     {unassignedCount} unassigned connections
-                </span>
+                </Link>
             )}
           </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {clientHealth.length === 0 ? (
-                <div className="sm:col-span-2 p-10 border-2 border-dashed border-gray-100 rounded-3xl text-center">
-                    <p className="text-sm text-gray-400">No client groups created yet. Group connections in Settings to see them here.</p>
+                <div className="sm:col-span-2 p-10 border-2 border-dashed border-gray-100 rounded-3xl text-center space-y-3">
+                    <p className="text-sm text-gray-400">
+                        No client groups yet. Create clients and assign connections in Settings to track health by account.
+                    </p>
+                    <Link
+                        href="/settings?tab=clients"
+                        className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline"
+                    >
+                        Open Client Management
+                        <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
                 </div>
             ) : (
                 clientHealth.map((client: any) => (
                     <div key={client.id} className="p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:border-emerald-200 transition-all group">
                         <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
                                 <div className={cn(
                                     "h-2 w-2 rounded-full",
                                     client.status === 'healthy' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" :
                                     client.status === 'stale' ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"
                                 )} />
-                                <span className="font-bold text-gray-900 text-sm">{client.name}</span>
+                                <span className="font-bold text-gray-900 text-sm truncate">{client.name}</span>
+                                {client.isDemo ? (
+                                  <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">
+                                    Demo
+                                  </span>
+                                ) : null}
                             </div>
                             <ChevronRight className="h-4 w-4 text-gray-300 opacity-0 group-hover:opacity-100 transition-all" />
                         </div>

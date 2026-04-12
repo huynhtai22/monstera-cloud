@@ -1,6 +1,30 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 import { apiRatelimit } from "@/lib/ratelimit";
+import { safeCallbackUrl } from "@/lib/safe-callback-url";
+
+/** Logged-in app surfaces (must match routes under `src/app/(app)/`). */
+const APP_AUTH_SEGMENTS = [
+  "console",
+  "settings",
+  "overview",
+  "reports",
+  "explorer",
+  "destinations",
+  "transformations",
+  "internal-templates",
+  "meta-ads",
+  "google-ads",
+  "tiktok-ads",
+  "shopee",
+] as const;
+
+function pathnameNeedsAppAuth(pathname: string): boolean {
+  return APP_AUTH_SEGMENTS.some(
+    (seg) => pathname === `/${seg}` || pathname.startsWith(`/${seg}/`)
+  );
+}
 
 export async function middleware(request: NextRequest) {
   // Global rate limit for all /api/* routes (excluding add-on endpoints)
@@ -8,7 +32,8 @@ export async function middleware(request: NextRequest) {
   if (
     apiRatelimit &&
     request.nextUrl.pathname.startsWith("/api/") &&
-    !request.nextUrl.pathname.startsWith("/api/v1/sheets")
+    !request.nextUrl.pathname.startsWith("/api/v1/sheets") &&
+    !request.nextUrl.pathname.startsWith("/api/looker-studio")
   ) {
     const ip =
       request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -61,11 +86,58 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
+  // Require a session JWT for in-app pages (otherwise /api/workspaces returns 401 and the UI looks "broken").
+  if (pathnameNeedsAppAuth(request.nextUrl.pathname)) {
+    const token = await getToken({
+      req: request,
+      secret: process.env.NEXTAUTH_SECRET,
+    });
+    if (!token) {
+      const login = new URL("/login", request.url);
+      const nextPath =
+        request.nextUrl.pathname +
+        (request.nextUrl.search || "");
+      login.searchParams.set(
+        "callbackUrl",
+        safeCallbackUrl(nextPath, "/console")
+      );
+      return NextResponse.redirect(login);
+    }
+  }
+
   return NextResponse.next();
 }
 
+// Must be static strings for Turbopack / Next.js to parse at compile time (no spread from arrays).
 export const config = {
   // Exclude /api/auth/* — NextAuth handles its own OAuth callbacks and session
   // cookies there; custom middleware intercepting those routes breaks Google sign-in.
-  matcher: ['/api/((?!auth/).*)', '/api/v1/sheets/:path*'],
+  matcher: [
+    "/api/((?!auth/).*)",
+    "/api/v1/sheets/:path*",
+    "/console",
+    "/console/:path*",
+    "/settings",
+    "/settings/:path*",
+    "/overview",
+    "/overview/:path*",
+    "/reports",
+    "/reports/:path*",
+    "/explorer",
+    "/explorer/:path*",
+    "/destinations",
+    "/destinations/:path*",
+    "/transformations",
+    "/transformations/:path*",
+    "/internal-templates",
+    "/internal-templates/:path*",
+    "/meta-ads",
+    "/meta-ads/:path*",
+    "/google-ads",
+    "/google-ads/:path*",
+    "/tiktok-ads",
+    "/tiktok-ads/:path*",
+    "/shopee",
+    "/shopee/:path*",
+  ],
 };

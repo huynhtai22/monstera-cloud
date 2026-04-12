@@ -1,45 +1,57 @@
-# Looker Studio Community Connector — Google submission form
+# Looker Studio Partner Connector — submission checklist
 
-Use this for the **Looker Studio (Data Studio) Community Connector** review form, not the Google Workspace Marketplace add-on flow.
+Use this wih [PSCC requirements](https://developers.google.com/looker-studio/connector/pscc-requirements) and [manifest reference](https://developers.google.com/looker-studio/connector/manifest).
 
-The form often ends with two optional/required free-text fields. Here is what they mean and what to paste for **Monstera Cloud**.
+## Code & API (repo)
 
----
+- `**/api/looker-studio**` — smoke-test with a real workspace API key:
+  - Ping (no DB metrics query):  
+  `curl -sS -H "Authorization: Bearer YOUR_KEY" "https://monsteracloud.com/api/looker-studio?ping=1"` → `{"ok":true}`
+  - Data (date range):  
+  `curl -sS -H "Authorization: Bearer YOUR_KEY" "https://monsteracloud.com/api/looker-studio?startDate=2026-01-01&endDate=2026-01-31"` → `{ "data": [...] }`
+- **Apps Script** — copy `Code.js` + `appsscript.json` into the Apps Script project, then **Deploy** a new version.
 
-## 1) Exception for `urlFetchWhitelist` or `template` (max ~2000 chars)
+## Apps Script project (Google)
 
-**When Google asks this:** Your `appsscript.json` may omit `urlFetchWhitelist` and/or `template`. Reviewers want a short explanation.
+- Project **Settings** → enable **Show `appsscript.json` manifest file in editor**.
+- **Share** view access with:
+  - `data-studio-contrib-qa@googlegroups.com`
+  - `data-studio-contrib@google.com`
+- Create a deployment named `**Production`** on the version you want reviewed.
+- **OAuth client verification** (required for all connectors, including KEY auth): follow [OAuth Client Verification](https://developers.google.com/apps-script/guides/client-verification). Confirm a **fresh Google account** authorizing the script does **not** hit the “Unverified app” blocking screen. Add required scopes on the OAuth consent screen (e.g. external HTTPS access scope used by the connector).
 
-**What to say (accurate for this connector):**
+## Default report template (manifest)
 
-- Outbound calls use `UrlFetchApp` only to your production API host (`https://monsteracloud.com`) to fetch reporting data the user requested.
-- The connector uses **KEY** auth; the user pastes a workspace API key. No arbitrary third-party URLs are fetched.
-- If you did not use a `template` property, state that the connector does not rely on a template manifest.
+Google expects a **default report template** when the connector uses a **fixed schema** — see [Providing report templates](https://developers.google.com/looker-studio/connector/report-templates).
 
-**Suggested paste (edit URLs if yours differ):**
+1. In Looker Studio, build a **starter report** using your connector (simple time series + table is enough).
+2. **File → Share → Get report link** (link sharing enabled).
+3. From the report URL, copy the **report ID** (the long id in the URL path).
+4. In `appsscript.json`, under `dataStudio`, add:
 
-> This community connector uses UrlFetch only to call the Monstera Cloud API at `https://monsteracloud.com` (e.g. `/api/looker-studio`) over HTTPS. Requests are authenticated with a user-provided workspace API key; the connector does not fetch arbitrary third-party URLs. We did not add a `template` property because the connector does not use a template-based manifest workflow. If a `urlFetchWhitelist` is required for approval, we can add an explicit whitelist limited to `https://monsteracloud.com/*`.
+```json
+"templates": {
+  "default": "YOUR_REPORT_ID_HERE"
+}
+```
 
----
+1. Deploy a new Apps Script version and point **Production** at it.
 
-## 2) Additional comments
+*(Until you have a real ID, omit `templates` so you do not ship a broken manifest.)*
 
-**When Google asks this:** Extra context for reviewers—what changed, demo video link, support URL, etc.
+## OAuth verification — how to confirm
 
-**Suggested paste (customize):**
+1. Open the connector in Looker Studio with a **test Google user** that has never authorized the script.
+2. Complete any Apps Script authorization prompts.
+3. You should **not** be stuck on Google’s **“This app isn’t verified”** interstitial for normal use. If you are, finish verification or submit for verification in Google Cloud Console for the project bound to the script.
 
-> **Connector:** Monstera Cloud — unified campaign metrics (Meta Ads, Google Ads, TikTok Business) for Looker Studio.  
-> **Auth:** API key (workspace key from Monstera Cloud Settings).  
-> **Support:** https://monsteracloud.com/support  
-> **Demo video (if applicable):** https://monsteracloud.com/showcase/your-demo.mp4  
-> **Recent updates:** [e.g. platform filter aligned to `meta_ads` / `google_ads` / `tiktok_business`; date parsing for Looker Studio date ranges; CPM field added.]
+## Partner review request
 
----
+- Requirements above satisfied.
+- [Looker Studio Galleries Terms of Service (Submitter)](https://support.google.com/looker-studio/answer/7539411?ref_topic=7156687) accepted when submitting.
+- Submit via **Publish your Partner Connector** on the [PSCC requirements](https://developers.google.com/looker-studio/connector/pscc-requirements) page.
 
-## Repo alignment
+## Loom / demo (your step)
 
-- Connector code: `scripts/looker-studio-connector/Code.js`
-- Manifest: `scripts/looker-studio-connector/appsscript.json` (`dataStudio` block)
-- Backend: `src/app/api/looker-studio/route.ts`
+- Record: add data source → paste API key → platform filter → date range → chart populates (or empty state explained).
 
-**Dry run before you record the community screencast:** follow `MOCKUP-TEST.md` in this folder (rehearsal steps + `curl` smoke test).

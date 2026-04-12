@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from "next/link";
-import { Settings2, Building2, Users, CreditCard, KeyRound, Save, Plus, AlertCircle, CheckCircle2, Copy, Briefcase, Trash2, Activity, Database, ShieldAlert } from "lucide-react";
+import { Settings2, Building2, Users, CreditCard, KeyRound, Save, Plus, AlertCircle, CheckCircle2, Copy, Briefcase, Trash2, Activity, Database, ShieldAlert, MessageCircle, Pencil, Search, Sparkles } from "lucide-react";
+import { MOCK_TEAM } from "@/lib/mock-console-data";
 import { useWorkspaceStore } from "@/store/workspace";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
@@ -18,10 +20,24 @@ const fetcher = async (url: string) => {
 export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState<'workspace' | 'clients' | 'team' | 'billing' | 'api'>('workspace');
     const { activeWorkspaceId } = useWorkspaceStore();
+    const { mutate: globalMutate } = useSWRConfig();
     const { data: session } = useSession();
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const activeWorkspace = Array.isArray(workspaces) ? workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0] : null;
     const userPlan = (session?.user as any)?.plan || 'free';
+
+    const [telegramChatDraft, setTelegramChatDraft] = useState("");
+    const [telegramSaving, setTelegramSaving] = useState(false);
+    const [telegramTesting, setTelegramTesting] = useState(false);
+    const [unassignedSearch, setUnassignedSearch] = useState("");
+    const [editingClientId, setEditingClientId] = useState<string | null>(null);
+    const [editClientNameValue, setEditClientNameValue] = useState("");
+
+    const [demoMaster, setDemoMaster] = useState(false);
+    const [demoMeta, setDemoMeta] = useState(false);
+    const [demoShopee, setDemoShopee] = useState(false);
+    const [demoGoogleAds, setDemoGoogleAds] = useState(false);
+    const [demoSaving, setDemoSaving] = useState(false);
     
     const [apiKeys, setApiKeys] = useState<any[]>([]);
     const [newlyGeneratedKey, setNewlyGeneratedKey] = useState<string | null>(null);
@@ -32,6 +48,60 @@ export default function SettingsPage() {
     const [unassignedConns, setUnassignedConns] = useState<any[]>([]);
     const [isAddingClient, setIsAddingClient] = useState(false);
     const [newClientName, setNewClientName] = useState('');
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const tab = new URLSearchParams(window.location.search).get("tab");
+        if (
+            tab === "workspace" ||
+            tab === "clients" ||
+            tab === "team" ||
+            tab === "billing" ||
+            tab === "api"
+        ) {
+            setActiveTab(tab);
+        }
+        const demo = new URLSearchParams(window.location.search).get("demo");
+        if (demo === "1" || demo === "true") {
+            setActiveTab("workspace");
+            setTimeout(() => {
+                window.history.replaceState(null, "", "/settings?tab=workspace#product-demo");
+                document.getElementById("product-demo")?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 150);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined" || activeTab !== "workspace") return;
+        if (window.location.hash !== "#product-demo") return;
+        requestAnimationFrame(() => {
+            document.getElementById("product-demo")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+    }, [activeTab]);
+
+    useEffect(() => {
+        if (!activeWorkspace) return;
+        setTelegramChatDraft(
+            (activeWorkspace as { telegramChatId?: string | null }).telegramChatId ?? ""
+        );
+        const w = activeWorkspace as {
+            demoMockMode?: boolean;
+            demoMockMeta?: boolean;
+            demoMockShopee?: boolean;
+            demoMockGoogleAds?: boolean;
+        };
+        setDemoMaster(!!w.demoMockMode);
+        setDemoMeta(!!w.demoMockMeta);
+        setDemoShopee(!!w.demoMockShopee);
+        setDemoGoogleAds(!!w.demoMockGoogleAds);
+    }, [
+        activeWorkspace?.id,
+        (activeWorkspace as { telegramChatId?: string | null })?.telegramChatId,
+        (activeWorkspace as { demoMockMode?: boolean })?.demoMockMode,
+        (activeWorkspace as { demoMockMeta?: boolean })?.demoMockMeta,
+        (activeWorkspace as { demoMockShopee?: boolean })?.demoMockShopee,
+        (activeWorkspace as { demoMockGoogleAds?: boolean })?.demoMockGoogleAds,
+    ]);
 
     useEffect(() => {
         if (activeTab === 'api' && activeWorkspaceId) {
@@ -97,23 +167,162 @@ export default function SettingsPage() {
             });
             if (res.ok) {
                 setNewClientName('');
+                toast.success("Client added.");
                 fetchClients();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                toast.error(typeof err.error === "string" ? err.error : "Could not add client.");
             }
         } catch (error) {
-            console.error("Failed to add client");
+            toast.error("Could not add client.");
         }
         setIsAddingClient(false);
     };
 
-    const handleDeleteClient = async (id: string) => {
+    const handleDeleteClient = async (id: string, isDemo?: boolean) => {
+        if (isDemo) {
+            toast.error("Demo clients can’t be removed — turn off demo mode in Workspace settings.");
+            return;
+        }
         if (!activeWorkspaceId || !confirm("Are you sure you want to remove this client? This won't delete their data, but they will no longer be grouped.")) return;
         try {
             const res = await fetch(`/api/clients?id=${id}&workspaceId=${activeWorkspaceId}`, {
                 method: 'DELETE'
             });
-            if (res.ok) fetchClients();
+            if (res.ok) {
+                toast.success("Client removed.");
+                fetchClients();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                toast.error(typeof err.error === "string" ? err.error : "Could not remove client.");
+            }
         } catch (error) {
-            console.error("Failed to delete client");
+            toast.error("Could not remove client.");
+        }
+    };
+
+    const handleRenameClient = async (clientId: string) => {
+        if (!activeWorkspaceId || !editClientNameValue.trim()) return;
+        try {
+            const res = await fetch("/api/clients", {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    id: clientId,
+                    workspaceId: activeWorkspaceId,
+                    name: editClientNameValue.trim(),
+                }),
+            });
+            if (res.ok) {
+                toast.success("Client updated.");
+                setEditingClientId(null);
+                fetchClients();
+            } else {
+                const err = await res.json().catch(() => ({}));
+                toast.error(typeof err.error === "string" ? err.error : "Update failed.");
+            }
+        } catch {
+            toast.error("Update failed.");
+        }
+    };
+
+    const filteredUnassigned = useMemo(() => {
+        const q = unassignedSearch.trim().toLowerCase();
+        if (!q) return unassignedConns;
+        return unassignedConns.filter(
+            (c: { name?: string; provider?: string }) =>
+                (c.name && c.name.toLowerCase().includes(q)) ||
+                (c.provider && c.provider.toLowerCase().includes(q))
+        );
+    }, [unassignedConns, unassignedSearch]);
+
+    const saveTelegramChat = async () => {
+        if (!activeWorkspaceId) return;
+        setTelegramSaving(true);
+        try {
+            const res = await fetch(`/api/workspaces/${activeWorkspaceId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    telegramChatId: telegramChatDraft.trim() || null,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Save failed");
+            toast.success("Notification settings saved.");
+            await globalMutate("/api/workspaces");
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : "Save failed.");
+        } finally {
+            setTelegramSaving(false);
+        }
+    };
+
+    const saveDemoSettings = async (opts?: {
+        master?: boolean;
+        meta?: boolean;
+        shopee?: boolean;
+        googleAds?: boolean;
+    }) => {
+        if (!activeWorkspaceId) return;
+        const master = opts?.master ?? demoMaster;
+        const m = opts?.meta ?? demoMeta;
+        const s = opts?.shopee ?? demoShopee;
+        const g = opts?.googleAds ?? demoGoogleAds;
+        setDemoSaving(true);
+        try {
+            const res = await fetch(`/api/workspaces/${activeWorkspaceId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    demoMockMode: master,
+                    demoMockMeta: master ? m : false,
+                    demoMockShopee: master ? s : false,
+                    demoMockGoogleAds: master ? g : false,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Save failed");
+            setDemoMaster(master);
+            if (!master) {
+                setDemoMeta(false);
+                setDemoShopee(false);
+                setDemoGoogleAds(false);
+            } else {
+                setDemoMeta(m);
+                setDemoShopee(s);
+                setDemoGoogleAds(g);
+            }
+            toast.success("Demo / mock settings saved.");
+            await globalMutate("/api/workspaces");
+            if (activeWorkspaceId) {
+                await globalMutate(`/api/workspaces/${activeWorkspaceId}/health-stats`);
+                await globalMutate(
+                    `/api/attribution/snapshots?workspaceId=${activeWorkspaceId}&days=14`
+                );
+            }
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : "Save failed.");
+        } finally {
+            setDemoSaving(false);
+        }
+    };
+
+    const testTelegramAlert = async () => {
+        if (!activeWorkspaceId) return;
+        setTelegramTesting(true);
+        try {
+            const res = await fetch(
+                `/api/workspaces/${activeWorkspaceId}/test-telegram`,
+                { method: "POST" }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : "Test failed");
+            toast.success("Sent — check Telegram.");
+        } catch (e: unknown) {
+            toast.error(e instanceof Error ? e.message : "Test failed.");
+        } finally {
+            setTelegramTesting(false);
         }
     };
 
@@ -173,6 +382,15 @@ export default function SettingsPage() {
         }
     };
 
+    const goToProductDemo = () => {
+        setActiveTab("workspace");
+        if (typeof window === "undefined") return;
+        window.history.replaceState(null, "", "/settings?tab=workspace#product-demo");
+        setTimeout(() => {
+            document.getElementById("product-demo")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 100);
+    };
+
     return (
         <div className="relative max-w-5xl mx-auto px-8 py-10 w-full animate-in fade-in duration-300">
             {/* Liquid Glass Background Effects */}
@@ -191,6 +409,19 @@ export default function SettingsPage() {
                 <p className="text-gray-500 dark:text-gray-400 text-sm">
                     Manage your workspace, clients, team members, billing, and developer configuration.
                 </p>
+                <button
+                    type="button"
+                    onClick={goToProductDemo}
+                    className="mt-4 flex w-full max-w-xl items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50/90 px-4 py-3 text-left text-sm shadow-sm transition hover:bg-violet-100/90 dark:border-violet-800/60 dark:bg-violet-950/40 dark:hover:bg-violet-950/60 sm:max-w-none"
+                >
+                    <Sparkles className="h-5 w-5 shrink-0 text-violet-600 dark:text-violet-300" />
+                    <span>
+                        <span className="font-semibold text-violet-900 dark:text-violet-100">Product demo (mock data)</span>
+                        <span className="mt-0.5 block text-xs text-violet-800/80 dark:text-violet-200/90">
+                            Turn on sample Meta / Shopee / Google Ads metrics for screenshots — opens Workspace → Product demo
+                        </span>
+                    </span>
+                </button>
             </div>
 
             <div className="flex flex-col md:flex-row gap-8 relative z-10">
@@ -204,6 +435,18 @@ export default function SettingsPage() {
                         >
                             <Building2 className={`w-4 h-4 mr-3 ${activeTab === 'workspace' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
                             Workspace
+                        </button>
+                        <button
+                            type="button"
+                            onClick={goToProductDemo}
+                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all border ${
+                                activeTab === "workspace"
+                                    ? "border-violet-200/80 bg-violet-50/90 text-violet-900 dark:border-violet-800/50 dark:bg-violet-950/35 dark:text-violet-100"
+                                    : "border-transparent text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white"
+                            }`}
+                        >
+                            <Sparkles className={`w-4 h-4 mr-3 ${activeTab === "workspace" ? "text-violet-600 dark:text-violet-300" : "text-gray-400"}`} />
+                            Product demo
                         </button>
                         <button
                             onClick={() => setActiveTab('clients')}
@@ -272,6 +515,207 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
+                            <div className="rounded-2xl border border-emerald-100/90 bg-emerald-50/50 dark:bg-emerald-950/25 dark:border-emerald-900/45 p-5 sm:p-6">
+                                <div className="flex items-start gap-3">
+                                    <MessageCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                                    <div className="min-w-0 flex-1 space-y-3">
+                                        <div>
+                                            <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                                                Sync failure alerts (Telegram)
+                                            </h3>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                                Pipeline sync errors can notify a Telegram chat. Configure{" "}
+                                                <span className="font-mono text-xs">TELEGRAM_BOT_TOKEN</span> in server
+                                                env, then set this workspace&apos;s chat ID (or use env{" "}
+                                                <span className="font-mono text-xs">TELEGRAM_CHAT_ID</span> as fallback).
+                                                Zalo and other channels are not wired in-app yet — use email alerts from
+                                                scheduled jobs or a webhook in your stack if needed.
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                                                Telegram chat ID (optional)
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={telegramChatDraft}
+                                                onChange={(e) => setTelegramChatDraft(e.target.value)}
+                                                placeholder="e.g. -1001234567890"
+                                                className="w-full max-w-md bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 p-2.5 shadow-sm font-mono"
+                                            />
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => void saveTelegramChat()}
+                                                disabled={telegramSaving}
+                                                className="inline-flex items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
+                                            >
+                                                {telegramSaving ? "Saving…" : "Save alert settings"}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => void testTelegramAlert()}
+                                                disabled={telegramTesting}
+                                                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 text-gray-800 dark:text-slate-200 text-sm font-semibold rounded-xl transition-colors"
+                                            >
+                                                {telegramTesting ? "Sending…" : "Send test message"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <hr className="border-gray-200/60 dark:border-slate-700" />
+
+                            <div
+                                id="product-demo"
+                                className="rounded-2xl border border-violet-100/90 bg-violet-50/40 dark:bg-violet-950/20 dark:border-violet-900/40 p-5 sm:p-6 scroll-mt-24"
+                            >
+                                <div className="flex items-start gap-3">
+                                    <Sparkles className="w-5 h-5 text-violet-600 dark:text-violet-400 shrink-0 mt-0.5" />
+                                    <div className="min-w-0 flex-1 space-y-4">
+                                        <div>
+                                            <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                                                Product demo (mock data)
+                                            </h3>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                                Overlay sample clients, team roster, ingestion charts, and ROAS for slides
+                                                or QA. Turning the master switch off removes all demo overlays. Platform
+                                                toggles control which channels contribute to metrics (Meta Ads, Shopee
+                                                commerce metrics, Google Ads) — dimensions and labels match each
+                                                integration.
+                                            </p>
+                                        </div>
+
+                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-violet-100/80 bg-white/80 dark:bg-slate-900/50 dark:border-violet-900/35 px-4 py-3">
+                                            <div>
+                                                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                                    Demo mode
+                                                </p>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                    Master switch for console mock data
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                role="switch"
+                                                aria-checked={demoMaster}
+                                                onClick={() => void saveDemoSettings({ master: !demoMaster })}
+                                                disabled={demoSaving}
+                                                className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${
+                                                    demoMaster ? "bg-emerald-500" : "bg-gray-200 dark:bg-slate-600"
+                                                } disabled:opacity-50`}
+                                            >
+                                                <span
+                                                    className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                                                        demoMaster ? "translate-x-6" : "translate-x-0"
+                                                    }`}
+                                                />
+                                            </button>
+                                        </div>
+
+                                        <div className={`space-y-3 ${!demoMaster ? "opacity-50 pointer-events-none" : ""}`}>
+                                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                                Sample data by platform
+                                            </p>
+                                            {(
+                                                [
+                                                    {
+                                                        key: "meta",
+                                                        label: "Meta Ads",
+                                                        sub: "Campaign / ad set metrics (impressions, spend, ROAS)",
+                                                        on: demoMeta,
+                                                        set: setDemoMeta,
+                                                    },
+                                                    {
+                                                        key: "shopee",
+                                                        label: "Shopee",
+                                                        sub: "Store & order-style signals (GMV-weighted ingestion)",
+                                                        on: demoShopee,
+                                                        set: setDemoShopee,
+                                                    },
+                                                    {
+                                                        key: "gads",
+                                                        label: "Google Ads",
+                                                        sub: "Customer ID campaigns (cost, conv. value, search)",
+                                                        on: demoGoogleAds,
+                                                        set: setDemoGoogleAds,
+                                                    },
+                                                ] as const
+                                            ).map((row) => (
+                                                <div
+                                                    key={row.key}
+                                                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl border border-gray-100 dark:border-slate-700 bg-white/60 dark:bg-slate-900/40 px-4 py-3"
+                                                >
+                                                    <div>
+                                                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                                            {row.label}
+                                                        </p>
+                                                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                            {row.sub}
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        role="switch"
+                                                        aria-checked={row.on}
+                                                        onClick={() => row.set(!row.on)}
+                                                        disabled={!demoMaster || demoSaving}
+                                                        className={`relative h-8 w-14 shrink-0 rounded-full transition-colors self-end sm:self-auto ${
+                                                            row.on ? "bg-emerald-500" : "bg-gray-200 dark:bg-slate-600"
+                                                        }`}
+                                                    >
+                                                        <span
+                                                            className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                                                                row.on ? "translate-x-6" : "translate-x-0"
+                                                            }`}
+                                                        />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setDemoMaster(true);
+                                                    setDemoMeta(true);
+                                                    setDemoShopee(true);
+                                                    setDemoGoogleAds(true);
+                                                    void saveDemoSettings({
+                                                        master: true,
+                                                        meta: true,
+                                                        shopee: true,
+                                                        googleAds: true,
+                                                    });
+                                                }}
+                                                disabled={demoSaving}
+                                                className="inline-flex items-center px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
+                                            >
+                                                Enable all sample platforms
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    void saveDemoSettings({
+                                                        master: demoMaster,
+                                                        meta: demoMeta,
+                                                        shopee: demoShopee,
+                                                        googleAds: demoGoogleAds,
+                                                    })
+                                                }
+                                                disabled={demoSaving || !demoMaster}
+                                                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 text-gray-800 dark:text-slate-200 text-sm font-semibold rounded-xl transition-colors"
+                                            >
+                                                {demoSaving ? "Saving…" : "Save platform toggles"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <hr className="border-gray-200/60 dark:border-slate-700" />
 
                             <div>
@@ -330,10 +774,47 @@ export default function SettingsPage() {
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {clients.map((client) => (
-                                        <div key={client.id} className="p-5 rounded-2xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 shadow-sm flex items-start justify-between group">
-                                            <div>
-                                                <h4 className="font-bold text-gray-900 dark:text-white mb-1">{client.name}</h4>
+                                    {clients.map((client: { id: string; name: string; isDemo?: boolean; _count?: { pipelines?: number; connections?: number } }) => (
+                                        <div key={client.id} className="p-5 rounded-2xl border border-gray-100 dark:border-slate-700 bg-white dark:bg-slate-800/50 shadow-sm flex items-start justify-between gap-3">
+                                            <div className="min-w-0 flex-1">
+                                                {client.isDemo ? (
+                                                    <span className="mb-2 inline-flex items-center rounded-full bg-violet-100 dark:bg-violet-950/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-800 dark:text-violet-200">
+                                                        Demo
+                                                    </span>
+                                                ) : null}
+                                                {editingClientId === client.id ? (
+                                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                                        <input
+                                                            type="text"
+                                                            value={editClientNameValue}
+                                                            onChange={(e) => setEditClientNameValue(e.target.value)}
+                                                            className="w-full bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900 text-gray-900 dark:text-white text-sm rounded-lg px-2 py-1.5"
+                                                            autoFocus
+                                                        />
+                                                        <div className="flex gap-2 shrink-0">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => void handleRenameClient(client.id)}
+                                                                className="text-xs font-semibold text-emerald-600 hover:underline"
+                                                            >
+                                                                Save
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setEditingClientId(null);
+                                                                }}
+                                                                className="text-xs font-semibold text-gray-500 hover:underline"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <h4 className="font-bold text-gray-900 dark:text-white mb-1 truncate">
+                                                        {client.name}
+                                                    </h4>
+                                                )}
                                                 <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                                                     <span className="flex items-center gap-1">
                                                         <Activity className="w-3 h-3" />
@@ -345,11 +826,35 @@ export default function SettingsPage() {
                                                     </span>
                                                 </div>
                                             </div>
-                                            <button 
-                                                onClick={() => handleDeleteClient(client.id)}
-                                                className="p-2 text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                {!client.isDemo ? (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            title="Rename client"
+                                                            onClick={() => {
+                                                                setEditingClientId(client.id);
+                                                                setEditClientNameValue(client.name);
+                                                            }}
+                                                            className="p-2 text-gray-500 hover:text-emerald-600 transition-colors rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                                        >
+                                                            <Pencil className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            title="Remove client"
+                                                            onClick={() => handleDeleteClient(client.id, false)}
+                                                            className="p-2 text-gray-500 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-[10px] text-gray-400 dark:text-gray-500 px-2">
+                                                        Sample
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -357,13 +862,32 @@ export default function SettingsPage() {
 
                             {unassignedConns.length > 0 && (
                                 <div className="mt-12">
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <ShieldAlert className="w-4 h-4 text-amber-500" />
-                                        <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-tight">Organize Unassigned Connections</h3>
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+                                        <div className="flex items-center gap-2">
+                                            <ShieldAlert className="w-4 h-4 text-amber-500" />
+                                            <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-tight">
+                                                Organize Unassigned Connections
+                                            </h3>
+                                        </div>
+                                        <div className="relative max-w-xs w-full">
+                                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                            <input
+                                                type="search"
+                                                value={unassignedSearch}
+                                                onChange={(e) => setUnassignedSearch(e.target.value)}
+                                                placeholder="Filter by name or provider…"
+                                                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-amber-200/80 bg-white dark:bg-slate-900 dark:border-amber-900/50 text-gray-900 dark:text-white"
+                                            />
+                                        </div>
                                     </div>
                                     <div className="bg-amber-50/50 border border-amber-100 rounded-3xl p-6">
                                         <div className="space-y-3">
-                                            {unassignedConns.map((conn) => (
+                                            {filteredUnassigned.length === 0 ? (
+                                                <p className="text-sm text-amber-800/80 dark:text-amber-200/80 text-center py-4">
+                                                    No connections match your search.
+                                                </p>
+                                            ) : null}
+                                            {filteredUnassigned.map((conn: { id: string; name: string; provider: string }) => (
                                                 <div key={conn.id} className="flex items-center justify-between p-3 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 shadow-sm">
                                                     <div className="flex items-center gap-3">
                                                         <div className="p-2 bg-gray-50 rounded-lg">
@@ -380,7 +904,13 @@ export default function SettingsPage() {
                                                         defaultValue=""
                                                     >
                                                         <option value="" disabled>Select Client...</option>
-                                                        {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                        {clients
+                                                            .filter((c: { isDemo?: boolean }) => !c.isDemo)
+                                                            .map((c: { id: string; name: string }) => (
+                                                                <option key={c.id} value={c.id}>
+                                                                    {c.name}
+                                                                </option>
+                                                            ))}
                                                     </select>
                                                 </div>
                                             ))}
@@ -397,9 +927,54 @@ export default function SettingsPage() {
                                 <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Team Members</h3>
                                 <p className="text-sm text-gray-500 dark:text-gray-400">Manage who has access to this workspace.</p>
                             </div>
-                            <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl">
+
+                            {demoMaster ? (
+                                <div className="rounded-2xl border border-violet-100 dark:border-violet-900/40 bg-violet-50/30 dark:bg-violet-950/15 p-5 mb-4">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-violet-800 dark:text-violet-200 mb-3">
+                                        Demo roster (screenshots)
+                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        {MOCK_TEAM.map((m) => (
+                                            <div
+                                                key={m.id}
+                                                className="rounded-xl border border-white/80 dark:border-slate-700 bg-white dark:bg-slate-900/80 p-4 shadow-sm"
+                                            >
+                                                <p className="text-sm font-bold text-gray-900 dark:text-white truncate">
+                                                    {m.name}
+                                                </p>
+                                                <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                                    {m.email}
+                                                </p>
+                                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                                    <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-gray-100 dark:bg-slate-800 px-2 py-0.5 text-gray-600 dark:text-gray-300">
+                                                        {m.role}
+                                                    </span>
+                                                    <span className="text-[10px] font-medium text-violet-700 dark:text-violet-300">
+                                                        {m.title}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            <div className="flex flex-col items-center justify-center py-16 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl px-4">
                                 <span className="inline-flex items-center px-3 py-1 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">Coming Soon</span>
-                                <p className="text-gray-500 dark:text-gray-400 text-sm text-center max-w-sm">Team management with roles and invitations is coming in a future update.</p>
+                                <p className="text-gray-500 dark:text-gray-400 text-sm text-center max-w-md leading-relaxed">
+                                    Invites and workspace roles (owner / admin / member) will land here.{" "}
+                                    <span className="text-gray-600 dark:text-gray-300 font-medium">
+                                        Per-client permissions
+                                    </span>{" "}
+                                    are a larger change (data model + audits); for now, access is per workspace — use
+                                    clients for grouping only.
+                                    {demoMaster ? (
+                                        <>
+                                            {" "}
+                                            The cards above are fictional people for demo mode only.
+                                        </>
+                                    ) : null}
+                                </p>
                             </div>
                         </div>
                     )}

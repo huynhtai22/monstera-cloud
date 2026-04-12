@@ -15,21 +15,14 @@ const isProduction = process.env.NODE_ENV === "production"
 
 export const authOptions: NextAuthOptions = {
     adapter: PrismaAdapter(prisma),
-    // Explicit cookie config: avoids __Secure-/__Host- prefix issues that break
-    // OAuth state/PKCE verification in incognito mode and on Vercel preview URLs.
+    // Only pin the short-lived OAuth handshake cookies (state + PKCE verifier).
+    // These are the ones that break in incognito / on Vercel preview URLs because
+    // NextAuth auto-applies the __Secure- prefix which Chrome drops on cross-site
+    // redirects in incognito mode.
+    //
+    // The session token cookie is intentionally left at its NextAuth default so
+    // existing logged-in users keep their sessions across deploys.
     cookies: {
-        sessionToken: {
-            name: "next-auth.session-token",
-            options: { httpOnly: true, sameSite: "lax", path: "/", secure: isProduction },
-        },
-        callbackUrl: {
-            name: "next-auth.callback-url",
-            options: { sameSite: "lax", path: "/", secure: isProduction },
-        },
-        csrfToken: {
-            name: "next-auth.csrf-token",
-            options: { httpOnly: true, sameSite: "lax", path: "/", secure: isProduction },
-        },
         pkceCodeVerifier: {
             name: "next-auth.pkce.code_verifier",
             options: { httpOnly: true, sameSite: "lax", path: "/", secure: isProduction, maxAge: 60 * 15 },

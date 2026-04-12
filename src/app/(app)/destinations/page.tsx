@@ -7,20 +7,23 @@ import { ConnectDestinationModal } from "@/components/ConnectDestinationModal";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import useSWR, { useSWRConfig } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
+import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-        throw new Error(data.error || 'Failed to fetch data');
+        const err: any = new Error(data.error || 'Failed to fetch data');
+        err.status = res.status;
+        throw err;
     }
     return data;
 };
 
 const availableDestinations = [
-    { id: 'gsheets', name: 'Google Sheets', description: 'Export data directly to spreadsheets.', status: 'available', logoSrc: 'https://cdn.simpleicons.org/googlesheets' },
-    { id: 'looker', name: 'Looker Studio', description: 'Visualize data in custom reports.', status: 'available', logoSrc: 'https://cdn.simpleicons.org/looker' },
-    { id: 'slack', name: 'Slack Alerts', description: 'Get daily summary notifications.', status: 'available', logoSrc: 'https://cdn.simpleicons.org/slack' },
+    { id: 'gsheets', name: 'Google Sheets', description: 'Export data directly to spreadsheets.', status: 'available', logoSrc: INTEGRATION_LOGOS.googleSheets },
+    { id: 'looker', name: 'Looker Studio', description: 'Visualize data in custom reports.', status: 'available', logoSrc: INTEGRATION_LOGOS.looker },
+    { id: 'slack', name: 'Slack Alerts', description: 'Get daily summary notifications.', status: 'available', logoSrc: INTEGRATION_LOGOS.slack },
 ];
 
 export default function DestinationsPage() {
@@ -69,14 +72,15 @@ export default function DestinationsPage() {
         });
     }, [searchQuery, activeFilter, workspaces, activeWorkspaceId]);
 
+    // On a 401 the session has expired — redirect to login silently instead of
+    // crashing the page. For any other API error, show a non-blocking banner so
+    // the static destination cards are still visible and usable.
     if (error) {
-        return (
-            <div className="w-full py-20 flex flex-col items-center justify-center text-center">
-                <AlertCircle className="w-10 h-10 text-red-500 mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Failed to load destinations</h3>
-                <p className="text-sm text-gray-500">Please check your connection or try refreshing the page.</p>
-            </div>
-        );
+        const is401 = error?.message?.includes("401") || error?.status === 401;
+        if (is401 && typeof window !== "undefined") {
+            window.location.href = "/login";
+            return null;
+        }
     }
 
     return (
@@ -185,7 +189,7 @@ export default function DestinationsPage() {
                                 ${destination.status === 'connected' ? 'border-emerald-100/50' :
                                         destination.status === 'error' ? 'border-red-100/50' :
                                             'border-gray-200 dark:border-slate-700/50 grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100'}`}>
-                                    <Image
+                                    <img
                                         src={destination.logoSrc}
                                         alt={`${destination.name} logo`}
                                         width={28}

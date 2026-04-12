@@ -3,13 +3,21 @@
   "dependencies": {},
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8",
+  "oauthScopes": ["https://www.googleapis.com/auth/script.external_request"],
+  "urlFetchWhitelist": ["https://monsteracloud.com/"],
   "dataStudio": {
     "name": "Monstera Cloud",
-    "logoUrl": "https://raw.githubusercontent.com/monstera/monstera-docs/main/logo.png",
     "company": "Monstera",
-    "companyUrl": "https://www.monsteracloud.com",
-    "addonUrl": "https://www.monsteracloud.com",
+    "companyUrl": "https://monsteracloud.com",
+    "logoUrl": "https://monsteracloud.com/favicon.svg",
+    "addonUrl": "https://monsteracloud.com/looker-studio",
     "supportUrl": "https://monsteracloud.com/support",
-    "description": "Visualize your multi-platform ad campaign data natively in Looker Studio."
+    "description": "Monstera Cloud ingests advertising performance from Meta Ads, Google Ads, and TikTok for Business into your workspace. This Looker Studio community connector charts that data using a workspace API key (no OAuth inside Looker).\n\n1) Create a Monstera account: https://monsteracloud.com/register\n2) Connect ad platforms under Data Sources and ensure metrics have synced.\n3) In Settings, create a workspace API key and copy it.\n4) In Looker Studio, add this connector and paste the key when prompted. Optional Platform filter: All, Meta, Google Ads, or TikTok.\n5) Pick a report date range (required). Choose dimensions (e.g. date, campaign) and metrics (spend, impressions, ROAS). Data is fetched over HTTPS from Monstera only.\n\nHelp: https://monsteracloud.com/support — Connector overview: https://monsteracloud.com/looker-studio",
+    "shortDescription": "Workspace ad metrics from Meta, Google Ads, and TikTok in Looker Studio using a Monstera API key.",
+    "privacyPolicyUrl": "https://monsteracloud.com/legal/privacy-policy",
+    "termsOfServiceUrl": "https://monsteracloud.com/legal/terms-of-service",
+    "authType": ["KEY"],
+    "feeType": ["FREE"],
+    "sources": ["META_ADS", "GOOGLE_ADWORDS", "TIKTOK_ADS"]
   }
 }

@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
+import { DemoModeBanner } from './DemoModeBanner';
 import { Menu, Moon, Sun } from 'lucide-react';
+import { Toaster } from 'sonner';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -60,6 +62,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC] dark:bg-slate-950 text-slate-900 dark:text-slate-200">
                 <div className="lg:hidden h-16 shrink-0"></div>
                 <main className="flex-1 overflow-x-hidden">
+                    <DemoModeBanner />
                     {children}
                 </main>
             </div>
@@ -71,6 +74,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     onClick={() => setIsSidebarOpen(false)}
                 />
             )}
+
+            <Toaster richColors closeButton position="top-center" />
         </div>
     );
 }

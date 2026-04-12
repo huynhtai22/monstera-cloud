@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { isMockClientId } from "@/lib/mock-console-data";
 
 /**
  * PATCH /api/connections/[id]/assign-client
@@ -34,6 +35,13 @@ export async function PATCH(req: Request, context: { params: any }) {
 
         if (!membership) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
+        if (clientId && isMockClientId(String(clientId))) {
+            return NextResponse.json(
+                { error: "Demo clients are for display only. Create a real client to assign connections." },
+                { status: 400 }
+            );
         }
 
         const connection = await prisma.connection.update({

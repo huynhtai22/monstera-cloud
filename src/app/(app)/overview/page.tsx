@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
 import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
 import { HealthDashboard } from "@/components/HealthDashboard";
+import { AiPerformanceSummary } from "@/components/AiPerformanceSummary";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
@@ -49,6 +50,7 @@ export default function OverviewPage() {
     );
     const snapshots = (attributionData?.snapshots ?? []) as Array<{ date: string; netRoas: number; adSpend: number; attributedRevenue: number }>;
     const latest = snapshots.length ? snapshots[snapshots.length - 1] : null;
+    const attributionDemo = !!(attributionData as { demoMockMode?: boolean })?.demoMockMode;
 
     const { connectedSourcesCount, connectedDestinationsCount } = React.useMemo(() => {
         if (!Array.isArray(workspaces) || !activeWorkspaceId) {
@@ -111,6 +113,10 @@ export default function OverviewPage() {
                 </div>
             ) : null}
 
+            <div className="relative z-10 mb-8">
+                <AiPerformanceSummary workspaceId={activeWorkspaceId} />
+            </div>
+
             {/* LIVE HEALTH DASHBOARD */}
             <div className="relative z-10 mb-12">
                 <HealthDashboard />
@@ -120,9 +126,16 @@ export default function OverviewPage() {
                 <div className="rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-900/40 md:col-span-2">
                     <div className="mb-2 flex items-center justify-between">
                         <div className="text-sm font-bold text-gray-900 dark:text-white">Net ROAS (last 14 days)</div>
-                        <Link href="/reports" className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">
-                            View reports
-                        </Link>
+                        <div className="flex items-center gap-2">
+                            {attributionDemo ? (
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-violet-700 bg-violet-50 dark:bg-violet-950/50 dark:text-violet-200 px-2 py-0.5 rounded-full">
+                                    Demo
+                                </span>
+                            ) : null}
+                            <Link href="/reports" className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">
+                                View reports
+                            </Link>
+                        </div>
                     </div>
                     {!latest ? (
                         <div className="text-sm text-gray-500 dark:text-gray-400">No attribution data yet.</div>

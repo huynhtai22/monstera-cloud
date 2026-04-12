@@ -57,7 +57,13 @@ export default function TermsOfServicePage() {
             <li>Subscriptions are billed monthly or annually as selected at checkout.</li>
             <li>You may cancel your subscription at any time. Cancellation takes effect at the end of the current billing period.</li>
             <li>We reserve the right to change subscription pricing with 30 days advance notice.</li>
-            <li>Refunds are handled on a case-by-case basis. Contact support for refund requests.</li>
+            <li>
+              Subscription fees are generally non-refundable. See our{" "}
+              <a href="/legal/refund-policy" className="text-emerald-600 hover:underline">
+                Refund Policy
+              </a>{" "}
+              for details. Mandatory consumer rights in your jurisdiction may still apply.
+            </li>
           </ul>
         </section>
 

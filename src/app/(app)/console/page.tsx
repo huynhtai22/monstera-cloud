@@ -1,17 +1,19 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
-import Image from 'next/image';
-import { Database, Search, ArrowRight, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Unplug } from "lucide-react";
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import Link from "next/link";
+import { toast } from "sonner";
+import { Database, Search, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Unplug, Sparkles } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import useSWR, { useSWRConfig } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 import { integrationCatalogId } from "@/lib/integration-catalog";
+import { logoPathForCatalogId, logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { cn } from "@/lib/utils";
 
 const fetcher = async (url: string) => {
-    const res = await fetch(url);
+    const res = await fetch(url, { credentials: "same-origin" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
         throw new Error(data.error || 'Failed to fetch data');
@@ -20,14 +22,38 @@ const fetcher = async (url: string) => {
 };
 
 const ALL_CATALOG_INTEGRATIONS = [
-    { id: 'tiktok_shop', name: 'TikTok Shop', description: 'Seller catalog, orders, and Shop analytics.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/tiktok' },
-    { id: 'tiktok_business', name: 'TikTok Ads', description: 'TikTok Marketing API — campaign and ad performance reporting.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/tiktok' },
-    { id: 'meta_ads', name: 'Meta Ads', description: 'Facebook & Instagram Ads — campaign, ad set, and ad performance via Marketing API.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/facebook' },
-    { id: 'google_ads', name: 'Google Ads', description: 'Search, Shopping, and Performance Max reporting via Google Ads API.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/googleads' },
-    { id: 'shopee', name: 'Shopee', description: 'Orders, products, and shop analytics from Shopee Open Platform.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/shopee' },
-    { id: 'lazada', name: 'Lazada Seller', description: 'Order fulfillments and finance.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/lazada' },
-    { id: 'shopify', name: 'Shopify', description: 'E-commerce platform orders.', status: 'available' as const, logoSrc: 'https://cdn.simpleicons.org/shopify' },
+    { id: 'tiktok_shop', name: 'TikTok Shop', description: 'Seller catalog, orders, and Shop analytics.', status: 'available' as const, logoSrc: logoPathForCatalogId('tiktok_shop') },
+    { id: 'tiktok_business', name: 'TikTok Ads', description: 'TikTok Marketing API — campaign and ad performance reporting.', status: 'available' as const, logoSrc: logoPathForCatalogId('tiktok_business') },
+    { id: 'meta_ads', name: 'Meta Ads', description: 'Facebook & Instagram Ads — campaign, ad set, and ad performance via Marketing API.', status: 'available' as const, logoSrc: logoPathForCatalogId('meta_ads') },
+    { id: 'google_ads', name: 'Google Ads', description: 'Search, Shopping, and Performance Max reporting via Google Ads API.', status: 'available' as const, logoSrc: logoPathForCatalogId('google_ads') },
+    { id: 'shopee', name: 'Shopee', description: 'Orders, products, and shop analytics from Shopee Open Platform.', status: 'available' as const, logoSrc: logoPathForCatalogId('shopee') },
+    { id: 'lazada', name: 'Lazada Seller', description: 'Order fulfillments and finance.', status: 'available' as const, logoSrc: logoPathForCatalogId('lazada') },
+    { id: 'shopify', name: 'Shopify', description: 'E-commerce platform orders.', status: 'available' as const, logoSrc: logoPathForCatalogId('shopify') },
 ];
+
+function catalogIntegrationFromId(catalogId: string) {
+    return ALL_CATALOG_INTEGRATIONS.find((a) => a.id === catalogId) ?? null;
+}
+
+function IntegrationCardSkeleton() {
+    return (
+        <div
+            className="relative overflow-hidden rounded-2xl border border-white/80 dark:border-slate-700/60 bg-white/40 dark:bg-slate-900/40 p-5 animate-pulse"
+            aria-hidden
+        >
+            <div className="flex items-start justify-between mb-4">
+                <div className="h-12 w-12 rounded-xl bg-gray-200/90 dark:bg-slate-700/90" />
+                <div className="h-6 w-24 rounded-md bg-gray-200/80 dark:bg-slate-700/80" />
+            </div>
+            <div className="mb-6 space-y-2">
+                <div className="h-4 max-w-[10rem] rounded bg-gray-200/90 dark:bg-slate-700/90" />
+                <div className="h-3 w-full rounded bg-gray-100 dark:bg-slate-800/90" />
+                <div className="h-3 max-w-[14rem] w-[92%] rounded bg-gray-100 dark:bg-slate-800/90" />
+            </div>
+            <div className="h-9 w-full rounded-lg bg-gray-200/80 dark:bg-slate-700/80" />
+        </div>
+    );
+}
 
 export default function ConsolePage() {
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
@@ -35,6 +61,7 @@ export default function ConsolePage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('all');
     const [outgoingActionId, setOutgoingActionId] = useState<string | null>(null);
+    const firstRunFilterAppliedRef = useRef(false);
 
     // Global State
     const { activeWorkspaceId } = useWorkspaceStore();
@@ -54,18 +81,36 @@ export default function ConsolePage() {
             }
             await mutate("/api/workspaces");
             if (data.message) {
-                alert(data.message);
+                toast.success(data.message);
+            } else {
+                toast.success("Source disconnected.");
             }
         } catch (e: unknown) {
-            alert(e instanceof Error ? e.message : "Could not disconnect.");
+            toast.error(e instanceof Error ? e.message : "Could not disconnect.");
         } finally {
             setOutgoingActionId(null);
         }
     }
 
     // Fetch Data
-    const { data: workspaces, error, isLoading } = useSWR("/api/workspaces", fetcher);
+    const { data: workspaces, error, isLoading } = useSWR("/api/workspaces", fetcher, {
+        shouldRetryOnError: (err) => !String(err?.message).includes("Unauthorized"),
+    });
     const { data: intConfig } = useSWR("/api/integrations/config", fetcher);
+
+    const connectedSourceCount = useMemo(() => {
+        if (!Array.isArray(workspaces) || !activeWorkspaceId) return 0;
+        const ws = workspaces.find((w: { id: string }) => w.id === activeWorkspaceId);
+        return (ws?.connections ?? []).filter((c: { type: string }) => c.type === 'source').length;
+    }, [workspaces, activeWorkspaceId]);
+
+    useEffect(() => {
+        if (isLoading || !Array.isArray(workspaces) || !activeWorkspaceId) return;
+        if (firstRunFilterAppliedRef.current) return;
+        if (connectedSourceCount !== 0) return;
+        setActiveFilter('available');
+        firstRunFilterAppliedRef.current = true;
+    }, [isLoading, workspaces, activeWorkspaceId, connectedSourceCount]);
 
     const { data: recentLogsData } = useSWR(
         activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}` : null,
@@ -97,14 +142,7 @@ export default function ConsolePage() {
         );
 
         const connectedSources = sourceConnections.map((conn: any) => {
-            let logo = 'https://cdn.simpleicons.org/postgresql';
-            if (conn.provider === 'meta_ads') logo = 'https://cdn.simpleicons.org/facebook';
-            else if (conn.provider === 'google_ads') logo = 'https://cdn.simpleicons.org/googleads';
-            else if (conn.provider.includes('shopee')) logo = 'https://cdn.simpleicons.org/shopee';
-            else if (conn.provider.includes('facebook') || conn.provider.includes('fb')) logo = 'https://cdn.simpleicons.org/facebook';
-            else if (conn.provider.includes('google') || conn.provider.includes('ga4')) logo = 'https://cdn.simpleicons.org/googleanalytics';
-            else if (conn.provider.includes('tiktok_business')) logo = 'https://cdn.simpleicons.org/tiktok';
-            else if (conn.provider.includes('tiktok_shop') || conn.provider === 'tiktok') logo = 'https://cdn.simpleicons.org/tiktok';
+            let logo = logoPathForConnectionProvider(conn.provider);
 
             const desc = `Connected to ${conn.provider} via workspace credentials.`;
             const relatedPipeline = workspace?.pipelines?.find((p: any) => p.sourceConnectionId === conn.id);
@@ -115,9 +153,12 @@ export default function ConsolePage() {
                 name: conn.name,
                 description: desc,
                 status: conn.status === 'connected' ? 'connected' : 'error',
-                lastSync: relatedPipeline?.lastSyncedAt
-                    ? new Date(relatedPipeline.lastSyncedAt).toLocaleString()
-                    : 'Never',
+                errorMsg: conn.lastError || undefined,
+                lastSync: conn.lastSyncAt
+                    ? new Date(conn.lastSyncAt).toLocaleString()
+                    : relatedPipeline?.lastSyncedAt
+                      ? new Date(relatedPipeline.lastSyncedAt).toLocaleString()
+                      : "Never",
                 logoSrc: logo,
                 pipelineId: relatedPipeline?.id,
             };
@@ -138,13 +179,45 @@ export default function ConsolePage() {
         });
     }, [searchQuery, activeFilter, workspaces, activeWorkspaceId, availableIntegrations]);
 
-    // Error State
+    // Error State (e.g. 500, expired session edge case, rate limit)
     if (error) {
+        const detail = error instanceof Error ? error.message : "Failed to fetch data";
+        const isAuth =
+            detail === "Unauthorized" || detail.toLowerCase().includes("unauthorized");
         return (
-            <div className="w-full py-20 flex flex-col items-center justify-center text-center">
+            <div className="w-full py-20 flex flex-col items-center justify-center text-center px-4">
                 <AlertCircle className="w-10 h-10 text-red-500 mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-1">Failed to load data sources</h3>
-                <p className="text-sm text-gray-500">Please check your connection or try refreshing the page.</p>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                    Failed to load data sources
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-slate-400 max-w-md">
+                    {isAuth
+                        ? "Your session is missing or expired. Sign in again to load workspaces and connections."
+                        : "Please check your connection or try again. If this persists, the server may be temporarily unavailable."}
+                </p>
+                {!isAuth && (
+                    <p className="mt-2 text-xs font-mono text-gray-400 dark:text-slate-500 max-w-lg break-words">
+                        {detail}
+                    </p>
+                )}
+                <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                    {isAuth ? (
+                        <Link
+                            href="/login?callbackUrl=%2Fconsole"
+                            className="inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                        >
+                            Sign in
+                        </Link>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => mutate("/api/workspaces")}
+                            className="inline-flex items-center rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
+                        >
+                            Retry
+                        </button>
+                    )}
+                </div>
             </div>
         );
     }
@@ -162,20 +235,24 @@ export default function ConsolePage() {
             <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between space-y-4 sm:space-y-0">
                 <div>
                     <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight mb-2">Data Sources</h1>
-                    <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 max-w-2xl text-base">
+                    <p className="text-gray-500 dark:text-gray-400 max-w-2xl text-base">
                         Connect and manage the platforms where your data lives. We'll automatically fetch and transform it.
                     </p>
                 </div>
                 <div className="flex space-x-3">
                     <button
                         onClick={() => mutate('/api/workspaces')}
-                        className="flex items-center space-x-2 px-4 py-2 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-300 dark:border-slate-600 transition-colors">
+                        className="flex items-center space-x-2 px-4 py-2 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-300 dark:border-slate-600 transition-colors"
+                    >
                         <RefreshCw className="w-4 h-4" />
                         <span>Refresh All</span>
                     </button>
                     <PrimaryButton
                         type="button"
-                        onClick={() => setIsSourceModalOpen(true)}
+                        onClick={() => {
+                            setSelectedIntegration(null);
+                            setIsSourceModalOpen(true);
+                        }}
                         className="flex items-center gap-2 shadow-sm hover:shadow"
                     >
                         <Plus className="h-4 w-4" />
@@ -185,19 +262,32 @@ export default function ConsolePage() {
             </div>
 
             {/* Connected Sources Summary */}
-            <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-white dark:border-slate-700/60 dark:border-slate-700/40 shadow-[0_8px_30px_rgb(0,0,0,0.02)] rounded-xl p-3 mb-8 flex items-center justify-between">
+            <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-white dark:border-slate-700/60 shadow-[0_8px_30px_rgb(0,0,0,0.02)] rounded-xl p-3 mb-8 flex items-center justify-between">
                 <div className="flex items-center space-x-3 text-gray-700 dark:text-slate-300">
                     <Database className="w-4 h-4 text-gray-400 dark:text-gray-500" />
                     <div className="flex items-center space-x-2">
                         <span className="font-semibold text-sm">Connected sources:</span>
                         <span className="text-sm text-gray-500 dark:text-gray-400">
-                            {Array.isArray(workspaces)
-                                ? (workspaces.find((w: any) => w.id === activeWorkspaceId)?.connections?.filter((c: any) => c.type === 'source').length || 0)
-                                : 0}
+                            {isLoading ? (
+                                <span className="inline-block h-4 w-7 rounded bg-gray-200/90 dark:bg-slate-600 animate-pulse align-middle" />
+                            ) : (
+                                connectedSourceCount
+                            )}
                         </span>
                     </div>
                 </div>
             </div>
+
+            {!isLoading && connectedSourceCount === 0 && (
+                <div className="mb-6 rounded-xl border border-emerald-200/70 bg-emerald-50/60 dark:border-emerald-900/50 dark:bg-emerald-950/25 px-4 py-3 flex gap-3">
+                    <Sparkles className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" aria-hidden />
+                    <p className="text-sm text-emerald-950 dark:text-emerald-50/95 leading-relaxed">
+                        <span className="font-semibold">Connect your first source.</span> Choose a platform below and click{" "}
+                        <span className="font-medium">Connect</span> (or use <span className="font-medium">New Data Source</span>
+                        ). The list below highlights <span className="font-medium">Available</span> integrations.
+                    </p>
+                </div>
+            )}
 
             {/* Search and Filter */}
             <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-8 mb-8">
@@ -208,28 +298,25 @@ export default function ConsolePage() {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search integrations..."
-                        className="w-full pl-10 pr-12 py-2.5 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-white dark:border-slate-700/60 dark:border-slate-700/40 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:bg-white/80 dark:bg-slate-900/80 transition-all shadow-sm"
+                        className="w-full pl-10 pr-12 py-2.5 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-white dark:border-slate-700/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all shadow-sm"
                     />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 border border-gray-200 dark:border-slate-700/50 rounded text-[10px] font-medium text-gray-400 dark:text-gray-500 bg-white/50 dark:bg-slate-900/50 pointer-events-none hidden sm:block">
-                        /
-                    </div>
                 </div>
                 <div className="flex space-x-6 border-b border-gray-200 dark:border-slate-700">
                     <button
                         onClick={() => setActiveFilter('all')}
-                        className={`pb-3 text-sm font-semibold transition-colors ${activeFilter === 'all' ? 'text-gray-900 dark:text-white border-b-2 border-emerald-500' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-slate-300'}`}
+                        className={`pb-3 text-sm font-semibold transition-colors ${activeFilter === 'all' ? 'text-gray-900 dark:text-white border-b-2 border-emerald-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-slate-300'}`}
                     >
                         All Sources
                     </button>
                     <button
                         onClick={() => setActiveFilter('connected')}
-                        className={`pb-3 text-sm font-medium transition-colors ${activeFilter === 'connected' ? 'text-gray-900 dark:text-white border-b-2 border-emerald-500 font-semibold' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-slate-300'}`}
+                        className={`pb-3 text-sm font-medium transition-colors ${activeFilter === 'connected' ? 'text-gray-900 dark:text-white border-b-2 border-emerald-500 font-semibold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-slate-300'}`}
                     >
-                        Connected ({Array.isArray(workspaces) ? workspaces.find((w: any) => w.id === activeWorkspaceId)?.connections?.filter((c: any) => c.type === 'source').length || 0 : 0})
+                        Connected ({isLoading ? '…' : connectedSourceCount})
                     </button>
                     <button
                         onClick={() => setActiveFilter('available')}
-                        className={`pb-3 text-sm font-medium transition-colors ${activeFilter === 'available' ? 'text-gray-900 dark:text-white border-b-2 border-emerald-500 font-semibold' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-slate-300'}`}
+                        className={`pb-3 text-sm font-medium transition-colors ${activeFilter === 'available' ? 'text-gray-900 dark:text-white border-b-2 border-emerald-500 font-semibold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-slate-300'}`}
                     >
                         Available
                     </button>
@@ -238,29 +325,26 @@ export default function ConsolePage() {
 
             {/* Grid */}
             {isLoading ? (
-                <div className="w-full py-20 flex flex-col items-center justify-center text-center">
-                    <Loader2 className="w-8 h-8 text-emerald-500 animate-spin mb-4" />
-                    <p className="text-sm font-medium text-gray-500">Loading your data sources...</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                        <IntegrationCardSkeleton key={i} />
+                    ))}
                 </div>
             ) : filteredIntegrations.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                     {filteredIntegrations.map((integration) => (
                         <div
                             key={integration.id}
-                            className={`relative overflow-hidden bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl rounded-2xl border p-5 transition-all duration-300 group flex flex-col justify-between cursor-pointer shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/60 dark:bg-slate-900/60
-                                ${integration.status === 'error' ? 'border-red-200/80 hover:border-red-300' : 'border-white dark:border-slate-700/60 dark:border-slate-700/40 hover:border-emerald-200/80'}`}
+                            className={`relative overflow-hidden bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl rounded-2xl border p-5 transition-all duration-300 group flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/60 dark:bg-slate-900/60
+                                ${integration.status === 'error' ? 'border-red-200/80 hover:border-red-300' : 'border-white dark:border-slate-700/60 hover:border-emerald-200/80'}`}
                         >
-                            {/* Inner Glass Reflection */}
-                            <div className="absolute inset-0 bg-gradient-to-b from-white/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-
                             <div className="flex items-start justify-between mb-3 relative z-10">
-                                {/* Logo */}
                                 <div className={`relative w-12 h-12 rounded-xl backdrop-blur-md border flex items-center justify-center shrink-0 transition-colors bg-white/50 dark:bg-slate-900/50 overflow-hidden
                                     ${integration.status === 'connected' ? 'border-emerald-100/50' :
                                         integration.status === 'syncing' ? 'border-blue-100/50' :
                                             integration.status === 'error' ? 'border-red-100/50' :
                                                 'border-gray-200 dark:border-slate-700/50 grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100'}`}>
-                                    <Image
+                                    <img
                                         src={integration.logoSrc}
                                         alt={`${integration.name} logo`}
                                         width={28}
@@ -269,7 +353,6 @@ export default function ConsolePage() {
                                     />
                                 </div>
 
-                                {/* Status Indicator */}
                                 <div className="flex items-center">
                                     {integration.status === 'connected' && (
                                         <div className="flex items-center text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">
@@ -294,13 +377,15 @@ export default function ConsolePage() {
 
                             <div className="mb-5 flex-1">
                                 <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1 tracking-tight">{integration.name}</h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 leading-relaxed line-clamp-2">{integration.description}</p>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2">{integration.description}</p>
 
-                                {/* Trust Signals & Errors */}
                                 {integration.status === 'error' && (
-                                    <p className="text-xs text-red-600 font-medium mt-2 flex items-center">
-                                        <CloudOff className="w-3 h-3 mr-1" />
-                                        {integration.errorMsg}
+                                    <p className="text-xs text-red-600 dark:text-red-400 font-medium mt-2 flex items-start gap-1">
+                                        <CloudOff className="w-3 h-3 mr-1 shrink-0 mt-0.5" />
+                                        <span>
+                                            {integration.errorMsg ||
+                                                "Connection issue. Try Fix Connection or disconnect and add this source again."}
+                                        </span>
                                     </p>
                                 )}
                                 {integration.status !== 'available' && integration.status !== 'error' && (
@@ -312,7 +397,29 @@ export default function ConsolePage() {
 
                             <div className="relative z-10">
                                 {integration.status === 'error' ? (
-                                    <button className="w-full py-2 bg-red-50/80 backdrop-blur-sm hover:bg-red-100/80 text-red-700 text-sm font-semibold rounded-lg transition-colors border border-red-200/50 shadow-sm">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            const catalogId = (integration as { catalogId?: string }).catalogId;
+                                            if (!catalogId) {
+                                                toast.error("Could not determine which integration to reconnect.");
+                                                return;
+                                            }
+                                            const cat = catalogIntegrationFromId(catalogId);
+                                            setSelectedIntegration(
+                                                cat ?? {
+                                                    id: catalogId,
+                                                    name: integration.name,
+                                                    description: integration.description,
+                                                    logoSrc: integration.logoSrc,
+                                                    status: "available" as const,
+                                                }
+                                            );
+                                            setIsSourceModalOpen(true);
+                                        }}
+                                        className="w-full py-2 bg-red-50/80 backdrop-blur-sm hover:bg-red-100/80 text-red-700 dark:text-red-300 dark:bg-red-950/40 text-sm font-semibold rounded-lg transition-colors border border-red-200/50 dark:border-red-900/50 shadow-sm"
+                                    >
                                         Fix Connection
                                     </button>
                                 ) : integration.status === 'syncing' ? (
@@ -327,7 +434,7 @@ export default function ConsolePage() {
                                             onClick={async (e) => {
                                                 e.stopPropagation();
                                                 if (!integration.pipelineId) {
-                                                    alert("Please complete the destination mapping first.");
+                                                    toast.error("Complete destination mapping before syncing.");
                                                     return;
                                                 }
 
@@ -336,17 +443,21 @@ export default function ConsolePage() {
                                                     const res = await fetch(`/api/pipelines/${integration.pipelineId}/run`, { method: 'POST' });
                                                     const data = await res.json();
                                                     if (res.ok) {
-                                                        alert(data.message || "Sync complete!");
+                                                        toast.success(data.message || "Sync complete.");
                                                     } else {
-                                                        alert("Sync failed: " + data.error);
+                                                        toast.error(
+                                                            typeof data.error === "string"
+                                                                ? data.error
+                                                                : "Sync failed."
+                                                        );
                                                     }
                                                 } catch {
-                                                    alert("Network error occurred during sync.");
+                                                    toast.error("Network error during sync.");
                                                 } finally {
                                                     setOutgoingActionId(null);
                                                 }
                                             }}
-                                            className="w-full py-2 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border border-white dark:border-slate-700/60 border-slate-700/40 group-hover:border-emerald-200/80 group-hover:bg-emerald-500 text-gray-700 dark:text-slate-300 group-hover:text-white text-sm font-semibold rounded-lg transition-colors shadow-sm disabled:pointer-events-none disabled:opacity-50"
+                                            className="w-full py-2 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm border border-white dark:border-slate-700/60 group-hover:border-emerald-200/80 group-hover:bg-emerald-500 text-gray-700 dark:text-slate-300 group-hover:text-white text-sm font-semibold rounded-lg transition-colors shadow-sm disabled:pointer-events-none disabled:opacity-50"
                                         >
                                             {outgoingActionId?.startsWith("sync:") ? (
                                                 <span className="inline-flex items-center justify-center gap-2">
@@ -386,7 +497,7 @@ export default function ConsolePage() {
                                             setSelectedIntegration(integration);
                                             setIsSourceModalOpen(true);
                                         }}
-                                        className="w-full py-2 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-white dark:border-slate-700/60 dark:border-slate-700/40 text-gray-600 dark:text-gray-300 dark:text-gray-600 text-sm font-medium rounded-lg transition-colors group-hover:border-white dark:border-slate-700 group-hover:bg-white/80 dark:bg-slate-900/80 shadow-sm"
+                                        className="w-full py-2 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-white dark:border-slate-700/60 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-lg transition-colors group-hover:border-white dark:border-slate-700 group-hover:bg-white/80 dark:bg-slate-900/80 shadow-sm"
                                     >
                                         Connect
                                     </button>
@@ -399,7 +510,7 @@ export default function ConsolePage() {
                 <div className="w-full py-20 flex flex-col items-center justify-center text-center border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl bg-gray-50 dark:bg-slate-800/50">
                     <Database className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" />
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No integrations found</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm mb-6">We couldn&apos;t find any data sources matching &quot;{searchQuery}&quot;. Try a different keyword or category.</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm mb-6">We couldn&apos;t find any data sources matching &quot;{searchQuery}&quot;. Try a different keyword or category.</p>
                 </div>
             )}
 
@@ -409,12 +520,12 @@ export default function ConsolePage() {
                     <h2 className="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                         Recent Syncs
                     </h2>
-                    <a
+                    <Link
                         href="/reports"
                         className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300"
                     >
                         View all logs
-                    </a>
+                    </Link>
                 </div>
 
                 <div className="rounded-2xl border border-white bg-white/40 p-5 shadow-sm backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/40">

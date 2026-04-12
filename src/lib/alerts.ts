@@ -1,7 +1,12 @@
 /**
- * Agency Alert Service
- * Supports Telegram notifications for sync failures.
+ * Agency alert service — Telegram notifications for sync failures.
+ * Chat ID: per-workspace `telegramChatId` on Workspace, else TELEGRAM_CHAT_ID env.
+ * Bot token: TELEGRAM_BOT_TOKEN (one bot for the Monstera deployment).
+ *
+ * Zalo: not integrated here. Use a generic webhook or email (cron) for other channels.
  */
+
+import prisma from "@/lib/prisma";
 
 export async function sendAgencyAlert(opts: {
     workspaceId: string;
@@ -9,20 +14,28 @@ export async function sendAgencyAlert(opts: {
     errorMsg: string;
     clientId?: string | null;
 }) {
-    // 1. Fetch Alert Config for this workspace (Stored in Workspace model or env for now)
-    const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN;
-    const telegramChatId = process.env.TELEGRAM_CHAT_ID;
+    const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    const ws = await prisma.workspace.findUnique({
+        where: { id: opts.workspaceId },
+        select: { telegramChatId: true },
+    });
+    const telegramChatId =
+        ws?.telegramChatId?.trim() || process.env.TELEGRAM_CHAT_ID?.trim();
 
     if (!telegramBotToken || !telegramChatId) {
-        console.warn("[ALERTS] Telegram config missing, skipping alert.");
+        console.warn(
+            "[ALERTS] Telegram bot token or chat id missing — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID or workspace Telegram chat ID in Settings."
+        );
         return;
     }
 
-    const clientName = opts.clientId ? `[Client ID: ${opts.clientId}]` : "[Unassigned]";
-    
+    const clientName = opts.clientId
+        ? `[Client ID: ${opts.clientId}]`
+        : "[Unassigned]";
+
     const message = `
 🚨 *Monstera Sync Failure*
-    
+
 *Pipeline:* ${opts.pipelineName}
 *Client:* ${clientName}
 *Workspace:* ${opts.workspaceId}
@@ -32,15 +45,22 @@ _Action Required: Check API credentials in dashboard._
     `.trim();
 
     try {
-        await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: telegramChatId,
-                text: message,
-                parse_mode: 'Markdown'
-            })
-        });
+        const res = await fetch(
+            `https://api.telegram.org/bot${telegramBotToken}/sendMessage`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    chat_id: telegramChatId,
+                    text: message,
+                    parse_mode: "Markdown",
+                }),
+            }
+        );
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            console.error("[ALERTS] Telegram send failed", res.status, err);
+        }
     } catch (e) {
         console.error("[ALERTS] Failed to send Telegram alert", e);
     }

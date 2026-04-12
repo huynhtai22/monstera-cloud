@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { X, Loader2, CheckCircle2, ChevronRight, Clock, Database, Globe, Facebook, Copy, Check, Briefcase } from 'lucide-react';
 import useSWR, { useSWRConfig } from 'swr';
 import { useWorkspaceStore } from '@/store/workspace';
+import { INTEGRATION_LOGOS } from '@/lib/integration-logos';
 
 async function integrationsConfigFetcher(url: string) {
     const res = await fetch(url);
@@ -35,7 +36,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
     // Default to Shopee if null, though console should always pass one
     const id = integration?.id || 'shopee';
     const name = integration?.name || 'Shopee';
-    const logoSrc = integration?.logoSrc || 'https://cdn.simpleicons.org/shopee';
+    const logoSrc = integration?.logoSrc || INTEGRATION_LOGOS.shopee;
 
     // Hooks for network invalidation and global state
     const { mutate } = useSWRConfig();
@@ -454,7 +455,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                             ) : (
                                 <>
                                     <Image
-                                        src="https://cdn.simpleicons.org/googleads"
+                                        src={INTEGRATION_LOGOS.googleAds}
                                         alt=""
                                         width={20}
                                         height={20}

@@ -7,11 +7,16 @@ import { Logo } from "@/components/Logo";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { metaPixelCustom } from "@/lib/meta-pixel";
+import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { status } = useSession();
+  const afterLoginPath = safeCallbackUrl(
+    searchParams.get("callbackUrl"),
+    "/console"
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   /** When true, session cookie lasts up to 30 days; when false, 24 hours. */
@@ -23,9 +28,9 @@ function LoginContent() {
 
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace("/console");
+      router.replace(afterLoginPath);
     }
-  }, [status, router]);
+  }, [status, router, afterLoginPath]);
 
   if (status === "loading") {
     return (
@@ -60,7 +65,7 @@ function LoginContent() {
         setError("Invalid email or password");
       } else {
         metaPixelCustom("MC_Login_Email_Success", { method: "email" });
-        router.push("/console");
+        router.push(afterLoginPath);
         router.refresh();
       }
     } catch {
@@ -73,7 +78,7 @@ function LoginContent() {
   const signInWithGoogle = async () => {
     metaPixelCustom("MC_Login_Google_Click", { method: "google" });
     setIsGoogleLoading(true);
-    await signIn("google", { callbackUrl: "/console" });
+    await signIn("google", { callbackUrl: afterLoginPath });
   };
 
   return (

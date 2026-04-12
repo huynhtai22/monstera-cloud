@@ -8,6 +8,8 @@ import { sendSyncFailureEmail } from "@/lib/mail";
 import { runEtlPipeline } from "@/etl/runner";
 import type { EtlProvider } from "@/etl/types";
 import { sendAgencyAlert } from "@/lib/alerts";
+import { classifyIngestionError, formatLogError } from "@/lib/ingestion/error-taxonomy";
+import { markConnectionsSyncedOk, markConnectionsSyncError } from "@/lib/ingestion/connection-sync-state";
 
 export async function POST(req: Request, context: { params: any }) {
     const syncStartTime = Date.now();
@@ -25,10 +27,9 @@ export async function POST(req: Request, context: { params: any }) {
         if (!session?.user && !isCron) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
-        
+
         notifyEmail = (session?.user as any)?.email;
 
-        // Properly extract params safely for Next.js 15+
         const params = await context.params;
         pipelineId = params?.id;
 
@@ -36,14 +37,13 @@ export async function POST(req: Request, context: { params: any }) {
             return NextResponse.json({ error: "Missing pipeline ID" }, { status: 400 });
         }
 
-        // 1. Fetch Pipeline with Relations
         const pipeline = await prisma.pipeline.findUnique({
             where: { id: String(pipelineId) },
             include: {
                 sourceConnection: true,
                 destinationConnection: true,
-                workspace: true
-            }
+                workspace: true,
+            },
         });
 
         if (!pipeline) {
@@ -53,7 +53,6 @@ export async function POST(req: Request, context: { params: any }) {
         activePipeline = pipeline;
         pipelineNameForNotify = pipeline.name ?? "Pipeline";
 
-        // Enforce sync cooldown — prevent re-runs faster than the plan allows
         const userIdForLimits = session?.user?.id || pipeline.workspace.ownerId;
         const user = await prisma.user.findUnique({ where: { id: userIdForLimits }, select: { plan: true } });
         const limits = getPlanLimits(user?.plan ?? "free");
@@ -74,18 +73,6 @@ export async function POST(req: Request, context: { params: any }) {
             }
         }
 
-        // 2. Locate User's Google OAuth Account
-        const googleAccount = await prisma.account.findFirst({
-            where: {
-                userId: userIdForLimits,
-                provider: "google"
-            }
-        });
-
-        if (!googleAccount || !googleAccount.access_token) {
-            return NextResponse.json({ error: "Google Account not linked or missing access token" }, { status: 403 });
-        }
-
         const provider = pipeline.sourceConnection.provider as EtlProvider;
         const sourceCreds = JSON.parse(safeDecrypt(pipeline.sourceConnection.credentials));
 
@@ -103,77 +90,111 @@ export async function POST(req: Request, context: { params: any }) {
             sourceCreds,
         });
 
-        if (etl.rowsSynced === 0) {
-            return NextResponse.json({ message: "No new data to sync." });
-        }
+        const durationMs = Date.now() - syncStartTime;
+        const now = new Date();
+        const connIds = {
+            sourceId: pipeline.sourceConnectionId,
+            destinationId: pipeline.destinationConnectionId,
+        };
 
-        // 3. Log the Sync Job
         const syncLog = await prisma.syncLog.create({
             data: {
                 pipelineId: pipeline.id,
                 status: "success",
                 rowsSynced: etl.rowsSynced,
-                durationMs: Date.now() - syncStartTime,
-            }
+                durationMs,
+            },
         });
 
-        // Update pipeline last synced
         await prisma.pipeline.update({
             where: { id: pipeline.id },
             data: {
-                lastSyncedAt: new Date(),
+                lastSyncedAt: now,
                 healthStatus: "healthy",
                 ...(etl.nextCursor ? { syncCursor: JSON.stringify(etl.nextCursor) } : {}),
-            }
+            },
         });
+
+        await markConnectionsSyncedOk(connIds, now);
+
+        if (etl.rowsSynced === 0) {
+            return NextResponse.json({
+                success: true,
+                message: "No new data to sync.",
+                rowsSynced: 0,
+                logId: syncLog.id,
+            });
+        }
 
         return NextResponse.json({
             success: true,
             message: `Successfully synced ${etl.rowsSynced} rows to Google Sheets.`,
             spreadsheetId: etl.spreadsheetId,
-            logId: syncLog.id
+            logId: syncLog.id,
+            rowsSynced: etl.rowsSynced,
         });
-
     } catch (error: any) {
         console.error("Pipeline Sync Error:", error);
 
-        // Send email alert (best-effort) for manual runs
+        const classified = classifyIngestionError(error);
+        const logLine = formatLogError(classified);
+        const durationMs = Date.now() - syncStartTime;
+
         if (notifyEmail) {
             await sendSyncFailureEmail(
                 notifyEmail,
                 pipelineNameForNotify ?? "Pipeline",
-                error?.message || "Unknown error occurred"
-            ).catch(() => { });
+                logLine
+            ).catch(() => {});
         }
 
-        // Agency Polish: Send Telegram Alert
         if (activePipeline) {
             await sendAgencyAlert({
                 workspaceId: activePipeline.workspaceId,
                 pipelineName: activePipeline.name,
-                errorMsg: error?.message || "Unknown error",
-                clientId: activePipeline.clientId
-            }).catch(() => { });
+                errorMsg: logLine,
+                clientId: activePipeline.clientId,
+            }).catch(() => {});
         }
 
-        // Update health status to error
         if (pipelineId) {
             try {
                 await prisma.pipeline.update({
                     where: { id: String(pipelineId) },
-                    data: { healthStatus: "error" }
+                    data: { healthStatus: "error" },
                 });
 
                 await prisma.syncLog.create({
                     data: {
                         pipelineId: String(pipelineId),
                         status: "error",
-                        errorMsg: error.message || "Unknown error occurred"
-                    }
+                        rowsSynced: 0,
+                        durationMs,
+                        errorMsg: logLine,
+                    },
                 });
-            } catch (e) {}
+
+                if (activePipeline?.sourceConnectionId && activePipeline?.destinationConnectionId) {
+                    await markConnectionsSyncError(
+                        {
+                            sourceId: activePipeline.sourceConnectionId,
+                            destinationId: activePipeline.destinationConnectionId,
+                        },
+                        logLine
+                    );
+                }
+            } catch (e) {
+                console.error("[pipeline/run] failed to persist error state", e);
+            }
         }
 
-        return NextResponse.json({ error: error.message || "Pipeline execution failed" }, { status: 500 });
+        return NextResponse.json(
+            {
+                error: classified.message,
+                code: classified.kind,
+                tag: classified.tag.replace(/[\[\]]/g, ""),
+            },
+            { status: 500 }
+        );
     }
 }

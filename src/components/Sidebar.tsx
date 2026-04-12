@@ -128,7 +128,20 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                             <Logo className="w-8 h-8" textClassName="hidden" />
                         </div>
                         <div className="flex-1 min-w-0">
-                            <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 tracking-wide uppercase">Workspace</div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 tracking-wide uppercase">
+                                    Workspace
+                                </span>
+                                {(activeWorkspace as { demoMockMode?: boolean } | null)?.demoMockMode ? (
+                                    <span
+                                        className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-800 dark:bg-violet-950/80 dark:text-violet-200"
+                                        title="Demo / mock data is enabled for this workspace"
+                                    >
+                                        <span className="h-1.5 w-1.5 rounded-full bg-violet-500 dark:bg-violet-400" />
+                                        Demo
+                                    </span>
+                                ) : null}
+                            </div>
                             <div className="text-sm font-bold text-gray-900 dark:text-white truncate">
                                 {activeWorkspace?.name || "No Workspace"}
                             </div>
@@ -242,7 +255,11 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                             </div>
 
                             <div className="h-px bg-gray-100 dark:bg-slate-700 my-1"></div>
-                            <button onClick={async () => { await signOut({ redirect: false }); window.location.href = '/api/auth/signin'; }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                            <button
+                                type="button"
+                                onClick={() => signOut({ callbackUrl: "/login" })}
+                                className="flex items-center w-full px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                            >
                                 <LogOut className="w-4 h-4 mr-2" /> Log out
                             </button>
                         </div>

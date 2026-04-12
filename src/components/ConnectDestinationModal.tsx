@@ -6,6 +6,7 @@ import { X, Loader2, CheckCircle2, ChevronRight, Settings2, FileSpreadsheet, Loc
 import useSWR, { useSWRConfig } from 'swr';
 import { signIn } from 'next-auth/react';
 import { useWorkspaceStore } from '@/store/workspace';
+import { INTEGRATION_LOGOS } from '@/lib/integration-logos';
 
 interface ConnectDestinationModalProps {
     isOpen: boolean;
@@ -129,7 +130,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                     <div className="flex items-center space-x-2">
                         <div className="w-8 h-8 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm relative overflow-hidden">
                             <Image 
-                                src={destinationId === 'looker' ? 'https://cdn.simpleicons.org/looker' : 'https://cdn.simpleicons.org/googlesheets'} 
+                                src={destinationId === 'looker' ? INTEGRATION_LOGOS.looker : INTEGRATION_LOGOS.googleSheets} 
                                 alt={destinationId === 'looker' ? 'Looker Studio' : 'Google Sheets™'} 
                                 width={20} 
                                 height={20} 
@@ -206,7 +207,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                 <div key={conn.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded-xl">
                                     <div className="flex items-center space-x-3 overflow-hidden">
                                         <div className="w-8 h-8 shrink-0 rounded bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 flex items-center justify-center pointer-events-none">
-                                            <Image src="https://cdn.simpleicons.org/googlesheets" alt="Google Sheets™" width={16} height={16} />
+                                            <Image src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets™" width={16} height={16} />
                                         </div>
                                         <div className="truncate">
                                             <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{conn.name}</p>

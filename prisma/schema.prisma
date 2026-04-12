@@ -73,6 +73,13 @@ model Workspace {
   name            String
   slug            String            @unique
   ownerId         String
+  /// Optional Telegram chat ID for this workspace (sync failure alerts). Falls back to TELEGRAM_CHAT_ID env.
+  telegramChatId  String?
+  /// Product demo: overlay synthetic console data for screenshots / feature trials.
+  demoMockMode       Boolean @default(false)
+  demoMockMeta       Boolean @default(false)
+  demoMockShopee     Boolean @default(false)
+  demoMockGoogleAds  Boolean @default(false)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   clients         Client[]

@@ -14,6 +14,8 @@ const nextConfig = {
     return [
       { source: "/dashboard", destination: "/console", permanent: true },
       { source: "/dashboard/:path*", destination: "/console/:path*", permanent: true },
+      // Short URL for payment gateways and app store listings
+      { source: "/refund", destination: "/legal/refund-policy", permanent: true },
     ];
   },
 };

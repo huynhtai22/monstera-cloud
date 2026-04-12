@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import {
+  mergeChartData,
+  mergeClientHealth,
+  mockConnectionDelta,
+  mockUnassignedCount,
+} from "@/lib/mock-console-data";
 
 export async function GET(req: Request, context: { params: any }) {
     try {
@@ -25,6 +31,22 @@ export async function GET(req: Request, context: { params: any }) {
         if (!membership) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
+
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: {
+                demoMockMode: true,
+                demoMockMeta: true,
+                demoMockShopee: true,
+                demoMockGoogleAds: true,
+            },
+        });
+        const demoFlags = {
+            demoMockMode: workspace?.demoMockMode ?? false,
+            demoMockMeta: workspace?.demoMockMeta ?? false,
+            demoMockShopee: workspace?.demoMockShopee ?? false,
+            demoMockGoogleAds: workspace?.demoMockGoogleAds ?? false,
+        };
 
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -50,9 +72,10 @@ export async function GET(req: Request, context: { params: any }) {
             if (dailyStats[dateStr] !== undefined) dailyStats[dateStr] += log.rowsSynced;
         });
 
-        const chartData = Object.entries(dailyStats)
+        let chartData = Object.entries(dailyStats)
             .map(([date, count]) => ({ date, count }))
             .sort((a, b) => a.date.localeCompare(b.date));
+        chartData = mergeChartData(chartData, demoFlags);
 
         // 2. Per-Client Health Breakdown
         const clients = await prisma.client.findMany({
@@ -67,7 +90,15 @@ export async function GET(req: Request, context: { params: any }) {
             }
         });
 
-        const clientHealth = clients.map(client => {
+        let clientHealth: Array<{
+            id: string;
+            name: string;
+            status: string;
+            totalConnections: number;
+            staleCount: number;
+            lastActivity: Date | string | null;
+            isDemo?: boolean;
+        }> = clients.map((client) => {
             const totalConns = client.connections.length;
             const offlineConns = client.connections.filter(c => c.status !== 'connected').length;
             
@@ -91,6 +122,7 @@ export async function GET(req: Request, context: { params: any }) {
                 lastActivity: client.pipelines[0]?.lastSyncedAt || null
             };
         });
+        clientHealth = mergeClientHealth(clientHealth, demoFlags);
 
         // 3. Unassigned Connections Health
         const unassignedConns = await prisma.connection.findMany({
@@ -98,15 +130,19 @@ export async function GET(req: Request, context: { params: any }) {
             select: { status: true, lastSyncAt: true }
         });
 
+        const realConnCount = await prisma.connection.count({ where: { workspaceId } });
+        const mergedHealthy = clientHealth.filter((c) => c.status === "healthy").length;
+
         return NextResponse.json({
             chartData,
             clientHealth,
-            unassignedCount: unassignedConns.length,
+            unassignedCount: mockUnassignedCount(unassignedConns.length, demoFlags),
+            demoMockMode: demoFlags.demoMockMode,
             overall: {
-                totalClients: clients.length,
-                healthyClients: clientHealth.filter(c => c.status === 'healthy').length,
-                totalConnections: (await prisma.connection.count({ where: { workspaceId } }))
-            }
+                totalClients: clientHealth.length,
+                healthyClients: mergedHealthy,
+                totalConnections: realConnCount + mockConnectionDelta(demoFlags),
+            },
         });
 
     } catch (error: any) {

@@ -77,8 +77,10 @@ export default function LookerStudioConnectorPage() {
           <div>
             <h3 className="text-sm font-semibold text-white">Data in reports</h3>
             <p className="mt-1 text-xs text-slate-400 leading-snug">
-              Dimensions include date, platform, accounts, campaigns, and ad sets. Metrics include
-              spend, impressions, clicks, conversions, and derived fields such as CPC and ROAS.
+              Looker Studio supplies a report date range; Monstera returns metrics only for those
+              dates (up to 50,000 rows per request). Dimensions include date, platform, accounts,
+              campaigns, and ad sets. Metrics include spend, impressions, clicks, conversions, and
+              derived fields such as CPC and ROAS.
             </p>
           </div>
         </div>

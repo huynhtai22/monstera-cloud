@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import { Search, ExternalLink, Filter, TrendingUp, ShoppingBag, BarChart3, LayoutTemplate } from "lucide-react";
+import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 
 // Mock Data for Premium Templates
 const templates = [
@@ -11,7 +12,7 @@ const templates = [
         title: 'E-commerce Executive Overview',
         description: 'A comprehensive birds-eye view of your entire store performance across all channels.',
         category: 'E-commerce',
-        sources: ['https://cdn.simpleicons.org/shopee', 'https://cdn.simpleicons.org/lazada', 'https://cdn.simpleicons.org/shopify'],
+        sources: [INTEGRATION_LOGOS.shopee, INTEGRATION_LOGOS.lazada, INTEGRATION_LOGOS.shopify],
         destinations: ['Looker Studio'],
         featured: true,
         icon: ShoppingBag,
@@ -22,7 +23,7 @@ const templates = [
         title: 'Paid Social Blended ROI',
         description: 'Track ad spend and ROAS across Meta, TikTok, and Google Ads in one unified view.',
         category: 'Marketing',
-        sources: ['https://cdn.simpleicons.org/facebook', 'https://cdn.simpleicons.org/tiktok'],
+        sources: [INTEGRATION_LOGOS.meta, INTEGRATION_LOGOS.tiktok],
         destinations: ['Looker Studio', 'Google Sheets™'],
         featured: false,
         icon: TrendingUp,
@@ -33,7 +34,7 @@ const templates = [
         title: 'Shopee Daily Velocity',
         description: 'Granular tracking of daily sales volume, top moving SKUs, and immediate refund rates.',
         category: 'Marketplace',
-        sources: ['https://cdn.simpleicons.org/shopee'],
+        sources: [INTEGRATION_LOGOS.shopee],
         destinations: ['Looker Studio'],
         featured: false,
         icon: BarChart3,

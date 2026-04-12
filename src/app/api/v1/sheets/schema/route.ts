@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import { INTEGRATION_LOGOS, absoluteIntegrationLogo } from "@/lib/integration-logos";
 
 /**
  * GET /api/v1/sheets/schema
@@ -11,7 +12,7 @@ const SCHEMA = {
     {
       id: 'tiktok_ads',
       name: 'TikTok Ads',
-      logo: 'https://cdn.simpleicons.org/tiktok',
+      logo: absoluteIntegrationLogo(INTEGRATION_LOGOS.tiktok),
       dataLevels: [
         { value: 'AUCTION_ADVERTISER', label: 'Account' },
         { value: 'AUCTION_CAMPAIGN', label: 'Campaign' },
