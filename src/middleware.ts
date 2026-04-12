@@ -32,6 +32,7 @@ export async function middleware(request: NextRequest) {
   if (
     apiRatelimit &&
     request.nextUrl.pathname.startsWith("/api/") &&
+    !request.nextUrl.pathname.startsWith("/api/webhooks/") &&
     !request.nextUrl.pathname.startsWith("/api/v1/sheets") &&
     !request.nextUrl.pathname.startsWith("/api/looker-studio")
   ) {

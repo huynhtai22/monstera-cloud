@@ -16,8 +16,14 @@ interface CheckoutButtonProps {
   children: React.ReactNode;
 }
 
+const checkoutApiPath =
+  process.env.NEXT_PUBLIC_PAYMENT_PROVIDER === 'paddle'
+    ? '/api/checkout/paddle'
+    : '/api/checkout/lemonsqueezy';
+
 export function CheckoutButton({
   plan,
+  billingCycle = 'monthly',
   metaPixelEvent,
   metaPixelParams,
   className,
@@ -35,10 +41,10 @@ export function CheckoutButton({
     try {
       setIsLoading(true);
 
-      const response = await fetch('/api/checkout/lemonsqueezy', {
+      const response = await fetch(checkoutApiPath, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan, billingCycle }),
       });
 
       const data = await response.json();

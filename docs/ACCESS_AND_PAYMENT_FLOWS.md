@@ -11,6 +11,7 @@ This document defines **expected behavior** for authentication boundaries and pa
 | Marketing, legal, showcase, `/pricing`, `/register`, `/login` | **Public** — no session cookie required. |
 | `/api/auth/*` | NextAuth (OAuth callbacks, session). |
 | `/api/checkout/*`, `/api/xendit/checkout` | **Not** for anonymous users — handlers return **401** without a valid session (see §4). |
+| `/api/webhooks/paddle` | **Public POST** from Paddle IPs only — protected by **`Paddle-Signature`** (not for browsers). |
 
 **Middleware** does **not** list `/pricing` or `/` — visitors can browse pricing without logging in.
 
@@ -45,12 +46,14 @@ This document defines **expected behavior** for authentication boundaries and pa
 - **Rule:** Only an **authenticated** user can create a hosted checkout or invoice tied to their account.
 - **LemonSqueezy:** `POST /api/checkout/lemonsqueezy` requires `session.user.id` **and** `session.user.email`. Embeds `user_id` in checkout custom data for webhooks (`src/lib/lemonsqueezy.ts`).
 - **Xendit:** `POST /api/xendit/checkout` requires the same session identity; `user_id` is stored in invoice **metadata** for webhook reconciliation.
-- **UI:** `CheckoutButton` on `/pricing` calls the checkout API; on **401** redirects to `/login?callbackUrl=…` so payment cannot proceed without a session.
+- **Paddle Billing:** When `NEXT_PUBLIC_PAYMENT_PROVIDER=paddle`, `CheckoutButton` calls `POST /api/checkout/paddle` (same session rules). Server creates a Paddle **transaction** with catalog **price IDs**, embeds `user_id` in **`custom_data`**, and returns **`checkout.url`** ([transactions API](https://developer.paddle.com/api-reference/transactions/create-transaction)). Configure products/prices in Paddle to match Starter/Pro and monthly/annual (`PADDLE_PRICE_*` env vars).
+- **UI:** `CheckoutButton` on `/pricing` calls the active checkout API; on **401** redirects to `/login?callbackUrl=…` so payment cannot proceed without a session.
 
 ### Post payment (provider → Monstera)
 
 - **LemonSqueezy webhooks:** `POST /api/webhooks/lemonsqueezy` — rejects unsigned payloads (`verifyWebhookSignature`). Plan updates use **`user_id` from custom data** (or fallback rules) — **no** client can forge a valid signature.
 - **Xendit webhooks:** `POST /api/xendit/webhook` — rejects requests without valid `x-callback-token`. Plan upgrade prefers **`metadata.user_id`** when present and matches payer email; avoids upgrading the wrong row by email alone.
+- **Paddle webhooks:** `POST /api/webhooks/paddle` — rejects payloads with invalid **`Paddle-Signature`** (HMAC-SHA256 per [Paddle webhook signatures](https://developer.paddle.com/webhooks/signature-verification)). Provisions plans from **`transaction.completed`** / **`subscription.*`** using **`custom_data.user_id`** and catalog price → internal plan mapping. Subscribe to notification types in Paddle (**Developer Tools → Notifications**); see [webhooks overview](https://developer.paddle.com/webhooks/overview).
 
 ### Post payment (user browser)
 
@@ -69,4 +72,4 @@ This document defines **expected behavior** for authentication boundaries and pa
 
 ---
 
-*See also: `src/middleware.ts`, `src/lib/auth.ts`, `src/app/api/checkout/lemonsqueezy/route.ts`, `src/app/api/xendit/checkout/route.ts`, `src/app/api/webhooks/lemonsqueezy/route.ts`, `src/app/api/xendit/webhook/route.ts`.*
+*See also: `src/middleware.ts`, `src/lib/auth.ts`, `src/lib/paddle.ts`, `src/app/api/checkout/lemonsqueezy/route.ts`, `src/app/api/checkout/paddle/route.ts`, `src/app/api/xendit/checkout/route.ts`, `src/app/api/webhooks/lemonsqueezy/route.ts`, `src/app/api/webhooks/paddle/route.ts`, `src/app/api/xendit/webhook/route.ts`.*
