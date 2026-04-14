@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, Suspense, useEffect } from "react";
-import { signIn, useSession } from "next-auth/react";
+import { getSession, signIn, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { metaPixelCustom } from "@/lib/meta-pixel";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
+import { getPostLoginRedirectPath } from "@/lib/post-login-redirect";
 
 function LoginContent() {
   const router = useRouter();
@@ -65,8 +66,11 @@ function LoginContent() {
         setError("Invalid email or password");
       } else {
         metaPixelCustom("MC_Login_Email_Success", { method: "email" });
-        router.push(afterLoginPath);
-        router.refresh();
+        await router.refresh();
+        const sessionData = await getSession();
+        const plan = sessionData?.user?.plan as string | undefined;
+        const dest = getPostLoginRedirectPath(plan, afterLoginPath);
+        router.push(dest);
       }
     } catch {
       setError("An unexpected error occurred. Please try again.");
@@ -78,7 +82,8 @@ function LoginContent() {
   const signInWithGoogle = async () => {
     metaPixelCustom("MC_Login_Google_Click", { method: "google" });
     setIsGoogleLoading(true);
-    await signIn("google", { callbackUrl: afterLoginPath });
+    const continueUrl = `/auth/continue?next=${encodeURIComponent(afterLoginPath)}`;
+    await signIn("google", { callbackUrl: continueUrl });
   };
 
   return (

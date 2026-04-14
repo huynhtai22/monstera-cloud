@@ -146,10 +146,29 @@ export const authOptions: NextAuthOptions = {
             return token
         },
         async session({ session, token }: any) {
-            if (session.user) {
-                session.user.id = token.id
-                // We're just passing this for the frontend if needed, 
-                // but workers will pull actual offline token from DB's Account table.
+            if (!session.user) return session
+
+            let userId = token.id as string | undefined
+            if (!userId && session.user.email) {
+                const byEmail = await prisma.user.findFirst({
+                    where: { email: { equals: session.user.email, mode: "insensitive" } },
+                    select: { id: true, plan: true },
+                })
+                if (byEmail) {
+                    userId = byEmail.id
+                    session.user.id = byEmail.id
+                    session.user.plan = byEmail.plan ?? "free"
+                    return session
+                }
+            }
+
+            if (userId) {
+                session.user.id = userId
+                const row = await prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { plan: true },
+                })
+                session.user.plan = row?.plan ?? "free"
             }
             return session
         }

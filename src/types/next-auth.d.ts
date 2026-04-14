@@ -11,6 +11,8 @@ declare module "next-auth" {
     interface Session {
         user: DefaultSession["user"] & {
             id: string;
+            /** Subscription tier from DB — used for post-login routing */
+            plan?: string;
         };
     }
 }

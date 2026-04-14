@@ -5,6 +5,10 @@ import { Check, CheckCircle2, Shield, ShieldCheck, Zap, MapPin } from "lucide-re
 import { CheckoutButton } from "@/components/CheckoutButton";
 import { useState, useEffect } from "react";
 import { metaPixelCustom } from "@/lib/meta-pixel";
+import { getCheckoutApiPath } from "@/lib/checkout-api-path";
+
+const checkoutBrand =
+    getCheckoutApiPath() === "/api/checkout/paddle" ? "Paddle" : "Lemon Squeezy";
 
 export default function PricingPage() {
     const [isAnnual, setIsAnnual] = useState(true);
@@ -155,10 +159,13 @@ export default function PricingPage() {
                                 billing_cycle: isAnnual ? "annual" : "monthly",
                                 currency: payCurrency,
                             }}
-                            className="w-full py-2.5 rounded-lg bg-white text-black text-sm font-semibold text-center hover:bg-gray-100 transition-colors mb-6"
+                            className="w-full py-2.5 rounded-lg bg-white text-black text-sm font-semibold text-center hover:bg-gray-100 transition-colors mb-2"
                         >
                             Get started
                         </CheckoutButton>
+                        <p className="text-gray-500 text-[10px] text-center mb-6">
+                            Opens {checkoutBrand} secure checkout (sign in required)
+                        </p>
                         <div className="border-t border-white/5 pt-5 flex-1">
                             <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Free and</p>
                             <ul className="space-y-2.5">
@@ -202,15 +209,17 @@ export default function PricingPage() {
                             }}
                             className="w-full py-3 rounded-lg bg-emerald-600 text-white text-sm font-bold text-center hover:bg-emerald-500 transition-colors mb-1 shadow-lg shadow-emerald-600/30"
                         >
-                            Try for 14 days free
+                            Continue to secure checkout
                         </CheckoutButton>
-                        <p className="text-gray-500 text-[10px] text-center mb-6">No contract · cancel anytime</p>
+                        <p className="text-gray-500 text-[10px] text-center mb-6">
+                            Secure payment via {checkoutBrand} · No contract · cancel anytime
+                        </p>
                         <div className="border-t border-emerald-500/20 pt-5 flex-1">
                             <p className="text-emerald-400/70 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Starter and</p>
                             <ul className="space-y-2.5">
                                 <FeatureItem accent>15 active pipelines</FeatureItem>
                                 <FeatureItem accent>Hourly sync</FeatureItem>
-                                <FeatureItem accent>15 TikTok report runs / hour</FeatureItem>
+                                <FeatureItem accent>Report every 10 min (3x faster)</FeatureItem>
                                 <FeatureItem accent>Priority job queue</FeatureItem>
                                 <FeatureItem accent>Priority email support</FeatureItem>
                             </ul>
@@ -287,7 +296,7 @@ export default function PricingPage() {
                             <tbody className="divide-y divide-white/5">
                                 <CompareRow label="Active Pipelines" values={["1", "5", "15", "Unlimited"]} />
                                 <CompareRow label="Sync Frequency" values={["Weekly", "Daily", "Hourly", "15 min"]} />
-                                <CompareRow label="TikTok Report Cooldown" values={["60 min", "15 min", "15 min", "5 min"]} />
+                                <CompareRow label="TikTok Report Cooldown" values={["60 min", "30 min", "10 min", "5 min"]} />
                                 <CompareRow label="Job Queue Priority" values={["Low", "Normal", "High", "Highest"]} />
                                 <CompareRow label="CSV / Excel Export" values={[false, true, true, true]} />
                                 <CompareRow label="Google Sheets™ Add-on" values={[true, true, true, true]} />

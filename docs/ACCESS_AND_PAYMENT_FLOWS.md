@@ -24,7 +24,7 @@ This document defines **expected behavior** for authentication boundaries and pa
 | App routes: `/console`, `/overview`, `/settings`, `/meta-ads`, … | **Protected** — `src/middleware.ts` requires a valid JWT (`getToken`). Missing session → **302** to `/login?callbackUrl=…` (sanitized via `safe-callback-url`). |
 | `/api/*` (data) | Session checked in each route handler (`getServerSession`); workspace actions require **membership**. |
 
-**After login:** User lands on `callbackUrl` when safe, else default `/console`.
+**After login:** User lands on `callbackUrl` when safe, else default `/console` — **unless** they are on the **free** plan and the destination is **`/console`**, in which case they are sent to **`/pricing`** first (buyer-style journey: compare plans → checkout → app). Paid plans (`starter`, `professional`, …) still go straight to `callbackUrl`. Users can still open **`/console`** from the nav for Free-tier limits. Google OAuth uses **`/auth/continue`** to apply the same rule.
 
 ---
 
@@ -46,7 +46,7 @@ This document defines **expected behavior** for authentication boundaries and pa
 - **Rule:** Only an **authenticated** user can create a hosted checkout or invoice tied to their account.
 - **LemonSqueezy:** `POST /api/checkout/lemonsqueezy` requires `session.user.id` **and** `session.user.email`. Embeds `user_id` in checkout custom data for webhooks (`src/lib/lemonsqueezy.ts`).
 - **Xendit:** `POST /api/xendit/checkout` requires the same session identity; `user_id` is stored in invoice **metadata** for webhook reconciliation.
-- **Paddle Billing:** When `NEXT_PUBLIC_PAYMENT_PROVIDER=paddle`, `CheckoutButton` calls `POST /api/checkout/paddle` (same session rules). Server creates a Paddle **transaction** with catalog **price IDs**, embeds `user_id` in **`custom_data`**, and returns **`checkout.url`** ([transactions API](https://developer.paddle.com/api-reference/transactions/create-transaction)). Configure products/prices in Paddle to match Starter/Pro and monthly/annual (`PADDLE_PRICE_*` env vars).
+- **Paddle Billing (default):** `CheckoutButton` calls `POST /api/checkout/paddle` unless `NEXT_PUBLIC_PAYMENT_PROVIDER=lemonsqueezy`. Server creates a Paddle **transaction** with catalog **price IDs**, embeds `user_id` in **`custom_data`**, and returns **`checkout.url`** ([transactions API](https://developer.paddle.com/api-reference/transactions/create-transaction)). Configure products/prices in Paddle to match Starter/Pro and monthly/annual (`PADDLE_PRICE_*` env vars). List prices must match what you show on `/pricing`; a **$0 / trial** checkout requires a **$0 or trial price** in Paddle wired to the same env slot—not something the app invents client-side.
 - **UI:** `CheckoutButton` on `/pricing` calls the active checkout API; on **401** redirects to `/login?callbackUrl=…` so payment cannot proceed without a session.
 
 ### Post payment (provider → Monstera)

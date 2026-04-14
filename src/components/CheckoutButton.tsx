@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 import { metaPixelCustom } from '@/lib/meta-pixel';
+import { getCheckoutApiPath } from '@/lib/checkout-api-path';
 
 interface CheckoutButtonProps {
   plan: 'starter' | 'professional';
@@ -15,11 +16,6 @@ interface CheckoutButtonProps {
   className?: string;
   children: React.ReactNode;
 }
-
-const checkoutApiPath =
-  process.env.NEXT_PUBLIC_PAYMENT_PROVIDER === 'paddle'
-    ? '/api/checkout/paddle'
-    : '/api/checkout/lemonsqueezy';
 
 export function CheckoutButton({
   plan,
@@ -41,7 +37,7 @@ export function CheckoutButton({
     try {
       setIsLoading(true);
 
-      const response = await fetch(checkoutApiPath, {
+      const response = await fetch(getCheckoutApiPath(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan, billingCycle }),
@@ -54,11 +50,17 @@ export function CheckoutButton({
           window.location.href = `/login?callbackUrl=${encodeURIComponent(window.location.pathname)}`;
           return;
         }
-        throw new Error(data.error || 'Failed to create checkout session');
+        const msg =
+          typeof data.error === 'string'
+            ? data.error
+            : data.error?.message ||
+              (data.error && JSON.stringify(data.error)) ||
+              'Failed to create checkout session';
+        throw new Error(msg);
       }
 
       if (data.url) {
-        window.location.href = data.url;
+        window.location.href = data.url as string;
       } else {
         throw new Error('No checkout URL returned');
       }
@@ -77,7 +79,7 @@ export function CheckoutButton({
       className={cn('flex items-center justify-center w-full relative', className)}
     >
       {isLoading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : null}
-      {isLoading ? 'Redirecting to Payment…' : children}
+      {isLoading ? 'Redirecting to checkout…' : children}
     </button>
   );
 }

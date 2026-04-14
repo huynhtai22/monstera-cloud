@@ -6,6 +6,23 @@
 
 export type PlanName = 'free' | 'starter' | 'professional' | 'enterprise';
 
+/**
+ * True when the user has an active paid tier (anything other than free).
+ * Used for post-login routing; keep in sync with webhook `user.plan` values.
+ */
+export function isPaidSubscriptionPlan(plan: string | undefined | null): boolean {
+  if (plan == null || plan === "") return false;
+  const p = plan.toLowerCase().trim();
+  if (p === "free") return false;
+  return (
+    p === "starter" ||
+    p === "professional" ||
+    p === "enterprise" ||
+    /** legacy / informal */
+    p === "pro"
+  );
+}
+
 export interface PlanLimits {
   /** Maximum number of pipelines a user can create */
   maxPipelines: number;
@@ -36,18 +53,18 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
   starter: {
     maxPipelines: 5,
     syncIntervalMs: 24 * 60 * 60 * 1000,         // 1 day
-    tiktokReportCooldownMs: 15 * 60 * 1000,       // 15 min cooldown
-    metaReportCooldownMs: 15 * 60 * 1000,         // 15 min cooldown
-    googleReportCooldownMs: 15 * 60 * 1000,       // 15 min cooldown
+    tiktokReportCooldownMs: 30 * 60 * 1000,       // 30 min cooldown — clear gap vs Pro (10 min)
+    metaReportCooldownMs: 30 * 60 * 1000,         // 30 min cooldown
+    googleReportCooldownMs: 30 * 60 * 1000,       // 30 min cooldown
     priority: 2,
     syncLabel: 'Daily',
   },
   professional: {
     maxPipelines: 15,
     syncIntervalMs: 60 * 60 * 1000,              // 1 hour
-    tiktokReportCooldownMs: 15 * 60 * 1000,      // 15 min cooldown
-    metaReportCooldownMs: 15 * 60 * 1000,        // 15 min cooldown
-    googleReportCooldownMs: 15 * 60 * 1000,      // 15 min cooldown
+    tiktokReportCooldownMs: 10 * 60 * 1000,      // 10 min cooldown — 3x faster than Starter
+    metaReportCooldownMs: 10 * 60 * 1000,        // 10 min cooldown
+    googleReportCooldownMs: 10 * 60 * 1000,      // 10 min cooldown
     priority: 3,
     syncLabel: 'Hourly',
   },
