@@ -39,8 +39,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const url = await createPaddleCheckoutUrl(plan, billingCycle, session.user.id);
-    return NextResponse.json({ url });
+    const { url, transactionId } = await createPaddleCheckoutUrl(plan, billingCycle, session.user.id);
+    return NextResponse.json({ url, transactionId });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to create Paddle checkout";
     console.error("[PADDLE_CHECKOUT]", err);

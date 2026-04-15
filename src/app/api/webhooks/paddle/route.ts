@@ -5,6 +5,7 @@ import {
   userIdFromPaddleCustomData,
   verifyPaddleWebhookSignature,
 } from "@/lib/paddle";
+import { sendPaymentPastDueEmail } from "@/lib/mail";
 
 export const runtime = "nodejs";
 
@@ -61,9 +62,7 @@ export async function POST(req: Request) {
         break;
       }
       case "subscription.past_due": {
-        console.warn("[PADDLE_WEBHOOK] subscription.past_due — monitor billing", {
-          id: data.id,
-        });
+        await handleSubscriptionPastDue(data);
         break;
       }
       default:
@@ -175,4 +174,34 @@ async function handleSubscriptionCanceled(data: Record<string, unknown>) {
     });
     console.log(`[PADDLE_WEBHOOK] subscription ${subscriptionId} canceled — users downgraded`);
   }
+}
+
+async function handleSubscriptionPastDue(data: Record<string, unknown>) {
+  const subscriptionId = typeof data.id === "string" ? data.id : "";
+  const userId = userIdFromPaddleCustomData(data.custom_data);
+
+  let user: { email: string; name: string | null } | null = null;
+
+  if (userId) {
+    user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, name: true },
+    });
+  } else if (subscriptionId) {
+    user = await prisma.user.findFirst({
+      where: { subscriptionId },
+      select: { email: true, name: true },
+    });
+  }
+
+  if (!user) {
+    console.warn("[PADDLE_WEBHOOK] subscription.past_due — could not find user", {
+      subscriptionId,
+      userId,
+    });
+    return;
+  }
+
+  await sendPaymentPastDueEmail(user.email, user.name ?? "");
+  console.log(`[PADDLE_WEBHOOK] subscription.past_due — past-due email sent to ${user.email}`);
 }

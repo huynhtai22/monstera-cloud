@@ -18,6 +18,7 @@
   "description": "",
   "dependencies": {
     "@next-auth/prisma-adapter": "^1.0.7",
+    "@paddle/paddle-js": "^1.6.2",
     "@paddle/paddle-node-sdk": "^3.7.0",
     "@prisma/client": "^5.22.0",
     "@tailwindcss/postcss": "^4.2.1",

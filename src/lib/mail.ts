@@ -153,6 +153,47 @@ export const sendDataFreshnessAlertEmail = async (to: string, workspaceName: str
   }
 };
 
+export const sendPaymentPastDueEmail = async (to: string, name: string) => {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+      to: [to],
+      subject: 'Action required: Your Monstera Cloud payment is past due',
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #1a1a1a; margin-bottom: 8px;">Payment past due</h2>
+          <p style="color: #4a5568; line-height: 1.6; margin-bottom: 24px;">
+            Hi ${name || 'there'},<br/><br/>
+            We were unable to process your most recent Monstera Cloud subscription payment.
+            Please update your payment method to avoid losing access to your plan.
+          </p>
+          <a href="https://monsteracloud.com/pricing"
+             style="display: inline-block; background-color: #e53e3e; color: #ffffff; text-decoration: none;
+                    padding: 14px 28px; border-radius: 6px; font-weight: 600; font-size: 15px; margin-bottom: 24px;">
+            Update Payment Method
+          </a>
+          <p style="color: #718096; font-size: 13px; margin-top: 16px;">
+            If you believe this is an error or need help, reply to this email or contact us at hello@monsteracloud.com.
+          </p>
+          <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #a0aec0;">
+            © 2026 Monstera Cloud. All rights reserved.
+          </div>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error('[MAIL] PaymentPastDue Resend Error:', error);
+      return { success: false, error };
+    }
+
+    return { success: true, data };
+  } catch (err) {
+    console.error('[MAIL] PaymentPastDue Unexpected Error:', err);
+    return { success: false, error: err };
+  }
+};
+
 export const sendPerformanceAlertEmail = async (to: string, workspaceName: string, netRoas: number, spend: number, dateLabel: string) => {
   try {
     const { data, error } = await resend.emails.send({

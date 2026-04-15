@@ -87,7 +87,7 @@ export async function createPaddleCheckoutUrl(
   plan: PaddlePlan,
   billingCycle: PaddleBillingCycle,
   userId: string
-): Promise<string> {
+): Promise<{ url: string; transactionId: string }> {
   const priceId = priceIdForPlan(plan, billingCycle);
   if (!priceId) {
     throw new Error(
@@ -101,7 +101,7 @@ export async function createPaddleCheckoutUrl(
     collectionMode: "automatic",
     customData: { user_id: userId },
     checkout: {
-      url: `${PRODUCT_SITE_URL}/console`,
+      url: `${PRODUCT_SITE_URL}/success`,
     },
   });
 
@@ -109,7 +109,7 @@ export async function createPaddleCheckoutUrl(
   if (!url) {
     throw new Error("Paddle did not return a checkout URL. Check default payment link / approved domains in Paddle.");
   }
-  return url;
+  return { url, transactionId: tx.id };
 }
 
 /**
