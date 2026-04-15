@@ -27,7 +27,7 @@ export default function PrivacyPolicyPage() {
           </p>
           <ul className="list-disc pl-6 mb-4 text-slate-600 dark:text-slate-400 space-y-2">
             <li><strong>Personal Information:</strong> Includes your name, email address, passwords, and similar contact data.</li>
-            <li><strong>Payment Data:</strong> We may collect data necessary to process your payment if you make purchases, such as your payment instrument number (such as a credit card number), and the security code associated with your payment instrument. All payment data is stored by our payment processors (e.g., Stripe, Xendit).</li>
+            <li><strong>Payment Data:</strong> We may collect data necessary to process your payment if you make purchases, such as your payment instrument number (such as a credit card number), and the security code associated with your payment instrument. All payment data is stored by our payment processor, Paddle (Paddle.com Market Limited), who acts as Merchant of Record. We do not store card details on our servers.</li>
             <li><strong>Social Media Login Data:</strong> We may provide you with the option to register or sign in using your Google account.</li>
           </ul>
         </section>
