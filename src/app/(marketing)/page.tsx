@@ -20,7 +20,6 @@ import {
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
 import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
 import { MarketingNavbar } from "@/components/MarketingNavbar";
-import { MarketingFooter } from "@/components/MarketingFooter";
 import { DataStreamBackground } from "@/components/DataStreamBackground";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 
@@ -232,7 +231,6 @@ export default function MarketingPage() {
                 </div>
             </section>
 
-            <MarketingFooter />
         </div>
     );
 }
