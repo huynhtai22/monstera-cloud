@@ -14,6 +14,9 @@
  * **Rewind for payment QA:** each run sets `plan` to **free** and clears **subscriptionId**
  * so you can re-test checkout after a successful Paddle webhook upgraded this user.
  * Use a private/incognito window and log in as this email (not your main Google account).
+ *
+ * Optional plan override for demo recordings:
+ *   SMOKE_PLAN=professional npx tsx scripts/create-smoke-test-account.ts
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -26,6 +29,10 @@ const DEFAULT_PASSWORD = "SmokeTest_Monstera_2026!";
 
 const WORKSPACE_NAME = "Smoke Test Workspace";
 const WORKSPACE_SLUG = "smoke-test-workspace";
+
+// Override with SMOKE_PLAN=professional for demo recordings.
+// Defaults to "free" so payment QA checkout flow still works.
+const SMOKE_PLAN = (process.env.SMOKE_PLAN || "free").trim();
 
 async function main() {
   const email = (process.env.SMOKE_TEST_EMAIL || DEFAULT_EMAIL).trim().toLowerCase();
@@ -59,7 +66,7 @@ async function main() {
         emailVerified: new Date(),
         otp: null,
         otpExpires: null,
-        plan: "free",
+        plan: SMOKE_PLAN,
         subscriptionId: null,
       },
     });
@@ -72,7 +79,7 @@ async function main() {
         name: "Smoke Test",
         hashedPassword,
         emailVerified: new Date(),
-        plan: "free",
+        plan: SMOKE_PLAN,
         subscriptionId: null,
       },
     });

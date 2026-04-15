@@ -10,6 +10,7 @@
     "postinstall": "prisma generate",
     "deploy:prod": "npx vercel deploy --prod --yes",
     "create-smoke-user": "tsx scripts/create-smoke-test-account.ts",
+    "create-smoke-user:pro": "SMOKE_PLAN=professional tsx scripts/create-smoke-test-account.ts",
     "reset-smoke-plan": "tsx scripts/reset-smoke-test-plan.ts"
   },
   "keywords": [],
