@@ -79,8 +79,10 @@ export default function LookerStudioConnectorPage() {
             <p className="mt-1 text-xs text-slate-400 leading-snug">
               Looker Studio supplies a report date range; Monstera returns metrics only for those
               dates (up to 50,000 rows per request). Dimensions include date, platform, accounts,
-              campaigns, and ad sets. Metrics include spend, impressions, clicks, conversions, and
-              derived fields such as CPC and ROAS.
+              campaigns, and ad sets. Raw metrics include spend, impressions, clicks, conversions,
+              and revenue. Add <span className="text-slate-300 font-medium">Calculated Fields</span> in
+              your report for derived ratios: CPC = Spend / Clicks, CTR = Clicks / Impressions,
+              CPM = (Spend / Impressions) × 1000, ROAS = Revenue / Spend.
             </p>
           </div>
         </div>

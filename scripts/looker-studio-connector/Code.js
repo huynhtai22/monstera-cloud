@@ -97,10 +97,14 @@ function getFields() {
   fields.newMetric().setId("conversions").setName("Conversions").setType(types.NUMBER).setAggregation(aggregations.SUM);
   fields.newMetric().setId("revenue").setName("Revenue").setType(types.NUMBER).setAggregation(aggregations.SUM);
 
-  fields.newMetric().setId("cpc").setName("CPC").setType(types.NUMBER).setAggregation(aggregations.AUTO);
-  fields.newMetric().setId("ctr").setName("CTR").setType(types.NUMBER).setAggregation(aggregations.AUTO);
-  fields.newMetric().setId("cpm").setName("CPM").setType(types.NUMBER).setAggregation(aggregations.AUTO);
-  fields.newMetric().setId("roas").setName("ROAS").setType(types.NUMBER).setAggregation(aggregations.AUTO);
+  // NOTE: CPC, CTR, CPM, and ROAS are intentionally excluded from the schema.
+  // These are derived ratios — pre-computing them per row and then re-aggregating
+  // (e.g. SUM of per-row CPC) produces mathematically incorrect results in Looker Studio.
+  // Instead, create Calculated Fields in your Looker Studio report:
+  //   CPC  = Spend / Clicks
+  //   CTR  = Clicks / Impressions
+  //   CPM  = (Spend / Impressions) * 1000
+  //   ROAS = Revenue / Spend
 
   return fields;
 }
@@ -253,23 +257,11 @@ function getData(request) {
         case "reach":
           row.push(safeNumber(item.reach));
           break;
-        case "cpc":
-          row.push(safeNumber(item.cpc));
-          break;
-        case "ctr":
-          row.push(safeNumber(item.ctr));
-          break;
-        case "cpm":
-          row.push(safeNumber(item.cpm));
-          break;
         case "conversions":
           row.push(safeNumber(item.conversions));
           break;
         case "revenue":
           row.push(safeNumber(item.revenue));
-          break;
-        case "roas":
-          row.push(safeNumber(item.roas));
           break;
         default:
           row.push("");
