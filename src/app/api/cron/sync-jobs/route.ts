@@ -182,8 +182,9 @@ export async function GET(req: Request) {
 /**
  * Helper: enqueue a sync job for a pipeline.
  * Call this when a pipeline is created or when scheduling the next run.
+ * (Not exported — Next.js route files may only export HTTP handlers.)
  */
-export async function enqueueSyncJob(
+async function enqueueSyncJob(
   pipelineId: string,
   userId: string,
   plan: string,

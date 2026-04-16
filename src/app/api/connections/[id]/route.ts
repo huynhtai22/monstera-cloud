@@ -8,7 +8,10 @@ import prisma from "@/lib/prisma";
  * and credentials for this link). Also removes pipelines that reference this connection.
  * Users may still revoke the app in Meta / Google / TikTok account settings separately.
  */
-export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> | { id: string } }) {
+export async function DELETE(
+    _request: Request,
+    context: { params: Promise<{ id: string }> }
+) {
     try {
         const session = await getServerSession(authOptions);
 
@@ -16,8 +19,7 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const rawParams = await Promise.resolve(context.params);
-        const connectionId = rawParams?.id;
+        const { id: connectionId } = await context.params;
 
         if (!connectionId) {
             return NextResponse.json({ error: "Missing connection id" }, { status: 400 });

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import useSWR from "swr";
@@ -39,7 +39,7 @@ function pipelineMatchesSource(pipelineName: string, sourceId: string): boolean 
     }
 }
 
-export default function ReportsPage() {
+function ReportsPageContent() {
     const { activeWorkspaceId } = useWorkspaceStore();
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -213,5 +213,19 @@ export default function ReportsPage() {
                 )}
             </div>
         </PageShell>
+    );
+}
+
+export default function ReportsPage() {
+    return (
+        <Suspense
+            fallback={
+                <PageShell>
+                    <div className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">Loading reports…</div>
+                </PageShell>
+            }
+        >
+            <ReportsPageContent />
+        </Suspense>
     );
 }
