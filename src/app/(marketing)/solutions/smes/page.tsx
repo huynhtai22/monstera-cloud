@@ -162,14 +162,6 @@ export default function SMEsSolutionPage() {
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_60%,transparent_100%)] pointer-events-none opacity-40 z-0" />
 
                 <div className="relative z-10 w-full max-w-4xl mx-auto text-center flex flex-col items-center">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs font-bold tracking-widest uppercase mb-8">
-                        <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                        </span>
-                        For SME Sellers · Vietnam & Southeast Asia
-                    </div>
-
                     <h1 className="text-5xl md:text-7xl font-black text-white tracking-tight leading-[1.08] mb-6">
                         Stop copying data.<br className="hidden md:block" />
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-500">
