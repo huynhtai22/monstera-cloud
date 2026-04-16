@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { X, Loader2, CheckCircle2, ChevronRight, Clock, Database, Globe, Facebook, Copy, Check, Briefcase } from 'lucide-react';
 import useSWR, { useSWRConfig } from 'swr';
@@ -211,9 +211,73 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
         }
     };
 
+    /* #4 — Focus trap: keep focus within the dialog while open */
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const previousActiveElement = useRef<Element | null>(null);
+
+    useEffect(() => {
+        previousActiveElement.current = document.activeElement;
+
+        // Focus the dialog panel on mount
+        const timer = setTimeout(() => {
+            dialogRef.current?.focus();
+        }, 50);
+
+        return () => {
+            clearTimeout(timer);
+            // Restore focus on unmount
+            if (previousActiveElement.current instanceof HTMLElement) {
+                previousActiveElement.current.focus();
+            }
+        };
+    }, []);
+
+    const handleKeyDown = useCallback(
+        (e: React.KeyboardEvent) => {
+            if (e.key === 'Escape' && !isProcessing) {
+                handleClose();
+                return;
+            }
+
+            // Focus trap
+            if (e.key === 'Tab' && dialogRef.current) {
+                const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+                    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+                );
+                if (focusable.length === 0) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+
+                if (e.shiftKey) {
+                    if (document.activeElement === first) {
+                        e.preventDefault();
+                        last.focus();
+                    }
+                } else {
+                    if (document.activeElement === last) {
+                        e.preventDefault();
+                        first.focus();
+                    }
+                }
+            }
+        },
+        [isProcessing]
+    );
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 dark:bg-slate-800/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden relative animate-in zoom-in-95 duration-300 border border-gray-200 dark:border-slate-700">
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 dark:bg-slate-800/60 backdrop-blur-sm animate-in fade-in duration-200"
+            onKeyDown={handleKeyDown}
+        >
+            <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="connect-source-modal-title"
+                tabIndex={-1}
+                className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden relative animate-in zoom-in-95 duration-300 border border-gray-200 dark:border-slate-700 outline-none"
+            >
 
                 {/* Header Sequence */}
                 <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-gray-50 dark:bg-slate-800/80">
@@ -221,20 +285,29 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                         <div className="w-8 h-8 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm relative overflow-hidden">
                             <Image src={logoSrc} alt={name} width={20} height={20} className="object-contain" />
                         </div>
-                        <h3 className="font-bold text-gray-900 dark:text-white">Connect {name}</h3>
+                        <h3 id="connect-source-modal-title" className="font-bold text-gray-900 dark:text-white">Connect {name}</h3>
                     </div>
                     <button
                         onClick={handleClose}
                         disabled={isProcessing}
-                        className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-300 transition-colors disabled:opacity-50 flex-shrink-0"
+                        aria-label="Close dialog"
+                        className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors disabled:opacity-50 flex-shrink-0"
                     >
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
                 {/* Progress Bar */}
-                <div className="h-1 w-full bg-gray-100 dark:bg-slate-800 flex">
-                    <div className={`h-full bg-emerald-500 transition-all duration-500 ${step === 1 ? 'w-1/3' : step === 2 ? 'w-2/3' : 'w-full'}`} />
+                <div className="px-6 pt-3 pb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    <span>
+                        Step {step} of 3
+                    </span>
+                    <span className="text-cyan-600 dark:text-cyan-400">
+                        {step === 1 ? "Overview" : step === 2 ? "Account" : "Confirm"}
+                    </span>
+                </div>
+                <div className="h-1 w-full bg-gray-100 dark:bg-slate-800 flex" role="progressbar" aria-valuenow={step} aria-valuemin={1} aria-valuemax={3} aria-label={`Step ${step} of 3`}>
+                    <div className={`h-full bg-cyan-500 transition-all duration-500 ${step === 1 ? 'w-1/3' : step === 2 ? 'w-2/3' : 'w-full'}`} />
                 </div>
 
                 {/* Body content */}
@@ -268,7 +341,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                                 <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300 ml-6">
                                     {step1Content.permissions.map((line) => (
                                         <li key={line} className="flex items-start">
-                                            <CheckCircle2 className="w-4 h-4 text-emerald-500 mr-2 shrink-0 mt-0.5" />
+                                            <CheckCircle2 className="w-4 h-4 text-cyan-500 mr-2 shrink-0 mt-0.5" />
                                             {line}
                                         </li>
                                     ))}
@@ -301,7 +374,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                                                 title="Copy production URL"
                                             >
                                                 {copiedWhich === 'production' ? (
-                                                    <Check className="w-4 h-4 text-emerald-600" aria-hidden />
+                                                    <Check className="w-4 h-4 text-cyan-600" aria-hidden />
                                                 ) : (
                                                     <Copy className="w-4 h-4" aria-hidden />
                                                 )}
@@ -387,7 +460,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                                     </div>
                                     <label className="relative inline-flex items-center cursor-pointer">
                                         <input type="checkbox" value="" className="sr-only peer" defaultChecked />
-                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-700 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white dark:bg-slate-800 after:border-gray-300 dark:border-slate-600 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white dark:border-slate-700 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white dark:bg-slate-800 after:border-gray-300 dark:border-slate-600 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
                                     </label>
                                 </div>
                             </div>
@@ -396,7 +469,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
 
                     {step === 3 && (
                         <div className="flex flex-col items-center justify-center py-8 space-y-4 animate-in zoom-in slide-in-from-bottom-4 duration-500">
-                            <div className="w-20 h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center border-4 border-emerald-100">
+                            <div className="w-20 h-20 bg-cyan-50 text-cyan-500 rounded-full flex items-center justify-center border-4 border-cyan-100">
                                 <CheckCircle2 className="w-10 h-10" />
                             </div>
                             <div className="text-center">
@@ -486,7 +559,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                         <button
                             onClick={handleCreatePipeline}
                             disabled={isProcessing}
-                            className="px-5 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-70 flex items-center shadow-md shadow-emerald-500/20"
+                            className="px-5 py-2.5 text-sm font-bold text-white bg-cyan-600 rounded-xl hover:bg-cyan-700 transition-all disabled:opacity-70 flex items-center shadow-md shadow-cyan-500/20"
                         >
                             {isProcessing ? (
                                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Provisioning...</>
