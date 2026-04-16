@@ -22,10 +22,7 @@ export function MarketingNavbar() {
                         <Link href="/solutions/smes" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
                             For SMEs
                         </Link>
-<Link href="/templates" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
-                            Templates
-                        </Link>
-                        <Link href="/docs" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
+<Link href="/docs" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
                             Docs
                         </Link>
                         <Link href="/showcase" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
