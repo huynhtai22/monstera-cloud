@@ -67,8 +67,24 @@ function LoginContent() {
       } else {
         metaPixelCustom("MC_Login_Email_Success", { method: "email" });
         await router.refresh();
-        const sessionData = await getSession();
-        const plan = sessionData?.user?.plan as string | undefined;
+        // Use /api/user/plan for a guaranteed DB-direct plan read.
+        // getSession() goes through the session callback which also reads DB,
+        // but /api/user/plan is more explicit and avoids any client-side caching.
+        let plan: string | undefined;
+        try {
+          const planRes = await fetch("/api/user/plan");
+          if (planRes.ok) {
+            const planData = await planRes.json();
+            plan = planData?.plan as string | undefined;
+          } else {
+            // Fall back to session if endpoint isn't available
+            const sessionData = await getSession();
+            plan = sessionData?.user?.plan as string | undefined;
+          }
+        } catch {
+          const sessionData = await getSession();
+          plan = sessionData?.user?.plan as string | undefined;
+        }
         const dest = getPostLoginRedirectPath(plan, afterLoginPath);
         router.push(dest);
       }

@@ -30,10 +30,20 @@ function ContinueInner() {
     let cancelled = false;
     (async () => {
       try {
-        const r = await fetch("/api/auth/session");
-        const data = (await r.json()) as { user?: { plan?: string } };
+        // Prefer /api/user/plan (DB-direct) over /api/auth/session to guarantee
+        // we see the current DB plan, not a potentially stale session value.
+        let plan: string | undefined;
+        const planRes = await fetch("/api/user/plan");
+        if (planRes.ok) {
+          const planData = (await planRes.json()) as { plan?: string };
+          plan = planData?.plan;
+        } else {
+          // Fallback: read from session endpoint
+          const r = await fetch("/api/auth/session");
+          const data = (await r.json()) as { user?: { plan?: string } };
+          plan = data?.user?.plan;
+        }
         if (cancelled) return;
-        const plan = data?.user?.plan;
         const dest = getPostLoginRedirectPath(
           plan,
           safeCallbackUrl(nextRaw, "/console")

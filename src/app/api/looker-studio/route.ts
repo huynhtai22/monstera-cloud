@@ -73,10 +73,14 @@ export async function GET(req: NextRequest) {
             ? "tiktok_business"
             : platformRaw;
 
+    // Get all accountId parameters (supports multiple: ?accountId=123&accountId=456)
+    const accountIdParams = req.nextUrl.searchParams.getAll("accountId");
+
     const whereClause: {
       workspaceId: string;
       date?: { gte?: Date; lte?: Date };
       platform?: string;
+      accountId?: { in: string[] };
     } = {
       workspaceId: keyRecord.workspaceId,
     };
@@ -107,6 +111,11 @@ export async function GET(req: NextRequest) {
 
     if (platform && platform !== "all") {
       whereClause.platform = platform;
+    }
+
+    // Filter by specific accounts if provided
+    if (accountIdParams.length > 0) {
+      whereClause.accountId = { in: accountIdParams };
     }
 
     const metrics = await prisma.campaignMetric.findMany({
