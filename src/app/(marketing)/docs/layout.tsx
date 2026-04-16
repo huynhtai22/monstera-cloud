@@ -68,7 +68,7 @@ export default function DocsLayout({
                                     <li key={jdx}>
                                         <Link 
                                             href={link.href} 
-                                            className="text-sm text-gray-400 hover:text-emerald-500 transition-colors block py-1"
+                                            className="text-sm text-gray-400 hover:text-cyan-500 transition-colors block py-1"
                                         >
                                             {link.label}
                                         </Link>

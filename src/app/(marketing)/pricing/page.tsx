@@ -45,7 +45,7 @@ export default function PricingPage() {
 
                 {/* Header */}
                 <div className="text-center mb-14">
-                    <div className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold text-emerald-400 border border-emerald-500/20 bg-emerald-500/10 tracking-widest uppercase mb-5">
+                    <div className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold text-cyan-400 border border-cyan-500/20 bg-cyan-500/10 tracking-widest uppercase mb-5">
                         Simple Pricing
                     </div>
                     <h1 className="text-white text-4xl md:text-5xl font-extrabold leading-tight tracking-tight">
@@ -74,7 +74,7 @@ export default function PricingPage() {
                             }`}
                         >
                             Annual
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-600/20 text-emerald-400 font-bold border border-emerald-500/20">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-600/20 text-cyan-400 font-bold border border-cyan-500/20">
                                 −20%
                             </span>
                         </button>
@@ -86,7 +86,7 @@ export default function PricingPage() {
                             Showing prices in <span className="text-gray-300 font-medium">{payCurrency === "VND" ? "VNĐ" : "USD"}</span>
                             <button
                                 onClick={() => setPayCurrency(payCurrency === "VND" ? "USD" : "VND")}
-                                className="text-emerald-500 underline underline-offset-2 hover:text-emerald-400 transition-colors"
+                                className="text-cyan-500 underline underline-offset-2 hover:text-cyan-400 transition-colors"
                             >
                                 Switch to {payCurrency === "VND" ? "USD" : "VNĐ"}
                             </button>
@@ -146,7 +146,7 @@ export default function PricingPage() {
                             <p className="text-gray-500 text-xs mt-1">
                                 per user / month
                                 {isAnnual && (
-                                    <span className="text-emerald-500 ml-1">· save {yearlySaving(49)} /yr</span>
+                                    <span className="text-cyan-500 ml-1">· save {yearlySaving(49)} /yr</span>
                                 )}
                             </p>
                         </div>
@@ -178,14 +178,14 @@ export default function PricingPage() {
                     </div>
 
                     {/* Pro — hero card, slightly wider + taller */}
-                    <div className="relative bg-[#0d1f18] border-2 border-emerald-500 rounded-xl p-8 flex flex-col shadow-[0_0_50px_rgba(16,185,129,0.12)] ring-1 ring-emerald-500/30">
+                    <div className="relative bg-[#0d1f18] border-2 border-cyan-500 rounded-xl p-8 flex flex-col shadow-[0_0_50px_rgba(16,185,129,0.12)] ring-1 ring-cyan-500/30">
                         {/* Top badge */}
-                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-[10px] font-bold px-4 py-1 rounded-full tracking-widest uppercase whitespace-nowrap shadow-lg">
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-cyan-600 text-white text-[10px] font-bold px-4 py-1 rounded-full tracking-widest uppercase whitespace-nowrap shadow-lg">
                             Most popular
                         </div>
                         <div className="mb-4 mt-2">
                             <h3 className="text-white text-xl font-bold">Pro</h3>
-                            <p className="text-emerald-400 text-sm mt-0.5">Best value for growing teams</p>
+                            <p className="text-cyan-400 text-sm mt-0.5">Best value for growing teams</p>
                         </div>
                         <div className={`mb-5 ${priceClass}`}>
                             <span className="text-5xl font-extrabold text-white">
@@ -194,7 +194,7 @@ export default function PricingPage() {
                             <p className="text-gray-400 text-xs mt-1">
                                 per user / month
                                 {isAnnual && (
-                                    <span className="text-emerald-400 ml-1">· save {yearlySaving(149)} /yr</span>
+                                    <span className="text-cyan-400 ml-1">· save {yearlySaving(149)} /yr</span>
                                 )}
                             </p>
                         </div>
@@ -207,15 +207,15 @@ export default function PricingPage() {
                                 billing_cycle: isAnnual ? "annual" : "monthly",
                                 currency: payCurrency,
                             }}
-                            className="w-full py-3 rounded-lg bg-emerald-600 text-white text-sm font-bold text-center hover:bg-emerald-500 transition-colors mb-1 shadow-lg shadow-emerald-600/30"
+                            className="w-full py-3 rounded-lg bg-cyan-600 text-white text-sm font-bold text-center hover:bg-cyan-500 transition-colors mb-1 shadow-lg shadow-cyan-600/30"
                         >
                             Continue to secure checkout
                         </CheckoutButton>
                         <p className="text-gray-500 text-[10px] text-center mb-6">
                             Secure payment via {checkoutBrand} · No contract · cancel anytime
                         </p>
-                        <div className="border-t border-emerald-500/20 pt-5 flex-1">
-                            <p className="text-emerald-400/70 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Starter and</p>
+                        <div className="border-t border-cyan-500/20 pt-5 flex-1">
+                            <p className="text-cyan-400/70 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Starter and</p>
                             <ul className="space-y-2.5">
                                 <FeatureItem accent>15 active pipelines</FeatureItem>
                                 <FeatureItem accent>Hourly sync</FeatureItem>
@@ -270,7 +270,7 @@ export default function PricingPage() {
                     <div className="flex flex-wrap justify-center gap-x-8 gap-y-3 text-gray-400 text-sm">
                         {["256-bit encryption", "OAuth 2.0 auth", "VND + USD billing", "Uptime SLA", "GDPR-ready data handling"].map((item) => (
                             <span key={item} className="flex items-center gap-2">
-                                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                <Check className="w-3.5 h-3.5 text-cyan-500" />
                                 {item}
                             </span>
                         ))}
@@ -289,7 +289,7 @@ export default function PricingPage() {
                                     <th className="py-3 px-6 text-gray-500 text-xs font-semibold uppercase tracking-widest border-r border-white/5 w-1/3">Spec</th>
                                     <th className="py-3 px-4 text-white text-xs font-bold text-center border-r border-white/5">Free</th>
                                     <th className="py-3 px-4 text-white text-xs font-bold text-center border-r border-white/5">Starter</th>
-                                    <th className="py-3 px-4 text-emerald-400 text-xs font-bold text-center bg-emerald-900/10 border-r border-white/5">Pro ✦</th>
+                                    <th className="py-3 px-4 text-cyan-400 text-xs font-bold text-center bg-cyan-900/10 border-r border-white/5">Pro ✦</th>
                                     <th className="py-3 px-4 text-white text-xs font-bold text-center">Enterprise</th>
                                 </tr>
                             </thead>
@@ -335,7 +335,7 @@ export default function PricingPage() {
 function FeatureItem({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
     return (
         <li className={`flex items-start gap-2.5 text-sm ${accent ? "text-gray-200" : "text-gray-400"}`}>
-            <Check className={`w-4 h-4 shrink-0 mt-0.5 ${accent ? "text-emerald-400" : "text-emerald-500"}`} />
+            <Check className={`w-4 h-4 shrink-0 mt-0.5 ${accent ? "text-cyan-400" : "text-cyan-500"}`} />
             {children}
         </li>
     );
@@ -348,16 +348,16 @@ function CompareRow({ label, values }: { label: string; values: (string | boolea
             {values.map((v, i) => (
                 <td
                     key={i}
-                    className={`py-3.5 px-4 text-center border-r border-white/5 last:border-r-0 ${i === 2 ? "bg-emerald-900/10" : ""}`}
+                    className={`py-3.5 px-4 text-center border-r border-white/5 last:border-r-0 ${i === 2 ? "bg-cyan-900/10" : ""}`}
                 >
                     {typeof v === "boolean" ? (
                         v ? (
-                            <CheckCircle2 className="inline w-4 h-4 text-emerald-500" />
+                            <CheckCircle2 className="inline w-4 h-4 text-cyan-500" />
                         ) : (
                             <span className="text-gray-600">—</span>
                         )
                     ) : (
-                        <span className={i === 2 ? "text-emerald-400 font-semibold" : "text-gray-400"}>{v}</span>
+                        <span className={i === 2 ? "text-cyan-400 font-semibold" : "text-gray-400"}>{v}</span>
                     )}
                 </td>
             ))}

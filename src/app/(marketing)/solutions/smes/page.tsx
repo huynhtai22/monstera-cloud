@@ -96,13 +96,13 @@ const PLATFORMS = [
         id: "google",
         label: "Google Ads",
         logo: "/logos/google-ads.svg",
-        pillActive: "bg-emerald-500/10 border-emerald-500/50 text-emerald-300",
+        pillActive: "bg-green-500/10 border-green-500/50 text-green-300",
         pillInactive: "border-white/10 text-gray-500 hover:text-gray-300 hover:border-white/20",
-        accent: "text-emerald-400",
-        cardBorder: "border-t-emerald-500/60",
-        cardGlow: "shadow-emerald-500/15",
-        cardBg: "bg-gradient-to-br from-emerald-500/5 via-[#09090b] to-[#09090b]",
-        badgeClass: "bg-emerald-500/15 border-emerald-500/30 text-emerald-300",
+        accent: "text-green-400",
+        cardBorder: "border-t-green-500/60",
+        cardGlow: "shadow-green-500/15",
+        cardBg: "bg-gradient-to-br from-green-500/5 via-[#09090b] to-[#09090b]",
+        badgeClass: "bg-green-500/15 border-green-500/30 text-green-300",
         description: "Google Search, Shopping, and Performance Max — clicks, CPC, and conversions.",
         filename: "Google_Ads_Report.xlsx",
         headers: ["Campaign", "Spend", "Clicks", "Conv."],
@@ -126,16 +126,16 @@ const PAIN_POINTS = [
 ];
 
 const FEATURES = [
-    { icon: TrendingUp,    color: "emerald", title: "TikTok & Meta Ads in one place",  desc: "See spend, impressions, clicks, and conversions from all your ad accounts side by side. No switching tabs." },
+    { icon: TrendingUp,    color: "cyan", title: "TikTok & Meta Ads in one place",  desc: "See spend, impressions, clicks, and conversions from all your ad accounts side by side. No switching tabs." },
     { icon: ShoppingBag,   color: "orange",  title: "Shopee order data",               desc: "Pull orders, revenue, and product performance from your Shopee seller account. Filter by date and status." },
     { icon: FileSpreadsheet,color:"blue",    title: "Auto-updates Google Sheets™",     desc: "Install our add-on once. Your spreadsheet refreshes automatically — hourly or daily — with zero manual work." },
     { icon: BarChart3,     color: "purple",  title: "Looker Studio dashboards",        desc: "Connect to Looker Studio for beautiful charts. Share live reports with your team or your boss." },
-    { icon: RefreshCw,     color: "emerald", title: "Scheduled auto-sync",             desc: "Set it and forget it. Monstera syncs your data on a schedule so your numbers are always up to date." },
+    { icon: RefreshCw,     color: "cyan", title: "Scheduled auto-sync",             desc: "Set it and forget it. Monstera syncs your data on a schedule so your numbers are always up to date." },
     { icon: Zap,           color: "yellow",  title: "No engineers needed",             desc: "Built for business owners, not developers. Connect your accounts in minutes with just a few clicks." },
 ];
 
 const colorMap: Record<string, string> = {
-    emerald: "text-emerald-400 bg-emerald-500/10 group-hover:bg-emerald-500/20",
+    cyan: "text-cyan-400 bg-cyan-500/10 group-hover:bg-cyan-500/20",
     orange:  "text-orange-400 bg-orange-500/10 group-hover:bg-orange-500/20",
     blue:    "text-blue-400 bg-blue-500/10 group-hover:bg-blue-500/20",
     purple:  "text-purple-400 bg-purple-500/10 group-hover:bg-purple-500/20",
@@ -143,7 +143,7 @@ const colorMap: Record<string, string> = {
 };
 
 const borderMap: Record<string, string> = {
-    emerald: "hover:border-emerald-500/30",
+    cyan: "hover:border-cyan-500/30",
     orange:  "hover:border-orange-500/30",
     blue:    "hover:border-blue-500/30",
     purple:  "hover:border-purple-500/30",
@@ -154,7 +154,7 @@ export default function SMEsSolutionPage() {
     const [activePlatform, setActivePlatform] = useState(PLATFORMS[0]);
 
     return (
-        <div className="flex flex-col items-center bg-[#09090b] text-slate-200 w-full selection:bg-emerald-500/30 overflow-hidden font-sans">
+        <div className="flex flex-col items-center bg-[#09090b] text-slate-200 w-full selection:bg-cyan-500/30 overflow-hidden font-sans">
 
             {/* ── HERO ─────────────────────────────────────────────────────── */}
             <section className="relative w-full min-h-[90vh] flex flex-col items-center justify-center pt-32 pb-20 px-4 sm:px-6 lg:px-8 overflow-hidden border-b border-white/5">
@@ -164,7 +164,7 @@ export default function SMEsSolutionPage() {
                 <div className="relative z-10 w-full max-w-4xl mx-auto text-center flex flex-col items-center">
                     <h1 className="text-5xl md:text-7xl font-black text-white tracking-tight leading-[1.08] mb-6">
                         Stop copying data.<br className="hidden md:block" />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-500">
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
                             Start growing.
                         </span>
                     </h1>
@@ -174,7 +174,7 @@ export default function SMEsSolutionPage() {
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full mb-12">
-                        <Link href="/register" className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 text-base font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-2xl transition-all shadow-xl shadow-emerald-500/20">
+                        <Link href="/register" className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 text-base font-bold text-white bg-cyan-600 hover:bg-cyan-500 rounded-2xl transition-all shadow-xl shadow-cyan-500/20">
                             Start Free — No Credit Card
                             <ArrowRight className="w-4 h-4" />
                         </Link>
@@ -229,7 +229,7 @@ export default function SMEsSolutionPage() {
 
                     {/* Header */}
                     <div className="text-center mb-14">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-widest mb-6">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-bold uppercase tracking-widest mb-6">
                             Live preview
                         </div>
                         <h2 className="text-3xl md:text-5xl font-black text-white tracking-tight mb-4">
@@ -278,7 +278,7 @@ export default function SMEsSolutionPage() {
                         <div className="bg-black/30 px-5 py-4 flex items-center gap-2 border-b border-white/5">
                             <div className="w-3 h-3 rounded-full bg-red-500/80" />
                             <div className="w-3 h-3 rounded-full bg-amber-500/80" />
-                            <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
+                            <div className="w-3 h-3 rounded-full bg-cyan-500/80" />
                             <div className="flex items-center gap-2 ml-3">
                                 <img src={activePlatform.logo} alt={activePlatform.label} className="h-3.5 w-3.5 object-contain brightness-0 invert opacity-60" />
                                 <span className="text-xs text-gray-500 font-mono">{activePlatform.filename} — auto-synced</span>
@@ -376,12 +376,12 @@ export default function SMEsSolutionPage() {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                         {[
-                            { step: "01", color: "emerald", title: "Connect your platforms", desc: "Sign in with TikTok Ads, Meta Ads, Shopee, or Google Ads. Takes 2 minutes. We handle the OAuth — you just click Authorize." },
+                            { step: "01", color: "cyan", title: "Connect your platforms", desc: "Sign in with TikTok Ads, Meta Ads, Shopee, or Google Ads. Takes 2 minutes. We handle the OAuth — you just click Authorize." },
                             { step: "02", color: "blue",    title: "Choose your destination", desc: "Send data to Google Sheets™ with our add-on, or build a live Looker Studio dashboard with our connector." },
                             { step: "03", color: "purple",  title: "Set your schedule", desc: "Pick hourly or daily sync. Monstera runs in the background — your data is always fresh when you open your sheet." },
                         ].map((item) => (
                             <div key={item.step} className="flex flex-col items-start">
-                                <div className={`text-5xl font-black mb-4 ${item.color === "emerald" ? "text-emerald-500/40" : item.color === "blue" ? "text-blue-500/40" : "text-purple-500/40"}`}>
+                                <div className={`text-5xl font-black mb-4 ${item.color === "cyan" ? "text-cyan-500/40" : item.color === "blue" ? "text-blue-500/40" : "text-purple-500/40"}`}>
                                     {item.step}
                                 </div>
                                 <h3 className="text-xl font-bold text-white mb-3">{item.title}</h3>
@@ -396,7 +396,7 @@ export default function SMEsSolutionPage() {
             <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-t border-white/5 bg-[#0d1117]">
                 <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                     <div>
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-widest mb-6">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-xs font-bold uppercase tracking-widest mb-6">
                             What you get
                         </div>
                         <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-8">
@@ -412,7 +412,7 @@ export default function SMEsSolutionPage() {
                                 "All platforms in one workspace — not scattered across 5 tabs",
                             ].map((item) => (
                                 <li key={item} className="flex items-start gap-3">
-                                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                                    <CheckCircle2 className="w-5 h-5 text-cyan-400 shrink-0 mt-0.5" />
                                     <span className="text-gray-300 text-sm leading-relaxed">{item}</span>
                                 </li>
                             ))}
@@ -422,14 +422,14 @@ export default function SMEsSolutionPage() {
                     {/* Mini stat cards */}
                     <div className="grid grid-cols-2 gap-4">
                         {[
-                            { label: "Hours saved per week",  value: "8–10h",  color: "emerald", sub: "On manual reporting" },
+                            { label: "Hours saved per week",  value: "8–10h",  color: "cyan", sub: "On manual reporting" },
                             { label: "Platforms connected",   value: "4+",     color: "blue",    sub: "TikTok, Meta, Shopee, Google" },
                             { label: "Sync frequency",        value: "Hourly", color: "purple",  sub: "Pro plan" },
                             { label: "Setup time",            value: "< 2min", color: "orange",  sub: "No engineers needed" },
                         ].map((stat) => (
                             <div key={stat.label} className="p-6 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-1">
                                 <p className="text-xs text-gray-500 font-medium">{stat.label}</p>
-                                <p className={`text-2xl font-black ${stat.color === "emerald" ? "text-emerald-400" : stat.color === "blue" ? "text-blue-400" : stat.color === "purple" ? "text-purple-400" : "text-orange-400"}`}>
+                                <p className={`text-2xl font-black ${stat.color === "cyan" ? "text-cyan-400" : stat.color === "blue" ? "text-blue-400" : stat.color === "purple" ? "text-purple-400" : "text-orange-400"}`}>
                                     {stat.value}
                                 </p>
                                 <p className="text-xs text-gray-600">{stat.sub}</p>
@@ -441,7 +441,7 @@ export default function SMEsSolutionPage() {
 
             {/* ── CTA ──────────────────────────────────────────────────────── */}
             <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-t border-white/5">
-                <div className="max-w-3xl mx-auto rounded-[3rem] bg-emerald-500 p-1">
+                <div className="max-w-3xl mx-auto rounded-[3rem] bg-cyan-500 p-1">
                     <div className="bg-[#09090b] rounded-[2.8rem] px-8 py-20 text-center relative overflow-hidden">
                         <div className="relative z-10">
                             <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-4">
@@ -450,7 +450,7 @@ export default function SMEsSolutionPage() {
                             <p className="text-gray-400 mb-10 max-w-md mx-auto">
                                 Connect your first data source in under 2 minutes. Free plan available — no credit card required.
                             </p>
-                            <Link href="/register" className="inline-flex items-center gap-2 px-10 py-5 text-lg font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-3xl shadow-2xl shadow-emerald-500/20 transition-all">
+                            <Link href="/register" className="inline-flex items-center gap-2 px-10 py-5 text-lg font-bold text-white bg-cyan-600 hover:bg-cyan-500 rounded-3xl shadow-2xl shadow-cyan-500/20 transition-all">
                                 Start Free Today
                                 <ArrowRight className="w-5 h-5" />
                             </Link>
@@ -458,7 +458,7 @@ export default function SMEsSolutionPage() {
                                 Free plan available · VND + USD billing · Cancel anytime
                             </p>
                         </div>
-                        <div className="absolute top-0 left-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-[80px] -translate-x-1/2 -translate-y-1/2" />
+                        <div className="absolute top-0 left-0 w-64 h-64 bg-cyan-500/10 rounded-full blur-[80px] -translate-x-1/2 -translate-y-1/2" />
                         <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-[80px] translate-x-1/2 translate-y-1/2" />
                     </div>
                 </div>

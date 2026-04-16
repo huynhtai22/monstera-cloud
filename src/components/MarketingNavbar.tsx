@@ -39,7 +39,7 @@ export function MarketingNavbar() {
                         {isAuthed ? (
                             <Link
                                 href="/console"
-                                className="inline-flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 text-sm font-medium transition-colors"
+                                className="inline-flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 text-sm font-medium transition-colors"
                             >
                                 <SquareTerminal className="w-4 h-4" />
                                 Console
@@ -49,7 +49,7 @@ export function MarketingNavbar() {
                                 Log in
                             </Link>
                         )}
-                        <Link href="/register" className="group inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm hover:shadow-md transition-all">
+                        <Link href="/register" className="group inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg shadow-sm hover:shadow-md transition-all">
                             Start free trial
                             <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
                         </Link>

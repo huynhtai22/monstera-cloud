@@ -35,9 +35,9 @@ function ArchDot({ label, logo, alt }: { label: string; logo: string; alt: strin
 
 function ArchDest({ label, logo, alt }: { label: string; logo: string; alt: string }) {
     return (
-        <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 min-w-[148px]">
+        <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 min-w-[148px]">
             <img src={logo} alt={alt} className="h-4 w-4 object-contain brightness-0 invert opacity-80" />
-            <span className="text-xs text-emerald-300 font-medium whitespace-nowrap">{label}</span>
+            <span className="text-xs text-cyan-300 font-medium whitespace-nowrap">{label}</span>
         </div>
     );
 }
@@ -50,7 +50,7 @@ function ConnectorLine() {
 
 function ConnectorLineGreen() {
     return (
-        <div className="h-px w-8 bg-gradient-to-r from-emerald-500/30 to-emerald-500/10 flex-shrink-0" />
+        <div className="h-px w-8 bg-gradient-to-r from-cyan-500/30 to-cyan-500/10 flex-shrink-0" />
     );
 }
 
@@ -96,8 +96,8 @@ function Step({
 }) {
     return (
         <div className="flex gap-6 group">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full border border-white/10 flex items-center justify-center group-hover:border-emerald-500/40 transition-colors">
-                <span className="font-mono text-xs text-gray-500 group-hover:text-emerald-400 transition-colors">{num}</span>
+            <div className="flex-shrink-0 w-10 h-10 rounded-full border border-white/10 flex items-center justify-center group-hover:border-cyan-500/40 transition-colors">
+                <span className="font-mono text-xs text-gray-500 group-hover:text-cyan-400 transition-colors">{num}</span>
             </div>
             <div className="pt-1.5">
                 <h3 className="text-base font-semibold text-white mb-2">{title}</h3>
@@ -112,21 +112,21 @@ function Step({
 // ─────────────────────────────────────────────
 export default function MarketingPage() {
     return (
-        <div className="relative min-h-screen bg-[#09090b] selection:bg-emerald-500/30">
+        <div className="relative min-h-screen bg-[#09090b] selection:bg-cyan-500/30">
             <MarketingNavbar />
 
             {/* ── HERO ──────────────────────────────────────────── */}
             <section className="relative pt-32 pb-24 border-b border-white/5">
                 {/* Subtle top-center glow */}
-                <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-emerald-500/6 blur-[120px] rounded-full" />
+                <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-cyan-500/6 blur-[120px] rounded-full" />
 
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
                     <div className="max-w-3xl mx-auto text-center mb-16">
                         {/* Status badge */}
                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-sm bg-white/5 border border-white/10 text-gray-400 text-[10px] font-mono uppercase tracking-widest mb-10">
                             <span className="relative flex h-1.5 w-1.5">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500" />
                             </span>
                             v1.0 · Now Live in Southeast Asia
                         </div>
@@ -144,7 +144,7 @@ export default function MarketingPage() {
                         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                             <Link
                                 href="/register"
-                                className="group inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-sm transition-colors shadow-lg shadow-emerald-900/40"
+                                className="group inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-sm transition-colors shadow-lg shadow-cyan-900/40"
                             >
                                 Start free — no card needed
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
@@ -178,14 +178,14 @@ export default function MarketingPage() {
                         </div>
 
                         {/* Center — Monstera node */}
-                        <div className="flex-shrink-0 flex flex-col items-center justify-center w-[120px] h-[192px] border border-emerald-500/30 bg-emerald-500/5 rounded-sm relative">
-                            <div className="absolute inset-0 rounded-sm bg-emerald-500/5 blur-sm" />
+                        <div className="flex-shrink-0 flex flex-col items-center justify-center w-[120px] h-[192px] border border-cyan-500/30 bg-cyan-500/5 rounded-sm relative">
+                            <div className="absolute inset-0 rounded-sm bg-cyan-500/5 blur-sm" />
                             <div className="relative flex flex-col items-center gap-2">
                                 {/* Simple M logo */}
-                                <div className="w-9 h-9 rounded-sm bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
-                                    <span className="font-black text-emerald-400 text-lg leading-none">M</span>
+                                <div className="w-9 h-9 rounded-sm bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center">
+                                    <span className="font-black text-cyan-400 text-lg leading-none">M</span>
                                 </div>
-                                <span className="font-mono text-[9px] text-emerald-400/80 tracking-widest uppercase text-center leading-tight">Monstera<br/>Cloud</span>
+                                <span className="font-mono text-[9px] text-cyan-400/80 tracking-widest uppercase text-center leading-tight">Monstera<br/>Cloud</span>
                             </div>
                         </div>
 
@@ -266,7 +266,7 @@ export default function MarketingPage() {
                             <p className="text-gray-400 text-sm leading-relaxed max-w-md mb-8">
                                 Monstera sits between your ad platforms and your reporting tools. Pull raw metrics once, normalise them, and push to wherever your team works.
                             </p>
-                            <Link href="/solutions/smes" className="inline-flex items-center gap-1.5 text-sm text-emerald-400 hover:text-emerald-300 transition-colors font-medium">
+                            <Link href="/solutions/smes" className="inline-flex items-center gap-1.5 text-sm text-cyan-400 hover:text-cyan-300 transition-colors font-medium">
                                 See how SMEs use Monstera <ChevronRight className="w-3.5 h-3.5" />
                             </Link>
                         </div>
@@ -344,7 +344,7 @@ export default function MarketingPage() {
 
                         {/* Right: terminal-style preview */}
                         <div className="relative">
-                            <div className="absolute inset-0 bg-emerald-500/5 blur-[80px] rounded-full pointer-events-none" />
+                            <div className="absolute inset-0 bg-cyan-500/5 blur-[80px] rounded-full pointer-events-none" />
                             <div className="relative border border-white/10 rounded-sm overflow-hidden bg-[#0d0d10]">
                                 {/* Terminal header */}
                                 <div className="flex items-center gap-2 px-4 py-3 border-b border-white/5 bg-white/[0.02]">
@@ -356,16 +356,16 @@ export default function MarketingPage() {
                                 {/* Terminal body */}
                                 <div className="p-5 font-mono text-[11px] leading-relaxed flex flex-col gap-1.5">
                                     <div className="text-gray-600">$ monstera sync --source tiktok_ads --level campaign</div>
-                                    <div className="text-emerald-400/70">✓ OAuth token validated</div>
+                                    <div className="text-cyan-400/70">✓ OAuth token validated</div>
                                     <div className="text-gray-500">→ Fetching campaigns (2025-03-01 → 2025-04-15)…</div>
                                     <div className="text-blue-400/70">  [META] Normalising 312 rows</div>
                                     <div className="text-blue-400/70">  [TIKTOK] Normalising 189 rows</div>
                                     <div className="text-blue-400/70">  [GOOGLE] Normalising 221 rows</div>
                                     <div className="text-gray-500">→ Writing to Sheet1!A1…</div>
-                                    <div className="text-emerald-400">✓ 722 rows written  (1.2s)</div>
+                                    <div className="text-cyan-400">✓ 722 rows written  (1.2s)</div>
                                     <div className="text-gray-600 mt-1">Next auto-refresh: 06:00 ICT</div>
                                     <div className="flex items-center gap-1.5 mt-2">
-                                        <span className="text-emerald-500/50">▋</span>
+                                        <span className="text-cyan-500/50">▋</span>
                                     </div>
                                 </div>
                             </div>
@@ -387,7 +387,7 @@ export default function MarketingPage() {
                             <div className="flex gap-3">
                                 <Link
                                     href="/pricing"
-                                    className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-sm transition-colors"
+                                    className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-sm transition-colors"
                                 >
                                     See Plans <ChevronRight className="w-3.5 h-3.5" />
                                 </Link>
@@ -416,14 +416,14 @@ export default function MarketingPage() {
             {/* ── CTA ─────────────────────────────────────────── */}
             <section className="py-28 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-7xl mx-auto">
-                    <div className="relative border border-emerald-500/20 bg-emerald-500/[0.04] p-px">
+                    <div className="relative border border-cyan-500/20 bg-cyan-500/[0.04] p-px">
                         <div className="px-8 py-20 text-center relative overflow-hidden">
                             {/* subtle corner glows */}
-                            <div className="pointer-events-none absolute top-0 left-0 w-48 h-48 bg-emerald-500/8 blur-[80px]" />
-                            <div className="pointer-events-none absolute bottom-0 right-0 w-48 h-48 bg-emerald-500/8 blur-[80px]" />
+                            <div className="pointer-events-none absolute top-0 left-0 w-48 h-48 bg-cyan-500/8 blur-[80px]" />
+                            <div className="pointer-events-none absolute bottom-0 right-0 w-48 h-48 bg-cyan-500/8 blur-[80px]" />
 
                             <div className="relative z-10 max-w-2xl mx-auto">
-                                <p className="font-mono text-[10px] text-emerald-500/60 uppercase tracking-widest mb-4">Get started</p>
+                                <p className="font-mono text-[10px] text-cyan-500/60 uppercase tracking-widest mb-4">Get started</p>
                                 <h2 className="text-3xl md:text-5xl font-black text-white tracking-tight mb-5">
                                     Connect your first data source today.
                                 </h2>
@@ -432,7 +432,7 @@ export default function MarketingPage() {
                                 </p>
                                 <Link
                                     href="/register"
-                                    className="group inline-flex items-center gap-2 px-8 py-4 text-base font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-sm transition-colors shadow-xl shadow-emerald-900/40"
+                                    className="group inline-flex items-center gap-2 px-8 py-4 text-base font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-sm transition-colors shadow-xl shadow-cyan-900/40"
                                 >
                                     Create free account
                                     <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />

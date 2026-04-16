@@ -57,7 +57,7 @@ export function MarketingFooter() {
                         <Link href="/legal/privacy-policy" className="text-sm text-gray-400 hover:text-white transition-colors">Privacy Policy</Link>
                         <Link href="/legal/terms-of-service" className="text-sm text-gray-400 hover:text-white transition-colors">Terms of Service</Link>
                         <Link href="/legal/refund-policy" className="text-sm text-gray-400 hover:text-white transition-colors">Refund Policy</Link>
-                        <Link href="/docs#security" className="text-xs text-emerald-500 font-medium hover:text-emerald-400 transition-colors flex items-center bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20"><ShieldCheck className="w-3 h-3 mr-1"/> Vietnam PDPA Compliant</Link>
+                        <Link href="/docs#security" className="text-xs text-cyan-500 font-medium hover:text-cyan-400 transition-colors flex items-center bg-cyan-500/10 px-2 py-1 rounded border border-cyan-500/20"><ShieldCheck className="w-3 h-3 mr-1"/> Vietnam PDPA Compliant</Link>
                     </div>
                 </div>
             </div>

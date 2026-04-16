@@ -20,8 +20,8 @@ export default function DocsPage() {
             </p>
 
             <div className="grid sm:grid-cols-2 gap-6 mb-16">
-                <div className="bg-emerald-950/20 border border-emerald-500/20 rounded-xl p-6">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-500 mb-4" />
+                <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-6">
+                    <CheckCircle2 className="w-6 h-6 text-cyan-500 mb-4" />
                     <h3 className="text-white font-bold mb-2">Zero Maintenance</h3>
                     <p className="text-sm text-gray-400">Our engine automatically manages schema drift, API rate limiting, and exponential backoff retry logic. You just query the warehouse.</p>
                 </div>
@@ -44,7 +44,7 @@ export default function DocsPage() {
 
             <div className="bg-[#18181b] border border-white/10 rounded-xl overflow-hidden mb-16">
                 <div className="bg-[#09090b] px-4 py-3 border-b border-white/5 flex items-center space-x-2">
-                    <div className="w-3 h-3 rounded-full bg-emerald-500/20"></div>
+                    <div className="w-3 h-3 rounded-full bg-cyan-500/20"></div>
                     <span className="ml-4 text-xs font-mono text-gray-500">cURL - Initialize Node</span>
                 </div>
                 <div className="p-6 overflow-x-auto">
@@ -59,22 +59,22 @@ export default function DocsPage() {
 
             {/* ==================== ARCHITECTURE ==================== */}
             <h2 id="architecture" className="text-3xl font-extrabold text-white tracking-tight mb-6 pt-24 -mt-24 flex items-center">
-                <Cpu className="w-7 h-7 mr-3 text-emerald-500" /> Architecture
+                <Cpu className="w-7 h-7 mr-3 text-cyan-500" /> Architecture
             </h2>
             <p className="text-gray-400 leading-relaxed mb-6">
                 Monstera Cloud operates as a **Headless Ingestion Fabric**. We do not store your data. We function purely as a massively parallel routing layer, sitting between strict rate-limited APIs and powerful columnar data warehouses.
             </p>
             <ul className="space-y-4 mb-16 text-gray-300">
                 <li className="flex items-start">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 mr-3 shrink-0"></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 mt-2 mr-3 shrink-0"></div>
                     <p><strong className="text-white">Stateless Workers:</strong> All ingestion tasks run on ephemeral isolated containers ensuring perfect tenant isolation.</p>
                 </li>
                 <li className="flex items-start">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 mr-3 shrink-0"></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 mt-2 mr-3 shrink-0"></div>
                     <p><strong className="text-white">Dead Letter Queues (DLQ):</strong> Any payload rejected by your destination warehouse is cached in a DLQ for 7 days for replay.</p>
                 </li>
                 <li className="flex items-start">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-2 mr-3 shrink-0"></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 mt-2 mr-3 shrink-0"></div>
                     <p><strong className="text-white">Dynamic Throttling:</strong> We dynamically pause ingestion streams if upstream sources trigger `429 Too Many Requests`.</p>
                 </li>
             </ul>
@@ -179,9 +179,9 @@ export default function DocsPage() {
                 The Monstera Cloud API is organized around REST. It accepts JSON-encoded request bodies, returns JSON-encoded responses, and uses standard HTTP response codes.
             </p>
             <ul className="space-y-4 mb-16 text-sm font-mono text-gray-300 bg-white/5 p-6 rounded-xl border border-white/10">
-                <li><span className="text-emerald-500 font-bold w-12 inline-block">GET</span> /v1/pipelines</li>
+                <li><span className="text-cyan-500 font-bold w-12 inline-block">GET</span> /v1/pipelines</li>
                 <li><span className="text-amber-500 font-bold w-12 inline-block">POST</span> /v1/pipelines/:id/run</li>
-                <li><span className="text-emerald-500 font-bold w-12 inline-block">GET</span> /v1/workspaces/metrics</li>
+                <li><span className="text-cyan-500 font-bold w-12 inline-block">GET</span> /v1/workspaces/metrics</li>
                 <li><span className="text-red-500 font-bold w-12 inline-block">DEL</span> /v1/destinations/:id</li>
             </ul>
 
@@ -196,7 +196,7 @@ export default function DocsPage() {
             </p>
 
             {/* Bottom Nav */}
-            <div className="mt-24 p-8 bg-gradient-to-r from-emerald-950/20 to-transparent border border-emerald-500/20 rounded-xl flex items-center justify-between">
+            <div className="mt-24 p-8 bg-gradient-to-r from-cyan-950/20 to-transparent border border-cyan-500/20 rounded-xl flex items-center justify-between">
                 <div>
                     <h4 className="text-white font-bold mb-1">Explore Console</h4>
                     <p className="text-sm text-gray-400">Put theory into practice. Initialize your first pipeline.</p>
