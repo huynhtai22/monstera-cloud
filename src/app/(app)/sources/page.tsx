@@ -126,7 +126,18 @@ const IntegrationCard = React.memo(function IntegrationCard({
             </div>
 
             <div className="mb-5 flex-1">
-                <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1 tracking-tight">{integration.name}</h3>
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white tracking-tight">{integration.name}</h3>
+                    {integration.status !== "available" ? (
+                        <Link
+                            href={`/sources/${integration.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs font-semibold text-cyan-700 hover:underline dark:text-cyan-300"
+                        >
+                            Details
+                        </Link>
+                    ) : null}
+                </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2">{integration.description}</p>
 
                 {integration.status === 'error' && (

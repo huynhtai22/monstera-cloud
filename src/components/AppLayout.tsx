@@ -3,6 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { DemoModeBanner } from './DemoModeBanner';
+import { KeyboardShortcutsProvider } from './KeyboardShortcutsProvider';
+import { NotificationCenter } from './NotificationCenter';
+import { UpgradeNudge } from './UpgradeNudge';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { Toaster } from 'sonner';
 
@@ -29,6 +32,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
     return (
+        <KeyboardShortcutsProvider>
         <div className="flex min-h-screen font-sans">
             {/* Mobile Header (only visible on small screens) */}
             <div className="lg:hidden fixed top-0 w-full h-16 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 z-30 flex items-center justify-between px-4">
@@ -51,7 +55,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             />
 
             <div className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC] dark:bg-slate-950 text-slate-900 dark:text-slate-200">
-                <div className="lg:hidden h-16 shrink-0"></div>
+                <div className="lg:hidden h-16 shrink-0" />
+                <div className="z-20 hidden items-center justify-end gap-3 border-b border-gray-200/80 bg-[#F8FAFC]/90 px-6 py-2 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/90 lg:sticky lg:top-0 lg:flex">
+                    <NotificationCenter />
+                </div>
+                <UpgradeNudge />
                 <main className="flex-1 overflow-x-hidden">
                     <DemoModeBanner />
                     {children}
@@ -68,5 +76,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
             <Toaster richColors closeButton position="top-center" />
         </div>
+        </KeyboardShortcutsProvider>
     );
 }

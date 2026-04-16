@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { safeDecrypt } from "@/lib/encryption";
+import { sanitizeConnectionCredentials } from "@/lib/sanitize-connection-credentials";
 
 export async function GET() {
     try {
@@ -54,43 +54,11 @@ export async function GET() {
             workspaces = [newWorkspace];
         }
 
-        // Redact/enrich connection credentials for client use.
-        // DB stores encrypted credentials; client should only receive non-sensitive metadata.
-        const sanitizeCredentials = (raw: string) => {
-            try {
-                const parsed = JSON.parse(safeDecrypt(raw ?? "{}")) as Record<string, unknown>;
-                const {
-                    spreadsheetId,
-                    shopId,
-                    advertiserIds,
-                    adAccountIds,
-                    adAccounts,
-                    customerIds,
-                    mccId,
-                    sandbox,
-                    product,
-                } = parsed as any;
-                return JSON.stringify({
-                    spreadsheetId,
-                    shopId,
-                    advertiserIds,
-                    adAccountIds,
-                    adAccounts,
-                    customerIds,
-                    mccId,
-                    sandbox,
-                    product,
-                });
-            } catch {
-                return "{}";
-            }
-        };
-
         const safeWorkspaces = workspaces.map((w: any) => ({
             ...w,
             connections: (w.connections ?? []).map((c: any) => ({
                 ...c,
-                credentials: sanitizeCredentials(c.credentials),
+                credentials: sanitizeConnectionCredentials(c.credentials),
             })),
         }));
 

@@ -4,11 +4,14 @@ import React from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import useSWR from "swr";
-import { FileText, AlertCircle, CheckCircle2, Clock, Database } from "lucide-react";
+import { toast } from "sonner";
+import { FileText, AlertCircle, CheckCircle2, Clock, Database, Bookmark } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
 import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
+
+const REPORTS_VIEW_STORAGE = "monstera_reports_view_v1";
 
 const SOURCE_CHIPS: { id: string; label: string }[] = [
     { id: "", label: "All sources" },
@@ -46,6 +49,33 @@ export function ReportsClient() {
     const sourceFilter = searchParams.get("source") ?? "";
 
     const [statusFilter, setStatusFilter] = React.useState<"all" | "success" | "error">("all");
+    const [dateFrom, setDateFrom] = React.useState("");
+    const [dateTo, setDateTo] = React.useState("");
+
+    React.useEffect(() => {
+        try {
+            const raw = localStorage.getItem(REPORTS_VIEW_STORAGE);
+            if (!raw) return;
+            const v = JSON.parse(raw) as {
+                source?: string;
+                statusFilter?: "all" | "success" | "error";
+                dateFrom?: string;
+                dateTo?: string;
+            };
+            if (v.statusFilter) setStatusFilter(v.statusFilter);
+            if (typeof v.dateFrom === "string") setDateFrom(v.dateFrom);
+            if (typeof v.dateTo === "string") setDateTo(v.dateTo);
+            if (v.source !== undefined && v.source !== (searchParams.get("source") ?? "")) {
+                const q = new URLSearchParams(searchParams.toString());
+                if (v.source) q.set("source", v.source);
+                else q.delete("source");
+                const qs = q.toString();
+                router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+            }
+        } catch {
+            /* ignore */
+        }
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps -- restore once on mount
 
     const fetcher = async (url: string) => {
         const res = await fetch(url);
@@ -70,10 +100,42 @@ export function ReportsClient() {
         pipeline: { id: string; name: string };
     }>;
 
-    const logs = React.useMemo(
+    const sourceFiltered = React.useMemo(
         () => rawLogs.filter((l) => pipelineMatchesSource(l.pipeline?.name ?? "", sourceFilter)),
         [rawLogs, sourceFilter]
     );
+
+    const logs = React.useMemo(() => {
+        let rows = sourceFiltered;
+        if (dateFrom) {
+            const from = new Date(dateFrom);
+            from.setHours(0, 0, 0, 0);
+            rows = rows.filter((l) => new Date(l.createdAt) >= from);
+        }
+        if (dateTo) {
+            const to = new Date(dateTo);
+            to.setHours(23, 59, 59, 999);
+            rows = rows.filter((l) => new Date(l.createdAt) <= to);
+        }
+        return rows;
+    }, [sourceFiltered, dateFrom, dateTo]);
+
+    const saveDefaultView = () => {
+        try {
+            localStorage.setItem(
+                REPORTS_VIEW_STORAGE,
+                JSON.stringify({
+                    source: sourceFilter,
+                    statusFilter,
+                    dateFrom,
+                    dateTo,
+                })
+            );
+            toast.success("Saved as your default Reports view on this browser.");
+        } catch {
+            toast.error("Could not save view.");
+        }
+    };
 
     const setSource = (id: string) => {
         const q = new URLSearchParams(searchParams.toString());
@@ -95,7 +157,8 @@ export function ReportsClient() {
                 <p className="max-w-2xl text-sm text-gray-500 dark:text-gray-400">
                     Audit data throughput, investigate failed syncs, and monitor your total rows.
                 </p>
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+                    <div className="flex flex-wrap gap-2">
                     {SOURCE_CHIPS.map((c) => (
                         <button
                             key={c.id || "all"}
@@ -111,6 +174,35 @@ export function ReportsClient() {
                             {c.label}
                         </button>
                     ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <label className="flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+                            From
+                            <input
+                                type="date"
+                                value={dateFrom}
+                                onChange={(e) => setDateFrom(e.target.value)}
+                                className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-800"
+                            />
+                        </label>
+                        <label className="flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+                            To
+                            <input
+                                type="date"
+                                value={dateTo}
+                                onChange={(e) => setDateTo(e.target.value)}
+                                className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-800"
+                            />
+                        </label>
+                        <button
+                            type="button"
+                            onClick={saveDefaultView}
+                            className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-100 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200 dark:hover:bg-cyan-950/50"
+                        >
+                            <Bookmark className="h-3.5 w-3.5" />
+                            Save view
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -162,9 +254,18 @@ export function ReportsClient() {
                     />
                 ) : logs.length === 0 ? (
                     <div className="py-12 text-center text-sm text-gray-500 dark:text-gray-400">
-                        No logs match this source filter.{" "}
-                        <button type="button" onClick={() => setSource("")} className="font-semibold text-cyan-700 underline dark:text-cyan-300">
-                            Clear filter
+                        No logs match the current filters.{" "}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSource("");
+                                setDateFrom("");
+                                setDateTo("");
+                                setStatusFilter("all");
+                            }}
+                            className="font-semibold text-cyan-700 underline dark:text-cyan-300"
+                        >
+                            Reset filters
                         </button>
                     </div>
                 ) : (
