@@ -15,6 +15,7 @@ import {
     RefreshCw,
 } from "lucide-react";
 import { DataStreamBackground } from "@/components/DataStreamBackground";
+import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 
 // ── Platform toggle data ──────────────────────────────────────────────────────
 
@@ -182,9 +183,20 @@ export default function SMEsSolutionPage() {
                         </Link>
                     </div>
 
-                    <p className="text-xs text-gray-600 font-medium uppercase tracking-widest">
-                        Trusted by sellers across Vietnam · Indonesia · Thailand
-                    </p>
+                    {/* Official partner logo strip */}
+                    <div className="flex flex-col items-center gap-4 pt-2">
+                        <p className="text-[10px] font-mono text-gray-600 uppercase tracking-widest">
+                            Official API Partner · Trusted by sellers across Vietnam · Indonesia · Thailand
+                        </p>
+                        <div className="flex flex-wrap items-center justify-center gap-6 opacity-50 hover:opacity-70 transition-opacity">
+                            <img src={INTEGRATION_LOGOS.tiktok}       alt="TikTok Ads"    className="h-5 w-auto brightness-0 invert" />
+                            <img src={INTEGRATION_LOGOS.meta}         alt="Meta Ads"      className="h-5 w-auto brightness-0 invert" />
+                            <img src={INTEGRATION_LOGOS.shopee}       alt="Shopee"        className="h-5 w-auto brightness-0 invert" />
+                            <img src={INTEGRATION_LOGOS.googleAds}    alt="Google Ads"    className="h-5 w-auto brightness-0 invert" />
+                            <img src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" className="h-5 w-auto brightness-0 invert" />
+                            <img src={INTEGRATION_LOGOS.looker}       alt="Looker Studio" className="h-5 w-auto brightness-0 invert" />
+                        </div>
+                    </div>
                 </div>
             </section>
 
