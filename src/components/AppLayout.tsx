@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { DemoModeBanner } from './DemoModeBanner';
@@ -9,6 +9,8 @@ import { NotificationCenter } from './NotificationCenter';
 import { UpgradeNudge } from './UpgradeNudge';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { Toaster } from 'sonner';
+
+const THEME_STORAGE_KEY = "monstera-theme";
 
 function mobileSectionTitle(pathname: string | null): string {
     if (!pathname) return "Home";
@@ -38,9 +40,26 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const mobileTitle = useMemo(() => mobileSectionTitle(pathname), [pathname]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(false);
+    /** After first client read of localStorage — avoids stripping .dark before preference is restored (e.g. layout remount on route change). */
+    const themeReady = useRef(false);
 
-    // Sync dark mode: toggle .dark on <html> while .disable-transitions avoids theme flash
+    // Restore theme on mount so navigations that remount AppLayout (e.g. / ↔ /sources) keep dark mode.
+    useLayoutEffect(() => {
+        try {
+            const s = localStorage.getItem(THEME_STORAGE_KEY);
+            const dark =
+                s === "dark" ? true : s === "light" ? false : window.matchMedia("(prefers-color-scheme: dark)").matches;
+            setIsDarkMode(dark);
+        } catch {
+            setIsDarkMode(false);
+        } finally {
+            themeReady.current = true;
+        }
+    }, []);
+
+    // Sync .dark on <html> and persist; skip until initial read above has run so we don't flash light.
     useEffect(() => {
+        if (!themeReady.current) return;
         const root = document.documentElement;
         root.classList.add("disable-transitions");
         requestAnimationFrame(() => {
@@ -49,13 +68,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             } else {
                 root.classList.remove("dark");
             }
+            try {
+                localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? "dark" : "light");
+            } catch {
+                /* ignore quota / private mode */
+            }
             requestAnimationFrame(() => {
                 root.classList.remove("disable-transitions");
             });
         });
     }, [isDarkMode]);
 
-    const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
+    const toggleDarkMode = () => setIsDarkMode((v) => !v);
 
     return (
         <KeyboardShortcutsProvider>
