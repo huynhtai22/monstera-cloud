@@ -1,5 +1,7 @@
-import type { Metadata } from "next";
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 import {
     ArrowRight,
     ArrowLeft,
@@ -13,14 +15,99 @@ import {
     RefreshCw,
 } from "lucide-react";
 import { DataStreamBackground } from "@/components/DataStreamBackground";
-import { PRODUCT_SITE_URL } from "@/lib/site-url";
 
-export const metadata: Metadata = {
-    title: "Monstera Cloud for Small Businesses & SMEs",
-    description:
-        "Stop copying ad data manually. Monstera connects TikTok Ads, Meta Ads, Shopee, and more — and pulls your numbers automatically into Google Sheets. Built for SME sellers in Vietnam and Southeast Asia.",
-    alternates: { canonical: `${PRODUCT_SITE_URL}/solutions/smes` },
-};
+// ── Platform toggle data ──────────────────────────────────────────────────────
+
+const PLATFORMS = [
+    {
+        id: "tiktok",
+        label: "TikTok Ads",
+        emoji: "🎵",
+        color: "from-pink-500 to-red-500",
+        pillActive: "bg-gradient-to-r from-pink-500/20 to-red-500/20 border-pink-500/40 text-pink-300",
+        pillInactive: "border-white/10 text-gray-500 hover:text-gray-300 hover:border-white/20",
+        accent: "text-pink-400",
+        glow: "shadow-pink-500/20",
+        description: "Your TikTok Ads campaigns — spend, impressions, CTR, and conversions. Updated hourly.",
+        filename: "TikTok_Ads_Report.xlsx",
+        headers: ["Campaign", "Spend", "Impressions", "Conv."],
+        rows: [
+            { cells: ["Spring Sale 2026",     "$1,240", "845,320", "312"], badge: "↑ 24%" },
+            { cells: ["Brand Awareness Q2",   "$880",   "1.2M",    "98"],  badge: "" },
+            { cells: ["Flash Sale Apr 15",    "$2,105", "2.6M",    "741"], badge: "↑ 61%" },
+            { cells: ["Retargeting – VIP",    "$430",   "298,100", "189"], badge: "↑ 12%" },
+            { cells: ["Interest – Fashion",   "$620",   "560,400", "143"], badge: "" },
+        ],
+        metric: { label: "Total Spend", value: "$5,275", sub: "Last 30 days" },
+        syncNote: "↻ Synced today at 08:00 AM · Next in 55 min",
+    },
+    {
+        id: "meta",
+        label: "Meta Ads",
+        emoji: "📘",
+        color: "from-blue-500 to-indigo-500",
+        pillActive: "bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border-blue-500/40 text-blue-300",
+        pillInactive: "border-white/10 text-gray-500 hover:text-gray-300 hover:border-white/20",
+        accent: "text-blue-400",
+        glow: "shadow-blue-500/20",
+        description: "Facebook & Instagram ad metrics — reach, CPM, ROAS, and conversions by ad set.",
+        filename: "Meta_Ads_Report.xlsx",
+        headers: ["Ad Set", "Spend", "Reach", "ROAS"],
+        rows: [
+            { cells: ["Lookalike 1% – VN",      "$740",  "182,400", "4.2x"], badge: "↑ 18%" },
+            { cells: ["Retargeting – Cart",      "$430",  "41,200",  "6.8x"], badge: "↑ 31%" },
+            { cells: ["Interest – Online Shop",  "$380",  "290,100", "3.1x"], badge: "" },
+            { cells: ["Instagram Stories",       "$210",  "412,800", "2.4x"], badge: "" },
+            { cells: ["Vietnam Broad 18-45",     "$680",  "510,300", "2.9x"], badge: "↑ 9%" },
+        ],
+        metric: { label: "Avg. ROAS", value: "3.88x", sub: "Across all ad sets" },
+        syncNote: "↻ Synced today at 08:00 AM · Next in 55 min",
+    },
+    {
+        id: "shopee",
+        label: "Shopee",
+        emoji: "🛍️",
+        color: "from-orange-500 to-amber-500",
+        pillActive: "bg-gradient-to-r from-orange-500/20 to-amber-500/20 border-orange-500/40 text-orange-300",
+        pillInactive: "border-white/10 text-gray-500 hover:text-gray-300 hover:border-white/20",
+        accent: "text-orange-400",
+        glow: "shadow-orange-500/20",
+        description: "Shopee orders, revenue, and top products — directly from your seller account.",
+        filename: "Shopee_Orders_Report.xlsx",
+        headers: ["Product", "Orders", "Revenue", "Rating"],
+        rows: [
+            { cells: ["Summer Dress – White",  "284",  "$4,260",  "4.9★"], badge: "🔥 Top" },
+            { cells: ["Linen Pants – Beige",   "197",  "$3,152",  "4.8★"], badge: "" },
+            { cells: ["Floral Blouse Set",     "163",  "$2,934",  "4.7★"], badge: "" },
+            { cells: ["Casual Tote Bag",       "142",  "$1,704",  "4.6★"], badge: "" },
+            { cells: ["Denim Shorts – Blue",   "118",  "$1,888",  "4.8★"], badge: "↑ 22%" },
+        ],
+        metric: { label: "Total Revenue", value: "$13,938", sub: "Last 30 days" },
+        syncNote: "↻ Synced today at 08:00 AM · Next in 55 min",
+    },
+    {
+        id: "google",
+        label: "Google Ads",
+        emoji: "🔍",
+        color: "from-emerald-500 to-teal-500",
+        pillActive: "bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border-emerald-500/40 text-emerald-300",
+        pillInactive: "border-white/10 text-gray-500 hover:text-gray-300 hover:border-white/20",
+        accent: "text-emerald-400",
+        glow: "shadow-emerald-500/20",
+        description: "Google Search, Shopping, and Performance Max — clicks, CPC, and conversions.",
+        filename: "Google_Ads_Report.xlsx",
+        headers: ["Campaign", "Spend", "Clicks", "Conv."],
+        rows: [
+            { cells: ["Brand Keywords",       "$620",  "1,940",  "143"], badge: "↑ 15%" },
+            { cells: ["PMax – Shopping",      "$980",  "3,210",  "287"], badge: "↑ 28%" },
+            { cells: ["Competitor Terms",     "$340",  "820",    "62"],  badge: "" },
+            { cells: ["Display Remarketing",  "$180",  "410",    "38"],  badge: "" },
+            { cells: ["YouTube – Awareness",  "$290",  "640",    "29"],  badge: "" },
+        ],
+        metric: { label: "Avg. CPC", value: "$0.94", sub: "Below industry avg." },
+        syncNote: "↻ Synced today at 08:00 AM · Next in 55 min",
+    },
+];
 
 const PAIN_POINTS = [
     "Copying TikTok Ads spend into Excel every morning",
@@ -30,42 +117,12 @@ const PAIN_POINTS = [
 ];
 
 const FEATURES = [
-    {
-        icon: TrendingUp,
-        color: "emerald",
-        title: "TikTok & Meta Ads in one place",
-        desc: "See spend, impressions, clicks, and conversions from all your ad accounts side by side. No switching tabs.",
-    },
-    {
-        icon: ShoppingBag,
-        color: "orange",
-        title: "Shopee order data",
-        desc: "Pull orders, revenue, and product performance from your Shopee seller account. Filter by date and status.",
-    },
-    {
-        icon: FileSpreadsheet,
-        color: "blue",
-        title: "Auto-updates Google Sheets™",
-        desc: "Install our add-on once. Your spreadsheet refreshes automatically — hourly or daily — with zero manual work.",
-    },
-    {
-        icon: BarChart3,
-        color: "purple",
-        title: "Looker Studio dashboards",
-        desc: "Connect to Looker Studio for beautiful charts. Share live reports with your team or your boss.",
-    },
-    {
-        icon: RefreshCw,
-        color: "emerald",
-        title: "Scheduled auto-sync",
-        desc: "Set it and forget it. Monstera syncs your data on a schedule so your numbers are always up to date.",
-    },
-    {
-        icon: Zap,
-        color: "yellow",
-        title: "No engineers needed",
-        desc: "Built for business owners, not developers. Connect your accounts in minutes with just a few clicks.",
-    },
+    { icon: TrendingUp,    color: "emerald", title: "TikTok & Meta Ads in one place",  desc: "See spend, impressions, clicks, and conversions from all your ad accounts side by side. No switching tabs." },
+    { icon: ShoppingBag,   color: "orange",  title: "Shopee order data",               desc: "Pull orders, revenue, and product performance from your Shopee seller account. Filter by date and status." },
+    { icon: FileSpreadsheet,color:"blue",    title: "Auto-updates Google Sheets™",     desc: "Install our add-on once. Your spreadsheet refreshes automatically — hourly or daily — with zero manual work." },
+    { icon: BarChart3,     color: "purple",  title: "Looker Studio dashboards",        desc: "Connect to Looker Studio for beautiful charts. Share live reports with your team or your boss." },
+    { icon: RefreshCw,     color: "emerald", title: "Scheduled auto-sync",             desc: "Set it and forget it. Monstera syncs your data on a schedule so your numbers are always up to date." },
+    { icon: Zap,           color: "yellow",  title: "No engineers needed",             desc: "Built for business owners, not developers. Connect your accounts in minutes with just a few clicks." },
 ];
 
 const colorMap: Record<string, string> = {
@@ -85,6 +142,8 @@ const borderMap: Record<string, string> = {
 };
 
 export default function SMEsSolutionPage() {
+    const [activePlatform, setActivePlatform] = useState(PLATFORMS[0]);
+
     return (
         <div className="flex flex-col items-center bg-[#09090b] text-slate-200 w-full selection:bg-emerald-500/30 overflow-hidden font-sans">
 
@@ -94,7 +153,6 @@ export default function SMEsSolutionPage() {
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_60%,transparent_100%)] pointer-events-none opacity-40 z-0" />
 
                 <div className="relative z-10 w-full max-w-4xl mx-auto text-center flex flex-col items-center">
-
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 text-xs font-bold tracking-widest uppercase mb-8">
                         <span className="relative flex h-2 w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -111,26 +169,19 @@ export default function SMEsSolutionPage() {
                     </h1>
 
                     <p className="text-lg md:text-xl text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-                        Monstera connects your TikTok Ads, Meta Ads, and Shopee store — and automatically delivers your numbers into Google Sheets™ or a live dashboard. No code. No manual work. Just clarity.
+                        Monstera connects your TikTok Ads, Meta Ads, Shopee, and Google Ads — and automatically delivers your numbers into Google Sheets™ or a live dashboard. No code. No manual work.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full mb-12">
-                        <Link
-                            href="/register"
-                            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 text-base font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-2xl transition-all shadow-xl shadow-emerald-500/20"
-                        >
+                        <Link href="/register" className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 text-base font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-2xl transition-all shadow-xl shadow-emerald-500/20">
                             Start Free — No Credit Card
                             <ArrowRight className="w-4 h-4" />
                         </Link>
-                        <Link
-                            href="/pricing"
-                            className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 text-base font-semibold text-white bg-white/5 border border-white/10 hover:bg-white/10 rounded-2xl transition-all"
-                        >
+                        <Link href="/pricing" className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 text-base font-semibold text-white bg-white/5 border border-white/10 hover:bg-white/10 rounded-2xl transition-all">
                             See Pricing
                         </Link>
                     </div>
 
-                    {/* Social proof strip */}
                     <p className="text-xs text-gray-600 font-medium uppercase tracking-widest">
                         Trusted by sellers across Vietnam · Indonesia · Thailand
                     </p>
@@ -148,10 +199,7 @@ export default function SMEsSolutionPage() {
                     </h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left mb-12">
                         {PAIN_POINTS.map((pain) => (
-                            <div
-                                key={pain}
-                                className="flex items-start gap-3 p-5 rounded-2xl bg-white/5 border border-white/10"
-                            >
+                            <div key={pain} className="flex items-start gap-3 p-5 rounded-2xl bg-white/5 border border-white/10">
                                 <span className="mt-0.5 text-red-400 text-lg leading-none">✗</span>
                                 <p className="text-gray-300 text-sm leading-relaxed">{pain}</p>
                             </div>
@@ -163,17 +211,105 @@ export default function SMEsSolutionPage() {
                 </div>
             </section>
 
-            {/* ── SOLUTION TRANSITION ──────────────────────────────────────── */}
-            <section className="w-full py-16 px-4 sm:px-6 lg:px-8 border-t border-white/5 bg-gradient-to-b from-[#09090b] to-[#0d1117]">
-                <div className="max-w-4xl mx-auto text-center">
-                    <h2 className="text-3xl md:text-5xl font-black text-white tracking-tight mb-6">
-                        Monstera does it for you. <br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-blue-500">
-                            Automatically.
-                        </span>
-                    </h2>
-                    <p className="text-gray-400 text-lg max-w-2xl mx-auto">
-                        Connect your platforms once. Monstera pulls your ad performance, orders, and sales data on a schedule — and pushes it straight into Google Sheets™ or a live dashboard.
+            {/* ── INTERACTIVE PLATFORM TOGGLE ──────────────────────────────── */}
+            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-t border-white/5 bg-gradient-to-b from-[#09090b] to-[#0d1117]">
+                <div className="max-w-5xl mx-auto">
+
+                    {/* Header */}
+                    <div className="text-center mb-14">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-widest mb-6">
+                            Live preview
+                        </div>
+                        <h2 className="text-3xl md:text-5xl font-black text-white tracking-tight mb-4">
+                            See exactly what you get.
+                        </h2>
+                        <p className="text-gray-400 text-lg max-w-xl mx-auto">
+                            Pick a platform and see how your data looks in Google Sheets™ — auto-synced every hour.
+                        </p>
+                    </div>
+
+                    {/* Platform pill toggles */}
+                    <div className="flex flex-wrap justify-center gap-3 mb-10">
+                        {PLATFORMS.map((p) => (
+                            <button
+                                key={p.id}
+                                onClick={() => setActivePlatform(p)}
+                                className={`
+                                    inline-flex items-center gap-2 px-5 py-2.5 rounded-full border text-sm font-semibold
+                                    transition-all duration-200 cursor-pointer
+                                    ${activePlatform.id === p.id ? p.pillActive : p.pillInactive}
+                                `}
+                            >
+                                <span>{p.emoji}</span>
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Description line */}
+                    <p className={`text-center text-sm mb-8 transition-all duration-300 ${activePlatform.accent}`}>
+                        {activePlatform.description}
+                    </p>
+
+                    {/* Data preview card */}
+                    <div className={`rounded-2xl bg-[#09090b] border border-white/10 overflow-hidden shadow-2xl transition-all duration-300 ${activePlatform.glow} shadow-xl`}>
+                        {/* Window chrome */}
+                        <div className="bg-[#18181b] px-4 py-3 flex items-center gap-2 border-b border-white/5">
+                            <div className="w-3 h-3 rounded-full bg-red-500/80" />
+                            <div className="w-3 h-3 rounded-full bg-amber-500/80" />
+                            <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
+                            <span className="ml-2 text-xs text-gray-500 font-mono">{activePlatform.filename} — auto-synced</span>
+                        </div>
+
+                        <div className="p-6">
+                            {/* Metric highlight */}
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-1">{activePlatform.metric.label}</p>
+                                    <p className={`text-3xl font-black ${activePlatform.accent}`}>{activePlatform.metric.value}</p>
+                                    <p className="text-xs text-gray-600 mt-1">{activePlatform.metric.sub}</p>
+                                </div>
+                                <div className={`px-3 py-1 rounded-full text-xs font-bold border ${activePlatform.pillActive}`}>
+                                    {activePlatform.emoji} {activePlatform.label}
+                                </div>
+                            </div>
+
+                            {/* Table */}
+                            <div className="font-mono text-xs">
+                                <div className="grid grid-cols-4 gap-3 text-gray-500 font-bold text-[10px] uppercase tracking-wider border-b border-white/5 pb-2 mb-1">
+                                    {activePlatform.headers.map((h) => (
+                                        <span key={h}>{h}</span>
+                                    ))}
+                                </div>
+                                {activePlatform.rows.map((row, i) => (
+                                    <div
+                                        key={i}
+                                        className="grid grid-cols-4 gap-3 text-[11px] py-2.5 border-b border-white/5 items-center hover:bg-white/[0.02] transition-colors"
+                                    >
+                                        <span className="text-gray-200 truncate flex items-center gap-1.5">
+                                            {row.cells[0]}
+                                            {row.badge && (
+                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${activePlatform.pillActive}`}>
+                                                    {row.badge}
+                                                </span>
+                                            )}
+                                        </span>
+                                        <span className={activePlatform.accent}>{row.cells[1]}</span>
+                                        <span className="text-blue-400">{row.cells[2]}</span>
+                                        <span className="text-purple-400">{row.cells[3]}</span>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Sync footer */}
+                            <p className="mt-4 text-[10px] text-gray-600 font-mono">
+                                {activePlatform.syncNote}
+                            </p>
+                        </div>
+                    </div>
+
+                    <p className="text-center text-xs text-gray-600 mt-6">
+                        This data goes directly into your Google Sheets™ — or use it in Looker Studio for live dashboards.
                     </p>
                 </div>
             </section>
@@ -181,14 +317,17 @@ export default function SMEsSolutionPage() {
             {/* ── FEATURES GRID ────────────────────────────────────────────── */}
             <section className="w-full py-24 px-4 sm:px-6 lg:px-8 bg-[#0d1117]">
                 <div className="max-w-6xl mx-auto">
+                    <div className="text-center mb-14">
+                        <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-4">
+                            Everything your business needs.
+                        </h2>
+                        <p className="text-gray-400 max-w-xl mx-auto">One tool. All your platforms. Zero manual work.</p>
+                    </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {FEATURES.map((f) => {
                             const Icon = f.icon;
                             return (
-                                <div
-                                    key={f.title}
-                                    className={`p-8 rounded-3xl bg-white/5 border border-white/10 ${borderMap[f.color]} transition-all group`}
-                                >
+                                <div key={f.title} className={`p-8 rounded-3xl bg-white/5 border border-white/10 ${borderMap[f.color]} transition-all group`}>
                                     <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 transition-colors ${colorMap[f.color]}`}>
                                         <Icon className="w-6 h-6" />
                                     </div>
@@ -210,33 +349,14 @@ export default function SMEsSolutionPage() {
                         </h2>
                         <p className="text-gray-400">No IT team. No code. No meetings.</p>
                     </div>
-
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                         {[
-                            {
-                                step: "01",
-                                title: "Connect your platforms",
-                                desc: "Sign in with TikTok Ads, Meta Ads, or Shopee. Takes 2 minutes. We handle the OAuth — you just click Authorize.",
-                                color: "emerald",
-                            },
-                            {
-                                step: "02",
-                                title: "Choose your destination",
-                                desc: "Send data to Google Sheets™ with our add-on, or build a live Looker Studio dashboard with our connector.",
-                                color: "blue",
-                            },
-                            {
-                                step: "03",
-                                title: "Set your schedule",
-                                desc: "Pick hourly or daily sync. Monstera runs in the background — your data is always fresh when you open your sheet.",
-                                color: "purple",
-                            },
+                            { step: "01", color: "emerald", title: "Connect your platforms", desc: "Sign in with TikTok Ads, Meta Ads, Shopee, or Google Ads. Takes 2 minutes. We handle the OAuth — you just click Authorize." },
+                            { step: "02", color: "blue",    title: "Choose your destination", desc: "Send data to Google Sheets™ with our add-on, or build a live Looker Studio dashboard with our connector." },
+                            { step: "03", color: "purple",  title: "Set your schedule", desc: "Pick hourly or daily sync. Monstera runs in the background — your data is always fresh when you open your sheet." },
                         ].map((item) => (
                             <div key={item.step} className="flex flex-col items-start">
-                                <div className={`text-5xl font-black mb-4 ${
-                                    item.color === "emerald" ? "text-emerald-500/40" :
-                                    item.color === "blue" ? "text-blue-500/40" : "text-purple-500/40"
-                                }`}>
+                                <div className={`text-5xl font-black mb-4 ${item.color === "emerald" ? "text-emerald-500/40" : item.color === "blue" ? "text-blue-500/40" : "text-purple-500/40"}`}>
                                     {item.step}
                                 </div>
                                 <h3 className="text-xl font-bold text-white mb-3">{item.title}</h3>
@@ -255,16 +375,16 @@ export default function SMEsSolutionPage() {
                             What you get
                         </div>
                         <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-8">
-                            Your full ad picture. Every morning.
+                            Your full picture. Every morning.
                         </h2>
                         <ul className="space-y-4">
                             {[
                                 "TikTok Ads: spend, impressions, clicks, conversions by campaign",
                                 "Meta Ads: reach, CPM, ROAS broken down by ad set",
                                 "Shopee: orders, revenue, and top products by date",
+                                "Google Ads: CPC, clicks, conversions by campaign",
                                 "Google Sheets™ auto-updated — no manual export needed",
-                                "Looker Studio charts ready to share with your team",
-                                "All data in one workspace — not scattered across 5 tabs",
+                                "All platforms in one workspace — not scattered across 5 tabs",
                             ].map((item) => (
                                 <li key={item} className="flex items-start gap-3">
                                     <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
@@ -274,39 +394,22 @@ export default function SMEsSolutionPage() {
                         </ul>
                     </div>
 
-                    {/* Mock terminal / sheet preview */}
-                    <div className="rounded-2xl bg-[#09090b] border border-white/10 overflow-hidden shadow-2xl">
-                        <div className="bg-[#18181b] px-4 py-3 flex items-center gap-2 border-b border-white/5">
-                            <div className="w-3 h-3 rounded-full bg-red-500/80" />
-                            <div className="w-3 h-3 rounded-full bg-amber-500/80" />
-                            <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
-                            <span className="ml-2 text-xs text-gray-500 font-mono">Weekly_Ad_Report.xlsx — auto-synced</span>
-                        </div>
-                        <div className="p-6 font-mono text-xs text-gray-300 space-y-3">
-                            <div className="grid grid-cols-4 gap-2 text-gray-500 font-bold text-[10px] uppercase tracking-wider border-b border-white/5 pb-2">
-                                <span>Campaign</span>
-                                <span>Spend</span>
-                                <span>Clicks</span>
-                                <span>Conv.</span>
+                    {/* Mini stat cards */}
+                    <div className="grid grid-cols-2 gap-4">
+                        {[
+                            { label: "Hours saved per week",  value: "8–10h",  color: "emerald", sub: "On manual reporting" },
+                            { label: "Platforms connected",   value: "4+",     color: "blue",    sub: "TikTok, Meta, Shopee, Google" },
+                            { label: "Sync frequency",        value: "Hourly", color: "purple",  sub: "Pro plan" },
+                            { label: "Setup time",            value: "< 2min", color: "orange",  sub: "No engineers needed" },
+                        ].map((stat) => (
+                            <div key={stat.label} className="p-6 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-1">
+                                <p className="text-xs text-gray-500 font-medium">{stat.label}</p>
+                                <p className={`text-2xl font-black ${stat.color === "emerald" ? "text-emerald-400" : stat.color === "blue" ? "text-blue-400" : stat.color === "purple" ? "text-purple-400" : "text-orange-400"}`}>
+                                    {stat.value}
+                                </p>
+                                <p className="text-xs text-gray-600">{stat.sub}</p>
                             </div>
-                            {[
-                                ["Spring Sale 2026", "$1,240", "8,430", "312"],
-                                ["Brand Awareness Q2", "$880", "4,210", "98"],
-                                ["Flash Sale Apr 15", "$2,105", "14,820", "741"],
-                                ["Meta – Retargeting", "$430", "2,180", "189"],
-                                ["Google Search", "$620", "1,940", "143"],
-                            ].map(([name, spend, clicks, conv]) => (
-                                <div key={name} className="grid grid-cols-4 gap-2 text-[11px] py-1 border-b border-white/5">
-                                    <span className="text-gray-200 truncate">{name}</span>
-                                    <span className="text-emerald-400">{spend}</span>
-                                    <span className="text-blue-400">{clicks}</span>
-                                    <span className="text-purple-400">{conv}</span>
-                                </div>
-                            ))}
-                            <div className="pt-2 text-emerald-500/60 text-[10px]">
-                                ↻ Last synced: Today 08:00 AM · Next sync in 55 min
-                            </div>
-                        </div>
+                        ))}
                     </div>
                 </div>
             </section>
@@ -322,10 +425,7 @@ export default function SMEsSolutionPage() {
                             <p className="text-gray-400 mb-10 max-w-md mx-auto">
                                 Connect your first data source in under 2 minutes. Free plan available — no credit card required.
                             </p>
-                            <Link
-                                href="/register"
-                                className="inline-flex items-center gap-2 px-10 py-5 text-lg font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-3xl shadow-2xl shadow-emerald-500/20 transition-all"
-                            >
+                            <Link href="/register" className="inline-flex items-center gap-2 px-10 py-5 text-lg font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-3xl shadow-2xl shadow-emerald-500/20 transition-all">
                                 Start Free Today
                                 <ArrowRight className="w-5 h-5" />
                             </Link>
