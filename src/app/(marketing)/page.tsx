@@ -105,14 +105,6 @@ export default function MarketingPage() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
                     {/* Headline */}
                     <div className="max-w-3xl mx-auto text-center mb-14">
-                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-gray-400 text-[10px] font-mono uppercase tracking-widest mb-10">
-                            <span className="relative flex h-1.5 w-1.5">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500" />
-                            </span>
-                            v1.0 · Now Live in Southeast Asia
-                        </div>
-
                         <h1 className="text-5xl md:text-[4.5rem] font-black text-white tracking-tight leading-[1.05] mb-6">
                             One data layer.
                             <br />
