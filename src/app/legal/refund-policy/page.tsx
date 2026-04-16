@@ -35,7 +35,7 @@ export default function RefundPolicyPage() {
             or by contacting support. Cancellation stops future charges; it does{" "}
             <strong>not</strong> refund amounts already paid for the current billing period. You
             retain access through the end of the period you already paid for, as described in our{" "}
-            <Link href="/legal/terms-of-service" className="text-emerald-600 hover:underline">
+            <Link href="/legal/terms-of-service" className="text-cyan-600 hover:underline">
               Terms of Service
             </Link>
             .
@@ -49,11 +49,13 @@ export default function RefundPolicyPage() {
           <p className="mb-4 text-slate-600 dark:text-slate-400">
             If you believe you were charged in error (for example, a duplicate charge for the same
             invoice), contact us at{" "}
-            <a href="mailto:billing@monsteracloud.com" className="text-emerald-600 hover:underline">
+            <a href="mailto:billing@monsteracloud.com" className="text-cyan-600 hover:underline">
               billing@monsteracloud.com
             </a>{" "}
             within <strong>14 days</strong> of the charge with your account email and transaction
             details. We will review legitimate processor or duplicate-billing issues in good faith.
+            Marketing copy that mentions a &quot;14-day&quot; window refers to this review process
+            for billing errors — not a general money-back guarantee on subscriptions.
             This does not change the general rule that subscription fees are otherwise
             non-refundable.
           </p>
@@ -76,7 +78,7 @@ export default function RefundPolicyPage() {
           </h2>
           <p className="text-slate-600 dark:text-slate-400">
             Questions about this policy:{" "}
-            <a href="mailto:billing@monsteracloud.com" className="text-emerald-600 hover:underline">
+            <a href="mailto:billing@monsteracloud.com" className="text-cyan-600 hover:underline">
               billing@monsteracloud.com
             </a>
           </p>
@@ -84,7 +86,7 @@ export default function RefundPolicyPage() {
 
         <p className="text-xs text-slate-500 dark:text-slate-500 not-prose">
           This page is provided for transparency and for payment-provider verification. The{" "}
-          <Link href="/legal/terms-of-service" className="text-emerald-600 hover:underline">
+          <Link href="/legal/terms-of-service" className="text-cyan-600 hover:underline">
             Terms of Service
           </Link>{" "}
           govern your use of Monstera Cloud.

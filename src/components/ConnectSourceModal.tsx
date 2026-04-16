@@ -232,46 +232,40 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
         };
     }, []);
 
-    const handleKeyDown = useCallback(
-        (e: React.KeyboardEvent) => {
-            if (e.key === 'Escape' && !isProcessing) {
-                handleClose();
-                return;
-            }
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Escape' && !isProcessing) {
+            handleClose();
+            return;
+        }
 
-            // Focus trap
-            if (e.key === 'Tab' && dialogRef.current) {
-                const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
-                    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
-                );
-                if (focusable.length === 0) return;
-                const first = focusable[0];
-                const last = focusable[focusable.length - 1];
+        // Focus trap
+        if (e.key === 'Tab' && dialogRef.current) {
+            const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+                'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+            );
+            if (focusable.length === 0) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
 
-                if (e.shiftKey) {
-                    if (document.activeElement === first) {
-                        e.preventDefault();
-                        last.focus();
-                    }
-                } else {
-                    if (document.activeElement === last) {
-                        e.preventDefault();
-                        first.focus();
-                    }
+            if (e.shiftKey) {
+                if (document.activeElement === first) {
+                    e.preventDefault();
+                    last.focus();
+                }
+            } else {
+                if (document.activeElement === last) {
+                    e.preventDefault();
+                    first.focus();
                 }
             }
-        },
-        [isProcessing]
-    );
+        }
+    };
 
     return (
-        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-        <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 dark:bg-slate-800/60 backdrop-blur-sm animate-in fade-in duration-200"
-            onKeyDown={handleKeyDown}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 dark:bg-slate-800/60 backdrop-blur-sm animate-in fade-in duration-200">
             <div
                 ref={dialogRef}
+                onKeyDown={handleKeyDown}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="connect-source-modal-title"

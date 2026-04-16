@@ -3,6 +3,10 @@ import { tiktokClient } from "@/lib/tiktok";
 import prisma from "@/lib/prisma";
 import { isTikTokShopConnectEnabled } from "@/lib/integration-flags";
 import { encrypt } from "@/lib/encryption";
+import {
+  buildConsoleOauthSuccessUrl,
+  ensureDefaultPipelineAfterSourceConnect,
+} from "@/lib/oauth-pipeline";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
@@ -36,8 +40,7 @@ export async function GET(request: Request) {
        return NextResponse.json({ error: "Invalid state/workspace session" }, { status: 400 });
     }
 
-    // 3. Store the connection in the database
-    await prisma.connection.create({
+    const newConn = await prisma.connection.create({
       data: {
         workspaceId,
         name: `TikTok Shop (${tokenData.seller_name})`,
@@ -56,8 +59,20 @@ export async function GET(request: Request) {
       },
     });
 
-    // 4. Redirect back to console (data sources)
-    return NextResponse.redirect(new URL("/console", publicBaseUrl(request)));
+    const base = publicBaseUrl(request);
+    const ws = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { ownerId: true },
+    });
+    const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
+      workspaceId,
+      sourceConnectionId: newConn.id,
+      actingUserId: ws?.ownerId ?? "",
+    });
+
+    return NextResponse.redirect(
+      buildConsoleOauthSuccessUrl(base, "tiktok_shop", pipelineResult)
+    );
   } catch (error: any) {
     console.error("[TIKTOK_AUTH_ERROR]", error);
     return NextResponse.json({ error: error.message || "Failed to authenticate with TikTok" }, { status: 500 });

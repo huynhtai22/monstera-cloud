@@ -41,7 +41,7 @@ export function IntegrationPageLayout({
       )}
     >
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute right-[10%] top-0 h-[40%] w-[40%] rounded-full bg-emerald-200/15 blur-[120px] dark:bg-emerald-900/20" />
+        <div className="absolute right-[10%] top-0 h-[40%] w-[40%] rounded-full bg-cyan-200/15 blur-[120px] dark:bg-cyan-900/20" />
         <div className="absolute bottom-[10%] left-0 h-[50%] w-[40%] rounded-full bg-slate-200/20 blur-[120px] dark:bg-slate-800/30" />
       </div>
 

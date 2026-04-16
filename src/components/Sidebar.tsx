@@ -121,7 +121,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
             <div className="px-4 py-5 border-b border-gray-200/60 dark:border-slate-800 relative z-20" ref={workspaceRef}>
                 <button
                     onClick={() => setIsWorkspaceOpen(!isWorkspaceOpen)}
-                    className="flex items-center justify-between w-full px-3 py-2 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm hover:border-emerald-500/30 dark:hover:border-emerald-500/50 hover:shadow-md transition-all group"
+                    className="flex items-center justify-between w-full px-3 py-2 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm hover:border-cyan-500/30 dark:hover:border-cyan-500/50 hover:shadow-md transition-all group"
                 >
                     <div className="flex items-center">
                         <div className="mr-3 scale-95 origin-left">
@@ -147,7 +147,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                             </div>
                         </div>
                     </div>
-                    <ChevronDown className={`w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-emerald-600 transition-transform ${isWorkspaceOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-cyan-600 transition-transform ${isWorkspaceOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* Workspace Dropdown */}
@@ -165,12 +165,12 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                                 className="flex items-center justify-between w-full px-2 py-2 text-sm font-medium text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg transition-colors"
                             >
                                 <div className="flex items-center">
-                                    <div className="w-6 h-6 rounded bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 flex items-center justify-center mr-2 text-xs font-bold">
+                                    <div className="w-6 h-6 rounded bg-cyan-100 dark:bg-cyan-900/50 text-cyan-700 dark:text-cyan-400 flex items-center justify-center mr-2 text-xs font-bold">
                                         {ws.name.charAt(0).toUpperCase()}
                                     </div>
                                     {ws.name}
                                 </div>
-                                {activeWorkspaceId === ws.id && <Check className="w-4 h-4 text-emerald-600" />}
+                                {activeWorkspaceId === ws.id && <Check className="w-4 h-4 text-cyan-600" />}
                             </button>
                         ))}
 
@@ -200,11 +200,11 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                                         key={item.href}
                                         href={item.href}
                                         className={`group flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive
-                                            ? "bg-emerald-50 text-emerald-800"
+                                            ? "bg-cyan-50 text-cyan-800"
                                             : "text-gray-600 hover:bg-gray-50/80 hover:text-gray-900"
                                             }`}
                                     >
-                                        <item.icon className={`w-4 h-4 mr-3 transition-colors ${isActive ? "text-emerald-600" : "text-gray-400 group-hover:text-gray-500"}`} />
+                                        <item.icon className={`w-4 h-4 mr-3 transition-colors ${isActive ? "text-cyan-600" : "text-gray-400 group-hover:text-gray-500"}`} />
                                         {item.name}
                                         {(item as any).comingSoon && (
                                             <span className="ml-auto text-[9px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span>

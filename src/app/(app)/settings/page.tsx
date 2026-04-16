@@ -431,9 +431,9 @@ export default function SettingsPage() {
                     <nav className="space-y-1">
                         <button
                             onClick={() => setActiveTab('workspace')}
-                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'workspace' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
+                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'workspace' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-cyan-700 dark:text-cyan-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
                         >
-                            <Building2 className={`w-4 h-4 mr-3 ${activeTab === 'workspace' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
+                            <Building2 className={`w-4 h-4 mr-3 ${activeTab === 'workspace' ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-400'}`} />
                             Workspace
                         </button>
                         <button
@@ -450,30 +450,30 @@ export default function SettingsPage() {
                         </button>
                         <button
                             onClick={() => setActiveTab('clients')}
-                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'clients' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
+                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'clients' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-cyan-700 dark:text-cyan-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
                         >
-                            <Briefcase className={`w-4 h-4 mr-3 ${activeTab === 'clients' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
+                            <Briefcase className={`w-4 h-4 mr-3 ${activeTab === 'clients' ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-400'}`} />
                             Clients
                         </button>
                         <button
                             onClick={() => setActiveTab('team')}
-                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'team' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
+                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'team' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-cyan-700 dark:text-cyan-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
                         >
-                            <Users className={`w-4 h-4 mr-3 ${activeTab === 'team' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
+                            <Users className={`w-4 h-4 mr-3 ${activeTab === 'team' ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-400'}`} />
                             Team
                         </button>
                         <button
                             onClick={() => setActiveTab('billing')}
-                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'billing' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
+                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'billing' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-cyan-700 dark:text-cyan-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
                         >
-                            <CreditCard className={`w-4 h-4 mr-3 ${activeTab === 'billing' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
+                            <CreditCard className={`w-4 h-4 mr-3 ${activeTab === 'billing' ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-400'}`} />
                             Billing
                         </button>
                         <button
                             onClick={() => setActiveTab('api')}
-                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'api' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-emerald-700 dark:text-emerald-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
+                            className={`flex items-center w-full px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === 'api' ? 'bg-white dark:bg-slate-800 shadow-sm border border-gray-200/60 dark:border-slate-700 text-cyan-700 dark:text-cyan-400' : 'text-gray-600 dark:text-gray-400 hover:bg-white/50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent'}`}
                         >
-                            <KeyRound className={`w-4 h-4 mr-3 ${activeTab === 'api' ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
+                            <KeyRound className={`w-4 h-4 mr-3 ${activeTab === 'api' ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-400'}`} />
                             API Keys
                         </button>
                     </nav>
@@ -495,12 +495,12 @@ export default function SettingsPage() {
                                             type="text"
                                             defaultValue={activeWorkspace?.name || ''}
                                             placeholder="Your workspace name"
-                                            className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 block p-2.5 shadow-sm"
+                                            className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white text-sm rounded-xl focus:ring-cyan-500 focus:border-cyan-500 block p-2.5 shadow-sm"
                                         />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Workspace URL</label>
-                                        <div className="flex bg-white rounded-xl shadow-sm border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500">
+                                        <div className="flex bg-white rounded-xl shadow-sm border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-cyan-500 focus-within:border-cyan-500">
                                             <span className="inline-flex items-center px-3 text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800 border-r border-gray-200 dark:border-slate-700">
                                                 monsteracloud.com/
                                             </span>
@@ -515,9 +515,9 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
-                            <div className="rounded-2xl border border-emerald-100/90 bg-emerald-50/50 dark:bg-emerald-950/25 dark:border-emerald-900/45 p-5 sm:p-6">
+                            <div className="rounded-2xl border border-cyan-100/90 bg-cyan-50/50 dark:bg-cyan-950/25 dark:border-cyan-900/45 p-5 sm:p-6">
                                 <div className="flex items-start gap-3">
-                                    <MessageCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                                    <MessageCircle className="w-5 h-5 text-cyan-600 dark:text-cyan-400 shrink-0 mt-0.5" />
                                     <div className="min-w-0 flex-1 space-y-3">
                                         <div>
                                             <h3 className="text-base font-bold text-gray-900 dark:text-white">
@@ -541,7 +541,7 @@ export default function SettingsPage() {
                                                 value={telegramChatDraft}
                                                 onChange={(e) => setTelegramChatDraft(e.target.value)}
                                                 placeholder="e.g. -1001234567890"
-                                                className="w-full max-w-md bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 p-2.5 shadow-sm font-mono"
+                                                className="w-full max-w-md bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white text-sm rounded-xl focus:ring-cyan-500 focus:border-cyan-500 p-2.5 shadow-sm font-mono"
                                             />
                                         </div>
                                         <div className="flex flex-wrap gap-2">
@@ -549,7 +549,7 @@ export default function SettingsPage() {
                                                 type="button"
                                                 onClick={() => void saveTelegramChat()}
                                                 disabled={telegramSaving}
-                                                className="inline-flex items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
+                                                className="inline-flex items-center px-4 py-2 bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm font-semibold rounded-xl transition-colors"
                                             >
                                                 {telegramSaving ? "Saving…" : "Save alert settings"}
                                             </button>
@@ -604,7 +604,7 @@ export default function SettingsPage() {
                                                 onClick={() => void saveDemoSettings({ master: !demoMaster })}
                                                 disabled={demoSaving}
                                                 className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${
-                                                    demoMaster ? "bg-emerald-500" : "bg-gray-200 dark:bg-slate-600"
+                                                    demoMaster ? "bg-cyan-500" : "bg-gray-200 dark:bg-slate-600"
                                                 } disabled:opacity-50`}
                                             >
                                                 <span
@@ -663,7 +663,7 @@ export default function SettingsPage() {
                                                         onClick={() => row.set(!row.on)}
                                                         disabled={!demoMaster || demoSaving}
                                                         className={`relative h-8 w-14 shrink-0 rounded-full transition-colors self-end sm:self-auto ${
-                                                            row.on ? "bg-emerald-500" : "bg-gray-200 dark:bg-slate-600"
+                                                            row.on ? "bg-cyan-500" : "bg-gray-200 dark:bg-slate-600"
                                                         }`}
                                                     >
                                                         <span
@@ -723,7 +723,7 @@ export default function SettingsPage() {
                                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Configure how long Monstera stores temporary sync logs.</p>
 
                                 <div className="max-w-lg">
-                                    <select className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white text-sm rounded-xl focus:ring-emerald-500 focus:border-emerald-500 block p-2.5 shadow-sm">
+                                    <select className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white text-sm rounded-xl focus:ring-cyan-500 focus:border-cyan-500 block p-2.5 shadow-sm">
                                         <option>7 Days (Default)</option>
                                         <option>30 Days</option>
                                         <option>90 Days</option>
@@ -753,12 +753,12 @@ export default function SettingsPage() {
                                         value={newClientName}
                                         onChange={(e) => setNewClientName(e.target.value)}
                                         placeholder="Client name (e.g. Nike VN)"
-                                        className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white text-xs rounded-xl p-2 w-48 shadow-sm focus:ring-emerald-500 focus:border-emerald-500"
+                                        className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white text-xs rounded-xl p-2 w-48 shadow-sm focus:ring-cyan-500 focus:border-cyan-500"
                                     />
                                     <button 
                                         onClick={handleAddClient}
                                         disabled={isAddingClient || !newClientName.trim()}
-                                        className="flex items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-colors disabled:opacity-50">
+                                        className="flex items-center px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold rounded-xl shadow-sm transition-colors disabled:opacity-50">
                                         <Plus className="w-3.5 h-3.5 mr-1.5" />
                                         {isAddingClient ? "Adding..." : "Add Client"}
                                     </button>
@@ -788,14 +788,14 @@ export default function SettingsPage() {
                                                             type="text"
                                                             value={editClientNameValue}
                                                             onChange={(e) => setEditClientNameValue(e.target.value)}
-                                                            className="w-full bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900 text-gray-900 dark:text-white text-sm rounded-lg px-2 py-1.5"
+                                                            className="w-full bg-white dark:bg-slate-900 border border-cyan-200 dark:border-cyan-900 text-gray-900 dark:text-white text-sm rounded-lg px-2 py-1.5"
                                                             autoFocus
                                                         />
                                                         <div className="flex gap-2 shrink-0">
                                                             <button
                                                                 type="button"
                                                                 onClick={() => void handleRenameClient(client.id)}
-                                                                className="text-xs font-semibold text-emerald-600 hover:underline"
+                                                                className="text-xs font-semibold text-cyan-600 hover:underline"
                                                             >
                                                                 Save
                                                             </button>
@@ -836,7 +836,7 @@ export default function SettingsPage() {
                                                                 setEditingClientId(client.id);
                                                                 setEditClientNameValue(client.name);
                                                             }}
-                                                            className="p-2 text-gray-500 hover:text-emerald-600 transition-colors rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+                                                            className="p-2 text-gray-500 hover:text-cyan-600 transition-colors rounded-lg hover:bg-cyan-50 dark:hover:bg-cyan-950/40"
                                                         >
                                                             <Pencil className="w-4 h-4" />
                                                         </button>
@@ -900,7 +900,7 @@ export default function SettingsPage() {
                                                     </div>
                                                     <select 
                                                         onChange={(e) => handleAssignClient(conn.id, e.target.value)}
-                                                        className="text-[10px] font-bold bg-gray-50 border-none rounded-lg focus:ring-emerald-500"
+                                                        className="text-[10px] font-bold bg-gray-50 border-none rounded-lg focus:ring-cyan-500"
                                                         defaultValue=""
                                                     >
                                                         <option value="" disabled>Select Client...</option>
@@ -986,14 +986,14 @@ export default function SettingsPage() {
                                 <p className="text-sm text-gray-500 dark:text-gray-400">You are currently on the <span className="font-semibold capitalize">{userPlan}</span> plan.</p>
                             </div>
 
-                            <div className="bg-gradient-to-br from-emerald-900 to-emerald-800 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-emerald-900/10">
+                            <div className="bg-gradient-to-br from-cyan-900 to-cyan-800 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl shadow-cyan-900/10">
                                 <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
 
                                 <div className="relative z-10">
                                     <div className="inline-flex items-center px-3 py-1 bg-white/10 rounded-full text-xs font-semibold tracking-wider uppercase mb-4 border border-white/20">
                                         {userPlan} Plan
                                     </div>
-                                    <p className="text-emerald-200 text-sm max-w-sm mb-4">
+                                    <p className="text-cyan-200 text-sm max-w-sm mb-4">
                                         {userPlan === 'free'
                                             ? 'Upgrade to unlock more connections and faster refresh rates.'
                                             : `You have access to all ${userPlan}-tier features including TikTok Ads reports and Shopee data.`}
@@ -1036,16 +1036,16 @@ export default function SettingsPage() {
                             </div>
 
                             {newlyGeneratedKey && (
-                                <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-5 mb-6">
-                                    <h4 className="font-semibold text-emerald-900 text-sm mb-2 flex items-center">
-                                        <CheckCircle2 className="w-4 h-4 mr-1 text-emerald-600" /> Key Generated Successfully
+                                <div className="bg-cyan-50/50 border border-cyan-200 rounded-2xl p-5 mb-6">
+                                    <h4 className="font-semibold text-cyan-900 text-sm mb-2 flex items-center">
+                                        <CheckCircle2 className="w-4 h-4 mr-1 text-cyan-600" /> Key Generated Successfully
                                     </h4>
-                                    <p className="text-sm text-emerald-700 mb-3">Please copy this value now. You won't be able to see it again.</p>
+                                    <p className="text-sm text-cyan-700 mb-3">Please copy this value now. You won't be able to see it again.</p>
                                     <div className="flex items-center space-x-2">
-                                        <code className="flex-1 bg-white border border-emerald-100 px-3 py-2 rounded-lg text-sm text-emerald-900 font-mono select-all">
+                                        <code className="flex-1 bg-white border border-cyan-100 px-3 py-2 rounded-lg text-sm text-cyan-900 font-mono select-all">
                                             {newlyGeneratedKey}
                                         </code>
-                                        <button onClick={copyToClipboard} className="p-2 border border-emerald-200 bg-white rounded-lg text-emerald-700 hover:bg-emerald-100 transition-colors">
+                                        <button onClick={copyToClipboard} className="p-2 border border-cyan-200 bg-white rounded-lg text-cyan-700 hover:bg-cyan-100 transition-colors">
                                             <Copy className="w-4 h-4" />
                                         </button>
                                     </div>

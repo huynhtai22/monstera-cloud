@@ -145,10 +145,10 @@ export default function DataExplorerPage() {
             {!datasetId ? (
                 // Upload Zone
                 <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl m-4 p-8 text-center relative overflow-hidden group">
-                    <div className="absolute inset-0 bg-gradient-to-b from-emerald-50/20 to-transparent pointer-events-none" />
+                    <div className="absolute inset-0 bg-gradient-to-b from-cyan-50/20 to-transparent pointer-events-none" />
 
-                    <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mb-6 border-4 border-emerald-100 group-hover:scale-110 transition-transform duration-500">
-                        <UploadCloud className="w-10 h-10 text-emerald-500" />
+                    <div className="w-20 h-20 bg-cyan-50 rounded-full flex items-center justify-center mb-6 border-4 border-cyan-100 group-hover:scale-110 transition-transform duration-500">
+                        <UploadCloud className="w-10 h-10 text-cyan-500" />
                     </div>
 
                     <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Upload Raw Data</h3>
@@ -165,9 +165,9 @@ export default function DataExplorerPage() {
                     />
 
                     {file && (
-                        <div className="mb-8 p-4 bg-white dark:bg-slate-800 border border-emerald-100 rounded-xl flex items-center justify-between min-w-[300px] shadow-sm animate-in zoom-in-95">
+                        <div className="mb-8 p-4 bg-white dark:bg-slate-800 border border-cyan-100 rounded-xl flex items-center justify-between min-w-[300px] shadow-sm animate-in zoom-in-95">
                             <div className="flex items-center">
-                                <Table className="w-5 h-5 text-emerald-500 mr-3" />
+                                <Table className="w-5 h-5 text-cyan-500 mr-3" />
                                 <div className="text-left">
                                     <p className="text-sm font-semibold text-gray-900 dark:text-white truncate max-w-[200px]">{file.name}</p>
                                     <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">{(file.size / (1024 * 1024)).toFixed(2)} MB • Ready for ingestion</p>
@@ -190,7 +190,7 @@ export default function DataExplorerPage() {
                                 onClick={handleUpload}
                                 disabled={isUploading}
                                 loading={isUploading}
-                                className="rounded-xl px-6 py-3 text-base font-bold shadow-md shadow-emerald-500/20"
+                                className="rounded-xl px-6 py-3 text-base font-bold shadow-md shadow-cyan-500/20"
                             >
                                 {isUploading ? "Ingesting to Lake..." : (
                                     <>
@@ -214,7 +214,7 @@ export default function DataExplorerPage() {
                     {/* Active Dataset Bar */}
                     <div className="bg-gray-50 dark:bg-slate-800/80 border-b border-gray-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between shrink-0">
                         <div className="flex items-center space-x-3">
-                            <div className="p-1.5 bg-emerald-100 rounded text-emerald-700"><Database className="w-4 h-4" /></div>
+                            <div className="p-1.5 bg-cyan-100 rounded text-cyan-700"><Database className="w-4 h-4" /></div>
                             <div>
                                 <p className="text-sm font-bold text-gray-900 dark:text-white">Active Datalake Node</p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 flex items-center">
@@ -222,8 +222,8 @@ export default function DataExplorerPage() {
                                 </p>
                             </div>
                         </div>
-                        <div className="flex items-center text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-100 shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
+                        <div className="flex items-center text-xs font-semibold text-cyan-600 bg-cyan-50 px-2.5 py-1 rounded border border-cyan-100 shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 mr-1.5 animate-pulse"></span>
                             Live Connection
                         </div>
                     </div>
@@ -249,7 +249,7 @@ export default function DataExplorerPage() {
                         </div>
                     ) : (
                         <div className="flex-1 flex items-center justify-center">
-                            <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+                            <Loader2 className="w-8 h-8 text-cyan-500 animate-spin" />
                         </div>
                     )}
                 </div>

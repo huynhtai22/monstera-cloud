@@ -76,7 +76,7 @@ export default function TikTokAdsPage() {
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Ad Account</label>
-            <select className="w-full bg-gray-50 border-none rounded-xl text-sm p-3 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white">
+            <select className="w-full bg-gray-50 border-none rounded-xl text-sm p-3 focus:ring-cyan-500 dark:bg-slate-800 dark:text-white">
               {tiktokConnections.map((c: any) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -87,7 +87,7 @@ export default function TikTokAdsPage() {
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Time Range</label>
             <div className="grid grid-cols-2 gap-2">
-              <button className="p-2 text-xs font-bold bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-100">Last 7 Days</button>
+              <button className="p-2 text-xs font-bold bg-cyan-50 text-cyan-700 rounded-lg border border-cyan-100">Last 7 Days</button>
               <button className="p-2 text-xs font-bold bg-white text-gray-500 rounded-lg border border-gray-100 hover:bg-gray-50">Last 30 Days</button>
             </div>
           </div>
@@ -148,7 +148,7 @@ export default function TikTokAdsPage() {
         <div className="flex flex-col h-full">
           {loading ? (
             <div className="flex flex-1 flex-col items-center justify-center p-12 text-center">
-              <Loader2 className="h-10 w-10 text-emerald-500 animate-spin mb-4" />
+              <Loader2 className="h-10 w-10 text-cyan-500 animate-spin mb-4" />
               <h4 className="text-lg font-bold text-gray-900 dark:text-white">Fetching TikTok Data</h4>
               <p className="text-sm text-gray-500 max-w-xs mx-auto">This usually takes 5-10 seconds depending on account size.</p>
             </div>

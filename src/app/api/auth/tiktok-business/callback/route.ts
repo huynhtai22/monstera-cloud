@@ -5,6 +5,10 @@ import { tiktokBusinessClient } from '@/lib/tiktok-business';
 import prisma from '@/lib/prisma';
 import { isTikTokBusinessConnectEnabled } from '@/lib/integration-flags';
 import { encrypt } from '@/lib/encryption';
+import {
+  buildConsoleOauthSuccessUrl,
+  ensureDefaultPipelineAfterSourceConnect,
+} from '@/lib/oauth-pipeline';
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, '');
@@ -72,7 +76,7 @@ export async function GET(request: Request) {
     // advertiser_ids is the list of TikTok Ads accounts this user authorized
     const advertiserIds: string[] = tokenData.advertiser_ids ?? [];
 
-    await (prisma.connection as any).create({
+    const newConn = await prisma.connection.create({
       data: {
         workspaceId,
         name: `TikTok Ads (${advertiserIds[0] ?? 'account'})`,
@@ -95,7 +99,15 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.redirect(new URL('/console', base));
+    const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
+      workspaceId,
+      sourceConnectionId: newConn.id,
+      actingUserId: session.user.id,
+    });
+
+    return NextResponse.redirect(
+      buildConsoleOauthSuccessUrl(base, 'tiktok_business', pipelineResult)
+    );
   } catch (error: any) {
     console.error('[TIKTOK_BUSINESS_AUTH_ERROR]', error);
     return NextResponse.redirect(

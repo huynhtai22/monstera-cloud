@@ -132,7 +132,7 @@ function VerifyContent() {
             </div>
           )}
           {message && (
-            <div className="bg-emerald-50 text-emerald-700 p-3 rounded-md text-sm text-center">
+            <div className="bg-cyan-50 text-cyan-700 p-3 rounded-md text-sm text-center">
               {message}
             </div>
           )}

@@ -14,15 +14,27 @@ export default function PricingPage() {
     const [isAnnual, setIsAnnual] = useState(true);
     const [payCurrency, setPayCurrency] = useState<"VND" | "USD">("USD");
     const [currencyReady, setCurrencyReady] = useState(false);
+    const [regionHint, setRegionHint] = useState<string | null>(null);
 
-    // Auto-detect currency from visitor IP — VN → VNĐ, everywhere else → USD
+    // Default USD on first paint; after IP resolves, VN → VNĐ and optional region label for copy
     useEffect(() => {
         fetch("https://ipapi.co/json/")
             .then((r) => r.json())
-            .then((data) => {
+            .then((data: { country_code?: string; city?: string }) => {
                 setPayCurrency(data.country_code === "VN" ? "VND" : "USD");
+                const city = data.city && String(data.city).trim();
+                setRegionHint(
+                    city
+                        ? city
+                        : data.country_code === "VN"
+                          ? "Vietnam"
+                          : (data.country_code as string) || null
+                );
             })
-            .catch(() => setPayCurrency("USD"))
+            .catch(() => {
+                setPayCurrency("USD");
+                setRegionHint(null);
+            })
             .finally(() => setCurrencyReady(true));
     }, []);
 
@@ -37,7 +49,7 @@ export default function PricingPage() {
         return payCurrency === "VND" ? fmtVnd(saving) : `$${saving}`;
     };
 
-    const priceClass = currencyReady ? "transition-all duration-300" : "opacity-0";
+    const priceClass = "transition-all duration-300";
 
     return (
         <div className="min-h-screen pt-32 pb-24 bg-[#09090b] font-sans">
@@ -46,13 +58,17 @@ export default function PricingPage() {
                 {/* Header */}
                 <div className="text-center mb-14">
                     <div className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold text-cyan-400 border border-cyan-500/20 bg-cyan-500/10 tracking-widest uppercase mb-5">
-                        Simple Pricing
+                        Pricing
                     </div>
                     <h1 className="text-white text-4xl md:text-5xl font-extrabold leading-tight tracking-tight">
-                        Stop paying per row.
+                        One flat price. Every platform. No row caps.
                     </h1>
                     <p className="text-gray-400 text-lg max-w-xl mx-auto mt-4">
-                        Flat-rate pricing for TikTok Ads reporting, Shopee data, and Google Sheets™.
+                        Most teams save $2,400/year vs Supermetrics on Pro. Cancel anytime — billing questions reviewed within 14 days (see our{" "}
+                        <Link href="/legal/refund-policy" className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2">
+                            Refund Policy
+                        </Link>
+                        ).
                     </p>
                 </div>
 
@@ -81,10 +97,18 @@ export default function PricingPage() {
                     </div>
                     {/* Auto-detected currency with subtle override */}
                     {currencyReady && (
-                        <p className="text-gray-500 text-xs flex items-center gap-1.5">
-                            <MapPin className="w-3 h-3" />
-                            Showing prices in <span className="text-gray-300 font-medium">{payCurrency === "VND" ? "VNĐ" : "USD"}</span>
+                        <p className="text-gray-500 text-xs flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 max-w-md text-center">
+                            <MapPin className="w-3 h-3 shrink-0" />
+                            {regionHint ? (
+                                <>
+                                    Auto-detected for <span className="text-gray-300 font-medium">{regionHint}</span>
+                                    <span className="text-gray-600">·</span>
+                                </>
+                            ) : null}
+                            Showing prices in{" "}
+                            <span className="text-gray-300 font-medium">{payCurrency === "VND" ? "VNĐ" : "USD"}</span>
                             <button
+                                type="button"
                                 onClick={() => setPayCurrency(payCurrency === "VND" ? "USD" : "VND")}
                                 className="text-cyan-500 underline underline-offset-2 hover:text-cyan-400 transition-colors"
                             >
@@ -95,7 +119,7 @@ export default function PricingPage() {
                 </div>
 
                 {/* Pricing Cards — Pro gets extra width via fractional grid */}
-                <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1fr_1fr_1.18fr_1fr] gap-4 items-start">
+                <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
 
                     {/* Free */}
                     <div className="bg-[#18181b] border border-white/10 rounded-xl p-6 flex flex-col hover:border-white/20 transition-colors">
@@ -125,8 +149,9 @@ export default function PricingPage() {
                         <div className="border-t border-white/5 pt-5 flex-1">
                             <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-widest mb-3">What&apos;s included</p>
                             <ul className="space-y-2.5">
-                                <FeatureItem>1 active pipeline</FeatureItem>
-                                <FeatureItem>Weekly sync</FeatureItem>
+                                <FeatureItem>2 active pipelines</FeatureItem>
+                                <FeatureItem>Daily sync</FeatureItem>
+                                <FeatureItem>Up to 14 days ad report history</FeatureItem>
                                 <FeatureItem>TikTok Ads &amp; Shopee connectors</FeatureItem>
                                 <FeatureItem>Google Sheets™ add-on</FeatureItem>
                             </ul>
@@ -178,7 +203,7 @@ export default function PricingPage() {
                     </div>
 
                     {/* Pro — hero card, slightly wider + taller */}
-                    <div className="relative bg-[#0d1f18] border-2 border-cyan-500 rounded-xl p-8 flex flex-col shadow-[0_0_50px_rgba(16,185,129,0.12)] ring-1 ring-cyan-500/30">
+                    <div className="relative bg-[#0d1f18] border-2 border-cyan-500 rounded-xl p-8 flex flex-col shadow-[0_0_50px_rgba(6,182,212,0.12)] ring-1 ring-cyan-500/30">
                         {/* Top badge */}
                         <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-cyan-600 text-white text-[10px] font-bold px-4 py-1 rounded-full tracking-widest uppercase whitespace-nowrap shadow-lg">
                             Most popular
@@ -226,43 +251,23 @@ export default function PricingPage() {
                         </div>
                     </div>
 
-                    {/* Enterprise */}
-                    <div className="bg-[#18181b] border border-white/10 rounded-xl p-6 flex flex-col hover:border-white/20 transition-colors">
-                        <div className="mb-4">
-                            <h3 className="text-white text-lg font-bold">Enterprise</h3>
-                            <p className="text-gray-500 text-sm mt-0.5">Scale with custom solutions</p>
-                        </div>
-                        <div className={`mb-5 ${priceClass}`}>
-                            <span className="text-3xl font-extrabold text-white">
-                                from {fmtPrice(499)}
-                            </span>
-                            <p className="text-gray-500 text-xs mt-1">per user / month · custom quote</p>
-                        </div>
-                        <Link
-                            href="mailto:hello@monsteracloud.com"
-                            onClick={() =>
-                                metaPixelCustom("MC_Pricing_Enterprise_Contact", {
-                                    plan: "enterprise",
-                                    currency: payCurrency,
-                                })
-                            }
-                            className="w-full py-2.5 rounded-lg border border-white/20 text-white text-sm font-semibold text-center hover:bg-white/5 transition-colors mb-6"
-                        >
-                            Contact us
-                        </Link>
-                        <div className="border-t border-white/5 pt-5 flex-1">
-                            <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Pro and</p>
-                            <ul className="space-y-2.5">
-                                <FeatureItem>Unlimited pipelines</FeatureItem>
-                                <FeatureItem>15-minute sync</FeatureItem>
-                                <FeatureItem>Dedicated tenant hosting</FeatureItem>
-                                <FeatureItem>Direct Slack support line</FeatureItem>
-                                <FeatureItem>Custom connector development</FeatureItem>
-                            </ul>
-                        </div>
-                    </div>
-
                 </div>
+
+                <p className="mt-10 text-center text-sm text-gray-500">
+                    Need more than 15 pipelines, dedicated hosting, or custom connectors?{" "}
+                    <Link
+                        href="mailto:hello@monsteracloud.com"
+                        onClick={() =>
+                            metaPixelCustom("MC_Pricing_Enterprise_Contact", {
+                                plan: "enterprise",
+                                currency: payCurrency,
+                            })
+                        }
+                        className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+                    >
+                        Talk to us about Enterprise
+                    </Link>
+                </p>
 
                 {/* All plans include */}
                 <div className="mt-14 text-center">
@@ -283,24 +288,22 @@ export default function PricingPage() {
                         <h3 className="text-white text-sm font-bold uppercase tracking-widest">Compare plans</h3>
                     </div>
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse min-w-[640px] text-sm">
+                        <table className="w-full text-left border-collapse min-w-[520px] text-sm">
                             <thead className="bg-[#09090b]">
                                 <tr>
                                     <th className="py-3 px-6 text-gray-500 text-xs font-semibold uppercase tracking-widest border-r border-white/5 w-1/3">Spec</th>
                                     <th className="py-3 px-4 text-white text-xs font-bold text-center border-r border-white/5">Free</th>
                                     <th className="py-3 px-4 text-white text-xs font-bold text-center border-r border-white/5">Starter</th>
-                                    <th className="py-3 px-4 text-cyan-400 text-xs font-bold text-center bg-cyan-900/10 border-r border-white/5">Pro ✦</th>
-                                    <th className="py-3 px-4 text-white text-xs font-bold text-center">Enterprise</th>
+                                    <th className="py-3 px-4 text-cyan-400 text-xs font-bold text-center bg-cyan-900/10">Pro ✦</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
-                                <CompareRow label="Active Pipelines" values={["1", "5", "15", "Unlimited"]} />
-                                <CompareRow label="Sync Frequency" values={["Weekly", "Daily", "Hourly", "15 min"]} />
-                                <CompareRow label="TikTok Report Cooldown" values={["60 min", "30 min", "10 min", "5 min"]} />
-                                <CompareRow label="Job Queue Priority" values={["Low", "Normal", "High", "Highest"]} />
-                                <CompareRow label="CSV / Excel Export" values={[false, true, true, true]} />
-                                <CompareRow label="Google Sheets™ Add-on" values={[true, true, true, true]} />
-                                <CompareRow label="Dedicated Hosting" values={[false, false, false, true]} />
+                                <CompareRow label="Active Pipelines" values={["2", "5", "15"]} />
+                                <CompareRow label="Sync Frequency" values={["Daily", "Daily", "Hourly"]} />
+                                <CompareRow label="TikTok Report Cooldown" values={["60 min", "30 min", "10 min"]} />
+                                <CompareRow label="Job Queue Priority" values={["Low", "Normal", "High"]} />
+                                <CompareRow label="CSV / Excel Export" values={[false, true, true]} />
+                                <CompareRow label="Google Sheets™ Add-on" values={[true, true, true]} />
                             </tbody>
                         </table>
                     </div>
@@ -342,13 +345,14 @@ function FeatureItem({ children, accent }: { children: React.ReactNode; accent?:
 }
 
 function CompareRow({ label, values }: { label: string; values: (string | boolean)[] }) {
+    const proCol = values.length - 1;
     return (
         <tr className="hover:bg-white/[0.02] transition-colors">
             <td className="py-3.5 px-6 text-gray-300 font-medium border-r border-white/5">{label}</td>
             {values.map((v, i) => (
                 <td
                     key={i}
-                    className={`py-3.5 px-4 text-center border-r border-white/5 last:border-r-0 ${i === 2 ? "bg-cyan-900/10" : ""}`}
+                    className={`py-3.5 px-4 text-center border-r border-white/5 last:border-r-0 ${i === proCol ? "bg-cyan-900/10" : ""}`}
                 >
                     {typeof v === "boolean" ? (
                         v ? (
@@ -357,7 +361,7 @@ function CompareRow({ label, values }: { label: string; values: (string | boolea
                             <span className="text-gray-600">—</span>
                         )
                     ) : (
-                        <span className={i === 2 ? "text-cyan-400 font-semibold" : "text-gray-400"}>{v}</span>
+                        <span className={i === proCol ? "text-cyan-400 font-semibold" : "text-gray-400"}>{v}</span>
                     )}
                 </td>
             ))}

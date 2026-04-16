@@ -88,7 +88,7 @@ export default function OverviewPage() {
     return (
         <div className="relative mx-auto w-full max-w-7xl animate-in px-8 py-10 fade-in duration-300">
             <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-                <div className="absolute left-[10%] top-[-10%] h-[50%] w-[50%] rounded-full bg-emerald-200/20 blur-[120px] dark:bg-emerald-900/20" />
+                <div className="absolute left-[10%] top-[-10%] h-[50%] w-[50%] rounded-full bg-cyan-200/20 blur-[120px] dark:bg-cyan-900/20" />
                 <div className="absolute right-[0%] top-[30%] h-[60%] w-[40%] rounded-full bg-blue-200/20 blur-[120px] dark:bg-blue-900/20" />
             </div>
 
@@ -101,14 +101,14 @@ export default function OverviewPage() {
                         Monitor health across your entire client portfolio. Real-time data freshness and throughput monitoring.
                     </p>
                 </div>
-                <span className="inline-flex shrink-0 items-center rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-600 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400">
-                    <span className="mr-2 h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                <span className="inline-flex shrink-0 items-center rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1.5 text-sm font-medium text-cyan-600 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-400">
+                    <span className="mr-2 h-2 w-2 animate-pulse rounded-full bg-cyan-500" />
                     Infrastructure Stable
                 </span>
             </div>
 
             {syncMsg ? (
-                <div className="relative z-10 mb-6 rounded-lg border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200">
+                <div className="relative z-10 mb-6 rounded-lg border border-cyan-100 bg-cyan-50/70 px-4 py-3 text-sm text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200">
                     {syncMsg}
                 </div>
             ) : null}
@@ -132,7 +132,7 @@ export default function OverviewPage() {
                                     Demo
                                 </span>
                             ) : null}
-                            <Link href="/reports" className="text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300">
+                            <Link href="/reports" className="text-xs font-semibold text-cyan-700 hover:underline dark:text-cyan-300">
                                 View reports
                             </Link>
                         </div>
@@ -170,7 +170,7 @@ export default function OverviewPage() {
                             <ul className="space-y-3">
                                 <li className="flex items-start gap-2 text-sm">
                                     {hasSource ? (
-                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500" />
                                     ) : (
                                         <Circle className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
                                     )}
@@ -180,7 +180,7 @@ export default function OverviewPage() {
                                 </li>
                                 <li className="flex items-start gap-2 text-sm">
                                     {hasDestination ? (
-                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500" />
                                     ) : (
                                         <Circle className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
                                     )}
@@ -190,7 +190,7 @@ export default function OverviewPage() {
                                 </li>
                                 <li className="flex items-start gap-2 text-sm">
                                     {hasPipeline ? (
-                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500" />
                                     ) : (
                                         <Circle className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
                                     )}
@@ -246,7 +246,7 @@ export default function OverviewPage() {
                     <div className="flex-1 space-y-5 overflow-y-auto pr-2">
                         {isLoading ? (
                             <div className="flex h-full flex-col items-center justify-center py-10 text-center">
-                                <Loader2 className="mb-3 h-6 w-6 animate-spin text-emerald-500" />
+                                <Loader2 className="mb-3 h-6 w-6 animate-spin text-cyan-500" />
                                 <span className="text-sm text-gray-500">Loading activity...</span>
                             </div>
                         ) : error ? (
@@ -264,7 +264,7 @@ export default function OverviewPage() {
                                     <div key={pipeline.id} className={`flex items-start space-x-3 ${isLast ? "opacity-80" : ""}`}>
                                         <div className="relative mt-1 shrink-0">
                                             <div
-                                                className={`h-2.5 w-2.5 rounded-full ${isError ? "bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.1)]" : "bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.1)]"}`}
+                                                className={`h-2.5 w-2.5 rounded-full ${isError ? "bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.1)]" : "bg-cyan-500 shadow-[0_0_0_4px_rgba(6,182,212,0.15)]"}`}
                                             />
                                             {!isLast && (
                                                 <div className="absolute bottom-[-16px] left-[5px] top-4 w-px bg-gray-200 dark:bg-slate-700" />

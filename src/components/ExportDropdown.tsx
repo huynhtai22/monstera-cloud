@@ -64,7 +64,7 @@ export function ExportDropdown({ onCsv, onExcel, className = "" }: ExportDropdow
             }}
             className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+            <FileSpreadsheet className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
             Export as Excel
           </button>
         </div>

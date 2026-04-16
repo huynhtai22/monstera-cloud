@@ -69,7 +69,7 @@ function ContinueInner() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white dark:bg-slate-950">
-      <Loader2 className="w-8 h-8 animate-spin text-[#1ba177]" />
+      <Loader2 className="w-8 h-8 animate-spin text-[#0891b2]" />
       <p className="mt-4 text-sm text-gray-500">Redirecting…</p>
     </div>
   );
@@ -80,7 +80,7 @@ export default function AuthContinuePage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-white dark:bg-slate-950">
-          <Loader2 className="w-8 h-8 animate-spin text-[#1ba177]" />
+          <Loader2 className="w-8 h-8 animate-spin text-[#0891b2]" />
         </div>
       }
     >

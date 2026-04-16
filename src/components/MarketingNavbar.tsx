@@ -2,12 +2,57 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
 import { ArrowRight, SquareTerminal } from "lucide-react";
 
+const MARKETING_LANG_KEY = "marketing_lang";
+
+type Lang = "en" | "vi";
+
+function LangToggle({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
+    return (
+        <div className="inline-flex rounded-full border border-white/10 overflow-hidden bg-white/[0.03] p-0.5">
+            {(["en", "vi"] as Lang[]).map((l) => (
+                <button
+                    key={l}
+                    onClick={() => setLang(l)}
+                    className={`px-3 py-1 text-xs font-semibold rounded-full transition-all duration-200 ${
+                        lang === l
+                            ? "bg-white/10 text-white shadow-sm"
+                            : "text-gray-500 hover:text-gray-300"
+                    }`}
+                >
+                    {l.toUpperCase()}
+                </button>
+            ))}
+        </div>
+    );
+}
+
 export function MarketingNavbar() {
     const { status } = useSession();
+    const pathname = usePathname();
     const isAuthed = status === "authenticated";
+    const showLangToggle = pathname === "/" || pathname === "/solutions/smes";
+    const [lang, setLang] = useState<Lang>("en");
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const saved = window.localStorage.getItem(MARKETING_LANG_KEY);
+        if (saved === "en" || saved === "vi") {
+            setLang(saved);
+        }
+    }, []);
+
+    const onSetLang = (nextLang: Lang) => {
+        setLang(nextLang);
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem(MARKETING_LANG_KEY, nextLang);
+            window.dispatchEvent(new CustomEvent("marketing-lang-change", { detail: nextLang }));
+        }
+    };
 
     return (
         <nav className="fixed top-0 w-full z-50 bg-[#09090b]/80 backdrop-blur-md border-b border-white/10">
@@ -36,6 +81,7 @@ export function MarketingNavbar() {
                         </Link>
                     </div>
                     <div className="flex items-center space-x-3 sm:space-x-4">
+                        {showLangToggle ? <LangToggle lang={lang} setLang={onSetLang} /> : null}
                         {isAuthed ? (
                             <Link
                                 href="/console"

@@ -5,6 +5,10 @@ import { googleAdsOAuthClient } from '@/lib/google-ads';
 import prisma from '@/lib/prisma';
 import { isGoogleAdsConnectEnabled } from '@/lib/integration-flags';
 import { encrypt } from '@/lib/encryption';
+import {
+  buildConsoleOauthSuccessUrl,
+  ensureDefaultPipelineAfterSourceConnect,
+} from '@/lib/oauth-pipeline';
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, '');
@@ -81,7 +85,7 @@ export async function GET(request: Request) {
 
     const mccId = process.env.GOOGLE_ADS_MCC_ID?.trim() ?? '';
 
-    await (prisma.connection as any).create({
+    const newConn = await prisma.connection.create({
       data: {
         workspaceId,
         name: customerIds.length
@@ -101,7 +105,15 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.redirect(new URL('/console', base));
+    const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
+      workspaceId,
+      sourceConnectionId: newConn.id,
+      actingUserId: session.user.id,
+    });
+
+    return NextResponse.redirect(
+      buildConsoleOauthSuccessUrl(base, 'google_ads', pipelineResult)
+    );
   } catch (error: any) {
     console.error('[GOOGLE_ADS_AUTH_ERROR]', error);
     return NextResponse.redirect(

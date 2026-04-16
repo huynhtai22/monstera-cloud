@@ -37,7 +37,7 @@ export default function ReportsPage() {
         <div className="relative max-w-7xl mx-auto px-8 py-10 w-full animate-in fade-in duration-300">
             <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
                 <div className="absolute top-[0%] right-[10%] w-[40%] h-[40%] rounded-full bg-indigo-200/20 dark:bg-indigo-900/20 blur-[120px]" />
-                <div className="absolute bottom-[10%] left-[0%] w-[50%] h-[50%] rounded-full bg-emerald-200/20 dark:bg-emerald-900/20 blur-[120px]" />
+                <div className="absolute bottom-[10%] left-[0%] w-[50%] h-[50%] rounded-full bg-cyan-200/20 dark:bg-cyan-900/20 blur-[120px]" />
             </div>
 
             <div className="mb-8 relative z-10">
@@ -67,7 +67,7 @@ export default function ReportsPage() {
                                 className={cn(
                                     "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
                                     filter === v
-                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-200"
+                                        ? "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200"
                                         : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-800"
                                 )}
                             >
@@ -105,7 +105,7 @@ export default function ReportsPage() {
                                         <td className="py-3 pr-4 font-semibold text-gray-900 dark:text-white">{l.pipeline?.name ?? "Pipeline"}</td>
                                         <td className="py-3 pr-4">
                                             {l.status === "success" ? (
-                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200">
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-200">
                                                     <CheckCircle2 className="h-3.5 w-3.5" /> Success
                                                 </span>
                                             ) : (

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { tiktokReportClient, CreateReportTaskParams } from '@/lib/tiktok-business';
 import { getValidTikTokToken } from '@/lib/tiktok-refresh';
-import { getPlanLimits } from '@/lib/plan-config';
+import { clampTimeRangeToPlanMaxDays, getPlanLimits } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 
@@ -74,10 +74,20 @@ export async function POST(req: Request) {
 
     // Fetch user plan for cooldown enforcement
     const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { plan: true } });
-    const limits = getPlanLimits(user?.plan ?? 'free');
+    const plan = user?.plan ?? 'free';
+    const limits = getPlanLimits(plan);
+
+    let taskParams = { ...reportParams } as CreateReportTaskParams;
+    if (limits.maxHistoryDays && taskParams.start_date && taskParams.end_date) {
+      const c = clampTimeRangeToPlanMaxDays(plan, {
+        since: taskParams.start_date,
+        until: taskParams.end_date,
+      });
+      taskParams = { ...taskParams, start_date: c.since, end_date: c.until };
+    }
 
     // Check report cache — return cached result if within cooldown window
-    const cacheKey = buildCacheKey(connectionId, advertiser_id, reportParams as CreateReportTaskParams);
+    const cacheKey = buildCacheKey(connectionId, advertiser_id, taskParams);
     const cached = reportCache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt < limits.tiktokReportCooldownMs) {
       const remainingSec = Math.ceil((limits.tiktokReportCooldownMs - (Date.now() - cached.cachedAt)) / 1000);
@@ -99,14 +109,14 @@ export async function POST(req: Request) {
     if (creds.sandbox === true) {
       const rows = await tiktokReportClient.getSyncReport(accessToken, {
         advertiser_id,
-        ...reportParams,
+        ...taskParams,
       });
       responsePayload = { mode: 'sync', rows };
     } else {
       // Production: create async task
       const taskId = await tiktokReportClient.createTask(
         accessToken,
-        { advertiser_id, ...reportParams as CreateReportTaskParams },
+        { advertiser_id, ...taskParams },
         false,
       );
       responsePayload = { mode: 'async', task_id: taskId };

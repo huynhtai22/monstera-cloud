@@ -68,7 +68,7 @@ export default function ShopeePage() {
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Connected Shop</label>
-            <select className="w-full bg-gray-50 border-none rounded-xl text-sm p-3 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white">
+            <select className="w-full bg-gray-50 border-none rounded-xl text-sm p-3 focus:ring-cyan-500 dark:bg-slate-800 dark:text-white">
               {shopeeConnections.map((c: any) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -77,7 +77,7 @@ export default function ShopeePage() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-              <button className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-emerald-100 bg-emerald-50 text-emerald-700 transition-all">
+              <button className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-cyan-100 bg-cyan-50 text-cyan-700 transition-all">
                   <ShoppingBag className="w-5 h-5 mb-2" />
                   <span className="text-[10px] font-bold uppercase">Orders</span>
               </button>
@@ -89,12 +89,12 @@ export default function ShopeePage() {
         </div>
       </div>
 
-      <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-100 dark:bg-emerald-900/20 dark:border-emerald-800">
-        <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 mb-2">
+      <div className="p-6 rounded-2xl bg-cyan-50 border border-cyan-100 dark:bg-cyan-900/20 dark:border-cyan-800">
+        <div className="flex items-center gap-2 text-cyan-800 dark:text-cyan-300 mb-2">
           <Store className="w-4 h-4" />
           <h4 className="text-sm font-bold uppercase tracking-tight">Marketplace Sync</h4>
         </div>
-        <p className="text-xs text-emerald-600 dark:text-emerald-400 leading-relaxed">
+        <p className="text-xs text-cyan-600 dark:text-cyan-400 leading-relaxed">
           Syncing order status from Shopee Open Platform v2. Data is updated in real-time on your dashboard.
         </p>
       </div>
@@ -134,7 +134,7 @@ export default function ShopeePage() {
         <div className="flex flex-col h-full">
           {loading ? (
             <div className="flex flex-1 flex-col items-center justify-center p-12 text-center">
-              <Loader2 className="h-10 w-10 text-emerald-500 animate-spin mb-4" />
+              <Loader2 className="h-10 w-10 text-cyan-500 animate-spin mb-4" />
               <h4 className="text-lg font-bold text-gray-900 dark:text-white">Pulling Shopee Data</h4>
               <p className="text-sm text-gray-500 max-w-xs mx-auto">Accessing Shopee Open Platform API...</p>
             </div>

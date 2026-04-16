@@ -28,7 +28,7 @@ export function LiveChatWidget() {
                 </div>
 
                 {/* Floating Button */}
-                <div className="w-14 h-14 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-[0_8px_30px_rgb(5,150,105,0.4)] transition-all hover:scale-110 active:scale-95">
+                <div className="w-14 h-14 bg-cyan-600 hover:bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-[0_8px_30px_rgb(5,150,105,0.4)] transition-all hover:scale-110 active:scale-95">
                     <MessageCircle className="w-6 h-6" />
                 </div>
             </Link>

@@ -57,7 +57,7 @@ export function HealthDashboard() {
         <div className="p-6 rounded-2xl border border-white bg-white/50 backdrop-blur-xl shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Active Pipeline</span>
-            <Activity className="h-4 w-4 text-emerald-500" />
+            <Activity className="h-4 w-4 text-cyan-500" />
           </div>
           <div className="flex items-baseline gap-2">
             <p className="text-3xl font-black text-gray-900">{(overall.totalConnections || 0)}</p>
@@ -104,7 +104,7 @@ export function HealthDashboard() {
                     </p>
                     <Link
                         href="/settings?tab=clients"
-                        className="inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 hover:text-emerald-700 hover:underline"
+                        className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-600 hover:text-cyan-700 hover:underline"
                     >
                         Open Client Management
                         <ExternalLink className="h-3.5 w-3.5" />
@@ -112,12 +112,12 @@ export function HealthDashboard() {
                 </div>
             ) : (
                 clientHealth.map((client: any) => (
-                    <div key={client.id} className="p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:border-emerald-200 transition-all group">
+                    <div key={client.id} className="p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:border-cyan-200 transition-all group">
                         <div className="flex items-start justify-between mb-3">
                             <div className="flex items-center gap-3 min-w-0">
                                 <div className={cn(
                                     "h-2 w-2 rounded-full",
-                                    client.status === 'healthy' ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" :
+                                    client.status === 'healthy' ? "bg-cyan-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" :
                                     client.status === 'stale' ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"
                                 )} />
                                 <span className="font-bold text-gray-900 text-sm truncate">{client.name}</span>
@@ -148,14 +148,14 @@ export function HealthDashboard() {
         <div className="p-6 rounded-3xl border border-gray-100 bg-white shadow-sm flex flex-col">
             <div className="flex items-center justify-between mb-8">
                 <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">Ingestion Velocity</h3>
-                <Activity className="h-4 w-4 text-emerald-500" />
+                <Activity className="h-4 w-4 text-cyan-500" />
             </div>
 
             <div className="flex-1 flex items-end justify-between gap-1 px-1">
                 {chartData.map((day: any) => (
                     <div key={day.date} className="flex-1 flex flex-col items-center group">
                         <div 
-                            className="w-full bg-emerald-50 group-hover:bg-emerald-500 transition-all rounded-t-sm relative"
+                            className="w-full bg-cyan-50 group-hover:bg-cyan-500 transition-all rounded-t-sm relative"
                             style={{ height: `${(day.count / maxRows) * 100}%`, minHeight: '2px' }}
                         >
                             <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap z-20 shadow-xl">
@@ -176,7 +176,7 @@ export function HealthDashboard() {
                 </div>
                 <div className="text-right">
                     <p className="text-[10px] font-bold text-gray-400 uppercase">System Status</p>
-                    <p className="text-xs font-bold text-emerald-600">Locked & Active</p>
+                    <p className="text-xs font-bold text-cyan-600">Locked & Active</p>
                 </div>
             </div>
         </div>
@@ -184,11 +184,11 @@ export function HealthDashboard() {
       </div>
 
       {/* 3. Agency Audit Teaser */}
-      <div className="p-1 rounded-3xl bg-gradient-to-r from-emerald-500 via-indigo-500 to-emerald-500">
+      <div className="p-1 rounded-3xl bg-gradient-to-r from-cyan-500 via-indigo-500 to-cyan-500">
         <div className="bg-white dark:bg-slate-900 rounded-[22px] p-6 flex items-center justify-between">
             <div className="flex items-center gap-5">
-                <div className="p-3 bg-emerald-50 rounded-2xl">
-                    <ShieldAlert className="h-6 w-6 text-emerald-600" />
+                <div className="p-3 bg-cyan-50 rounded-2xl">
+                    <ShieldAlert className="h-6 w-6 text-cyan-600" />
                 </div>
                 <div>
                     <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight">Infrastructure Auditor</h4>

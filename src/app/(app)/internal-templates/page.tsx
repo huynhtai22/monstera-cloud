@@ -16,7 +16,7 @@ const templates = [
         destinations: ['Looker Studio'],
         featured: true,
         icon: ShoppingBag,
-        color: 'emerald'
+        color: 'cyan'
     },
     {
         id: 't-2',
@@ -51,7 +51,7 @@ export default function TemplatesGallery() {
             {/* Liquid Glass Background Effects */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
                 <div className="absolute top-[0%] left-[20%] w-[40%] h-[40%] rounded-full bg-indigo-200/20 dark:bg-indigo-900/20 blur-[120px]" />
-                <div className="absolute top-[40%] right-[-10%] w-[30%] h-[50%] rounded-full bg-emerald-200/20 dark:bg-emerald-900/20 blur-[120px]" />
+                <div className="absolute top-[40%] right-[-10%] w-[30%] h-[50%] rounded-full bg-cyan-200/20 dark:bg-cyan-900/20 blur-[120px]" />
             </div>
 
             {/* Header Section */}
@@ -108,7 +108,7 @@ export default function TemplatesGallery() {
                             {/* Card Header Top Row */}
                             <div className="flex justify-between items-start mb-4">
                                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center 
-                                    ${template.color === 'emerald' ? 'bg-emerald-100/50 text-emerald-600' :
+                                    ${template.color === 'cyan' ? 'bg-cyan-100/50 text-cyan-600' :
                                         template.color === 'blue' ? 'bg-blue-100/50 text-blue-600' :
                                             'bg-orange-100/50 text-orange-600'}`}>
                                     <template.icon className="w-5 h-5" />

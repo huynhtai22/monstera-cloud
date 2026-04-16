@@ -66,7 +66,7 @@ export default function GoogleAdsPage() {
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Customer Account</label>
-            <select className="w-full bg-gray-50 border-none rounded-xl text-sm p-3 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white">
+            <select className="w-full bg-gray-50 border-none rounded-xl text-sm p-3 focus:ring-cyan-500 dark:bg-slate-800 dark:text-white">
               {gadsConnections.map((c: any) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -77,7 +77,7 @@ export default function GoogleAdsPage() {
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Report Type</label>
             <div className="space-y-2">
-                <div className="flex items-center gap-2 p-2 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-100 text-xs font-bold">
+                <div className="flex items-center gap-2 p-2 bg-cyan-50 text-cyan-700 rounded-lg border border-cyan-100 text-xs font-bold">
                     <Target className="w-3.5 h-3.5" /> Campaign Performance
                 </div>
                 <div className="flex items-center gap-2 p-2 bg-gray-50 text-gray-500 rounded-lg border border-gray-100 text-xs font-medium opacity-60">
@@ -133,7 +133,7 @@ export default function GoogleAdsPage() {
         <div className="flex flex-col h-full">
           {loading ? (
             <div className="flex flex-1 flex-col items-center justify-center p-12 text-center">
-              <Loader2 className="h-10 w-10 text-emerald-500 animate-spin mb-4" />
+              <Loader2 className="h-10 w-10 text-cyan-500 animate-spin mb-4" />
               <h4 className="text-lg font-bold text-gray-900 dark:text-white">Analyzing Campaigns</h4>
               <p className="text-sm text-gray-500 max-w-xs mx-auto">Connecting to Google Ads API...</p>
             </div>
@@ -153,7 +153,7 @@ export default function GoogleAdsPage() {
                             <tr key={i} className="hover:bg-gray-50 transition-colors dark:hover:bg-slate-800/50">
                                 <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{row.campaign_name}</td>
                                 <td className="px-4 py-3">
-                                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-bold uppercase tracking-wider">{row.status}</span>
+                                    <span className="px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-600 text-[10px] font-bold uppercase tracking-wider">{row.status}</span>
                                 </td>
                                 <td className="px-4 py-3 text-gray-600 dark:text-gray-400">${Number(row.spend).toFixed(2)}</td>
                                 <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{Number(row.conversions).toLocaleString()}</td>

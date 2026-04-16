@@ -183,7 +183,7 @@ export default function TransformationsPage() {
                                 <div className="flex-1">
                                     <div className="flex items-center justify-between mb-1">
                                         <h4 className="font-semibold text-gray-900 dark:text-white text-sm">Mask PII (Username)</h4>
-                                        <span className="text-xs font-medium px-2 py-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100">Active</span>
+                                        <span className="text-xs font-medium px-2 py-1 bg-cyan-50 text-cyan-600 rounded-md border border-cyan-100">Active</span>
                                     </div>
                                     <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-3">Converts 'buyer_username' to a secure, anonymized SHA-256 hash before writing to the destination.</p>
                                     <div className="bg-gray-900 dark:bg-slate-800 rounded-lg p-3 overflow-x-auto text-xs text-green-400 font-mono">
@@ -200,7 +200,7 @@ export default function TransformationsPage() {
                                 <div className="flex-1">
                                     <div className="flex items-center justify-between mb-1">
                                         <h4 className="font-semibold text-gray-900 dark:text-white text-sm">Currency Normalization</h4>
-                                        <span className="text-xs font-medium px-2 py-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100">Active</span>
+                                        <span className="text-xs font-medium px-2 py-1 bg-cyan-50 text-cyan-600 rounded-md border border-cyan-100">Active</span>
                                     </div>
                                     <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-3">Converts 'total_amount' from integer cents to localized decimal currency format.</p>
                                     <div className="bg-gray-900 dark:bg-slate-800 rounded-lg p-3 overflow-x-auto text-xs text-green-400 font-mono">
@@ -222,9 +222,9 @@ export default function TransformationsPage() {
                             Transformations run securely isolated on Monstera Cloud infrastructure. They allow you to structure and sanitize your data exactly as your analysts need it before they ever run a query.
                         </p>
                         <ul className="text-sm text-gray-600 dark:text-gray-300 dark:text-gray-600 space-y-2">
-                            <li className="flex items-center"><CheckCircle2 className="w-4 h-4 text-emerald-500 mr-2" /> PII Masking</li>
-                            <li className="flex items-center"><CheckCircle2 className="w-4 h-4 text-emerald-500 mr-2" /> Data Type Casting</li>
-                            <li className="flex items-center"><CheckCircle2 className="w-4 h-4 text-emerald-500 mr-2" /> Currency Conversion</li>
+                            <li className="flex items-center"><CheckCircle2 className="w-4 h-4 text-cyan-500 mr-2" /> PII Masking</li>
+                            <li className="flex items-center"><CheckCircle2 className="w-4 h-4 text-cyan-500 mr-2" /> Data Type Casting</li>
+                            <li className="flex items-center"><CheckCircle2 className="w-4 h-4 text-cyan-500 mr-2" /> Currency Conversion</li>
                         </ul>
                     </div>
                 </div>

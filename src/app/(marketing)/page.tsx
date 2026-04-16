@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
     ArrowRight,
@@ -13,8 +13,9 @@ import {
     RefreshCw,
     CheckCircle2,
 } from "lucide-react";
-import { MarketingNavbar } from "@/components/MarketingNavbar";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+
+const MARKETING_LANG_KEY = "marketing_lang";
 
 // ─────────────────────────────────────────────
 // Copy — EN / VI
@@ -22,10 +23,11 @@ import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 const COPY = {
     en: {
         hero: {
-            h1: ["One data layer.", "Every channel."],
-            sub: "Connect TikTok Ads, Meta, Shopee, and Google Ads. Your numbers land in Google Sheets™ and Looker Studio automatically — no code, no exports.",
-            cta: "Start free — no card needed",
-            ctaSub: "View pricing",
+            h1: ["Stop reconciling spreadsheets", "at midnight."],
+            sub: "Monstera Cloud pulls TikTok Ads, Meta, Shopee, and Google Ads into one clean Google Sheet — automatically, every day. Built for sellers and agencies in Southeast Asia.",
+            cta: "Start free — first sync in 5 min",
+            ctaSub: "See a live dashboard",
+            heroTrust: "No card · Vietnamese support · Upgrade when you need more",
         },
         diff: [
             { num: "01", title: "Live in under 60 seconds",  body: "Connect your first platform, pick your metrics, and data is in your spreadsheet before your coffee goes cold." },
@@ -90,10 +92,11 @@ const COPY = {
     },
     vi: {
         hero: {
-            h1: ["Một nền tảng dữ liệu.", "Mọi kênh bán hàng."],
-            sub: "Kết nối TikTok Ads, Meta, Shopee và Google Ads. Số liệu tự động cập nhật vào Google Sheets™ và Looker Studio — không cần code, không cần xuất file thủ công.",
-            cta: "Dùng miễn phí — không cần thẻ",
-            ctaSub: "Xem bảng giá",
+            h1: ["Dừng đối chiếu bảng tính", "lúc nửa đêm."],
+            sub: "Monstera Cloud đưa TikTok Ads, Meta, Shopee và Google Ads vào một Google Sheet sạch — tự động mỗi ngày. Dành cho seller và agency Đông Nam Á.",
+            cta: "Dùng thử miễn phí — đồng bộ đầu tiên trong 5 phút",
+            ctaSub: "Xem dashboard mẫu",
+            heroTrust: "Không cần thẻ · Hỗ trợ tiếng Việt · Nâng cấp khi cần thêm tính năng",
         },
         diff: [
             { num: "01", title: "Kết nối trong 60 giây",          body: "Kết nối nền tảng đầu tiên, chọn chỉ số, và dữ liệu đã có trong bảng tính của bạn — nhanh hơn một ly cà phê." },
@@ -159,29 +162,6 @@ const COPY = {
 } as const;
 
 type Lang = keyof typeof COPY;
-
-// ─────────────────────────────────────────────
-// Language toggle
-// ─────────────────────────────────────────────
-function LangToggle({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
-    return (
-        <div className="inline-flex rounded-full border border-white/10 overflow-hidden bg-white/[0.03] p-0.5">
-            {(["en", "vi"] as Lang[]).map((l) => (
-                <button
-                    key={l}
-                    onClick={() => setLang(l)}
-                    className={`px-4 py-1 text-xs font-semibold rounded-full transition-all duration-200 ${
-                        lang === l
-                            ? "bg-white/10 text-white shadow-sm"
-                            : "text-gray-500 hover:text-gray-300"
-                    }`}
-                >
-                    {l.toUpperCase()}
-                </button>
-            ))}
-        </div>
-    );
-}
 
 // ─────────────────────────────────────────────
 // Architecture nodes
@@ -251,23 +231,48 @@ const PLATFORM_LOGOS = [
 // ─────────────────────────────────────────────
 export default function MarketingPage() {
     const [lang, setLang] = useState<Lang>("en");
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+
+        const applyLang = (value: string | null) => {
+            if (value === "en" || value === "vi") {
+                setLang(value);
+            }
+        };
+
+        applyLang(window.localStorage.getItem(MARKETING_LANG_KEY));
+
+        const onStorage = (event: StorageEvent) => {
+            if (event.key === MARKETING_LANG_KEY) {
+                applyLang(event.newValue);
+            }
+        };
+
+        const onMarketingLangChange = (event: Event) => {
+            const nextLang = (event as CustomEvent<Lang>).detail;
+            applyLang(nextLang);
+        };
+
+        window.addEventListener("storage", onStorage);
+        window.addEventListener("marketing-lang-change", onMarketingLangChange as EventListener);
+
+        return () => {
+            window.removeEventListener("storage", onStorage);
+            window.removeEventListener("marketing-lang-change", onMarketingLangChange as EventListener);
+        };
+    }, []);
+
     const c = COPY[lang];
 
     return (
         <div className="relative min-h-screen bg-[#09090b] selection:bg-cyan-500/30">
-            <MarketingNavbar />
-
             {/* ── HERO ──────────────────────────────────────────── */}
             <section className="relative pt-32 pb-24 border-b border-white/5 overflow-hidden">
                 <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-cyan-500/6 blur-[140px] rounded-full" />
 
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
                     <div className="max-w-3xl mx-auto text-center mb-14">
-
-                        {/* Language toggle */}
-                        <div className="flex justify-center mb-8">
-                            <LangToggle lang={lang} setLang={setLang} />
-                        </div>
 
                         <h1 className="text-5xl md:text-[4.5rem] font-black text-white tracking-tight leading-[1.05] mb-6">
                             {c.hero.h1[0]}
@@ -288,12 +293,13 @@ export default function MarketingPage() {
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                             </Link>
                             <Link
-                                href="/pricing"
+                                href="/showcase"
                                 className="inline-flex items-center gap-2 px-7 py-3.5 text-sm font-medium text-gray-400 hover:text-white border border-white/10 hover:border-white/20 rounded-xl transition-colors"
                             >
                                 {c.hero.ctaSub} <ChevronRight className="w-3.5 h-3.5" />
                             </Link>
                         </div>
+                        <p className="mt-6 text-xs text-gray-500">{c.hero.heroTrust}</p>
                     </div>
 
                     {/* Architecture diagram */}

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { googleAdsReportClient, GOOGLE_REPORT_TYPES } from '@/lib/google-ads';
 import { getValidGoogleAdsToken } from '@/lib/google-ads-refresh';
-import { getPlanLimits } from '@/lib/plan-config';
+import { clampGoogleAdsDatePeriodForPlan, getPlanLimits } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 
@@ -42,7 +42,9 @@ export async function POST(req: Request) {
 
     const { connectionId, customerId } = body;
     const reportType = body.reportType ?? 'campaign';
-    const datePeriod = body.datePeriod ?? 'LAST_30_DAYS';
+    const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { plan: true } });
+    const plan = user?.plan ?? 'free';
+    const datePeriod = clampGoogleAdsDatePeriodForPlan(plan, body.datePeriod ?? 'LAST_30_DAYS');
 
     if (!connectionId || !customerId) {
       return NextResponse.json({ error: 'connectionId and customerId are required' }, { status: 400 });
@@ -61,8 +63,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Google Ads connection not found' }, { status: 404 });
     }
 
-    const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { plan: true } });
-    const limits = getPlanLimits(user?.plan ?? 'free');
+    const limits = getPlanLimits(plan);
 
     // Check plan-gated cooldown cache
     const cacheKey = buildCacheKey(connectionId, customerId, reportType, datePeriod);

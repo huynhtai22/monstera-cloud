@@ -88,7 +88,7 @@ export default function DestinationsPage() {
             {/* Subtle Liquid Mesh Background underlay */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
                 <div className="absolute top-[10%] left-[30%] w-[40%] h-[50%] rounded-full bg-blue-200/20 dark:bg-blue-900/20 blur-[120px]" />
-                <div className="absolute top-[40%] right-[10%] w-[30%] h-[60%] rounded-full bg-emerald-200/20 dark:bg-emerald-900/20 blur-[120px]" />
+                <div className="absolute top-[40%] right-[10%] w-[30%] h-[60%] rounded-full bg-cyan-200/20 dark:bg-cyan-900/20 blur-[120px]" />
             </div>
 
             {/* Header */}
@@ -140,7 +140,7 @@ export default function DestinationsPage() {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search destinations..."
-                        className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all bg-white dark:bg-slate-800 shadow-sm"
+                        className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 transition-all bg-white dark:bg-slate-800 shadow-sm"
                     />
                 </div>
                 <div className="flex space-x-2">
@@ -167,7 +167,7 @@ export default function DestinationsPage() {
 
             {isLoading ? (
                 <div className="w-full py-20 flex flex-col items-center justify-center text-center relative z-10">
-                    <Loader2 className="w-8 h-8 text-emerald-500 animate-spin mb-4" />
+                    <Loader2 className="w-8 h-8 text-cyan-500 animate-spin mb-4" />
                     <p className="text-sm font-medium text-gray-500">Loading your destinations...</p>
                 </div>
             ) : filteredDestinations.length > 0 ? (
@@ -177,7 +177,7 @@ export default function DestinationsPage() {
                             key={destination.id}
                             className={`relative overflow-hidden bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl rounded-2xl border p-5 transition-all duration-300 group flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/60 dark:bg-slate-900/60
                             ${destination.status === 'error' ? 'border-red-200/80 hover:border-red-300 cursor-pointer' :
-                                    destination.status === 'connected' ? 'border-white dark:border-slate-700/60 dark:border-slate-700/40 hover:border-emerald-200/80 cursor-pointer' :
+                                    destination.status === 'connected' ? 'border-white dark:border-slate-700/60 dark:border-slate-700/40 hover:border-cyan-200/80 cursor-pointer' :
                                         'border-white dark:border-slate-700/60 dark:border-slate-700/40 hover:border-blue-200/80 cursor-default'}`}
                         >
                             {/* Inner Glass Reflection */}
@@ -186,7 +186,7 @@ export default function DestinationsPage() {
                             <div className="flex items-start justify-between mb-3 relative z-10">
                                 {/* Logo */}
                                 <div className={`relative w-12 h-12 rounded-xl backdrop-blur-md border flex items-center justify-center shrink-0 transition-colors bg-white/50 dark:bg-slate-900/50 overflow-hidden
-                                ${destination.status === 'connected' ? 'border-emerald-100/50' :
+                                ${destination.status === 'connected' ? 'border-cyan-100/50' :
                                         destination.status === 'error' ? 'border-red-100/50' :
                                             'border-gray-200 dark:border-slate-700/50 grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100'}`}>
                                     <img
@@ -200,8 +200,8 @@ export default function DestinationsPage() {
 
                                 {/* Status Indicator */}
                                 {destination.status === 'connected' ? (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-emerald-50/80 text-emerald-700 border border-emerald-100/50 shadow-sm backdrop-blur-sm dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 dark:bg-emerald-400"></span>
+                                    <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-cyan-50/80 text-cyan-700 border border-cyan-100/50 shadow-sm backdrop-blur-sm dark:bg-cyan-950/40 dark:text-cyan-400 dark:border-cyan-900/50">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 mr-1.5 dark:bg-cyan-400"></span>
                                         {destination.connections?.length > 1 ? `Connected (${destination.connections.length})` : 'Connected'}
                                     </span>
                                 ) : destination.status === 'error' ? (

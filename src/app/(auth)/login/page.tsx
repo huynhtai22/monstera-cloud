@@ -113,7 +113,7 @@ function LoginContent() {
             Welcome back
           </h2>
           {isRegistered && (
-            <div className="mt-4 p-3 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-sm font-medium w-full">
+            <div className="mt-4 p-3 bg-cyan-50 text-cyan-700 border border-cyan-200 rounded-md text-sm font-medium w-full">
                Account created successfully! Please sign in to continue.
             </div>
           )}

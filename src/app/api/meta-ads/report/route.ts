@@ -3,7 +3,11 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { metaReportClient, MetaInsightsParams, META_DEFAULT_FIELDS } from '@/lib/meta-ads';
 import { getValidMetaToken } from '@/lib/meta-refresh';
-import { getPlanLimits } from '@/lib/plan-config';
+import {
+  clampMetaDatePresetForPlan,
+  clampTimeRangeToPlanMaxDays,
+  getPlanLimits,
+} from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 
 /**
@@ -83,14 +87,23 @@ export async function POST(req: Request) {
     }
 
     const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { plan: true } });
-    const limits = getPlanLimits(user?.plan ?? 'free');
+    const plan = user?.plan ?? 'free';
+    const limits = getPlanLimits(plan);
+
+    let datePreset = body.datePreset ?? 'last_30d';
+    datePreset = clampMetaDatePresetForPlan(plan, datePreset) ?? datePreset;
+    let timeRange = body.timeRange;
+    if (timeRange) {
+      const c = clampTimeRangeToPlanMaxDays(plan, timeRange);
+      timeRange = { since: c.since, until: c.until };
+    }
 
     const params: MetaInsightsParams = {
       adAccountId,
       fields: body.fields ?? META_DEFAULT_FIELDS,
       level: (body.level as MetaInsightsParams['level']) ?? 'campaign',
-      datePreset: body.datePreset ?? 'last_30d',
-      timeRange: body.timeRange,
+      datePreset,
+      timeRange,
       timeIncrement: body.timeIncrement ?? 1,
       breakdowns: body.breakdowns ?? [],
       actionAttributionWindows: body.actionAttributionWindows ?? ['7d_click', '1d_view'],
