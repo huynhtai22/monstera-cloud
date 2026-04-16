@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 export const primaryButtonLinkClassName = cn(
   "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white",
   "bg-primary hover:bg-primary-hover",
-  "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-slate-950",
+  "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0f172a]",
   "transition-colors"
 );
 

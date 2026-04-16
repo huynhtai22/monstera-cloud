@@ -41,7 +41,7 @@ function catalogIntegrationFromId(catalogId: string) {
 function IntegrationCardSkeleton() {
     return (
         <div
-            className="relative overflow-hidden rounded-2xl border border-white/80 dark:border-slate-700/60 bg-white/40 dark:bg-slate-900/40 p-5 animate-pulse"
+            className="relative overflow-hidden rounded-2xl border border-white/80 dark:border-slate-600/50 bg-white/40 dark:bg-slate-800/60 p-5 animate-pulse"
             aria-hidden
         >
             <div className="flex items-start justify-between mb-4">
@@ -85,15 +85,15 @@ const IntegrationCard = React.memo(function IntegrationCard({
 
     return (
         <div
-            className={`relative overflow-hidden bg-white/60 dark:bg-slate-900/50 rounded-2xl border p-5 transition-all duration-200 group flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/80 dark:hover:bg-slate-900/60
-                ${integration.status === 'error' ? 'border-red-200/80 hover:border-red-300' : 'border-gray-200/80 dark:border-slate-700/60 hover:border-cyan-200/80'}`}
+            className={`relative overflow-hidden rounded-2xl border p-5 transition-all duration-200 group flex flex-col justify-between bg-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/80 dark:bg-slate-800/90 dark:shadow-[0_12px_40px_rgba(0,0,0,0.35)] dark:hover:bg-slate-800 dark:ring-1 dark:ring-white/5
+                ${integration.status === 'error' ? 'border-red-200/80 hover:border-red-300 dark:border-red-800/70 dark:hover:border-red-700' : 'border-gray-200/80 dark:border-slate-600/80 hover:border-cyan-200/80 dark:hover:border-cyan-600/50'}`}
         >
             <div className="flex items-start justify-between mb-3 relative z-10">
-                <div className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 transition-colors bg-white/70 dark:bg-slate-900/50 overflow-hidden
-                    ${integration.status === 'connected' ? 'border-cyan-100/50' :
-                        integration.status === 'syncing' ? 'border-blue-100/50' :
-                            integration.status === 'error' ? 'border-red-100/50' :
-                                'border-gray-200 dark:border-slate-700/50 grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100'}`}>
+                <div className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 transition-colors bg-white/70 dark:bg-slate-900/80 overflow-hidden
+                    ${integration.status === 'connected' ? 'border-cyan-100/50 dark:border-cyan-700/40' :
+                        integration.status === 'syncing' ? 'border-blue-100/50 dark:border-blue-700/40' :
+                            integration.status === 'error' ? 'border-red-100/50 dark:border-red-800/50' :
+                                'border-gray-200 dark:border-slate-600 grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100'}`}>
                     <img
                         src={integration.logoSrc}
                         alt={`${integration.name} logo`}
@@ -105,20 +105,20 @@ const IntegrationCard = React.memo(function IntegrationCard({
 
                 <div className="flex items-center">
                     {integration.status === 'connected' && (
-                        <div className="flex items-center text-xs font-semibold text-cyan-700 bg-cyan-50 px-2 py-1 rounded-md">
-                            <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                        <div className="flex items-center rounded-md bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-800 dark:bg-emerald-950/70 dark:text-emerald-300 dark:ring-1 dark:ring-emerald-800/50">
+                            <CheckCircle2 className="mr-1 h-3.5 w-3.5 dark:text-emerald-400" />
                             Connected
                         </div>
                     )}
                     {integration.status === 'syncing' && (
-                        <div className="flex items-center text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-1 rounded-md">
-                            <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                        <div className="flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-950/70 dark:text-blue-200 dark:ring-1 dark:ring-blue-800/50">
+                            <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin dark:text-blue-300" />
                             Syncing
                         </div>
                     )}
                     {integration.status === 'error' && (
-                        <div className="flex items-center text-xs font-semibold text-red-700 bg-red-50 px-2 py-1 rounded-md">
-                            <AlertCircle className="w-3.5 h-3.5 mr-1" />
+                        <div className="flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-semibold text-red-800 dark:bg-red-950/70 dark:text-red-200 dark:ring-1 dark:ring-red-800/50">
+                            <AlertCircle className="mr-1 h-3.5 w-3.5 dark:text-red-400" />
                             Error
                         </div>
                     )}
@@ -138,7 +138,7 @@ const IntegrationCard = React.memo(function IntegrationCard({
                         </Link>
                     ) : null}
                 </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2">{integration.description}</p>
+                <p className="text-sm leading-relaxed text-gray-600 line-clamp-2 dark:text-slate-300">{integration.description}</p>
 
                 {integration.status === 'error' && (
                     <p className="text-xs text-red-600 dark:text-red-400 font-medium mt-2 flex items-start gap-1">
@@ -150,7 +150,7 @@ const IntegrationCard = React.memo(function IntegrationCard({
                     </p>
                 )}
                 {integration.status !== 'available' && integration.status !== 'error' && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 font-medium">
+                    <p className="mt-2 text-xs font-medium text-gray-500 dark:text-slate-400">
                         Last synced: {integration.lastSync}
                     </p>
                 )}
@@ -164,12 +164,12 @@ const IntegrationCard = React.memo(function IntegrationCard({
                             e.stopPropagation();
                             onFixConnection(integration);
                         }}
-                        className="w-full py-2 bg-red-50/80 hover:bg-red-100/80 text-red-700 dark:text-red-300 dark:bg-red-950/40 text-sm font-semibold rounded-lg transition-colors border border-red-200/50 dark:border-red-900/50 shadow-sm"
+                        className="w-full rounded-lg border border-red-300 bg-red-50 py-2 text-sm font-semibold text-red-800 shadow-sm transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-950/60 dark:text-red-200 dark:hover:bg-red-950/90"
                     >
                         Fix Connection
                     </button>
                 ) : integration.status === 'syncing' ? (
-                    <button disabled className="w-full py-2 bg-white/60 dark:bg-slate-900/50 text-gray-400 dark:text-gray-500 text-sm font-semibold rounded-lg border border-gray-200 dark:border-slate-700/50 cursor-not-allowed flex justify-center items-center">
+                    <button disabled className="flex w-full cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 py-2 text-sm font-semibold text-slate-500 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-400">
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Syncing...
                     </button>
                 ) : integration.status === 'connected' ? (
@@ -190,7 +190,7 @@ const IntegrationCard = React.memo(function IntegrationCard({
                                 }
                                 onSync(integration.pipelineId, integration.id);
                             }}
-                            className="w-full py-2 bg-white/70 dark:bg-slate-900/60 border border-gray-200/80 dark:border-slate-700/60 group-hover:border-cyan-200/80 group-hover:bg-cyan-500 text-gray-700 dark:text-slate-300 group-hover:text-white text-sm font-semibold rounded-lg transition-colors shadow-sm disabled:pointer-events-none disabled:opacity-50"
+                            className="w-full rounded-lg border border-cyan-600/30 bg-cyan-600 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-cyan-500 dark:border-cyan-500 dark:bg-cyan-600 dark:hover:bg-cyan-500 disabled:pointer-events-none disabled:opacity-50"
                         >
                             {isSyncing ? (
                                 <span className="inline-flex items-center justify-center gap-2">
@@ -208,7 +208,7 @@ const IntegrationCard = React.memo(function IntegrationCard({
                                 e.stopPropagation();
                                 onDisconnect(integration.id, integration.name);
                             }}
-                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50/80 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100/90 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/60 disabled:pointer-events-none disabled:opacity-50"
+                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-300/90 bg-red-50/90 py-2 text-sm font-medium text-red-800 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-950/50 dark:text-red-200 dark:hover:bg-red-950/80 disabled:pointer-events-none disabled:opacity-50"
                         >
                             {isDisconnecting ? (
                                 <>
@@ -229,7 +229,7 @@ const IntegrationCard = React.memo(function IntegrationCard({
                             e.stopPropagation();
                             onConnect(integration);
                         }}
-                        className="w-full py-2 bg-white/70 dark:bg-slate-900/50 border border-gray-200/80 dark:border-slate-700/60 text-gray-600 dark:text-gray-300 text-sm font-medium rounded-lg transition-colors group-hover:border-white dark:group-hover:border-slate-700 group-hover:bg-white/90 dark:group-hover:bg-slate-900/80 shadow-sm"
+                        className="w-full rounded-lg border border-slate-300 bg-white py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors group-hover:bg-slate-50 dark:border-slate-500 dark:bg-slate-700 dark:text-slate-100 dark:group-hover:bg-slate-600"
                     >
                         Connect
                     </button>
@@ -253,7 +253,7 @@ const RecentSyncsSection = React.memo(function RecentSyncsSection({
     return (
         <div className="mt-10">
             <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                <h2 className="text-sm font-bold uppercase tracking-wide text-gray-500 dark:text-slate-400">
                     Recent Syncs
                 </h2>
                 <Link
@@ -264,7 +264,7 @@ const RecentSyncsSection = React.memo(function RecentSyncsSection({
                 </Link>
             </div>
 
-            <div className="rounded-2xl border border-gray-200/80 bg-white/60 p-5 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/50">
+            <div className="rounded-2xl border border-gray-200/80 bg-white/60 p-5 shadow-sm dark:border-slate-600/70 dark:bg-slate-800/90 dark:ring-1 dark:ring-white/5">
                 <div className="space-y-3">
                     {logs.map((l: any) => (
                         <div
@@ -679,7 +679,7 @@ export default function SourcesPage() {
                             <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight mb-2">
                                 Sources
                             </h1>
-                            <p className="text-gray-500 dark:text-gray-400 max-w-2xl text-base">
+                            <p className="max-w-2xl text-base text-gray-600 dark:text-slate-300">
                                 Loading your workspace…
                             </p>
                         </>
@@ -688,9 +688,9 @@ export default function SourcesPage() {
                             <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight mb-2">
                                 Sources
                             </h1>
-                            <p className="text-gray-500 dark:text-gray-400 max-w-2xl text-base">
+                            <p className="max-w-2xl text-base text-gray-600 dark:text-slate-300">
                                 Connect TikTok, Meta, Google, Shopee, Lazada or Shopify. Most pipelines take ~3 minutes — choose{" "}
-                                <span className="font-medium text-gray-700 dark:text-slate-200">Available</span> below to get started.
+                                <span className="font-medium text-gray-800 dark:text-slate-100">Available</span> below to get started.
                             </p>
                         </>
                     ) : (
@@ -699,7 +699,7 @@ export default function SourcesPage() {
                                 Sources
                             </h1>
                             {/* #5 — Count + last sync merged into subtitle (summary bar removed) */}
-                            <p className="text-gray-500 dark:text-gray-400 max-w-2xl text-base">
+                            <p className="max-w-2xl text-base text-gray-600 dark:text-slate-300">
                                 {connectedSourceCount} source{connectedSourceCount === 1 ? "" : "s"} connected
                                 {lastSyncSummary ? ` · Last sync: ${lastSyncSummary}` : ""}.
                             </p>
@@ -710,7 +710,7 @@ export default function SourcesPage() {
                     <button
                         onClick={() => mutate('/api/workspaces')}
                         aria-label="Refresh all sources"
-                        className="flex items-center justify-center w-10 h-10 border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-300 dark:hover:border-slate-600 transition-colors"
+                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-700"
                     >
                         <RefreshCw className="w-4 h-4" />
                     </button>
@@ -737,7 +737,7 @@ export default function SourcesPage() {
             {/* Search and Filter — #9: ARIA tab pattern */}
             <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-8 mb-8">
                 <div className="relative flex-1 max-w-md group">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 w-5 h-5 group-focus-within:text-cyan-500 transition-colors" aria-hidden="true" />
+                    <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-cyan-500 dark:text-slate-500" aria-hidden="true" />
                     {/* #9 — added aria-label to search input */}
                     <input
                         type="text"
@@ -745,16 +745,16 @@ export default function SourcesPage() {
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search integrations..."
                         aria-label="Search integrations"
-                        className="w-full pl-10 pr-12 py-2.5 bg-white/60 dark:bg-slate-900/50 border border-gray-200/80 dark:border-slate-700/60 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500/20 transition-all shadow-sm"
+                        className="w-full rounded-xl border border-gray-200/80 bg-white/90 py-2.5 pl-10 pr-12 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100 dark:placeholder:text-slate-500"
                     />
                 </div>
                 {/* #9 — ARIA tab pattern for filter tabs */}
-                <div className="flex space-x-6 border-b border-gray-200 dark:border-slate-700" role="tablist" aria-label="Filter integrations">
+                <div className="flex space-x-6 border-b border-gray-200 dark:border-slate-600/80" role="tablist" aria-label="Filter integrations">
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'all'}
                         onClick={() => setActiveFilter('all')}
-                        className={`pb-3 text-sm font-semibold transition-colors ${activeFilter === 'all' ? 'text-gray-900 dark:text-white border-b-2 border-cyan-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-slate-300'}`}
+                        className={`pb-3 text-sm font-semibold transition-colors ${activeFilter === 'all' ? 'border-b-2 border-cyan-500 text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
                     >
                         All Sources
                     </button>
@@ -762,7 +762,7 @@ export default function SourcesPage() {
                         role="tab"
                         aria-selected={activeFilter === 'connected'}
                         onClick={() => setActiveFilter('connected')}
-                        className={`pb-3 text-sm font-medium transition-colors ${activeFilter === 'connected' ? 'text-gray-900 dark:text-white border-b-2 border-cyan-500 font-semibold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-slate-300'}`}
+                        className={`pb-3 text-sm font-medium transition-colors ${activeFilter === 'connected' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
                     >
                         Connected ({isLoading ? '…' : connectedSourceCount})
                     </button>
@@ -770,7 +770,7 @@ export default function SourcesPage() {
                         role="tab"
                         aria-selected={activeFilter === 'available'}
                         onClick={() => setActiveFilter('available')}
-                        className={`pb-3 text-sm font-medium transition-colors ${activeFilter === 'available' ? 'text-gray-900 dark:text-white border-b-2 border-cyan-500 font-semibold' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-slate-300'}`}
+                        className={`pb-3 text-sm font-medium transition-colors ${activeFilter === 'available' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
                     >
                         Available
                     </button>
@@ -799,7 +799,7 @@ export default function SourcesPage() {
                     ))}
                 </div>
             ) : (
-                <div className="w-full py-20 flex flex-col items-center justify-center text-center border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl bg-gray-50 dark:bg-slate-800/50" role="tabpanel" aria-live="polite">
+                <div className="flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 py-20 text-center dark:border-slate-600 dark:bg-slate-800/60" role="tabpanel" aria-live="polite">
                     <Database className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" />
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No integrations found</h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm mb-6">We couldn&apos;t find any data sources matching &quot;{searchQuery}&quot;. Try a different keyword or category.</p>

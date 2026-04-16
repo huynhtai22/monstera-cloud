@@ -10,10 +10,11 @@
 }
 
 .dark {
-    --background: #020617;
-    /* slate-950 */
-    --foreground: #f8fafc;
-    /* slate-50 */
+    /* Slightly lifted from slate-950 so surfaces/cards can separate clearly */
+    --background: #0f172a;
+    /* slate-900 */
+    --foreground: #f1f5f9;
+    /* slate-100 — slightly softer than pure white on black */
 }
 
 body {

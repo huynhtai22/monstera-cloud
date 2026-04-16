@@ -92,7 +92,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
     ];
 
     return (
-        <div className={`w-64 bg-[#f8fafc] dark:bg-slate-900 border-r border-[#e2e8f0] dark:border-slate-800 h-screen flex flex-col fixed top-0 left-0 lg:relative z-50 transform lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out shadow-[4px_0_24px_rgba(0,0,0,0.02)] shrink-0`}>
+        <div className={`w-64 bg-[#f8fafc] dark:bg-slate-950 border-r border-[#e2e8f0] dark:border-slate-700/90 h-screen flex flex-col fixed top-0 left-0 lg:relative z-50 transform lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_32px_rgba(0,0,0,0.45)] shrink-0`}>
             <div className="px-4 py-5 border-b border-gray-200/60 dark:border-slate-800 relative z-20" ref={workspaceRef}>
                 <button
                     onClick={() => setIsWorkspaceOpen(!isWorkspaceOpen)}
@@ -168,11 +168,11 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                             href={item.href}
                             onClick={() => setIsOpen && setIsOpen(false)}
                             className={`group flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive
-                                ? "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-200"
-                                : "text-gray-600 hover:bg-gray-50/80 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-slate-800/80 dark:hover:text-white"
+                                ? "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/55 dark:text-cyan-100 dark:ring-1 dark:ring-cyan-700/50"
+                                : "text-gray-600 hover:bg-gray-50/80 hover:text-gray-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                                 }`}
                         >
-                            <item.icon className={`w-4 h-4 mr-3 transition-colors ${isActive ? "text-cyan-600 dark:text-cyan-300" : "text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400"}`} />
+                            <item.icon className={`w-4 h-4 mr-3 transition-colors ${isActive ? "text-cyan-600 dark:text-cyan-300" : "text-gray-400 group-hover:text-gray-500 dark:text-slate-500 dark:group-hover:text-slate-300"}`} />
                             {item.name}
                         </Link>
                     );
