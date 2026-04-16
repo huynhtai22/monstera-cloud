@@ -23,12 +23,14 @@ const PLATFORMS = [
     {
         id: "tiktok",
         label: "TikTok Ads",
-        emoji: "🎵",
-        color: "from-pink-500 to-red-500",
-        pillActive: "bg-gradient-to-r from-pink-500/20 to-red-500/20 border-pink-500/40 text-pink-300",
+        logo: "/logos/tiktok.svg",
+        pillActive: "bg-pink-500/10 border-pink-500/50 text-pink-300",
         pillInactive: "border-white/10 text-gray-500 hover:text-gray-300 hover:border-white/20",
         accent: "text-pink-400",
-        glow: "shadow-pink-500/20",
+        cardBorder: "border-t-pink-500/60",
+        cardGlow: "shadow-pink-500/15",
+        cardBg: "bg-gradient-to-br from-pink-500/5 via-[#09090b] to-[#09090b]",
+        badgeClass: "bg-pink-500/15 border-pink-500/30 text-pink-300",
         description: "Your TikTok Ads campaigns — spend, impressions, CTR, and conversions. Updated hourly.",
         filename: "TikTok_Ads_Report.xlsx",
         headers: ["Campaign", "Spend", "Impressions", "Conv."],
@@ -45,12 +47,14 @@ const PLATFORMS = [
     {
         id: "meta",
         label: "Meta Ads",
-        emoji: "📘",
-        color: "from-blue-500 to-indigo-500",
-        pillActive: "bg-gradient-to-r from-blue-500/20 to-indigo-500/20 border-blue-500/40 text-blue-300",
+        logo: "/logos/meta.svg",
+        pillActive: "bg-blue-500/10 border-blue-500/50 text-blue-300",
         pillInactive: "border-white/10 text-gray-500 hover:text-gray-300 hover:border-white/20",
         accent: "text-blue-400",
-        glow: "shadow-blue-500/20",
+        cardBorder: "border-t-blue-500/60",
+        cardGlow: "shadow-blue-500/15",
+        cardBg: "bg-gradient-to-br from-blue-500/5 via-[#09090b] to-[#09090b]",
+        badgeClass: "bg-blue-500/15 border-blue-500/30 text-blue-300",
         description: "Facebook & Instagram ad metrics — reach, CPM, ROAS, and conversions by ad set.",
         filename: "Meta_Ads_Report.xlsx",
         headers: ["Ad Set", "Spend", "Reach", "ROAS"],
@@ -67,17 +71,19 @@ const PLATFORMS = [
     {
         id: "shopee",
         label: "Shopee",
-        emoji: "🛍️",
-        color: "from-orange-500 to-amber-500",
-        pillActive: "bg-gradient-to-r from-orange-500/20 to-amber-500/20 border-orange-500/40 text-orange-300",
+        logo: "/logos/shopee.svg",
+        pillActive: "bg-orange-500/10 border-orange-500/50 text-orange-300",
         pillInactive: "border-white/10 text-gray-500 hover:text-gray-300 hover:border-white/20",
         accent: "text-orange-400",
-        glow: "shadow-orange-500/20",
+        cardBorder: "border-t-orange-500/60",
+        cardGlow: "shadow-orange-500/15",
+        cardBg: "bg-gradient-to-br from-orange-500/5 via-[#09090b] to-[#09090b]",
+        badgeClass: "bg-orange-500/15 border-orange-500/30 text-orange-300",
         description: "Shopee orders, revenue, and top products — directly from your seller account.",
         filename: "Shopee_Orders_Report.xlsx",
         headers: ["Product", "Orders", "Revenue", "Rating"],
         rows: [
-            { cells: ["Summer Dress – White",  "284",  "$4,260",  "4.9★"], badge: "🔥 Top" },
+            { cells: ["Summer Dress – White",  "284",  "$4,260",  "4.9★"], badge: "Top" },
             { cells: ["Linen Pants – Beige",   "197",  "$3,152",  "4.8★"], badge: "" },
             { cells: ["Floral Blouse Set",     "163",  "$2,934",  "4.7★"], badge: "" },
             { cells: ["Casual Tote Bag",       "142",  "$1,704",  "4.6★"], badge: "" },
@@ -89,12 +95,14 @@ const PLATFORMS = [
     {
         id: "google",
         label: "Google Ads",
-        emoji: "🔍",
-        color: "from-emerald-500 to-teal-500",
-        pillActive: "bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border-emerald-500/40 text-emerald-300",
+        logo: "/logos/google-ads.svg",
+        pillActive: "bg-emerald-500/10 border-emerald-500/50 text-emerald-300",
         pillInactive: "border-white/10 text-gray-500 hover:text-gray-300 hover:border-white/20",
         accent: "text-emerald-400",
-        glow: "shadow-emerald-500/20",
+        cardBorder: "border-t-emerald-500/60",
+        cardGlow: "shadow-emerald-500/15",
+        cardBg: "bg-gradient-to-br from-emerald-500/5 via-[#09090b] to-[#09090b]",
+        badgeClass: "bg-emerald-500/15 border-emerald-500/30 text-emerald-300",
         description: "Google Search, Shopping, and Performance Max — clicks, CPC, and conversions.",
         filename: "Google_Ads_Report.xlsx",
         headers: ["Campaign", "Spend", "Clicks", "Conv."],
@@ -247,12 +255,16 @@ export default function SMEsSolutionPage() {
                                 key={p.id}
                                 onClick={() => setActivePlatform(p)}
                                 className={`
-                                    inline-flex items-center gap-2 px-5 py-2.5 rounded-full border text-sm font-semibold
+                                    inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full border text-sm font-semibold
                                     transition-all duration-200 cursor-pointer
                                     ${activePlatform.id === p.id ? p.pillActive : p.pillInactive}
                                 `}
                             >
-                                <span>{p.emoji}</span>
+                                <img
+                                    src={p.logo}
+                                    alt={p.label}
+                                    className="h-4 w-4 object-contain brightness-0 invert opacity-80"
+                                />
                                 {p.label}
                             </button>
                         ))}
@@ -264,31 +276,40 @@ export default function SMEsSolutionPage() {
                     </p>
 
                     {/* Data preview card */}
-                    <div className={`rounded-2xl bg-[#09090b] border border-white/10 overflow-hidden shadow-2xl transition-all duration-300 ${activePlatform.glow} shadow-xl`}>
+                    <div className={`
+                        rounded-2xl border border-t-2 overflow-hidden shadow-2xl
+                        transition-all duration-300
+                        ${activePlatform.cardBg} ${activePlatform.cardBorder} ${activePlatform.cardGlow} shadow-xl
+                        border-white/10
+                    `}>
                         {/* Window chrome */}
-                        <div className="bg-[#18181b] px-4 py-3 flex items-center gap-2 border-b border-white/5">
+                        <div className="bg-black/30 px-5 py-4 flex items-center gap-2 border-b border-white/5">
                             <div className="w-3 h-3 rounded-full bg-red-500/80" />
                             <div className="w-3 h-3 rounded-full bg-amber-500/80" />
                             <div className="w-3 h-3 rounded-full bg-emerald-500/80" />
-                            <span className="ml-2 text-xs text-gray-500 font-mono">{activePlatform.filename} — auto-synced</span>
+                            <div className="flex items-center gap-2 ml-3">
+                                <img src={activePlatform.logo} alt={activePlatform.label} className="h-3.5 w-3.5 object-contain brightness-0 invert opacity-60" />
+                                <span className="text-xs text-gray-500 font-mono">{activePlatform.filename} — auto-synced</span>
+                            </div>
                         </div>
 
-                        <div className="p-6">
+                        <div className="p-8">
                             {/* Metric highlight */}
-                            <div className="flex items-center justify-between mb-6">
+                            <div className="flex items-start justify-between mb-8">
                                 <div>
-                                    <p className="text-xs text-gray-500 uppercase tracking-widest font-bold mb-1">{activePlatform.metric.label}</p>
-                                    <p className={`text-3xl font-black ${activePlatform.accent}`}>{activePlatform.metric.value}</p>
-                                    <p className="text-xs text-gray-600 mt-1">{activePlatform.metric.sub}</p>
+                                    <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-2">{activePlatform.metric.label}</p>
+                                    <p className={`text-5xl font-black tracking-tight ${activePlatform.accent}`}>{activePlatform.metric.value}</p>
+                                    <p className="text-xs text-gray-600 mt-2">{activePlatform.metric.sub}</p>
                                 </div>
-                                <div className={`px-3 py-1 rounded-full text-xs font-bold border ${activePlatform.pillActive}`}>
-                                    {activePlatform.emoji} {activePlatform.label}
+                                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border ${activePlatform.badgeClass}`}>
+                                    <img src={activePlatform.logo} alt={activePlatform.label} className="h-3 w-3 object-contain brightness-0 invert opacity-70" />
+                                    {activePlatform.label}
                                 </div>
                             </div>
 
                             {/* Table */}
                             <div className="font-mono text-xs">
-                                <div className="grid grid-cols-4 gap-3 text-gray-500 font-bold text-[10px] uppercase tracking-wider border-b border-white/5 pb-2 mb-1">
+                                <div className="grid grid-cols-4 gap-4 text-gray-500 font-bold text-[10px] uppercase tracking-wider border-b border-white/8 pb-3 mb-1">
                                     {activePlatform.headers.map((h) => (
                                         <span key={h}>{h}</span>
                                     ))}
@@ -296,12 +317,12 @@ export default function SMEsSolutionPage() {
                                 {activePlatform.rows.map((row, i) => (
                                     <div
                                         key={i}
-                                        className="grid grid-cols-4 gap-3 text-[11px] py-2.5 border-b border-white/5 items-center hover:bg-white/[0.02] transition-colors"
+                                        className="grid grid-cols-4 gap-4 text-[12px] py-3.5 border-b border-white/5 items-center hover:bg-white/[0.03] transition-colors"
                                     >
                                         <span className="text-gray-200 truncate flex items-center gap-1.5">
                                             {row.cells[0]}
                                             {row.badge && (
-                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${activePlatform.pillActive}`}>
+                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${activePlatform.badgeClass}`}>
                                                     {row.badge}
                                                 </span>
                                             )}
@@ -314,7 +335,7 @@ export default function SMEsSolutionPage() {
                             </div>
 
                             {/* Sync footer */}
-                            <p className="mt-4 text-[10px] text-gray-600 font-mono">
+                            <p className="mt-6 text-[10px] text-gray-600 font-mono">
                                 {activePlatform.syncNote}
                             </p>
                         </div>
