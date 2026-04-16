@@ -331,7 +331,7 @@ export default function MetaAdsPage() {
           <p className="mb-6 max-w-sm text-sm text-gray-500 dark:text-gray-400">
             Link your Facebook Ads account to start pulling campaign and ad set performance data.
           </p>
-          <Link href="/console" className={cn(primaryLinkClass, "w-auto min-w-[200px]")}>
+          <Link href="/sources" className={cn(primaryLinkClass, "w-auto min-w-[200px]")}>
             Go to Connections
           </Link>
         </div>

@@ -2,16 +2,16 @@ import type { Metadata } from "next";
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
 
 export const metadata: Metadata = {
-    title: "Console",
+    title: "Sources",
     description:
         "Connect data sources, manage pipelines, and sync e-commerce and ad data to Google Sheets™ and destinations.",
     robots: { index: false, follow: false },
     openGraph: {
-        title: "Console | Monstera Cloud",
-        url: `${PRODUCT_SITE_URL}/console`,
+        title: "Sources | Monstera Cloud",
+        url: `${PRODUCT_SITE_URL}/sources`,
     },
 };
 
-export default function ConsoleLayout({ children }: { children: React.ReactNode }) {
+export default function SourcesLayout({ children }: { children: React.ReactNode }) {
     return children;
 }

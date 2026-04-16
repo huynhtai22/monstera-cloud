@@ -8,25 +8,20 @@ import {
     LayoutGrid,
     DatabaseZap,
     Send,
-    Wand2,
     LineChart,
     Settings,
     HelpCircle,
     ChevronDown,
-    FileEdit,
     Check,
     LogOut,
     KeyRound,
-    TrendingUp,
-    ShoppingBag,
     Sun,
     Moon,
-    Facebook,
-    Search
 } from "lucide-react";
 import useSWR from "swr";
 import { useSession, signOut } from "next-auth/react";
 import { useWorkspaceStore } from "@/store/workspace";
+import { trackEvent } from "@/lib/analytics-events";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
@@ -44,19 +39,22 @@ interface SidebarProps {
     toggleDarkMode?: () => void;
 }
 
+function navIsActive(pathname: string, href: string): boolean {
+    if (href === "/") return pathname === "/";
+    if (href === "/settings") return pathname === "/settings" || pathname.startsWith("/settings/");
+    return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode }: SidebarProps) {
     const { data: session } = useSession();
     const pathname = usePathname();
     const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
 
-    // Global State
     const { activeWorkspaceId, setActiveWorkspaceId } = useWorkspaceStore();
 
-    // Fetch Data
-    const { data: workspaces, error: workspacesError } = useSWR("/api/workspaces", fetcher);
+    const { data: workspaces } = useSWR("/api/workspaces", fetcher);
 
-    // Set active workspace if missing, or clear stale ID (e.g. after sign-in as another user — persisted localStorage)
     useEffect(() => {
         if (!Array.isArray(workspaces) || workspaces.length === 0) return;
         const memberIds = new Set(workspaces.map((w: { id: string }) => w.id));
@@ -69,7 +67,6 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
         ? workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0]
         : null;
 
-    // Close dropdowns on outside click
     const workspaceRef = useRef<HTMLDivElement>(null);
     const profileRef = useRef<HTMLDivElement>(null);
 
@@ -87,37 +84,15 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
     }, []);
 
     const navItems = [
-        {
-            title: "Connect",
-            items: [
-                { name: "Data Sources", href: "/console", icon: DatabaseZap },
-                { name: "Destinations", href: "/destinations", icon: Send, comingSoon: true },
-            ]
-        },
-        {
-            title: "Manage",
-            items: [
-                { name: "Transformations", href: "/transformations", icon: Wand2, comingSoon: true },
-            ]
-        },
-        {
-            title: "Analyze",
-            items: [
-                { name: "Overview", href: "/overview", icon: LayoutGrid },
-                { name: "Data Explorer", href: "/explorer", icon: FileEdit },
-                { name: "Reports", href: "/reports", icon: LineChart, comingSoon: true },
-                { name: "TikTok Ads", href: "/tiktok-ads", icon: TrendingUp },
-                { name: "Meta Ads", href: "/meta-ads", icon: Facebook },
-                { name: "Google Ads", href: "/google-ads", icon: Search },
-                { name: "Shopee", href: "/shopee", icon: ShoppingBag },
-                { name: "Templates", href: "/templates", icon: Wand2, comingSoon: true },
-            ]
-        }
+        { name: "Dashboard", href: "/", icon: LayoutGrid },
+        { name: "Sources", href: "/sources", icon: DatabaseZap },
+        { name: "Destinations", href: "/destinations", icon: Send },
+        { name: "Reports", href: "/reports", icon: LineChart },
+        { name: "Settings", href: "/settings", icon: Settings },
     ];
 
     return (
         <div className={`w-64 bg-[#f8fafc] dark:bg-slate-900 border-r border-[#e2e8f0] dark:border-slate-800 h-screen flex flex-col fixed top-0 left-0 lg:relative z-50 transform lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out shadow-[4px_0_24px_rgba(0,0,0,0.02)] shrink-0`}>
-            {/* Workspace Switcher */}
             <div className="px-4 py-5 border-b border-gray-200/60 dark:border-slate-800 relative z-20" ref={workspaceRef}>
                 <button
                     onClick={() => setIsWorkspaceOpen(!isWorkspaceOpen)}
@@ -150,7 +125,6 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                     <ChevronDown className={`w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-cyan-600 transition-transform ${isWorkspaceOpen ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* Workspace Dropdown */}
                 {isWorkspaceOpen && Array.isArray(workspaces) && (
                     <div className="absolute top-[80px] left-4 right-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg mt-1 p-2 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
                         <div className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase px-2 py-1 mb-1">Your Workspaces</div>
@@ -185,49 +159,39 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                 )}
             </div>
 
-            {/* Navigation */}
-            <div className="flex-1 overflow-y-auto py-6 px-4 space-y-8">
-                {navItems.map((section) => (
-                    <div key={section.title}>
-                        <h3 className="px-3 text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-3">
-                            {section.title}
-                        </h3>
-                        <div className="space-y-1">
-                            {section.items.map((item) => {
-                                const isActive = pathname === item.href;
-                                return (
-                                    <Link
-                                        key={item.href}
-                                        href={item.href}
-                                        className={`group flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive
-                                            ? "bg-cyan-50 text-cyan-800"
-                                            : "text-gray-600 hover:bg-gray-50/80 hover:text-gray-900"
-                                            }`}
-                                    >
-                                        <item.icon className={`w-4 h-4 mr-3 transition-colors ${isActive ? "text-cyan-600" : "text-gray-400 group-hover:text-gray-500"}`} />
-                                        {item.name}
-                                        {(item as any).comingSoon && (
-                                            <span className="ml-auto text-[9px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">Soon</span>
-                                        )}
-                                    </Link>
-                                );
-                            })}
-                        </div>
-                    </div>
-                ))}
-            </div>
+            <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-1" aria-label="Main">
+                {navItems.map((item) => {
+                    const isActive = navIsActive(pathname, item.href);
+                    return (
+                        <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => setIsOpen && setIsOpen(false)}
+                            className={`group flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive
+                                ? "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-200"
+                                : "text-gray-600 hover:bg-gray-50/80 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-slate-800/80 dark:hover:text-white"
+                                }`}
+                        >
+                            <item.icon className={`w-4 h-4 mr-3 transition-colors ${isActive ? "text-cyan-600 dark:text-cyan-300" : "text-gray-400 group-hover:text-gray-500 dark:text-gray-500 dark:group-hover:text-gray-400"}`} />
+                            {item.name}
+                        </Link>
+                    );
+                })}
+            </nav>
 
-            {/* Footer / User Profile */}
             <div className="p-4 border-t border-gray-200/60 dark:border-slate-800 space-y-2 bg-white/50 dark:bg-slate-900 overflow-visible relative z-30" ref={profileRef}>
                 <div className="space-y-1 mb-4 hidden lg:block">
-                    <button className="flex items-center w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white transition-colors group">
+                    <a
+                        href="/docs"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="Help and documentation"
+                        onClick={() => trackEvent("help_opened", { location: "sidebar" })}
+                        className="flex items-center w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white transition-colors group"
+                    >
                         <HelpCircle className="w-5 h-5 mr-3 text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400" />
-                        Help & Support
-                    </button>
-                    <Link href="/settings" onClick={() => setIsOpen && setIsOpen(false)} className={`group flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all ${pathname === '/settings' ? 'bg-gray-100 dark:bg-slate-800 text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white'}`}>
-                        <Settings className={`w-5 h-5 mr-3 transition-colors ${pathname === '/settings' ? 'text-gray-900 dark:text-white' : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400'}`} />
-                        Settings
-                    </Link>
+                        Help &amp; docs
+                    </a>
                     <button onClick={toggleDarkMode} className="flex items-center w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white transition-colors group">
                         {isDarkMode ? <Sun className="w-5 h-5 mr-3 text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400" /> : <Moon className="w-5 h-5 mr-3 text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400" />}
                         {isDarkMode ? 'Light Mode' : 'Dark Mode'}
@@ -235,7 +199,6 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                 </div>
 
                 <div className="relative">
-                    {/* Profile Dropdown */}
                     {isProfileOpen && (
                         <div className="absolute bottom-[calc(100%+8px)] left-0 w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg p-2 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
                             <Link href="/settings" onClick={() => { setIsOpen && setIsOpen(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
@@ -245,7 +208,6 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                                 <KeyRound className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" /> API Keys
                             </Link>
 
-                            {/* Mobile dark mode toggle in dropdown if screen is small */}
                             <div className="lg:hidden">
                                 <div className="h-px bg-gray-100 dark:bg-slate-700 my-1"></div>
                                 <button onClick={() => { toggleDarkMode && toggleDarkMode(); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg transition-colors">

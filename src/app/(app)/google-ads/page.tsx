@@ -110,7 +110,7 @@ export default function GoogleAdsPage() {
           <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300">
             <AlertCircle className="h-4 w-4" />
             <span>Connect a Google Ads account to start generating reports.</span>
-            <Link href="/console" className="ml-auto underline font-bold">Go to Console</Link>
+            <Link href="/sources" className="ml-auto underline font-bold">Go to Console</Link>
           </div>
         ) : null
       }
@@ -121,7 +121,7 @@ export default function GoogleAdsPage() {
             Fetch Performance
           </PrimaryButton>
         ) : (
-          <Link href="/console" className={cn(secondaryButtonLinkClassName, "w-full py-3")}>
+          <Link href="/sources" className={cn(secondaryButtonLinkClassName, "w-full py-3")}>
 
             <Database className="w-4 h-4 mr-2" />
             Connect Google Ads

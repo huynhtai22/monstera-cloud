@@ -229,7 +229,7 @@ const PLATFORM_LOGOS = [
 // ─────────────────────────────────────────────
 // Main page
 // ─────────────────────────────────────────────
-export default function MarketingPage() {
+export default function MarketingHomePage() {
     const [lang, setLang] = useState<Lang>("en");
 
     useEffect(() => {

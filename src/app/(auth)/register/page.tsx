@@ -48,7 +48,7 @@ export default function RegisterPage() {
     metaPixelCustom("MC_SignUp_Google_Click", { method: "google" });
     setIsGoogleLoading(true);
     await signIn("google", {
-      callbackUrl: `/auth/continue?next=${encodeURIComponent("/console")}`,
+      callbackUrl: `/auth/continue?next=${encodeURIComponent("/")}`,
     });
   };
 

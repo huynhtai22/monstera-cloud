@@ -1,0 +1,123 @@
+"use client";
+
+import Link from "next/link";
+import { Clock, Loader2, AlertCircle, Zap } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
+
+type Pipeline = {
+    id: string;
+    name: string;
+    status: string;
+    updatedAt: string;
+    logs?: Array<{ rowsSynced?: number }>;
+    sourceConnection?: { name?: string };
+    destinationConnection?: { name?: string };
+};
+
+type RecentActivityProps = {
+    pipelines: Pipeline[] | undefined;
+    isLoading: boolean;
+    error: Error | undefined;
+    syncingPipelineId: string | null;
+    onSync: (pipelineId: string) => void;
+};
+
+export function RecentActivity({
+    pipelines,
+    isLoading,
+    error,
+    syncingPipelineId,
+    onSync,
+}: RecentActivityProps) {
+    return (
+        <div className="flex min-h-[320px] flex-col rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/40 lg:min-h-[400px]">
+            <div className="mb-4 flex items-center justify-between gap-2">
+                <div>
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">Recent activity</h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Latest events from your pipelines.</p>
+                </div>
+                <Link href="/reports" className="text-xs font-semibold text-cyan-700 hover:underline dark:text-cyan-300">
+                    See all logs
+                </Link>
+            </div>
+
+            <div className="flex-1 space-y-5 overflow-y-auto pr-2">
+                {isLoading ? (
+                    <div className="flex h-full flex-col items-center justify-center py-10 text-center">
+                        <Loader2 className="mb-3 h-6 w-6 animate-spin text-cyan-500" />
+                        <span className="text-sm text-gray-500">Loading activity…</span>
+                    </div>
+                ) : error ? (
+                    <div className="flex h-full flex-col items-center justify-center py-10 text-center text-red-500">
+                        <AlertCircle className="mb-2 h-6 w-6" />
+                        <span className="text-sm">Failed to load activity feed.</span>
+                    </div>
+                ) : Array.isArray(pipelines) && pipelines.length > 0 ? (
+                    pipelines.map((pipeline, index) => {
+                        const isLast = index === pipelines.length - 1;
+                        const isError = pipeline.status === "error";
+                        const latestLog = pipeline.logs?.[0];
+
+                        return (
+                            <div key={pipeline.id} className={`flex items-start space-x-3 ${isLast ? "opacity-80" : ""}`}>
+                                <div className="relative mt-1 shrink-0">
+                                    <div
+                                        className={`h-2.5 w-2.5 rounded-full ${isError ? "bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.1)]" : "bg-cyan-500 shadow-[0_0_0_4px_rgba(6,182,212,0.15)]"}`}
+                                    />
+                                    {!isLast && (
+                                        <div className="absolute bottom-[-16px] left-[5px] top-4 w-px bg-gray-200 dark:bg-slate-700" />
+                                    )}
+                                </div>
+                                <div>
+                                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                        {pipeline.name} {isError ? "Failed" : "Synced"}
+                                    </p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        {isError
+                                            ? `Error connecting ${pipeline.sourceConnection?.name} to ${pipeline.destinationConnection?.name}.`
+                                            : latestLog
+                                              ? `Successfully synced ${latestLog.rowsSynced} rows to ${pipeline.destinationConnection?.name}.`
+                                              : `Pipeline established: ${pipeline.sourceConnection?.name} → ${pipeline.destinationConnection?.name}`}
+                                    </p>
+                                    <div className="mt-1 flex items-center text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500">
+                                        <Clock className="mr-1 h-3 w-3" />
+                                        {new Date(pipeline.updatedAt).toLocaleTimeString([], {
+                                            hour: "2-digit",
+                                            minute: "2-digit",
+                                        })}
+                                    </div>
+
+                                    <div className="mt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => onSync(pipeline.id)}
+                                            disabled={syncingPipelineId === pipeline.id}
+                                            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-800"
+                                        >
+                                            {syncingPipelineId === pipeline.id ? (
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : (
+                                                <Zap className="h-3.5 w-3.5" />
+                                            )}
+                                            Sync now
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })
+                ) : (
+                    <div className="flex flex-1 flex-col items-center justify-center px-2 py-10 text-center">
+                        <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+                            No pipeline runs yet. Connect a source and destination to see sync activity here.
+                        </p>
+                        <Link href="/sources" className={cn(primaryButtonLinkClassName, "text-sm")}>
+                            Go to Sources
+                        </Link>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}

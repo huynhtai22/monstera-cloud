@@ -82,7 +82,7 @@ export function buildConsoleOauthSuccessUrl(
   provider: string,
   result: EnsurePipelineResult
 ): URL {
-  const u = new URL("/console", base);
+  const u = new URL("/sources", base);
   u.searchParams.set("oauth_success", "1");
   u.searchParams.set("provider", provider);
   if (result.pipelineCreated) u.searchParams.set("pipeline_ready", "1");

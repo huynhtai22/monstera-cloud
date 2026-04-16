@@ -1,14 +1,52 @@
 "use client";
 
-import React from 'react';
+import React from "react";
+import Link from "next/link";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import useSWR from "swr";
 import { FileText, AlertCircle, CheckCircle2, Clock } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
+import { PageShell } from "@/components/ui/PageShell";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Database } from "lucide-react";
+
+const SOURCE_CHIPS: { id: string; label: string }[] = [
+    { id: "", label: "All sources" },
+    { id: "tiktok_business", label: "TikTok" },
+    { id: "meta_ads", label: "Meta" },
+    { id: "google_ads", label: "Google" },
+    { id: "shopee", label: "Shopee" },
+    { id: "shopify", label: "Shopify" },
+];
+
+function pipelineMatchesSource(pipelineName: string, sourceId: string): boolean {
+    if (!sourceId) return true;
+    const n = pipelineName.toLowerCase();
+    switch (sourceId) {
+        case "tiktok_business":
+            return n.includes("tiktok");
+        case "meta_ads":
+            return n.includes("meta") || n.includes("facebook");
+        case "google_ads":
+            return n.includes("google");
+        case "shopee":
+            return n.includes("shopee");
+        case "shopify":
+            return n.includes("shopify");
+        default:
+            return true;
+    }
+}
 
 export default function ReportsPage() {
     const { activeWorkspaceId } = useWorkspaceStore();
-    const [filter, setFilter] = React.useState<"all" | "success" | "error">("all");
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const pathname = usePathname();
+    const sourceFilter = searchParams.get("source") ?? "";
+
+    const [statusFilter, setStatusFilter] = React.useState<"all" | "success" | "error">("all");
 
     const fetcher = async (url: string) => {
         const res = await fetch(url);
@@ -17,13 +55,13 @@ export default function ReportsPage() {
         return data;
     };
 
-    const statusQuery = filter === "all" ? "" : `&status=${filter}`;
+    const statusQuery = statusFilter === "all" ? "" : `&status=${statusFilter}`;
     const { data, error, isLoading } = useSWR(
         activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}${statusQuery}` : null,
         fetcher
     );
 
-    const logs = (data?.logs ?? []) as Array<{
+    const rawLogs = (data?.logs ?? []) as Array<{
         id: string;
         status: string;
         rowsSynced: number;
@@ -33,13 +71,21 @@ export default function ReportsPage() {
         pipeline: { id: string; name: string };
     }>;
 
-    return (
-        <div className="relative max-w-7xl mx-auto px-8 py-10 w-full animate-in fade-in duration-300">
-            <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-                <div className="absolute top-[0%] right-[10%] w-[40%] h-[40%] rounded-full bg-indigo-200/20 dark:bg-indigo-900/20 blur-[120px]" />
-                <div className="absolute bottom-[10%] left-[0%] w-[50%] h-[50%] rounded-full bg-cyan-200/20 dark:bg-cyan-900/20 blur-[120px]" />
-            </div>
+    const logs = React.useMemo(
+        () => rawLogs.filter((l) => pipelineMatchesSource(l.pipeline?.name ?? "", sourceFilter)),
+        [rawLogs, sourceFilter]
+    );
 
+    const setSource = (id: string) => {
+        const q = new URLSearchParams(searchParams.toString());
+        if (id) q.set("source", id);
+        else q.delete("source");
+        const qs = q.toString();
+        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    };
+
+    return (
+        <PageShell>
             <div className="mb-8 relative z-10">
                 <div className="flex items-center space-x-3 mb-2">
                     <div className="w-10 h-10 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md border border-white dark:border-slate-700/60 rounded-xl flex items-center justify-center shadow-sm text-indigo-600">
@@ -50,6 +96,23 @@ export default function ReportsPage() {
                 <p className="text-gray-500 dark:text-gray-400 text-sm max-w-2xl">
                     Audit data throughput, investigate failed syncs, and monitor your total rows.
                 </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                    {SOURCE_CHIPS.map((c) => (
+                        <button
+                            key={c.id || "all"}
+                            type="button"
+                            onClick={() => setSource(c.id)}
+                            className={cn(
+                                "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                                sourceFilter === c.id
+                                    ? "border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200"
+                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-800"
+                            )}
+                        >
+                            {c.label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             <div className="relative z-10 rounded-3xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/40">
@@ -63,10 +126,10 @@ export default function ReportsPage() {
                             <button
                                 key={v}
                                 type="button"
-                                onClick={() => setFilter(v)}
+                                onClick={() => setStatusFilter(v)}
                                 className={cn(
                                     "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
-                                    filter === v
+                                    statusFilter === v
                                         ? "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200"
                                         : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-800"
                                 )}
@@ -84,8 +147,27 @@ export default function ReportsPage() {
                         <AlertCircle className="h-4 w-4" />
                         Failed to load sync logs.
                     </div>
+                ) : rawLogs.length === 0 ? (
+                    <EmptyState
+                        icon={<Database className="h-12 w-12" />}
+                        title="No sync logs yet"
+                        description="Run a sync from Sources after you connect a destination to see rows land here."
+                        primaryAction={
+                            <Link
+                                href="/sources"
+                                className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700"
+                            >
+                                Go to Sources
+                            </Link>
+                        }
+                    />
                 ) : logs.length === 0 ? (
-                    <div className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">No sync logs yet.</div>
+                    <div className="py-12 text-center text-sm text-gray-500 dark:text-gray-400">
+                        No logs match this source filter.{" "}
+                        <button type="button" onClick={() => setSource("")} className="font-semibold text-cyan-700 underline dark:text-cyan-300">
+                            Clear filter
+                        </button>
+                    </div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
@@ -130,6 +212,6 @@ export default function ReportsPage() {
                     </div>
                 )}
             </div>
-        </div>
+        </PageShell>
     );
 }

@@ -10,29 +10,20 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(false);
 
-    // Sync dark mode state with document class
+    // Sync dark mode: toggle .dark on <html> while .disable-transitions avoids theme flash
     useEffect(() => {
-        // Disable transitions temporarily to prevent "spread" or "slow" staggering
-        const css = document.createElement('style');
-        css.appendChild(document.createTextNode(`* {
-            -webkit-transition: none !important;
-            -moz-transition: none !important;
-            -o-transition: none !important;
-            -ms-transition: none !important;
-            transition: none !important;
-        }`));
-        document.head.appendChild(css);
-
-        if (isDarkMode) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-
-        // Use a timeout to ensure React renders and DOM updates before re-enabling
-        setTimeout(() => {
-            document.head.removeChild(css);
-        }, 50);
+        const root = document.documentElement;
+        root.classList.add("disable-transitions");
+        requestAnimationFrame(() => {
+            if (isDarkMode) {
+                root.classList.add("dark");
+            } else {
+                root.classList.remove("dark");
+            }
+            requestAnimationFrame(() => {
+                root.classList.remove("disable-transitions");
+            });
+        });
     }, [isDarkMode]);
 
     const toggleDarkMode = () => setIsDarkMode(!isDarkMode);

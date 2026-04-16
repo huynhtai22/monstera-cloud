@@ -34,20 +34,20 @@ export async function GET(request: Request) {
   if (err) {
     console.error('[META_ADS_OAUTH]', err, errDesc);
     return NextResponse.redirect(
-      new URL(`/console?meta_ads_error=${encodeURIComponent(err)}`, base)
+      new URL(`/sources?meta_ads_error=${encodeURIComponent(err)}`, base)
     );
   }
 
   if (!code) {
     return NextResponse.redirect(
-      new URL('/console?meta_ads_error=missing_code', base)
+      new URL('/sources?meta_ads_error=missing_code', base)
     );
   }
 
   const workspaceId = state || '';
   if (!workspaceId) {
     return NextResponse.redirect(
-      new URL('/console?meta_ads_error=invalid_state', base)
+      new URL('/sources?meta_ads_error=invalid_state', base)
     );
   }
 
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
   if (!membership) {
     console.warn('[META_ADS_OAUTH] User %s not a member of workspace %s', session.user.id, workspaceId);
     return NextResponse.redirect(
-      new URL('/console?meta_ads_error=workspace_access_denied', base)
+      new URL('/sources?meta_ads_error=workspace_access_denied', base)
     );
   }
 
@@ -113,7 +113,7 @@ export async function GET(request: Request) {
   } catch (error: any) {
     console.error('[META_ADS_AUTH_ERROR]', error);
     return NextResponse.redirect(
-      new URL(`/console?meta_ads_error=${encodeURIComponent(error.message || 'auth_failed')}`, base)
+      new URL(`/sources?meta_ads_error=${encodeURIComponent(error.message || 'auth_failed')}`, base)
     );
   }
 }

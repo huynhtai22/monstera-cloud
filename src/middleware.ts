@@ -6,18 +6,13 @@ import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
 /** Logged-in app surfaces (must match routes under `src/app/(app)/`). */
 const APP_AUTH_SEGMENTS = [
-  "console",
+  "sources",
   "settings",
-  "overview",
   "reports",
   "explorer",
   "destinations",
   "transformations",
   "internal-templates",
-  "meta-ads",
-  "google-ads",
-  "tiktok-ads",
-  "shopee",
 ] as const;
 
 function pathnameNeedsAppAuth(pathname: string): boolean {
@@ -100,7 +95,7 @@ export async function middleware(request: NextRequest) {
         (request.nextUrl.search || "");
       login.searchParams.set(
         "callbackUrl",
-        safeCallbackUrl(nextPath, "/console")
+        safeCallbackUrl(nextPath, "/")
       );
       return NextResponse.redirect(login);
     }
@@ -116,12 +111,10 @@ export const config = {
   matcher: [
     "/api/((?!auth/).*)",
     "/api/v1/sheets/:path*",
-    "/console",
-    "/console/:path*",
+    "/sources",
+    "/sources/:path*",
     "/settings",
     "/settings/:path*",
-    "/overview",
-    "/overview/:path*",
     "/reports",
     "/reports/:path*",
     "/explorer",
@@ -132,13 +125,5 @@ export const config = {
     "/transformations/:path*",
     "/internal-templates",
     "/internal-templates/:path*",
-    "/meta-ads",
-    "/meta-ads/:path*",
-    "/google-ads",
-    "/google-ads/:path*",
-    "/tiktok-ads",
-    "/tiktok-ads/:path*",
-    "/shopee",
-    "/shopee/:path*",
   ],
 };

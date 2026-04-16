@@ -45,7 +45,7 @@ export default function LookerStudioConnectorPage() {
           <li>
             <span className="font-medium text-slate-200">Ad platforms</span> — Connect Meta Ads,
             Google Ads, and/or TikTok for Business in the{" "}
-            <Link href="/console" className="text-cyan-400 hover:underline">
+            <Link href="/sources" className="text-cyan-400 hover:underline">
               Data Sources
             </Link>{" "}
             console and ensure data has synced so metrics exist in your workspace.

@@ -84,7 +84,7 @@ export function MarketingNavbar() {
                         {showLangToggle ? <LangToggle lang={lang} setLang={onSetLang} /> : null}
                         {isAuthed ? (
                             <Link
-                                href="/console"
+                                href="/"
                                 className="inline-flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 text-sm font-medium transition-colors"
                             >
                                 <SquareTerminal className="w-4 h-4" />

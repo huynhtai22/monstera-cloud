@@ -9,13 +9,13 @@ import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
 /**
  * OAuth redirect target: applies the same post-login rules as email/password
- * (free users → /pricing when they would have landed on /console).
+ * (free users → /pricing when they would have landed on /sources).
  */
 function ContinueInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { status } = useSession();
-  const nextRaw = searchParams.get("next") ?? "/console";
+  const nextRaw = searchParams.get("next") ?? "/";
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,7 +46,7 @@ function ContinueInner() {
         if (cancelled) return;
         const dest = getPostLoginRedirectPath(
           plan,
-          safeCallbackUrl(nextRaw, "/console")
+          safeCallbackUrl(nextRaw, "/")
         );
         router.replace(dest);
       } catch {
