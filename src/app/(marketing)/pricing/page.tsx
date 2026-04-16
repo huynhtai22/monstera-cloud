@@ -134,7 +134,7 @@ export default function PricingPage() {
                             <p className="text-gray-500 text-xs mt-1">per user / month</p>
                         </div>
                         <Link
-                            href="/register"
+                            href="/console"
                             onClick={() =>
                                 metaPixelCustom("MC_Pricing_Free_GetStarted", {
                                     plan: "free",
