@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Link from "next/link";
 import { toast } from "sonner";
-import { Database, Search, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Unplug } from "lucide-react";
+import { Database, Search, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Unplug, ChevronRight } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
@@ -127,16 +127,18 @@ const IntegrationCard = React.memo(function IntegrationCard({
 
             <div className="mb-5 flex-1">
                 <div className="mb-1 flex flex-wrap items-center gap-2">
-                    <h3 className="text-base font-semibold text-gray-900 dark:text-white tracking-tight">{integration.name}</h3>
                     {integration.status !== "available" ? (
                         <Link
                             href={`/sources/${integration.id}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="text-xs font-semibold text-cyan-700 hover:underline dark:text-cyan-300"
+                            className="group/title inline-flex max-w-full items-center gap-1 text-base font-semibold tracking-tight text-gray-900 hover:text-cyan-700 dark:text-white dark:hover:text-cyan-300"
                         >
-                            Details
+                            <span className="truncate">{integration.name}</span>
+                            <ChevronRight className="h-4 w-4 shrink-0 opacity-50 transition group-hover/title:translate-x-0.5 group-hover/title:opacity-80" aria-hidden />
                         </Link>
-                    ) : null}
+                    ) : (
+                        <h3 className="text-base font-semibold tracking-tight text-gray-900 dark:text-white">{integration.name}</h3>
+                    )}
                 </div>
                 <p className="text-sm leading-relaxed text-gray-600 line-clamp-2 dark:text-slate-300">{integration.description}</p>
 
@@ -154,6 +156,11 @@ const IntegrationCard = React.memo(function IntegrationCard({
                         Last synced: {integration.lastSync}
                     </p>
                 )}
+                {integration.status === "connected" && !integration.pipelineId ? (
+                    <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300/90">
+                        No pipeline yet — connect a destination to enable sync.
+                    </p>
+                ) : null}
             </div>
 
             <div className="relative z-10">
@@ -548,6 +555,23 @@ export default function SourcesPage() {
         });
     }, [searchQuery, activeFilter, workspaces, activeWorkspaceId, availableIntegrations]);
 
+    const activeWorkspace = useMemo(() => {
+        if (!Array.isArray(workspaces) || !activeWorkspaceId) return null;
+        return workspaces.find((w: { id: string }) => w.id === activeWorkspaceId) ?? null;
+    }, [workspaces, activeWorkspaceId]);
+
+    const filterStats = useMemo(() => {
+        let connected = 0;
+        let needsAttention = 0;
+        let available = 0;
+        for (const i of filteredIntegrations as Array<{ status: string }>) {
+            if (i.status === "available") available += 1;
+            else if (i.status === "error") needsAttention += 1;
+            else connected += 1;
+        }
+        return { connected, needsAttention, available };
+    }, [filteredIntegrations]);
+
     // Error State (e.g. 500, expired session edge case, rate limit)
     if (error) {
         const detail = error instanceof Error ? error.message : "Failed to fetch data";
@@ -676,18 +700,24 @@ export default function SourcesPage() {
                 <div>
                     {isLoading ? (
                         <>
-                            <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight mb-2">
-                                Sources
-                            </h1>
+                            <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Sources</h1>
+                            {activeWorkspace ? (
+                                <p className="mb-1 text-sm font-medium text-gray-600 dark:text-slate-400">
+                                    {activeWorkspace.name} · Sources
+                                </p>
+                            ) : null}
                             <p className="max-w-2xl text-base text-gray-600 dark:text-slate-300">
                                 Loading your workspace…
                             </p>
                         </>
                     ) : connectedSourceCount === 0 ? (
                         <>
-                            <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight mb-2">
-                                Sources
-                            </h1>
+                            <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Sources</h1>
+                            {activeWorkspace ? (
+                                <p className="mb-1 text-sm font-medium text-gray-600 dark:text-slate-400">
+                                    {activeWorkspace.name} · Sources
+                                </p>
+                            ) : null}
                             <p className="max-w-2xl text-base text-gray-600 dark:text-slate-300">
                                 Connect TikTok, Meta, Google, Shopee, Lazada or Shopify. Most pipelines take ~3 minutes — choose{" "}
                                 <span className="font-medium text-gray-800 dark:text-slate-100">Available</span> below to get started.
@@ -695,10 +725,12 @@ export default function SourcesPage() {
                         </>
                     ) : (
                         <>
-                            <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight mb-2">
-                                Sources
-                            </h1>
-                            {/* #5 — Count + last sync merged into subtitle (summary bar removed) */}
+                            <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Sources</h1>
+                            {activeWorkspace ? (
+                                <p className="mb-1 text-sm font-medium text-gray-600 dark:text-slate-400">
+                                    {activeWorkspace.name} · Sources
+                                </p>
+                            ) : null}
                             <p className="max-w-2xl text-base text-gray-600 dark:text-slate-300">
                                 {connectedSourceCount} source{connectedSourceCount === 1 ? "" : "s"} connected
                                 {lastSyncSummary ? ` · Last sync: ${lastSyncSummary}` : ""}.
@@ -730,9 +762,32 @@ export default function SourcesPage() {
                 </div>
             </div>
 
-            {/* #5 — Summary bar REMOVED (info merged into header subtitle above) */}
-
-            {/* #6 — Onboarding hint removed (redundant with header copy) */}
+            {!isLoading && activeWorkspace && filteredIntegrations.length > 0 ? (
+                <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-gray-200/90 bg-gray-50/90 px-4 py-3 text-sm dark:border-slate-600/70 dark:bg-slate-800/60">
+                    <span className="text-gray-600 dark:text-slate-300">
+                        In view:{" "}
+                        <strong className="font-semibold text-gray-900 dark:text-white">{filterStats.connected}</strong> connected
+                    </span>
+                    <span className="text-slate-300 dark:text-slate-600">·</span>
+                    <span className="text-gray-600 dark:text-slate-300">
+                        <strong
+                            className={
+                                filterStats.needsAttention > 0
+                                    ? "font-semibold text-red-600 dark:text-red-300"
+                                    : "font-semibold text-gray-900 dark:text-white"
+                            }
+                        >
+                            {filterStats.needsAttention}
+                        </strong>{" "}
+                        need attention
+                    </span>
+                    <span className="text-slate-300 dark:text-slate-600">·</span>
+                    <span className="text-gray-600 dark:text-slate-300">
+                        <strong className="font-semibold text-gray-900 dark:text-white">{filterStats.available}</strong> available to
+                        connect
+                    </span>
+                </div>
+            ) : null}
 
             {/* Search and Filter — #9: ARIA tab pattern */}
             <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-8 mb-8">

@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { usePathname } from 'next/navigation';
 import { Sidebar } from './Sidebar';
 import { DemoModeBanner } from './DemoModeBanner';
 import { KeyboardShortcutsProvider } from './KeyboardShortcutsProvider';
@@ -9,7 +10,32 @@ import { UpgradeNudge } from './UpgradeNudge';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { Toaster } from 'sonner';
 
+function mobileSectionTitle(pathname: string | null): string {
+    if (!pathname) return "Home";
+    if (pathname === "/") return "Dashboard";
+    if (pathname.startsWith("/sources/") && pathname !== "/sources") return "Source";
+    const first = pathname.split("/").filter(Boolean)[0] ?? "";
+    const map: Record<string, string> = {
+        sources: "Sources",
+        destinations: "Destinations",
+        reports: "Reports",
+        settings: "Settings",
+        console: "Console",
+        explorer: "Explorer",
+        transformations: "Transformations",
+        "internal-templates": "Templates",
+        "google-ads": "Google Ads",
+        "meta-ads": "Meta Ads",
+        "tiktok-ads": "TikTok Ads",
+        shopee: "Shopee",
+    };
+    if (map[first]) return map[first];
+    return first ? first.charAt(0).toUpperCase() + first.slice(1).replace(/-/g, " ") : "Home";
+}
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
+    const pathname = usePathname();
+    const mobileTitle = useMemo(() => mobileSectionTitle(pathname), [pathname]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(false);
 
@@ -35,16 +61,34 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <KeyboardShortcutsProvider>
         <div className="flex min-h-screen font-sans">
             {/* Mobile Header (only visible on small screens) */}
-            <div className="lg:hidden fixed top-0 w-full h-16 bg-white dark:bg-slate-950 border-b border-gray-200 dark:border-slate-700 z-30 flex items-center justify-between px-4">
-                <div className="flex items-center">
-                    <button onClick={() => setIsSidebarOpen(true)} className="p-2 -ml-2 text-gray-600 dark:text-gray-300">
-                        <Menu className="w-6 h-6" />
+            <div className="fixed top-0 z-30 flex h-16 w-full items-center justify-between gap-2 border-b border-gray-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-950 lg:hidden">
+                <div className="flex min-w-0 flex-1 items-center">
+                    <button
+                        type="button"
+                        onClick={() => setIsSidebarOpen(true)}
+                        className="-ml-2 p-2 text-gray-600 dark:text-gray-300"
+                        aria-label="Open menu"
+                    >
+                        <Menu className="h-6 w-6" />
                     </button>
-                    <div className="font-bold text-lg text-gray-900 dark:text-white ml-2">Monstera</div>
+                    <div className="ml-1 flex min-w-0 items-baseline gap-2">
+                        <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            Monstera
+                        </span>
+                        <span className="truncate text-base font-bold text-gray-900 dark:text-white">{mobileTitle}</span>
+                    </div>
                 </div>
-                <button onClick={toggleDarkMode} className="p-2 text-gray-500 dark:text-gray-400">
-                    {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                </button>
+                <div className="flex shrink-0 items-center gap-0.5">
+                    <NotificationCenter />
+                    <button
+                        type="button"
+                        onClick={toggleDarkMode}
+                        className="p-2 text-gray-500 dark:text-gray-400"
+                        aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+                    >
+                        {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                    </button>
+                </div>
             </div>
 
             <Sidebar
@@ -55,7 +99,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             />
 
             <div className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC] dark:bg-[var(--background)] text-slate-900 dark:text-slate-100">
-                <div className="lg:hidden h-16 shrink-0" />
+                <div className="h-16 shrink-0 lg:hidden" />
                 <div className="z-20 hidden items-center justify-end gap-3 border-b border-gray-200/80 bg-[#F8FAFC]/90 px-6 py-2 backdrop-blur-sm dark:border-slate-700/80 dark:bg-[var(--background)]/95 lg:sticky lg:top-0 lg:flex">
                     <NotificationCenter />
                 </div>

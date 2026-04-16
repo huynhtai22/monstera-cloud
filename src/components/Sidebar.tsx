@@ -83,12 +83,24 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    const navItems = [
-        { name: "Dashboard", href: "/", icon: LayoutGrid },
-        { name: "Sources", href: "/sources", icon: DatabaseZap },
-        { name: "Destinations", href: "/destinations", icon: Send },
-        { name: "Reports", href: "/reports", icon: LineChart },
-        { name: "Settings", href: "/settings", icon: Settings },
+    type NavItem = { name: string; href: string; icon: typeof LayoutGrid };
+    const navGroups: { label: string; items: NavItem[] }[] = [
+        {
+            label: "Data",
+            items: [
+                { name: "Dashboard", href: "/", icon: LayoutGrid },
+                { name: "Sources", href: "/sources", icon: DatabaseZap },
+                { name: "Destinations", href: "/destinations", icon: Send },
+            ],
+        },
+        {
+            label: "Insights",
+            items: [{ name: "Reports", href: "/reports", icon: LineChart }],
+        },
+        {
+            label: "Workspace",
+            items: [{ name: "Settings", href: "/settings", icon: Settings }],
+        },
     ];
 
     return (
@@ -159,24 +171,35 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                 )}
             </div>
 
-            <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-1" aria-label="Main">
-                {navItems.map((item) => {
-                    const isActive = navIsActive(pathname, item.href);
-                    return (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            onClick={() => setIsOpen && setIsOpen(false)}
-                            className={`group flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive
-                                ? "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/55 dark:text-cyan-100 dark:ring-1 dark:ring-cyan-700/50"
-                                : "text-gray-600 hover:bg-gray-50/80 hover:text-gray-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                                }`}
-                        >
-                            <item.icon className={`w-4 h-4 mr-3 transition-colors ${isActive ? "text-cyan-600 dark:text-cyan-300" : "text-gray-400 group-hover:text-gray-500 dark:text-slate-500 dark:group-hover:text-slate-300"}`} />
-                            {item.name}
-                        </Link>
-                    );
-                })}
+            <nav className="flex-1 space-y-6 overflow-y-auto px-4 py-4" aria-label="Main">
+                {navGroups.map((group) => (
+                    <div key={group.label}>
+                        <div className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">
+                            {group.label}
+                        </div>
+                        <div className="space-y-1">
+                            {group.items.map((item) => {
+                                const isActive = navIsActive(pathname, item.href);
+                                return (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        onClick={() => setIsOpen && setIsOpen(false)}
+                                        className={`group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-all ${isActive
+                                            ? "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/55 dark:text-cyan-100 dark:ring-1 dark:ring-cyan-700/50"
+                                            : "text-gray-600 hover:bg-gray-50/80 hover:text-gray-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                                            }`}
+                                    >
+                                        <item.icon
+                                            className={`mr-3 h-4 w-4 transition-colors ${isActive ? "text-cyan-600 dark:text-cyan-300" : "text-gray-400 group-hover:text-gray-500 dark:text-slate-500 dark:group-hover:text-slate-300"}`}
+                                        />
+                                        {item.name}
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    </div>
+                ))}
             </nav>
 
             <div className="p-4 border-t border-gray-200/60 dark:border-slate-800 space-y-2 bg-white/50 dark:bg-slate-900 overflow-visible relative z-30" ref={profileRef}>

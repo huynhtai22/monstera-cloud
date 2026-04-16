@@ -35,7 +35,9 @@ export async function GET(req: Request) {
 
   const logs = await prisma.syncLog.findMany({
     where,
-    include: { pipeline: { select: { id: true, name: true } } },
+    include: {
+      pipeline: { select: { id: true, name: true, sourceConnectionId: true } },
+    },
     orderBy: { createdAt: "desc" },
     take: 100,
   });
