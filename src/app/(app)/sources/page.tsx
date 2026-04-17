@@ -508,6 +508,19 @@ export default function SourcesPage() {
     useEffect(() => {
         if (typeof window === "undefined") return;
         const params = new URLSearchParams(window.location.search);
+
+        // OAuth error params from any provider callback
+        const errorProviders = ["meta_ads", "google_ads", "tiktok", "tiktok_business", "shopee"] as const;
+        for (const p of errorProviders) {
+            const errVal = params.get(`${p}_error`);
+            if (errVal) {
+                const label = { meta_ads: "Meta Ads", google_ads: "Google Ads", tiktok: "TikTok Shop", tiktok_business: "TikTok Ads", shopee: "Shopee" }[p];
+                toast.error(`${label} connection failed: ${decodeURIComponent(errVal).replace(/_/g, " ")}`);
+                window.history.replaceState({}, "", "/sources");
+                return;
+            }
+        }
+
         if (params.get("oauth_success") !== "1") return;
         const provider = params.get("provider") ?? "source";
         const pipelineReady = params.get("pipeline_ready") === "1";
