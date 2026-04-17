@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { sanitizeConnectionCredentials } from "@/lib/sanitize-connection-credentials";
+import { isSeededDemoSourceConnection } from "@/lib/demo-connection";
 
 export async function GET() {
     try {
@@ -54,13 +55,20 @@ export async function GET() {
             workspaces = [newWorkspace];
         }
 
-        const safeWorkspaces = workspaces.map((w: any) => ({
-            ...w,
-            connections: (w.connections ?? []).map((c: any) => ({
-                ...c,
-                credentials: sanitizeConnectionCredentials(c.credentials),
-            })),
-        }));
+        const safeWorkspaces = workspaces.map((w: any) => {
+            const demoMode = w.demoMockMode === true;
+            const connections = (w.connections ?? []).filter((c: any) => {
+                if (demoMode) return true;
+                return !isSeededDemoSourceConnection(c);
+            });
+            return {
+                ...w,
+                connections: connections.map((c: any) => ({
+                    ...c,
+                    credentials: sanitizeConnectionCredentials(c.credentials),
+                })),
+            };
+        });
 
         return NextResponse.json(safeWorkspaces);
     } catch (error) {

@@ -230,6 +230,20 @@ const IntegrationCard = React.memo(function IntegrationCard({
                             )}
                         </button>
                     </div>
+                ) : integration.status === "available" && integration.envConnectReady === false ? (
+                    <div className="space-y-2">
+                        <button
+                            type="button"
+                            disabled
+                            className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 py-2 text-sm font-semibold text-slate-500 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-400"
+                        >
+                            Connect unavailable
+                        </button>
+                        <p className="text-center text-xs leading-snug text-slate-500 dark:text-slate-400">
+                            OAuth is not enabled on this deployment (missing server environment variables). In production,
+                            Meta Ads, Shopee, and other connectors use the same flows with credentials configured.
+                        </p>
+                    </div>
                 ) : (
                     <button
                         onClick={(e) => {
@@ -493,21 +507,26 @@ export default function SourcesPage() {
     );
     const recentLogs = (recentLogsData?.logs ?? []).slice(0, 5) as Array<any>;
 
-    const availableIntegrations = useMemo(() => {
-        if (!intConfig) return ALL_CATALOG_INTEGRATIONS;
-        return ALL_CATALOG_INTEGRATIONS.filter((item) => {
-            if (item.id === 'tiktok_shop') return intConfig.tiktokShop !== false;
-            if (item.id === 'tiktok_business') return intConfig.tiktokBusiness !== false;
-            if (item.id === 'shopee') return intConfig.shopee !== false;
-            if (item.id === 'meta_ads') return intConfig.metaAds !== false;
-            if (item.id === 'google_ads') return intConfig.googleAds !== false;
+    /** Full catalog always listed so App Review sees real connectors; `envConnectReady` gates the Connect action. */
+    const catalogIntegrations = useMemo(() => {
+        const envReady = (id: string): boolean => {
+            if (!intConfig) return true;
+            if (id === "tiktok_shop") return intConfig.tiktokShop !== false;
+            if (id === "tiktok_business") return intConfig.tiktokBusiness !== false;
+            if (id === "shopee") return intConfig.shopee !== false;
+            if (id === "meta_ads") return intConfig.metaAds !== false;
+            if (id === "google_ads") return intConfig.googleAds !== false;
             return true;
-        });
+        };
+        return ALL_CATALOG_INTEGRATIONS.map((item) => ({
+            ...item,
+            envConnectReady: envReady(item.id),
+        }));
     }, [intConfig]);
 
     // Filter logic
     const filteredIntegrations = useMemo(() => {
-        if (!Array.isArray(workspaces) || !activeWorkspaceId) return availableIntegrations;
+        if (!Array.isArray(workspaces) || !activeWorkspaceId) return catalogIntegrations;
 
         const workspace = workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0];
         const sourceConnections = (workspace?.connections || []).filter((c: any) => c.type === 'source');
@@ -540,7 +559,7 @@ export default function SourcesPage() {
             };
         });
 
-        const filteredAvailable = availableIntegrations.filter((a) => !connectedCatalogIds.has(a.id));
+        const filteredAvailable = catalogIntegrations.filter((a) => !connectedCatalogIds.has(a.id));
         const combined = [...connectedSources, ...filteredAvailable];
 
         return combined.filter((integration: any) => {
@@ -553,7 +572,7 @@ export default function SourcesPage() {
             if (activeFilter === 'available') return integration.status === 'available';
             return true;
         });
-    }, [searchQuery, activeFilter, workspaces, activeWorkspaceId, availableIntegrations]);
+    }, [searchQuery, activeFilter, workspaces, activeWorkspaceId, catalogIntegrations]);
 
     const activeWorkspace = useMemo(() => {
         if (!Array.isArray(workspaces) || !activeWorkspaceId) return null;
