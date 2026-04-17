@@ -1,59 +1,27 @@
 /**
- * Backend toggles for which TikTok (and related) connect flows appear in the product.
+ * Backend toggles for which connect flows appear in the product.
  *
- * A connector is enabled when:
- *   1. Its credentials are present in env, AND
- *   2. The explicit toggle (if set) is not "false".
+ * Connectors are VISIBLE by default — set <NAME>_CONNECT_ENABLED=false to
+ * explicitly hide one (e.g. for a region where it isn't supported).
  *
- * Set TIKTOK_SHOP_CONNECT_ENABLED=false or TIKTOK_BUSINESS_CONNECT_ENABLED=false
- * to force-hide a connector even if credentials are present.
+ * Credentials are only required at OAuth / connect time, not to show the card.
  */
 export function isTikTokShopConnectEnabled(): boolean {
-  const toggle = (process.env.TIKTOK_SHOP_CONNECT_ENABLED || 'true').toLowerCase();
-  if (toggle === 'false') return false;
-  // Require at least the app key to be present
-  const key = (process.env.TIKTOK_SHOP_APP_KEY || '').trim();
-  return key.length > 0;
+  return (process.env.TIKTOK_SHOP_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
 }
 
 export function isShopeeConnectEnabled(): boolean {
-  const toggle = (process.env.SHOPEE_CONNECT_ENABLED || 'true').toLowerCase();
-  if (toggle === 'false') return false;
-  const id = (process.env.SHOPEE_PARTNER_ID || '').trim();
-  const key = (process.env.SHOPEE_PARTNER_KEY || '').trim();
-  return id.length > 0 && key.length > 0;
+  return (process.env.SHOPEE_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
 }
 
 export function isMetaAdsConnectEnabled(): boolean {
-  const toggle = (process.env.META_ADS_CONNECT_ENABLED || 'true').toLowerCase();
-  if (toggle === 'false') return false;
-  const appId = (process.env.META_ADS_APP_ID || '').trim();
-  const secret = (process.env.META_ADS_APP_SECRET || '').trim();
-  return appId.length > 0 && secret.length > 0;
+  return (process.env.META_ADS_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
 }
 
 export function isGoogleAdsConnectEnabled(): boolean {
-  const toggle = (process.env.GOOGLE_ADS_CONNECT_ENABLED || 'true').toLowerCase();
-  if (toggle === 'false') return false;
-  const clientId = (process.env.GOOGLE_ADS_CLIENT_ID || '').trim();
-  const clientSecret = (process.env.GOOGLE_ADS_CLIENT_SECRET || '').trim();
-  const devToken = (process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '').trim();
-  return clientId.length > 0 && clientSecret.length > 0 && devToken.length > 0;
+  return (process.env.GOOGLE_ADS_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
 }
 
 export function isTikTokBusinessConnectEnabled(): boolean {
-  const toggle = (process.env.TIKTOK_BUSINESS_CONNECT_ENABLED || 'true').toLowerCase();
-  if (toggle === 'false') return false;
-  // Require BOTH app_id and secret — without the secret, token exchange will fail
-  const key = (
-    process.env.TIKTOK_BUSINESS_CLIENT_KEY ||
-    process.env.TIKTOK_BUSINESS_APP_ID ||
-    ''
-  ).trim();
-  const secret = (
-    process.env.TIKTOK_BUSINESS_CLIENT_SECRET ||
-    process.env.TIKTOK_BUSINESS_APP_SECRET ||
-    ''
-  ).trim();
-  return key.length > 0 && secret.length > 0;
+  return (process.env.TIKTOK_BUSINESS_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
 }
