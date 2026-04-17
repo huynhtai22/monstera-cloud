@@ -15,7 +15,7 @@ function ContinueInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { status } = useSession();
-  const nextRaw = searchParams.get("next") ?? "/";
+  const nextRaw = searchParams.get("next") ?? "/console";
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,7 +46,7 @@ function ContinueInner() {
         if (cancelled) return;
         const dest = getPostLoginRedirectPath(
           plan,
-          safeCallbackUrl(nextRaw, "/")
+          safeCallbackUrl(nextRaw, "/console")
         );
         router.replace(dest);
       } catch {

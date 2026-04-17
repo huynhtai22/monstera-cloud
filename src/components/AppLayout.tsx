@@ -14,7 +14,7 @@ const THEME_STORAGE_KEY = "monstera-theme";
 
 function mobileSectionTitle(pathname: string | null): string {
     if (!pathname) return "Home";
-    if (pathname === "/") return "Dashboard";
+    if (pathname === "/console" || pathname.startsWith("/console/")) return "Dashboard";
     if (pathname.startsWith("/sources/") && pathname !== "/sources") return "Source";
     const first = pathname.split("/").filter(Boolean)[0] ?? "";
     const map: Record<string, string> = {
@@ -22,7 +22,7 @@ function mobileSectionTitle(pathname: string | null): string {
         destinations: "Destinations",
         reports: "Reports",
         settings: "Settings",
-        console: "Console",
+        console: "Dashboard",
         explorer: "Explorer",
         transformations: "Transformations",
         "internal-templates": "Templates",
@@ -43,7 +43,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     /** After first client read of localStorage — avoids stripping .dark before preference is restored (e.g. layout remount on route change). */
     const themeReady = useRef(false);
 
-    // Restore theme on mount so navigations that remount AppLayout (e.g. / ↔ /sources) keep dark mode.
+    // Restore theme on mount so navigations that remount AppLayout (e.g. /console ↔ /sources) keep dark mode.
     useLayoutEffect(() => {
         try {
             const s = localStorage.getItem(THEME_STORAGE_KEY);

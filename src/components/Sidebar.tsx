@@ -40,7 +40,7 @@ interface SidebarProps {
 }
 
 function navIsActive(pathname: string, href: string): boolean {
-    if (href === "/") return pathname === "/";
+    if (href === "/console") return pathname === "/console" || pathname.startsWith("/console/");
     if (href === "/settings") return pathname === "/settings" || pathname.startsWith("/settings/");
     return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -88,7 +88,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
         {
             label: "Data",
             items: [
-                { name: "Dashboard", href: "/", icon: LayoutGrid },
+                { name: "Dashboard", href: "/console", icon: LayoutGrid },
                 { name: "Sources", href: "/sources", icon: DatabaseZap },
                 { name: "Destinations", href: "/destinations", icon: Send },
             ],

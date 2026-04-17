@@ -6,6 +6,7 @@ import { safeCallbackUrl } from "@/lib/safe-callback-url";
 
 /** Logged-in app surfaces (must match routes under `src/app/(app)/`). */
 const APP_AUTH_SEGMENTS = [
+  "console",
   "sources",
   "settings",
   "reports",
@@ -95,7 +96,7 @@ export async function middleware(request: NextRequest) {
         (request.nextUrl.search || "");
       login.searchParams.set(
         "callbackUrl",
-        safeCallbackUrl(nextPath, "/")
+        safeCallbackUrl(nextPath, "/console")
       );
       return NextResponse.redirect(login);
     }
@@ -125,5 +126,7 @@ export const config = {
     "/transformations/:path*",
     "/internal-templates",
     "/internal-templates/:path*",
+    "/console",
+    "/console/:path*",
   ],
 };
