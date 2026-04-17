@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Link from "next/link";
 import { toast } from "sonner";
-import { Database, Search, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Unplug, ChevronRight } from "lucide-react";
+import { Database, Search, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Unplug, ChevronRight, ArrowRight } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
@@ -86,14 +86,18 @@ const IntegrationCard = React.memo(function IntegrationCard({
     return (
         <div
             className={`relative overflow-hidden rounded-2xl border p-5 transition-all duration-200 group flex flex-col justify-between bg-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/80 dark:bg-slate-800/90 dark:shadow-[0_12px_40px_rgba(0,0,0,0.35)] dark:hover:bg-slate-800 dark:ring-1 dark:ring-white/5
-                ${integration.status === 'error' ? 'border-red-200/80 hover:border-red-300 dark:border-red-800/70 dark:hover:border-red-700' : 'border-gray-200/80 dark:border-slate-600/80 hover:border-cyan-200/80 dark:hover:border-cyan-600/50'}`}
+                ${integration.status === 'error'
+                    ? 'border-red-200/80 hover:border-red-300 dark:border-red-800/70 dark:hover:border-red-700'
+                    : integration.status === 'available'
+                      ? 'border-cyan-200/80 bg-cyan-50/30 dark:border-cyan-700/50 dark:bg-cyan-950/20 hover:border-cyan-300 dark:hover:border-cyan-600'
+                      : 'border-gray-200/80 dark:border-slate-600/80 hover:border-cyan-200/80 dark:hover:border-cyan-600/50'}`}
         >
             <div className="flex items-start justify-between mb-3 relative z-10">
                 <div className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 transition-colors bg-white/70 dark:bg-slate-900/80 overflow-hidden
                     ${integration.status === 'connected' ? 'border-cyan-100/50 dark:border-cyan-700/40' :
                         integration.status === 'syncing' ? 'border-blue-100/50 dark:border-blue-700/40' :
                             integration.status === 'error' ? 'border-red-100/50 dark:border-red-800/50' :
-                                'border-gray-200 dark:border-slate-600 grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100'}`}>
+                                'border-cyan-100/50 dark:border-cyan-700/40'}`}>
                     <img
                         src={integration.logoSrc}
                         alt={`${integration.name} logo`}
@@ -236,9 +240,9 @@ const IntegrationCard = React.memo(function IntegrationCard({
                             e.stopPropagation();
                             onConnect(integration);
                         }}
-                        className="w-full rounded-lg border border-slate-300 bg-white py-2 text-sm font-semibold text-slate-700 shadow-sm transition-colors group-hover:bg-slate-50 dark:border-slate-500 dark:bg-slate-700 dark:text-slate-100 dark:group-hover:bg-slate-600"
+                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-cyan-700"
                     >
-                        Connect
+                        Connect <ArrowRight className="h-3.5 w-3.5" />
                     </button>
                 )}
             </div>
