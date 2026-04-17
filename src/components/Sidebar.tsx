@@ -104,7 +104,9 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
     ];
 
     return (
-        <div className={`w-64 bg-[#f8fafc] dark:bg-slate-950 border-r border-[#e2e8f0] dark:border-slate-700/90 h-screen flex flex-col fixed top-0 left-0 lg:relative z-50 transform lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:shadow-[4px_0_32px_rgba(0,0,0,0.45)] shrink-0`}>
+        <div
+            className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-[#e2e8f0] bg-[#f8fafc] shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-transform duration-300 ease-in-out dark:border-slate-700/90 dark:bg-slate-950 dark:shadow-[4px_0_32px_rgba(0,0,0,0.45)] lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
+        >
             <div className="px-4 py-5 border-b border-gray-200/60 dark:border-slate-800 relative z-20" ref={workspaceRef}>
                 <button
                     onClick={() => setIsWorkspaceOpen(!isWorkspaceOpen)}
