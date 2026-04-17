@@ -514,6 +514,7 @@ export default function SourcesPage() {
         const needsDestination = params.get("needs_destination") === "1";
         const limit = params.get("pipeline_limit") === "1";
         setOauthBanner({ provider, pipelineReady, needsDestination, limit });
+        setActiveFilter('connected');
         trackEvent("oauth_return_success", {
             provider,
             pipeline_ready: pipelineReady,
@@ -569,9 +570,10 @@ export default function SourcesPage() {
             .map((conn: any) => {
                 const logo = logoPathForConnectionProvider(conn.provider);
                 const catalogId = integrationCatalogId(conn.provider);
-                const desc =
-                    SOURCE_BLURB_BY_PROVIDER[conn.provider] ??
-                    `${conn.provider} — data for this workspace.`;
+                const accountMatch = (conn.name as string | undefined)?.match(/\((.+)\)$/);
+                const accountLabel = accountMatch?.[1] ?? null;
+                const baseBlurb = SOURCE_BLURB_BY_PROVIDER[conn.provider] ?? `${conn.provider} — data for this workspace.`;
+                const desc = accountLabel ? `${accountLabel} · ${baseBlurb}` : baseBlurb;
                 const relatedPipeline = workspace?.pipelines?.find((p: any) => p.sourceConnectionId === conn.id);
 
                 return {
