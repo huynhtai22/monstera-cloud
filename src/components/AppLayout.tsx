@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { usePathname } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { Sidebar } from './Sidebar';
+import { GlobeLoader } from './GlobeLoader';
 import { DemoModeBanner } from './DemoModeBanner';
 import { KeyboardShortcutsProvider } from './KeyboardShortcutsProvider';
 import { NotificationCenter } from './NotificationCenter';
@@ -37,6 +39,8 @@ function mobileSectionTitle(pathname: string | null): string {
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
+    const { status } = useSession();
+    const loading = status === 'loading';
     const mobileTitle = useMemo(() => mobileSectionTitle(pathname), [pathname]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(false);
@@ -83,6 +87,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
     return (
         <KeyboardShortcutsProvider>
+        <GlobeLoader visible={loading} />
         <div className="flex min-h-screen font-sans">
             {/* Mobile Header (only visible on small screens) */}
             <div className="fixed top-0 z-30 flex h-16 w-full items-center justify-between gap-2 border-b border-gray-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-950 lg:hidden">
