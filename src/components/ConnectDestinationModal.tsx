@@ -125,28 +125,36 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 dark:bg-slate-800/60 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden relative animate-in zoom-in-95 duration-300 border border-gray-200 dark:border-slate-700">
 
-                {/* Header Sequence */}
-                <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-gray-50 dark:bg-slate-800/80">
-                    <div className="flex items-center space-x-2">
-                        <div className="w-8 h-8 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm relative overflow-hidden">
-                            <Image 
-                                src={destinationId === 'looker' ? INTEGRATION_LOGOS.looker : INTEGRATION_LOGOS.googleSheets} 
-                                alt={destinationId === 'looker' ? 'Looker Studio' : 'Google Sheets™'} 
-                                width={20} 
-                                height={20} 
-                                className="object-contain" 
-                             />
-                        </div>
-                        <h3 className="font-bold text-gray-900 dark:text-white">
-                            {destinationId === 'looker' ? 'Connect Looker Studio' : 'Connect Google Sheets™'}
+                {/* Header */}
+                <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+                        <Image
+                            src={destinationId === 'looker' ? INTEGRATION_LOGOS.looker : INTEGRATION_LOGOS.googleSheets}
+                            alt={destinationId === 'looker' ? 'Looker Studio' : 'Google Sheets™'}
+                            width={22}
+                            height={22}
+                            className="object-contain"
+                        />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                            {destinationId === 'looker' ? 'Looker Studio™' : 'Google Sheets™'}
                         </h3>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">
+                            {isListView
+                                ? `${activeConnections.length} account${activeConnections.length !== 1 ? 's' : ''} connected`
+                                : destinationId === 'looker'
+                                  ? 'Native data bridge — no sync needed'
+                                  : 'Authorize access'}
+                        </p>
                     </div>
                     <button
                         onClick={handleClose}
                         disabled={isProcessing}
-                        className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-300 dark:text-gray-600 transition-colors disabled:opacity-50 flex-shrink-0"
+                        aria-label="Close"
+                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors disabled:opacity-50 shrink-0"
                     >
-                        <X className="w-5 h-5" />
+                        <X className="w-4 h-4" />
                     </button>
                 </div>
 
@@ -196,31 +204,28 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                          </div>
                     </div>
                 ) : isListView ? (
-                    <div className="p-6 space-y-6">
-                        <div className="text-center mb-2">
-                            <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Manage Accounts</h4>
-                            <p className="text-gray-500 dark:text-gray-400 text-sm">You have {activeConnections.length} account{activeConnections.length > 1 ? 's' : ''} connected.</p>
-                        </div>
-
-                        <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1 custom-scrollbar">
+                    <div className="p-6 space-y-3">
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
                             {activeConnections.map((conn: any) => (
-                                <div key={conn.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 rounded-xl">
-                                    <div className="flex items-center space-x-3 overflow-hidden">
-                                        <div className="w-8 h-8 shrink-0 rounded bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 flex items-center justify-center pointer-events-none">
-                                            <Image src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets™" width={16} height={16} />
-                                        </div>
-                                        <div className="truncate">
-                                            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{conn.name}</p>
-                                            <p className="text-xs text-gray-400">Connected</p>
-                                        </div>
+                                <div
+                                    key={conn.id}
+                                    className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/60 dark:border-slate-800 dark:bg-slate-800/40 px-4 py-3"
+                                >
+                                    <CheckCircle2 className="h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400" />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{conn.name}</p>
+                                        <p className="text-xs text-gray-400 dark:text-gray-500">Active · syncing</p>
                                     </div>
                                     <button
                                         onClick={() => handleDisconnect(conn.id, conn.name)}
                                         disabled={disconnectingId === conn.id}
-                                        className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg transition-colors disabled:opacity-50 shrink-0 ml-2"
-                                        title="Disconnect"
+                                        className="shrink-0 text-xs text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors disabled:opacity-50 px-1 py-0.5"
+                                        title="Remove account"
                                     >
-                                        {disconnectingId === conn.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                                        {disconnectingId === conn.id
+                                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            : 'Remove'
+                                        }
                                     </button>
                                 </div>
                             ))}
@@ -228,10 +233,10 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
 
                         <button
                             onClick={() => setForceSetup(true)}
-                            className="w-full py-3 border border-dashed border-gray-300 dark:border-slate-600 rounded-xl text-sm font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 group"
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50/60 dark:border-cyan-800/50 dark:bg-cyan-950/30 py-3 text-sm font-semibold text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100/50 dark:hover:bg-cyan-950/50 transition-colors"
                         >
-                            <Plus className="w-4 h-4 group-hover:text-cyan-500 transition-colors" />
-                            <span>Add Another Account</span>
+                            <Plus className="h-4 w-4" />
+                            Add Another Account
                         </button>
                     </div>
                 ) : (
@@ -314,7 +319,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                         </div>
                         
                         {/* Footer actions for non-looker */}
-                        <div className="px-6 py-4 border-t border-gray-100 dark:border-slate-700 flex justify-end space-x-3 bg-gray-50 dark:bg-slate-800/50">
+                        <div className="px-6 py-4 border-t border-gray-100 dark:border-slate-700 flex justify-end gap-3">
                             {step < 3 && (
                                 <button
                                     onClick={() => {
@@ -325,7 +330,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                         }
                                     }}
                                     disabled={isProcessing}
-                                    className="px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
+                                    className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
                                 >
                                     {forceSetup && activeConnections.length > 0 ? "Back" : "Cancel"}
                                 </button>

@@ -213,30 +213,31 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                 tabIndex={-1}
                 className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden relative animate-in zoom-in-95 duration-300 border border-gray-200 dark:border-slate-700 outline-none"
             >
-                <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between bg-gray-50 dark:bg-slate-800/80">
-                    <div className="flex items-center space-x-2">
-                        <div className="w-8 h-8 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm relative overflow-hidden">
-                            <Image src={logoSrc} alt={name} width={20} height={20} className="object-contain" />
-                        </div>
-                        <h3 id="connect-source-modal-title" className="font-bold text-gray-900 dark:text-white">
-                            Connect {name}
+                <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+                        <Image src={logoSrc} alt={name} width={22} height={22} className="object-contain" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <h3 id="connect-source-modal-title" className="text-sm font-bold text-gray-900 dark:text-white">
+                            {name}
                         </h3>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">Connect via OAuth</p>
                     </div>
                     <button
                         onClick={handleClose}
                         disabled={isProcessing}
                         aria-label="Close dialog"
-                        className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors disabled:opacity-50 flex-shrink-0"
+                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors disabled:opacity-50 shrink-0"
                     >
-                        <X className="w-5 h-5" />
+                        <X className="w-4 h-4" />
                     </button>
                 </div>
 
                 <div className="p-6">
                     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-                        <div className="text-center mb-6">
-                            <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{step1Content.title}</h4>
-                            <p className="text-gray-500 dark:text-gray-400 text-sm">{step1Content.subtitle}</p>
+                        <div className="mb-5">
+                            <h4 className="text-base font-bold text-gray-900 dark:text-white mb-1">{step1Content.title}</h4>
+                            <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">{step1Content.subtitle}</p>
                         </div>
 
                         <div
@@ -331,11 +332,11 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                     </div>
                 </div>
 
-                <div className="px-6 py-4 border-t border-gray-100 dark:border-slate-700 flex justify-end space-x-3 bg-gray-50 dark:bg-slate-800/50">
+                <div className="px-6 py-4 border-t border-gray-100 dark:border-slate-700 flex justify-end gap-3">
                     <button
                         onClick={handleClose}
                         disabled={isProcessing}
-                        className="px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                        className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
                     >
                         Cancel
                     </button>
@@ -393,15 +394,15 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                             type="button"
                             onClick={handleAuthenticate}
                             disabled={isProcessing || oauthPrimaryDisabled}
-                            className="px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-70 flex items-center shadow-sm"
+                            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-cyan-600 rounded-xl hover:bg-cyan-700 transition-all disabled:opacity-70 shadow-sm min-w-[180px]"
                         >
                             {isProcessing ? (
                                 <>
-                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Connecting…
+                                    <Loader2 className="w-4 h-4 animate-spin shrink-0" /> Connecting…
                                 </>
                             ) : (
                                 <>
-                                    Continue to {name} <ChevronRight className="w-4 h-4 ml-1" />
+                                    Continue to {name} <ChevronRight className="w-4 h-4 shrink-0" />
                                 </>
                             )}
                         </button>
