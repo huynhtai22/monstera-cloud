@@ -486,6 +486,7 @@ function getData(request) {
   if (!parsedResponse) {
     var url = APP_URL + "/api/looker-studio?" + params.join("&");
     var response;
+    var fetchError = null;
     try {
       response = fetchWithRetry(url, {
         headers: { Authorization: "Bearer " + apiKey },
@@ -493,8 +494,11 @@ function getData(request) {
         timeout: 30000,
       });
     } catch (e) {
+      fetchError = e;
+    }
+    if (fetchError) {
       cc.newUserError()
-        .setDebugText("Network error after retries: " + e.message)
+        .setDebugText("Network error after retries: " + fetchError.message)
         .setText("Could not reach Monstera Cloud after multiple attempts. Check your network and try again.")
         .throwException();
     }
@@ -509,11 +513,15 @@ function getData(request) {
         .throwException();
     }
 
+    var parseError = null;
     try {
       parsedResponse = JSON.parse(body);
     } catch (e) {
+      parseError = e;
+    }
+    if (parseError) {
       cc.newUserError()
-        .setDebugText("Failed to parse API response: " + e.message)
+        .setDebugText("Failed to parse API response: " + parseError.message)
         .setText("Monstera Cloud returned an unexpected response format.")
         .throwException();
     }

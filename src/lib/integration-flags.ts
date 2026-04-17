@@ -19,8 +19,9 @@ export function isTikTokShopConnectEnabled(): boolean {
 export function isShopeeConnectEnabled(): boolean {
   const toggle = (process.env.SHOPEE_CONNECT_ENABLED || 'true').toLowerCase();
   if (toggle === 'false') return false;
-  const key = (process.env.SHOPEE_PARTNER_ID || '').trim();
-  return key.length > 0;
+  const id = (process.env.SHOPEE_PARTNER_ID || '').trim();
+  const key = (process.env.SHOPEE_PARTNER_KEY || '').trim();
+  return id.length > 0 && key.length > 0;
 }
 
 export function isMetaAdsConnectEnabled(): boolean {
