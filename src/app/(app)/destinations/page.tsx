@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { Search, ArrowRight, Send, Plus, AlertCircle, Loader2, Unplug } from "lucide-react";
+import { Search, ArrowRight, Send, Plus, AlertCircle, Loader2, Unplug, CheckCircle2, Circle } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { ConnectDestinationModal } from "@/components/ConnectDestinationModal";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import useSWR, { useSWRConfig } from "swr";
@@ -172,77 +173,100 @@ export default function DestinationsPage() {
                 </div>
             ) : filteredDestinations.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
-                    {filteredDestinations.map((destination: any) => (
-                        <div
-                            key={destination.id}
-                            className={`relative overflow-hidden bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl rounded-2xl border p-5 transition-all duration-300 group flex flex-col justify-between shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/60 dark:bg-slate-900/60
-                            ${destination.status === 'error' ? 'border-red-200/80 hover:border-red-300 cursor-pointer' :
-                                    destination.status === 'connected' ? 'border-white dark:border-slate-700/60 dark:border-slate-700/40 hover:border-cyan-200/80 cursor-pointer' :
-                                        'border-white dark:border-slate-700/60 dark:border-slate-700/40 hover:border-blue-200/80 cursor-default'}`}
-                        >
-                            {/* Inner Glass Reflection */}
-                            <div className="absolute inset-0 bg-gradient-to-b from-white/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                    {(() => {
+                        const firstAvailableId = filteredDestinations.find((d: any) => d.status !== 'connected')?.id;
+                        return filteredDestinations.map((destination: any) => {
+                            const isConnected = destination.status === 'connected';
+                            const isActive = !isConnected && destination.id === firstAvailableId;
 
-                            <div className="flex items-start justify-between mb-3 relative z-10">
-                                {/* Logo */}
-                                <div className={`relative w-12 h-12 rounded-xl backdrop-blur-md border flex items-center justify-center shrink-0 transition-colors bg-white/50 dark:bg-slate-900/50 overflow-hidden
-                                ${destination.status === 'connected' ? 'border-cyan-100/50' :
-                                        destination.status === 'error' ? 'border-red-100/50' :
-                                            'border-gray-200 dark:border-slate-700/50 grayscale opacity-70 group-hover:grayscale-0 group-hover:opacity-100'}`}>
-                                    <img
-                                        src={destination.logoSrc}
-                                        alt={`${destination.name} logo`}
-                                        width={28}
-                                        height={28}
-                                        className="object-contain"
-                                    />
+                            return (
+                                <div
+                                    key={destination.id}
+                                    className={cn(
+                                        "relative overflow-hidden rounded-2xl border p-5 transition-all duration-300 flex flex-col justify-between",
+                                        isConnected
+                                            ? "border-gray-100 bg-gray-50/60 dark:border-slate-800 dark:bg-slate-800/30 opacity-80"
+                                            : isActive
+                                              ? "border-cyan-200 bg-cyan-50/70 shadow-sm dark:border-cyan-700/60 dark:bg-cyan-950/30 hover:shadow-md hover:-translate-y-0.5"
+                                              : "border-white bg-white/40 dark:border-slate-700/60 dark:bg-slate-900/20 opacity-70 hover:opacity-90 hover:-translate-y-0.5 hover:shadow-sm"
+                                    )}
+                                >
+                                    <div className="flex items-start justify-between mb-3">
+                                        {/* Logo */}
+                                        <div className={cn(
+                                            "relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 bg-white/70 dark:bg-slate-900/80 overflow-hidden",
+                                            isConnected ? "border-cyan-100/50 dark:border-cyan-700/40" : "border-gray-200 dark:border-slate-600"
+                                        )}>
+                                            <img
+                                                src={destination.logoSrc}
+                                                alt={`${destination.name} logo`}
+                                                width={28}
+                                                height={28}
+                                                className="object-contain"
+                                            />
+                                        </div>
+
+                                        {/* Step icon */}
+                                        <div className="mt-0.5 shrink-0">
+                                            {isConnected ? (
+                                                <CheckCircle2 className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                                            ) : isActive ? (
+                                                <div className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-cyan-500">
+                                                    <div className="h-2 w-2 rounded-full bg-cyan-500" />
+                                                </div>
+                                            ) : (
+                                                <Circle className="h-5 w-5 text-gray-300 dark:text-gray-600" />
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-5 flex-1">
+                                        <h3 className={cn(
+                                            "font-semibold mb-1",
+                                            isConnected
+                                                ? "text-gray-500 dark:text-gray-400 line-through decoration-gray-300 dark:decoration-gray-600"
+                                                : "text-gray-900 dark:text-white"
+                                        )}>{destination.name}</h3>
+                                        {!isConnected && (
+                                            <p className={cn(
+                                                "text-sm line-clamp-2",
+                                                isActive ? "text-gray-600 dark:text-gray-400" : "text-gray-400 dark:text-gray-600"
+                                            )}>{destination.description}</p>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center justify-between">
+                                        {isConnected ? (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSetupDestinationId(destination.id)}
+                                                    className="text-xs text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 font-medium underline underline-offset-2 transition-colors"
+                                                >
+                                                    Manage
+                                                </button>
+                                                <span className="text-xs font-medium text-cyan-600 dark:text-cyan-400">Done</span>
+                                            </>
+                                        ) : isActive ? (
+                                            <button
+                                                onClick={() => setSetupDestinationId(destination.id)}
+                                                className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-cyan-700 transition-colors"
+                                            >
+                                                Set Up <ArrowRight className="h-3 w-3" />
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => setSetupDestinationId(destination.id)}
+                                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white/50 dark:border-slate-700 dark:bg-slate-800/50 px-3.5 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
+                                            >
+                                                Set Up
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
-
-                                {/* Status Indicator */}
-                                {destination.status === 'connected' ? (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-cyan-50/80 text-cyan-700 border border-cyan-100/50 shadow-sm backdrop-blur-sm dark:bg-cyan-950/40 dark:text-cyan-400 dark:border-cyan-900/50">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 mr-1.5 dark:bg-cyan-400"></span>
-                                        {destination.connections?.length > 1 ? `Connected (${destination.connections.length})` : 'Connected'}
-                                    </span>
-                                ) : destination.status === 'error' ? (
-                                    <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-red-50/80 text-red-700 border border-red-100/50 shadow-sm backdrop-blur-sm dark:bg-red-950/40 dark:text-red-400 dark:border-red-900/50">
-                                        <AlertCircle className="w-3 h-3 mr-1" />
-                                        Error
-                                    </span>
-                                ) : null}
-                            </div>
-
-                            <div className="mb-5 relative z-10">
-                                <h3 className="text-gray-900 dark:text-white font-semibold mb-1 group-hover:text-blue-900 transition-colors">{destination.name}</h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 line-clamp-2">{destination.description}</p>
-                            </div>
-
-                            <div className="relative z-10">
-                                {destination.status === 'error' ? (
-                                    <button className="w-full py-2 bg-red-50/80 backdrop-blur-sm hover:bg-red-100/80 text-red-700 text-sm font-semibold rounded-lg transition-colors border border-red-200/50 shadow-sm">
-                                        Fix Connection
-                                    </button>
-                                ) : destination.status === 'connected' ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => setSetupDestinationId(destination.id)}
-                                        className="w-full py-2 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-700/60 dark:border-slate-700/40 text-slate-700 dark:text-slate-300 dark:text-gray-600 text-sm font-medium rounded-lg transition-colors hover:border-slate-300 dark:hover:border-slate-600 hover:bg-white/80 dark:bg-slate-900/80 shadow-sm flex items-center justify-center space-x-1"
-                                    >
-                                        <span className="w-4 h-4 mr-1.5 opacity-50"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg></span>
-                                        <span>Manage Accounts</span>
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={() => setSetupDestinationId(destination.id)}
-                                        className="w-full py-2 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-white dark:border-slate-700/60 dark:border-slate-700/40 text-gray-600 dark:text-gray-300 dark:text-gray-600 text-sm font-medium rounded-lg transition-colors hover:border-white dark:border-slate-700 hover:bg-white/80 dark:bg-slate-900/80 shadow-sm flex items-center justify-center space-x-1"
-                                    >
-                                        <span>Setup</span>
-                                        <ArrowRight className="w-4 h-4" />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    ))}
+                            );
+                        });
+                    })()}
                 </div>
             ) : (
                 <div className="w-full py-20 flex flex-col items-center justify-center text-center border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl bg-gray-50 dark:bg-slate-800/50">
