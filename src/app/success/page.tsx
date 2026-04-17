@@ -114,7 +114,7 @@ export default function SuccessPage() {
             Your plan is being activated. It may take a moment to appear — head to the console and refresh if it hasn&apos;t updated yet.
           </p>
           <a
-            href="/"
+            href="/console"
             className="inline-block w-full py-4 px-6 rounded-xl font-medium text-white bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all"
           >
             Go to Console
@@ -151,7 +151,7 @@ export default function SuccessPage() {
           Your subscription is active. Head to the console to start building your data pipelines.
         </p>
         <a
-          href="/"
+          href="/console"
           className="inline-block w-full py-4 px-6 rounded-xl font-medium text-white bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all"
         >
           Go to Console

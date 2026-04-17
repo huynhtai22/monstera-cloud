@@ -1,5 +1,11 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { DashboardHomePage } from "@/components/dashboard/DashboardHomePage";
 
-export default function ConsoleRedirectPage() {
-    redirect("/sources");
+export const metadata: Metadata = {
+    title: "Console",
+    description: "Workspace dashboard — connections, sync health, and quick actions.",
+};
+
+export default function ConsolePage() {
+    return <DashboardHomePage />;
 }

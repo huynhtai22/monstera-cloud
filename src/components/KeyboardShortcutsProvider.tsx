@@ -59,7 +59,7 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
                 }
                 if (k === "d") {
                     e.preventDefault();
-                    router.push("/");
+                    router.push("/console");
                     clearG();
                     return;
                 }

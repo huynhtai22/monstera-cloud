@@ -15,7 +15,7 @@ export function getPostLoginRedirectPath(
   plan: string | undefined,
   requestedPath: string
 ): string {
-  const safe = safeCallbackUrl(requestedPath, "/");
+  const safe = safeCallbackUrl(requestedPath, "/console");
   const path = safe.split("?")[0] || "/";
 
   if (plan === undefined || plan === null || plan === "") {

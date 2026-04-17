@@ -1,7 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { AppLayout } from "@/components/AppLayout";
-import { DashboardHomePage } from "@/components/dashboard/DashboardHomePage";
+import { redirect } from "next/navigation";
 import MarketingHomePage from "@/components/marketing/MarketingHomePage";
 import { MarketingNavbar } from "@/components/MarketingNavbar";
 import { MarketingFooter } from "@/components/MarketingFooter";
@@ -10,11 +9,7 @@ export default async function Home() {
     const session = await getServerSession(authOptions);
 
     if (session?.user) {
-        return (
-            <AppLayout>
-                <DashboardHomePage />
-            </AppLayout>
-        );
+        redirect("/console");
     }
 
     return (

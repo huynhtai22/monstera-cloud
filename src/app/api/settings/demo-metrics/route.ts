@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import crypto from "crypto";
+import { encrypt } from "@/lib/encryption";
 
 function randBetween(min: number, max: number) {
   return Math.random() * (max - min) + min;
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
           name: `${p.accountName}`,
           type: "source",
           provider: p.platform,
-          credentials: "{}", // demo
+          credentials: encrypt(JSON.stringify({ __monsteraDemoConnection: true })),
           status: "connected",
         },
         select: { id: true },

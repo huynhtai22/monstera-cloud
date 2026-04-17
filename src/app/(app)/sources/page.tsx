@@ -24,15 +24,41 @@ const fetcher = async (url: string) => {
     return data;
 };
 
+/** Ads and marketplaces first — matches how reviewers scan the Sources grid. */
 const ALL_CATALOG_INTEGRATIONS = [
-    { id: 'tiktok_shop', name: 'TikTok Shop', description: 'Seller catalog, orders, and Shop analytics.', status: 'available' as const, logoSrc: logoPathForCatalogId('tiktok_shop') },
-    { id: 'tiktok_business', name: 'TikTok Ads', description: 'TikTok Marketing API — campaign and ad performance reporting.', status: 'available' as const, logoSrc: logoPathForCatalogId('tiktok_business') },
     { id: 'meta_ads', name: 'Meta Ads', description: 'Facebook & Instagram Ads — campaign, ad set, and ad performance via Marketing API.', status: 'available' as const, logoSrc: logoPathForCatalogId('meta_ads') },
     { id: 'google_ads', name: 'Google Ads', description: 'Search, Shopping, and Performance Max reporting via Google Ads API.', status: 'available' as const, logoSrc: logoPathForCatalogId('google_ads') },
+    { id: 'tiktok_business', name: 'TikTok Ads', description: 'TikTok Marketing API — campaign and ad performance reporting.', status: 'available' as const, logoSrc: logoPathForCatalogId('tiktok_business') },
     { id: 'shopee', name: 'Shopee', description: 'Orders, products, and shop analytics from Shopee Open Platform.', status: 'available' as const, logoSrc: logoPathForCatalogId('shopee') },
+    { id: 'tiktok_shop', name: 'TikTok Shop', description: 'Seller catalog, orders, and Shop analytics.', status: 'available' as const, logoSrc: logoPathForCatalogId('tiktok_shop') },
     { id: 'lazada', name: 'Lazada Seller', description: 'Order fulfillments and finance.', status: 'available' as const, logoSrc: logoPathForCatalogId('lazada') },
     { id: 'shopify', name: 'Shopify', description: 'E-commerce platform orders.', status: 'available' as const, logoSrc: logoPathForCatalogId('shopify') },
 ];
+
+const CONNECTED_CARD_SORT_ORDER = [
+    "meta_ads",
+    "google_ads",
+    "tiktok_business",
+    "shopee",
+    "tiktok_shop",
+    "lazada",
+    "shopify",
+] as const;
+
+function connectedSourceSortRank(catalogId: string): number {
+    const i = (CONNECTED_CARD_SORT_ORDER as readonly string[]).indexOf(catalogId);
+    return i === -1 ? 100 : i;
+}
+
+const SOURCE_BLURB_BY_PROVIDER: Record<string, string> = {
+    meta_ads: "Facebook & Instagram Ads — performance reporting for this workspace.",
+    google_ads: "Google Ads — search and Performance Max reporting for this workspace.",
+    tiktok_business: "TikTok Ads — Marketing API reporting for this workspace.",
+    shopee: "Shopee Open Platform — orders and shop data for this workspace.",
+    tiktok_shop: "TikTok Shop — catalog and orders for this workspace.",
+    lazada: "Lazada Seller — orders and finance for this workspace.",
+    shopify: "Shopify — store orders for this workspace.",
+};
 
 function catalogIntegrationFromId(catalogId: string) {
     return ALL_CATALOG_INTEGRATIONS.find((a) => a.id === catalogId) ?? null;
@@ -229,6 +255,20 @@ const IntegrationCard = React.memo(function IntegrationCard({
                                 </>
                             )}
                         </button>
+                    </div>
+                ) : integration.status === "available" && integration.envConnectReady === false ? (
+                    <div className="space-y-2">
+                        <button
+                            type="button"
+                            disabled
+                            className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 py-2 text-sm font-semibold text-slate-500 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-400"
+                        >
+                            Connect unavailable
+                        </button>
+                        <p className="text-center text-xs leading-snug text-slate-500 dark:text-slate-400">
+                            OAuth for this connector is not enabled on this deployment (missing server env vars). With
+                            credentials set, Connect uses the standard OAuth flow.
+                        </p>
                     </div>
                 ) : (
                     <button
@@ -493,21 +533,26 @@ export default function SourcesPage() {
     );
     const recentLogs = (recentLogsData?.logs ?? []).slice(0, 5) as Array<any>;
 
-    const availableIntegrations = useMemo(() => {
-        if (!intConfig) return ALL_CATALOG_INTEGRATIONS;
-        return ALL_CATALOG_INTEGRATIONS.filter((item) => {
-            if (item.id === 'tiktok_shop') return intConfig.tiktokShop !== false;
-            if (item.id === 'tiktok_business') return intConfig.tiktokBusiness !== false;
-            if (item.id === 'shopee') return intConfig.shopee !== false;
-            if (item.id === 'meta_ads') return intConfig.metaAds !== false;
-            if (item.id === 'google_ads') return intConfig.googleAds !== false;
+    /** Full catalog always listed so App Review sees real connectors; `envConnectReady` gates the Connect action. */
+    const catalogIntegrations = useMemo(() => {
+        const envReady = (id: string): boolean => {
+            if (!intConfig) return true;
+            if (id === "tiktok_shop") return intConfig.tiktokShop !== false;
+            if (id === "tiktok_business") return intConfig.tiktokBusiness !== false;
+            if (id === "shopee") return intConfig.shopee !== false;
+            if (id === "meta_ads") return intConfig.metaAds !== false;
+            if (id === "google_ads") return intConfig.googleAds !== false;
             return true;
-        });
+        };
+        return ALL_CATALOG_INTEGRATIONS.map((item) => ({
+            ...item,
+            envConnectReady: envReady(item.id),
+        }));
     }, [intConfig]);
 
     // Filter logic
     const filteredIntegrations = useMemo(() => {
-        if (!Array.isArray(workspaces) || !activeWorkspaceId) return availableIntegrations;
+        if (!Array.isArray(workspaces) || !activeWorkspaceId) return catalogIntegrations;
 
         const workspace = workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0];
         const sourceConnections = (workspace?.connections || []).filter((c: any) => c.type === 'source');
@@ -516,31 +561,36 @@ export default function SourcesPage() {
             sourceConnections.map((c: any) => integrationCatalogId(c.provider))
         );
 
-        const connectedSources = sourceConnections.map((conn: any) => {
-            let logo = logoPathForConnectionProvider(conn.provider);
+        const connectedSources = sourceConnections
+            .map((conn: any) => {
+                const logo = logoPathForConnectionProvider(conn.provider);
+                const catalogId = integrationCatalogId(conn.provider);
+                const desc =
+                    SOURCE_BLURB_BY_PROVIDER[conn.provider] ??
+                    `${conn.provider} — data for this workspace.`;
+                const relatedPipeline = workspace?.pipelines?.find((p: any) => p.sourceConnectionId === conn.id);
 
-            /* #10 — User-facing description instead of "via workspace credentials" */
-            const desc = `${conn.provider} — syncing to your workspace.`;
-            const relatedPipeline = workspace?.pipelines?.find((p: any) => p.sourceConnectionId === conn.id);
+                return {
+                    id: conn.id,
+                    catalogId,
+                    name: conn.name,
+                    description: desc,
+                    status: conn.status === "connected" ? "connected" : "error",
+                    errorMsg: conn.lastError || undefined,
+                    lastSync: conn.lastSyncAt
+                        ? new Date(conn.lastSyncAt).toLocaleString()
+                        : relatedPipeline?.lastSyncedAt
+                          ? new Date(relatedPipeline.lastSyncedAt).toLocaleString()
+                          : "Never",
+                    logoSrc: logo,
+                    pipelineId: relatedPipeline?.id,
+                };
+            })
+            .sort((a: { catalogId: string }, b: { catalogId: string }) => {
+                return connectedSourceSortRank(a.catalogId) - connectedSourceSortRank(b.catalogId);
+            });
 
-            return {
-                id: conn.id,
-                catalogId: integrationCatalogId(conn.provider),
-                name: conn.name,
-                description: desc,
-                status: conn.status === 'connected' ? 'connected' : 'error',
-                errorMsg: conn.lastError || undefined,
-                lastSync: conn.lastSyncAt
-                    ? new Date(conn.lastSyncAt).toLocaleString()
-                    : relatedPipeline?.lastSyncedAt
-                      ? new Date(relatedPipeline.lastSyncedAt).toLocaleString()
-                      : "Never",
-                logoSrc: logo,
-                pipelineId: relatedPipeline?.id,
-            };
-        });
-
-        const filteredAvailable = availableIntegrations.filter((a) => !connectedCatalogIds.has(a.id));
+        const filteredAvailable = catalogIntegrations.filter((a) => !connectedCatalogIds.has(a.id));
         const combined = [...connectedSources, ...filteredAvailable];
 
         return combined.filter((integration: any) => {
@@ -553,7 +603,7 @@ export default function SourcesPage() {
             if (activeFilter === 'available') return integration.status === 'available';
             return true;
         });
-    }, [searchQuery, activeFilter, workspaces, activeWorkspaceId, availableIntegrations]);
+    }, [searchQuery, activeFilter, workspaces, activeWorkspaceId, catalogIntegrations]);
 
     const activeWorkspace = useMemo(() => {
         if (!Array.isArray(workspaces) || !activeWorkspaceId) return null;

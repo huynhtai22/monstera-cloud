@@ -16,7 +16,7 @@ function LoginContent() {
   const { status } = useSession();
   const afterLoginPath = safeCallbackUrl(
     searchParams.get("callbackUrl"),
-    "/"
+    "/console"
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
