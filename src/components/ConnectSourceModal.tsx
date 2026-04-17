@@ -103,6 +103,24 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
         };
     }, [id, name]);
 
+    /* Focus trap: must be declared before any early return (Rules of Hooks) */
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const previousActiveElement = useRef<Element | null>(null);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        previousActiveElement.current = document.activeElement;
+        const timer = setTimeout(() => {
+            dialogRef.current?.focus();
+        }, 50);
+        return () => {
+            clearTimeout(timer);
+            if (previousActiveElement.current instanceof HTMLElement) {
+                previousActiveElement.current.focus();
+            }
+        };
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
     const handleAuthenticate = () => {
@@ -211,26 +229,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
         }
     };
 
-    /* #4 — Focus trap: keep focus within the dialog while open */
-    const dialogRef = useRef<HTMLDivElement>(null);
-    const previousActiveElement = useRef<Element | null>(null);
-
-    useEffect(() => {
-        previousActiveElement.current = document.activeElement;
-
-        // Focus the dialog panel on mount
-        const timer = setTimeout(() => {
-            dialogRef.current?.focus();
-        }, 50);
-
-        return () => {
-            clearTimeout(timer);
-            // Restore focus on unmount
-            if (previousActiveElement.current instanceof HTMLElement) {
-                previousActiveElement.current.focus();
-            }
-        };
-    }, []);
+    /* #4 — Focus trap refs and effect moved above the isOpen guard (Rules of Hooks) */
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Escape' && !isProcessing) {
