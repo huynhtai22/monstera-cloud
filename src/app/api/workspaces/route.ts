@@ -59,7 +59,12 @@ export async function GET() {
             const demoMode = w.demoMockMode === true;
             const connections = (w.connections ?? []).filter((c: any) => {
                 if (demoMode) return true;
-                return !isSeededDemoSourceConnection(c);
+                return !isSeededDemoSourceConnection({
+                    type: c.type,
+                    name: c.name,
+                    provider: c.provider,
+                    credentials: c.credentials,
+                });
             });
             return {
                 ...w,

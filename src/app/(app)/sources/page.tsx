@@ -24,15 +24,41 @@ const fetcher = async (url: string) => {
     return data;
 };
 
+/** Ads and marketplaces first — matches how reviewers scan the Sources grid. */
 const ALL_CATALOG_INTEGRATIONS = [
-    { id: 'tiktok_shop', name: 'TikTok Shop', description: 'Seller catalog, orders, and Shop analytics.', status: 'available' as const, logoSrc: logoPathForCatalogId('tiktok_shop') },
-    { id: 'tiktok_business', name: 'TikTok Ads', description: 'TikTok Marketing API — campaign and ad performance reporting.', status: 'available' as const, logoSrc: logoPathForCatalogId('tiktok_business') },
     { id: 'meta_ads', name: 'Meta Ads', description: 'Facebook & Instagram Ads — campaign, ad set, and ad performance via Marketing API.', status: 'available' as const, logoSrc: logoPathForCatalogId('meta_ads') },
     { id: 'google_ads', name: 'Google Ads', description: 'Search, Shopping, and Performance Max reporting via Google Ads API.', status: 'available' as const, logoSrc: logoPathForCatalogId('google_ads') },
+    { id: 'tiktok_business', name: 'TikTok Ads', description: 'TikTok Marketing API — campaign and ad performance reporting.', status: 'available' as const, logoSrc: logoPathForCatalogId('tiktok_business') },
     { id: 'shopee', name: 'Shopee', description: 'Orders, products, and shop analytics from Shopee Open Platform.', status: 'available' as const, logoSrc: logoPathForCatalogId('shopee') },
+    { id: 'tiktok_shop', name: 'TikTok Shop', description: 'Seller catalog, orders, and Shop analytics.', status: 'available' as const, logoSrc: logoPathForCatalogId('tiktok_shop') },
     { id: 'lazada', name: 'Lazada Seller', description: 'Order fulfillments and finance.', status: 'available' as const, logoSrc: logoPathForCatalogId('lazada') },
     { id: 'shopify', name: 'Shopify', description: 'E-commerce platform orders.', status: 'available' as const, logoSrc: logoPathForCatalogId('shopify') },
 ];
+
+const CONNECTED_CARD_SORT_ORDER = [
+    "meta_ads",
+    "google_ads",
+    "tiktok_business",
+    "shopee",
+    "tiktok_shop",
+    "lazada",
+    "shopify",
+] as const;
+
+function connectedSourceSortRank(catalogId: string): number {
+    const i = (CONNECTED_CARD_SORT_ORDER as readonly string[]).indexOf(catalogId);
+    return i === -1 ? 100 : i;
+}
+
+const SOURCE_BLURB_BY_PROVIDER: Record<string, string> = {
+    meta_ads: "Facebook & Instagram Ads — performance reporting for this workspace.",
+    google_ads: "Google Ads — search and Performance Max reporting for this workspace.",
+    tiktok_business: "TikTok Ads — Marketing API reporting for this workspace.",
+    shopee: "Shopee Open Platform — orders and shop data for this workspace.",
+    tiktok_shop: "TikTok Shop — catalog and orders for this workspace.",
+    lazada: "Lazada Seller — orders and finance for this workspace.",
+    shopify: "Shopify — store orders for this workspace.",
+};
 
 function catalogIntegrationFromId(catalogId: string) {
     return ALL_CATALOG_INTEGRATIONS.find((a) => a.id === catalogId) ?? null;
@@ -535,29 +561,34 @@ export default function SourcesPage() {
             sourceConnections.map((c: any) => integrationCatalogId(c.provider))
         );
 
-        const connectedSources = sourceConnections.map((conn: any) => {
-            let logo = logoPathForConnectionProvider(conn.provider);
+        const connectedSources = sourceConnections
+            .map((conn: any) => {
+                const logo = logoPathForConnectionProvider(conn.provider);
+                const catalogId = integrationCatalogId(conn.provider);
+                const desc =
+                    SOURCE_BLURB_BY_PROVIDER[conn.provider] ??
+                    `${conn.provider} — data for this workspace.`;
+                const relatedPipeline = workspace?.pipelines?.find((p: any) => p.sourceConnectionId === conn.id);
 
-            /* #10 — User-facing description instead of "via workspace credentials" */
-            const desc = `${conn.provider} — syncing to your workspace.`;
-            const relatedPipeline = workspace?.pipelines?.find((p: any) => p.sourceConnectionId === conn.id);
-
-            return {
-                id: conn.id,
-                catalogId: integrationCatalogId(conn.provider),
-                name: conn.name,
-                description: desc,
-                status: conn.status === 'connected' ? 'connected' : 'error',
-                errorMsg: conn.lastError || undefined,
-                lastSync: conn.lastSyncAt
-                    ? new Date(conn.lastSyncAt).toLocaleString()
-                    : relatedPipeline?.lastSyncedAt
-                      ? new Date(relatedPipeline.lastSyncedAt).toLocaleString()
-                      : "Never",
-                logoSrc: logo,
-                pipelineId: relatedPipeline?.id,
-            };
-        });
+                return {
+                    id: conn.id,
+                    catalogId,
+                    name: conn.name,
+                    description: desc,
+                    status: conn.status === "connected" ? "connected" : "error",
+                    errorMsg: conn.lastError || undefined,
+                    lastSync: conn.lastSyncAt
+                        ? new Date(conn.lastSyncAt).toLocaleString()
+                        : relatedPipeline?.lastSyncedAt
+                          ? new Date(relatedPipeline.lastSyncedAt).toLocaleString()
+                          : "Never",
+                    logoSrc: logo,
+                    pipelineId: relatedPipeline?.id,
+                };
+            })
+            .sort((a: { catalogId: string }, b: { catalogId: string }) => {
+                return connectedSourceSortRank(a.catalogId) - connectedSourceSortRank(b.catalogId);
+            });
 
         const filteredAvailable = catalogIntegrations.filter((a) => !connectedCatalogIds.has(a.id));
         const combined = [...connectedSources, ...filteredAvailable];
