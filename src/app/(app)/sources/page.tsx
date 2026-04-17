@@ -528,6 +528,7 @@ export default function SourcesPage() {
         const limit = params.get("pipeline_limit") === "1";
         setOauthBanner({ provider, pipelineReady, needsDestination, limit });
         setActiveFilter('connected');
+        void mutate('/api/workspaces');
         trackEvent("oauth_return_success", {
             provider,
             pipeline_ready: pipelineReady,
