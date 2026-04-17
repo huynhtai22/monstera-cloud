@@ -240,8 +240,8 @@ const IntegrationCard = React.memo(function IntegrationCard({
                             Connect unavailable
                         </button>
                         <p className="text-center text-xs leading-snug text-slate-500 dark:text-slate-400">
-                            OAuth is not enabled on this deployment (missing server environment variables). In production,
-                            Meta Ads, Shopee, and other connectors use the same flows with credentials configured.
+                            OAuth for this connector is not enabled on this deployment (missing server env vars). With
+                            credentials set, Connect uses the standard OAuth flow.
                         </p>
                     </div>
                 ) : (
