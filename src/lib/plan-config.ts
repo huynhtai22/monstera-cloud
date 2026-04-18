@@ -45,7 +45,7 @@ export interface PlanLimits {
 export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
   free: {
     maxPipelines: 2,
-    syncIntervalMs: 24 * 60 * 60 * 1000,         // daily — activation-friendly
+    syncIntervalMs: 60 * 1000,                    // TODO: restore to 24h — temporarily relaxed for testing
     maxHistoryDays: 14,
     tiktokReportCooldownMs: 60 * 60 * 1000,      // 1 hour cooldown on reports
     metaReportCooldownMs: 60 * 60 * 1000,        // 1 hour cooldown
