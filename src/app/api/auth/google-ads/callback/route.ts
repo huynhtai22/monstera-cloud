@@ -3,7 +3,7 @@ import { getToken } from 'next-auth/jwt';
 import { googleAdsOAuthClient } from '@/lib/google-ads';
 import prisma from '@/lib/prisma';
 import { isGoogleAdsConnectEnabled } from '@/lib/integration-flags';
-import { encrypt } from '@/lib/encryption';
+import { encrypt, safeDecrypt } from '@/lib/encryption';
 import {
   buildConsoleOauthSuccessUrl,
   ensureDefaultPipelineAfterSourceConnect,
@@ -26,39 +26,47 @@ export async function GET(request: Request) {
   const base = publicBaseUrl(request);
 
   const code = searchParams.get('code');
-  const state = searchParams.get('state'); // workspace id
-  const err = searchParams.get('error');
-  const errDesc = searchParams.get('error_description');
+  const secureState = searchParams.get('state'); // workspace id or encrypted payload
 
-  if (err) {
-    console.error('[GOOGLE_ADS_OAUTH]', err, errDesc);
-    return NextResponse.redirect(
-      new URL(`/sources?google_ads_error=${encodeURIComponent(err)}`, base)
-    );
+  let workspaceId = '';
+  let userId = '';
+
+  try {
+    const payload = JSON.parse(safeDecrypt(secureState || ''));
+    workspaceId = payload.workspaceId || secureState || '';
+    userId = payload.userId || '';
+  } catch (e) {
+    workspaceId = secureState || '';
   }
 
-  if (!code) {
+  if (!code || !workspaceId) {
+    const err = searchParams.get('error');
+    const errDesc = searchParams.get('error_description');
+
+    if (err) {
+      console.error('[GOOGLE_ADS_OAUTH]', err, errDesc);
+      return NextResponse.redirect(
+        new URL(`/sources?google_ads_error=${encodeURIComponent(err)}`, base)
+      );
+    }
+
     return NextResponse.redirect(
       new URL('/sources?google_ads_error=missing_code', base)
     );
   }
 
-  const workspaceId = state || '';
-  if (!workspaceId) {
-    return NextResponse.redirect(
-      new URL('/sources?google_ads_error=invalid_state', base)
-    );
-  }
-
-  // Read JWT directly from Cookie header — reliable across App Router route handlers
-  // and cross-site OAuth redirects (SameSite=Lax allows top-level GET navigations).
-  const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
-  const userId = (token?.id ?? token?.sub) as string | undefined;
   if (!userId) {
-    console.warn('[GOOGLE_ADS_OAUTH] No session token in callback — redirecting to login');
-    return NextResponse.redirect(
-      new URL(`/sources?google_ads_error=session_expired`, base)
-    );
+    // Fallback: Read JWT directly from Cookie header
+    const { getToken } = await import('next-auth/jwt');
+    const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
+    userId = (token?.id ?? token?.sub) as string;
+    
+    if (!userId) {
+      console.warn('[GOOGLE_ADS_OAUTH] No session token in callback');
+      return NextResponse.redirect(
+        new URL(`/sources?google_ads_error=session_expired`, base)
+      );
+    }
   }
 
   const workspace = await prisma.workspace.findFirst({

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { isGoogleAdsConnectEnabled } from '@/lib/integration-flags';
 import { googleAdsOAuthClient } from '@/lib/google-ads';
+import { encrypt } from '@/lib/encryption';
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, '');
@@ -36,7 +37,10 @@ export async function GET(request: Request) {
     `${base}/api/auth/google-ads/callback`;
 
   try {
-    const url = googleAdsOAuthClient.getAuthorizeUrl(state, redirectUri);
+    const secureStatePayload = JSON.stringify({ workspaceId: state, userId: session.user.id });
+    const secureState = encrypt(secureStatePayload);
+    
+    const url = googleAdsOAuthClient.getAuthorizeUrl(secureState, redirectUri);
     return NextResponse.redirect(url);
   } catch (e: any) {
     return NextResponse.json(
