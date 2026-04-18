@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
+import { getToken } from 'next-auth/jwt';
 import { tiktokBusinessClient } from '@/lib/tiktok-business';
 import prisma from '@/lib/prisma';
 import { isTikTokBusinessConnectEnabled } from '@/lib/integration-flags';
@@ -28,7 +27,7 @@ export async function GET(request: Request) {
 
   // Marketing API returns auth_code (not code), plus state
   const authCode = searchParams.get('auth_code');
-  const state = searchParams.get('state'); // workspace id we passed
+  const state = searchParams.get('state');
   const err = searchParams.get('error');
   const errDesc = searchParams.get('error_description');
 
@@ -52,28 +51,36 @@ export async function GET(request: Request) {
     );
   }
 
-  // Verify the currently logged-in user actually belongs to the workspace in state.
-  // This prevents an attacker from hijacking another user's OAuth flow.
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.redirect(new URL('/login', base));
+  const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
+  const userId = (token?.id ?? token?.sub) as string | undefined;
+
+  if (!userId) {
+    console.warn('[TIKTOK_BUSINESS_OAUTH] No session token in callback');
+    return NextResponse.redirect(
+      new URL('/sources?tiktok_business_error=session_expired', base)
+    );
   }
 
-  const membership = await (prisma.workspaceMember as any).findFirst({
-    where: { workspaceId, userId: session.user.id },
+  const workspace = await prisma.workspace.findFirst({
+    where: {
+      id: workspaceId,
+      OR: [
+        { ownerId: userId },
+        { members: { some: { userId } } },
+      ],
+    },
+    select: { id: true },
   });
-  if (!membership) {
-    console.warn('[TIKTOK_BUSINESS_OAUTH] User %s is not a member of workspace %s', session.user.id, workspaceId);
+
+  if (!workspace) {
+    console.warn('[TIKTOK_BUSINESS_OAUTH] User %s has no access to workspace %s', userId, workspaceId);
     return NextResponse.redirect(
       new URL('/sources?tiktok_business_error=workspace_access_denied', base)
     );
   }
 
   try {
-    // Exchange auth_code → access_token using Marketing API endpoint
     const tokenData = await tiktokBusinessClient.exchangeCode(authCode);
-
-    // advertiser_ids is the list of TikTok Ads accounts this user authorized
     const advertiserIds: string[] = tokenData.advertiser_ids ?? [];
 
     const newConn = await prisma.connection.create({
@@ -102,7 +109,7 @@ export async function GET(request: Request) {
     const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
       workspaceId,
       sourceConnectionId: newConn.id,
-      actingUserId: session.user.id,
+      actingUserId: userId,
     });
 
     return NextResponse.redirect(

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
 import { tiktokClient } from "@/lib/tiktok";
 import prisma from "@/lib/prisma";
 import { isTikTokShopConnectEnabled } from "@/lib/integration-flags";
@@ -22,23 +23,62 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
+  const base = publicBaseUrl(request);
+
   const code = searchParams.get("code");
-  const state = searchParams.get("state"); // This would be the workspaceId we passed
+  const state = searchParams.get("state");
+  const err = searchParams.get("error");
+
+  if (err) {
+    console.error('[TIKTOK_SHOP_OAUTH]', err);
+    return NextResponse.redirect(
+      new URL(`/sources?tiktok_error=${encodeURIComponent(err)}`, base)
+    );
+  }
 
   if (!code) {
-    return NextResponse.json({ error: "No authorization code provided" }, { status: 400 });
+    return NextResponse.redirect(
+      new URL('/sources?tiktok_error=missing_code', base)
+    );
+  }
+
+  const workspaceId = state || '';
+  if (!workspaceId) {
+    return NextResponse.redirect(
+      new URL('/sources?tiktok_error=invalid_state', base)
+    );
+  }
+
+  const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
+  const userId = (token?.id ?? token?.sub) as string | undefined;
+
+  if (!userId) {
+    console.warn('[TIKTOK_SHOP_OAUTH] No session token in callback');
+    return NextResponse.redirect(
+      new URL('/sources?tiktok_error=session_expired', base)
+    );
+  }
+
+  const workspace = await prisma.workspace.findFirst({
+    where: {
+      id: workspaceId,
+      OR: [
+        { ownerId: userId },
+        { members: { some: { userId } } },
+      ],
+    },
+    select: { id: true },
+  });
+
+  if (!workspace) {
+    console.warn('[TIKTOK_SHOP_OAUTH] User %s has no access to workspace %s', userId, workspaceId);
+    return NextResponse.redirect(
+      new URL('/sources?tiktok_error=workspace_access_denied', base)
+    );
   }
 
   try {
-    // 1. Exchange code for tokens
     const tokenData = await tiktokClient.getAccessToken(code);
-
-    // 2. Map the state back to a workspace (in a real app, you'd verify the state)
-    const workspaceId = state || ""; 
-
-    if (!workspaceId) {
-       return NextResponse.json({ error: "Invalid state/workspace session" }, { status: 400 });
-    }
 
     const newConn = await prisma.connection.create({
       data: {
@@ -59,22 +99,19 @@ export async function GET(request: Request) {
       },
     });
 
-    const base = publicBaseUrl(request);
-    const ws = await prisma.workspace.findUnique({
-      where: { id: workspaceId },
-      select: { ownerId: true },
-    });
     const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
       workspaceId,
       sourceConnectionId: newConn.id,
-      actingUserId: ws?.ownerId ?? "",
+      actingUserId: userId,
     });
 
     return NextResponse.redirect(
       buildConsoleOauthSuccessUrl(base, "tiktok_shop", pipelineResult)
     );
   } catch (error: any) {
-    console.error("[TIKTOK_AUTH_ERROR]", error);
-    return NextResponse.json({ error: error.message || "Failed to authenticate with TikTok" }, { status: 500 });
+    console.error("[TIKTOK_SHOP_AUTH_ERROR]", error);
+    return NextResponse.redirect(
+      new URL(`/sources?tiktok_error=${encodeURIComponent(error.message || 'auth_failed')}`, base)
+    );
   }
 }

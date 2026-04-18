@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getToken } from 'next-auth/jwt';
 import { isTikTokShopConnectEnabled } from '@/lib/integration-flags';
 
 function publicBaseUrl(request: Request): string {
@@ -20,8 +19,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'TikTok Shop connection is disabled' }, { status: 403 });
   }
 
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
+  if (!token) {
     const login = new URL('/login', publicBaseUrl(request));
     login.searchParams.set('callbackUrl', '/sources');
     return NextResponse.redirect(login);
