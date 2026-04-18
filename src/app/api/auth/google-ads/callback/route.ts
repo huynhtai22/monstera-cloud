@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
+import { getToken } from 'next-auth/jwt';
 import { googleAdsOAuthClient } from '@/lib/google-ads';
 import prisma from '@/lib/prisma';
 import { isGoogleAdsConnectEnabled } from '@/lib/integration-flags';
@@ -51,24 +50,29 @@ export async function GET(request: Request) {
     );
   }
 
-  // Verify the user belongs to the workspace (CSRF protection)
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.redirect(new URL('/login', base));
+  // Read JWT directly from Cookie header — reliable across App Router route handlers
+  // and cross-site OAuth redirects (SameSite=Lax allows top-level GET navigations).
+  const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
+  const userId = (token?.id ?? token?.sub) as string | undefined;
+  if (!userId) {
+    console.warn('[GOOGLE_ADS_OAUTH] No session token in callback — redirecting to login');
+    return NextResponse.redirect(
+      new URL(`/sources?google_ads_error=session_expired`, base)
+    );
   }
 
   const workspace = await prisma.workspace.findFirst({
     where: {
       id: workspaceId,
       OR: [
-        { ownerId: session.user.id },
-        { members: { some: { userId: session.user.id } } },
+        { ownerId: userId },
+        { members: { some: { userId } } },
       ],
     },
     select: { id: true },
   });
   if (!workspace) {
-    console.warn('[GOOGLE_ADS_OAUTH] User %s has no access to workspace %s', session.user.id, workspaceId);
+    console.warn('[GOOGLE_ADS_OAUTH] User %s has no access to workspace %s', userId, workspaceId);
     return NextResponse.redirect(
       new URL('/sources?google_ads_error=workspace_access_denied', base)
     );
@@ -81,12 +85,10 @@ export async function GET(request: Request) {
 
     const tokenData = await googleAdsOAuthClient.exchangeCode(code, redirectUri);
 
-    // Fetch accessible customer IDs (ad accounts)
     let customerIds: string[] = [];
     try {
       customerIds = await googleAdsOAuthClient.listAccessibleCustomers(tokenData.access_token);
     } catch (err) {
-      // Dev token in test mode can't list customers beyond owned accounts — non-fatal
       console.warn('[GOOGLE_ADS_OAUTH] listAccessibleCustomers failed (likely test mode):', err);
     }
 
@@ -115,7 +117,7 @@ export async function GET(request: Request) {
     const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
       workspaceId,
       sourceConnectionId: newConn.id,
-      actingUserId: session.user.id,
+      actingUserId: userId,
     });
 
     return NextResponse.redirect(

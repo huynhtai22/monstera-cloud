@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
+import { getToken } from 'next-auth/jwt';
 import { metaAdsClient } from '@/lib/meta-ads';
 import prisma from '@/lib/prisma';
 import { isMetaAdsConnectEnabled } from '@/lib/integration-flags';
@@ -51,24 +50,29 @@ export async function GET(request: Request) {
     );
   }
 
-  // Verify the logged-in user belongs to the workspace in state (CSRF protection)
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.redirect(new URL('/login', base));
+  // Read JWT directly from Cookie header — reliable across App Router route handlers
+  // and cross-site OAuth redirects (SameSite=Lax allows top-level GET navigations).
+  const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
+  const userId = (token?.id ?? token?.sub) as string | undefined;
+  if (!userId) {
+    console.warn('[META_ADS_OAUTH] No session token in callback — redirecting to login');
+    return NextResponse.redirect(
+      new URL(`/sources?meta_ads_error=session_expired`, base)
+    );
   }
 
   const workspace = await prisma.workspace.findFirst({
     where: {
       id: workspaceId,
       OR: [
-        { ownerId: session.user.id },
-        { members: { some: { userId: session.user.id } } },
+        { ownerId: userId },
+        { members: { some: { userId } } },
       ],
     },
     select: { id: true },
   });
   if (!workspace) {
-    console.warn('[META_ADS_OAUTH] User %s has no access to workspace %s', session.user.id, workspaceId);
+    console.warn('[META_ADS_OAUTH] User %s has no access to workspace %s', userId, workspaceId);
     return NextResponse.redirect(
       new URL('/sources?meta_ads_error=workspace_access_denied', base)
     );
@@ -79,10 +83,8 @@ export async function GET(request: Request) {
       process.env.META_ADS_REDIRECT_URI?.trim() ||
       `${base}/api/auth/meta-ads/callback`;
 
-    // Exchange code for long-lived token (~60 days)
     const tokenData = await metaAdsClient.exchangeCode(code, redirectUri);
 
-    // Fetch the ad accounts this token can access
     const adAccounts = await metaAdsClient.getAdAccounts(tokenData.access_token);
     const primaryAccount = adAccounts[0];
     const adAccountIds = adAccounts.map((a) => a.id);
@@ -111,7 +113,7 @@ export async function GET(request: Request) {
     const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
       workspaceId,
       sourceConnectionId: newConn.id,
-      actingUserId: session.user.id,
+      actingUserId: userId,
     });
 
     return NextResponse.redirect(

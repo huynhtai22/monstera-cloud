@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getToken } from "next-auth/jwt";
 import { tiktokClient } from "@/lib/tiktok";
 import prisma from "@/lib/prisma";
 import { isTikTokShopConnectEnabled } from "@/lib/integration-flags";
@@ -41,23 +40,27 @@ export async function GET(request: Request) {
     );
   }
 
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.redirect(new URL("/login", base));
+  // Read JWT directly from Cookie header — reliable across App Router route handlers
+  // and cross-site OAuth redirects (SameSite=Lax allows top-level GET navigations).
+  const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
+  const userId = (token?.id ?? token?.sub) as string | undefined;
+  if (!userId) {
+    console.warn("[TIKTOK_OAUTH] No session token in callback");
+    return NextResponse.redirect(new URL("/sources?tiktok_error=session_expired", base));
   }
 
   const workspace = await prisma.workspace.findFirst({
     where: {
       id: workspaceId,
       OR: [
-        { ownerId: session.user.id },
-        { members: { some: { userId: session.user.id } } },
+        { ownerId: userId },
+        { members: { some: { userId } } },
       ],
     },
     select: { id: true, ownerId: true },
   });
   if (!workspace) {
-    console.warn("[TIKTOK_OAUTH] User %s has no access to workspace %s", session.user.id, workspaceId);
+    console.warn("[TIKTOK_OAUTH] User %s has no access to workspace %s", userId, workspaceId);
     return NextResponse.redirect(
       new URL("/sources?tiktok_error=workspace_access_denied", base)
     );
