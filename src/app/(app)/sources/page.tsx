@@ -539,6 +539,30 @@ export default function SourcesPage() {
     }, []);
 
     useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search);
+        
+        let hasError = false;
+        const errorKeys = ['meta_ads_error', 'google_ads_error', 'tiktok_error', 'tiktok_business_error', 'shopee_error'];
+        
+        for (const key of errorKeys) {
+            const errVal = params.get(key);
+            if (errVal) {
+                const providerName = key.split('_').slice(0, -1).join(' ');
+                toast.error(`Connection failed for ${providerName}`, {
+                    description: errVal,
+                    duration: 8000,
+                });
+                hasError = true;
+            }
+        }
+        
+        if (hasError) {
+            window.history.replaceState({}, "", "/sources");
+        }
+    }, []);
+
+    useEffect(() => {
         if (isLoading || !Array.isArray(workspaces) || !activeWorkspaceId) return;
         if (firstRunFilterAppliedRef.current) return;
         if (connectedSourceCount !== 0) return;
