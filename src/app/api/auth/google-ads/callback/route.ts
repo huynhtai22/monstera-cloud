@@ -57,11 +57,18 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/login', base));
   }
 
-  const membership = await (prisma.workspaceMember as any).findFirst({
-    where: { workspaceId, userId: session.user.id },
+  const workspace = await prisma.workspace.findFirst({
+    where: {
+      id: workspaceId,
+      OR: [
+        { ownerId: session.user.id },
+        { members: { some: { userId: session.user.id } } },
+      ],
+    },
+    select: { id: true },
   });
-  if (!membership) {
-    console.warn('[GOOGLE_ADS_OAUTH] User %s not a member of workspace %s', session.user.id, workspaceId);
+  if (!workspace) {
+    console.warn('[GOOGLE_ADS_OAUTH] User %s has no access to workspace %s', session.user.id, workspaceId);
     return NextResponse.redirect(
       new URL('/sources?google_ads_error=workspace_access_denied', base)
     );

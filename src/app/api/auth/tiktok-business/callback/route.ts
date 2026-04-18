@@ -59,11 +59,18 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL('/login', base));
   }
 
-  const membership = await (prisma.workspaceMember as any).findFirst({
-    where: { workspaceId, userId: session.user.id },
+  const workspace = await prisma.workspace.findFirst({
+    where: {
+      id: workspaceId,
+      OR: [
+        { ownerId: session.user.id },
+        { members: { some: { userId: session.user.id } } },
+      ],
+    },
+    select: { id: true },
   });
-  if (!membership) {
-    console.warn('[TIKTOK_BUSINESS_OAUTH] User %s is not a member of workspace %s', session.user.id, workspaceId);
+  if (!workspace) {
+    console.warn('[TIKTOK_BUSINESS_OAUTH] User %s has no access to workspace %s', session.user.id, workspaceId);
     return NextResponse.redirect(
       new URL('/sources?tiktok_business_error=workspace_access_denied', base)
     );

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { shopeeClient } from "@/lib/shopee";
 import prisma from "@/lib/prisma";
 import { isShopeeConnectEnabled } from "@/lib/integration-flags";
@@ -27,8 +29,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const shopIdRaw = searchParams.get("shop_id");
-  const state = searchParams.get("state"); // workspace id
-
+  const state = searchParams.get("state"); // workspaceId
   const base = publicBaseUrl(request);
 
   if (!code || !shopIdRaw) {
@@ -44,9 +45,33 @@ export async function GET(request: Request) {
   const shopId = Number(shopIdRaw);
   const workspaceId = state || "";
   if (!workspaceId) {
-    return NextResponse.json(
-      { error: "Invalid state / workspace session" },
-      { status: 400 }
+    return NextResponse.redirect(
+      new URL("/sources?shopee_error=invalid_state", base)
+    );
+  }
+
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.redirect(new URL("/login", base));
+  }
+
+  const workspace = await prisma.workspace.findFirst({
+    where: {
+      id: workspaceId,
+      OR: [
+        { ownerId: session.user.id },
+        { members: { some: { userId: session.user.id } } },
+      ],
+    },
+    select: { id: true, ownerId: true },
+  });
+  if (!workspace) {
+    console.warn("[SHOPEE_OAUTH] User %s has no access to workspace %s", session.user.id, workspaceId);
+    return NextResponse.redirect(
+      new URL(
+        `/sources?shopee_error=${encodeURIComponent("workspace_access_denied")}`,
+        base
+      )
     );
   }
 
@@ -68,21 +93,17 @@ export async function GET(request: Request) {
             Date.now() + (tokenData.expire_in ?? 14400) * 1000
           ).toISOString(),
           refreshExpiresAt: new Date(
-            Date.now() + 30 * 24 * 60 * 60 * 1000 // 30 days
+            Date.now() + 30 * 24 * 60 * 60 * 1000
           ).toISOString(),
           product: "shopee",
         })),
       },
     });
 
-    const ws = await prisma.workspace.findUnique({
-      where: { id: workspaceId },
-      select: { ownerId: true },
-    });
     const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
       workspaceId,
       sourceConnectionId: newConn.id,
-      actingUserId: ws?.ownerId ?? "",
+      actingUserId: workspace.ownerId,
     });
 
     return NextResponse.redirect(
