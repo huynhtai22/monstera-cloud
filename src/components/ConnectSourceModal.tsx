@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { X, Loader2, CheckCircle2, ChevronRight, Globe, Facebook, Copy, Check } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { useWorkspaceStore } from "@/store/workspace";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+import { SOURCES_CATALOG, isSourceEnvReady, type SourcesCatalogItem } from "@/lib/sources-integration-catalog";
 
 async function integrationsConfigFetcher(url: string) {
     const res = await fetch(url);
@@ -24,6 +25,8 @@ interface ConnectSourceModalProps {
         logoSrc: string;
         description: string;
     } | null;
+    /** Catalog ids already connected in this workspace (picker rows disabled). */
+    connectedCatalogIds?: string[];
 }
 
 const OAUTH_SOURCE_IDS = ["shopee", "tiktok_shop", "tiktok_business", "meta_ads", "google_ads", "shopify"] as const;
@@ -32,14 +35,17 @@ function isOAuthSourceId(sourceId: string): boolean {
     return (OAUTH_SOURCE_IDS as readonly string[]).includes(sourceId);
 }
 
-export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSourceModalProps) {
+export function ConnectSourceModal({ isOpen, onClose, integration, connectedCatalogIds = [] }: ConnectSourceModalProps) {
     const [isProcessing, setIsProcessing] = useState(false);
     const [copiedWhich, setCopiedWhich] = useState<null | "production" | "session">(null);
     const [shopDomain, setShopDomain] = useState("");
+    const [draftPick, setDraftPick] = useState<SourcesCatalogItem | null>(null);
 
-    const id = integration?.id || "shopee";
-    const name = integration?.name || "Shopee";
-    const logoSrc = integration?.logoSrc || INTEGRATION_LOGOS.shopee;
+    const connectedSet = useMemo(() => new Set(connectedCatalogIds), [connectedCatalogIds]);
+    const effective = integration ?? draftPick;
+    const id = effective?.id ?? "";
+    const name = effective?.name ?? "";
+    const logoSrc = effective?.logoSrc ?? INTEGRATION_LOGOS.shopee;
 
     const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
     const { data: intConfig } = useSWR(isOpen ? "/api/integrations/config" : null, integrationsConfigFetcher);
@@ -117,7 +123,28 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
         };
     }, [isOpen]);
 
-    if (!isOpen) return null;
+    useEffect(() => {
+        if (!isOpen) {
+            setDraftPick(null);
+            setShopDomain("");
+            setCopiedWhich(null);
+        }
+    }, [isOpen]);
+
+    const pickConnector = useCallback((item: SourcesCatalogItem) => {
+        const ready = isSourceEnvReady(item.id, intConfig);
+        if (!ready) {
+            toast.error("This connector is not enabled on this deployment (missing OAuth env).");
+            return;
+        }
+        if (connectedSet.has(item.id)) {
+            toast.message("Already connected", { description: `${item.name} is already linked to this workspace.` });
+            return;
+        }
+        setDraftPick(item);
+    }, [intConfig, connectedSet]);
+
+    const showPicker = Boolean(isOpen && !integration && !draftPick);
 
     const handleAuthenticate = () => {
         setIsProcessing(true);
@@ -125,6 +152,12 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
         if (!activeWorkspaceId) {
             setIsProcessing(false);
             toast.error("Select a workspace first.");
+            return;
+        }
+
+        if (!id) {
+            setIsProcessing(false);
+            toast.error("Choose a connector first.");
             return;
         }
 
@@ -182,6 +215,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
         if (!isProcessing) {
             setCopiedWhich(null);
             setShopDomain("");
+            setDraftPick(null);
             onClose();
         }
     };
@@ -199,6 +233,11 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Escape" && !isProcessing) {
+            if (!integration && draftPick) {
+                setDraftPick(null);
+                e.stopPropagation();
+                return;
+            }
             handleClose();
             return;
         }
@@ -227,8 +266,96 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
 
     const oauthPrimaryDisabled = isOAuthSourceId(id) && !activeWorkspaceId;
 
+    if (!isOpen) return null;
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 dark:bg-slate-800/60 backdrop-blur-sm animate-in fade-in duration-200">
+            {showPicker ? (
+                <div
+                    ref={dialogRef}
+                    onKeyDown={handleKeyDown}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="connect-source-picker-title"
+                    tabIndex={-1}
+                    className="relative mx-4 w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl outline-none animate-in zoom-in-95 duration-300 dark:border-slate-700 dark:bg-slate-800"
+                >
+                    <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-slate-700">
+                        <div>
+                            <h3 id="connect-source-picker-title" className="text-base font-bold text-gray-900 dark:text-white">
+                                Add a data source
+                            </h3>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">Choose a platform to connect with OAuth.</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleClose}
+                            aria-label="Close dialog"
+                            className="shrink-0 text-gray-400 transition-colors hover:text-gray-700 dark:hover:text-gray-200"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+                    <ul className="max-h-[min(70vh,440px)] space-y-1 overflow-y-auto p-3" role="listbox" aria-label="Available connectors">
+                        {SOURCES_CATALOG.map((item) => {
+                            const connected = connectedSet.has(item.id);
+                            const ready = isSourceEnvReady(item.id, intConfig);
+                            const disabled = connected || !ready;
+                            return (
+                                <li key={item.id}>
+                                    <button
+                                        type="button"
+                                        role="option"
+                                        aria-disabled={disabled}
+                                        disabled={disabled}
+                                        onClick={() => pickConnector(item)}
+                                        className={`flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+                                            disabled
+                                                ? "cursor-not-allowed border-gray-100 bg-gray-50/80 opacity-60 dark:border-slate-700/50 dark:bg-slate-900/40"
+                                                : "border-transparent bg-white hover:border-cyan-200 hover:bg-cyan-50/50 dark:bg-slate-800 dark:hover:border-cyan-800/60 dark:hover:bg-cyan-950/20"
+                                        }`}
+                                    >
+                                        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-slate-600 dark:bg-slate-900">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img src={item.logoSrc} alt="" width={24} height={24} className="object-contain" />
+                                        </span>
+                                        <span className="min-w-0 flex-1">
+                                            <span className="flex flex-wrap items-center gap-2">
+                                                <span className="text-sm font-semibold text-gray-900 dark:text-white">{item.name}</span>
+                                                {connected ? (
+                                                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+                                                        Connected
+                                                    </span>
+                                                ) : null}
+                                                {!ready ? (
+                                                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-900 dark:bg-amber-950/60 dark:text-amber-200">
+                                                        Not configured
+                                                    </span>
+                                                ) : null}
+                                            </span>
+                                            <span className="mt-0.5 block text-xs leading-snug text-gray-500 dark:text-gray-400">
+                                                {item.description}
+                                            </span>
+                                        </span>
+                                        {!disabled ? (
+                                            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400" aria-hidden />
+                                        ) : null}
+                                    </button>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                    <div className="border-t border-gray-100 px-6 py-3 dark:border-slate-700">
+                        <button
+                            type="button"
+                            onClick={handleClose}
+                            className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-white"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            ) : (
             <div
                 ref={dialogRef}
                 onKeyDown={handleKeyDown}
@@ -248,6 +375,16 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                         </h3>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Connect via OAuth</p>
                     </div>
+                    {!integration && draftPick ? (
+                        <button
+                            type="button"
+                            onClick={() => setDraftPick(null)}
+                            disabled={isProcessing}
+                            className="shrink-0 text-xs font-semibold text-cyan-600 hover:text-cyan-700 disabled:opacity-50 dark:text-cyan-400 dark:hover:text-cyan-300"
+                        >
+                            Change
+                        </button>
+                    ) : null}
                     <button
                         onClick={handleClose}
                         disabled={isProcessing}
@@ -451,6 +588,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                     )}
                 </div>
             </div>
+            )}
         </div>
     );
 }

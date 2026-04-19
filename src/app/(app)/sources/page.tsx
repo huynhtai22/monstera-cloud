@@ -3,14 +3,14 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Link from "next/link";
 import { toast } from "sonner";
-import { Database, Search, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Unplug, ChevronRight, ArrowRight } from "lucide-react";
+import { Database, Search, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Unplug, ChevronRight, ArrowRight, ChevronDown } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import useSWR, { useSWRConfig } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 import { integrationCatalogId } from "@/lib/integration-catalog";
-import { logoPathForCatalogId, logoPathForConnectionProvider } from "@/lib/integration-logos";
+import { logoPathForConnectionProvider } from "@/lib/integration-logos";
+import { SOURCES_CATALOG, isSourceEnvReady } from "@/lib/sources-integration-catalog";
 import { cn } from "@/lib/utils";
 import { trackEvent, trackOnce } from "@/lib/analytics-events";
 import { PageShell } from "@/components/ui/PageShell";
@@ -24,17 +24,6 @@ const fetcher = async (url: string) => {
     }
     return data;
 };
-
-/** Ads and marketplaces first — matches how reviewers scan the Sources grid. */
-const ALL_CATALOG_INTEGRATIONS = [
-    { id: 'meta_ads', name: 'Meta Ads', description: 'Facebook & Instagram Ads — campaign, ad set, and ad performance via Marketing API.', status: 'available' as const, logoSrc: logoPathForCatalogId('meta_ads') },
-    { id: 'google_ads', name: 'Google Ads', description: 'Search, Shopping, and Performance Max reporting via Google Ads API.', status: 'available' as const, logoSrc: logoPathForCatalogId('google_ads') },
-    { id: 'tiktok_business', name: 'TikTok Ads', description: 'TikTok Marketing API — campaign and ad performance reporting.', status: 'available' as const, logoSrc: logoPathForCatalogId('tiktok_business') },
-    { id: 'shopee', name: 'Shopee', description: 'Orders, products, and shop analytics from Shopee Open Platform.', status: 'available' as const, logoSrc: logoPathForCatalogId('shopee') },
-    { id: 'tiktok_shop', name: 'TikTok Shop', description: 'Seller catalog, orders, and Shop analytics.', status: 'available' as const, logoSrc: logoPathForCatalogId('tiktok_shop') },
-    { id: 'lazada', name: 'Lazada Seller', description: 'Order fulfillments and finance.', status: 'available' as const, logoSrc: logoPathForCatalogId('lazada') },
-    { id: 'shopify', name: 'Shopify', description: 'E-commerce platform orders.', status: 'available' as const, logoSrc: logoPathForCatalogId('shopify') },
-];
 
 const CONNECTED_CARD_SORT_ORDER = [
     "meta_ads",
@@ -62,7 +51,7 @@ const SOURCE_BLURB_BY_PROVIDER: Record<string, string> = {
 };
 
 function catalogIntegrationFromId(catalogId: string) {
-    return ALL_CATALOG_INTEGRATIONS.find((a) => a.id === catalogId) ?? null;
+    return SOURCES_CATALOG.find((a) => a.id === catalogId) ?? null;
 }
 
 function IntegrationCardSkeleton() {
@@ -380,6 +369,8 @@ export default function SourcesPage() {
     const [disconnectTarget, setDisconnectTarget] = useState<{ id: string; name: string } | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('all');
+    const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
+    const addSourceMenuRef = useRef<HTMLDivElement>(null);
 
     /* #1 — Fix outgoingActionId race condition: Set instead of single string */
     const [busyActions, setBusyActions] = useState<Set<string>>(new Set());
@@ -513,6 +504,17 @@ export default function SourcesPage() {
         trackOnce("mc_sources_session", "sources_visit", { path: "/sources" });
     }, []);
 
+    useEffect(() => {
+        if (!addSourceMenuOpen) return;
+        const close = (e: MouseEvent) => {
+            if (addSourceMenuRef.current && !addSourceMenuRef.current.contains(e.target as Node)) {
+                setAddSourceMenuOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", close);
+        return () => document.removeEventListener("mousedown", close);
+    }, [addSourceMenuOpen]);
+
     const [oauthBanner, setOauthBanner] = useState<{
         provider: string;
         pipelineReady: boolean;
@@ -593,20 +595,24 @@ export default function SourcesPage() {
 
     /** Full catalog always listed so App Review sees real connectors; `envConnectReady` gates the Connect action. */
     const catalogIntegrations = useMemo(() => {
-        const envReady = (id: string): boolean => {
-            if (!intConfig) return true;
-            if (id === "tiktok_shop") return intConfig.tiktokShop !== false;
-            if (id === "tiktok_business") return intConfig.tiktokBusiness !== false;
-            if (id === "shopee") return intConfig.shopee !== false;
-            if (id === "meta_ads") return intConfig.metaAds !== false;
-            if (id === "google_ads") return intConfig.googleAds !== false;
-            return true;
-        };
-        return ALL_CATALOG_INTEGRATIONS.map((item) => ({
+        return SOURCES_CATALOG.map((item) => ({
             ...item,
-            envConnectReady: envReady(item.id),
+            status: "available" as const,
+            envConnectReady: isSourceEnvReady(item.id, intConfig),
         }));
     }, [intConfig]);
+
+    const connectedCatalogIdList = useMemo(() => {
+        if (!Array.isArray(workspaces) || !activeWorkspaceId) return [] as string[];
+        const workspace = workspaces.find((w: { id: string }) => w.id === activeWorkspaceId);
+        const sourceConnections = (workspace?.connections ?? []).filter((c: { type: string }) => c.type === "source");
+        return sourceConnections.map((c: { provider: string }) => integrationCatalogId(c.provider));
+    }, [workspaces, activeWorkspaceId]);
+
+    const headerAddOptions = useMemo(() => {
+        const connected = new Set(connectedCatalogIdList);
+        return catalogIntegrations.filter((i) => !connected.has(i.id));
+    }, [catalogIntegrations, connectedCatalogIdList]);
 
     // Filter logic
     const filteredIntegrations = useMemo(() => {
@@ -868,27 +874,96 @@ export default function SourcesPage() {
                         </>
                     )}
                 </div>
-                <div className="flex space-x-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                     <button
                         onClick={() => mutate('/api/workspaces')}
                         aria-label="Refresh all sources"
-                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-700"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-700"
                     >
                         <RefreshCw className="w-4 h-4" />
                     </button>
-                    <PrimaryButton
-                        type="button"
-                        onClick={() => {
-                            trackEvent("integration_connect_open", { source: "header_new" });
-                            trackEvent("source_connect_clicked", { from: "header_new" });
-                            setSelectedIntegration(null);
-                            setIsSourceModalOpen(true);
-                        }}
-                        className="flex items-center gap-2 shadow-sm hover:shadow"
-                    >
-                        <Plus className="h-4 w-4" />
-                        New Data Source
-                    </PrimaryButton>
+                    <div className="relative" ref={addSourceMenuRef}>
+                        <button
+                            type="button"
+                            aria-expanded={addSourceMenuOpen}
+                            aria-haspopup="listbox"
+                            onClick={() => setAddSourceMenuOpen((o) => !o)}
+                            className="inline-flex h-10 min-h-[2.5rem] items-center gap-2 rounded-lg border border-cyan-700/30 bg-cyan-600 px-3.5 text-sm font-semibold text-white shadow-md shadow-cyan-900/20 transition-colors hover:bg-cyan-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-50 dark:border-cyan-500/50 dark:bg-cyan-600 dark:shadow-black/40 dark:focus-visible:ring-offset-slate-900 sm:px-4"
+                        >
+                            <Plus className="h-4 w-4 shrink-0" aria-hidden />
+                            <span className="hidden sm:inline">Add data source</span>
+                            <span className="sm:hidden">Add source</span>
+                            <ChevronDown
+                                className={`h-4 w-4 shrink-0 opacity-95 transition-transform ${addSourceMenuOpen ? "rotate-180" : ""}`}
+                                aria-hidden
+                            />
+                        </button>
+                        {addSourceMenuOpen ? (
+                            <div
+                                className="absolute right-0 top-full z-50 mt-2 w-[min(100vw-2rem,20rem)] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-slate-600 dark:bg-slate-800"
+                                role="listbox"
+                                aria-label="Connect a source"
+                            >
+                                {headerAddOptions.length === 0 ? (
+                                    <p className="px-3 py-3 text-sm text-gray-600 dark:text-slate-300">
+                                        All catalog sources are already connected to this workspace.
+                                    </p>
+                                ) : (
+                                    headerAddOptions.map((item) => {
+                                        const disabled = !item.envConnectReady;
+                                        return (
+                                            <button
+                                                key={item.id}
+                                                type="button"
+                                                role="option"
+                                                disabled={disabled}
+                                                onClick={() => {
+                                                    if (disabled) {
+                                                        toast.error(
+                                                            "This connector is not enabled on this deployment (missing OAuth environment variables)."
+                                                        );
+                                                        return;
+                                                    }
+                                                    trackEvent("integration_connect_open", { source: "header_dropdown", catalogId: item.id });
+                                                    trackEvent("source_connect_clicked", { catalogId: item.id, from: "header_dropdown" });
+                                                    handleConnect({ ...item, catalogId: item.id });
+                                                    setAddSourceMenuOpen(false);
+                                                }}
+                                                className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors ${
+                                                    disabled
+                                                        ? "cursor-not-allowed text-gray-400 dark:text-slate-500"
+                                                        : "text-gray-900 hover:bg-cyan-50 dark:text-white dark:hover:bg-cyan-950/40"
+                                                }`}
+                                            >
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img src={item.logoSrc} alt="" width={22} height={22} className="shrink-0 object-contain" />
+                                                <span className="min-w-0 flex-1 font-medium">{item.name}</span>
+                                                {!item.envConnectReady ? (
+                                                    <span className="shrink-0 text-[10px] font-bold uppercase text-amber-700 dark:text-amber-400">
+                                                        Off
+                                                    </span>
+                                                ) : null}
+                                            </button>
+                                        );
+                                    })
+                                )}
+                                <div className="border-t border-gray-100 dark:border-slate-700">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            trackEvent("integration_connect_open", { source: "header_browse_all" });
+                                            setSelectedIntegration(null);
+                                            setIsSourceModalOpen(true);
+                                            setAddSourceMenuOpen(false);
+                                        }}
+                                        className="w-full px-3 py-2.5 text-left text-xs font-semibold text-cyan-700 hover:bg-cyan-50 dark:text-cyan-300 dark:hover:bg-cyan-950/30"
+                                    >
+                                        Browse all connectors…
+                                    </button>
+                                </div>
+                            </div>
+                        ) : null}
+                    </div>
                 </div>
             </div>
 
@@ -1013,6 +1088,7 @@ export default function SourcesPage() {
                 isOpen={isSourceModalOpen}
                 onClose={() => setIsSourceModalOpen(false)}
                 integration={selectedIntegration}
+                connectedCatalogIds={connectedCatalogIdList}
             />
         </PageShell>
     );
