@@ -75,6 +75,124 @@ function IntegrationCardSkeleton() {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * ConnectedSourceRow — compact row for the "Your sources" strip
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+interface ConnectedSourceRowProps {
+    integration: any;
+    busyActions: Set<string>;
+    onSync: (pipelineId: string, integrationId: string) => void;
+    onDisconnect: (connectionId: string, displayName: string) => void;
+    onFixConnection: (integration: any) => void;
+}
+
+const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
+    integration,
+    busyActions,
+    onSync,
+    onDisconnect,
+    onFixConnection,
+}: ConnectedSourceRowProps) {
+    const isSyncing = busyActions.has(`sync:${integration.pipelineId}`);
+    const isDisconnecting = busyActions.has(integration.id);
+    const isBusy = busyActions.size > 0;
+    const isError = integration.status === "error";
+
+    return (
+        <div
+            className={cn(
+                "group flex items-center gap-3 rounded-xl border bg-white/80 px-3 py-2.5 shadow-sm transition-colors dark:bg-slate-900/70",
+                isError
+                    ? "border-red-200/80 dark:border-red-800/60"
+                    : "border-gray-200/80 hover:border-cyan-200/80 dark:border-slate-700/60 dark:hover:border-cyan-700/50",
+            )}
+        >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200/70 bg-white dark:border-slate-700/60 dark:bg-slate-900">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                    src={integration.logoSrc}
+                    alt=""
+                    width={24}
+                    height={24}
+                    className="h-6 w-6 object-contain"
+                />
+            </div>
+            <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                    <Link
+                        href={`/sources/${integration.id}`}
+                        className="truncate text-sm font-semibold text-gray-900 hover:text-cyan-700 dark:text-white dark:hover:text-cyan-300"
+                    >
+                        {integration.name}
+                    </Link>
+                    {isError ? (
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Error" />
+                    ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-cyan-500 dark:text-cyan-400" aria-label="Connected" />
+                    )}
+                </div>
+                <p
+                    className={cn(
+                        "mt-0.5 truncate text-xs",
+                        isError ? "text-red-600 dark:text-red-400" : "text-gray-500 dark:text-slate-400",
+                    )}
+                >
+                    {isError
+                        ? integration.errorMsg ?? "Needs attention"
+                        : `Last sync · ${integration.lastSync}`}
+                </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+                {isError ? (
+                    <button
+                        type="button"
+                        onClick={() => onFixConnection(integration)}
+                        className="rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-800 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-950/60 dark:text-red-200 dark:hover:bg-red-950/90"
+                    >
+                        Fix
+                    </button>
+                ) : (
+                    <button
+                        type="button"
+                        disabled={isBusy || !integration.pipelineId}
+                        onClick={() => {
+                            if (!integration.pipelineId) {
+                                toast.error(
+                                    <span>
+                                        Add a destination (like Google Sheets) to start syncing.{" "}
+                                        <a href="/destinations" className="underline font-medium">Open Destinations</a>
+                                    </span>,
+                                );
+                                return;
+                            }
+                            onSync(integration.pipelineId, integration.id);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md border border-cyan-300/80 bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-800 transition-colors hover:bg-cyan-100 disabled:pointer-events-none disabled:opacity-50 dark:border-cyan-700/60 dark:bg-cyan-900/40 dark:text-cyan-200 dark:hover:bg-cyan-900/70"
+                    >
+                        {isSyncing ? (
+                            <>
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Syncing…
+                            </>
+                        ) : (
+                            "Sync"
+                        )}
+                    </button>
+                )}
+                <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => onDisconnect(integration.id, integration.name)}
+                    className="rounded-md px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-red-700 disabled:pointer-events-none disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-red-300"
+                >
+                    {isDisconnecting ? "Disconnecting…" : "Disconnect"}
+                </button>
+            </div>
+        </div>
+    );
+});
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * #7 — Extracted IntegrationCard (React.memo for re-render isolation)
  * ───────────────────────────────────────────────────────────────────────────── */
 
@@ -691,6 +809,16 @@ export default function SourcesPage() {
         });
     }, [searchQuery, activeFilter, workspaces, activeWorkspaceId, catalogIntegrations]);
 
+    const { connectedRows, availableCards } = useMemo(() => {
+        const connected = (filteredIntegrations as Array<{ status: string }>).filter(
+            (i) => i.status !== "available",
+        );
+        const available = (filteredIntegrations as Array<{ status: string }>).filter(
+            (i) => i.status === "available",
+        );
+        return { connectedRows: connected, availableCards: available };
+    }, [filteredIntegrations]);
+
     const activeWorkspace = useMemo(() => {
         if (!Array.isArray(workspaces) || !activeWorkspaceId) return null;
         return workspaces.find((w: { id: string }) => w.id === activeWorkspaceId) ?? null;
@@ -1088,32 +1216,76 @@ export default function SourcesPage() {
                 </div>
             </div>
 
-            {/* Grid — #7: uses extracted IntegrationCard component */}
+            {/* Grid — split into "Your sources" strip + "Available" catalog */}
             {isLoading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" role="tabpanel">
                     {Array.from({ length: 6 }).map((_, i) => (
                         <IntegrationCardSkeleton key={i} />
                     ))}
                 </div>
-            ) : filteredIntegrations.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" role="tabpanel" aria-live="polite">
-                    {filteredIntegrations.map((integration) => (
-                        <IntegrationCard
-                            key={integration.id}
-                            integration={integration}
-                            busyActions={busyActions}
-                            onSync={handleSync}
-                            onDisconnect={disconnectSource}
-                            onFixConnection={handleFixConnection}
-                            onConnect={handleConnect}
-                        />
-                    ))}
-                </div>
-            ) : (
+            ) : connectedRows.length === 0 && availableCards.length === 0 ? (
                 <div className="flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 py-20 text-center dark:border-slate-600 dark:bg-slate-800/60" role="tabpanel" aria-live="polite">
                     <Database className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" />
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No integrations found</h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm mb-6">We couldn&apos;t find any data sources matching &quot;{searchQuery}&quot;. Try a different keyword or category.</p>
+                </div>
+            ) : (
+                <div role="tabpanel" aria-live="polite" className="space-y-8">
+                    {connectedRows.length > 0 ? (
+                        <section aria-labelledby="sources-connected-heading">
+                            <div className="mb-3 flex items-end justify-between">
+                                <h2
+                                    id="sources-connected-heading"
+                                    className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400"
+                                >
+                                    Your sources
+                                </h2>
+                                <span className="text-xs text-gray-500 dark:text-slate-400">
+                                    {connectedRows.length} connected
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                {connectedRows.map((integration: any) => (
+                                    <ConnectedSourceRow
+                                        key={integration.id}
+                                        integration={integration}
+                                        busyActions={busyActions}
+                                        onSync={handleSync}
+                                        onDisconnect={disconnectSource}
+                                        onFixConnection={handleFixConnection}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+                    ) : null}
+                    {availableCards.length > 0 ? (
+                        <section aria-labelledby="sources-available-heading">
+                            <div className="mb-3 flex items-end justify-between">
+                                <h2
+                                    id="sources-available-heading"
+                                    className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400"
+                                >
+                                    Available
+                                </h2>
+                                <span className="text-xs text-gray-500 dark:text-slate-400">
+                                    {availableCards.length} to connect
+                                </span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 auto-rows-fr [&>*]:h-full">
+                                {availableCards.map((integration: any) => (
+                                    <IntegrationCard
+                                        key={integration.id}
+                                        integration={integration}
+                                        busyActions={busyActions}
+                                        onSync={handleSync}
+                                        onDisconnect={disconnectSource}
+                                        onFixConnection={handleFixConnection}
+                                        onConnect={handleConnect}
+                                    />
+                                ))}
+                            </div>
+                        </section>
+                    ) : null}
                 </div>
             )}
 
