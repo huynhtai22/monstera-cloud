@@ -25,3 +25,7 @@ export function isGoogleAdsConnectEnabled(): boolean {
 export function isTikTokBusinessConnectEnabled(): boolean {
   return (process.env.TIKTOK_BUSINESS_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
 }
+
+export function isShopifyConnectEnabled(): boolean {
+  return (process.env.SHOPIFY_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
+}

@@ -1,5 +1,6 @@
 import type { EtlProvider, ExtractResult, PipelineContext } from '@/etl/types';
 import { extractShopeeOrders } from '@/etl/extractors/shopee';
+import { extractShopifyOrders } from '@/etl/extractors/shopify';
 import { extractCampaignMetricsFromDb } from '@/etl/extractors/campaignMetrics';
 
 export async function extractForProvider(opts: {
@@ -11,6 +12,8 @@ export async function extractForProvider(opts: {
   switch (opts.provider) {
     case 'shopee':
       return extractShopeeOrders(opts.ctx, opts.sourceCreds, opts.cursorRaw);
+    case 'shopify':
+      return extractShopifyOrders(opts.ctx, opts.sourceCreds, opts.cursorRaw);
     case 'meta_ads':
     case 'google_ads':
     case 'tiktok_business':
