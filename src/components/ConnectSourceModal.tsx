@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useWorkspaceStore } from "@/store/workspace";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { SOURCES_CATALOG, isSourceEnvReady, type SourcesCatalogItem } from "@/lib/sources-integration-catalog";
+import { cn } from "@/lib/utils";
 
 async function integrationsConfigFetcher(url: string) {
     const res = await fetch(url);
@@ -269,7 +270,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 dark:bg-slate-800/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] animate-in fade-in duration-200 dark:bg-slate-950/70">
             {showPicker ? (
                 <div
                     ref={dialogRef}
@@ -278,25 +279,32 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     aria-modal="true"
                     aria-labelledby="connect-source-picker-title"
                     tabIndex={-1}
-                    className="relative mx-4 w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl outline-none animate-in zoom-in-95 duration-300 dark:border-slate-700 dark:bg-slate-800"
+                    className="relative mx-4 w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_22px_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none animate-in zoom-in-95 duration-300 dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[0_28px_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06]"
                 >
-                    <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-slate-700">
-                        <div>
-                            <h3 id="connect-source-picker-title" className="text-base font-bold text-gray-900 dark:text-white">
+                    <div className="flex items-start justify-between gap-3 border-b border-slate-100/90 bg-gradient-to-br from-slate-50/90 to-white px-5 py-4 dark:border-white/5 dark:from-slate-800/80 dark:to-slate-900/80">
+                        <div className="min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">Catalog</p>
+                            <h3 id="connect-source-picker-title" className="mt-1 text-lg font-bold tracking-tight text-slate-900 dark:text-white">
                                 Add a data source
                             </h3>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">Choose a platform to connect with OAuth.</p>
+                            <p className="mt-1 text-xs leading-snug text-slate-600 dark:text-slate-400">
+                                Same list as the header menu — includes connectors already linked or not yet configured on this server.
+                            </p>
                         </div>
                         <button
                             type="button"
                             onClick={handleClose}
                             aria-label="Close dialog"
-                            className="shrink-0 text-gray-400 transition-colors hover:text-gray-700 dark:hover:text-gray-200"
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-200/80 hover:text-slate-800 dark:hover:bg-white/10 dark:hover:text-white"
                         >
                             <X className="w-5 h-5" />
                         </button>
                     </div>
-                    <ul className="max-h-[min(70vh,440px)] space-y-1 overflow-y-auto p-3" role="listbox" aria-label="Available connectors">
+                    <ul
+                        className="max-h-[min(60vh,22rem)] space-y-1 overflow-y-auto overscroll-contain px-2 py-2"
+                        role="listbox"
+                        aria-label="Available connectors"
+                    >
                         {SOURCES_CATALOG.map((item) => {
                             const connected = connectedSet.has(item.id);
                             const ready = isSourceEnvReady(item.id, intConfig);
@@ -309,47 +317,51 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                         aria-disabled={disabled}
                                         disabled={disabled}
                                         onClick={() => pickConnector(item)}
-                                        className={`flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+                                        className={cn(
+                                            "group flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left transition-all duration-150",
                                             disabled
-                                                ? "cursor-not-allowed border-gray-100 bg-gray-50/80 opacity-60 dark:border-slate-700/50 dark:bg-slate-900/40"
-                                                : "border-transparent bg-white hover:border-cyan-200 hover:bg-cyan-50/50 dark:bg-slate-800 dark:hover:border-cyan-800/60 dark:hover:bg-cyan-950/20"
-                                        }`}
+                                                ? "cursor-not-allowed opacity-50 saturate-50"
+                                                : "text-slate-900 hover:bg-slate-50/95 hover:shadow-sm focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-cyan-500/35 dark:text-white dark:hover:bg-slate-800/90 dark:focus-visible:bg-slate-800/90 dark:focus-visible:ring-cyan-400/30"
+                                        )}
                                     >
-                                        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-slate-600 dark:bg-slate-900">
+                                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-white to-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ring-1 ring-slate-200/80 dark:from-slate-800 dark:to-slate-900 dark:ring-white/10">
                                             {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img src={item.logoSrc} alt="" width={24} height={24} className="object-contain" />
                                         </span>
-                                        <span className="min-w-0 flex-1">
-                                            <span className="flex flex-wrap items-center gap-2">
-                                                <span className="text-sm font-semibold text-gray-900 dark:text-white">{item.name}</span>
-                                                {connected ? (
-                                                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
-                                                        Connected
+                                        <span className="min-w-0 flex-1 pt-0.5">
+                                            <span className="flex items-start justify-between gap-2">
+                                                <span className="flex flex-wrap items-center gap-2">
+                                                    <span className="text-[13px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-white">
+                                                        {item.name}
                                                     </span>
-                                                ) : null}
-                                                {!ready ? (
-                                                    <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-900 dark:bg-amber-950/60 dark:text-amber-200">
-                                                        Not configured
+                                                    {connected ? (
+                                                        <span className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-900 dark:bg-emerald-950/80 dark:text-emerald-200">
+                                                            Linked
+                                                        </span>
+                                                    ) : null}
+                                                </span>
+                                                {!disabled ? (
+                                                    <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-slate-300 transition-all group-hover:translate-x-0.5 group-hover:text-cyan-600 dark:text-slate-600 dark:group-hover:text-cyan-400" />
+                                                ) : !ready ? (
+                                                    <span className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-900 dark:bg-amber-950/80 dark:text-amber-200">
+                                                        Off
                                                     </span>
                                                 ) : null}
                                             </span>
-                                            <span className="mt-0.5 block text-xs leading-snug text-gray-500 dark:text-gray-400">
+                                            <span className="mt-1 block line-clamp-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
                                                 {item.description}
                                             </span>
                                         </span>
-                                        {!disabled ? (
-                                            <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400" aria-hidden />
-                                        ) : null}
                                     </button>
                                 </li>
                             );
                         })}
                     </ul>
-                    <div className="border-t border-gray-100 px-6 py-3 dark:border-slate-700">
+                    <div className="border-t border-slate-100 bg-slate-50/90 p-2 dark:border-white/5 dark:bg-slate-950/60">
                         <button
                             type="button"
                             onClick={handleClose}
-                            className="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-slate-400 dark:hover:text-white"
+                            className="flex w-full items-center justify-center rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-800"
                         >
                             Cancel
                         </button>
@@ -363,24 +375,25 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                 aria-modal="true"
                 aria-labelledby="connect-source-modal-title"
                 tabIndex={-1}
-                className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden relative animate-in zoom-in-95 duration-300 border border-gray-200 dark:border-slate-700 outline-none"
+                className="relative mx-4 w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_22px_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none animate-in zoom-in-95 duration-300 dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[0_28px_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06]"
             >
-                <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+                <div className="flex items-center gap-3 border-b border-slate-100/90 bg-gradient-to-br from-slate-50/90 to-white px-5 py-4 dark:border-white/5 dark:from-slate-800/80 dark:to-slate-900/80">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-white to-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ring-1 ring-slate-200/80 dark:from-slate-800 dark:to-slate-900 dark:ring-white/10">
                         <Image src={logoSrc} alt={name} width={22} height={22} className="object-contain" />
                     </div>
-                    <div className="flex-1 min-w-0">
-                        <h3 id="connect-source-modal-title" className="text-sm font-bold text-gray-900 dark:text-white">
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">OAuth</p>
+                        <h3 id="connect-source-modal-title" className="text-base font-bold tracking-tight text-slate-900 dark:text-white">
                             {name}
                         </h3>
-                        <p className="text-xs text-gray-400 dark:text-gray-500">Connect via OAuth</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Sign in on the next step — read-only access.</p>
                     </div>
                     {!integration && draftPick ? (
                         <button
                             type="button"
                             onClick={() => setDraftPick(null)}
                             disabled={isProcessing}
-                            className="shrink-0 text-xs font-semibold text-cyan-600 hover:text-cyan-700 disabled:opacity-50 dark:text-cyan-400 dark:hover:text-cyan-300"
+                            className="shrink-0 rounded-lg border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-semibold text-cyan-700 shadow-sm transition-colors hover:bg-cyan-50 disabled:opacity-50 dark:border-white/10 dark:bg-slate-800 dark:text-cyan-300 dark:hover:bg-cyan-950/40"
                         >
                             Change
                         </button>
@@ -389,7 +402,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                         onClick={handleClose}
                         disabled={isProcessing}
                         aria-label="Close dialog"
-                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors disabled:opacity-50 shrink-0"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-200/80 hover:text-slate-800 disabled:opacity-50 dark:hover:bg-white/10 dark:hover:text-white"
                     >
                         <X className="w-4 h-4" />
                     </button>

@@ -888,78 +888,127 @@ export default function SourcesPage() {
                             aria-expanded={addSourceMenuOpen}
                             aria-haspopup="listbox"
                             onClick={() => setAddSourceMenuOpen((o) => !o)}
-                            className="inline-flex h-10 min-h-[2.5rem] items-center gap-2 rounded-lg border border-cyan-700/30 bg-cyan-600 px-3.5 text-sm font-semibold text-white shadow-md shadow-cyan-900/20 transition-colors hover:bg-cyan-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-50 dark:border-cyan-500/50 dark:bg-cyan-600 dark:shadow-black/40 dark:focus-visible:ring-offset-slate-900 sm:px-4"
+                            className="inline-flex h-10 min-h-[2.5rem] items-center gap-2 rounded-xl border border-cyan-500/35 bg-gradient-to-b from-cyan-500 to-cyan-600 px-3.5 text-sm font-semibold text-white shadow-md shadow-cyan-900/25 transition-all hover:from-cyan-400 hover:to-cyan-500 hover:shadow-lg hover:shadow-cyan-900/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 active:scale-[0.98] dark:border-cyan-400/30 dark:from-cyan-600 dark:to-cyan-700 dark:shadow-black/50 dark:focus-visible:ring-offset-slate-900 sm:px-4"
                         >
                             <Plus className="h-4 w-4 shrink-0" aria-hidden />
                             <span className="hidden sm:inline">Add data source</span>
                             <span className="sm:hidden">Add source</span>
                             <ChevronDown
-                                className={`h-4 w-4 shrink-0 opacity-95 transition-transform ${addSourceMenuOpen ? "rotate-180" : ""}`}
+                                className={`h-4 w-4 shrink-0 opacity-90 transition-transform duration-200 ${addSourceMenuOpen ? "-rotate-180" : ""}`}
                                 aria-hidden
                             />
                         </button>
                         {addSourceMenuOpen ? (
                             <div
-                                className="absolute right-0 top-full z-50 mt-2 w-[min(100vw-2rem,20rem)] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-xl dark:border-slate-600 dark:bg-slate-800"
-                                role="listbox"
-                                aria-label="Connect a source"
+                                className="absolute right-0 top-full z-50 mt-2 w-[min(100vw-1.25rem,22.5rem)] origin-top animate-in fade-in slide-in-from-top-1 duration-200"
+                                role="presentation"
                             >
-                                {headerAddOptions.length === 0 ? (
-                                    <p className="px-3 py-3 text-sm text-gray-600 dark:text-slate-300">
-                                        All catalog sources are already connected to this workspace.
-                                    </p>
-                                ) : (
-                                    headerAddOptions.map((item) => {
-                                        const disabled = !item.envConnectReady;
-                                        return (
-                                            <button
-                                                key={item.id}
-                                                type="button"
-                                                role="option"
-                                                disabled={disabled}
-                                                onClick={() => {
-                                                    if (disabled) {
-                                                        toast.error(
-                                                            "This connector is not enabled on this deployment (missing OAuth environment variables)."
-                                                        );
-                                                        return;
-                                                    }
-                                                    trackEvent("integration_connect_open", { source: "header_dropdown", catalogId: item.id });
-                                                    trackEvent("source_connect_clicked", { catalogId: item.id, from: "header_dropdown" });
-                                                    handleConnect({ ...item, catalogId: item.id });
-                                                    setAddSourceMenuOpen(false);
-                                                }}
-                                                className={`flex w-full items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors ${
-                                                    disabled
-                                                        ? "cursor-not-allowed text-gray-400 dark:text-slate-500"
-                                                        : "text-gray-900 hover:bg-cyan-50 dark:text-white dark:hover:bg-cyan-950/40"
-                                                }`}
-                                            >
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img src={item.logoSrc} alt="" width={22} height={22} className="shrink-0 object-contain" />
-                                                <span className="min-w-0 flex-1 font-medium">{item.name}</span>
-                                                {!item.envConnectReady ? (
-                                                    <span className="shrink-0 text-[10px] font-bold uppercase text-amber-700 dark:text-amber-400">
-                                                        Off
-                                                    </span>
-                                                ) : null}
-                                            </button>
-                                        );
-                                    })
-                                )}
-                                <div className="border-t border-gray-100 dark:border-slate-700">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            trackEvent("integration_connect_open", { source: "header_browse_all" });
-                                            setSelectedIntegration(null);
-                                            setIsSourceModalOpen(true);
-                                            setAddSourceMenuOpen(false);
-                                        }}
-                                        className="w-full px-3 py-2.5 text-left text-xs font-semibold text-cyan-700 hover:bg-cyan-50 dark:text-cyan-300 dark:hover:bg-cyan-950/30"
-                                    >
-                                        Browse all connectors…
-                                    </button>
+                                <div
+                                    className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_22px_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[0_28px_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06]"
+                                    role="listbox"
+                                    aria-label="Connect a source"
+                                >
+                                    <div className="border-b border-slate-100/90 bg-gradient-to-br from-slate-50/90 to-white px-4 py-3 dark:border-white/5 dark:from-slate-800/80 dark:to-slate-900/80">
+                                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+                                            Quick connect
+                                        </p>
+                                        <p className="mt-0.5 text-xs leading-snug text-slate-600 dark:text-slate-400">
+                                            Choose a platform — you&apos;ll sign in with OAuth next.
+                                        </p>
+                                    </div>
+                                    <div className="max-h-[min(52vh,22rem)] overflow-y-auto overscroll-contain px-2 py-2">
+                                        {headerAddOptions.length === 0 ? (
+                                            <div className="flex flex-col items-center gap-2 rounded-xl bg-slate-50/80 px-4 py-8 text-center dark:bg-slate-800/50">
+                                                <CheckCircle2 className="h-8 w-8 text-emerald-500/90" aria-hidden />
+                                                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">All set</p>
+                                                <p className="max-w-[14rem] text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                                                    Every catalog source is already linked to this workspace.
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <ul className="space-y-1">
+                                                {headerAddOptions.map((item) => {
+                                                    const disabled = !item.envConnectReady;
+                                                    return (
+                                                        <li key={item.id}>
+                                                            <button
+                                                                type="button"
+                                                                role="option"
+                                                                disabled={disabled}
+                                                                onClick={() => {
+                                                                    if (disabled) {
+                                                                        toast.error(
+                                                                            "This connector is not enabled on this deployment (missing OAuth environment variables)."
+                                                                        );
+                                                                        return;
+                                                                    }
+                                                                    trackEvent("integration_connect_open", {
+                                                                        source: "header_dropdown",
+                                                                        catalogId: item.id,
+                                                                    });
+                                                                    trackEvent("source_connect_clicked", {
+                                                                        catalogId: item.id,
+                                                                        from: "header_dropdown",
+                                                                    });
+                                                                    handleConnect({ ...item, catalogId: item.id });
+                                                                    setAddSourceMenuOpen(false);
+                                                                }}
+                                                                className={cn(
+                                                                    "group flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left transition-all duration-150",
+                                                                    disabled
+                                                                        ? "cursor-not-allowed opacity-50 saturate-50"
+                                                                        : "text-slate-900 hover:bg-slate-50/95 hover:shadow-sm focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-cyan-500/35 dark:text-white dark:hover:bg-slate-800/90 dark:focus-visible:bg-slate-800/90 dark:focus-visible:ring-cyan-400/30"
+                                                                )}
+                                                            >
+                                                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-white to-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ring-1 ring-slate-200/80 dark:from-slate-800 dark:to-slate-900 dark:ring-white/10">
+                                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                                    <img
+                                                                        src={item.logoSrc}
+                                                                        alt=""
+                                                                        width={24}
+                                                                        height={24}
+                                                                        className="object-contain"
+                                                                    />
+                                                                </span>
+                                                                <span className="min-w-0 flex-1 pt-0.5">
+                                                                    <span className="flex items-start justify-between gap-2">
+                                                                        <span className="text-[13px] font-semibold leading-tight tracking-tight text-slate-900 dark:text-white">
+                                                                            {item.name}
+                                                                        </span>
+                                                                        {!disabled ? (
+                                                                            <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-slate-300 transition-all group-hover:translate-x-0.5 group-hover:text-cyan-600 dark:text-slate-600 dark:group-hover:text-cyan-400" />
+                                                                        ) : (
+                                                                            <span className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-900 dark:bg-amber-950/80 dark:text-amber-200">
+                                                                                Off
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                    <span className="mt-1 block line-clamp-2 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                                                                        {item.description}
+                                                                    </span>
+                                                                </span>
+                                                            </button>
+                                                        </li>
+                                                    );
+                                                })}
+                                            </ul>
+                                        )}
+                                    </div>
+                                    <div className="border-t border-slate-100 bg-slate-50/90 p-2 dark:border-white/5 dark:bg-slate-950/60">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                trackEvent("integration_connect_open", { source: "header_browse_all" });
+                                                setSelectedIntegration(null);
+                                                setIsSourceModalOpen(true);
+                                                setAddSourceMenuOpen(false);
+                                            }}
+                                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:border-cyan-300/60 hover:bg-cyan-50/50 hover:text-cyan-900 dark:border-white/10 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:border-cyan-500/30 dark:hover:bg-cyan-950/40 dark:hover:text-cyan-100"
+                                        >
+                                            Full catalog — status
+                                            <ChevronRight className="h-3.5 w-3.5 opacity-70" aria-hidden />
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ) : null}
