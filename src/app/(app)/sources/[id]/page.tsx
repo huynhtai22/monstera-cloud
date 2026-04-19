@@ -23,6 +23,7 @@ import { ConnectSourceModal } from "@/components/ConnectSourceModal";
 import { integrationCatalogId } from "@/lib/integration-catalog";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { cn } from "@/lib/utils";
+import { AccountScopePanel } from "@/components/sources/AccountScopePanel";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin" });
@@ -64,6 +65,7 @@ export default function SourceDetailPage() {
               lastError: string | null;
               lastSyncAt: string | null;
               workspaceId: string;
+              credentials?: string;
           }
         | undefined;
 
@@ -215,6 +217,10 @@ export default function SourceDetailPage() {
                 </div>
             </div>
 
+            {isSource && ["meta_ads", "google_ads", "tiktok_business"].includes(connection.provider) ? (
+                <AccountScopePanel provider={connection.provider} credentialsJson={connection.credentials} />
+            ) : null}
+
             {/* Health */}
             <div className="mb-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="rounded-2xl border border-gray-200/80 bg-white/70 p-5 dark:border-slate-700/60 dark:bg-slate-900/50">
@@ -260,6 +266,13 @@ export default function SourceDetailPage() {
             {/* Pipelines */}
             <div className="mb-10">
                 <h2 className="mb-3 text-lg font-bold text-gray-900 dark:text-white">Pipelines</h2>
+                {isSource && pipelines.length > 0 ? (
+                    <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+                        Each row is a <strong>binding</strong> inside this workspace: data from this source is written to the
+                        destination you connected (for example Google Sheets may use a <strong>different</strong> Google login than
+                        Meta or Google Ads — that is expected).
+                    </p>
+                ) : null}
                 {pipelines.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">No pipelines use this connection yet.</p>
                 ) : (

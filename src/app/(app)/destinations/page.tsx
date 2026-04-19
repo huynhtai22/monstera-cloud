@@ -6,6 +6,7 @@ import { Search, ArrowRight, Send, Plus, AlertCircle, Loader2, Unplug, CheckCirc
 import { cn } from "@/lib/utils";
 import { ConnectDestinationModal } from "@/components/ConnectDestinationModal";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { DataFlowExplainer } from "@/components/data-flow/DataFlowExplainer";
 import useSWR, { useSWRConfig } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
@@ -118,6 +119,8 @@ export default function DestinationsPage() {
                     </PrimaryButton>
                 </div>
             </div>
+
+            <DataFlowExplainer variant="destinations" />
 
             {/* Active Pipelines Info Bar */}
             <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-xl p-4 mb-8 flex items-center justify-between shadow-sm">

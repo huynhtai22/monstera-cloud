@@ -89,7 +89,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     return (
         <KeyboardShortcutsProvider>
         <WorkspaceSessionSync />
-        <GlobeLoader visible={loading} />
+        {/* Mount only while auth is resolving — keeps a fixed z-[9999] layer out of the DOM after load (avoids blocking clicks). */}
+        {loading ? <GlobeLoader visible /> : null}
         <div className="flex min-h-screen font-sans">
             {/* Mobile Header (only visible on small screens) */}
             <div className="fixed top-0 z-30 flex h-16 w-full items-center justify-between gap-2 border-b border-gray-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-950 lg:hidden">
@@ -144,7 +145,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {/* Mobile Overlay */}
             {isSidebarOpen && (
                 <div
-                    className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm z-40 lg:hidden transition-opacity"
+                    aria-hidden
+                    className="fixed inset-0 z-40 bg-gray-900/60 backdrop-blur-sm transition-opacity lg:pointer-events-none lg:hidden"
                     onClick={() => setIsSidebarOpen(false)}
                 />
             )}

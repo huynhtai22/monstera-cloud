@@ -268,6 +268,10 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
 
         if (!mounted) return null;
 
+        // Pointer events must follow the controlled `visible` prop, not `internalVisible`.
+        // Otherwise the full-screen layer (z-index 9999) keeps intercepting clicks for up to
+        // minVisibleMs after the session is ready — the fade-out can still use internalVisible.
+        const blockInteraction = visible;
         const containerStyle: React.CSSProperties = fullscreen
             ? {
                   position: "fixed",
@@ -279,7 +283,7 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
                   opacity: internalVisible ? 1 : 0,
                   transform: internalVisible ? "scale(1)" : "scale(1.06)",
                   transition: "opacity 300ms ease, transform 300ms ease",
-                  pointerEvents: internalVisible ? "auto" : "none",
+                  pointerEvents: blockInteraction ? "auto" : "none",
               }
             : {
                   display: "grid",

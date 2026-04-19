@@ -14,6 +14,7 @@ import { logoPathForCatalogId, logoPathForConnectionProvider } from "@/lib/integ
 import { cn } from "@/lib/utils";
 import { trackEvent, trackOnce } from "@/lib/analytics-events";
 import { PageShell } from "@/components/ui/PageShell";
+import { DataFlowExplainer } from "@/components/data-flow/DataFlowExplainer";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin" });
@@ -890,6 +891,8 @@ export default function SourcesPage() {
                     </PrimaryButton>
                 </div>
             </div>
+
+            {!isLoading ? <DataFlowExplainer variant="sources" /> : null}
 
             {!isLoading && activeWorkspace && filteredIntegrations.length > 0 ? (
                 <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-gray-200/90 bg-gray-50/90 px-4 py-3 text-sm dark:border-slate-600/70 dark:bg-slate-800/60">

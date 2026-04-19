@@ -158,7 +158,10 @@ export function HealthDashboard() {
                             className="w-full bg-cyan-50 group-hover:bg-cyan-500 transition-all rounded-t-sm relative"
                             style={{ height: `${(day.count / maxRows) * 100}%`, minHeight: '2px' }}
                         >
-                            <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-all whitespace-nowrap z-20 shadow-xl">
+                            <div
+                                className="pointer-events-none absolute -top-10 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-2 py-1 text-[10px] text-white opacity-0 shadow-xl transition-all group-hover:opacity-100"
+                                aria-hidden
+                            >
                                 {day.count.toLocaleString()} rows
                             </div>
                         </div>
