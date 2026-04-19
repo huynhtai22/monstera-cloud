@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { getToken } from 'next-auth/jwt';
 import { googleAdsOAuthClient } from '@/lib/google-ads';
 import prisma from '@/lib/prisma';
 import { isGoogleAdsConnectEnabled } from '@/lib/integration-flags';

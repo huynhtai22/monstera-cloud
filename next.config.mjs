@@ -13,11 +13,9 @@ const nextConfig = {
   },
   async redirects() {
     return [
-      { source: "/dashboard", destination: "/sources", permanent: true },
-      { source: "/dashboard/:path*", destination: "/sources/:path*", permanent: true },
-      { source: "/console", destination: "/sources", permanent: true },
-      { source: "/console/:path*", destination: "/sources/:path*", permanent: true },
-      { source: "/overview", destination: "/", permanent: true },
+      { source: "/dashboard", destination: "/console", permanent: true },
+      { source: "/dashboard/:path*", destination: "/console/:path*", permanent: true },
+      { source: "/overview", destination: "/console", permanent: true },
       { source: "/tiktok-ads", destination: "/reports?source=tiktok_business", permanent: true },
       { source: "/meta-ads", destination: "/reports?source=meta_ads", permanent: true },
       { source: "/google-ads", destination: "/reports?source=google_ads", permanent: true },
