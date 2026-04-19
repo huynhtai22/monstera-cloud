@@ -28,3 +28,25 @@ html.disable-transitions *::before,
 html.disable-transitions *::after {
     transition: none !important;
 }
+
+/* Subtle staggered fade/rise for dashboard pillar cards */
+@keyframes pillarFadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.pillar-fade {
+    animation: pillarFadeUp 420ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pillar-fade {
+        animation: none;
+    }
+}

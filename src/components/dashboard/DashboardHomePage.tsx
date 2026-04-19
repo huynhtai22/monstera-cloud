@@ -19,6 +19,45 @@ import { trackEvent, trackOnce } from "@/lib/analytics-events";
 
 const WIZARD_DISMISS_KEY = "monstera_setup_wizard_dismissed_v1";
 
+type Connection = {
+    id: string;
+    type: string;
+    provider: string;
+    status?: string | null;
+    name?: string | null;
+    updatedAt?: string | null;
+};
+
+type Workspace = {
+    id: string;
+    name?: string | null;
+    connections?: Connection[];
+};
+
+type Pipeline = {
+    id: string;
+    name: string;
+    status: string;
+    updatedAt: string;
+    logs?: Array<{ rowsSynced?: number }>;
+    sourceConnection?: { name?: string };
+    destinationConnection?: { name?: string };
+};
+
+type SyncLog = {
+    id: string;
+    status: string;
+    createdAt: string;
+    pipeline?: { id: string; name: string } | null;
+};
+
+type AttributionSnapshot = {
+    date: string;
+    netRoas: number;
+    adSpend: number;
+    attributedRevenue: number;
+};
+
 const fetcher = async (url: string) => {
     const res = await fetch(url);
     const data = await res.json().catch(() => ({}));
@@ -50,41 +89,37 @@ export function DashboardHomePage() {
         trackEvent("dashboard_viewed", { path: "/" });
     }, []);
 
-    const { data: pipelines, error, isLoading } = useSWR(
+    const { data: pipelines, error, isLoading } = useSWR<Pipeline[], Error>(
         workspaceId ? `/api/pipelines?workspaceId=${workspaceId}` : null,
         fetcher
     );
 
-    const activePipelinesCount = Array.isArray(pipelines) ? pipelines.length : 0;
+    const activePipelinesCount = pipelines?.length ?? 0;
 
-    const { data: syncLogsData } = useSWR(
+    const { data: syncLogsData } = useSWR<{ logs: SyncLog[] }>(
         workspaceId ? `/api/sync-logs?workspaceId=${workspaceId}` : null,
         fetcher
     );
-    const logs = (syncLogsData?.logs ?? []) as Array<{ status: string }>;
+    const logs = syncLogsData?.logs ?? [];
     const hasSuccessfulSync = logs.some((l) => l.status === "success");
 
-    const { data: attributionData } = useSWR(
+    const { data: attributionData } = useSWR<{ snapshots: AttributionSnapshot[] }>(
         workspaceId ? `/api/attribution/snapshots?workspaceId=${workspaceId}&days=14` : null,
         fetcher
     );
-    const snapshots = (attributionData?.snapshots ?? []) as Array<{
-        date: string;
-        netRoas: number;
-        adSpend: number;
-        attributedRevenue: number;
-    }>;
+    const snapshots = attributionData?.snapshots ?? [];
 
     const { connections, connectedSourcesCount, connectedDestinationsCount, workspaceName } = React.useMemo(() => {
         if (!Array.isArray(workspaces) || !workspaceId) {
-            return { connections: [] as any[], connectedSourcesCount: 0, connectedDestinationsCount: 0, workspaceName: "" };
+            return { connections: [] as Connection[], connectedSourcesCount: 0, connectedDestinationsCount: 0, workspaceName: "" };
         }
-        const ws = workspaces.find((w: any) => w.id === workspaceId) || workspaces[0];
-        const conns = (ws?.connections ?? []) as any[];
+        const list = workspaces as Workspace[];
+        const ws = list.find((w) => w.id === workspaceId) || list[0];
+        const conns = ws?.connections ?? [];
         return {
             connections: conns,
-            connectedSourcesCount: conns.filter((c: any) => c.type === "source").length,
-            connectedDestinationsCount: conns.filter((c: any) => c.type === "destination").length,
+            connectedSourcesCount: conns.filter((c) => c.type === "source").length,
+            connectedDestinationsCount: conns.filter((c) => c.type === "destination").length,
             workspaceName: ws?.name ?? "Workspace",
         };
     }, [workspaces, workspaceId]);
@@ -92,18 +127,17 @@ export function DashboardHomePage() {
     const hasSource = connectedSourcesCount > 0;
     const hasDestination = connectedDestinationsCount > 0;
 
-    const healthyCount = Array.isArray(pipelines)
-        ? pipelines.filter((p: { status: string }) => p.status !== "error").length
+    const healthyCount = pipelines
+        ? pipelines.filter((p) => p.status !== "error").length
         : 0;
 
     const lastSyncLabel = React.useMemo(() => {
         if (!logs.length) return null;
-        const sorted = [...logs].sort(
-            (a, b) => new Date((b as { createdAt?: string }).createdAt ?? 0).getTime() - new Date((a as { createdAt?: string }).createdAt ?? 0).getTime()
+        const latest = logs.reduce((acc, l) =>
+            new Date(l.createdAt).getTime() > new Date(acc.createdAt).getTime() ? l : acc
         );
-        const t = sorted[0] as { createdAt?: string } | undefined;
-        if (!t?.createdAt) return null;
-        return new Date(t.createdAt).toLocaleString();
+        if (!latest?.createdAt) return null;
+        return new Date(latest.createdAt).toLocaleString();
     }, [logs]);
 
     const todayLabel = new Date().toLocaleDateString(undefined, {
@@ -132,11 +166,11 @@ export function DashboardHomePage() {
     };
 
     const runAllPipelines = async () => {
-        if (!Array.isArray(pipelines) || pipelines.length === 0) return;
+        if (!pipelines || pipelines.length === 0) return;
         setSyncAllBusy(true);
         setSyncMsg("");
         try {
-            for (const p of pipelines as Array<{ id: string }>) {
+            for (const p of pipelines) {
                 await fetch(`/api/pipelines/${p.id}/run`, { method: "POST" });
             }
             setSyncMsg("Sync requested for all pipelines.");
@@ -232,11 +266,24 @@ export function DashboardHomePage() {
                 </div>
             ) : null}
 
+            <div className="relative z-10 mb-3 mt-1">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                    Today
+                </h2>
+            </div>
             <MetricCardGrid snapshots={snapshots} />
 
+            <div className="relative z-10 mb-3 mt-2 flex items-baseline justify-between">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                    Your workspace
+                </h2>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                    {connectedSourcesCount} source{connectedSourcesCount === 1 ? "" : "s"} · {connectedDestinationsCount} destination{connectedDestinationsCount === 1 ? "" : "s"}
+                </span>
+            </div>
             <PillarGrid
-                connections={connections as any}
-                syncLogs={logs as any}
+                connections={connections}
+                syncLogs={logs}
                 healthyCount={healthyCount}
                 totalPipelines={activePipelinesCount}
                 latestNetRoas={snapshots.length ? snapshots[snapshots.length - 1].netRoas : null}
@@ -253,11 +300,16 @@ export function DashboardHomePage() {
                 </div>
             ) : null}
 
+            <div className="relative z-10 mb-3 mt-2">
+                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                    Activity
+                </h2>
+            </div>
             <div className="relative z-10 mb-10">
                 <RecentActivity
-                    pipelines={pipelines as any}
+                    pipelines={pipelines}
                     isLoading={isLoading}
-                    error={error as any}
+                    error={error}
                     syncingPipelineId={syncingPipelineId}
                     onSync={runPipeline}
                 />

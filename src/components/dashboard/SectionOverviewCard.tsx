@@ -25,13 +25,20 @@ type SectionOverviewCardProps = {
     ctaHref: string;
     accentClassName?: string;
     className?: string;
+    emphasis?: boolean;
+    footerSlot?: React.ReactNode;
 };
 
 function StatusDot({ status }: { status?: OverviewStatus }) {
-    if (status === "ok") return <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-cyan-500 dark:text-cyan-400" />;
-    if (status === "error") return <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />;
-    if (status === "pending") return <Circle className="h-3.5 w-3.5 shrink-0 text-amber-500" />;
-    return <Circle className="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600" />;
+    const label =
+        status === "ok" ? "Connected" :
+        status === "error" ? "Error" :
+        status === "pending" ? "Pending" :
+        "Idle";
+    if (status === "ok") return <CheckCircle2 aria-label={label} className="h-3.5 w-3.5 shrink-0 text-cyan-500 dark:text-cyan-400" />;
+    if (status === "error") return <AlertCircle aria-label={label} className="h-3.5 w-3.5 shrink-0 text-red-500" />;
+    if (status === "pending") return <Circle aria-label={label} className="h-3.5 w-3.5 shrink-0 text-amber-500" />;
+    return <Circle aria-label={label} className="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600" />;
 }
 
 export function SectionOverviewCard({
@@ -43,15 +50,20 @@ export function SectionOverviewCard({
     emptyHint,
     ctaLabel,
     ctaHref,
-    accentClassName = "text-primary",
+    accentClassName,
     className,
+    emphasis,
+    footerSlot,
 }: SectionOverviewCardProps) {
     const hasItems = Array.isArray(items) && items.length > 0;
 
     return (
         <div
             className={cn(
-                "group relative flex h-full flex-col justify-between rounded-2xl border border-gray-200/80 bg-white/80 p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-700/60 dark:bg-slate-900/60",
+                "group relative flex h-full flex-col justify-between rounded-2xl border p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md",
+                emphasis
+                    ? "border-cyan-200 bg-gradient-to-br from-cyan-50/80 via-white/80 to-white/80 dark:border-cyan-500/30 dark:from-cyan-500/10 dark:via-slate-900/60 dark:to-slate-900/60"
+                    : "border-gray-200/80 bg-white/80 dark:border-slate-700/60 dark:bg-slate-900/60",
                 className
             )}
         >
@@ -60,7 +72,10 @@ export function SectionOverviewCard({
                     <div className="flex items-center gap-2.5">
                         <div
                             className={cn(
-                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
+                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border shadow-sm",
+                                emphasis
+                                    ? "border-cyan-200 bg-cyan-100/70 text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-300"
+                                    : "border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
                                 accentClassName
                             )}
                         >
@@ -75,7 +90,7 @@ export function SectionOverviewCard({
                     </div>
                     {kpi ? (
                         <div className="shrink-0 text-right">
-                            <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-300">
                                 {kpi.label}
                             </div>
                             <div className="text-lg font-extrabold tracking-tight text-gray-900 dark:text-white">
@@ -106,13 +121,17 @@ export function SectionOverviewCard({
                                 )}
                                 <span className="truncate font-medium">{item.label}</span>
                                 {item.sub ? (
-                                    <span className="ml-auto truncate text-xs text-gray-500 dark:text-gray-400">
+                                    <span
+                                        className={cn(
+                                            "ml-auto truncate text-xs",
+                                            item.status === "error"
+                                                ? "text-red-500 dark:text-red-400"
+                                                : item.status === "pending"
+                                                    ? "text-amber-600 dark:text-amber-400"
+                                                    : "text-gray-500 dark:text-gray-400"
+                                        )}
+                                    >
                                         {item.sub}
-                                    </span>
-                                ) : null}
-                                {item.logoSrc ? (
-                                    <span className="shrink-0">
-                                        <StatusDot status={item.status} />
                                     </span>
                                 ) : null}
                             </li>
@@ -125,13 +144,16 @@ export function SectionOverviewCard({
                 )}
             </div>
 
-            <Link
-                href={ctaHref}
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-cyan-700 transition-colors hover:text-cyan-800 dark:text-cyan-300 dark:hover:text-cyan-200"
-            >
-                {ctaLabel}
-                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-            </Link>
+            <div className="flex items-center justify-between gap-3">
+                <Link
+                    href={ctaHref}
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-cyan-700 transition-colors hover:text-cyan-800 dark:text-cyan-300 dark:hover:text-cyan-200"
+                >
+                    {ctaLabel}
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+                {footerSlot ? <div className="shrink-0">{footerSlot}</div> : null}
+            </div>
         </div>
     );
 }

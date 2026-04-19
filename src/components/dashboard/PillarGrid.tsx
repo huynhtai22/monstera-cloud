@@ -1,6 +1,8 @@
 "use client";
 
-import { Activity, Plug, Send, FileBarChart2 } from "lucide-react";
+import { useMemo } from "react";
+import Link from "next/link";
+import { Activity, Plug, Send, FileBarChart2, Zap } from "lucide-react";
 import { SectionOverviewCard, type OverviewLineItem } from "@/components/dashboard/SectionOverviewCard";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 
@@ -84,12 +86,18 @@ export function PillarGrid({
         status: c.status === "connected" ? "ok" : c.status === "error" ? "error" : "pending",
     }));
 
-    const recentLogs = [...syncLogs]
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 3);
-
-    const successCount = syncLogs.filter((l) => l.status === "success").length;
-    const errorCount = syncLogs.filter((l) => l.status === "error").length;
+    const { recentLogs, successCount, errorCount } = useMemo(() => {
+        const sorted = [...syncLogs].sort(
+            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        let successes = 0;
+        let errors = 0;
+        for (const l of syncLogs) {
+            if (l.status === "success") successes++;
+            else if (l.status === "error") errors++;
+        }
+        return { recentLogs: sorted.slice(0, 3), successCount: successes, errorCount: errors };
+    }, [syncLogs]);
 
     const reportItems: OverviewLineItem[] = recentLogs.map((l) => ({
         id: l.id,
@@ -117,57 +125,79 @@ export function PillarGrid({
         },
     ];
 
+    const noReportsYet = syncLogs.length === 0;
+
     return (
         <div className="relative z-10 mb-10 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <SectionOverviewCard
-                icon={<Activity className="h-5 w-5" />}
-                title="Dashboard"
-                subtitle="Health & performance"
-                kpi={
-                    latestNetRoas != null
-                        ? { label: "Net ROAS", value: `${latestNetRoas.toFixed(2)}×` }
-                        : undefined
-                }
-                items={dashboardItems}
-                ctaLabel="View health"
-                ctaHref="/reports"
-            />
+            <div className="pillar-fade md:col-span-2" style={{ animationDelay: "0ms" }}>
+                <SectionOverviewCard
+                    icon={<Activity className="h-5 w-5" />}
+                    title="Dashboard"
+                    subtitle="Health & performance"
+                    emphasis
+                    kpi={
+                        latestNetRoas != null
+                            ? { label: "Net ROAS", value: `${latestNetRoas.toFixed(2)}×` }
+                            : undefined
+                    }
+                    items={dashboardItems}
+                    ctaLabel="View health"
+                    ctaHref="/reports"
+                />
+            </div>
 
-            <SectionOverviewCard
-                icon={<Plug className="h-5 w-5" />}
-                title="Sources"
-                subtitle="Where data comes from"
-                kpi={{ label: "Connected", value: String(sources.length) }}
-                items={sourceItems}
-                emptyHint="No sources connected. Add TikTok, Meta, or Shopee to start syncing."
-                ctaLabel={sources.length ? "Manage sources" : "Connect a source"}
-                ctaHref="/sources"
-            />
+            <div className="pillar-fade" style={{ animationDelay: "60ms" }}>
+                <SectionOverviewCard
+                    icon={<Plug className="h-5 w-5" />}
+                    title="Sources"
+                    subtitle="Where data comes from"
+                    kpi={{ label: "Connected", value: String(sources.length) }}
+                    items={sourceItems}
+                    emptyHint="No sources connected. Add TikTok, Meta, or Shopee to start syncing."
+                    ctaLabel={sources.length ? "Manage sources" : "Connect a source"}
+                    ctaHref="/sources"
+                />
+            </div>
 
-            <SectionOverviewCard
-                icon={<Send className="h-5 w-5" />}
-                title="Destinations"
-                subtitle="Where data lands"
-                kpi={{ label: "Connected", value: String(destinations.length) }}
-                items={destinationItems}
-                emptyHint="No destinations yet. Pick Google Sheets or Looker Studio to deliver data."
-                ctaLabel={destinations.length ? "Manage destinations" : "Add a destination"}
-                ctaHref="/destinations"
-            />
+            <div className="pillar-fade" style={{ animationDelay: "120ms" }}>
+                <SectionOverviewCard
+                    icon={<Send className="h-5 w-5" />}
+                    title="Destinations"
+                    subtitle="Where data lands"
+                    kpi={{ label: "Connected", value: String(destinations.length) }}
+                    items={destinationItems}
+                    emptyHint="No destinations yet. Pick Google Sheets or Looker Studio to deliver data."
+                    ctaLabel={destinations.length ? "Manage destinations" : "Add a destination"}
+                    ctaHref="/destinations"
+                />
+            </div>
 
-            <SectionOverviewCard
-                icon={<FileBarChart2 className="h-5 w-5" />}
-                title="Reports"
-                subtitle="Latest sync activity"
-                kpi={{
-                    label: "14d success",
-                    value: `${successCount}/${successCount + errorCount || 0}`,
-                }}
-                items={reportItems}
-                emptyHint="No sync logs yet. Reports will appear after your first run."
-                ctaLabel="Open reports"
-                ctaHref="/reports"
-            />
+            <div className="pillar-fade md:col-span-2" style={{ animationDelay: "180ms" }}>
+                <SectionOverviewCard
+                    icon={<FileBarChart2 className="h-5 w-5" />}
+                    title="Reports"
+                    subtitle="Latest sync activity"
+                    kpi={{
+                        label: "14d success",
+                        value: `${successCount}/${successCount + errorCount}`,
+                    }}
+                    items={reportItems}
+                    emptyHint="No sync logs yet. Reports will appear after your first run."
+                    ctaLabel="Open reports"
+                    ctaHref="/reports"
+                    footerSlot={
+                        noReportsYet ? (
+                            <Link
+                                href="/pipelines"
+                                className="inline-flex items-center gap-1 rounded-full border border-cyan-300 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700 transition-colors hover:bg-cyan-100 dark:border-cyan-500/40 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/20"
+                            >
+                                <Zap className="h-3 w-3" />
+                                Run your first sync
+                            </Link>
+                        ) : null
+                    }
+                />
+            </div>
         </div>
     );
 }
