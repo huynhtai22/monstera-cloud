@@ -186,6 +186,20 @@ const IntegrationCard = React.memo(function IntegrationCard({
                         Last synced: {integration.lastSync}
                     </p>
                 )}
+                {integration.accountTags && integration.accountTags.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                        {(integration.accountTags as string[]).slice(0, 3).map((tag: string) => (
+                            <span key={tag} className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700/80 dark:text-slate-300">
+                                {tag}
+                            </span>
+                        ))}
+                        {integration.accountTags.length > 3 && (
+                            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-700/80 dark:text-slate-400">
+                                +{integration.accountTags.length - 3} more
+                            </span>
+                        )}
+                    </div>
+                )}
                 {integration.status === "connected" && !integration.pipelineId ? (
                     <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300/90">
                         No pipeline yet — connect a destination to enable sync.
@@ -614,6 +628,26 @@ export default function SourcesPage() {
                 const desc = accountLabel ? `${accountLabel} · ${baseBlurb}` : baseBlurb;
                 const relatedPipeline = workspace?.pipelines?.find((p: any) => p.sourceConnectionId === conn.id);
 
+                // Extract ad account tags from sanitized credentials for display
+                let accountTags: string[] = [];
+                try {
+                    const creds = typeof conn.credentials === 'string'
+                        ? JSON.parse(conn.credentials)
+                        : (conn.credentials ?? {});
+                    if (conn.provider === 'meta_ads') {
+                        const list: Array<{ id: string; name?: string }> =
+                            creds.adAccounts ??
+                            (creds.adAccountIds ?? []).map((id: string) => ({ id }));
+                        accountTags = list.map((a: any) =>
+                            a.name && a.name !== a.id ? a.name : String(a.id).replace(/^act_/, '')
+                        );
+                    } else if (conn.provider === 'google_ads') {
+                        accountTags = creds.customerIds ?? [];
+                    } else if (conn.provider === 'tiktok_business') {
+                        accountTags = creds.advertiserIds ?? [];
+                    }
+                } catch { /* ignore */ }
+
                 return {
                     id: conn.id,
                     catalogId,
@@ -628,6 +662,7 @@ export default function SourcesPage() {
                           : "Never",
                     logoSrc: logo,
                     pipelineId: relatedPipeline?.id,
+                    accountTags,
                 };
             })
             .sort((a: { catalogId: string }, b: { catalogId: string }) => {
