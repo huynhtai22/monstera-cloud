@@ -26,7 +26,7 @@ interface ConnectSourceModalProps {
     } | null;
 }
 
-const OAUTH_SOURCE_IDS = ["shopee", "tiktok_shop", "tiktok_business", "meta_ads", "google_ads"] as const;
+const OAUTH_SOURCE_IDS = ["shopee", "tiktok_shop", "tiktok_business", "meta_ads", "google_ads", "shopify"] as const;
 
 function isOAuthSourceId(sourceId: string): boolean {
     return (OAUTH_SOURCE_IDS as readonly string[]).includes(sourceId);
@@ -35,6 +35,7 @@ function isOAuthSourceId(sourceId: string): boolean {
 export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSourceModalProps) {
     const [isProcessing, setIsProcessing] = useState(false);
     const [copiedWhich, setCopiedWhich] = useState<null | "production" | "session">(null);
+    const [shopDomain, setShopDomain] = useState("");
 
     const id = integration?.id || "shopee";
     const name = integration?.name || "Shopee";
@@ -147,6 +148,29 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
             window.location.href = `/api/auth/google-ads/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
+        if (id === "shopify") {
+            const shop = shopDomain.trim().replace(/^https?:\/\//, "").replace(/\/$/, "");
+            if (!shop) {
+                setIsProcessing(false);
+                toast.error("Enter your Shopify store domain first.");
+                return;
+            }
+            fetch(`/api/connections/shopify/auth-url?workspaceId=${encodeURIComponent(activeWorkspaceId)}&shop=${encodeURIComponent(shop)}`)
+                .then((r) => r.json())
+                .then(({ url, error }) => {
+                    if (error || !url) {
+                        setIsProcessing(false);
+                        toast.error(error || "Failed to generate Shopify auth URL.");
+                        return;
+                    }
+                    window.location.href = url;
+                })
+                .catch(() => {
+                    setIsProcessing(false);
+                    toast.error("Failed to start Shopify authentication.");
+                });
+            return;
+        }
 
         setIsProcessing(false);
         toast.message("Connector not available yet", {
@@ -157,6 +181,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
     const handleClose = () => {
         if (!isProcessing) {
             setCopiedWhich(null);
+            setShopDomain("");
             onClose();
         }
     };
@@ -267,6 +292,23 @@ export function ConnectSourceModal({ isOpen, onClose, integration }: ConnectSour
                             </ul>
                             <p className="text-xs text-gray-400 dark:text-gray-500 mt-4 italic">{step1Content.footnote}</p>
                         </div>
+
+                        {id === "shopify" && (
+                            <div className="space-y-1.5">
+                                <label htmlFor="shopify-domain" className="text-xs font-semibold text-gray-700 dark:text-slate-300">
+                                    Your Shopify store domain
+                                </label>
+                                <input
+                                    id="shopify-domain"
+                                    type="text"
+                                    placeholder="mystore.myshopify.com"
+                                    value={shopDomain}
+                                    onChange={(e) => setShopDomain(e.target.value)}
+                                    disabled={isProcessing}
+                                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"
+                                />
+                            </div>
+                        )}
 
                         {(id === "meta_ads" || id === "google_ads") && (
                             <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/90 dark:bg-slate-900/50 p-4 space-y-3">
