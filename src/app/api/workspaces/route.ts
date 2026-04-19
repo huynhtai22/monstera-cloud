@@ -17,11 +17,10 @@ export async function GET() {
 
         let workspaces = await prisma.workspace.findMany({
             where: {
-                members: {
-                    some: {
-                        userId: session.user.id
-                    }
-                }
+                OR: [
+                    { ownerId: session.user.id },
+                    { members: { some: { userId: session.user.id } } },
+                ],
             },
             include: {
                 members: true,
