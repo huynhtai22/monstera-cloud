@@ -6,29 +6,21 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Google Sans', -apple-system, sans-serif; font-size: 13px; color: #1f2937; padding: 16px; background: #fff; }
 
-    /* Spinner */
-    .loading { text-align: center; padding: 40px 0; color: #6b7280; }
+    .loading { text-align: center; padding: 48px 0; color: #6b7280; }
     .spinner { display: inline-block; width: 22px; height: 22px; border: 3px solid #e5e7eb; border-top-color: #06b6d4; border-radius: 50%; animation: spin 0.6s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Messages */
-    .error-box  { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-bottom: 12px; }
-    .success-box{ background: #f0fdfa; border: 1px solid #99f6e4; color: #134e4a; border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-bottom: 12px; }
+    .error-box   { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-bottom: 12px; }
+    .success-box { background: #f0fdfa; border: 1px solid #99f6e4; color: #134e4a; border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-bottom: 12px; }
 
-    /* Header */
     .logo-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-    .logo-dot  { width: 24px; height: 24px; background: #06b6d4; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+    .logo-dot  { width: 24px; height: 24px; background: #06b6d4; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .logo-dot svg { width: 14px; height: 14px; fill: #fff; }
     h2 { font-size: 15px; font-weight: 700; }
     .subtitle { color: #6b7280; font-size: 11px; margin-bottom: 18px; }
 
-    /* API Key screen */
-    #keyScreen p { font-size: 12px; color: #6b7280; line-height: 1.5; margin-bottom: 14px; }
-    #keyScreen a { color: #0891b2; text-decoration: none; }
-
-    /* Form */
     label { display: block; font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 4px; margin-top: 12px; text-transform: uppercase; letter-spacing: 0.3px; }
-    select, input[type="date"], input[type="text"], input[type="password"] {
+    select, input[type="date"], input[type="text"] {
       width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px;
       color: #1f2937; background: #fff; outline: none; transition: border-color 0.15s;
     }
@@ -36,34 +28,34 @@
     .row { display: flex; gap: 8px; }
     .row > div { flex: 1; }
 
-    /* Buttons */
     .btn { width: 100%; padding: 10px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
            cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
            transition: all 0.15s; margin-top: 14px; }
-    .btn-primary   { background: #0891b2; color: #fff; }
-    .btn-primary:hover   { background: #0e7490; }
+    .btn-primary  { background: #0891b2; color: #fff; }
+    .btn-primary:hover  { background: #0e7490; }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; margin-top: 8px; }
-    .btn-secondary:hover { background: #e5e7eb; }
 
-    /* Auth badge */
-    .auth-badge { display: flex; align-items: center; gap: 6px; background: #f0fdfa; border: 1px solid #99f6e4;
-                  border-radius: 8px; padding: 8px 10px; margin-bottom: 16px; font-size: 11px; color: #134e4a; }
-    .auth-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
-    .auth-badge .key-text { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .auth-badge .change-link { color: #0891b2; cursor: pointer; white-space: nowrap; flex-shrink: 0; text-decoration: none; font-weight: 600; }
+    /* User badge — shown instead of API key */
+    .user-badge { display: flex; align-items: center; gap: 8px; background: #f0fdfa; border: 1px solid #99f6e4;
+                  border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; }
+    .user-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
+    .user-badge-info { flex: 1; min-width: 0; }
+    .user-badge-name  { font-size: 12px; font-weight: 600; color: #134e4a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .user-badge-plan  { font-size: 10px; color: #6b7280; margin-top: 1px; text-transform: capitalize; }
 
-    /* Divider */
+    /* No account screen */
+    #noAccountScreen { padding: 8px 0; }
+    #noAccountScreen p { font-size: 12px; color: #6b7280; line-height: 1.6; margin-bottom: 14px; }
+    #noAccountScreen a { color: #0891b2; font-weight: 600; text-decoration: none; }
+
     .divider { height: 1px; background: #e5e7eb; margin: 16px 0; }
 
-    /* Refresh row */
     .refresh-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
     .refresh-row select { flex: 1; }
     .btn-set { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 8px;
                font-size: 11px; font-weight: 600; padding: 8px 12px; cursor: pointer; white-space: nowrap; }
     .btn-set:hover { background: #e5e7eb; }
 
-    /* Status pill */
     .schedule-pill { font-size: 11px; color: #0891b2; margin-top: 6px; }
 
     .footer { text-align: center; color: #9ca3af; font-size: 10px; margin-top: 20px; }
@@ -75,11 +67,11 @@
 <!-- ── Loading ── -->
 <div id="loading" class="loading">
   <div class="spinner"></div>
-  <p style="margin-top:10px;font-size:12px">Connecting…</p>
+  <p style="margin-top:10px;font-size:12px;color:#6b7280">Signing you in…</p>
 </div>
 
-<!-- ── API Key Entry ── -->
-<div id="keyScreen" style="display:none">
+<!-- ── No Account ── -->
+<div id="noAccountScreen" style="display:none">
   <div class="logo-row">
     <div class="logo-dot">
       <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
@@ -88,14 +80,12 @@
   </div>
   <p class="subtitle">Google Sheets™ Data Connector</p>
 
-  <p>Enter your Monstera API key to connect. You can find it in your <a href="https://monsteracloud.com/console/settings" target="_blank">Console → Settings</a>.</p>
+  <div class="error-box" id="noAccountMsg"></div>
 
-  <div id="keyError" class="error-box" style="display:none"></div>
-
-  <label>API Key</label>
-  <input type="password" id="apiKeyInput" placeholder="mk_live_…" autocomplete="off" />
-
-  <button class="btn btn-primary" id="saveKeyBtn" onclick="handleSaveKey()">Connect</button>
+  <p>
+    Create a free account at <a href="https://monsteracloud.com/register" target="_blank">monsteracloud.com</a>,
+    connect your ad platforms (Meta Ads, Google Ads, TikTok Ads), then reopen this sidebar.
+  </p>
 </div>
 
 <!-- ── Main App ── -->
@@ -108,17 +98,18 @@
   </div>
   <p class="subtitle">Pull ad data directly into this sheet</p>
 
-  <!-- Auth badge -->
-  <div class="auth-badge">
+  <!-- Authenticated user badge -->
+  <div class="user-badge">
     <span class="dot"></span>
-    <span class="key-text" id="keyBadgeText">Connected</span>
-    <a class="change-link" onclick="handleChangeKey()">Change key</a>
+    <div class="user-badge-info">
+      <div class="user-badge-name" id="badgeEmail">—</div>
+      <div class="user-badge-plan" id="badgePlan">free plan</div>
+    </div>
   </div>
 
   <div id="appError"   class="error-box"   style="display:none"></div>
   <div id="appSuccess" class="success-box" style="display:none"></div>
 
-  <!-- Platform -->
   <label>Platform</label>
   <select id="platform">
     <option value="">All Platforms</option>
@@ -127,7 +118,6 @@
     <option value="google_ads">Google Ads</option>
   </select>
 
-  <!-- Report Level -->
   <label>Report Level</label>
   <select id="reportLevel">
     <option value="adset">Ad Set / Ad Group</option>
@@ -135,24 +125,20 @@
     <option value="account">Account</option>
   </select>
 
-  <!-- Date Range -->
   <div class="row">
     <div><label>Start Date</label><input type="date" id="startDate" /></div>
     <div><label>End Date</label><input type="date" id="endDate" /></div>
   </div>
 
-  <!-- Write to Cell -->
   <label>Write to Cell</label>
   <input type="text" id="targetCell" value="A1" style="width:80px" maxlength="10" />
 
-  <!-- Run -->
   <button class="btn btn-primary" id="runBtn" onclick="handleRun()">
     ▶ &nbsp;Get Data
   </button>
 
   <div class="divider"></div>
 
-  <!-- Auto-refresh -->
   <label>Auto-refresh</label>
   <div class="refresh-row">
     <select id="refreshInterval">
@@ -173,103 +159,56 @@
 </div>
 
 <script>
-  // ── Init ──────────────────────────────────────────────────────────────────────
+  // ── Init — auto-auth via Google identity ──────────────────────────────────
   (function init() {
-    // Set default dates (today and 30 days ago)
-    var today   = new Date().toISOString().slice(0, 10);
-    var ago30   = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-
-    // Check if the elements exist before setting (they're in #app which may be hidden)
+    var today = new Date().toISOString().slice(0, 10);
+    var ago30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
     var sd = document.getElementById('startDate');
     var ed = document.getElementById('endDate');
     if (sd) sd.value = ago30;
     if (ed) ed.value = today;
 
-    // Check auth state
+    // Call backend to verify Google identity — no API key needed
     google.script.run
-      .withSuccessHandler(function(key) {
+      .withSuccessHandler(function(result) {
         document.getElementById('loading').style.display = 'none';
-        if (key) {
-          showApp(key);
+        if (result.ok) {
+          showApp(result.user);
+        } else if (result.noAccount) {
+          showNoAccount(result.error);
         } else {
-          document.getElementById('keyScreen').style.display = 'block';
+          showNoAccount(result.error || 'Authentication failed. Please try again.');
         }
       })
       .withFailureHandler(function(err) {
         document.getElementById('loading').style.display = 'none';
-        document.getElementById('keyScreen').style.display = 'block';
+        showNoAccount(err.message || 'Could not connect to Monstera Cloud.');
       })
-      .getApiKey();
+      .checkAuth();
   })();
 
-  // ── Show authenticated app ────────────────────────────────────────────────────
-  function showApp(key) {
-    document.getElementById('keyScreen').style.display = 'none';
+  function showApp(user) {
+    document.getElementById('noAccountScreen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
 
-    // Show masked key in badge
-    var masked = key.length > 8
-      ? key.slice(0, 6) + '…' + key.slice(-4)
-      : '••••••••';
-    document.getElementById('keyBadgeText').textContent = masked;
+    document.getElementById('badgeEmail').textContent = user.email || 'Connected';
+    document.getElementById('badgePlan').textContent  = (user.plan || 'free') + ' plan';
 
-    // Set default dates if not already set
-    var sd = document.getElementById('startDate');
-    var ed = document.getElementById('endDate');
-    if (!sd.value) {
-      sd.value = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-      ed.value = new Date().toISOString().slice(0, 10);
-    }
-
-    // Load refresh schedule
     google.script.run
       .withSuccessHandler(function(schedule) {
-        if (schedule && schedule.active) {
-          showSchedulePill('Auto-refresh is active');
-        }
+        if (schedule && schedule.active) showSchedulePill('Auto-refresh is active');
       })
       .getRefreshSchedule();
   }
 
-  // ── Save API Key ──────────────────────────────────────────────────────────────
-  function handleSaveKey() {
-    var key = document.getElementById('apiKeyInput').value.trim();
-    if (!key) { showKeyError('Please enter your API key.'); return; }
-
-    var btn = document.getElementById('saveKeyBtn');
-    btn.disabled = true;
-    btn.textContent = 'Verifying…';
-    document.getElementById('keyError').style.display = 'none';
-
-    google.script.run
-      .withSuccessHandler(function(msg) {
-        btn.disabled = false;
-        btn.textContent = 'Connect';
-        showApp(key);
-      })
-      .withFailureHandler(function(err) {
-        btn.disabled = false;
-        btn.textContent = 'Connect';
-        showKeyError(err.message || 'Could not verify key. Check your connection.');
-      })
-      .saveApiKey(key);
+  function showNoAccount(msg) {
+    document.getElementById('noAccountScreen').style.display = 'block';
+    document.getElementById('noAccountMsg').textContent = msg || 'No Monstera account found for this Google account.';
   }
 
-  // ── Change Key ────────────────────────────────────────────────────────────────
-  function handleChangeKey() {
-    google.script.run
-      .withSuccessHandler(function() {
-        document.getElementById('app').style.display = 'none';
-        document.getElementById('apiKeyInput').value = '';
-        document.getElementById('keyScreen').style.display = 'block';
-      })
-      .clearApiKey();
-  }
-
-  // ── Run Query ─────────────────────────────────────────────────────────────────
+  // ── Run Query ───────────────────────────────────────────────────────────────
   function handleRun() {
     hideAppMessages();
-
     var params = {
       platform:    document.getElementById('platform').value    || null,
       reportLevel: document.getElementById('reportLevel').value || 'adset',
@@ -278,12 +217,10 @@
       targetCell:  document.getElementById('targetCell').value  || 'A1',
       accountIds:  []
     };
-
     if (!params.startDate || !params.endDate) {
       showAppError('Please select start and end dates.');
       return;
     }
-
     var btn = document.getElementById('runBtn');
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px;border-top-color:#fff"></div>&nbsp; Fetching…';
@@ -302,20 +239,14 @@
       .pullData(params);
   }
 
-  // ── Set Auto-refresh ──────────────────────────────────────────────────────────
+  // ── Auto-refresh ────────────────────────────────────────────────────────────
   function handleSetRefresh() {
     var hours = parseInt(document.getElementById('refreshInterval').value, 10);
     google.script.run
       .withSuccessHandler(function(result) {
         if (result && result.success) {
-          if (hours > 0) {
-            showSchedulePill('Auto-refresh set — every ' + hours + 'h');
-          } else {
-            showSchedulePill('Auto-refresh disabled');
-            setTimeout(function() {
-              document.getElementById('schedulePill').style.display = 'none';
-            }, 3000);
-          }
+          showSchedulePill(hours > 0 ? 'Auto-refresh set — every ' + hours + 'h' : 'Auto-refresh disabled');
+          if (hours === 0) setTimeout(function() { document.getElementById('schedulePill').style.display = 'none'; }, 3000);
         }
       })
       .withFailureHandler(function(err) {
@@ -324,22 +255,15 @@
       .setupRefreshTrigger(hours);
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────────
-  function showKeyError(msg) {
-    var b = document.getElementById('keyError');
-    b.textContent = msg;
-    b.style.display = 'block';
-  }
+  // ── Helpers ─────────────────────────────────────────────────────────────────
   function showAppError(msg) {
     var b = document.getElementById('appError');
-    b.textContent = msg;
-    b.style.display = 'block';
+    b.textContent = msg; b.style.display = 'block';
     document.getElementById('appSuccess').style.display = 'none';
   }
   function showAppSuccess(msg) {
     var b = document.getElementById('appSuccess');
-    b.textContent = msg;
-    b.style.display = 'block';
+    b.textContent = msg; b.style.display = 'block';
     document.getElementById('appError').style.display = 'none';
   }
   function hideAppMessages() {
@@ -348,8 +272,7 @@
   }
   function showSchedulePill(msg) {
     var p = document.getElementById('schedulePill');
-    p.textContent = '⏱ ' + msg;
-    p.style.display = 'block';
+    p.textContent = '⏱ ' + msg; p.style.display = 'block';
   }
 </script>
 

@@ -1,6 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 
+function isGoogleJwt(token: string): boolean {
+  const parts = token.split('.');
+  return parts.length === 3 && parts[0].startsWith('eyJ');
+}
+
+async function verifyGoogleIdToken(idToken: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.email || data.email_verified !== 'true') return null;
+    if (data.exp && Number(data.exp) * 1000 < Date.now()) return null;
+    return data.email as string;
+  } catch {
+    return null;
+  }
+}
+
 /** Parse YYYYMMDD or YYYY-MM-DD (Looker Studio sends the latter when date range is required). */
 function parseDateFilter(value: string): Date | null {
   const compact = /^(\d{4})(\d{2})(\d{2})$/.exec(value);
@@ -42,24 +62,53 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const keyRecord = await prisma.apiKey.findUnique({
-      where: { key: apiKey },
-      include: { workspace: true },
-    });
+    let workspaceId: string;
 
-    if (!keyRecord) {
-      return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
+    if (isGoogleJwt(apiKey)) {
+      // Google Sheets add-on: identity token auth
+      const email = await verifyGoogleIdToken(apiKey);
+      if (!email) {
+        return NextResponse.json({ error: "Invalid or expired Google token" }, { status: 401 });
+      }
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
+        return NextResponse.json({ error: "No Monstera account found", code: "NO_ACCOUNT" }, { status: 404 });
+      }
+      const workspace = await prisma.workspace.findFirst({
+        where: {
+          OR: [
+            { ownerId: user.id },
+            { members: { some: { userId: user.id } } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!workspace) {
+        return NextResponse.json({ error: "No workspace found" }, { status: 404 });
+      }
+      workspaceId = workspace.id;
+
+      const ping = req.nextUrl.searchParams.get("ping");
+      if (ping === "1") return NextResponse.json({ ok: true });
+    } else {
+      // Looker Studio connector: API key auth
+      const keyRecord = await prisma.apiKey.findUnique({
+        where: { key: apiKey },
+        include: { workspace: true },
+      });
+      if (!keyRecord) {
+        return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
+      }
+
+      const ping = req.nextUrl.searchParams.get("ping");
+      if (ping === "1") return NextResponse.json({ ok: true });
+
+      await prisma.apiKey.update({
+        where: { id: keyRecord.id },
+        data: { lastUsedAt: new Date() },
+      });
+      workspaceId = keyRecord.workspaceId;
     }
-
-    const ping = req.nextUrl.searchParams.get("ping");
-    if (ping === "1") {
-      return NextResponse.json({ ok: true });
-    }
-
-    await prisma.apiKey.update({
-      where: { id: keyRecord.id },
-      data: { lastUsedAt: new Date() },
-    });
 
     const startDateParam = req.nextUrl.searchParams.get("startDate");
     const endDateParam = req.nextUrl.searchParams.get("endDate");
@@ -82,7 +131,7 @@ export async function GET(req: NextRequest) {
       platform?: string;
       accountId?: { in: string[] };
     } = {
-      workspaceId: keyRecord.workspaceId,
+      workspaceId,
     };
 
     if (startDateParam || endDateParam) {
