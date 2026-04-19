@@ -35,7 +35,7 @@
     .btn-primary:hover  { background: #0e7490; }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
-    /* User badge — shown instead of API key */
+    /* User badge */
     .user-badge { display: flex; align-items: center; gap: 8px; background: #f0fdfa; border: 1px solid #99f6e4;
                   border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; }
     .user-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
@@ -57,6 +57,21 @@
     .btn-set:hover { background: #e5e7eb; }
 
     .schedule-pill { font-size: 11px; color: #0891b2; margin-top: 6px; }
+    .tip-box { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 8px; padding: 8px 10px; font-size: 11px; margin-top: 8px; line-height: 1.5; }
+
+    /* Account selector */
+    #accountSection { margin-top: 12px; }
+    .account-list { border: 1px solid #d1d5db; border-radius: 8px; max-height: 140px; overflow-y: auto; margin-top: 4px; }
+    .account-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid #f3f4f6; cursor: pointer; }
+    .account-item:last-child { border-bottom: none; }
+    .account-item:hover { background: #f9fafb; }
+    .account-item input[type="checkbox"] { width: 14px; height: 14px; accent-color: #0891b2; cursor: pointer; flex-shrink: 0; }
+    .account-item-name { font-size: 12px; color: #374151; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .account-item-id   { font-size: 10px; color: #9ca3af; flex-shrink: 0; }
+    .account-loading   { padding: 10px; text-align: center; font-size: 11px; color: #9ca3af; }
+    .account-select-all { display: flex; justify-content: flex-end; margin-top: 4px; }
+    .account-select-all button { background: none; border: none; font-size: 10px; color: #0891b2; cursor: pointer; padding: 0; }
+    .account-select-all button:hover { text-decoration: underline; }
 
     .footer { text-align: center; color: #9ca3af; font-size: 10px; margin-top: 20px; }
     .footer a { color: #6b7280; text-decoration: none; }
@@ -111,12 +126,27 @@
   <div id="appSuccess" class="success-box" style="display:none"></div>
 
   <label>Platform</label>
-  <select id="platform">
+  <select id="platform" onchange="handlePlatformChange()">
     <option value="">All Platforms</option>
     <option value="tiktok_business">TikTok Ads</option>
     <option value="meta_ads">Meta Ads</option>
     <option value="google_ads">Google Ads</option>
   </select>
+  <div id="platformTip" class="tip-box">
+    💡 Use one platform per sheet tab for full platform-specific metrics. "All Platforms" shows common columns only.
+  </div>
+  <div id="platformColumns" style="font-size:10px;color:#6b7280;margin-top:4px;line-height:1.6;"></div>
+
+  <!-- Account selector — hidden until a specific platform is chosen -->
+  <div id="accountSection" style="display:none">
+    <label>Ad Accounts</label>
+    <div class="account-select-all">
+      <button type="button" onclick="toggleAllAccounts()">Select / deselect all</button>
+    </div>
+    <div class="account-list" id="accountList">
+      <div class="account-loading">Loading accounts…</div>
+    </div>
+  </div>
 
   <label>Report Level</label>
   <select id="reportLevel">
@@ -159,6 +189,13 @@
 </div>
 
 <script>
+  var PLATFORM_COLUMNS = {
+    '':               { label: 'All Platforms', cols: 'date, platform, accountName, campaignName, adsetName, spend, impressions, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' },
+    'meta_ads':       { label: 'Meta Ads',      cols: 'date, accountName, campaignName, adsetName, spend, impressions, reach, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' },
+    'google_ads':     { label: 'Google Ads',    cols: 'date, accountName, campaignName, adsetName, spend, impressions, clicks, ctr, cpc, conversions, revenue, roas, currency' },
+    'tiktok_business':{ label: 'TikTok Ads',   cols: 'date, accountName, campaignName, adsetName, spend, impressions, reach, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' }
+  };
+
   // ── Init — auto-auth via Google identity ──────────────────────────────────
   (function init() {
     var today = new Date().toISOString().slice(0, 10);
@@ -168,7 +205,6 @@
     if (sd) sd.value = ago30;
     if (ed) ed.value = today;
 
-    // Call backend to verify Google identity — no API key needed
     google.script.run
       .withSuccessHandler(function(result) {
         document.getElementById('loading').style.display = 'none';
@@ -190,7 +226,6 @@
   function showApp(user) {
     document.getElementById('noAccountScreen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
-
     document.getElementById('badgeEmail').textContent = user.email || 'Connected';
     document.getElementById('badgePlan').textContent  = (user.plan || 'free') + ' plan';
 
@@ -199,6 +234,9 @@
         if (schedule && schedule.active) showSchedulePill('Auto-refresh is active');
       })
       .getRefreshSchedule();
+
+    // Init platform state
+    handlePlatformChange();
   }
 
   function showNoAccount(msg) {
@@ -206,16 +244,75 @@
     document.getElementById('noAccountMsg').textContent = msg || 'No Monstera account found for this Google account.';
   }
 
+  // ── Platform change — update column hint and load account list ────────────
+  function handlePlatformChange() {
+    var val = document.getElementById('platform').value;
+    var tip = document.getElementById('platformTip');
+    var colHint = document.getElementById('platformColumns');
+    var info = PLATFORM_COLUMNS[val] || PLATFORM_COLUMNS[''];
+
+    tip.style.display = val ? 'none' : 'block';
+    colHint.textContent = val ? 'Columns: ' + info.cols : '';
+
+    var section = document.getElementById('accountSection');
+    if (!val) {
+      section.style.display = 'none';
+      return;
+    }
+
+    section.style.display = 'block';
+    var list = document.getElementById('accountList');
+    list.innerHTML = '<div class="account-loading">Loading accounts…</div>';
+
+    google.script.run
+      .withSuccessHandler(function(result) {
+        renderAccounts(result.ok ? result.accounts : []);
+      })
+      .withFailureHandler(function() {
+        renderAccounts([]);
+      })
+      .getAccounts(val);
+  }
+
+  function renderAccounts(accounts) {
+    var list = document.getElementById('accountList');
+    if (!accounts || accounts.length === 0) {
+      list.innerHTML = '<div class="account-loading">No ad accounts found. Connect an account at <a href="https://monsteracloud.com/sources" target="_blank" style="color:#0891b2">monsteracloud.com/sources</a></div>';
+      return;
+    }
+    list.innerHTML = accounts.map(function(a) {
+      var label = (a.accountName && a.accountName !== a.accountId) ? a.accountName : a.accountId;
+      var idTag  = (a.accountName && a.accountName !== a.accountId) ? a.accountId : '';
+      return '<label class="account-item">'
+        + '<input type="checkbox" class="acc-cb" value="' + escapeHtml(a.accountId) + '" checked />'
+        + '<span class="account-item-name">' + escapeHtml(label) + '</span>'
+        + (idTag ? '<span class="account-item-id">' + escapeHtml(idTag) + '</span>' : '')
+        + '</label>';
+    }).join('');
+  }
+
+  function toggleAllAccounts() {
+    var boxes = document.querySelectorAll('.acc-cb');
+    var allChecked = Array.prototype.every.call(boxes, function(b) { return b.checked; });
+    boxes.forEach(function(b) { b.checked = !allChecked; });
+  }
+
+  function getSelectedAccountIds() {
+    var boxes = document.querySelectorAll('.acc-cb:checked');
+    return Array.prototype.map.call(boxes, function(b) { return b.value; });
+  }
+
   // ── Run Query ───────────────────────────────────────────────────────────────
   function handleRun() {
     hideAppMessages();
+    var selectedAccounts = getSelectedAccountIds();
     var params = {
       platform:    document.getElementById('platform').value    || null,
       reportLevel: document.getElementById('reportLevel').value || 'adset',
       startDate:   document.getElementById('startDate').value,
       endDate:     document.getElementById('endDate').value,
       targetCell:  document.getElementById('targetCell').value  || 'A1',
-      accountIds:  []
+      accountIds:  selectedAccounts
     };
     if (!params.startDate || !params.endDate) {
       showAppError('Please select start and end dates.');
@@ -273,6 +370,9 @@
   function showSchedulePill(msg) {
     var p = document.getElementById('schedulePill');
     p.textContent = '⏱ ' + msg; p.style.display = 'block';
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 </script>
 

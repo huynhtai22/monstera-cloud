@@ -14,9 +14,10 @@
  *   https://www.googleapis.com/auth/userinfo.email
  */
 
-var BASE_URL      = 'https://monsteracloud.com';
-var API_ENDPOINT  = BASE_URL + '/api/looker-studio';
-var AUTH_ENDPOINT = BASE_URL + '/api/addon/auth';
+var BASE_URL         = 'https://monsteracloud.com';
+var API_ENDPOINT     = BASE_URL + '/api/looker-studio';
+var AUTH_ENDPOINT    = BASE_URL + '/api/addon/auth';
+var ACCOUNTS_ENDPOINT = BASE_URL + '/api/addon/accounts';
 var CACHE_TTL_SECONDS = 600;
 
 // ── Identity Token ────────────────────────────────────────────────────────────
@@ -52,6 +53,30 @@ function checkAuth() {
     return { ok: false, error: data.error || 'Authentication failed.' };
   } catch (e) {
     return { ok: false, error: 'Could not reach Monstera Cloud. Check your connection.' };
+  }
+}
+
+/**
+ * Returns ad accounts for the authenticated user, optionally filtered by platform.
+ * Called from Sidebar when platform changes to populate the account selector.
+ */
+function getAccounts(platform) {
+  var token = getIdentityToken();
+  if (!token) return { ok: false, error: 'Could not authenticate.' };
+
+  var url = ACCOUNTS_ENDPOINT + (platform ? '?platform=' + encodeURIComponent(platform) : '');
+  try {
+    var response = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
+    var status = response.getResponseCode();
+    var data = JSON.parse(response.getContentText());
+    if (status === 200) return { ok: true, accounts: data.accounts || [] };
+    return { ok: false, error: data.error || 'Could not load accounts.' };
+  } catch (e) {
+    return { ok: false, error: 'Could not reach Monstera Cloud.' };
   }
 }
 
