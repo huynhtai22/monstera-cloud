@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   const base = publicBaseUrl(request);
 
   const authCode = searchParams.get('auth_code');
-  const state = searchParams.get('state'); // workspace id we passed
+  const state = searchParams.get('state');
   const err = searchParams.get('error');
   const errDesc = searchParams.get('error_description');
 
@@ -50,14 +50,13 @@ export async function GET(request: Request) {
     );
   }
 
-  // Read JWT directly from Cookie header — reliable across App Router route handlers
-  // and cross-site OAuth redirects (SameSite=Lax allows top-level GET navigations).
   const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
   const userId = (token?.id ?? token?.sub) as string | undefined;
+
   if (!userId) {
-    console.warn('[TIKTOK_BUSINESS_OAUTH] No session token in callback — redirecting with error');
+    console.warn('[TIKTOK_BUSINESS_OAUTH] No session token in callback');
     return NextResponse.redirect(
-      new URL(`/sources?tiktok_business_error=session_expired`, base)
+      new URL('/sources?tiktok_business_error=session_expired', base)
     );
   }
 
@@ -71,6 +70,7 @@ export async function GET(request: Request) {
     },
     select: { id: true },
   });
+
   if (!workspace) {
     console.warn('[TIKTOK_BUSINESS_OAUTH] User %s has no access to workspace %s', userId, workspaceId);
     return NextResponse.redirect(
@@ -80,7 +80,6 @@ export async function GET(request: Request) {
 
   try {
     const tokenData = await tiktokBusinessClient.exchangeCode(authCode);
-
     const advertiserIds: string[] = tokenData.advertiser_ids ?? [];
 
     const newConn = await prisma.connection.create({

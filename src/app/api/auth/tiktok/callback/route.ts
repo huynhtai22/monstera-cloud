@@ -23,9 +23,18 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const code = searchParams.get("code");
-  const state = searchParams.get("state"); // workspaceId passed in authorize URL
   const base = publicBaseUrl(request);
+
+  const code = searchParams.get("code");
+  const state = searchParams.get("state");
+  const err = searchParams.get("error");
+
+  if (err) {
+    console.error('[TIKTOK_SHOP_OAUTH]', err);
+    return NextResponse.redirect(
+      new URL(`/sources?tiktok_error=${encodeURIComponent(err)}`, base)
+    );
+  }
 
   if (!code) {
     return NextResponse.redirect(
@@ -40,13 +49,14 @@ export async function GET(request: Request) {
     );
   }
 
-  // Read JWT directly from Cookie header — reliable across App Router route handlers
-  // and cross-site OAuth redirects (SameSite=Lax allows top-level GET navigations).
   const token = await getToken({ req: request as any, secret: process.env.NEXTAUTH_SECRET });
   const userId = (token?.id ?? token?.sub) as string | undefined;
+
   if (!userId) {
-    console.warn("[TIKTOK_OAUTH] No session token in callback");
-    return NextResponse.redirect(new URL("/sources?tiktok_error=session_expired", base));
+    console.warn("[TIKTOK_SHOP_OAUTH] No session token in callback");
+    return NextResponse.redirect(
+      new URL("/sources?tiktok_error=session_expired", base)
+    );
   }
 
   const workspace = await prisma.workspace.findFirst({
@@ -57,10 +67,11 @@ export async function GET(request: Request) {
         { members: { some: { userId } } },
       ],
     },
-    select: { id: true, ownerId: true },
+    select: { id: true },
   });
+
   if (!workspace) {
-    console.warn("[TIKTOK_OAUTH] User %s has no access to workspace %s", userId, workspaceId);
+    console.warn("[TIKTOK_SHOP_OAUTH] User %s has no access to workspace %s", userId, workspaceId);
     return NextResponse.redirect(
       new URL("/sources?tiktok_error=workspace_access_denied", base)
     );
@@ -91,14 +102,14 @@ export async function GET(request: Request) {
     const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
       workspaceId,
       sourceConnectionId: newConn.id,
-      actingUserId: workspace.ownerId,
+      actingUserId: userId,
     });
 
     return NextResponse.redirect(
       buildConsoleOauthSuccessUrl(base, "tiktok_shop", pipelineResult)
     );
   } catch (error: any) {
-    console.error("[TIKTOK_AUTH_ERROR]", error);
+    console.error("[TIKTOK_SHOP_AUTH_ERROR]", error);
     return NextResponse.redirect(
       new URL(`/sources?tiktok_error=${encodeURIComponent(error.message || "auth_failed")}`, base)
     );
