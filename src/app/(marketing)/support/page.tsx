@@ -40,6 +40,10 @@ export default function SupportPage() {
           <p className="mt-4 text-xs text-slate-500">
             Response times vary; we typically reply within 24–48 hours.
           </p>
+          <p className="mt-4 text-xs text-slate-500">
+            <span className="font-semibold text-slate-400">SEA:</span> Prefer quick chat? Email with the subject &quot;Telegram&quot; and your
+            workspace name — we&apos;ll share our community channel link where available (Singapore / Vietnam business hours).
+          </p>
         </div>
       </div>
     </div>

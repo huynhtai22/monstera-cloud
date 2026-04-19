@@ -1,12 +1,16 @@
 "use client";
 
-import React, { useState } from 'react';
-import Image from 'next/image';
-import { X, Loader2, CheckCircle2, ChevronRight, Settings2, FileSpreadsheet, Lock, Globe, Copy, Plus } from 'lucide-react';
-import useSWR, { useSWRConfig } from 'swr';
-import { signIn } from 'next-auth/react';
-import { useWorkspaceStore } from '@/store/workspace';
-import { INTEGRATION_LOGOS } from '@/lib/integration-logos';
+import React, { useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { X, Loader2, CheckCircle2, ChevronRight, Settings2, FileSpreadsheet, Lock, Copy, Plus } from "lucide-react";
+import useSWR, { useSWRConfig } from "swr";
+import { signIn } from "next-auth/react";
+import { useWorkspaceStore } from "@/store/workspace";
+import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+import { trackEvent } from "@/lib/analytics-events";
+import { PostConnectChecklist } from "@/components/destinations/PostConnectChecklist";
+import { DESTINATION_HELP_PATHS } from "@/lib/destination-help-urls";
 
 interface ConnectDestinationModalProps {
     isOpen: boolean;
@@ -48,11 +52,21 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
     
     // Reset internal state when modal closes
     React.useEffect(() => {
-        if (!isOpen) { 
-            setForceSetup(false); 
-            setStep(1); 
+        if (!isOpen) {
+            setForceSetup(false);
+            setStep(1);
         }
     }, [isOpen]);
+
+    React.useEffect(() => {
+        if (!isOpen || destinationId !== "looker") return;
+        trackEvent("destination_modal_looker_opened", { workspaceId: activeWorkspaceId });
+    }, [isOpen, destinationId, activeWorkspaceId]);
+
+    React.useEffect(() => {
+        if (!isOpen || destinationId !== "gsheets" || step !== 3) return;
+        trackEvent("destination_modal_sheets_success_viewed", { workspaceId: activeWorkspaceId });
+    }, [isOpen, destinationId, step, activeWorkspaceId]);
 
     const isListView = destinationId !== 'looker' && activeConnections.length > 0 && !forceSetup;
         
@@ -113,8 +127,10 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
 
     const handleClose = () => {
         if (!isProcessing) {
+            if (destinationId === "gsheets" && step === 3) {
+                trackEvent("destination_sheets_flow_completed", { workspaceId: activeWorkspaceId });
+            }
             onClose();
-            // Reset state after animation
             setTimeout(() => {
                 setStep(1);
             }, 300);
@@ -159,49 +175,60 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                 </div>
 
                 {/* Body content */}
-                {destinationId === 'looker' ? (
-                    <div className="p-6 space-y-6">
-                        <div className="text-center mb-4">
-                            <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Native Looker Integration</h4>
-                            <p className="text-gray-500 dark:text-gray-400 text-sm">Monstera Cloud acts as a native data bridge for Looker Studio. Data doesn't need to be synced outward—Looker pulls it directly from Monstera!</p>
+                {destinationId === "looker" ? (
+                    <div className="space-y-6 p-6">
+                        <div className="mb-4 text-center">
+                            <h4 className="mb-2 text-xl font-bold text-gray-900 dark:text-white">Native Looker Integration</h4>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                Monstera Cloud acts as a data bridge for Looker Studio. Looker pulls metrics from Monstera using your workspace API key below.
+                            </p>
                         </div>
-                        <div className="bg-cyan-50/50 rounded-xl p-5 border border-cyan-100 space-y-4">
+                        <div className="space-y-4 rounded-xl border border-cyan-100 bg-cyan-50/50 p-5 dark:border-cyan-900/40 dark:bg-cyan-950/20">
                             <div>
-                                <label className="block text-sm font-semibold text-gray-900 dark:text-white mb-1.5 flex items-center">
-                                    <Lock className="w-4 h-4 text-cyan-600 mr-2" />
+                                <label className="mb-1.5 flex items-center text-sm font-semibold text-gray-900 dark:text-white">
+                                    <Lock className="mr-2 h-4 w-4 text-cyan-600" />
                                     Your Workspace API Key
                                 </label>
-                                <p className="text-xs text-gray-500 mb-2">Copy this key and paste it into the Looker Studio connector when prompted.</p>
-                                <div className="flex bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                                    <input 
-                                        type="password" 
-                                        readOnly 
-                                        value={apiKey} 
-                                        className="w-full px-3 py-2 text-sm text-gray-600 focus:outline-none bg-transparent"
+                                <p className="mb-2 text-xs text-gray-500">
+                                    Copy this key and paste it into the Looker Studio connector when prompted.
+                                </p>
+                                <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-600">
+                                    <input
+                                        type="password"
+                                        readOnly
+                                        value={apiKey}
+                                        className="w-full bg-transparent px-3 py-2 text-sm text-gray-600 focus:outline-none dark:text-gray-300"
                                     />
-                                    <button 
+                                    <button
+                                        type="button"
                                         onClick={() => {
-                                            navigator.clipboard.writeText(apiKey);
+                                            void navigator.clipboard.writeText(apiKey);
                                             setCopied(true);
+                                            trackEvent("looker_api_key_copied", { workspaceId: activeWorkspaceId });
                                             setTimeout(() => setCopied(false), 2000);
                                         }}
-                                        className="px-3 border-l border-gray-200 text-cyan-600 hover:bg-cyan-50 flex items-center justify-center transition-colors font-medium text-xs bg-white"
+                                        className="flex items-center justify-center border-l border-gray-200 bg-white px-3 text-xs font-medium text-cyan-600 transition-colors hover:bg-cyan-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700"
                                     >
-                                        {copied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                        {copied ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                                     </button>
                                 </div>
                             </div>
                         </div>
+                        <PostConnectChecklist variant="looker" />
                         <div className="text-center">
-                             <a 
-                                href="https://github.com/monstera/monstera-docs#looker-studio-connector" 
-                                target="_blank" 
-                                rel="noreferrer"
-                                className="inline-flex items-center text-sm text-cyan-600 hover:text-cyan-700 font-medium"
-                             >
-                                Get the Community Connector Script <ChevronRight className="w-4 h-4 ml-1" />
-                             </a>
-                         </div>
+                            <Link
+                                href={DESTINATION_HELP_PATHS.lookerStudio}
+                                onClick={() =>
+                                    trackEvent("destination_help_link_click", {
+                                        variant: "looker",
+                                        href: DESTINATION_HELP_PATHS.lookerStudio,
+                                    })
+                                }
+                                className="inline-flex items-center text-sm font-medium text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 dark:hover:text-cyan-300"
+                            >
+                                Looker Studio connector guide <ChevronRight className="ml-1 h-4 w-4" />
+                            </Link>
+                        </div>
                     </div>
                 ) : isListView ? (
                     <div className="p-6 space-y-3">
@@ -306,14 +333,17 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                             )}
 
                             {step === 3 && (
-                                <div className="flex flex-col items-center justify-center py-8 space-y-4 animate-in zoom-in slide-in-from-bottom-4 duration-500">
-                                    <div className="w-20 h-20 bg-cyan-50 text-cyan-500 rounded-full flex items-center justify-center border-4 border-cyan-100">
-                                        <FileSpreadsheet className="w-10 h-10" />
+                                <div className="flex flex-col items-center space-y-6 py-6 animate-in zoom-in slide-in-from-bottom-4 duration-500">
+                                    <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-cyan-100 bg-cyan-50 text-cyan-500 dark:border-cyan-900/50 dark:bg-cyan-950/40">
+                                        <FileSpreadsheet className="h-10 w-10" />
                                     </div>
                                     <div className="text-center">
-                                        <h4 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Destination Linked!</h4>
-                                        <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm max-w-xs mx-auto">Google Sheets™ is now ready to receive data. You can map a Data Source to it in the Console.</p>
+                                        <h4 className="mb-2 text-2xl font-bold text-gray-900 dark:text-white">Destination linked</h4>
+                                        <p className="mx-auto max-w-md text-sm text-gray-500 dark:text-gray-400">
+                                            Google Sheets is ready to receive data from your pipelines. Follow the steps below to install the add-on and run your first sync.
+                                        </p>
                                     </div>
+                                    <PostConnectChecklist variant="sheets" />
                                 </div>
                             )}
                         </div>

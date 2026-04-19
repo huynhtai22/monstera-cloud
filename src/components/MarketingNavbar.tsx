@@ -81,6 +81,12 @@ export function MarketingNavbar() {
                         </Link>
                     </div>
                     <div className="flex items-center space-x-3 sm:space-x-4">
+                        <Link
+                            href="/id"
+                            className="hidden text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-300 sm:block"
+                        >
+                            ID
+                        </Link>
                         {showLangToggle ? <LangToggle lang={lang} setLang={onSetLang} /> : null}
                         {isAuthed ? (
                             <Link

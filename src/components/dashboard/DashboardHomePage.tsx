@@ -131,6 +131,7 @@ export function DashboardHomePage() {
             }
             setSyncMsg(typeof data.message === "string" ? data.message : "Sync started.");
             trackEvent("wizard_step_completed", { step: "sync_manual", pipelineId });
+            trackEvent("pipeline_manual_sync_succeeded", { pipelineId, source: "dashboard" });
         } catch (e: unknown) {
             setSyncMsg(e instanceof Error ? e.message : "Sync failed");
         } finally {
@@ -148,6 +149,7 @@ export function DashboardHomePage() {
             }
             setSyncMsg("Sync requested for all pipelines.");
             trackEvent("wizard_step_completed", { step: "sync_all", count: pipelines.length });
+            trackEvent("pipeline_manual_sync_succeeded", { count: pipelines.length, source: "dashboard_sync_all" });
         } catch {
             setSyncMsg("Some syncs may have failed — check Reports.");
         } finally {

@@ -32,6 +32,7 @@ export function MarketingFooter() {
                         <ul className="space-y-3">
                             <li className="text-sm text-gray-500">Blog <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
                             <li><Link href="/docs" className="text-sm text-gray-400 hover:text-white transition-colors">Documentation</Link></li>
+                            <li><Link href="/id" className="text-sm text-gray-400 hover:text-white transition-colors">Bahasa Indonesia</Link></li>
                             <li className="text-sm text-gray-500">Help Center <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
                             <li><Link href="/docs#api" className="text-sm text-gray-400 hover:text-white transition-colors">API Reference</Link></li>
                         </ul>

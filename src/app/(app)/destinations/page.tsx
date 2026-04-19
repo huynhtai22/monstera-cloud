@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { Search, ArrowRight, Send, Plus, AlertCircle, Loader2, Unplug, CheckCircle2, Circle } from "lucide-react";
+import { Search, ArrowRight, Send, Plus, Loader2, CheckCircle2, Circle, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConnectDestinationModal } from "@/components/ConnectDestinationModal";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
@@ -74,6 +74,17 @@ export default function DestinationsPage() {
         });
     }, [searchQuery, activeFilter, workspaces, activeWorkspaceId]);
 
+    const { hasConnectedSource, hasConnectedDestination } = React.useMemo(() => {
+        if (!Array.isArray(workspaces) || !activeWorkspaceId) {
+            return { hasConnectedSource: false, hasConnectedDestination: false };
+        }
+        const workspace = workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0];
+        const conns = (workspace?.connections ?? []) as Array<{ type?: string; status?: string }>;
+        const hasConnectedSource = conns.some((c) => c.type === "source" && c.status === "connected");
+        const hasConnectedDestination = conns.some((c) => c.type === "destination" && c.status === "connected");
+        return { hasConnectedSource, hasConnectedDestination };
+    }, [workspaces, activeWorkspaceId]);
+
     // On a 401 the session has expired — redirect to login silently instead of
     // crashing the page. For any other API error, show a non-blocking banner so
     // the static destination cards are still visible and usable.
@@ -121,6 +132,26 @@ export default function DestinationsPage() {
             </div>
 
             <DataFlowExplainer variant="destinations" />
+
+            {hasConnectedSource && !hasConnectedDestination && !isLoading ? (
+                <div className="relative z-10 mb-8 flex flex-col gap-4 rounded-2xl border border-amber-200/90 bg-amber-50/90 p-5 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
+                            <MapPin className="h-5 w-5" aria-hidden />
+                        </div>
+                        <div>
+                            <p className="text-sm font-bold text-amber-950 dark:text-amber-100">You have sources — pick where data should land</p>
+                            <p className="mt-1 max-w-xl text-sm text-amber-900/90 dark:text-amber-200/90">
+                                Add Google Sheets or Looker Studio so pipelines can deliver rows and dashboards. This is usually a{" "}
+                                <strong>different</strong> Google login than TikTok/Meta — that is expected.
+                            </p>
+                        </div>
+                    </div>
+                    <PrimaryButton type="button" onClick={() => setSetupDestinationId("gsheets")} className="shrink-0 self-start sm:self-center">
+                        Add destination
+                    </PrimaryButton>
+                </div>
+            ) : null}
 
             {/* Active Pipelines Info Bar */}
             <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-xl p-4 mb-8 flex items-center justify-between shadow-sm">

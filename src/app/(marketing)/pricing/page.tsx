@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Check, CheckCircle2, Shield, ShieldCheck, Zap, MapPin } from "lucide-react";
 import { CheckoutButton } from "@/components/CheckoutButton";
+import { MarketingTrustSecuritySection } from "@/components/marketing/MarketingTrustSecuritySection";
 import { useState, useEffect } from "react";
 import { metaPixelCustom } from "@/lib/meta-pixel";
 import { getCheckoutApiPath } from "@/lib/checkout-api-path";
@@ -330,6 +331,7 @@ export default function PricingPage() {
                     </p>
                 </div>
 
+                <MarketingTrustSecuritySection />
             </div>
         </div>
     );

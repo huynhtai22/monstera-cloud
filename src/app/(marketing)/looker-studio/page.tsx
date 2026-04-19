@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
+import { MarketingTrustSecuritySection } from "@/components/marketing/MarketingTrustSecuritySection";
 import { ArrowRight, KeyRound, LineChart, Shield, BookOpen } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
 
 export default function LookerStudioConnectorPage() {
   return (
+    <>
     <div className="mx-auto max-w-3xl px-6 pt-28 pb-20">
       <p className="text-xs font-semibold uppercase tracking-widest text-cyan-400">
         Looker Studio
@@ -146,5 +148,7 @@ export default function LookerStudioConnectorPage() {
         Monstera.
       </p>
     </div>
+    <MarketingTrustSecuritySection />
+    </>
   );
 }

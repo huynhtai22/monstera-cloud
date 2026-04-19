@@ -14,6 +14,7 @@ import {
     CheckCircle2,
 } from "lucide-react";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+import { MarketingTrustSecuritySection } from "@/components/marketing/MarketingTrustSecuritySection";
 
 const MARKETING_LANG_KEY = "marketing_lang";
 
@@ -507,6 +508,8 @@ export default function MarketingHomePage() {
                     </div>
                 </div>
             </section>
+
+            <MarketingTrustSecuritySection />
 
             {/* ── CTA ─────────────────────────────────────────── */}
             <section className="py-28 px-4 sm:px-6 lg:px-8">

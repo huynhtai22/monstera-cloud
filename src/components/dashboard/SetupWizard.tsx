@@ -33,7 +33,8 @@ const steps = [
     {
         key: "sync" as const,
         label: "Run your first sync",
-        description: "Head to Sources, open a connected pipeline, and hit Sync Now.",
+        description:
+            "From Sources, open a source and use Sync now (or run a pipeline from Transformations). Then use Google Sheets with the Monstera add-on, or Looker Studio with the connector + your workspace API key.",
         cta: "Run a sync",
         href: "/sources",
         eventKey: "first_sync_clicked",
@@ -61,7 +62,23 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
                             You&apos;re all set, {firstName}!
                         </h2>
                         <p className="text-sm text-gray-600 dark:text-gray-400">
-                            Your first sync is complete. Check Reports to see your data.
+                            Your first sync is complete. Open{" "}
+                            <Link
+                                href="/looker-studio"
+                                className="font-semibold text-cyan-700 underline hover:no-underline dark:text-cyan-300"
+                                onClick={() => trackEvent("wizard_help_link_click", { href: "/looker-studio", step: "all_done" })}
+                            >
+                                Looker Studio
+                            </Link>{" "}
+                            or the{" "}
+                            <Link
+                                href="/docs"
+                                className="font-semibold text-cyan-700 underline hover:no-underline dark:text-cyan-300"
+                                onClick={() => trackEvent("wizard_help_link_click", { href: "/docs", step: "all_done" })}
+                            >
+                                Sheets add-on docs
+                            </Link>{" "}
+                            to use data outside the console. Check Reports for logs.
                         </p>
                     </div>
                     <div className="ml-auto flex items-center gap-3">
@@ -96,7 +113,7 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
                         Hi {firstName}, let&apos;s get your data flowing.
                     </h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {doneCount} of 3 steps complete — most users finish in under 5 minutes.
+                        {doneCount} of 3 core steps complete — most users finish in under 5 minutes.
                     </p>
                 </div>
                 {onDismiss && (
@@ -189,6 +206,36 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
                     );
                 })}
             </ol>
+
+            <div className="mt-6 rounded-xl border border-dashed border-cyan-200/90 bg-cyan-50/50 p-4 dark:border-cyan-800/50 dark:bg-cyan-950/25">
+                <p className="text-xs font-bold uppercase tracking-wide text-cyan-800 dark:text-cyan-200">Use data in Sheets or Looker</p>
+                <p className="mt-2 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+                    After you sync, install the Monstera Google Sheets add-on (Workspace Marketplace) or connect Looker Studio with your API key from Settings.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold">
+                    <Link
+                        href="/docs"
+                        className="text-cyan-700 underline hover:no-underline dark:text-cyan-300"
+                        onClick={() => trackEvent("wizard_help_link_click", { href: "/docs", step: "sheets_looker_hint" })}
+                    >
+                        Sheets add-on docs
+                    </Link>
+                    <Link
+                        href="/looker-studio"
+                        className="text-cyan-700 underline hover:no-underline dark:text-cyan-300"
+                        onClick={() => trackEvent("wizard_help_link_click", { href: "/looker-studio", step: "sheets_looker_hint" })}
+                    >
+                        Looker Studio guide
+                    </Link>
+                    <Link
+                        href="/destinations"
+                        className="text-cyan-700 underline hover:no-underline dark:text-cyan-300"
+                        onClick={() => trackEvent("wizard_help_link_click", { href: "/destinations", step: "sheets_looker_hint" })}
+                    >
+                        Destinations
+                    </Link>
+                </div>
+            </div>
         </div>
     );
 }
