@@ -55,6 +55,39 @@ function checkAuth() {
   }
 }
 
+// ── Workspace Add-on homepage (required by addOns manifest) ──────────────────
+
+function onHomepage(e) {
+  return CardService.newCardBuilder()
+    .setName('Monstera Cloud')
+    .addSection(
+      CardService.newCardSection()
+        .addWidget(
+          CardService.newTextParagraph()
+            .setText('<b>Monstera Cloud</b><br>Ad Data Connector for Google Sheets™')
+        )
+        .addWidget(
+          CardService.newTextParagraph()
+            .setText('Pull Meta Ads, Google Ads, and TikTok Ads performance data directly into your spreadsheet.')
+        )
+        .addWidget(
+          CardService.newTextButton()
+            .setText('Open Data Connector')
+            .setOnClickAction(
+              CardService.newAction().setFunctionName('openSidebarFromCard')
+            )
+        )
+    )
+    .build();
+}
+
+function openSidebarFromCard() {
+  showSidebar();
+  return CardService.newActionResponseBuilder()
+    .setNotification(CardService.newNotification().setText('Opening Monstera Cloud…'))
+    .build();
+}
+
 // ── Menu & Sidebar ────────────────────────────────────────────────────────────
 
 function onOpen() {
