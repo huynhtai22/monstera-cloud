@@ -12,6 +12,7 @@ import { NotificationCenter } from './NotificationCenter';
 import { UpgradeNudge } from './UpgradeNudge';
 import { Menu, Moon, Sun } from 'lucide-react';
 import { Toaster } from 'sonner';
+import { rememberAppPath } from "@/lib/app-return-path";
 
 const THEME_STORAGE_KEY = "monstera-theme";
 
@@ -85,6 +86,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     }, [isDarkMode]);
 
     const toggleDarkMode = () => setIsDarkMode((v) => !v);
+
+    useEffect(() => {
+        if (status !== "authenticated" || !pathname) return;
+        rememberAppPath(pathname);
+    }, [pathname, status]);
 
     return (
         <KeyboardShortcutsProvider>

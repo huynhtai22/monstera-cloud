@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
 import { ArrowRight, SquareTerminal } from "lucide-react";
+import { readAppReturnPath } from "@/lib/app-return-path";
 
 const MARKETING_LANG_KEY = "marketing_lang";
 
@@ -37,6 +38,7 @@ export function MarketingNavbar() {
     const isAuthed = status === "authenticated";
     const showLangToggle = pathname === "/" || pathname === "/solutions/smes";
     const [lang, setLang] = useState<Lang>("en");
+    const [consoleHref, setConsoleHref] = useState("/console");
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -45,6 +47,10 @@ export function MarketingNavbar() {
             setLang(saved);
         }
     }, []);
+
+    useEffect(() => {
+        setConsoleHref(readAppReturnPath());
+    }, [pathname]);
 
     const onSetLang = (nextLang: Lang) => {
         setLang(nextLang);
@@ -59,7 +65,7 @@ export function MarketingNavbar() {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between items-center h-16">
                     <div className="flex-shrink-0 flex items-center">
-                        <Link href={isAuthed ? "/console" : "/"}>
+                        <Link href="/" title="Monstera — home">
                             <Logo />
                         </Link>
                     </div>
@@ -90,7 +96,7 @@ export function MarketingNavbar() {
                         {showLangToggle ? <LangToggle lang={lang} setLang={onSetLang} /> : null}
                         {isAuthed ? (
                             <Link
-                                href="/console"
+                                href={consoleHref}
                                 className="inline-flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 text-sm font-medium transition-colors"
                             >
                                 <SquareTerminal className="w-4 h-4" />
@@ -101,10 +107,12 @@ export function MarketingNavbar() {
                                 Log in
                             </Link>
                         )}
-                        <Link href="/register" className="group inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg shadow-sm hover:shadow-md transition-all">
-                            Start free trial
-                            <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                        </Link>
+                        {isAuthed ? null : (
+                            <Link href="/register" className="group inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg shadow-sm hover:shadow-md transition-all">
+                                Start free trial
+                                <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                            </Link>
+                        )}
                     </div>
                 </div>
             </div>

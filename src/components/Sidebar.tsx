@@ -17,6 +17,7 @@ import {
     KeyRound,
     Sun,
     Moon,
+    Globe,
 } from "lucide-react";
 import useSWR from "swr";
 import { useSession, signOut } from "next-auth/react";
@@ -180,6 +181,16 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                         </button>
                     </div>
                 )}
+            </div>
+
+            <div className="border-b border-gray-200/60 px-4 py-2 dark:border-slate-800">
+                <Link
+                    href="/"
+                    className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-50 hover:text-cyan-700 dark:text-slate-400 dark:hover:bg-slate-800/80 dark:hover:text-cyan-300"
+                >
+                    <Globe className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                    Website
+                </Link>
             </div>
 
             <nav className="flex-1 space-y-6 overflow-y-auto px-4 py-4" aria-label="Main">
