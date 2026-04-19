@@ -13,16 +13,16 @@ import {
   ShieldAlert,
   ChevronRight,
 } from "lucide-react";
-import { useWorkspaceStore } from "@/store/workspace";
+import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
 import { cn } from "@/lib/utils";
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export function HealthDashboard() {
-  const { activeWorkspaceId } = useWorkspaceStore();
-  
+  const { workspaceId } = useResolvedWorkspaceId();
+
   const { data, error, isLoading } = useSWR(
-    activeWorkspaceId ? `/api/workspaces/${activeWorkspaceId}/health-stats` : null,
+    workspaceId ? `/api/workspaces/${workspaceId}/health-stats` : null,
     fetcher,
     { refreshInterval: 30000 }
   );

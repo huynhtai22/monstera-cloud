@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Sidebar } from './Sidebar';
 import { GlobeLoader } from './GlobeLoader';
+import { WorkspaceSessionSync } from './WorkspaceSessionSync';
 import { DemoModeBanner } from './DemoModeBanner';
 import { KeyboardShortcutsProvider } from './KeyboardShortcutsProvider';
 import { NotificationCenter } from './NotificationCenter';
@@ -87,6 +88,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
     return (
         <KeyboardShortcutsProvider>
+        <WorkspaceSessionSync />
         <GlobeLoader visible={loading} />
         <div className="flex min-h-screen font-sans">
             {/* Mobile Header (only visible on small screens) */}

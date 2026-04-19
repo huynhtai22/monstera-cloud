@@ -11,7 +11,7 @@ import {
     Database,
 } from "lucide-react";
 import useSWR from "swr";
-import { useWorkspaceStore } from "@/store/workspace";
+import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
 import { cn } from "@/lib/utils";
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
 import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
@@ -37,7 +37,7 @@ const fetcher = async (url: string) => {
 };
 
 export function DashboardHomePage() {
-    const { activeWorkspaceId } = useWorkspaceStore();
+    const { workspaceId, workspaces, isLoading: workspacesLoading } = useResolvedWorkspaceId();
     const [syncingPipelineId, setSyncingPipelineId] = React.useState<string | null>(null);
     const [syncAllBusy, setSyncAllBusy] = React.useState(false);
     const [syncMsg, setSyncMsg] = React.useState<string>("");
@@ -59,23 +59,21 @@ export function DashboardHomePage() {
     }, []);
 
     const { data: pipelines, error, isLoading } = useSWR(
-        activeWorkspaceId ? `/api/pipelines?workspaceId=${activeWorkspaceId}` : null,
+        workspaceId ? `/api/pipelines?workspaceId=${workspaceId}` : null,
         fetcher
     );
 
     const activePipelinesCount = Array.isArray(pipelines) ? pipelines.length : 0;
 
-    const { data: workspaces } = useSWR("/api/workspaces", fetcher);
-
     const { data: syncLogsData } = useSWR(
-        activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}` : null,
+        workspaceId ? `/api/sync-logs?workspaceId=${workspaceId}` : null,
         fetcher
     );
     const logs = (syncLogsData?.logs ?? []) as Array<{ status: string }>;
     const hasSuccessfulSync = logs.some((l) => l.status === "success");
 
     const { data: attributionData } = useSWR(
-        activeWorkspaceId ? `/api/attribution/snapshots?workspaceId=${activeWorkspaceId}&days=14` : null,
+        workspaceId ? `/api/attribution/snapshots?workspaceId=${workspaceId}&days=14` : null,
         fetcher
     );
     const snapshots = (attributionData?.snapshots ?? []) as Array<{
@@ -86,17 +84,17 @@ export function DashboardHomePage() {
     }>;
 
     const { connectedSourcesCount, connectedDestinationsCount, workspaceName } = React.useMemo(() => {
-        if (!Array.isArray(workspaces) || !activeWorkspaceId) {
+        if (!Array.isArray(workspaces) || !workspaceId) {
             return { connectedSourcesCount: 0, connectedDestinationsCount: 0, workspaceName: "" };
         }
-        const ws = workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0];
+        const ws = workspaces.find((w: any) => w.id === workspaceId) || workspaces[0];
         const conns = ws?.connections || [];
         return {
             connectedSourcesCount: conns.filter((c: any) => c.type === "source").length,
             connectedDestinationsCount: conns.filter((c: any) => c.type === "destination").length,
             workspaceName: ws?.name ?? "Workspace",
         };
-    }, [workspaces, activeWorkspaceId]);
+    }, [workspaces, workspaceId]);
 
     const hasSource = connectedSourcesCount > 0;
     const hasDestination = connectedDestinationsCount > 0;
@@ -166,6 +164,33 @@ export function DashboardHomePage() {
         setWizardDismissed(true);
     };
 
+    if (workspacesLoading || workspaces === undefined) {
+        return (
+            <PageShell>
+                <div className="animate-pulse space-y-6 p-2">
+                    <div className="h-10 max-w-md rounded-lg bg-slate-200/80 dark:bg-slate-700/80" />
+                    <div className="h-36 rounded-2xl bg-slate-100 dark:bg-slate-800/80" />
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="h-48 rounded-xl bg-slate-100 dark:bg-slate-800/80" />
+                        <div className="h-48 rounded-xl bg-slate-100 dark:bg-slate-800/80" />
+                    </div>
+                </div>
+            </PageShell>
+        );
+    }
+
+    if (!workspaceId) {
+        return (
+            <PageShell>
+                <EmptyState
+                    icon={<Database className="h-12 w-12" />}
+                    title="No workspace"
+                    description="We couldn’t load a workspace for your account. Try refreshing or contact support."
+                />
+            </PageShell>
+        );
+    }
+
     if (connectedSourcesCount === 0) {
         if (wizardDismissed) {
             return (
@@ -216,7 +241,7 @@ export function DashboardHomePage() {
             <MetricCardGrid snapshots={snapshots} />
 
             <div className="relative z-10 mb-8">
-                <AiPerformanceSummary workspaceId={activeWorkspaceId} />
+                <AiPerformanceSummary workspaceId={workspaceId} />
             </div>
 
             <div className="relative z-10 mb-12">
