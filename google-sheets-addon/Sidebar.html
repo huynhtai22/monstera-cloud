@@ -57,6 +57,7 @@
     .btn-set:hover { background: #e5e7eb; }
 
     .schedule-pill { font-size: 11px; color: #0891b2; margin-top: 6px; }
+    .tip-box { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 8px; padding: 8px 10px; font-size: 11px; margin-top: 8px; line-height: 1.5; }
 
     .footer { text-align: center; color: #9ca3af; font-size: 10px; margin-top: 20px; }
     .footer a { color: #6b7280; text-decoration: none; }
@@ -111,12 +112,16 @@
   <div id="appSuccess" class="success-box" style="display:none"></div>
 
   <label>Platform</label>
-  <select id="platform">
+  <select id="platform" onchange="handlePlatformChange()">
     <option value="">All Platforms</option>
     <option value="tiktok_business">TikTok Ads</option>
     <option value="meta_ads">Meta Ads</option>
     <option value="google_ads">Google Ads</option>
   </select>
+  <div id="platformTip" class="tip-box">
+    💡 Use one platform per sheet tab for full platform-specific metrics. "All Platforms" shows common columns only.
+  </div>
+  <div id="platformColumns" style="font-size:10px;color:#6b7280;margin-top:4px;line-height:1.6;"></div>
 
   <label>Report Level</label>
   <select id="reportLevel">
@@ -207,6 +212,25 @@
   }
 
   // ── Run Query ───────────────────────────────────────────────────────────────
+  var PLATFORM_COLUMNS = {
+    '':               { label: 'All Platforms', cols: 'date, platform, accountName, campaignName, adsetName, spend, impressions, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' },
+    'meta_ads':       { label: 'Meta Ads',      cols: 'date, accountName, campaignName, adsetName, spend, impressions, reach, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' },
+    'google_ads':     { label: 'Google Ads',    cols: 'date, accountName, campaignName, adsetName, spend, impressions, clicks, ctr, cpc, conversions, revenue, roas, currency' },
+    'tiktok_business':{ label: 'TikTok Ads',   cols: 'date, accountName, campaignName, adsetName, spend, impressions, reach, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' }
+  };
+
+  function handlePlatformChange() {
+    var val = document.getElementById('platform').value;
+    var tip = document.getElementById('platformTip');
+    var colHint = document.getElementById('platformColumns');
+    var info = PLATFORM_COLUMNS[val] || PLATFORM_COLUMNS[''];
+    tip.style.display = val ? 'none' : 'block';
+    colHint.textContent = val ? 'Columns: ' + info.cols : '';
+  }
+
+  // Init platform tip on load
+  handlePlatformChange();
+
   function handleRun() {
     hideAppMessages();
     var params = {

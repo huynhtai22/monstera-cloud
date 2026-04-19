@@ -19,6 +19,35 @@ var API_ENDPOINT  = BASE_URL + '/api/looker-studio';
 var AUTH_ENDPOINT = BASE_URL + '/api/addon/auth';
 var CACHE_TTL_SECONDS = 600;
 
+// ── Platform-specific column sets ─────────────────────────────────────────────
+
+var PLATFORM_FIELDS = {
+  meta_ads: [
+    'date', 'accountName', 'campaignName', 'adsetName',
+    'spend', 'impressions', 'reach', 'clicks', 'ctr', 'cpc', 'cpm',
+    'conversions', 'revenue', 'roas', 'currency'
+  ],
+  google_ads: [
+    'date', 'accountName', 'campaignName', 'adsetName',
+    'spend', 'impressions', 'clicks', 'ctr', 'cpc',
+    'conversions', 'revenue', 'roas', 'currency'
+  ],
+  tiktok_business: [
+    'date', 'accountName', 'campaignName', 'adsetName',
+    'spend', 'impressions', 'reach', 'clicks', 'ctr', 'cpc', 'cpm',
+    'conversions', 'revenue', 'roas', 'currency'
+  ],
+  all: [
+    'date', 'platform', 'accountName', 'campaignName', 'adsetName',
+    'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'cpm',
+    'conversions', 'revenue', 'roas', 'currency'
+  ]
+};
+
+function getFieldOrder(platform) {
+  return PLATFORM_FIELDS[platform] || PLATFORM_FIELDS['all'];
+}
+
 // ── Identity Token ────────────────────────────────────────────────────────────
 
 function getIdentityToken() {
@@ -173,12 +202,7 @@ function pullData(params) {
   var data = responseData.data;
   if (data.length === 0) return 'No rows found for the selected filters.';
 
-  var FIELD_ORDER = [
-    'date', 'platform', 'accountId', 'accountName',
-    'campaignId', 'campaignName', 'adsetId', 'adsetName', 'currency',
-    'impressions', 'clicks', 'spend', 'reach', 'conversions', 'revenue'
-  ];
-  var headers = FIELD_ORDER.filter(function(f) { return data[0].hasOwnProperty(f); });
+  var headers = getFieldOrder(platform).filter(function(f) { return data[0].hasOwnProperty(f); });
 
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var startRow = sheet.getRange(targetCell).getRow();
@@ -290,12 +314,7 @@ function pullDataToSheet(sheet, params, token) {
   if (!responseData.data || responseData.data.length === 0) return;
 
   var data = responseData.data;
-  var FIELD_ORDER = [
-    'date', 'platform', 'accountId', 'accountName',
-    'campaignId', 'campaignName', 'adsetId', 'adsetName', 'currency',
-    'impressions', 'clicks', 'spend', 'reach', 'conversions', 'revenue'
-  ];
-  var headers = FIELD_ORDER.filter(function(f) { return data[0].hasOwnProperty(f); });
+  var headers = getFieldOrder(params.platform).filter(function(f) { return data[0].hasOwnProperty(f); });
 
   var startRow = sheet.getRange(targetCell).getRow();
   var startCol = sheet.getRange(targetCell).getColumn();
