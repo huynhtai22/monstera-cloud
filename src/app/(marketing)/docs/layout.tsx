@@ -18,6 +18,7 @@ const SIDEBAR_LINKS = [
         links: [
             { label: "Supported Sources", href: "/docs#sources" },
             { label: "Destinations", href: "/docs#destinations" },
+            { label: "Looker Studio connector", href: "/docs#looker-studio" },
             { label: "Synchronization", href: "/docs#sync" },
         ]
     },

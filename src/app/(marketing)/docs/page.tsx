@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, Terminal, CheckCircle2, ShieldAlert, Cpu, Network, Lock, Zap, FileJson, Server, Database } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ShieldAlert, Cpu, Network, Lock, Zap, FileJson, Database, LineChart } from 'lucide-react';
 import Link from 'next/link';
 
 export default function DocsPage() {
@@ -107,6 +107,41 @@ export default function DocsPage() {
             </p>
             <p className="text-white font-mono text-sm bg-white/5 p-4 rounded-lg border border-white/10 mb-16 inline-block">
                 Google BigQuery, PostgreSQL 14+, Amazon Redshift
+            </p>
+
+            <hr className="border-white/5 my-12" />
+
+            {/* ==================== LOOKER STUDIO ==================== */}
+            <h2 id="looker-studio" className="text-3xl font-extrabold text-white tracking-tight mb-6 pt-24 -mt-24 flex items-center">
+                <LineChart className="w-7 h-7 mr-3 text-emerald-500" /> Looker Studio connector
+            </h2>
+            <p className="text-gray-400 leading-relaxed mb-6">
+                After you connect ad platforms in the console and sync metrics into your workspace, you can visualize them in{" "}
+                <strong className="text-white">Looker Studio</strong> using the Monstera community connector and a{" "}
+                <strong className="text-white">workspace API key</strong> (from Settings in the app). Looker Studio calls Monstera&apos;s API — no extra OAuth inside Looker.
+            </p>
+            <ul className="space-y-3 mb-8 text-gray-300 text-sm leading-relaxed">
+                <li className="flex items-start">
+                    <span className="mr-2 text-cyan-500 font-bold">1.</span>
+                    <span>Create sources and run at least one sync so campaign metrics exist in your workspace.</span>
+                </li>
+                <li className="flex items-start">
+                    <span className="mr-2 text-cyan-500 font-bold">2.</span>
+                    <span>In Monstera, open Settings → API keys, create a key, and copy it for the connector credential prompt.</span>
+                </li>
+                <li className="flex items-start">
+                    <span className="mr-2 text-cyan-500 font-bold">3.</span>
+                    <span>In Looker Studio, add a data source, choose the Monstera connector, and paste your API key and workspace details as documented on the full guide.</span>
+                </li>
+            </ul>
+            <p className="mb-6">
+                <Link
+                    href="/looker-studio"
+                    className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-4 py-2.5 text-sm font-semibold text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-500/50 transition-colors"
+                >
+                    Open full Looker Studio guide
+                    <ArrowRight className="h-4 w-4" />
+                </Link>
             </p>
 
             <hr className="border-white/5 my-12" />

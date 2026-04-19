@@ -76,12 +76,6 @@ export function MarketingNavbar() {
 <Link href="/docs" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
                             Docs
                         </Link>
-                        <Link href="/showcase" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
-                            Showcase
-                        </Link>
-                        <Link href="/looker-studio" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
-                            Looker Studio
-                        </Link>
                         <Link href="/pricing" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
                             Pricing
                         </Link>

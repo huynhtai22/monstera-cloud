@@ -27,7 +27,7 @@ const COPY = {
             h1: ["Stop reconciling spreadsheets", "at midnight."],
             sub: "Monstera Cloud pulls TikTok Ads, Meta, Shopee, and Google Ads into one clean Google Sheet — automatically, every day. Built for sellers and agencies in Southeast Asia.",
             cta: "Start free — first sync in 5 min",
-            ctaSub: "See a live dashboard",
+            ctaSub: "Documentation",
             heroTrust: "No card · Vietnamese support · Upgrade when you need more",
         },
         diff: [
@@ -96,7 +96,7 @@ const COPY = {
             h1: ["Dừng đối chiếu bảng tính", "lúc nửa đêm."],
             sub: "Monstera Cloud đưa TikTok Ads, Meta, Shopee và Google Ads vào một Google Sheet sạch — tự động mỗi ngày. Dành cho seller và agency Đông Nam Á.",
             cta: "Dùng thử miễn phí — đồng bộ đầu tiên trong 5 phút",
-            ctaSub: "Xem dashboard mẫu",
+            ctaSub: "Tài liệu",
             heroTrust: "Không cần thẻ · Hỗ trợ tiếng Việt · Nâng cấp khi cần thêm tính năng",
         },
         diff: [
@@ -294,7 +294,7 @@ export default function MarketingHomePage() {
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                             </Link>
                             <Link
-                                href="/showcase"
+                                href="/docs"
                                 className="inline-flex items-center gap-2 px-7 py-3.5 text-sm font-medium text-gray-400 hover:text-white border border-white/10 hover:border-white/20 rounded-xl transition-colors"
                             >
                                 {c.hero.ctaSub} <ChevronRight className="w-3.5 h-3.5" />
