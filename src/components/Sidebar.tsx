@@ -107,18 +107,19 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
         <div
             className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-[#e2e8f0] bg-[#f8fafc] shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-transform duration-300 ease-in-out dark:border-slate-700/90 dark:bg-slate-950 dark:shadow-[4px_0_32px_rgba(0,0,0,0.45)] lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
         >
-            <div className="px-4 py-5 border-b border-gray-200/60 dark:border-slate-800 relative z-20" ref={workspaceRef}>
+            <div ref={workspaceRef} className="relative z-20 border-b border-gray-200/60 px-4 py-5 dark:border-slate-800">
                 <button
+                    type="button"
                     onClick={() => setIsWorkspaceOpen(!isWorkspaceOpen)}
-                    className="flex items-center justify-between w-full px-3 py-2 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm hover:border-cyan-500/30 dark:hover:border-cyan-500/50 hover:shadow-md transition-all group"
+                    className="group flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm transition-all hover:border-cyan-500/30 hover:shadow-md dark:border-slate-700 dark:bg-slate-800 dark:hover:border-cyan-500/50"
                 >
                     <div className="flex items-center">
-                        <div className="mr-3 scale-95 origin-left">
+                        <div className="mr-3 origin-left scale-95">
                             <Logo className="w-8 h-8" textClassName="hidden" />
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 tracking-wide uppercase">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                                     Workspace
                                 </span>
                                 {(activeWorkspace as { demoMockMode?: boolean } | null)?.demoMockMode ? (
@@ -131,41 +132,49 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                                     </span>
                                 ) : null}
                             </div>
-                            <div className="text-sm font-bold text-gray-900 dark:text-white truncate">
+                            <div className="truncate text-sm font-bold text-gray-900 dark:text-white">
                                 {activeWorkspace?.name || "No Workspace"}
                             </div>
                         </div>
                     </div>
-                    <ChevronDown className={`w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-cyan-600 transition-transform ${isWorkspaceOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown
+                        className={`h-4 w-4 text-gray-400 transition-transform group-hover:text-cyan-600 dark:text-gray-500 dark:group-hover:text-cyan-600 ${isWorkspaceOpen ? "rotate-180" : ""}`}
+                    />
                 </button>
 
                 {isWorkspaceOpen && Array.isArray(workspaces) && (
-                    <div className="absolute top-[80px] left-4 right-4 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg mt-1 p-2 animate-in fade-in slide-in-from-top-2 duration-200 z-50">
-                        <div className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase px-2 py-1 mb-1">Your Workspaces</div>
+                    <div className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200 dark:border-slate-700 dark:bg-slate-800">
+                        <div className="mb-1 px-2 py-1 text-xs font-bold uppercase text-gray-400 dark:text-gray-500">
+                            Your Workspaces
+                        </div>
 
                         {workspaces.map((ws: any) => (
                             <button
                                 key={ws.id}
+                                type="button"
                                 onClick={() => {
                                     setActiveWorkspaceId(ws.id);
                                     setIsWorkspaceOpen(false);
                                 }}
-                                className="flex items-center justify-between w-full px-2 py-2 text-sm font-medium text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                                className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:text-white dark:hover:bg-slate-700"
                             >
                                 <div className="flex items-center">
-                                    <div className="w-6 h-6 rounded bg-cyan-100 dark:bg-cyan-900/50 text-cyan-700 dark:text-cyan-400 flex items-center justify-center mr-2 text-xs font-bold">
+                                    <div className="mr-2 flex h-6 w-6 items-center justify-center rounded bg-cyan-100 text-xs font-bold text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-400">
                                         {ws.name.charAt(0).toUpperCase()}
                                     </div>
                                     {ws.name}
                                 </div>
-                                {activeWorkspaceId === ws.id && <Check className="w-4 h-4 text-cyan-600" />}
+                                {activeWorkspaceId === ws.id ? <Check className="h-4 w-4 text-cyan-600" /> : null}
                             </button>
                         ))}
 
-                        <div className="h-px bg-gray-100 dark:bg-slate-700 my-1"></div>
-                        <button className="flex items-center w-full px-2 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                            <div className="w-6 h-6 rounded border border-dashed border-gray-300 dark:border-gray-500 flex items-center justify-center mr-2">
-                                <span className="text-gray-400 text-lg leading-none">+</span>
+                        <div className="my-1 h-px bg-gray-100 dark:bg-slate-700" />
+                        <button
+                            type="button"
+                            className="flex w-full items-center rounded-lg px-2 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-slate-700"
+                        >
+                            <div className="mr-2 flex h-6 w-6 items-center justify-center rounded border border-dashed border-gray-300 dark:border-gray-500">
+                                <span className="text-lg leading-none text-gray-400">+</span>
                             </div>
                             Create New Workspace
                         </button>
@@ -186,7 +195,10 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                                     <Link
                                         key={item.href}
                                         href={item.href}
-                                        onClick={() => setIsOpen && setIsOpen(false)}
+                                        onClick={() => {
+                                            setIsWorkspaceOpen(false);
+                                            setIsOpen?.(false);
+                                        }}
                                         className={`group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-all ${isActive
                                             ? "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/55 dark:text-cyan-100 dark:ring-1 dark:ring-cyan-700/50"
                                             : "text-gray-600 hover:bg-gray-50/80 hover:text-gray-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
