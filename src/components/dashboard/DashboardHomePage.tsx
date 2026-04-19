@@ -2,19 +2,10 @@
 
 import React from "react";
 import Link from "next/link";
-import {
-    CheckCircle2,
-    Circle,
-    ListChecks,
-    Zap,
-    ArrowRight,
-    Database,
-} from "lucide-react";
+import { Database } from "lucide-react";
 import useSWR from "swr";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
-import { cn } from "@/lib/utils";
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
-import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
 import { HealthDashboard } from "@/components/HealthDashboard";
 import { AiPerformanceSummary } from "@/components/AiPerformanceSummary";
 import { PageShell } from "@/components/ui/PageShell";
@@ -23,6 +14,7 @@ import { StatusHero } from "@/components/dashboard/StatusHero";
 import { MetricCardGrid } from "@/components/dashboard/MetricCardGrid";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { SetupWizard } from "@/components/dashboard/SetupWizard";
+import { PillarGrid } from "@/components/dashboard/PillarGrid";
 import { trackEvent, trackOnce } from "@/lib/analytics-events";
 
 const WIZARD_DISMISS_KEY = "monstera_setup_wizard_dismissed_v1";
@@ -83,13 +75,14 @@ export function DashboardHomePage() {
         attributedRevenue: number;
     }>;
 
-    const { connectedSourcesCount, connectedDestinationsCount, workspaceName } = React.useMemo(() => {
+    const { connections, connectedSourcesCount, connectedDestinationsCount, workspaceName } = React.useMemo(() => {
         if (!Array.isArray(workspaces) || !workspaceId) {
-            return { connectedSourcesCount: 0, connectedDestinationsCount: 0, workspaceName: "" };
+            return { connections: [] as any[], connectedSourcesCount: 0, connectedDestinationsCount: 0, workspaceName: "" };
         }
         const ws = workspaces.find((w: any) => w.id === workspaceId) || workspaces[0];
-        const conns = ws?.connections || [];
+        const conns = (ws?.connections ?? []) as any[];
         return {
+            connections: conns,
             connectedSourcesCount: conns.filter((c: any) => c.type === "source").length,
             connectedDestinationsCount: conns.filter((c: any) => c.type === "destination").length,
             workspaceName: ws?.name ?? "Workspace",
@@ -98,7 +91,6 @@ export function DashboardHomePage() {
 
     const hasSource = connectedSourcesCount > 0;
     const hasDestination = connectedDestinationsCount > 0;
-    const hasPipeline = activePipelinesCount > 0;
 
     const healthyCount = Array.isArray(pipelines)
         ? pipelines.filter((p: { status: string }) => p.status !== "error").length
@@ -242,13 +234,13 @@ export function DashboardHomePage() {
 
             <MetricCardGrid snapshots={snapshots} />
 
-            <div className="relative z-10 mb-8">
-                <AiPerformanceSummary workspaceId={workspaceId} />
-            </div>
-
-            <div className="relative z-10 mb-12">
-                <HealthDashboard />
-            </div>
+            <PillarGrid
+                connections={connections as any}
+                syncLogs={logs as any}
+                healthyCount={healthyCount}
+                totalPipelines={activePipelinesCount}
+                latestNetRoas={snapshots.length ? snapshots[snapshots.length - 1].netRoas : null}
+            />
 
             {!hasSuccessfulSync && hasSource ? (
                 <div className="relative z-10 mb-10">
@@ -261,69 +253,7 @@ export function DashboardHomePage() {
                 </div>
             ) : null}
 
-            <div className="relative z-10 grid grid-cols-1 gap-8 lg:grid-cols-3">
-                <div className="flex flex-col gap-6 lg:col-span-2">
-                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
-                            <div className="mb-4 flex items-center gap-2">
-                                <ListChecks className="h-5 w-5 text-primary" />
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Getting Started</h3>
-                            </div>
-                            <ul className="space-y-3">
-                                <li className="flex items-start gap-2 text-sm">
-                                    {hasSource ? (
-                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500" />
-                                    ) : (
-                                        <Circle className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
-                                    )}
-                                    <span className={hasSource ? "text-gray-700 dark:text-gray-200" : "text-gray-500"}>Connect a data source</span>
-                                </li>
-                                <li className="flex items-start gap-2 text-sm">
-                                    {hasDestination ? (
-                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500" />
-                                    ) : (
-                                        <Circle className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
-                                    )}
-                                    <span className={hasDestination ? "text-gray-700 dark:text-gray-200" : "text-gray-500"}>Set a destination</span>
-                                </li>
-                                <li className="flex items-start gap-2 text-sm">
-                                    {hasPipeline ? (
-                                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-cyan-500" />
-                                    ) : (
-                                        <Circle className="mt-0.5 h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
-                                    )}
-                                    <span className={hasPipeline ? "text-gray-700 dark:text-gray-200" : "text-gray-500"}>Deploy a pipeline</span>
-                                </li>
-                                <li className="flex items-start gap-2 text-sm text-gray-400 dark:text-gray-500">
-                                    <Circle className="mt-0.5 h-4 w-4 shrink-0" />
-                                    <span>Schedule sync (coming soon)</span>
-                                </li>
-                            </ul>
-                        </div>
-
-                        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
-                            <div className="mb-4 flex items-center gap-2">
-                                <Zap className="h-5 w-5 text-primary" />
-                                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Quick Actions</h3>
-                            </div>
-                            <div className="flex flex-col gap-2">
-                                <Link href="/sources" className={cn(primaryButtonLinkClassName, "w-full justify-between")}>
-                                    Connect Source
-                                    <ArrowRight className="h-4 w-4" />
-                                </Link>
-                                <Link href="/transformations" className={cn(secondaryButtonLinkClassName, "w-full justify-between")}>
-                                    Create Pipeline
-                                    <ArrowRight className="h-4 w-4" />
-                                </Link>
-                                <Link href="/docs" className={cn(secondaryButtonLinkClassName, "w-full justify-between")}>
-                                    View Docs
-                                    <ArrowRight className="h-4 w-4" />
-                                </Link>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
+            <div className="relative z-10 mb-10">
                 <RecentActivity
                     pipelines={pipelines as any}
                     isLoading={isLoading}
@@ -331,6 +261,14 @@ export function DashboardHomePage() {
                     syncingPipelineId={syncingPipelineId}
                     onSync={runPipeline}
                 />
+            </div>
+
+            <div className="relative z-10 mb-10">
+                <AiPerformanceSummary workspaceId={workspaceId} />
+            </div>
+
+            <div className="relative z-10 mb-4">
+                <HealthDashboard />
             </div>
         </PageShell>
     );
