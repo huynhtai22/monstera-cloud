@@ -1270,24 +1270,41 @@ export default function SourcesPage() {
                                     {connectedRows.length} connected
                                 </span>
                             </div>
-                            <div className="flex flex-col gap-5">
-                                {Object.entries(
+                            <div className="space-y-4">
+                            {(() => {
+                                // Group by provider
+                                const groups = Object.entries(
                                     connectedRows.reduce((acc, row) => {
                                         const p = (row as any).catalogId || "other";
                                         acc[p] = acc[p] || [];
                                         acc[p].push(row);
                                         return acc;
                                     }, {} as Record<string, any[]>)
-                                ).map(([provider, rows]) => (
-                                    <div key={provider} className="bg-slate-50/50 dark:bg-slate-900/30 rounded-2xl border border-slate-100 dark:border-slate-800 p-4">
-                                        <div className="flex items-center gap-2 mb-3">
-                                            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                                                {SOURCES_CATALOG.find(c => c.id === provider)?.name || provider} 
-                                            </span>
-                                            <span className="bg-slate-200/50 dark:bg-slate-800 text-slate-500 text-xs px-2 py-0.5 rounded-full font-medium">
-                                                {rows.length} {rows.length === 1 ? 'connection' : 'connections'}
-                                            </span>
-                                        </div>
+                                );
+                                const multiProvider = groups.length > 1;
+
+                                return groups.map(([provider, rows]) => (
+                                    <div key={provider}>
+                                        {/* Only show provider label when there are multiple platforms */}
+                                        {multiProvider && (
+                                            <div className="mb-2 flex items-center gap-2">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img
+                                                    src={(rows[0] as any).logoSrc}
+                                                    alt=""
+                                                    width={14}
+                                                    height={14}
+                                                    className="h-3.5 w-3.5 object-contain opacity-70"
+                                                />
+                                                <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 dark:text-slate-500">
+                                                    {SOURCES_CATALOG.find(c => c.id === provider)?.name || provider}
+                                                </span>
+                                                <span className="h-px flex-1 bg-gray-100 dark:bg-slate-800" />
+                                                <span className="text-[10px] text-gray-400 dark:text-slate-500">
+                                                    {rows.length} {rows.length === 1 ? 'account' : 'accounts'}
+                                                </span>
+                                            </div>
+                                        )}
                                         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                                             {rows.map((integration: any) => (
                                                 <ConnectedSourceRow
@@ -1301,7 +1318,8 @@ export default function SourcesPage() {
                                             ))}
                                         </div>
                                     </div>
-                                ))}
+                                ));
+                            })()}
                             </div>
                         </section>
                     ) : null}
