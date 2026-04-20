@@ -4,7 +4,7 @@
 - **Developer Hourly Rate:** $30/hr (Adjustable based on your market)
 - **Active Users:** 50 (Targeting 50 paying agencies/SMEs)
 - **Support Burden:** 1.5 hrs/month per paying customer
-- **Infrastructure (Vercel Pro + BigQuery/Neon + Logs):** ~$150/month flat
+- **Infrastructure (Vercel Pro + Neon + Logs):** ~$150/month flat
 - **API Egress/Partner Scrapers:** ~$0.05/user/month (estimated)
 
 ## 2. Monthly Cost Breakdown

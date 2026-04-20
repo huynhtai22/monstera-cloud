@@ -16,14 +16,15 @@ export default function DocsPage() {
             </h1>
             
             <p className="text-lg text-gray-400 leading-relaxed mb-10">
-                Monstera Cloud is an architectural data ingestion engine. Instead of wrapping your systems in heavy ETL middleware or maintaining brittle Python scripts, Monstera provides direct, real-time connection streams from SaaS tools directly into your private data warehouses (BigQuery, Snowflake).
+                Monstera Cloud is a live product: you sign in, create a workspace, connect marketplace and ad sources with OAuth, connect{" "}
+                <strong className="text-white">Google Sheets™</strong> or <strong className="text-white">Looker Studio™</strong> as destinations, and run pipelines on a schedule. This page summarizes how that shipped stack fits together — not a future roadmap.
             </p>
 
             <div className="grid sm:grid-cols-2 gap-6 mb-16">
                 <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-6">
                     <CheckCircle2 className="w-6 h-6 text-cyan-500 mb-4" />
                     <h3 className="text-white font-bold mb-2">Zero Maintenance</h3>
-                    <p className="text-sm text-gray-400">Our engine automatically manages schema drift, API rate limiting, and exponential backoff retry logic. You just query the warehouse.</p>
+                    <p className="text-sm text-gray-400">Sync jobs respect platform rate limits and retries; data lands in your connected spreadsheet or Looker-backed reports.</p>
                 </div>
                 <div className="bg-amber-950/20 border border-amber-500/20 rounded-xl p-6">
                     <ShieldAlert className="w-6 h-6 text-amber-500 mb-4" />
@@ -62,20 +63,20 @@ export default function DocsPage() {
                 <Cpu className="w-7 h-7 mr-3 text-cyan-500" /> Architecture
             </h2>
             <p className="text-gray-400 leading-relaxed mb-6">
-                Monstera Cloud operates as a **Headless Ingestion Fabric**. We do not store your data. We function purely as a massively parallel routing layer, sitting between strict rate-limited APIs and powerful columnar data warehouses.
+                Each customer workspace keeps its own source and destination connections. Pipelines move normalized rows from a source (e.g. Shopee orders) into the destination you connected (Sheets or Looker API consumption). Credentials are encrypted at rest.
             </p>
             <ul className="space-y-4 mb-16 text-gray-300">
                 <li className="flex items-start">
                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 mt-2 mr-3 shrink-0"></div>
-                    <p><strong className="text-white">Stateless Workers:</strong> All ingestion tasks run on ephemeral isolated containers ensuring perfect tenant isolation.</p>
+                    <p><strong className="text-white">Workspace isolation:</strong> Sources, destinations, and pipelines are scoped per workspace and member access.</p>
                 </li>
                 <li className="flex items-start">
                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 mt-2 mr-3 shrink-0"></div>
-                    <p><strong className="text-white">Dead Letter Queues (DLQ):</strong> Any payload rejected by your destination warehouse is cached in a DLQ for 7 days for replay.</p>
+                    <p><strong className="text-white">Sync logs:</strong> Manual and scheduled runs record success and failure in the app so you can trace delivery issues.</p>
                 </li>
                 <li className="flex items-start">
                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 mt-2 mr-3 shrink-0"></div>
-                    <p><strong className="text-white">Dynamic Throttling:</strong> We dynamically pause ingestion streams if upstream sources trigger `429 Too Many Requests`.</p>
+                    <p><strong className="text-white">Rate limits:</strong> Connectors back off when upstream APIs return <code className="text-cyan-200">429</code> responses.</p>
                 </li>
             </ul>
 
@@ -103,10 +104,10 @@ export default function DocsPage() {
                 <Database className="w-7 h-7 mr-3 text-blue-500" /> Destinations
             </h2>
             <p className="text-gray-400 leading-relaxed mb-6">
-                Data is directly flushed into your proprietary infrastructure using high-throughput bulk insert protocols (e.g., BigQuery Storage Write API). We currently support:
+                In production today, destinations are consumer surfaces your team already uses:
             </p>
             <p className="text-white font-mono text-sm bg-white/5 p-4 rounded-lg border border-white/10 mb-16 inline-block">
-                Google BigQuery, PostgreSQL 14+, Amazon Redshift
+                Google Sheets™ · Looker Studio™ (workspace API key) · Slack alerts (where enabled)
             </p>
 
             <hr className="border-white/5 my-12" />

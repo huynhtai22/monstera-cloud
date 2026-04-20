@@ -1,6 +1,6 @@
 # 🌿 Monstera Cloud - Headless Data Ingestion Fabric
 
-Monstera Cloud is an enterprise-grade real-time data ingestion engine designed for high-velocity APAC operators. It autonomously routes data from regional SaaS platforms (Shopee, Lazada, Xendit) directly into private data warehouses (BigQuery, PostgreSQL) without requiring heavy middleware.
+Monstera Cloud is a Next.js app for APAC sellers and agencies: OAuth connections to marketplaces and ad platforms (e.g. Shopee, TikTok, Meta, Google Ads), workspace-scoped pipelines, and delivery into **Google Sheets™** and **Looker Studio™** (plus Slack-style alerts where enabled) — shipped in the console today.
 
 ## 🛠 Tech Stack
 

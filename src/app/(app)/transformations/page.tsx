@@ -48,7 +48,7 @@ export default function TransformationsPage() {
                         <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Editing Pipeline</span>
                         <select className="bg-transparent text-gray-900 dark:text-white font-semibold focus:outline-none cursor-pointer">
                             <option>Shopee Orders → Google Sheets™</option>
-                            <option>Facebook Ads → Google BigQuery</option>
+                            <option>Meta Ads → Looker Studio™</option>
                         </select>
                     </div>
                 </div>

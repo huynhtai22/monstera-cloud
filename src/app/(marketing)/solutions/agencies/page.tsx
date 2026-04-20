@@ -25,7 +25,8 @@ export default function AgenciesSolutionPage() {
                     </h1>
 
                     <p className="text-lg md:text-xl text-gray-400 max-w-3xl mx-auto mb-10 leading-relaxed font-medium">
-                        The ultimate multi-tenant data fabric for e-commerce enablers. Aggregate client data from Shopee, Lazada, and TikTok into isolated, PDPA-compliant BigQuery enclaves.
+                        One console for many clients: separate Monstera workspaces per seller or brand, OAuth into Shopee, Lazada, and TikTok, then deliver into each client&apos;s{" "}
+                        <strong className="text-gray-300">Google Sheets™</strong> or <strong className="text-gray-300">Looker Studio™</strong> — matching what the product does today.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4 w-full">
@@ -61,7 +62,7 @@ export default function AgenciesSolutionPage() {
                             <Database className="w-8 h-8 text-cyan-500 mb-6" />
                             <h3 className="text-xl font-bold text-white mb-3 tracking-tight">Multi-Tenant Routing</h3>
                             <p className="text-sm text-gray-400 flex-1">
-                                Securely map distinct Shopee/Lazada seller IDs to strictly isolated BigQuery datasets. Prevent cross-contamination of client PII with hardware-level isolation.
+                                Map each Shopee or Lazada seller to its own Monstera workspace so credentials, pipelines, and destinations never cross between clients.
                             </p>
                         </div>
 
@@ -70,7 +71,7 @@ export default function AgenciesSolutionPage() {
                             <ShieldCheck className="w-8 h-8 text-emerald-500 mb-6" />
                             <h3 className="text-xl font-bold text-white mb-3 tracking-tight">Vietnam PDPA Compliant</h3>
                             <p className="text-sm text-gray-400 flex-1">
-                                Stay ahead of 2026 regulations. We automatically mask buyer phone numbers and raw PII before it even hits your data warehouse, generating instant audit logs.
+                                Stay ahead of regional expectations: minimize what you store, encrypt credentials at rest, and keep buyer identifiers out of spreadsheets where your policies require it.
                             </p>
                         </div>
 
@@ -109,7 +110,7 @@ export default function AgenciesSolutionPage() {
                             </li>
                             <li className="flex items-start gap-3">
                                 <CheckCircle2 className="w-5 h-5 text-cyan-500 shrink-0" />
-                                <span className="text-gray-300 text-sm">Issue restricted BigQuery viewing roles directly to your clients.</span>
+                                <span className="text-gray-300 text-sm">Share Looker Studio dashboards fed by each client&apos;s workspace API key.</span>
                             </li>
                         </ul>
                     </div>
@@ -129,11 +130,11 @@ export default function AgenciesSolutionPage() {
                                 <p><span className="text-pink-500">routes:</span></p>
                                 <p className="pl-4"><span className="text-cyan-400">- client_id:</span> "brand_alpha_vn"</p>
                                 <p className="pl-8"><span className="text-gray-500">source:</span> shopee_v2_api</p>
-                                <p className="pl-8"><span className="text-gray-500">destination:</span> bigquery.agency.alpha_dataset</p>
+                                <p className="pl-8"><span className="text-gray-500">destination:</span> google_sheets.brand_alpha_workbook</p>
                                 <p className="pl-8"><span className="text-emerald-400">pii_masking:</span> true</p>
                                 <p className="mt-4 pl-4"><span className="text-cyan-400">- client_id:</span> "brand_omega_sg"</p>
                                 <p className="pl-8"><span className="text-gray-500">source:</span> tiktok_shop_api</p>
-                                <p className="pl-8"><span className="text-gray-500">destination:</span> bigquery.agency.omega_dataset</p>
+                                <p className="pl-8"><span className="text-gray-500">destination:</span> looker_studio.brand_omega_connector</p>
                                 <p className="pl-8"><span className="text-emerald-400">pii_masking:</span> true</p>
                                 <p className="mt-4 text-gray-500"># 48 more clients authenticated...</p>
                                 <p className="mt-4 text-emerald-500 font-bold">[SYS] FABRIC DEPLOYMENT HEALTHY.</p>

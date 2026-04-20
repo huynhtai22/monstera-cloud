@@ -35,7 +35,9 @@ export default function SolutionsPage() {
                                 Managing inventory and tracking ROAS across Shopee, Lazada, and TikTok is a nightmare when your data is splintered across multiple tools and spreadsheets.
                             </p>
                             <p className="text-lg text-gray-600 dark:text-gray-400 mb-8 leading-relaxed">
-                                Monstera Cloud automatically fetches Orders, Products, and Financials every hour and pushes them into your central Google Sheet or BigQuery warehouse.
+                                Monstera Cloud connects Shopee, Lazada, and TikTok Shop with OAuth, runs scheduled syncs, and delivers rows into{" "}
+                                <strong className="font-semibold text-gray-800 dark:text-gray-200">Google Sheets™</strong> or charts via{" "}
+                                <strong className="font-semibold text-gray-800 dark:text-gray-200">Looker Studio™</strong> — what we ship today in the console.
                             </p>
 
                             <ul className="space-y-4 mb-8">
@@ -87,8 +89,8 @@ export default function SolutionsPage() {
                                 <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center shadow-lg transform group-hover:scale-105 transition-transform">
                                     <Database className="w-8 h-8 text-emerald-600 mr-4" />
                                     <div>
-                                        <div className="font-bold text-gray-900 dark:text-white">Unified Reporting DB</div>
-                                        <div className="text-xs text-gray-500 mt-1">Loading mapped schemas...</div>
+                                        <div className="font-bold text-gray-900 dark:text-white">Google Sheets™ workspace</div>
+                                        <div className="text-xs text-gray-500 mt-1">Pipelines append synced rows…</div>
                                     </div>
                                 </div>
                             </div>

@@ -18,7 +18,7 @@ export default function TemplatesPage() {
                         <span className="text-purple-500">Business Intelligence.</span>
                     </h1>
                     <p className="text-gray-400 text-lg md:text-xl font-normal max-w-2xl mx-auto mt-4">
-                        Stop reverse-engineering Shopee and Lazada APIs. Deploy our opinionated BigQuery schemas and Looker Studio reports in 60 seconds.
+                        Patterns that pair with what Monstera already ships: OAuth sources, pipelines into Google Sheets™ and Looker Studio™, and scheduled syncs — not a separate warehouse product.
                     </p>
                 </div>
 
@@ -61,7 +61,7 @@ export default function TemplatesPage() {
                             </div>
                             <ul className="space-y-2 mb-6">
                                 <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-amber-500 before:rounded-full before:mr-2">Metabase SQL Views</li>
-                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-amber-500 before:rounded-full before:mr-2">BigQuery Materialized Tables</li>
+                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-amber-500 before:rounded-full before:mr-2">Google Sheets™ delivery templates</li>
                             </ul>
                             <Link href="/register" className="inline-flex items-center text-sm font-semibold text-white hover:text-purple-400 transition-colors">
                                 Deploy Template <ArrowRight className="w-4 h-4 ml-1" />
@@ -104,7 +104,7 @@ export default function TemplatesPage() {
                             <h4 className="text-white font-bold tracking-tight">Open Architecture</h4>
                         </div>
                         <p className="text-sm text-gray-400 max-w-xl">
-                            All templates are entirely open-source. You retain 100% ownership of the BigQuery tables, dbt models, and Looker Studio files. We provide the extraction engine; you control the presentation.
+                            Templates are illustrative companions to the live app: you own the Sheets and Looker assets you create; Monstera handles extraction and refresh into those surfaces.
                         </p>
                     </div>
                     <div>
