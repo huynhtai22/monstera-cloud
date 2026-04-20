@@ -250,6 +250,7 @@ export function DashboardHomePage() {
 
     return (
         <PageShell>
+            {/* ── Header strip ─────────────────────────────────── */}
             <StatusHero
                 workspaceName={workspaceName}
                 todayLabel={todayLabel}
@@ -261,87 +262,89 @@ export function DashboardHomePage() {
             />
 
             {syncMsg ? (
-                <div className="relative z-10 mb-6 rounded-lg border border-cyan-100 bg-cyan-50/70 px-4 py-3 text-sm text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200">
+                <div className="mb-6 rounded-lg border border-cyan-100 bg-cyan-50/70 px-4 py-3 text-sm text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200">
                     {syncMsg}
                 </div>
             ) : null}
 
-            <div className="relative z-10 mb-3 mt-1">
-                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                    Today
-                </h2>
-            </div>
-            <MetricCardGrid snapshots={snapshots} />
+            {/* ── KPI Row ──────────────────────────────────────── */}
+            {snapshots.length > 0 && (
+                <div className="mb-8">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                        Today's Performance
+                    </p>
+                    <MetricCardGrid snapshots={snapshots} />
+                </div>
+            )}
 
-            <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-3 flex-1 pb-12">
-                {/* Main Content Column (Span 2) */}
-                <div className="space-y-8 lg:col-span-2 animate-in slide-in-from-bottom-2 duration-500 fade-in">
-                    <div>
-                        <div className="relative z-10 mb-3 flex items-baseline justify-between">
-                            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                                Performance Insights
-                            </h2>
-                        </div>
+            {/* ── Setup Wizard (shown inline, full-width) ────── */}
+            {!hasSuccessfulSync && hasSource ? (
+                <div className="mb-8">
+                    <SetupWizard
+                        hasSource={hasSource}
+                        hasDestination={hasDestination}
+                        hasSuccessfulSync={hasSuccessfulSync}
+                        onDismiss={dismissWizard}
+                    />
+                </div>
+            ) : null}
+
+            {/* ── Main Body: 2 column on large screens ─────────── */}
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+
+                {/* Left column — primary content (3/5 width) */}
+                <div className="space-y-6 xl:col-span-3">
+                    {/* AI Insights */}
+                    <section>
+                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                            Performance Insights
+                        </p>
                         <AiPerformanceSummary workspaceId={workspaceId} />
-                    </div>
+                    </section>
 
-                    {!hasSuccessfulSync && hasSource ? (
-                        <div className="relative z-10">
-                            <SetupWizard
-                                hasSource={hasSource}
-                                hasDestination={hasDestination}
-                                hasSuccessfulSync={hasSuccessfulSync}
-                                onDismiss={dismissWizard}
-                            />
-                        </div>
-                    ) : null}
-
-                    <div>
-                        <div className="relative z-10 mb-3">
-                            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                                System Health
-                            </h2>
-                        </div>
-                        <HealthDashboard />
-                    </div>
+                    {/* Recent Syncs */}
+                    <section>
+                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                            Recent Activity
+                        </p>
+                        <RecentActivity
+                            pipelines={pipelines}
+                            isLoading={isLoading}
+                            error={error}
+                            syncingPipelineId={syncingPipelineId}
+                            onSync={runPipeline}
+                        />
+                    </section>
                 </div>
 
-                {/* Right Sticky Sidebar (Span 1) */}
-                <div className="space-y-8 lg:col-span-1 animate-in slide-in-from-bottom-4 duration-700 fade-in fill-mode-both delay-150">
-                    <div className="sticky top-6 space-y-8">
-                        <div>
-                            <div className="relative z-10 mb-3 flex items-baseline justify-between">
-                                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                                    Your Connections
-                                </h2>
-                                <span className="text-[10px] font-semibold uppercase text-gray-400 dark:text-gray-500">
-                                    {connectedSourcesCount} Src · {connectedDestinationsCount} Dest
-                                </span>
-                            </div>
-                            <PillarGrid
-                                connections={connections}
-                                syncLogs={logs}
-                                healthyCount={healthyCount}
-                                totalPipelines={activePipelinesCount}
-                                latestNetRoas={snapshots.length ? snapshots[snapshots.length - 1].netRoas : null}
-                            />
+                {/* Right column — connections + health (2/5 width) */}
+                <div className="space-y-6 xl:col-span-2">
+                    {/* Connections */}
+                    <section>
+                        <div className="mb-3 flex items-center justify-between">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                                Connections
+                            </p>
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-slate-800 dark:text-slate-400">
+                                {connectedSourcesCount}s · {connectedDestinationsCount}d
+                            </span>
                         </div>
+                        <PillarGrid
+                            connections={connections}
+                            syncLogs={logs}
+                            healthyCount={healthyCount}
+                            totalPipelines={activePipelinesCount}
+                            latestNetRoas={snapshots.length ? snapshots[snapshots.length - 1].netRoas : null}
+                        />
+                    </section>
 
-                        <div>
-                            <div className="relative z-10 mb-3">
-                                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                                    Recent Syncs
-                                </h2>
-                            </div>
-                            <RecentActivity
-                                pipelines={pipelines}
-                                isLoading={isLoading}
-                                error={error}
-                                syncingPipelineId={syncingPipelineId}
-                                onSync={runPipeline}
-                            />
-                        </div>
-                    </div>
+                    {/* System Health */}
+                    <section>
+                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                            System Health
+                        </p>
+                        <HealthDashboard />
+                    </section>
                 </div>
             </div>
         </PageShell>
