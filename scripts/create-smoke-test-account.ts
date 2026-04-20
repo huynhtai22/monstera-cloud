@@ -17,6 +17,10 @@
  *
  * Optional plan override for demo recordings:
  *   SMOKE_PLAN=professional npx tsx scripts/create-smoke-test-account.ts
+ *
+ * Optional workspace (when a fixed slug collides with another test user):
+ *   SMOKE_WORKSPACE_SLUG=shopee-reviewer-workspace
+ *   SMOKE_WORKSPACE_NAME=Shopee review workspace
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -27,8 +31,8 @@ const prisma = new PrismaClient();
 const DEFAULT_EMAIL = "smoke-test@monsteracloud.com";
 const DEFAULT_PASSWORD = "SmokeTest_Monstera_2026!";
 
-const WORKSPACE_NAME = "Smoke Test Workspace";
-const WORKSPACE_SLUG = "smoke-test-workspace";
+const WORKSPACE_NAME = (process.env.SMOKE_WORKSPACE_NAME || "Smoke Test Workspace").trim();
+const WORKSPACE_SLUG = (process.env.SMOKE_WORKSPACE_SLUG || "smoke-test-workspace").trim();
 
 // Override with SMOKE_PLAN=professional for demo recordings.
 // Defaults to "free" so payment QA checkout flow still works.
