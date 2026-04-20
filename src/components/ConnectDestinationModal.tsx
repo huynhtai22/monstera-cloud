@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { X, Loader2, CheckCircle2, ChevronRight, Settings2, FileSpreadsheet, Lock, Copy, Plus } from "lucide-react";
+import { X, Loader2, CheckCircle2, ChevronRight, Settings2, FileSpreadsheet, Lock, Plus } from "lucide-react";
 import useSWR, { useSWRConfig } from "swr";
 import { signIn } from "next-auth/react";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -28,7 +28,6 @@ const fetcher = async (url: string) => {
 export function ConnectDestinationModal({ isOpen, destinationId, onClose }: ConnectDestinationModalProps) {
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [copied, setCopied] = useState(false);
 
     // Hooks for network invalidation and global state
     const { mutate } = useSWRConfig();
@@ -70,7 +69,9 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
 
     const isListView = destinationId !== 'looker' && activeConnections.length > 0 && !forceSetup;
         
-    const apiKey = workspace?.apiKeys?.[0]?.key || "Generate an API Key in Workspace Settings";
+    const firstKey = workspace?.apiKeys?.[0] as { keyMasked?: string } | undefined;
+    const apiKeyMasked = firstKey?.keyMasked ?? "";
+    const hasApiKey = Boolean(firstKey);
 
     if (!isOpen) return null;
 
@@ -190,27 +191,38 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                     Your Workspace API Key
                                 </label>
                                 <p className="mb-2 text-xs text-gray-500">
-                                    Copy this key and paste it into the Looker Studio connector when prompted.
-                                </p>
-                                <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-600">
-                                    <input
-                                        type="password"
-                                        readOnly
-                                        value={apiKey}
-                                        className="w-full bg-transparent px-3 py-2 text-sm text-gray-600 focus:outline-none dark:text-gray-300"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            void navigator.clipboard.writeText(apiKey);
-                                            setCopied(true);
-                                            trackEvent("looker_api_key_copied", { workspaceId: activeWorkspaceId });
-                                            setTimeout(() => setCopied(false), 2000);
-                                        }}
-                                        className="flex items-center justify-center border-l border-gray-200 bg-white px-3 text-xs font-medium text-cyan-600 transition-colors hover:bg-cyan-50 dark:border-slate-600 dark:bg-slate-800 dark:hover:bg-slate-700"
+                                    The full key is never shown here after creation. Open{" "}
+                                    <Link
+                                        href="/settings?tab=api"
+                                        className="font-semibold text-cyan-700 underline underline-offset-2 hover:text-cyan-800 dark:text-cyan-400 dark:hover:text-cyan-300"
                                     >
-                                        {copied ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                                    </button>
+                                        Settings → API
+                                    </Link>{" "}
+                                    to generate a key and copy it once, then paste it into the Looker Studio connector.
+                                </p>
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                                    <div className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-600">
+                                        <input
+                                            type="text"
+                                            readOnly
+                                            value={
+                                                hasApiKey
+                                                    ? apiKeyMasked
+                                                    : "No key yet — generate one in Settings → API"
+                                            }
+                                            className="w-full min-w-0 bg-transparent px-3 py-2 text-sm text-gray-600 focus:outline-none dark:text-gray-300"
+                                        />
+                                    </div>
+                                    <Link
+                                        href="/settings?tab=api"
+                                        onClick={() =>
+                                            trackEvent("looker_open_api_settings", { workspaceId: activeWorkspaceId })
+                                        }
+                                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-cyan-200 bg-cyan-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-cyan-700 dark:border-cyan-700 dark:bg-cyan-700 dark:hover:bg-cyan-600"
+                                    >
+                                        <Settings2 className="h-4 w-4" />
+                                        {hasApiKey ? "Open API keys" : "Create API key"}
+                                    </Link>
                                 </div>
                             </div>
                         </div>

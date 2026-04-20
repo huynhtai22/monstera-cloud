@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import crypto from "crypto";
+import { toPublicApiKeyRow } from "@/lib/mask-api-key";
 
 export async function GET(request: Request) {
     try {
@@ -38,7 +39,7 @@ export async function GET(request: Request) {
             orderBy: { createdAt: "desc" }
         });
 
-        return NextResponse.json(keys);
+        return NextResponse.json(keys.map(toPublicApiKeyRow));
     } catch (error) {
         console.error("Error fetching API keys:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -85,8 +86,17 @@ export async function POST(request: Request) {
             }
         });
 
-        // We return the raw key only once here. The UI should display it.
-        return NextResponse.json(newKey, { status: 201 });
+        // Full key only on create; list endpoints use keyMasked.
+        return NextResponse.json(
+            {
+                id: newKey.id,
+                name: newKey.name,
+                workspaceId: newKey.workspaceId,
+                createdAt: newKey.createdAt,
+                key: formattedKey,
+            },
+            { status: 201 }
+        );
     } catch (error) {
         console.error("Error creating API key:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

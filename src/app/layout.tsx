@@ -28,6 +28,7 @@ export const metadata: Metadata = {
       template: "%s | Monstera Cloud",
     },
     description: "Connect data, validate quality, and deliver insights without complex engineering setup. The modern data stack, simplified.",
+    keywords: ["data integration", "ETL", "meta ads to google sheets", "tiktok ads to google sheets", "shopee reporting", "looker studio connector", "marketing dashboard"],
     metadataBase: new URL(PRODUCT_SITE_URL),
     openGraph: {
       type: "website",
@@ -54,8 +55,29 @@ export default function RootLayout({
 }: Readonly<{
     children: React.ReactNode;
 }>) {
+    const jsonLd = {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Monstera Cloud",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        },
+        "description": "Connect data, validate quality, and deliver insights without complex engineering setup.",
+        "url": PRODUCT_SITE_URL
+    };
+
     return (
         <html lang="en" className="antialiased">
+            <head>
+                <script
+                    type="application/ld+json"
+                    dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+                />
+            </head>
             <body className={inter.className}>
                 {/* Google Tag Manager (noscript fallback for users with JS disabled) */}
                 <noscript>

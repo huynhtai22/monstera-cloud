@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { sanitizeConnectionCredentials } from "@/lib/sanitize-connection-credentials";
 import { isSeededDemoSourceConnection } from "@/lib/demo-connection";
+import { toPublicApiKeyRow } from "@/lib/mask-api-key";
 
 export async function GET() {
     try {
@@ -71,12 +72,22 @@ export async function GET() {
                     ...c,
                     credentials: sanitizeConnectionCredentials(c.credentials),
                 })),
+                apiKeys: (w.apiKeys ?? []).map((k: { id: string; name: string; createdAt: Date; lastUsedAt: Date | null; key: string }) =>
+                    toPublicApiKeyRow(k)
+                ),
             };
         });
 
         return NextResponse.json(safeWorkspaces);
     } catch (error) {
         console.error("Error fetching workspaces:", error);
-        return NextResponse.json({ error: "Failed to fetch workspaces", details: error instanceof Error ? error.message : String(error) }, { status: 500 });
+        const body =
+            process.env.NODE_ENV === "production"
+                ? { error: "Failed to fetch workspaces" }
+                : {
+                      error: "Failed to fetch workspaces",
+                      details: error instanceof Error ? error.message : String(error),
+                  };
+        return NextResponse.json(body, { status: 500 });
     }
 }

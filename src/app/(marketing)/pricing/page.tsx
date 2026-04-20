@@ -310,8 +310,33 @@ export default function PricingPage() {
                     </div>
                 </div>
 
+                {/* FAQ Section */}
+                <div className="mt-28 max-w-4xl mx-auto border-t border-white/5 pt-20">
+                    <div className="text-center mb-12">
+                        <h2 className="text-white text-2xl md:text-3xl font-bold tracking-tight">Frequently asked questions</h2>
+                    </div>
+                    <div className="grid md:grid-cols-2 gap-x-12 gap-y-10">
+                        <div>
+                            <h4 className="text-white font-semibold text-sm mb-2.5">What happens if I hit a row limit?</h4>
+                            <p className="text-gray-400 text-sm leading-relaxed">Unlike other tools, we don't cap your rows. Your pricing is based strictly on the number of active pipelines and sync frequency, not data volume. Transfer as much data as you need.</p>
+                        </div>
+                        <div>
+                            <h4 className="text-white font-semibold text-sm mb-2.5">Is my store and ad data secure?</h4>
+                            <p className="text-gray-400 text-sm leading-relaxed">Yes. We use OAuth 2.0 so we never see or store your passwords. All data in transit is encrypted using TLS 1.3, and we do not store your raw ad data on our servers—it streams safely to your destination.</p>
+                        </div>
+                        <div>
+                            <h4 className="text-white font-semibold text-sm mb-2.5">Do you offer refunds?</h4>
+                            <p className="text-gray-400 text-sm leading-relaxed">Yes, you can cancel at any time. If you have billing issues or are unsatisfied with the product, our 14-day transparent refund policy covers you. Just contact our email support.</p>
+                        </div>
+                        <div>
+                            <h4 className="text-white font-semibold text-sm mb-2.5">Can I upgrade to annual billing later?</h4>
+                            <p className="text-gray-400 text-sm leading-relaxed">Absolutely. You can switch to annual billing at any point from your dashboard settings to instantly secure the 20% discount.</p>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Trust footer */}
-                <div className="mt-16 pt-12 border-t border-white/10 text-center">
+                <div className="mt-24 pt-12 border-t border-white/10 text-center">
                     <div className="flex justify-center gap-12 text-gray-400">
                         <div className="flex flex-col items-center gap-2 opacity-50 hover:opacity-100 transition-opacity">
                             <ShieldCheck className="w-6 h-6 text-white" />

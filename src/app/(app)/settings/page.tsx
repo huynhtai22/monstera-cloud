@@ -1064,7 +1064,7 @@ export default function SettingsPage() {
                                             <div>
                                                 <div className="text-sm font-bold text-gray-900 mb-1">{keyObj.name}</div>
                                                 <div className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                                                    {keyObj.key.slice(0, 7)}...{keyObj.key.slice(-4)}
+                                                    {keyObj.keyMasked}
                                                 </div>
                                             </div>
                                             <div className="flex items-center space-x-3">

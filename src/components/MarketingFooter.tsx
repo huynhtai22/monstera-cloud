@@ -15,6 +15,7 @@ export function MarketingFooter() {
                             <li><Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">BI Templates</Link></li>
                             <li><Link href="/docs#sources" className="text-sm text-gray-400 hover:text-white transition-colors">Connectors</Link></li>
                             <li><Link href="/docs#authentication" className="text-sm text-gray-400 hover:text-white transition-colors">Security</Link></li>
+                            <li><Link href="/changelog" className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors">Changelog</Link></li>
                         </ul>
                     </div>
                     <div>
@@ -40,7 +41,7 @@ export function MarketingFooter() {
                     <div>
                         <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">Company</h3>
                         <ul className="space-y-3">
-                            <li className="text-sm text-gray-500">About Us <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
+                            <li><Link href="/about" className="text-sm text-gray-400 hover:text-white transition-colors">About Us</Link></li>
                             <li className="text-sm text-gray-500">Careers <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
                             <li className="text-sm text-gray-500">Contact Sales <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
                             <li className="text-sm text-gray-500">Partners <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
