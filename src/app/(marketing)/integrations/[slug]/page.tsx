@@ -32,8 +32,9 @@ export function generateStaticParams() {
     return Object.keys(DATA).map((slug) => ({ slug }));
 }
 
-export function generateMetadata({ params }: { params: { slug: string } }): Metadata {
-    const data = DATA[params.slug as Slug] || DATA["tiktok-ads-to-google-sheets"];
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+    const { slug } = await params;
+    const data = DATA[slug as Slug] || DATA["tiktok-ads-to-google-sheets"];
     return {
         title: `${data.headline} Integration`,
         description: data.sub,
@@ -41,8 +42,9 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
     };
 }
 
-export default function IntegrationPage({ params }: { params: { slug: string } }) {
-    const data = DATA[params.slug as Slug];
+export default async function IntegrationPage({ params }: { params: Promise<{ slug: string }> }) {
+    const { slug } = await params;
+    const data = DATA[slug as Slug];
 
     if (!data) {
         return <div className="min-h-screen bg-[#09090b] text-white flex items-center justify-center">Integration not found.</div>;
