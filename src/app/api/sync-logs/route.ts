@@ -16,6 +16,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const workspaceId = searchParams.get("workspaceId");
   const status = searchParams.get("status");
+  const clientId = searchParams.get("clientId");
 
   if (!workspaceId) {
     return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
@@ -27,6 +28,7 @@ export async function GET(req: Request) {
       workspace: {
         members: { some: { userId: session.user.id } },
       },
+      ...(clientId ? { clientId } : {}),
     },
   };
   if (status === "success" || status === "error") {
@@ -36,7 +38,7 @@ export async function GET(req: Request) {
   const logs = await prisma.syncLog.findMany({
     where,
     include: {
-      pipeline: { select: { id: true, name: true, sourceConnectionId: true } },
+      pipeline: { select: { id: true, name: true, sourceConnectionId: true, clientId: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 100,

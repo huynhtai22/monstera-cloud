@@ -27,12 +27,25 @@ export function ReportsClient() {
     const router = useRouter();
     const pathname = usePathname();
     const sourceFilter = searchParams.get("source") ?? "";
+    const clientFilter = searchParams.get("clientId") ?? "";
 
     const [statusFilter, setStatusFilter] = React.useState<"all" | "success" | "error">("all");
     const [dateFrom, setDateFrom] = React.useState("");
     const [dateTo, setDateTo] = React.useState("");
 
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
+    const { data: clientsPayload } = useSWR(
+        activeWorkspaceId ? `/api/clients?workspaceId=${activeWorkspaceId}` : null,
+        fetcher
+    );
+    const clients = React.useMemo(() => {
+        const raw = Array.isArray(clientsPayload)
+            ? clientsPayload
+            : Array.isArray(clientsPayload?.clients)
+                ? clientsPayload.clients
+                : [];
+        return raw as Array<{ id: string; name: string }>;
+    }, [clientsPayload]);
     const activeWorkspace = React.useMemo(() => {
         if (!Array.isArray(workspaces) || !activeWorkspaceId) return null;
         return workspaces.find((w: { id: string }) => w.id === activeWorkspaceId) ?? null;
@@ -64,8 +77,9 @@ export function ReportsClient() {
     }, []); // eslint-disable-line react-hooks/exhaustive-deps -- restore once on mount
 
     const statusQuery = statusFilter === "all" ? "" : `&status=${statusFilter}`;
+    const clientQuery = clientFilter ? `&clientId=${encodeURIComponent(clientFilter)}` : "";
     const { data, error, isLoading } = useSWR(
-        activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}${statusQuery}` : null,
+        activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}${statusQuery}${clientQuery}` : null,
         fetcher
     );
 
@@ -76,7 +90,7 @@ export function ReportsClient() {
         durationMs: number;
         errorMsg?: string | null;
         createdAt: string;
-        pipeline: { id: string; name: string; sourceConnectionId: string };
+        pipeline: { id: string; name: string; sourceConnectionId: string; clientId?: string | null };
     }>;
 
     const sourceFiltered = React.useMemo(
@@ -143,6 +157,14 @@ export function ReportsClient() {
         router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     };
 
+    const setClient = (id: string) => {
+        const q = new URLSearchParams(searchParams.toString());
+        if (id) q.set("clientId", id);
+        else q.delete("clientId");
+        const qs = q.toString();
+        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    };
+
     return (
         <PageShell>
             <div className="relative z-10 mb-8">
@@ -162,6 +184,38 @@ export function ReportsClient() {
                 <p className="max-w-2xl text-sm text-gray-600 dark:text-slate-300">
                     Audit data throughput, investigate failed syncs, and monitor your total rows.
                 </p>
+                {clients.length > 0 ? (
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">Client:</span>
+                        <button
+                            type="button"
+                            onClick={() => setClient("")}
+                            className={cn(
+                                "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                                clientFilter === ""
+                                    ? "border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-800/50 dark:bg-indigo-950/50 dark:text-indigo-200"
+                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-200 dark:hover:bg-slate-700"
+                            )}
+                        >
+                            All clients
+                        </button>
+                        {clients.map((c) => (
+                            <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => setClient(c.id)}
+                                className={cn(
+                                    "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                                    clientFilter === c.id
+                                        ? "border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-800/50 dark:bg-indigo-950/50 dark:text-indigo-200"
+                                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-200 dark:hover:bg-slate-700"
+                                )}
+                            >
+                                {c.name}
+                            </button>
+                        ))}
+                    </div>
+                ) : null}
                 <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
                     <div className="flex flex-wrap gap-2">
                         {REPORTS_SOURCE_CHIPS.map((c) => (
@@ -287,6 +341,7 @@ export function ReportsClient() {
                             type="button"
                             onClick={() => {
                                 setSource("");
+                                setClient("");
                                 setDateFrom("");
                                 setDateTo("");
                                 setStatusFilter("all");

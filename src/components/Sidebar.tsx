@@ -18,6 +18,7 @@ import {
     Sun,
     Moon,
     Globe,
+    Users,
 } from "lucide-react";
 import useSWR from "swr";
 import { useSession, signOut } from "next-auth/react";
@@ -90,6 +91,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
             label: "Data",
             items: [
                 { name: "Dashboard", href: "/console", icon: LayoutGrid },
+                { name: "Clients", href: "/clients", icon: Users },
                 { name: "Sources", href: "/sources", icon: DatabaseZap },
                 { name: "Destinations", href: "/destinations", icon: Send },
             ],

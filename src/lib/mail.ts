@@ -194,6 +194,87 @@ export const sendPaymentPastDueEmail = async (to: string, name: string) => {
   }
 };
 
+export type ClientWeeklyReportSummary = {
+  weekLabel: string;
+  syncs: number;
+  errors: number;
+  rowsSynced: number;
+  pipelines: number;
+  freshnessHours: number | null;
+};
+
+export const sendClientWeeklyReport = async (
+  to: string,
+  clientName: string,
+  workspaceName: string,
+  summary: ClientWeeklyReportSummary,
+  clientLogoUrl?: string | null,
+) => {
+  try {
+    const safeName = clientName || "your client";
+    const logoHtml = clientLogoUrl
+      ? `<img src="${clientLogoUrl}" alt="${safeName}" style="height: 36px; border-radius: 6px; margin-bottom: 12px;" />`
+      : "";
+    const freshness =
+      summary.freshnessHours === null
+        ? "no successful syncs this week"
+        : `${summary.freshnessHours}h since last successful sync`;
+    const errorBadge =
+      summary.errors > 0
+        ? `<span style="display:inline-block; background-color:#fef2f2; color:#991b1b; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600;">${summary.errors} error${summary.errors === 1 ? "" : "s"}</span>`
+        : `<span style="display:inline-block; background-color:#ecfdf5; color:#047857; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600;">All green</span>`;
+
+    const { data, error } = await resend.emails.send({
+      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+      to: [to],
+      subject: `Weekly recap: ${safeName} – ${summary.weekLabel}`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 8px;">
+          ${logoHtml}
+          <h2 style="color: #1a1a1a; margin-bottom: 4px;">Weekly recap: ${safeName}</h2>
+          <p style="color: #64748b; margin-top: 0; margin-bottom: 20px; font-size: 14px;">
+            Workspace: <strong>${workspaceName}</strong> · ${summary.weekLabel}
+          </p>
+          <div style="margin-bottom: 20px;">${errorBadge}</div>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            <tr>
+              <td style="padding: 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius: 6px 0 0 6px;">
+                <div style="font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.05em;">Syncs</div>
+                <div style="font-size:22px; font-weight:700; color:#0f172a;">${summary.syncs}</div>
+              </td>
+              <td style="padding: 12px; background:#f8fafc; border-top:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0;">
+                <div style="font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.05em;">Rows synced</div>
+                <div style="font-size:22px; font-weight:700; color:#1ba177;">${summary.rowsSynced.toLocaleString()}</div>
+              </td>
+              <td style="padding: 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius: 0 6px 6px 0;">
+                <div style="font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.05em;">Pipelines</div>
+                <div style="font-size:22px; font-weight:700; color:#0f172a;">${summary.pipelines}</div>
+              </td>
+            </tr>
+          </table>
+          <p style="color: #475569; font-size: 14px; margin-bottom: 8px;">
+            Freshness: <strong>${freshness}</strong>.
+          </p>
+          <p style="color: #718096; font-size: 13px; margin-top: 20px;">
+            Open Monstera Cloud to drill into logs, retry failed syncs, or change who receives this email.
+          </p>
+          <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #a0aec0;">
+            © 2026 Monstera Cloud. All rights reserved.
+          </div>
+        </div>
+      `,
+    });
+    if (error) {
+      console.error('[MAIL] ClientWeeklyReport Resend Error:', error);
+      return { success: false, error };
+    }
+    return { success: true, data };
+  } catch (err) {
+    console.error('[MAIL] ClientWeeklyReport Unexpected Error:', err);
+    return { success: false, error: err };
+  }
+};
+
 export const sendPerformanceAlertEmail = async (to: string, workspaceName: string, netRoas: number, spend: number, dateLabel: string) => {
   try {
     const { data, error } = await resend.emails.send({

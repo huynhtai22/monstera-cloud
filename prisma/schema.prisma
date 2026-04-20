@@ -311,6 +311,22 @@ model AttributionTouch {
   @@index([workspaceId, touchAt])
 }
 
+/// Per-client weekly report schedule. Agencies configure who receives the recap email.
+model ReportSchedule {
+  id          String    @id @default(cuid())
+  workspaceId String
+  clientId    String?
+  cron        String    @default("0 9 * * 1")
+  recipients  String    // comma-separated email list
+  enabled     Boolean   @default(true)
+  lastSentAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId])
+  @@index([clientId])
+}
+
 model AttributionSnapshot {
   id                String   @id @default(cuid())
   workspaceId       String
