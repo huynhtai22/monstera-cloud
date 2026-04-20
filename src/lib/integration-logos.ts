@@ -1,7 +1,7 @@
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
 
 /**
- * Local SVG brand marks under /public/logos (Simple Icons MIT, except lazada.svg stylized mark).
+ * Local SVG brand marks under /public/logos (Simple Icons MIT, except lazada.svg: Wikimedia Commons “Lazada (2019).svg”).
  * Keeps logos sharp at any size and avoids third-party CDN drift.
  */
 export const INTEGRATION_LOGOS = {
