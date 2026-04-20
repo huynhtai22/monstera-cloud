@@ -30,7 +30,15 @@ interface ConnectSourceModalProps {
     connectedCatalogIds?: string[];
 }
 
-const OAUTH_SOURCE_IDS = ["shopee", "tiktok_shop", "tiktok_business", "meta_ads", "google_ads", "shopify"] as const;
+const OAUTH_SOURCE_IDS = [
+    "shopee",
+    "tiktok_shop",
+    "tiktok_business",
+    "meta_ads",
+    "google_ads",
+    "shopify",
+    "amazon",
+] as const;
 
 function isOAuthSourceId(sourceId: string): boolean {
     return (OAUTH_SOURCE_IDS as readonly string[]).includes(sourceId);
@@ -56,14 +64,18 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
             ? intConfig?.oauthCallbacks?.metaAds
             : id === "google_ads"
               ? intConfig?.oauthCallbacks?.googleAds
-              : undefined;
+              : id === "amazon"
+                ? intConfig?.oauthCallbacks?.amazon
+                : undefined;
 
     const productionOauthUrl =
         id === "meta_ads"
             ? intConfig?.oauthCallbacksProduction?.metaAds
             : id === "google_ads"
               ? intConfig?.oauthCallbacksProduction?.googleAds
-              : undefined;
+              : id === "amazon"
+                ? intConfig?.oauthCallbacksProduction?.amazon
+                : undefined;
 
     const sessionDiffersFromProduction = Boolean(
         productionOauthUrl && oauthCallbackUrl && oauthCallbackUrl !== productionOauthUrl
@@ -92,6 +104,18 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     "Read campaign and performance data for reporting",
                 ],
                 footnote: "We never modify your Google Ads campaigns.",
+            };
+        }
+        if (id === "amazon") {
+            return {
+                title: "Authorize in Seller Central",
+                subtitle:
+                    "You will sign in to Amazon Seller Central and approve our Selling Partner API application (Login with Amazon) for this workspace.",
+                permissions: [
+                    "Link your selling partner account via Amazon OAuth",
+                    "Store encrypted refresh tokens for scheduled SP-API access",
+                ],
+                footnote: "Scopes follow your app registration in Amazon Developer Central.",
             };
         }
         return {
@@ -180,6 +204,10 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
         }
         if (id === "google_ads") {
             window.location.href = `/api/auth/google-ads/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
+            return;
+        }
+        if (id === "amazon") {
+            window.location.href = `/api/auth/amazon/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
         if (id === "shopify") {
@@ -460,13 +488,15 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                             </div>
                         )}
 
-                        {(id === "meta_ads" || id === "google_ads") && (
+                        {(id === "meta_ads" || id === "google_ads" || id === "amazon") && (
                             <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/90 dark:bg-slate-900/50 p-4 space-y-3">
                                 <div>
                                     <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">
                                         {id === "meta_ads"
                                             ? "Meta — Valid OAuth Redirect URI"
-                                            : "Google Cloud — Authorized redirect URI"}
+                                            : id === "google_ads"
+                                              ? "Google Cloud — Authorized redirect URI"
+                                              : "Amazon — Allowed OAuth redirect URI"}
                                     </p>
                                     <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mt-1">
                                         Production domain{" "}

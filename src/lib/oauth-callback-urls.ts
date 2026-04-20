@@ -23,3 +23,10 @@ export function googleAdsOAuthRedirectUri(request: Request): string {
     `${publicBaseUrl(request)}/api/auth/google-ads/callback`
   );
 }
+
+export function amazonSpOAuthRedirectUri(request: Request): string {
+  return (
+    process.env.AMAZON_REDIRECT_URI?.trim() ||
+    `${publicBaseUrl(request)}/api/auth/amazon/callback`
+  );
+}

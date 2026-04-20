@@ -5,8 +5,14 @@ import {
   isShopeeConnectEnabled,
   isMetaAdsConnectEnabled,
   isGoogleAdsConnectEnabled,
+  isAmazonConnectEnabled,
 } from '@/lib/integration-flags';
-import { googleAdsOAuthRedirectUri, metaAdsOAuthRedirectUri } from '@/lib/oauth-callback-urls';
+import {
+  amazonSpOAuthRedirectUri,
+  googleAdsOAuthRedirectUri,
+  metaAdsOAuthRedirectUri,
+} from '@/lib/oauth-callback-urls';
+import { isAmazonOAuthEnvConfigured } from '@/lib/amazon-sp';
 import { PRODUCT_SITE_URL } from '@/lib/site-url';
 
 /**
@@ -20,15 +26,19 @@ export async function GET(request: Request) {
     shopee: isShopeeConnectEnabled(),
     metaAds: isMetaAdsConnectEnabled(),
     googleAds: isGoogleAdsConnectEnabled(),
+    amazon:
+      isAmazonConnectEnabled() && isAmazonOAuthEnvConfigured(),
     productDomain: PRODUCT_SITE_URL,
     oauthCallbacks: {
       metaAds: metaAdsOAuthRedirectUri(request),
       googleAds: googleAdsOAuthRedirectUri(request),
+      amazon: amazonSpOAuthRedirectUri(request),
     },
     /** Same paths on MonsteraCloud.com — paste these into Meta / Google Cloud consoles for production. */
     oauthCallbacksProduction: {
       metaAds: `${PRODUCT_SITE_URL}/api/auth/meta-ads/callback`,
       googleAds: `${PRODUCT_SITE_URL}/api/auth/google-ads/callback`,
+      amazon: `${PRODUCT_SITE_URL}/api/auth/amazon/callback`,
     },
   });
 }

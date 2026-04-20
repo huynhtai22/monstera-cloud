@@ -33,6 +33,7 @@ const CONNECTED_CARD_SORT_ORDER = [
     "tiktok_shop",
     "lazada",
     "shopify",
+    "amazon",
 ] as const;
 
 function connectedSourceSortRank(catalogId: string): number {
@@ -48,6 +49,7 @@ const SOURCE_BLURB_BY_PROVIDER: Record<string, string> = {
     tiktok_shop: "TikTok Shop — catalog and orders for this workspace.",
     lazada: "Lazada Seller — orders and finance for this workspace.",
     shopify: "Shopify — store orders for this workspace.",
+    amazon: "Amazon Selling Partner — SP-API OAuth for this workspace.",
 };
 
 function catalogIntegrationFromId(catalogId: string) {
@@ -645,11 +647,18 @@ export default function SourcesPage() {
         const params = new URLSearchParams(window.location.search);
 
         // OAuth error params from any provider callback
-        const errorProviders = ["meta_ads", "google_ads", "tiktok", "tiktok_business", "shopee"] as const;
+        const errorProviders = ["meta_ads", "google_ads", "tiktok", "tiktok_business", "shopee", "amazon"] as const;
         for (const p of errorProviders) {
             const errVal = params.get(`${p}_error`);
             if (errVal) {
-                const label = { meta_ads: "Meta Ads", google_ads: "Google Ads", tiktok: "TikTok Shop", tiktok_business: "TikTok Ads", shopee: "Shopee" }[p];
+                const label = {
+                    meta_ads: "Meta Ads",
+                    google_ads: "Google Ads",
+                    tiktok: "TikTok Shop",
+                    tiktok_business: "TikTok Ads",
+                    shopee: "Shopee",
+                    amazon: "Amazon Selling Partner",
+                }[p];
                 toast.error(`${label} connection failed: ${decodeURIComponent(errVal).replace(/_/g, " ")}`);
                 window.history.replaceState({}, "", "/sources");
                 return;
@@ -678,7 +687,15 @@ export default function SourcesPage() {
         const params = new URLSearchParams(window.location.search);
         
         let hasError = false;
-        const errorKeys = ['meta_ads_error', 'google_ads_error', 'tiktok_error', 'tiktok_business_error', 'shopee_error'];
+        const errorKeys = [
+            'meta_ads_error',
+            'google_ads_error',
+            'tiktok_error',
+            'tiktok_business_error',
+            'shopee_error',
+            'amazon_error',
+            'shopify_error',
+        ];
         
         for (const key of errorKeys) {
             const errVal = params.get(key);

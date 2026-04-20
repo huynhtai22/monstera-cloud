@@ -1,4 +1,10 @@
-export type EtlProvider = 'shopee' | 'meta_ads' | 'google_ads' | 'tiktok_business' | 'shopify';
+export type EtlProvider =
+  | 'shopee'
+  | 'meta_ads'
+  | 'google_ads'
+  | 'tiktok_business'
+  | 'shopify'
+  | 'amazon';
 
 export type EtlCursor = Record<string, unknown> | null;
 

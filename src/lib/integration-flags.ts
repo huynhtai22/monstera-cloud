@@ -29,3 +29,7 @@ export function isTikTokBusinessConnectEnabled(): boolean {
 export function isShopifyConnectEnabled(): boolean {
   return (process.env.SHOPIFY_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
 }
+
+export function isAmazonConnectEnabled(): boolean {
+  return (process.env.AMAZON_CONNECT_ENABLED || "true").toLowerCase() !== "false";
+}

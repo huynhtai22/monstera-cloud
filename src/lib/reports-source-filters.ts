@@ -9,6 +9,7 @@ export const REPORTS_SOURCE_CHIPS: { id: string; label: string }[] = [
     { id: "google_ads", label: "Google" },
     { id: "shopee", label: "Shopee" },
     { id: "shopify", label: "Shopify" },
+    { id: "amazon", label: "Amazon" },
 ];
 
 export function pipelineMatchesSourceFilter(pipelineName: string, sourceId: string): boolean {
@@ -25,6 +26,8 @@ export function pipelineMatchesSourceFilter(pipelineName: string, sourceId: stri
             return n.includes("shopee");
         case "shopify":
             return n.includes("shopify");
+        case "amazon":
+            return n.includes("amazon");
         default:
             return true;
     }

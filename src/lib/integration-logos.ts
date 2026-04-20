@@ -16,6 +16,7 @@ export const INTEGRATION_LOGOS = {
   lazada: "/logos/lazada.svg",
   googleAnalytics: "/logos/googleanalytics.svg",
   postgresql: "/logos/postgresql.svg",
+  amazon: "/logos/amazon.svg",
 } as const;
 
 export type IntegrationLogoKey = keyof typeof INTEGRATION_LOGOS;
@@ -29,6 +30,7 @@ export function logoPathForCatalogId(catalogId: string): string {
     shopee: INTEGRATION_LOGOS.shopee,
     lazada: INTEGRATION_LOGOS.lazada,
     shopify: INTEGRATION_LOGOS.shopify,
+    amazon: INTEGRATION_LOGOS.amazon,
   };
   return map[catalogId] ?? INTEGRATION_LOGOS.postgresql;
 }
@@ -43,6 +45,7 @@ export function logoPathForConnectionProvider(provider: string): string {
     return INTEGRATION_LOGOS.googleAnalytics;
   if (p.includes("tiktok_business")) return INTEGRATION_LOGOS.tiktok;
   if (p.includes("tiktok_shop") || p === "tiktok") return INTEGRATION_LOGOS.tiktok;
+  if (p === "amazon") return INTEGRATION_LOGOS.amazon;
   return INTEGRATION_LOGOS.postgresql;
 }
 

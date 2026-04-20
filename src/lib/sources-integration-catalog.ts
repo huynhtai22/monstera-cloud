@@ -51,6 +51,12 @@ export const SOURCES_CATALOG: readonly SourcesCatalogItem[] = [
         description: "E-commerce platform orders.",
         logoSrc: logoPathForCatalogId("shopify"),
     },
+    {
+        id: "amazon",
+        name: "Amazon Selling Partner",
+        description: "Seller Central — SP-API OAuth (orders sync pipeline coming next).",
+        logoSrc: logoPathForCatalogId("amazon"),
+    },
 ] as const;
 
 export function catalogItemById(id: string): SourcesCatalogItem | undefined {
@@ -60,7 +66,14 @@ export function catalogItemById(id: string): SourcesCatalogItem | undefined {
 /** Whether OAuth/env is enabled for this connector on the deployment (matches `/api/integrations/config`). */
 export function isSourceEnvReady(
     catalogId: string,
-    intConfig: { tiktokShop?: boolean; tiktokBusiness?: boolean; shopee?: boolean; metaAds?: boolean; googleAds?: boolean } | undefined
+    intConfig: {
+        tiktokShop?: boolean;
+        tiktokBusiness?: boolean;
+        shopee?: boolean;
+        metaAds?: boolean;
+        googleAds?: boolean;
+        amazon?: boolean;
+    } | undefined
 ): boolean {
     if (!intConfig) return true;
     if (catalogId === "tiktok_shop") return intConfig.tiktokShop !== false;
@@ -68,5 +81,6 @@ export function isSourceEnvReady(
     if (catalogId === "shopee") return intConfig.shopee !== false;
     if (catalogId === "meta_ads") return intConfig.metaAds !== false;
     if (catalogId === "google_ads") return intConfig.googleAds !== false;
+    if (catalogId === "amazon") return intConfig.amazon !== false;
     return true;
 }

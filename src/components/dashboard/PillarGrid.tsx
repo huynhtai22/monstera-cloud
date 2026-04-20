@@ -38,6 +38,7 @@ const PROVIDER_LABELS: Record<string, string> = {
     shopee: "Shopee",
     lazada: "Lazada",
     shopify: "Shopify",
+    amazon: "Amazon SP",
     google_sheets: "Google Sheets",
     looker_studio: "Looker Studio",
     slack: "Slack",

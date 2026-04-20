@@ -7,5 +7,6 @@ export function integrationCatalogId(provider: string): string {
   if (p === 'shopee') return 'shopee';
   if (p === 'meta_ads') return 'meta_ads';
   if (p === 'google_ads') return 'google_ads';
+  if (p === 'amazon') return 'amazon';
   return provider;
 }
