@@ -273,54 +273,76 @@ export function DashboardHomePage() {
             </div>
             <MetricCardGrid snapshots={snapshots} />
 
-            <div className="relative z-10 mb-3 mt-2 flex items-baseline justify-between">
-                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                    Your workspace
-                </h2>
-                <span className="text-xs text-gray-400 dark:text-gray-500">
-                    {connectedSourcesCount} source{connectedSourcesCount === 1 ? "" : "s"} · {connectedDestinationsCount} destination{connectedDestinationsCount === 1 ? "" : "s"}
-                </span>
-            </div>
-            <PillarGrid
-                connections={connections}
-                syncLogs={logs}
-                healthyCount={healthyCount}
-                totalPipelines={activePipelinesCount}
-                latestNetRoas={snapshots.length ? snapshots[snapshots.length - 1].netRoas : null}
-            />
+            <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-3 flex-1 pb-12">
+                {/* Main Content Column (Span 2) */}
+                <div className="space-y-8 lg:col-span-2 animate-in slide-in-from-bottom-2 duration-500 fade-in">
+                    <div>
+                        <div className="relative z-10 mb-3 flex items-baseline justify-between">
+                            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                                Performance Insights
+                            </h2>
+                        </div>
+                        <AiPerformanceSummary workspaceId={workspaceId} />
+                    </div>
 
-            {!hasSuccessfulSync && hasSource ? (
-                <div className="relative z-10 mb-10">
-                    <SetupWizard
-                        hasSource={hasSource}
-                        hasDestination={hasDestination}
-                        hasSuccessfulSync={hasSuccessfulSync}
-                        onDismiss={dismissWizard}
-                    />
+                    {!hasSuccessfulSync && hasSource ? (
+                        <div className="relative z-10">
+                            <SetupWizard
+                                hasSource={hasSource}
+                                hasDestination={hasDestination}
+                                hasSuccessfulSync={hasSuccessfulSync}
+                                onDismiss={dismissWizard}
+                            />
+                        </div>
+                    ) : null}
+
+                    <div>
+                        <div className="relative z-10 mb-3">
+                            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                                System Health
+                            </h2>
+                        </div>
+                        <HealthDashboard />
+                    </div>
                 </div>
-            ) : null}
 
-            <div className="relative z-10 mb-3 mt-2">
-                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                    Activity
-                </h2>
-            </div>
-            <div className="relative z-10 mb-10">
-                <RecentActivity
-                    pipelines={pipelines}
-                    isLoading={isLoading}
-                    error={error}
-                    syncingPipelineId={syncingPipelineId}
-                    onSync={runPipeline}
-                />
-            </div>
+                {/* Right Sticky Sidebar (Span 1) */}
+                <div className="space-y-8 lg:col-span-1 animate-in slide-in-from-bottom-4 duration-700 fade-in fill-mode-both delay-150">
+                    <div className="sticky top-6 space-y-8">
+                        <div>
+                            <div className="relative z-10 mb-3 flex items-baseline justify-between">
+                                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                                    Your Connections
+                                </h2>
+                                <span className="text-[10px] font-semibold uppercase text-gray-400 dark:text-gray-500">
+                                    {connectedSourcesCount} Src · {connectedDestinationsCount} Dest
+                                </span>
+                            </div>
+                            <PillarGrid
+                                connections={connections}
+                                syncLogs={logs}
+                                healthyCount={healthyCount}
+                                totalPipelines={activePipelinesCount}
+                                latestNetRoas={snapshots.length ? snapshots[snapshots.length - 1].netRoas : null}
+                            />
+                        </div>
 
-            <div className="relative z-10 mb-10">
-                <AiPerformanceSummary workspaceId={workspaceId} />
-            </div>
-
-            <div className="relative z-10 mb-4">
-                <HealthDashboard />
+                        <div>
+                            <div className="relative z-10 mb-3">
+                                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                                    Recent Syncs
+                                </h2>
+                            </div>
+                            <RecentActivity
+                                pipelines={pipelines}
+                                isLoading={isLoading}
+                                error={error}
+                                syncingPipelineId={syncingPipelineId}
+                                onSync={runPipeline}
+                            />
+                        </div>
+                    </div>
+                </div>
             </div>
         </PageShell>
     );

@@ -152,12 +152,13 @@ export const authOptions: NextAuthOptions = {
             if (!userId && session.user.email) {
                 const byEmail = await prisma.user.findFirst({
                     where: { email: { equals: session.user.email, mode: "insensitive" } },
-                    select: { id: true, plan: true },
+                    select: { id: true, plan: true, hashedPassword: true },
                 })
                 if (byEmail) {
                     userId = byEmail.id
                     session.user.id = byEmail.id
                     session.user.plan = byEmail.plan ?? "free"
+                    session.user.hasPassword = Boolean(byEmail.hashedPassword)
                     return session
                 }
             }
@@ -166,9 +167,10 @@ export const authOptions: NextAuthOptions = {
                 session.user.id = userId
                 const row = await prisma.user.findUnique({
                     where: { id: userId },
-                    select: { plan: true },
+                    select: { plan: true, hashedPassword: true },
                 })
                 session.user.plan = row?.plan ?? "free"
+                session.user.hasPassword = Boolean(row?.hashedPassword)
             }
             return session
         }

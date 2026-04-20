@@ -9,6 +9,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { SOURCES_CATALOG, isSourceEnvReady, type SourcesCatalogItem } from "@/lib/sources-integration-catalog";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics-events";
 
 async function integrationsConfigFetcher(url: string) {
     const res = await fetch(url);
@@ -204,30 +205,37 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
         }
 
         if (id === "shopee") {
+            trackEvent("oauth_started", { provider: id });
             window.location.href = `/api/auth/shopee/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
         if (id === "tiktok_shop") {
+            trackEvent("oauth_started", { provider: id });
             window.location.href = `/api/auth/tiktok/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
         if (id === "tiktok_business") {
+            trackEvent("oauth_started", { provider: id });
             window.location.href = `/api/auth/tiktok-business/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
         if (id === "meta_ads") {
+            trackEvent("oauth_started", { provider: id });
             window.location.href = `/api/auth/meta-ads/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
         if (id === "google_ads") {
+            trackEvent("oauth_started", { provider: id });
             window.location.href = `/api/auth/google-ads/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
         if (id === "amazon") {
+            trackEvent("oauth_started", { provider: id });
             window.location.href = `/api/auth/amazon/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
         if (id === "lazada") {
+            trackEvent("oauth_started", { provider: id });
             window.location.href = `/api/auth/lazada/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
@@ -238,6 +246,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                 toast.error("Enter your Shopify store domain first.");
                 return;
             }
+            trackEvent("oauth_started", { provider: id, shopUrl: shop });
             fetch(`/api/connections/shopify/auth-url?workspaceId=${encodeURIComponent(activeWorkspaceId)}&shop=${encodeURIComponent(shop)}`)
                 .then((r) => r.json())
                 .then(({ url, error }) => {
@@ -319,7 +328,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 backdrop-blur-[2px] animate-in fade-in duration-200 dark:bg-slate-950/70">
+        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/55 backdrop-blur-[2px] animate-in fade-in duration-200 dark:bg-slate-950/70">
             {showPicker ? (
                 <div
                     ref={dialogRef}
@@ -328,7 +337,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     aria-modal="true"
                     aria-labelledby="connect-source-picker-title"
                     tabIndex={-1}
-                    className="relative mx-4 w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_22px_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none animate-in zoom-in-95 duration-300 dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[0_28px_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06]"
+                    className="relative w-full max-w-md h-full overflow-hidden rounded-l-2xl border-l border-slate-200/90 bg-white/95 shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none animate-in slide-in-from-right duration-300 dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[-28px_0_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06] flex flex-col"
                 >
                     <div className="flex items-start justify-between gap-3 border-b border-slate-100/90 bg-gradient-to-br from-slate-50/90 to-white px-5 py-4 dark:border-white/5 dark:from-slate-800/80 dark:to-slate-900/80">
                         <div className="min-w-0">
@@ -350,7 +359,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                         </button>
                     </div>
                     <ul
-                        className="max-h-[min(60vh,22rem)] space-y-1 overflow-y-auto overscroll-contain px-2 py-2"
+                        className="flex-1 space-y-1 overflow-y-auto overscroll-contain px-2 py-2"
                         role="listbox"
                         aria-label="Available connectors"
                     >
@@ -424,7 +433,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                 aria-modal="true"
                 aria-labelledby="connect-source-modal-title"
                 tabIndex={-1}
-                className="relative mx-4 w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_22px_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none animate-in zoom-in-95 duration-300 dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[0_28px_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06]"
+                className="relative w-full max-w-md h-full overflow-hidden rounded-l-2xl border-l border-slate-200/90 bg-white/95 shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none animate-in slide-in-from-right duration-300 dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[-28px_0_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06] flex flex-col"
             >
                 <div className="flex items-center gap-3 border-b border-slate-100/90 bg-gradient-to-br from-slate-50/90 to-white px-5 py-4 dark:border-white/5 dark:from-slate-800/80 dark:to-slate-900/80">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-white to-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ring-1 ring-slate-200/80 dark:from-slate-800 dark:to-slate-900 dark:ring-white/10">
@@ -457,7 +466,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     </button>
                 </div>
 
-                <div className="p-6">
+                <div className="flex-1 overflow-y-auto px-6 py-6">
                     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                         <div className="mb-5">
                             <h4 className="text-base font-bold text-gray-900 dark:text-white mb-1">{step1Content.title}</h4>

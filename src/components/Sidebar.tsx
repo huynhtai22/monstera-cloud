@@ -61,7 +61,14 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
         if (!Array.isArray(workspaces) || workspaces.length === 0) return;
         const memberIds = new Set(workspaces.map((w: { id: string }) => w.id));
         if (!activeWorkspaceId || !memberIds.has(activeWorkspaceId)) {
-            setActiveWorkspaceId(workspaces[0].id);
+            const w = workspaces[0];
+            setActiveWorkspaceId(w.id);
+            if (w.createdAt) {
+                const ageMs = Date.now() - new Date(w.createdAt).getTime();
+                if (ageMs < 15000) {
+                    trackEvent("workspace_created", { workspaceId: w.id });
+                }
+            }
         }
     }, [workspaces, activeWorkspaceId, setActiveWorkspaceId]);
 

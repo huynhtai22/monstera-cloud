@@ -223,15 +223,19 @@ export default function DestinationsPage() {
                                 <div
                                     key={destination.id}
                                     className={cn(
-                                        "relative overflow-hidden rounded-2xl border p-5 transition-all duration-300 flex flex-col justify-between",
+                                        "relative overflow-hidden rounded-2xl border p-5 transition-all duration-500 ease-out flex flex-col justify-between group",
                                         isConnected
-                                            ? "border-gray-100 bg-gray-50/60 dark:border-slate-800 dark:bg-slate-800/30 opacity-80"
+                                            ? "border-cyan-200/50 bg-cyan-50/40 dark:border-cyan-800/40 dark:bg-cyan-950/20"
                                             : isActive
-                                              ? "border-cyan-200 bg-cyan-50/70 shadow-sm dark:border-cyan-700/60 dark:bg-cyan-950/30 hover:shadow-md hover:-translate-y-0.5"
-                                              : "border-white bg-white/40 dark:border-slate-700/60 dark:bg-slate-900/20 opacity-70 hover:opacity-90 hover:-translate-y-0.5 hover:shadow-sm"
+                                              ? "border-cyan-200 bg-cyan-50/70 shadow-sm dark:border-cyan-700/60 dark:bg-cyan-950/30 hover:shadow-md hover:-translate-y-1"
+                                              : "border-white bg-white/40 dark:border-slate-700/60 dark:bg-slate-900/20 opacity-80 hover:opacity-100 hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-900/5 hover:border-cyan-200/50 dark:hover:border-cyan-700/50 dark:hover:shadow-cyan-900/20"
                                     )}
                                 >
-                                    <div className="flex items-start justify-between mb-3">
+                                    {/* Hover mock gradient glow */}
+                                    {!isConnected && (
+                                        <div className="absolute inset-0 bg-gradient-to-tr from-cyan-400/0 via-transparent to-cyan-400/0 group-hover:from-cyan-400/10 group-hover:to-indigo-400/10 dark:group-hover:from-cyan-400/5 dark:group-hover:to-indigo-400/5 transition-colors duration-500 pointer-events-none" />
+                                    )}
+                                    <div className="flex items-start justify-between mb-3 relative z-10">
                                         {/* Logo */}
                                         <div className={cn(
                                             "relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 bg-white/70 dark:bg-slate-900/80 overflow-hidden",

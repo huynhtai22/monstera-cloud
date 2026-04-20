@@ -104,12 +104,16 @@ const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
         <div
             className={cn(
                 "group flex items-center gap-3 rounded-xl border bg-white/80 px-3 py-2.5 shadow-sm transition-colors dark:bg-slate-900/70",
-                isError
-                    ? "border-red-200/80 dark:border-red-800/60"
-                    : "border-gray-200/80 hover:border-cyan-200/80 dark:border-slate-700/60 dark:hover:border-cyan-700/50",
+                "border-gray-200/80 hover:border-cyan-200/80 dark:border-slate-700/60 dark:hover:border-cyan-700/50",
             )}
         >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200/70 bg-white dark:border-slate-700/60 dark:bg-slate-900">
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200/70 bg-white dark:border-slate-700/60 dark:bg-slate-900">
+                {isError && (
+                    <span className="absolute -right-1 -top-1 flex h-3 w-3">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500"></span>
+                    </span>
+                )}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                     src={integration.logoSrc}
@@ -680,6 +684,9 @@ export default function SourcesPage() {
             needs_destination: needsDestination,
             pipeline_limit: limit,
         });
+        if (pipelineReady) {
+            trackEvent("pipeline_created", { provider, auto_linked: true });
+        }
         window.history.replaceState({}, "", "/sources");
     }, []);
 
@@ -1263,16 +1270,37 @@ export default function SourcesPage() {
                                     {connectedRows.length} connected
                                 </span>
                             </div>
-                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                                {connectedRows.map((integration: any) => (
-                                    <ConnectedSourceRow
-                                        key={integration.id}
-                                        integration={integration}
-                                        busyActions={busyActions}
-                                        onSync={handleSync}
-                                        onDisconnect={disconnectSource}
-                                        onFixConnection={handleFixConnection}
-                                    />
+                            <div className="flex flex-col gap-5">
+                                {Object.entries(
+                                    connectedRows.reduce((acc, row) => {
+                                        const p = (row as any).catalogId || "other";
+                                        acc[p] = acc[p] || [];
+                                        acc[p].push(row);
+                                        return acc;
+                                    }, {} as Record<string, any[]>)
+                                ).map(([provider, rows]) => (
+                                    <div key={provider} className="bg-slate-50/50 dark:bg-slate-900/30 rounded-2xl border border-slate-100 dark:border-slate-800 p-4">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                                                {SOURCES_CATALOG.find(c => c.id === provider)?.name || provider} 
+                                            </span>
+                                            <span className="bg-slate-200/50 dark:bg-slate-800 text-slate-500 text-xs px-2 py-0.5 rounded-full font-medium">
+                                                {rows.length} {rows.length === 1 ? 'connection' : 'connections'}
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                                            {rows.map((integration: any) => (
+                                                <ConnectedSourceRow
+                                                    key={integration.id}
+                                                    integration={integration}
+                                                    busyActions={busyActions}
+                                                    onSync={handleSync}
+                                                    onDisconnect={disconnectSource}
+                                                    onFixConnection={handleFixConnection}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
                                 ))}
                             </div>
                         </section>

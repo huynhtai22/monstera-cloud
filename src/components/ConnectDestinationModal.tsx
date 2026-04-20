@@ -139,8 +139,8 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900 dark:bg-slate-800/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden relative animate-in zoom-in-95 duration-300 border border-gray-200 dark:border-slate-700">
+        <div className="fixed inset-0 z-50 flex justify-end bg-gray-900/50 backdrop-blur-[2px] animate-in fade-in duration-200 dark:bg-slate-800/60">
+            <div className="relative flex h-full w-full max-w-md flex-col overflow-hidden rounded-l-2xl border-l border-gray-200 bg-white shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] animate-in slide-in-from-right duration-300 dark:border-slate-700 dark:bg-slate-900">
 
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-3">
@@ -177,7 +177,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
 
                 {/* Body content */}
                 {destinationId === "looker" ? (
-                    <div className="space-y-6 p-6">
+                    <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
                         <div className="mb-4 text-center">
                             <h4 className="mb-2 text-xl font-bold text-gray-900 dark:text-white">Native Looker Integration</h4>
                             <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -243,7 +243,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                         </div>
                     </div>
                 ) : isListView ? (
-                    <div className="p-6 space-y-3">
+                    <div className="flex-1 space-y-3 overflow-y-auto px-6 py-6">
                         <div className="space-y-2 max-h-60 overflow-y-auto">
                             {activeConnections.map((conn: any) => (
                                 <div
@@ -285,7 +285,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                             <div className={`h-full bg-cyan-500 transition-all duration-500 ${step === 1 ? 'w-1/3' : step === 2 ? 'w-2/3' : 'w-full'}`} />
                         </div>
 
-                        <div className="p-6">
+                        <div className="flex-1 overflow-y-auto px-6 py-6">
                             {step === 1 && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                                     <div className="text-center mb-6">
@@ -355,7 +355,24 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                             Google Sheets is ready to receive data from your pipelines. Follow the steps below to install the add-on and run your first sync.
                                         </p>
                                     </div>
-                                    <PostConnectChecklist variant="sheets" />
+                                    <div className="mt-4 flex w-full flex-col gap-4">
+                                        <button
+                                            onClick={handleClose}
+                                            className="group relative flex h-14 w-full items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-400 font-bold tracking-wide text-white shadow-[0_8px_30px_rgb(16,185,129,0.3)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgb(16,185,129,0.5)] active:scale-95"
+                                        >
+                                            <div className="absolute inset-0 bg-white/20 transition-transform -translate-x-full group-hover:translate-x-full duration-700 ease-out" />
+                                            <CheckCircle2 className="mr-2 h-6 w-6" />
+                                            Complete Setup & Close
+                                        </button>
+                                        <a
+                                            href="https://workspace.google.com/marketplace/app/monstera_cloud/placeholder"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-center text-xs font-medium text-slate-500 underline underline-offset-2 transition-colors hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                                        >
+                                            Looking for the Google Sheets Add-on?
+                                        </a>
+                                    </div>
                                 </div>
                             )}
                         </div>

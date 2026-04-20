@@ -13,6 +13,8 @@ declare module "next-auth" {
             id: string;
             /** Subscription tier from DB — used for post-login routing */
             plan?: string;
+            /** True when the account has a credentials password (step-up for reveal-key, etc.) */
+            hasPassword?: boolean;
         };
     }
 }

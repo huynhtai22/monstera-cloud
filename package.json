@@ -12,7 +12,9 @@
     "create-smoke-user": "tsx scripts/create-smoke-test-account.ts",
     "create-smoke-user:pro": "SMOKE_PLAN=professional tsx scripts/create-smoke-test-account.ts",
     "reset-smoke-plan": "tsx scripts/reset-smoke-test-plan.ts",
-    "seed-demo-metrics": "tsx scripts/seed-demo-metrics.ts"
+    "seed-demo-metrics": "tsx scripts/seed-demo-metrics.ts",
+    "encrypt-connection-credentials": "tsx prisma/scripts/encrypt-connection-credentials.ts",
+    "encrypt-connection-credentials:dry-run": "tsx prisma/scripts/encrypt-connection-credentials.ts --dry-run"
   },
   "keywords": [],
   "author": "",

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from "next/link";
-import { Settings2, Building2, Users, CreditCard, KeyRound, Save, Plus, AlertCircle, CheckCircle2, Copy, Briefcase, Trash2, Activity, Database, ShieldAlert, MessageCircle, Pencil, Search, Sparkles } from "lucide-react";
+import { Settings2, Building2, Users, CreditCard, KeyRound, Save, Plus, AlertCircle, CheckCircle2, Copy, Briefcase, Trash2, Activity, Database, ShieldAlert, MessageCircle, Pencil, Search, Sparkles, Eye } from "lucide-react";
 import { MOCK_TEAM } from "@/lib/mock-console-data";
 import { useWorkspaceStore } from "@/store/workspace";
 import useSWR, { useSWRConfig } from "swr";
@@ -21,7 +21,7 @@ export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState<'workspace' | 'clients' | 'team' | 'billing' | 'api'>('workspace');
     const { activeWorkspaceId } = useWorkspaceStore();
     const { mutate: globalMutate } = useSWRConfig();
-    const { data: session } = useSession();
+    const { data: session, update: updateSession } = useSession();
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const activeWorkspace = Array.isArray(workspaces) ? workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0] : null;
     const userPlan = (session?.user as any)?.plan || 'free';
@@ -42,6 +42,14 @@ export default function SettingsPage() {
     const [apiKeys, setApiKeys] = useState<any[]>([]);
     const [newlyGeneratedKey, setNewlyGeneratedKey] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [revealKeyId, setRevealKeyId] = useState<string | null>(null);
+    const [revealPassword, setRevealPassword] = useState("");
+    const [revealBusy, setRevealBusy] = useState(false);
+    const [revealError, setRevealError] = useState<string | null>(null);
+    const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+    const [revealedKey, setRevealedKey] = useState<string | null>(null);
+
+    const hasPassword = Boolean((session?.user as { hasPassword?: boolean })?.hasPassword);
 
     // Client Management State
     const [clients, setClients] = useState<any[]>([]);
@@ -106,12 +114,26 @@ export default function SettingsPage() {
     useEffect(() => {
         if (activeTab === 'api' && activeWorkspaceId) {
             fetchApiKeys();
+            void updateSession();
+            void (async () => {
+                try {
+                    const res = await fetch("/api/settings/api-keys/reveal-config");
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok && typeof data.googleClientId === "string" && data.googleClientId) {
+                        setGoogleClientId(data.googleClientId);
+                    } else {
+                        setGoogleClientId(null);
+                    }
+                } catch {
+                    setGoogleClientId(null);
+                }
+            })();
         }
         if (activeTab === 'clients' && activeWorkspaceId) {
             fetchClients();
             fetchUnassigned();
         }
-    }, [activeTab, activeWorkspaceId]);
+    }, [activeTab, activeWorkspaceId, updateSession]);
 
     const fetchUnassigned = async () => {
         try {
@@ -379,6 +401,140 @@ export default function SettingsPage() {
             navigator.clipboard.writeText(newlyGeneratedKey);
             alert("API Key copied to clipboard! Keep it safe.");
             setNewlyGeneratedKey(null); // Hide after copy
+        }
+    };
+
+    const loadGsiScript = () =>
+        new Promise<void>((resolve, reject) => {
+            if (typeof window === "undefined") return resolve();
+            if (window.google?.accounts?.oauth2) return resolve();
+            const existing = document.querySelector(
+                'script[src="https://accounts.google.com/gsi/client"]'
+            ) as HTMLScriptElement | null;
+            if (existing) {
+                const done = () => {
+                    if (window.google?.accounts?.oauth2) resolve();
+                    else reject(new Error("Google sign-in script did not initialize"));
+                };
+                if (window.google?.accounts?.oauth2) return resolve();
+                existing.addEventListener("load", done, { once: true });
+                existing.addEventListener("error", () => reject(new Error("Google script failed")), {
+                    once: true,
+                });
+                return;
+            }
+            const s = document.createElement("script");
+            s.src = "https://accounts.google.com/gsi/client";
+            s.async = true;
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error("Google script failed"));
+            document.head.appendChild(s);
+        });
+
+    const closeRevealModal = () => {
+        setRevealKeyId(null);
+        setRevealPassword("");
+        setRevealError(null);
+        setRevealBusy(false);
+    };
+
+    const submitRevealWithPassword = async () => {
+        if (!activeWorkspaceId || !revealKeyId) return;
+        setRevealBusy(true);
+        setRevealError(null);
+        try {
+            const res = await fetch("/api/settings/api-keys/reveal", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    workspaceId: activeWorkspaceId,
+                    keyId: revealKeyId,
+                    password: revealPassword,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setRevealError(typeof data.error === "string" ? data.error : "Could not reveal key.");
+                setRevealBusy(false);
+                return;
+            }
+            if (typeof data.key === "string") {
+                setRevealedKey(data.key);
+                closeRevealModal();
+                toast.success("Key revealed — copy it now; it will not be shown again in the list.");
+            }
+        } catch {
+            setRevealError("Network error.");
+        }
+        setRevealBusy(false);
+    };
+
+    const submitRevealWithGoogleToken = async (googleAccessToken: string) => {
+        if (!activeWorkspaceId || !revealKeyId) return;
+        setRevealBusy(true);
+        setRevealError(null);
+        try {
+            const res = await fetch("/api/settings/api-keys/reveal", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    workspaceId: activeWorkspaceId,
+                    keyId: revealKeyId,
+                    googleAccessToken,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setRevealError(typeof data.error === "string" ? data.error : "Could not reveal key.");
+                setRevealBusy(false);
+                return;
+            }
+            if (typeof data.key === "string") {
+                setRevealedKey(data.key);
+                closeRevealModal();
+                toast.success("Key revealed — copy it now; it will not be shown again in the list.");
+            }
+        } catch {
+            setRevealError("Network error.");
+        }
+        setRevealBusy(false);
+    };
+
+    const startGoogleRevealStepUp = async () => {
+        if (!googleClientId) {
+            setRevealError("Google OAuth client is not configured.");
+            return;
+        }
+        setRevealError(null);
+        setRevealBusy(true);
+        try {
+            await loadGsiScript();
+            const client = window.google!.accounts.oauth2.initTokenClient({
+                client_id: googleClientId,
+                scope: "openid email profile",
+                callback: (tokenResponse) => {
+                    if (tokenResponse.error) {
+                        setRevealError(
+                            tokenResponse.error_description ||
+                                tokenResponse.error ||
+                                "Google confirmation failed"
+                        );
+                        setRevealBusy(false);
+                        return;
+                    }
+                    const t = tokenResponse.access_token;
+                    if (!t) {
+                        setRevealError("No access token from Google.");
+                        setRevealBusy(false);
+                        return;
+                    }
+                    void submitRevealWithGoogleToken(t);
+                },
+            });
+            client.requestAccessToken({ prompt: "select_account" });
+        } catch (e) {
+            setRevealError(e instanceof Error ? e.message : "Google confirmation failed.");
+            setRevealBusy(false);
         }
     };
 
@@ -1052,6 +1208,33 @@ export default function SettingsPage() {
                                 </div>
                             )}
 
+                            {revealedKey && (
+                                <div className="bg-amber-50/50 border border-amber-200 rounded-2xl p-5 mb-6 dark:border-amber-900/40 dark:bg-amber-950/20">
+                                    <h4 className="font-semibold text-amber-900 text-sm mb-2 flex items-center dark:text-amber-100">
+                                        <Eye className="w-4 h-4 mr-1 text-amber-600 shrink-0" /> Revealed API key
+                                    </h4>
+                                    <p className="text-sm text-amber-800 mb-3 dark:text-amber-200/90">
+                                        Copy now. After you leave this page, only the masked value is shown in the list.
+                                    </p>
+                                    <div className="flex items-center space-x-2">
+                                        <code className="flex-1 bg-white border border-amber-100 px-3 py-2 rounded-lg text-sm text-amber-950 font-mono select-all dark:border-amber-900/50 dark:bg-slate-950 dark:text-amber-100">
+                                            {revealedKey}
+                                        </code>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                void navigator.clipboard.writeText(revealedKey);
+                                                toast.success("Copied to clipboard.");
+                                                setRevealedKey(null);
+                                            }}
+                                            className="p-2 border border-amber-200 bg-white rounded-lg text-amber-800 hover:bg-amber-100 transition-colors dark:border-amber-800 dark:bg-slate-900 dark:text-amber-200 dark:hover:bg-slate-800"
+                                        >
+                                            <Copy className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {apiKeys.length === 0 ? (
                                 <div className="text-center py-10 border border-dashed border-gray-200 rounded-2xl">
                                     <KeyRound className="w-8 h-8 text-gray-300 mx-auto mb-3" />
@@ -1067,10 +1250,24 @@ export default function SettingsPage() {
                                                     {keyObj.keyMasked}
                                                 </div>
                                             </div>
-                                            <div className="flex items-center space-x-3">
+                                            <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
                                                 <div className="text-[11px] font-medium text-gray-400">
                                                     Created {new Date(keyObj.createdAt).toLocaleDateString()}
                                                 </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setRevealKeyId(keyObj.id);
+                                                        setRevealPassword("");
+                                                        setRevealError(null);
+                                                    }}
+                                                    className="text-sm font-medium text-cyan-700 hover:text-cyan-800 bg-cyan-50 hover:bg-cyan-100 px-3 py-1.5 rounded-lg transition-colors dark:bg-cyan-950/40 dark:text-cyan-300 dark:hover:bg-cyan-950/60"
+                                                >
+                                                    <span className="inline-flex items-center gap-1.5">
+                                                        <Eye className="w-3.5 h-3.5" />
+                                                        Reveal
+                                                    </span>
+                                                </button>
                                                 <button 
                                                     onClick={() => handleRevokeKey(keyObj.id)}
                                                     className="text-sm font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors">
@@ -1086,6 +1283,84 @@ export default function SettingsPage() {
 
                 </div>
             </div>
+
+            {revealKeyId ? (
+                <div
+                    className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="reveal-key-title"
+                >
+                    <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                        <h4 id="reveal-key-title" className="text-lg font-bold text-gray-900 dark:text-white">
+                            Reveal API key
+                        </h4>
+                        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                            Confirm it is you. The full key is shown once after verification.
+                        </p>
+                        {hasPassword ? (
+                            <div className="mt-4 space-y-3">
+                                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
+                                    Account password
+                                </label>
+                                <input
+                                    type="password"
+                                    autoComplete="current-password"
+                                    value={revealPassword}
+                                    onChange={(e) => setRevealPassword(e.target.value)}
+                                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none ring-cyan-500 focus:ring-2 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                                />
+                            </div>
+                        ) : googleClientId ? (
+                            <p className="mt-4 text-sm text-gray-600 dark:text-gray-300">
+                                You sign in with Google. Click below and choose the same Google account as this workspace ({session?.user?.email ?? "your email"}).
+                            </p>
+                        ) : (
+                            <p className="mt-4 text-sm text-amber-800 dark:text-amber-200/90">
+                                Google re-confirmation is not available (missing{" "}
+                                <code className="rounded bg-amber-100 px-1 dark:bg-amber-900/50">GOOGLE_CLIENT_ID</code>
+                                ). Use{" "}
+                                <Link href="/reset-password" className="font-semibold underline underline-offset-2">
+                                    Forgot password
+                                </Link>{" "}
+                                with your account email to set a password, then you can reveal keys here.
+                            </p>
+                        )}
+                        {revealError ? (
+                            <p className="mt-3 text-sm text-red-600 dark:text-red-400">{revealError}</p>
+                        ) : null}
+                        <div className="mt-6 flex flex-wrap justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={closeRevealModal}
+                                disabled={revealBusy}
+                                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 dark:hover:bg-slate-700"
+                            >
+                                Cancel
+                            </button>
+                            {hasPassword ? (
+                                <button
+                                    type="button"
+                                    onClick={() => void submitRevealWithPassword()}
+                                    disabled={revealBusy || !revealPassword}
+                                    className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {revealBusy ? "Checking…" : "Reveal key"}
+                                </button>
+                            ) : googleClientId ? (
+                                <button
+                                    type="button"
+                                    onClick={() => void startGoogleRevealStepUp()}
+                                    disabled={revealBusy}
+                                    className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    {revealBusy ? "Waiting for Google…" : "Confirm with Google"}
+                                </button>
+                            ) : null}
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }
