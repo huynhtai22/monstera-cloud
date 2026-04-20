@@ -8,5 +8,6 @@ export function integrationCatalogId(provider: string): string {
   if (p === 'meta_ads') return 'meta_ads';
   if (p === 'google_ads') return 'google_ads';
   if (p === 'amazon') return 'amazon';
+  if (p === 'lazada') return 'lazada';
   return provider;
 }

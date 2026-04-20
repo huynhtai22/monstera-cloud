@@ -647,7 +647,7 @@ export default function SourcesPage() {
         const params = new URLSearchParams(window.location.search);
 
         // OAuth error params from any provider callback
-        const errorProviders = ["meta_ads", "google_ads", "tiktok", "tiktok_business", "shopee", "amazon"] as const;
+        const errorProviders = ["meta_ads", "google_ads", "tiktok", "tiktok_business", "shopee", "amazon", "lazada"] as const;
         for (const p of errorProviders) {
             const errVal = params.get(`${p}_error`);
             if (errVal) {
@@ -658,6 +658,7 @@ export default function SourcesPage() {
                     tiktok_business: "TikTok Ads",
                     shopee: "Shopee",
                     amazon: "Amazon Selling Partner",
+                    lazada: "Lazada",
                 }[p];
                 toast.error(`${label} connection failed: ${decodeURIComponent(errVal).replace(/_/g, " ")}`);
                 window.history.replaceState({}, "", "/sources");
@@ -694,6 +695,7 @@ export default function SourcesPage() {
             'tiktok_business_error',
             'shopee_error',
             'amazon_error',
+            'lazada_error',
             'shopify_error',
         ];
         

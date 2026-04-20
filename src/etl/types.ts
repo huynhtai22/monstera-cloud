@@ -4,7 +4,8 @@ export type EtlProvider =
   | 'google_ads'
   | 'tiktok_business'
   | 'shopify'
-  | 'amazon';
+  | 'amazon'
+  | 'lazada';
 
 export type EtlCursor = Record<string, unknown> | null;
 

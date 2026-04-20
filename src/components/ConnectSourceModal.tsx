@@ -38,6 +38,7 @@ const OAUTH_SOURCE_IDS = [
     "google_ads",
     "shopify",
     "amazon",
+    "lazada",
 ] as const;
 
 function isOAuthSourceId(sourceId: string): boolean {
@@ -66,7 +67,9 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
               ? intConfig?.oauthCallbacks?.googleAds
               : id === "amazon"
                 ? intConfig?.oauthCallbacks?.amazon
-                : undefined;
+                : id === "lazada"
+                  ? intConfig?.oauthCallbacks?.lazada
+                  : undefined;
 
     const productionOauthUrl =
         id === "meta_ads"
@@ -75,7 +78,9 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
               ? intConfig?.oauthCallbacksProduction?.googleAds
               : id === "amazon"
                 ? intConfig?.oauthCallbacksProduction?.amazon
-                : undefined;
+                : id === "lazada"
+                  ? intConfig?.oauthCallbacksProduction?.lazada
+                  : undefined;
 
     const sessionDiffersFromProduction = Boolean(
         productionOauthUrl && oauthCallbackUrl && oauthCallbackUrl !== productionOauthUrl
@@ -104,6 +109,18 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     "Read campaign and performance data for reporting",
                 ],
                 footnote: "We never modify your Google Ads campaigns.",
+            };
+        }
+        if (id === "lazada") {
+            return {
+                title: "Authorize with Lazada",
+                subtitle:
+                    "You will sign in to Lazada Open Platform and approve Monstera Cloud to access seller data allowed by your app registration.",
+                permissions: [
+                    "Read orders and fulfillment data you authorize",
+                    "Store encrypted tokens for scheduled sync to your destinations",
+                ],
+                footnote: "Redirect URL must match your Lazada app callback exactly.",
             };
         }
         if (id === "amazon") {
@@ -208,6 +225,10 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
         }
         if (id === "amazon") {
             window.location.href = `/api/auth/amazon/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
+            return;
+        }
+        if (id === "lazada") {
+            window.location.href = `/api/auth/lazada/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
         if (id === "shopify") {
@@ -488,7 +509,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                             </div>
                         )}
 
-                        {(id === "meta_ads" || id === "google_ads" || id === "amazon") && (
+                        {(id === "meta_ads" || id === "google_ads" || id === "amazon" || id === "lazada") && (
                             <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/90 dark:bg-slate-900/50 p-4 space-y-3">
                                 <div>
                                     <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">
@@ -496,7 +517,9 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                             ? "Meta — Valid OAuth Redirect URI"
                                             : id === "google_ads"
                                               ? "Google Cloud — Authorized redirect URI"
-                                              : "Amazon — Allowed OAuth redirect URI"}
+                                              : id === "amazon"
+                                                ? "Amazon — Allowed OAuth redirect URI"
+                                                : "Lazada — Callback URL (OAuth redirect)"}
                                     </p>
                                     <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mt-1">
                                         Production domain{" "}

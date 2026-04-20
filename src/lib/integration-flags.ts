@@ -33,3 +33,7 @@ export function isShopifyConnectEnabled(): boolean {
 export function isAmazonConnectEnabled(): boolean {
   return (process.env.AMAZON_CONNECT_ENABLED || "true").toLowerCase() !== "false";
 }
+
+export function isLazadaConnectEnabled(): boolean {
+  return (process.env.LAZADA_CONNECT_ENABLED || "true").toLowerCase() !== "false";
+}

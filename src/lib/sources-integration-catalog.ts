@@ -73,6 +73,7 @@ export function isSourceEnvReady(
         metaAds?: boolean;
         googleAds?: boolean;
         amazon?: boolean;
+        lazada?: boolean;
     } | undefined
 ): boolean {
     if (!intConfig) return true;
@@ -82,5 +83,6 @@ export function isSourceEnvReady(
     if (catalogId === "meta_ads") return intConfig.metaAds !== false;
     if (catalogId === "google_ads") return intConfig.googleAds !== false;
     if (catalogId === "amazon") return intConfig.amazon !== false;
+    if (catalogId === "lazada") return intConfig.lazada !== false;
     return true;
 }

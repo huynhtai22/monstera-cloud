@@ -30,3 +30,10 @@ export function amazonSpOAuthRedirectUri(request: Request): string {
     `${publicBaseUrl(request)}/api/auth/amazon/callback`
   );
 }
+
+export function lazadaOAuthRedirectUri(request: Request): string {
+  return (
+    process.env.LAZADA_REDIRECT_URI?.trim() ||
+    `${publicBaseUrl(request)}/api/auth/lazada/callback`
+  );
+}

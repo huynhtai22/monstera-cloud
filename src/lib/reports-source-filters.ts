@@ -8,6 +8,7 @@ export const REPORTS_SOURCE_CHIPS: { id: string; label: string }[] = [
     { id: "meta_ads", label: "Meta" },
     { id: "google_ads", label: "Google" },
     { id: "shopee", label: "Shopee" },
+    { id: "lazada", label: "Lazada" },
     { id: "shopify", label: "Shopify" },
     { id: "amazon", label: "Amazon" },
 ];
@@ -24,6 +25,8 @@ export function pipelineMatchesSourceFilter(pipelineName: string, sourceId: stri
             return n.includes("google");
         case "shopee":
             return n.includes("shopee");
+        case "lazada":
+            return n.includes("lazada");
         case "shopify":
             return n.includes("shopify");
         case "amazon":
