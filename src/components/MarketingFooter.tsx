@@ -22,6 +22,26 @@ export function MarketingFooter() {
                         <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">Solutions</h3>
                         <ul className="space-y-3">
                             <li><Link href="/solutions/agencies" className="text-sm text-gray-400 hover:text-white transition-colors">For Marketing Agencies</Link></li>
+                            <li>
+                                <Link href="/integrations/shopee-to-google-sheets" className="text-sm text-gray-400 hover:text-white transition-colors">
+                                    Shopee → Google Sheets
+                                </Link>
+                            </li>
+                            <li>
+                                <Link href="/integrations/shopee-to-looker-studio" className="text-sm text-gray-400 hover:text-white transition-colors">
+                                    Shopee → Looker Studio
+                                </Link>
+                            </li>
+                            <li>
+                                <Link href="/integrations/lazada-to-google-sheets" className="text-sm text-gray-400 hover:text-white transition-colors">
+                                    Lazada → Google Sheets
+                                </Link>
+                            </li>
+                            <li>
+                                <Link href="/integrations/tiktok-shop-to-looker-studio" className="text-sm text-gray-400 hover:text-white transition-colors">
+                                    TikTok Shop → Looker Studio
+                                </Link>
+                            </li>
                             <li className="text-sm text-gray-500">For E-commerce <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
                             <li className="text-sm text-gray-500">For Enterprises <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
                             <li className="text-sm text-gray-500">Data Warehousing <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
