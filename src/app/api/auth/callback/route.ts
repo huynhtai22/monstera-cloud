@@ -78,14 +78,11 @@ export async function GET(request: NextRequest) {
             },
         });
         
-        // Redirect to sources with success param
-        // The UI will handle showing a "Link to Destination" prompt
-        const params = new URLSearchParams({
-            newConnectionId: connection.id,
-            setup: "choose-destination",
-        });
-        
-        return NextResponse.redirect(`/sources?${params.toString()}`);
+        // Redirect to explicit setup flow (replaces auto-pipeline creation)
+        // User chooses destination or skips if using add-on/Looker
+        return NextResponse.redirect(
+            `/sources/setup?newConnectionId=${connection.id}&provider=${providerId}`
+        );
         
     } catch (error) {
         console.error("[OAuth Callback] Error:", error);
