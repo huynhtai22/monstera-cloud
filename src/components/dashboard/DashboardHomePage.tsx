@@ -279,22 +279,49 @@ export function DashboardHomePage() {
                 </div>
             ) : null}
 
-            {/* ── Main Body: 2 column on large screens ─────────── */}
+            {/* ── Main Body ─────────────────────────────────────── */}
+            {/*
+                Priority reading order (matches 10AM check-in AND 2AM emergency):
+                1. Status snapshot  → PillarGrid (right col rendered FIRST on mobile via order-first)
+                2. KPI numbers      → MetricCardGrid (did the numbers look good?)
+                3. What ran/failed  → RecentActivity (specific pipeline detail)
+                4. Deeper analysis  → AiPerformanceSummary (when you have time)
+                5. Infrastructure   → HealthSummaryBar (confirmation strip, not discovery)
+            */}
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
 
-                {/* Left column — primary content (3/5 width) */}
-                <div className="space-y-6 xl:col-span-3">
-
-                    {/* Performance — metrics + AI digest under one roof */}
-                    <section>
-                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                            Performance
+                {/* ── RIGHT: Status snapshot (2/5) — shown FIRST on mobile via order-first */}
+                <div className="order-first xl:order-last xl:col-span-2">
+                    <div className="mb-3 flex items-center justify-between">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                            Status
                         </p>
-                        {snapshots.length > 0 && <MetricCardGrid snapshots={snapshots} />}
-                        <AiPerformanceSummary workspaceId={workspaceId} />
-                    </section>
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-slate-800 dark:text-slate-400">
+                            {connectedSourcesCount}s · {connectedDestinationsCount}d
+                        </span>
+                    </div>
+                    <PillarGrid
+                        connections={connections}
+                        syncLogs={logs}
+                        healthyCount={healthyCount}
+                        totalPipelines={activePipelinesCount}
+                    />
+                </div>
 
-                    {/* Recent Activity */}
+                {/* ── LEFT: Detail (3/5) — KPIs → Activity → AI Digest */}
+                <div className="space-y-8 xl:col-span-3">
+
+                    {/* 2 · KPI metrics — morning number check */}
+                    {snapshots.length > 0 && (
+                        <section>
+                            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                                Performance
+                            </p>
+                            <MetricCardGrid snapshots={snapshots} />
+                        </section>
+                    )}
+
+                    {/* 3 · Recent Activity — what ran, what failed, one-click re-sync */}
                     <section>
                         <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                             Recent Activity
@@ -307,33 +334,21 @@ export function DashboardHomePage() {
                             onSync={runPipeline}
                         />
                     </section>
-                </div>
 
-                {/* Right column — connections (2/5 width) */}
-                <div className="xl:col-span-2">
+                    {/* 4 · AI Digest — deeper analysis, read when you have time */}
                     <section>
-                        <div className="mb-3 flex items-center justify-between">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                                Connections
-                            </p>
-                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-slate-800 dark:text-slate-400">
-                                {connectedSourcesCount}s · {connectedDestinationsCount}d
-                            </span>
-                        </div>
-                        <PillarGrid
-                            connections={connections}
-                            syncLogs={logs}
-                            healthyCount={healthyCount}
-                            totalPipelines={activePipelinesCount}
-                        />
+                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                            AI Insights
+                        </p>
+                        <AiPerformanceSummary workspaceId={workspaceId} />
                     </section>
                 </div>
             </div>
 
-            {/* ── System Health — compact summary strip ─────────── */}
-            <section className="mt-8">
+            {/* 5 · System Health — confirmation strip, not discovery */}
+            <section className="mt-8 border-t border-gray-100 pt-6 dark:border-slate-800">
                 <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                    System Health
+                    Infrastructure
                 </p>
                 <HealthSummaryBar />
             </section>
