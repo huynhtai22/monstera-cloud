@@ -129,7 +129,7 @@ export function PillarGrid({
     const noReportsYet = syncLogs.length === 0;
 
     return (
-        <div className="relative z-10 mb-10 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="relative z-10 grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="pillar-fade md:col-span-2" style={{ animationDelay: "0ms" }}>
                 <SectionOverviewCard
                     icon={<Activity className="h-5 w-5" />}

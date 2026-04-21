@@ -317,9 +317,8 @@ export function DashboardHomePage() {
                     </section>
                 </div>
 
-                {/* Right column — connections + health (2/5 width) */}
-                <div className="space-y-6 xl:col-span-2">
-                    {/* Connections */}
+                {/* Right column — connections (2/5 width) */}
+                <div className="xl:col-span-2">
                     <section>
                         <div className="mb-3 flex items-center justify-between">
                             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
@@ -337,16 +336,16 @@ export function DashboardHomePage() {
                             latestNetRoas={snapshots.length ? snapshots[snapshots.length - 1].netRoas : null}
                         />
                     </section>
-
-                    {/* System Health */}
-                    <section>
-                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                            System Health
-                        </p>
-                        <HealthDashboard />
-                    </section>
                 </div>
             </div>
+
+            {/* ── System Health — full width ────────────────────── */}
+            <section className="mt-4">
+                <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                    System Health
+                </p>
+                <HealthDashboard />
+            </section>
         </PageShell>
     );
 }

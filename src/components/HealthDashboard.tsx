@@ -172,7 +172,7 @@ export function HealthDashboard() {
                 ))}
             </div>
 
-            <div className="mt-12 pt-6 border-t border-gray-50 flex items-center justify-between">
+            <div className="mt-6 pt-4 border-t border-gray-50 flex items-center justify-between">
                 <div>
                     <p className="text-[10px] font-bold text-gray-400 uppercase">Avg. Success Rate</p>
                     <p className="text-lg font-black text-gray-900">99.98%</p>
