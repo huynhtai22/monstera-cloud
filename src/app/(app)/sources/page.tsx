@@ -5,6 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Database, Search, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Unplug, ChevronRight, ArrowRight, ChevronDown } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
+import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import useSWR, { useSWRConfig } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -541,6 +542,17 @@ export default function SourcesPage() {
     const [activeFilter, setActiveFilter] = useState('all');
     const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
     const addSourceMenuRef = useRef<HTMLDivElement>(null);
+    
+    // P1: Fix It flow state
+    const [fixConnectionTarget, setFixConnectionTarget] = useState<{
+        id: string;
+        name: string;
+        provider: string;
+        catalogId: string;
+        status: string;
+        errorMsg?: string;
+        lastSync?: string;
+    } | null>(null);
 
     /* #1 — Fix outgoingActionId race condition: Set instead of single string */
     const [busyActions, setBusyActions] = useState<Set<string>>(new Set());
@@ -619,17 +631,17 @@ export default function SourcesPage() {
             toast.error("Could not determine which integration to reconnect.");
             return;
         }
-        const cat = catalogIntegrationFromId(catalogId);
-        setSelectedIntegration(
-            cat ?? {
-                id: catalogId,
-                name: integration.name,
-                description: integration.description,
-                logoSrc: integration.logoSrc,
-                status: "available" as const,
-            }
-        );
-        setIsSourceModalOpen(true);
+        
+        // P1: Open Fix It modal instead of generic connect modal
+        setFixConnectionTarget({
+            id: integration.id,
+            name: integration.name,
+            provider: integration.provider || catalogId,
+            catalogId,
+            status: integration.status,
+            errorMsg: integration.errorMsg,
+            lastSync: integration.lastSync,
+        });
     }, []);
 
     const handleConnect = useCallback((integration: any) => {
@@ -1417,6 +1429,18 @@ export default function SourcesPage() {
                 onClose={() => setIsSourceModalOpen(false)}
                 integration={selectedIntegration}
                 connectedCatalogIds={connectedCatalogIdList}
+            />
+
+            {/* P1: Fix It Modal for one-click reconnection */}
+            <FixConnectionModal
+                isOpen={fixConnectionTarget !== null}
+                onClose={() => setFixConnectionTarget(null)}
+                connection={fixConnectionTarget}
+                onReconnected={() => {
+                    // Refresh data after successful reconnection
+                    mutate((key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"));
+                    toast.success("Connection restored successfully");
+                }}
             />
         </PageShell>
     );

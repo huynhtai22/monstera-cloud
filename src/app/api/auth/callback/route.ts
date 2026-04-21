@@ -45,8 +45,13 @@ export async function GET(request: NextRequest) {
             throw new OAuthError("configuration_error", "Provider not enabled", providerId);
         }
         
-        // Parse state to get workspace and user
-        const { workspaceId, userId } = parseState(state);
+        // Parse state to get workspace, user, and reconnection context
+        const stateData = parseState(state);
+        const { workspaceId, userId, reconnectConnectionId } = stateData as {
+            workspaceId: string;
+            userId: string;
+            reconnectConnectionId?: string;
+        };
         
         // Get provider adapter
         const provider = getProvider(providerId);
@@ -63,7 +68,31 @@ export async function GET(request: NextRequest) {
             metadata: { workspaceId, userId },
         });
         
-        // Create connection record
+        // P1: Handle reconnection flow - preserve existing pipelines
+        if (reconnectConnectionId) {
+            // Update existing connection with new credentials
+            await prisma.connection.update({
+                where: { id: reconnectConnectionId },
+                data: {
+                    credentials: encrypt(JSON.stringify({
+                        ...credentials,
+                        ...metadata.extraFields,
+                    })),
+                    status: "connected",
+                    name: metadata.name, // Update name if account changed
+                    updatedAt: new Date(),
+                },
+            });
+            
+            // Redirect to sources page with success message
+            const successParams = new URLSearchParams({
+                reconnected: "true",
+                provider: providerId,
+            });
+            return NextResponse.redirect(`/sources?${successParams.toString()}`);
+        }
+        
+        // Create new connection record
         const connection = await prisma.connection.create({
             data: {
                 workspaceId,

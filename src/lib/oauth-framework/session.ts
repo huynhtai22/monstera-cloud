@@ -40,13 +40,13 @@ export function buildCallbackUrl(request: Request, providerId: string): string {
 }
 
 /** Generate secure state parameter with embedded metadata */
-export function generateState(metadata: { workspaceId: string; userId: string }): string {
+export function generateState(metadata: { workspaceId: string; userId: string; reconnectConnectionId?: string }): string {
     // Simple base64 encoding - in production, consider signing this
     return Buffer.from(JSON.stringify(metadata)).toString("base64url");
 }
 
 /** Parse and validate state parameter */
-export function parseState(state: string): { workspaceId: string; userId: string } {
+export function parseState(state: string): { workspaceId: string; userId: string; reconnectConnectionId?: string } {
     try {
         const decoded = Buffer.from(state, "base64url").toString("utf-8");
         const parsed = JSON.parse(decoded);
