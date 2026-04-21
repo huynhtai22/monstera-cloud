@@ -84,11 +84,11 @@ export function SectionOverviewCard({
                         <h3 className="min-w-0 flex-1 truncate text-sm font-bold text-gray-900 dark:text-white">{title}</h3>
                         {kpi ? (
                             <div className="shrink-0 text-right">
-                                <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-300">
-                                    {kpi.label}
-                                </div>
-                                <div className="text-base font-extrabold tracking-tight text-gray-900 dark:text-white">
+                                <div className="text-2xl font-black leading-none tracking-tight text-gray-900 dark:text-white">
                                     {kpi.value}
+                                </div>
+                                <div className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                                    {kpi.label}
                                 </div>
                             </div>
                         ) : null}
