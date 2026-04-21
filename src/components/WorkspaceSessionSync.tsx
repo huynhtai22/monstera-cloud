@@ -45,9 +45,11 @@ export function WorkspaceSessionSync() {
                 /* ignore */
             }
             setActiveWorkspaceId(null);
-            void mutate((key) => typeof key === "string" && key.startsWith("/api/"), undefined, {
-                revalidate: true,
-            });
+            void mutate(
+                (key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"),
+                undefined,
+                { revalidate: true }
+            );
         }
     }, [status, session?.user?.id, setActiveWorkspaceId]);
 
