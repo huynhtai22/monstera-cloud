@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { Activity, Plug, Send, FileBarChart2, Zap } from "lucide-react";
+import { GitMerge, Plug, Send, FileBarChart2, Zap } from "lucide-react";
 import { SectionOverviewCard, type OverviewLineItem } from "@/components/dashboard/SectionOverviewCard";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 
@@ -27,7 +27,6 @@ type PillarGridProps = {
     syncLogs: SyncLog[];
     healthyCount: number;
     totalPipelines: number;
-    latestNetRoas: number | null;
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -66,7 +65,6 @@ export function PillarGrid({
     syncLogs,
     healthyCount,
     totalPipelines,
-    latestNetRoas,
 }: PillarGridProps) {
     const sources = connections.filter((c) => c.type === "source");
     const destinations = connections.filter((c) => c.type === "destination");
@@ -87,7 +85,7 @@ export function PillarGrid({
         status: c.status === "connected" ? "ok" : c.status === "error" ? "error" : "pending",
     }));
 
-    const { recentLogs, successCount, errorCount } = useMemo(() => {
+    const { recentLogs, successCount, errorCount, pipelineItems } = useMemo(() => {
         const sorted = [...syncLogs].sort(
             (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
@@ -97,7 +95,28 @@ export function PillarGrid({
             if (l.status === "success") successes++;
             else if (l.status === "error") errors++;
         }
-        return { recentLogs: sorted.slice(0, 3), successCount: successes, errorCount: errors };
+        // Deduplicate by pipeline — show each pipeline once with its latest run status
+        const seen = new Set<string>();
+        const pItems: OverviewLineItem[] = [];
+        for (const l of sorted) {
+            const key = l.pipeline?.id ?? l.id;
+            if (!seen.has(key)) {
+                seen.add(key);
+                pItems.push({
+                    id: l.id,
+                    label: l.pipeline?.name ?? "Pipeline sync",
+                    sub: timeAgo(l.createdAt),
+                    status: l.status === "success" ? "ok" : l.status === "error" ? "error" : "pending",
+                });
+            }
+            if (pItems.length >= 3) break;
+        }
+        return {
+            recentLogs: sorted.slice(0, 3),
+            successCount: successes,
+            errorCount: errors,
+            pipelineItems: pItems,
+        };
     }, [syncLogs]);
 
     const reportItems: OverviewLineItem[] = recentLogs.map((l) => ({
@@ -107,47 +126,11 @@ export function PillarGrid({
         status: l.status === "success" ? "ok" : l.status === "error" ? "error" : "pending",
     }));
 
-    const dashboardItems: OverviewLineItem[] = [
-        {
-            id: "health",
-            label: `${healthyCount}/${totalPipelines || 0} pipelines healthy`,
-            status: totalPipelines === 0 ? "pending" : healthyCount === totalPipelines ? "ok" : "error",
-        },
-        {
-            id: "syncs",
-            label: `${successCount} successful sync${successCount === 1 ? "" : "s"}`,
-            sub: errorCount ? `${errorCount} failed` : undefined,
-            status: errorCount ? "error" : successCount ? "ok" : "pending",
-        },
-        {
-            id: "sources",
-            label: `${sources.length} source${sources.length === 1 ? "" : "s"} · ${destinations.length} destination${destinations.length === 1 ? "" : "s"}`,
-            status: sources.length && destinations.length ? "ok" : "pending",
-        },
-    ];
-
     const noReportsYet = syncLogs.length === 0;
 
     return (
         <div className="relative z-10 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="pillar-fade md:col-span-2" style={{ animationDelay: "0ms" }}>
-                <SectionOverviewCard
-                    icon={<Activity className="h-5 w-5" />}
-                    title="Dashboard"
-                    subtitle="Health & performance"
-                    emphasis
-                    kpi={
-                        latestNetRoas != null
-                            ? { label: "Net ROAS", value: `${latestNetRoas.toFixed(2)}×` }
-                            : undefined
-                    }
-                    items={dashboardItems}
-                    ctaLabel="View health"
-                    ctaHref="/reports"
-                />
-            </div>
-
-            <div className="pillar-fade" style={{ animationDelay: "60ms" }}>
+            <div className="pillar-fade" style={{ animationDelay: "0ms" }}>
                 <SectionOverviewCard
                     icon={<Plug className="h-5 w-5" />}
                     title="Sources"
@@ -160,7 +143,7 @@ export function PillarGrid({
                 />
             </div>
 
-            <div className="pillar-fade" style={{ animationDelay: "120ms" }}>
+            <div className="pillar-fade" style={{ animationDelay: "60ms" }}>
                 <SectionOverviewCard
                     icon={<Send className="h-5 w-5" />}
                     title="Destinations"
@@ -170,6 +153,24 @@ export function PillarGrid({
                     emptyHint="No destinations yet. Pick Google Sheets or Looker Studio to deliver data."
                     ctaLabel={destinations.length ? "Manage destinations" : "Add a destination"}
                     ctaHref="/destinations"
+                />
+            </div>
+
+            <div className="pillar-fade md:col-span-2" style={{ animationDelay: "120ms" }}>
+                <SectionOverviewCard
+                    icon={<GitMerge className="h-5 w-5" />}
+                    title="Pipelines"
+                    subtitle="Active sync jobs"
+                    emphasis
+                    kpi={
+                        totalPipelines > 0
+                            ? { label: "Healthy", value: `${healthyCount}/${totalPipelines}` }
+                            : undefined
+                    }
+                    items={pipelineItems}
+                    emptyHint="No pipelines yet. Create one to connect a source to a destination."
+                    ctaLabel={totalPipelines ? "Manage pipelines" : "Create a pipeline"}
+                    ctaHref="/pipelines"
                 />
             </div>
 

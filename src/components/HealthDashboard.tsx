@@ -3,15 +3,16 @@
 import React from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { 
-  Activity, 
-  Clock, 
-  Database, 
+import {
+  Activity,
+  Clock,
+  Database,
   BarChart3,
   ExternalLink,
   Users,
   ShieldAlert,
   ChevronRight,
+  ArrowRight,
 } from "lucide-react";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
 import { cn } from "@/lib/utils";
@@ -98,7 +99,7 @@ export function HealthDashboard() {
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {clientHealth.length === 0 ? (
-                <div className="sm:col-span-2 p-10 border-2 border-dashed border-gray-100 rounded-3xl text-center space-y-3">
+                <div className="sm:col-span-2 p-10 border-2 border-dashed border-gray-100 rounded-2xl text-center space-y-3">
                     <p className="text-sm text-gray-400">
                         No client groups yet. Create clients and assign connections in Settings to track health by account.
                     </p>
@@ -145,7 +146,7 @@ export function HealthDashboard() {
         </div>
 
         {/* Right: Throughput Chart */}
-        <div className="p-6 rounded-3xl border border-gray-100 bg-white shadow-sm flex flex-col">
+        <div className="p-6 rounded-2xl border border-gray-100 bg-white shadow-sm flex flex-col">
             <div className="flex items-center justify-between mb-8">
                 <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">Ingestion Velocity</h3>
                 <Activity className="h-4 w-4 text-cyan-500" />
@@ -186,21 +187,25 @@ export function HealthDashboard() {
 
       </div>
 
-      {/* 3. Agency Audit Teaser */}
-      <div className="p-1 rounded-3xl bg-gradient-to-r from-cyan-500 via-indigo-500 to-cyan-500">
-        <div className="bg-white dark:bg-slate-900 rounded-[22px] p-6 flex items-center justify-between">
+      {/* 3. Credential Audit Banner */}
+      <div className="p-1 rounded-2xl bg-gradient-to-r from-cyan-500 via-indigo-500 to-cyan-500">
+        <div className="bg-white dark:bg-slate-900 rounded-[14px] p-6 flex items-center justify-between">
             <div className="flex items-center gap-5">
                 <div className="p-3 bg-cyan-50 rounded-2xl">
                     <ShieldAlert className="h-6 w-6 text-cyan-600" />
                 </div>
                 <div>
                     <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight">Infrastructure Auditor</h4>
-                    <p className="text-xs text-gray-500">Automatically scanning {overall.totalConnections || 0} connections for API credential expiration.</p>
+                    <p className="text-xs text-gray-500">Scanning {overall.totalConnections || 0} connections for API credential expiration.</p>
                 </div>
             </div>
-            <button className="px-6 py-2.5 bg-gray-900 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:scale-105 transition-all shadow-lg active:scale-95">
-                Run Audit
-            </button>
+            <Link
+                href="/settings?tab=connections"
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-gray-900 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:scale-105 transition-all shadow-lg active:scale-95"
+            >
+                Review credentials
+                <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
         </div>
       </div>
     </div>

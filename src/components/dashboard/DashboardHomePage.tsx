@@ -6,7 +6,6 @@ import { Database } from "lucide-react";
 import useSWR from "swr";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
-import { HealthDashboard } from "@/components/HealthDashboard";
 import { AiPerformanceSummary } from "@/components/AiPerformanceSummary";
 import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -15,6 +14,7 @@ import { MetricCardGrid } from "@/components/dashboard/MetricCardGrid";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { SetupWizard } from "@/components/dashboard/SetupWizard";
 import { PillarGrid } from "@/components/dashboard/PillarGrid";
+import { HealthSummaryBar } from "@/components/dashboard/HealthSummaryBar";
 import { trackEvent, trackOnce } from "@/lib/analytics-events";
 
 const WIZARD_DISMISS_KEY = "monstera_setup_wizard_dismissed_v1";
@@ -213,7 +213,7 @@ export function DashboardHomePage() {
                 <EmptyState
                     icon={<Database className="h-12 w-12" />}
                     title="No workspace"
-                    description="We couldn’t load a workspace for your account. Try refreshing or contact support."
+                    description="We couldn't load a workspace for your account. Try refreshing or contact support."
                 />
             </PageShell>
         );
@@ -267,16 +267,6 @@ export function DashboardHomePage() {
                 </div>
             ) : null}
 
-            {/* ── KPI Row ──────────────────────────────────────── */}
-            {snapshots.length > 0 && (
-                <div className="mb-8">
-                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                        Today's Performance
-                    </p>
-                    <MetricCardGrid snapshots={snapshots} />
-                </div>
-            )}
-
             {/* ── Setup Wizard (shown inline, full-width) ────── */}
             {!hasSuccessfulSync && hasSource ? (
                 <div className="mb-8">
@@ -294,15 +284,17 @@ export function DashboardHomePage() {
 
                 {/* Left column — primary content (3/5 width) */}
                 <div className="space-y-6 xl:col-span-3">
-                    {/* AI Insights */}
+
+                    {/* Performance — metrics + AI digest under one roof */}
                     <section>
                         <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                            Performance Insights
+                            Performance
                         </p>
+                        {snapshots.length > 0 && <MetricCardGrid snapshots={snapshots} />}
                         <AiPerformanceSummary workspaceId={workspaceId} />
                     </section>
 
-                    {/* Recent Syncs */}
+                    {/* Recent Activity */}
                     <section>
                         <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                             Recent Activity
@@ -333,18 +325,17 @@ export function DashboardHomePage() {
                             syncLogs={logs}
                             healthyCount={healthyCount}
                             totalPipelines={activePipelinesCount}
-                            latestNetRoas={snapshots.length ? snapshots[snapshots.length - 1].netRoas : null}
                         />
                     </section>
                 </div>
             </div>
 
-            {/* ── System Health — full width ────────────────────── */}
-            <section className="mt-4">
-                <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+            {/* ── System Health — compact summary strip ─────────── */}
+            <section className="mt-8">
+                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                     System Health
                 </p>
-                <HealthDashboard />
+                <HealthSummaryBar />
             </section>
         </PageShell>
     );
