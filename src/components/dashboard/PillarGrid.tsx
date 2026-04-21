@@ -87,19 +87,20 @@ export function PillarGrid({
             ? `Last sync ${timeInfo.text ?? "unknown"} — may need attention`
             : timeInfo.text ?? "Pending first sync";
         
-        // P1: Extract account information for multi-account sources
-        const accounts = extractAccountsFromConnection(c.provider, c.credentials);
-        const accountHint = accounts.length > 0 
-            ? (accounts[0].name.length > 15 ? accounts[0].id : accounts[0].name)
+        // P1: Extract account information from name for multi-account sources
+        const accountHint = c.name?.includes("(")
+            ? c.name.split("(")[1]?.replace(")", "")
             : undefined;
-        
+        const accountCountMatch = c.name?.match(/(\d+)\s*account/);
+        const accountCount = accountCountMatch ? parseInt(accountCountMatch[1]) : undefined;
+
         return {
             id: c.id,
             label: c.name?.trim() ? c.name! : prettyProvider(c.provider),
             sub: subText,
             logoSrc: logoPathForConnectionProvider(c.provider),
             status: health === "error" ? "error" : health === "healthy" ? "ok" : "pending",
-            accountCount: accounts.length > 1 ? accounts.length : undefined,
+            accountCount: accountCount && accountCount > 1 ? accountCount : undefined,
             accountHint: accountHint,
         };
     });

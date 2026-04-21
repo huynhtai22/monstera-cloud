@@ -4,6 +4,7 @@
  */
 
 import { toast } from "sonner";
+import { CheckCircle2, AlertCircle } from "lucide-react";
 import { logoPathForConnectionProvider } from "./integration-logos";
 
 interface SyncToastStats {
@@ -23,43 +24,18 @@ export function showSyncToast(
     const logo = logoPathForConnectionProvider(provider);
     const hasData = stats.rows > 0;
     
-    toast.custom(
-        (t) => (
-            <div
-                className={`
-                    flex items-center gap-3 rounded-lg border p-3 shadow-lg
-                    bg-white dark:bg-slate-900 border-gray-200 dark:border-slate-700
-                    ${t.visible ? "animate-enter" : "animate-leave"}
-                `}
-            >
-                {/* Platform logo */}
-                <img
-                    src={logo}
-                    alt={provider}
-                    className="h-6 w-6 shrink-0 object-contain"
-                />
-                
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                        {sourceName}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                        {stats.rows.toLocaleString()} rows • {Math.round(stats.duration)}s
-                    </p>
-                </div>
-                
-                {/* Status icon */}
-                {hasData ? (
-                    <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
-                ) : (
-                    <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
-                )}
-            </div>
-        ),
+    toast.success(
+        sourceName,
         {
-            id: `sync-${provider}-${Date.now()}`, // P1: Unique ID prevents spam
+            description: `${stats.rows.toLocaleString()} rows synced in ${Math.round(stats.duration)}s`,
             duration: 4000,
+            icon: (
+                <img 
+                    src={logo} 
+                    alt={provider} 
+                    className="h-4 w-4 object-contain" 
+                />
+            ),
         }
     );
 }
