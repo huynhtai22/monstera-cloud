@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { ConnectDestinationModal } from "@/components/ConnectDestinationModal";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { DataFlowExplainer } from "@/components/data-flow/DataFlowExplainer";
+import { RefreshedAt } from "@/components/ui/RefreshedAt";
 import useSWR, { useSWRConfig } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
@@ -35,8 +36,6 @@ export default function DestinationsPage() {
 
     const { mutate } = useSWRConfig();
     const { activeWorkspaceId } = useWorkspaceStore();
-
-
     // Fetch Data
     const { data: workspaces, error, isLoading } = useSWR("/api/workspaces", fetcher);
     // Dst1: real pipeline count
@@ -157,7 +156,8 @@ export default function DestinationsPage() {
                         </p>
                     </div>
                 </div>
-                <div className="flex shrink-0 space-x-3 sm:pt-1">
+                <div className="flex shrink-0 items-center gap-3 sm:pt-1">
+                    <RefreshedAt onRefresh={() => mutate(() => true, undefined, { revalidate: true })} />
                     <PrimaryButton
                         type="button"
                         onClick={() => setSetupDestinationId('gsheets')}

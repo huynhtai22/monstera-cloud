@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { Database } from "lucide-react";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
 import { AiPerformanceSummary } from "@/components/AiPerformanceSummary";
@@ -15,6 +15,7 @@ import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { SetupWizard } from "@/components/dashboard/SetupWizard";
 import { PillarGrid } from "@/components/dashboard/PillarGrid";
 import { HealthSummaryBar } from "@/components/dashboard/HealthSummaryBar";
+import { RefreshedAt } from "@/components/ui/RefreshedAt";
 import { trackEvent, trackOnce } from "@/lib/analytics-events";
 
 const WIZARD_DISMISS_KEY = "monstera_setup_wizard_dismissed_v1";
@@ -69,10 +70,18 @@ const fetcher = async (url: string) => {
 
 export function DashboardHomePage() {
     const { workspaceId, workspaces, isLoading: workspacesLoading } = useResolvedWorkspaceId();
+    const { mutate } = useSWRConfig();
     const [syncingPipelineId, setSyncingPipelineId] = React.useState<string | null>(null);
     const [syncAllBusy, setSyncAllBusy] = React.useState(false);
     const [syncMsg, setSyncMsg] = React.useState<string>("");
     const [wizardDismissed, setWizardDismissed] = React.useState(false);
+    const [isRefreshing, setIsRefreshing] = React.useState(false);
+
+    const handleManualRefresh = React.useCallback(async () => {
+        setIsRefreshing(true);
+        await mutate(() => true, undefined, { revalidate: true });
+        setIsRefreshing(false);
+    }, [mutate]);
 
     React.useEffect(() => {
         try {
@@ -270,11 +279,16 @@ export function DashboardHomePage() {
                 syncing={syncAllBusy}
             />
 
+            {/* X1: last-refreshed indicator */}
+            <div className="mb-2 flex justify-end">
+                <RefreshedAt onRefresh={handleManualRefresh} loading={isRefreshing} />
+            </div>
+
             {syncMsg ? (
                 <div className={[
                     "mb-6 rounded-lg border px-4 py-3 text-sm",
                     /fail|error|could not|sorry/i.test(syncMsg)
-                        ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-300"
+                        ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-300"
                         : "border-cyan-100 bg-cyan-50/70 text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200"
                 ].join(" ")}>
                     {syncMsg}

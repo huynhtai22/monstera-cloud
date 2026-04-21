@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { trackEvent, trackOnce } from "@/lib/analytics-events";
 import { PageShell } from "@/components/ui/PageShell";
 import { DataFlowExplainer } from "@/components/data-flow/DataFlowExplainer";
+import { RefreshedAt } from "@/components/ui/RefreshedAt";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin" });
@@ -196,7 +197,7 @@ const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
                             "rounded-md border px-2 py-1 text-xs font-semibold transition-colors",
                             isAuthError
                                 ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-200 dark:hover:bg-amber-950/90"
-                                : "border-red-300 bg-red-50 text-red-800 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/60 dark:text-red-200 dark:hover:bg-red-950/90"
+                                : "border-red-300 bg-red-50 text-red-800 hover:bg-red-100 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/60"
                         )}
                     >
                         {isAuthError ? "Reconnect" : "Fix"}
@@ -1074,13 +1075,9 @@ export default function SourcesPage() {
                     )}
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3">
-                    <button
-                        onClick={() => mutate('/api/workspaces')}
-                        aria-label="Refresh all sources"
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:bg-slate-700"
-                    >
-                        <RefreshCw className="w-4 h-4" />
-                    </button>
+                    <RefreshedAt
+                        onRefresh={() => mutate(() => true, undefined, { revalidate: true })}
+                    />
                     <div className="relative" ref={addSourceMenuRef}>
                         <button
                             type="button"
