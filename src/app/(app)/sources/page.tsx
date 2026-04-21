@@ -1076,7 +1076,7 @@ export default function SourcesPage() {
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3">
                     <RefreshedAt
-                        onRefresh={() => mutate((key) => typeof key === "string" && key.startsWith("/api/"), undefined, { revalidate: true })}
+                        onRefresh={() => mutate((key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"), undefined, { revalidate: true })}
                     />
                     <div className="relative" ref={addSourceMenuRef}>
                         <button

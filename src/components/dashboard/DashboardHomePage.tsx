@@ -146,14 +146,20 @@ export function DashboardHomePage() {
 
     const handleManualRefresh = React.useCallback(async () => {
         setIsRefreshing(true);
-        // Exclude /api/auth/* — next-auth v4 uses /api/auth/session as an SWR key internally.
-        // Revalidating it causes "Cannot destructure property 'auth' of 'e' as it is undefined".
-        await mutate(
-            (key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"),
-            undefined,
-            { revalidate: true }
-        );
-        setIsRefreshing(false);
+        try {
+            // Exclude /api/auth/* — next-auth v4 uses /api/auth/session as an SWR key internally.
+            // Revalidating it causes "Cannot destructure property 'auth' of 'e' as it is undefined".
+            await mutate(
+                (key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"),
+                undefined,
+                { revalidate: true }
+            );
+        } catch (e) {
+            console.warn("[Dashboard] Refresh failed:", e);
+            // Silently fail — individual SWR hooks will retry on their own
+        } finally {
+            setIsRefreshing(false);
+        }
     }, [mutate]);
 
     React.useEffect(() => {
