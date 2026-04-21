@@ -60,7 +60,7 @@ export function SectionOverviewCard({
     return (
         <div
             className={cn(
-                "group relative flex h-full flex-col justify-between rounded-2xl border p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md",
+                "group relative flex h-full flex-col justify-between rounded-2xl border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md",
                 emphasis
                     ? "border-cyan-200 bg-gradient-to-br from-cyan-50/80 via-white/80 to-white/80 dark:border-cyan-500/30 dark:from-cyan-500/10 dark:via-slate-900/60 dark:to-slate-900/60"
                     : "border-gray-200/80 bg-white/80 dark:border-slate-700/60 dark:bg-slate-900/60",
@@ -68,11 +68,11 @@ export function SectionOverviewCard({
             )}
         >
             <div>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
+                <div className="mb-3 space-y-1">
+                    <div className="flex items-center gap-2">
                         <div
                             className={cn(
-                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border shadow-sm",
+                                "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border shadow-sm",
                                 emphasis
                                     ? "border-cyan-200 bg-cyan-100/70 text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-300"
                                     : "border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
@@ -81,22 +81,20 @@ export function SectionOverviewCard({
                         >
                             {icon}
                         </div>
-                        <div>
-                            <h3 className="text-base font-bold text-gray-900 dark:text-white">{title}</h3>
-                            {subtitle ? (
-                                <p className="text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>
-                            ) : null}
-                        </div>
+                        <h3 className="min-w-0 flex-1 truncate text-sm font-bold text-gray-900 dark:text-white">{title}</h3>
+                        {kpi ? (
+                            <div className="shrink-0 text-right">
+                                <div className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-300">
+                                    {kpi.label}
+                                </div>
+                                <div className="text-base font-extrabold tracking-tight text-gray-900 dark:text-white">
+                                    {kpi.value}
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
-                    {kpi ? (
-                        <div className="shrink-0 text-right">
-                            <div className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-300">
-                                {kpi.label}
-                            </div>
-                            <div className="text-lg font-extrabold tracking-tight text-gray-900 dark:text-white">
-                                {kpi.value}
-                            </div>
-                        </div>
+                    {subtitle ? (
+                        <p className="pl-10 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>
                     ) : null}
                 </div>
 
