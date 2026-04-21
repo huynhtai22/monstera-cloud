@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { GitMerge, Plug, Send, FileBarChart2 } from "lucide-react";
 import { SectionOverviewCard, type OverviewLineItem } from "@/components/dashboard/SectionOverviewCard";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
+import { timeAgo } from "@/lib/time-format";
 
 type Connection = {
     id: string;
@@ -64,18 +65,7 @@ function prettyProvider(provider: string) {
     return PROVIDER_LABELS[provider] ?? provider.replace(/_/g, " ");
 }
 
-function timeAgo(iso?: string | null): string | undefined {
-    if (!iso) return undefined;
-    const then = new Date(iso).getTime();
-    if (!Number.isFinite(then)) return undefined;
-    const mins = Math.max(0, Math.round((Date.now() - then) / 60000));
-    if (mins < 1) return "just now";
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.round(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.round(hrs / 24);
-    return `${days}d ago`;
-}
+// Note: timeAgo and formatSyncTime now imported from @/lib/time-format
 
 export function PillarGrid({
     connections,
@@ -88,26 +78,39 @@ export function PillarGrid({
 
     const sourceItems: OverviewLineItem[] = sources.slice(0, 3).map((c) => {
         const health = healthStatus(c);
+        
+        // P1: Use timezone-aware formatting for last sync
+        const timeInfo = timeAgo(c.updatedAt, { staleThresholdMins: STALE_MINUTES });
         const subText = health === "error" 
             ? "Connection error — check settings"
             : health === "stale"
-            ? `Last sync ${timeAgo(c.updatedAt) ?? "unknown"} — may need attention`
-            : timeAgo(c.updatedAt) ?? "Pending first sync";
+            ? `Last sync ${timeInfo.text ?? "unknown"} — may need attention`
+            : timeInfo.text ?? "Pending first sync";
+        
+        // P1: Extract account information for multi-account sources
+        const accounts = extractAccountsFromConnection(c.provider, c.credentials);
+        const accountHint = accounts.length > 0 
+            ? (accounts[0].name.length > 15 ? accounts[0].id : accounts[0].name)
+            : undefined;
+        
         return {
             id: c.id,
             label: c.name?.trim() ? c.name! : prettyProvider(c.provider),
             sub: subText,
             logoSrc: logoPathForConnectionProvider(c.provider),
             status: health === "error" ? "error" : health === "healthy" ? "ok" : "pending",
+            accountCount: accounts.length > 1 ? accounts.length : undefined,
+            accountHint: accountHint,
         };
     });
 
     const destinationItems: OverviewLineItem[] = destinations.slice(0, 3).map((c) => {
         const health = healthStatus(c);
+        const timeInfo = timeAgo(c.updatedAt);
         const subText = health === "error"
             ? "Connection error"
             : health === "stale"
-            ? `Last used ${timeAgo(c.updatedAt) ?? "unknown"}`
+            ? `Last used ${timeInfo.text ?? "unknown"}`
             : c.status === "connected" ? "Connected" : c.status ?? "Pending";
         return {
             id: c.id,
@@ -135,10 +138,11 @@ export function PillarGrid({
             const key = l.pipeline?.id ?? l.id;
             if (!seen.has(key)) {
                 seen.add(key);
+                const timeInfo = timeAgo(l.createdAt);
                 pItems.push({
                     id: l.id,
                     label: l.pipeline?.name ?? "Pipeline sync",
-                    sub: timeAgo(l.createdAt),
+                    sub: timeInfo.text,
                     status: l.status === "success" ? "ok" : l.status === "error" ? "error" : "pending",
                 });
             }
@@ -152,12 +156,15 @@ export function PillarGrid({
         };
     }, [syncLogs]);
 
-    const reportItems: OverviewLineItem[] = recentLogs.map((l) => ({
-        id: l.id,
-        label: l.pipeline?.name ?? "Pipeline sync",
-        sub: timeAgo(l.createdAt),
-        status: l.status === "success" ? "ok" : l.status === "error" ? "error" : "pending",
-    }));
+    const reportItems: OverviewLineItem[] = recentLogs.map((l) => {
+        const timeInfo = timeAgo(l.createdAt);
+        return {
+            id: l.id,
+            label: l.pipeline?.name ?? "Pipeline sync",
+            sub: timeInfo.text,
+            status: l.status === "success" ? "ok" : l.status === "error" ? "error" : "pending",
+        };
+    });
 
     const noReportsYet = syncLogs.length === 0;
 

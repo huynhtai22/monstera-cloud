@@ -12,6 +12,10 @@ export type OverviewLineItem = {
     sub?: string;
     logoSrc?: string;
     status?: OverviewStatus;
+    /** P1: Account count for multi-account sources (e.g., Meta with 3 ad accounts) */
+    accountCount?: number;
+    /** P1: First account hint for quick identification */
+    accountHint?: string;
 };
 
 type SectionOverviewCardProps = {
@@ -29,15 +33,19 @@ type SectionOverviewCardProps = {
     footerSlot?: React.ReactNode;
 };
 
-function StatusDot({ status }: { status?: OverviewStatus }) {
+function StatusDot({ status, isStale }: { status?: OverviewStatus; isStale?: boolean }) {
     const label =
         status === "ok" ? "Connected" :
         status === "error" ? "Error" :
         status === "pending" ? "Pending" :
         "Idle";
-    if (status === "ok") return <CheckCircle2 aria-label={label} className="h-3.5 w-3.5 shrink-0 text-cyan-500 dark:text-cyan-400" />;
-    if (status === "error") return <AlertCircle aria-label={label} className="h-3.5 w-3.5 shrink-0 text-red-500" />;
-    if (status === "pending") return <Circle aria-label={label} className="h-3.5 w-3.5 shrink-0 text-amber-500" />;
+    
+    // P1: Pulse animation for error and stale states to draw attention
+    const pulseClass = (status === "error" || isStale) ? "animate-pulse" : "";
+    
+    if (status === "ok") return <CheckCircle2 aria-label={label} className={cn("h-3.5 w-3.5 shrink-0 text-cyan-500 dark:text-cyan-400", pulseClass)} />;
+    if (status === "error") return <AlertCircle aria-label={label} className={cn("h-3.5 w-3.5 shrink-0 text-red-500", pulseClass)} />;
+    if (status === "pending") return <Circle aria-label={label} className={cn("h-3.5 w-3.5 shrink-0 text-amber-500", pulseClass)} />;
     return <Circle aria-label={label} className="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600" />;
 }
 
@@ -104,20 +112,34 @@ export function SectionOverviewCard({
                             <li
                                 key={item.id}
                                 className="flex items-center gap-2 rounded-lg px-1.5 py-1 text-sm text-gray-700 dark:text-gray-200"
+                                title={item.sub} // P1: Tooltip showing full status/sub text
                             >
                                 {item.logoSrc ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                        src={item.logoSrc}
-                                        alt=""
-                                        width={16}
-                                        height={16}
-                                        className="h-4 w-4 shrink-0 object-contain"
-                                    />
+                                    // P1: Logo with account count badge for multi-account sources
+                                    <div className="relative shrink-0">
+                                        <img
+                                            src={item.logoSrc}
+                                            alt=""
+                                            width={16}
+                                            height={16}
+                                            className="h-4 w-4 object-contain"
+                                        />
+                                        {item.accountCount && item.accountCount > 1 && (
+                                            <span className="absolute -right-1.5 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-cyan-500 px-0.5 text-[7px] font-bold text-white">
+                                                {item.accountCount}
+                                            </span>
+                                        )}
+                                    </div>
                                 ) : (
-                                    <StatusDot status={item.status} />
+                                    <StatusDot status={item.status} isStale={item.sub?.includes("may need attention")} />
                                 )}
                                 <span className="truncate font-medium">{item.label}</span>
+                                {/* P1: Account hint for quick identification */}
+                                {item.accountHint && (
+                                    <span className="ml-1 truncate text-[10px] text-gray-400 dark:text-gray-500 max-w-[60px]">
+                                        {item.accountHint}
+                                    </span>
+                                )}
                                 {item.sub ? (
                                     <span
                                         className={cn(
