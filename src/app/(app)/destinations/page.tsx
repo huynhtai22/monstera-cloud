@@ -152,7 +152,10 @@ export default function DestinationsPage() {
                             Destinations
                         </h1>
                         <p className="max-w-2xl text-base text-gray-600 dark:text-gray-400">
-                            Choose where Monstera Cloud should send your clean, transformed data.
+                            Choose where Monstera Cloud should push your clean, transformed data on a schedule.
+                        </p>
+                        <p className="mt-1 max-w-2xl text-sm text-gray-400 dark:text-gray-500">
+                            Using our Google Sheets Add-on or Looker Studio Connector? Your destination is configured inside those tools — you don't need to set one up here.
                         </p>
                     </div>
                 </div>

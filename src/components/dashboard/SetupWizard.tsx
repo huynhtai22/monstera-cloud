@@ -25,7 +25,7 @@ const steps = [
     {
         key: "destination" as const,
         label: "Connect a destination",
-        description: "Google Sheets™ or Looker Studio™ — where your reports will land.",
+        description: "Google Sheets™ or Looker Studio™ — where your reports will land. Skip this if you're using our Google Sheets Add-on or Looker Studio Connector directly.",
         cta: "Go to Destinations",
         href: "/destinations",
         eventKey: "destination_connect_clicked",
@@ -189,13 +189,28 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
 
                             {/* CTA — only on active step */}
                             {isActive && (
-                                <Link
-                                    href={step.href}
-                                    className="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-cyan-700 transition-colors whitespace-nowrap"
-                                    onClick={() => trackEvent(step.eventKey, { from: "wizard" })}
-                                >
-                                    {step.cta} <ArrowRight className="h-3 w-3" />
-                                </Link>
+                                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                                    <Link
+                                        href={step.href}
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-cyan-700 transition-colors whitespace-nowrap"
+                                        onClick={() => trackEvent(step.eventKey, { from: "wizard" })}
+                                    >
+                                        {step.cta} <ArrowRight className="h-3 w-3" />
+                                    </Link>
+                                    {/* Skip path for connector-first users on the destination step */}
+                                    {step.key === "destination" && onDismiss && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                trackEvent("wizard_addon_skip", { step: "destination" });
+                                                onDismiss();
+                                            }}
+                                            className="text-[11px] font-medium text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 whitespace-nowrap"
+                                        >
+                                            Using the Add-on? Skip this →
+                                        </button>
+                                    )}
+                                </div>
                             )}
 
                             {/* Done badge */}

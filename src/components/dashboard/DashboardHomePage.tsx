@@ -295,8 +295,10 @@ export function DashboardHomePage() {
                 </div>
             ) : null}
 
-            {/* D7: warn when data is flowing but nowhere to land */}
-            {hasSource && !hasDestination && connectedSourcesCount > 0 && (
+            {/* D7: warn when data is flowing but nowhere to land.
+                Suppressed for connector-first users: if they already have a successful sync,
+                they're pulling data via the Add-on or Looker connector — no console destination needed. */}
+            {hasSource && !hasDestination && !hasSuccessfulSync && connectedSourcesCount > 0 && (
                 <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-950/30">
                     <span className="mt-0.5 text-amber-500 dark:text-amber-400">⚠</span>
                     <div className="text-sm">
