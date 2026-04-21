@@ -50,6 +50,12 @@ function SourceSetupPageContent() {
     );
     const [isCreating, setIsCreating] = useState(false);
     const [setupComplete, setSetupComplete] = useState(false);
+    
+    // P1: Account selection for multi-account sources (Meta, Google Ads, etc.)
+    const [availableAccounts, setAvailableAccounts] = useState<any[]>([]);
+    const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
+    const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
+    const [showAccountStep, setShowAccountStep] = useState(false);
 
     const { data: connection, isLoading: connectionLoading } = useSWR(
         newConnectionId && activeWorkspaceId
@@ -69,6 +75,27 @@ function SourceSetupPageContent() {
         if (!provider) return null;
         return getSourceUIConfig(provider);
     }, [provider]);
+    
+    // P1: Fetch available accounts for multi-account sources
+    useEffect(() => {
+        if (connection?.id && provider && ["meta_ads", "google_ads", "tiktok_business"].includes(provider)) {
+            setIsLoadingAccounts(true);
+            fetch(`/api/connections/${connection.id}/accounts`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.accounts?.length > 0) {
+                        setAvailableAccounts(data.accounts);
+                        // Pre-select all accounts by default
+                        setSelectedAccounts(data.accounts.map((a: any) => a.id));
+                        setShowAccountStep(true);
+                    }
+                })
+                .catch(() => {
+                    // Silently fail - not all sources support account listing
+                })
+                .finally(() => setIsLoadingAccounts(false));
+        }
+    }, [connection, provider]);
 
     useEffect(() => {
         if (error) {
@@ -96,6 +123,8 @@ function SourceSetupPageContent() {
                     sourceConnectionId: newConnectionId,
                     destinationConnectionId: selectedDestination,
                     name: `${sourceConfig?.name || "Source"} → Destination`,
+                    // P1: Include selected accounts for multi-account sources
+                    selectedAccounts: selectedAccounts.length > 0 ? selectedAccounts : undefined,
                 }),
             });
 
@@ -235,6 +264,64 @@ function SourceSetupPageContent() {
                                 <CheckCircle2 className="ml-auto h-5 w-5 text-emerald-500" />
                             </div>
                         </div>
+
+                        {/* P1: Account Selection for multi-account sources */}
+                        {showAccountStep && availableAccounts.length > 0 && (
+                            <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                                <h3 className="mb-3 font-semibold text-gray-900 dark:text-white">
+                                    Select accounts to sync
+                                </h3>
+                                <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+                                    We found {availableAccounts.length} {availableAccounts.length === 1 ? "account" : "accounts"}. 
+                                    Choose which ones to include in your sync.
+                                </p>
+                                
+                                <div className="space-y-2 max-h-48 overflow-y-auto">
+                                    {availableAccounts.map((account) => (
+                                        <label
+                                            key={account.id}
+                                            className="flex items-center gap-3 rounded-lg border border-gray-100 p-3 hover:bg-gray-50 dark:border-slate-700 dark:hover:bg-slate-800 cursor-pointer"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedAccounts.includes(account.id)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) {
+                                                        setSelectedAccounts([...selectedAccounts, account.id]);
+                                                    } else {
+                                                        setSelectedAccounts(selectedAccounts.filter(id => id !== account.id));
+                                                    }
+                                                }}
+                                                className="h-4 w-4 rounded border-gray-300 text-cyan-600 focus:ring-cyan-500"
+                                            />
+                                            <div className="flex-1 min-w-0">
+                                                <p className="font-medium text-gray-900 dark:text-white truncate">
+                                                    {account.name}
+                                                </p>
+                                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                    ID: {account.id}
+                                                </p>
+                                            </div>
+                                        </label>
+                                    ))}
+                                </div>
+                                
+                                <div className="mt-3 flex items-center justify-between">
+                                    <button
+                                        onClick={() => setSelectedAccounts(availableAccounts.map(a => a.id))}
+                                        className="text-xs text-cyan-600 hover:text-cyan-700 dark:text-cyan-400"
+                                    >
+                                        Select all
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedAccounts([])}
+                                        className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                                    >
+                                        Clear all
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Destination selection */}
                         <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
