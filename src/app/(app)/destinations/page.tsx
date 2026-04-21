@@ -39,6 +39,18 @@ export default function DestinationsPage() {
 
     // Fetch Data
     const { data: workspaces, error, isLoading } = useSWR("/api/workspaces", fetcher);
+    // Dst1: real pipeline count
+    const { data: pipelinesData } = useSWR(
+        activeWorkspaceId ? `/api/pipelines?workspaceId=${activeWorkspaceId}` : null,
+        fetcher
+    );
+    const activePipelineCount: number = Array.isArray(pipelinesData) ? pipelinesData.length : 0;
+    // Dst6: recent sync logs to detect destination errors
+    const { data: syncLogsData } = useSWR(
+        activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}` : null,
+        fetcher
+    );
+    const recentSyncLogs: any[] = syncLogsData?.logs ?? [];
 
     // Filter logic
     const filteredDestinations = React.useMemo(() => {
@@ -55,10 +67,36 @@ export default function DestinationsPage() {
 
             const activeConnections = workspaceConnections.filter((c: any) => c.provider === providerId);
 
+            // Dst5: last write timestamp from sync logs
+            const lastWrite = recentSyncLogs
+                .filter((l: any) => l.status === "success")
+                .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+                ?.createdAt ?? null;
+
+            // Dst6: check if most recent sync to this destination failed
+            const lastSyncLog = recentSyncLogs
+                .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+            const hasRecentError = activeConnections.length > 0
+                && lastSyncLog?.status === "error";
+
+            // Dst7: spreadsheet URL from credentials
+            let spreadsheetUrl: string | null = null;
+            if (dest.id === 'gsheets' && activeConnections.length > 0) {
+                try {
+                    const creds = typeof activeConnections[0].credentials === 'string'
+                        ? JSON.parse(activeConnections[0].credentials)
+                        : (activeConnections[0].credentials ?? {});
+                    spreadsheetUrl = creds.spreadsheetUrl ?? creds.spreadsheet_url ?? null;
+                } catch { /* ignore */ }
+            }
+
             return {
                 ...dest,
                 connections: activeConnections,
-                status: activeConnections.length > 0 ? 'connected' : 'available'
+                status: activeConnections.length > 0 ? 'connected' : 'available',
+                lastWrite,
+                hasRecentError,
+                spreadsheetUrl,
             };
         });
 
@@ -153,7 +191,7 @@ export default function DestinationsPage() {
                 </div>
             ) : null}
 
-            {/* Active Pipelines Info Bar */}
+            {/* Dst1: Active Pipelines — real count */}
             <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-xl p-4 mb-8 flex items-center justify-between shadow-sm">
                 <div className="flex items-center space-x-3 text-blue-800 dark:text-blue-300">
                     <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg shrink-0">
@@ -161,7 +199,11 @@ export default function DestinationsPage() {
                     </div>
                     <div>
                         <p className="font-semibold text-sm">Active Data Pipelines</p>
-                        <p className="text-xs text-blue-600/80 dark:text-blue-400/80">You currently have 0 active pipelines sending data outward.</p>
+                        <p className="text-xs text-blue-600/80 dark:text-blue-400/80">
+                            {activePipelineCount === 0
+                                ? "No active pipelines yet — connect a source and destination to start."
+                                : `${activePipelineCount} pipeline${activePipelineCount === 1 ? "" : "s"} sending data to your destinations.`}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -264,14 +306,53 @@ export default function DestinationsPage() {
                                         </div>
                                     </div>
 
+                                    {/* Dst6: error warning on connected destination */}
+                                    {destination.hasRecentError && (
+                                        <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs dark:border-amber-800/50 dark:bg-amber-950/30">
+                                            <span className="shrink-0 text-amber-500">⚠</span>
+                                            <span className="text-amber-800 dark:text-amber-200">
+                                                Last write failed — token may be expired.{" "}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSetupDestinationId(destination.id)}
+                                                    className="underline font-semibold"
+                                                >
+                                                    Reconnect
+                                                </button>
+                                            </span>
+                                        </div>
+                                    )}
+
                                     <div className="mb-5 flex-1">
-                                        <h3 className={cn(
-                                            "font-semibold mb-1",
-                                            isConnected
-                                                ? "text-gray-500 dark:text-gray-400 line-through decoration-gray-300 dark:decoration-gray-600"
-                                                : "text-gray-900 dark:text-white"
-                                        )}>{destination.name}</h3>
-                                        {!isConnected && (
+                                        {/* Dst4: Slack Coming Soon */}
+                                        {destination.id === 'slack' && (
+                                            <span className="mb-2 inline-block rounded-full border border-gray-200 bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
+                                                Coming soon
+                                            </span>
+                                        )}
+                                        {/* Dst2: Connected badge — no strikethrough */}
+                                        <h3 className="font-semibold mb-1 text-gray-900 dark:text-white">{destination.name}</h3>
+                                        {isConnected ? (
+                                            <div className="flex items-center gap-1.5">
+                                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                                                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Connected</span>
+                                                {/* Dst5: last write timestamp */}
+                                                {destination.lastWrite && (
+                                                    <span className="text-xs text-gray-400 dark:text-slate-500">
+                                                        · Last write{" "}
+                                                        {(() => {
+                                                            const diff = Date.now() - new Date(destination.lastWrite).getTime();
+                                                            const h = Math.floor(diff / 3600000);
+                                                            const d = Math.floor(h / 24);
+                                                            return d > 0 ? `${d}d ago` : h > 0 ? `${h}h ago` : "recently";
+                                                        })()}
+                                                    </span>
+                                                )}
+                                                {!destination.lastWrite && (
+                                                    <span className="text-xs text-gray-400 dark:text-slate-500">· No writes yet</span>
+                                                )}
+                                            </div>
+                                        ) : (
                                             <p className={cn(
                                                 "text-sm line-clamp-2",
                                                 isActive ? "text-gray-600 dark:text-gray-400" : "text-gray-400 dark:text-gray-600"
@@ -282,15 +363,34 @@ export default function DestinationsPage() {
                                     <div className="flex items-center justify-between">
                                         {isConnected ? (
                                             <>
+                                                {/* Dst7: View spreadsheet link */}
+                                                {destination.spreadsheetUrl && (
+                                                    <a
+                                                        href={destination.spreadsheetUrl}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-700 underline underline-offset-2 hover:text-cyan-900 dark:text-cyan-400 dark:hover:text-cyan-200"
+                                                    >
+                                                        View spreadsheet ↗
+                                                    </a>
+                                                )}
+                                                {/* Dst3: renamed Manage → View accounts */}
                                                 <button
                                                     type="button"
                                                     onClick={() => setSetupDestinationId(destination.id)}
                                                     className="text-xs text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 font-medium underline underline-offset-2 transition-colors"
                                                 >
-                                                    Manage
+                                                    View accounts
                                                 </button>
-                                                <span className="text-xs font-medium text-cyan-600 dark:text-cyan-400">Done</span>
+                                                <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Active</span>
                                             </>
+                                        ) : destination.id === 'slack' ? (
+                                            <button
+                                                disabled
+                                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-100 px-3.5 py-1.5 text-xs font-medium text-gray-400 cursor-not-allowed dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500"
+                                            >
+                                                Coming soon
+                                            </button>
                                         ) : isActive ? (
                                             <button
                                                 onClick={() => setSetupDestinationId(destination.id)}

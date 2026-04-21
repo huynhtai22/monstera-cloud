@@ -140,6 +140,14 @@ export function DashboardHomePage() {
         return new Date(latest.createdAt).toLocaleString();
     }, [logs]);
 
+    const lastSyncDate = React.useMemo(() => {
+        if (!logs.length) return null;
+        const latest = logs.reduce((acc, l) =>
+            new Date(l.createdAt).getTime() > new Date(acc.createdAt).getTime() ? l : acc
+        );
+        return latest?.createdAt ? new Date(latest.createdAt) : null;
+    }, [logs]);
+
     const todayLabel = new Date().toLocaleDateString(undefined, {
         weekday: "long",
         month: "short",
@@ -257,15 +265,37 @@ export function DashboardHomePage() {
                 healthyCount={healthyCount}
                 totalPipelines={activePipelinesCount}
                 lastSyncLabel={lastSyncLabel}
+                lastSyncDate={lastSyncDate}
                 onSyncAll={runAllPipelines}
                 syncing={syncAllBusy}
             />
 
             {syncMsg ? (
-                <div className="mb-6 rounded-lg border border-cyan-100 bg-cyan-50/70 px-4 py-3 text-sm text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200">
+                <div className={[
+                    "mb-6 rounded-lg border px-4 py-3 text-sm",
+                    /fail|error|could not|sorry/i.test(syncMsg)
+                        ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800/60 dark:bg-red-950/30 dark:text-red-300"
+                        : "border-cyan-100 bg-cyan-50/70 text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200"
+                ].join(" ")}>
                     {syncMsg}
                 </div>
             ) : null}
+
+            {/* D7: warn when data is flowing but nowhere to land */}
+            {hasSource && !hasDestination && connectedSourcesCount > 0 && (
+                <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-950/30">
+                    <span className="mt-0.5 text-amber-500 dark:text-amber-400">⚠</span>
+                    <div className="text-sm">
+                        <span className="font-semibold text-amber-900 dark:text-amber-100">Your data has nowhere to land. </span>
+                        <span className="text-amber-800 dark:text-amber-200">
+                            Sources are syncing but no destination is connected — data is being dropped.{" "}
+                        </span>
+                        <a href="/destinations" className="font-semibold underline underline-offset-2 text-amber-900 hover:text-amber-700 dark:text-amber-100 dark:hover:text-amber-300">
+                            Add Google Sheets →
+                        </a>
+                    </div>
+                </div>
+            )}
 
             {/* ── Setup Wizard (shown inline, full-width) ────── */}
             {!hasSuccessfulSync && hasSource ? (

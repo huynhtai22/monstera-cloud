@@ -100,11 +100,37 @@ const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
     const isBusy = busyActions.size > 0;
     const isError = integration.status === "error";
 
+    // S6: detect token/auth expiry to show better CTA
+    const isAuthError = isError && /token|expired|auth|unauthorized|401|permission/i.test(
+        integration.errorMsg ?? ""
+    );
+
+    // S4: staleness — flag if last sync was >48h ago
+    const isStale = React.useMemo(() => {
+        if (isError || integration.lastSync === "Never" || !integration.lastSync) return false;
+        try {
+            const d = new Date(integration.lastSync);
+            return Date.now() - d.getTime() > 48 * 60 * 60 * 1000;
+        } catch { return false; }
+    }, [integration.lastSync, isError]);
+
+    // S2: sub-label logic
+    const subLabel = (() => {
+        if (isError) return integration.errorMsg ?? "Needs attention";
+        if (!integration.pipelineId) return "Connected · no pipeline yet — add a destination to start syncing";
+        if (integration.lastSync === "Never") return "Connected · never synced";
+        return `Last sync · ${integration.lastSync}`;
+    })();
+
     return (
         <div
             className={cn(
                 "group flex items-center gap-3 rounded-xl border bg-white/80 px-3 py-2.5 shadow-sm transition-colors dark:bg-slate-900/70",
-                "border-gray-200/80 hover:border-cyan-200/80 dark:border-slate-700/60 dark:hover:border-cyan-700/50",
+                isError
+                    ? "border-red-100 dark:border-red-900/40"
+                    : isStale
+                      ? "border-amber-100 dark:border-amber-900/40"
+                      : "border-gray-200/80 hover:border-cyan-200/80 dark:border-slate-700/60 dark:hover:border-cyan-700/50",
             )}
         >
             <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200/70 bg-white dark:border-slate-700/60 dark:bg-slate-900">
@@ -112,6 +138,11 @@ const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
                     <span className="absolute -right-1 -top-1 flex h-3 w-3">
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
                         <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500"></span>
+                    </span>
+                )}
+                {isStale && !isError && (
+                    <span className="absolute -right-1 -top-1 flex h-3 w-3">
+                        <span className="relative inline-flex h-3 w-3 rounded-full bg-amber-400"></span>
                     </span>
                 )}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -133,19 +164,27 @@ const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
                     </Link>
                     {isError ? (
                         <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Error" />
+                    ) : isStale ? (
+                        <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-400" aria-label="Stale" />
                     ) : (
                         <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-cyan-500 dark:text-cyan-400" aria-label="Connected" />
                     )}
                 </div>
+                {/* S1: truncated error / S2: contextual sub-label */}
                 <p
                     className={cn(
                         "mt-0.5 truncate text-xs",
-                        isError ? "text-red-600 dark:text-red-400" : "text-gray-500 dark:text-slate-400",
+                        isError
+                            ? "text-red-600 dark:text-red-400"
+                            : isStale
+                              ? "text-amber-600 dark:text-amber-400"
+                              : !integration.pipelineId
+                                ? "text-amber-500 dark:text-amber-400"
+                                : "text-gray-500 dark:text-slate-400",
                     )}
+                    title={subLabel}
                 >
-                    {isError
-                        ? integration.errorMsg ?? "Needs attention"
-                        : `Last sync · ${integration.lastSync}`}
+                    {subLabel.length > 72 ? subLabel.slice(0, 72) + "…" : subLabel}
                 </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
@@ -153,14 +192,20 @@ const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
                     <button
                         type="button"
                         onClick={() => onFixConnection(integration)}
-                        className="rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-800 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-950/60 dark:text-red-200 dark:hover:bg-red-950/90"
+                        className={cn(
+                            "rounded-md border px-2 py-1 text-xs font-semibold transition-colors",
+                            isAuthError
+                                ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-200 dark:hover:bg-amber-950/90"
+                                : "border-red-300 bg-red-50 text-red-800 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/60 dark:text-red-200 dark:hover:bg-red-950/90"
+                        )}
                     >
-                        Fix
+                        {isAuthError ? "Reconnect" : "Fix"}
                     </button>
                 ) : (
                     <button
                         type="button"
                         disabled={isBusy || !integration.pipelineId}
+                        title={!integration.pipelineId ? "Add a destination first to enable sync" : undefined}
                         onClick={() => {
                             if (!integration.pipelineId) {
                                 toast.error(
