@@ -160,7 +160,7 @@ export default function DestinationsPage() {
                     </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-3 sm:pt-1">
-                    <RefreshedAt onRefresh={() => mutate(() => true, undefined, { revalidate: true })} />
+                    <RefreshedAt onRefresh={() => mutate((key) => typeof key === "string" && key.startsWith("/api/"), undefined, { revalidate: true })} />
                     <PrimaryButton
                         type="button"
                         onClick={() => setSetupDestinationId('gsheets')}

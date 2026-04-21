@@ -79,7 +79,9 @@ export function DashboardHomePage() {
 
     const handleManualRefresh = React.useCallback(async () => {
         setIsRefreshing(true);
-        await mutate(() => true, undefined, { revalidate: true });
+        // Scope to /api/ keys only — avoids touching next-auth's internal SWR
+        // session cache which causes 'Cannot destructure auth of e' when revalidated.
+        await mutate((key) => typeof key === "string" && key.startsWith("/api/"), undefined, { revalidate: true });
         setIsRefreshing(false);
     }, [mutate]);
 
