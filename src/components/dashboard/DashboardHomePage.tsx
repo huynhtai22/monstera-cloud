@@ -17,8 +17,75 @@ import { PillarGrid } from "@/components/dashboard/PillarGrid";
 import { HealthSummaryBar } from "@/components/dashboard/HealthSummaryBar";
 import { RefreshedAt } from "@/components/ui/RefreshedAt";
 import { trackEvent, trackOnce } from "@/lib/analytics-events";
+import { cn } from "@/lib/utils";
 
 const WIZARD_DISMISS_KEY = "monstera_setup_wizard_dismissed_v1";
+
+type Snapshot = {
+    date: string;
+    netRoas: number;
+    adSpend: number;
+    attributedRevenue: number;
+};
+
+function RoasSnapshotCard({ snapshots }: { snapshots: Snapshot[] }) {
+    // Aggregate last 7 days
+    const recent = snapshots.slice(0, 7);
+    const totalRevenue = recent.reduce((s, r) => s + (r.attributedRevenue || 0), 0);
+    const totalSpend = recent.reduce((s, r) => s + (r.adSpend || 0), 0);
+    const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+
+    const fmtCurrency = (n: number) =>
+        n >= 1000000
+            ? `$${(n / 1000000).toFixed(1)}M`
+            : n >= 1000
+            ? `$${(n / 1000).toFixed(1)}k`
+            : `$${Math.round(n)}`;
+
+    return (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="mb-3 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Performance (last 7 days)
+                </p>
+                <Link
+                    href="/reports"
+                    className="text-xs font-medium text-cyan-600 hover:text-cyan-700 dark:text-cyan-400"
+                >
+                    View details →
+                </Link>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+                <div>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">Attributed Revenue</p>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">{fmtCurrency(totalRevenue)}</p>
+                </div>
+                <div>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">Ad Spend</p>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">{fmtCurrency(totalSpend)}</p>
+                </div>
+                <div>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">Blended ROAS</p>
+                    <p
+                        className={cn(
+                            "text-lg font-bold",
+                            roas >= 3
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : roas >= 2
+                                ? "text-amber-600 dark:text-amber-400"
+                                : "text-red-600 dark:text-red-400"
+                        )}
+                    >
+                        {roas.toFixed(2)}×
+                    </p>
+                </div>
+            </div>
+            <p className="mt-2 text-[10px] text-gray-400 dark:text-gray-500">
+                Combines marketplace revenue and ad spend where attribution is configured.
+            </p>
+        </div>
+    );
+}
 
 type Connection = {
     id: string;
@@ -284,6 +351,13 @@ export function DashboardHomePage() {
                 onSyncAll={runAllPipelines}
                 syncing={syncAllBusy}
             />
+
+            {/* Mini ROAS snapshot — surfaced early for SEA agency workflows */}
+            {snapshots.length > 0 && (
+                <div className="mb-6">
+                    <RoasSnapshotCard snapshots={snapshots} />
+                </div>
+            )}
 
             {/* X1: last-refreshed indicator */}
             <div className="mb-2 flex justify-end">

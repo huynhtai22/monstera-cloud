@@ -42,6 +42,24 @@ const PROVIDER_LABELS: Record<string, string> = {
     slack: "Slack",
 };
 
+const STALE_MINUTES = 6 * 60; // 6 hours = stale for marketplace sources
+
+function isStale(updatedAt?: string | null, provider?: string): boolean {
+    if (!updatedAt) return true;
+    const mins = Math.max(0, Math.round((Date.now() - new Date(updatedAt).getTime()) / 60000));
+    // Ad platforms (frequent updates) vs marketplaces (batch syncs)
+    const threshold = provider?.includes("shop") || provider === "shopee" || provider === "lazada" 
+        ? STALE_MINUTES 
+        : 60; // 1 hour for ads
+    return mins > threshold;
+}
+
+function healthStatus(c: Connection): "healthy" | "stale" | "error" | "unknown" {
+    if (c.status === "error") return "error";
+    if (c.status !== "connected") return "unknown";
+    return isStale(c.updatedAt, c.provider) ? "stale" : "healthy";
+}
+
 function prettyProvider(provider: string) {
     return PROVIDER_LABELS[provider] ?? provider.replace(/_/g, " ");
 }
@@ -68,21 +86,37 @@ export function PillarGrid({
     const sources = connections.filter((c) => c.type === "source");
     const destinations = connections.filter((c) => c.type === "destination");
 
-    const sourceItems: OverviewLineItem[] = sources.slice(0, 3).map((c) => ({
-        id: c.id,
-        label: c.name?.trim() ? c.name! : prettyProvider(c.provider),
-        sub: timeAgo(c.updatedAt),
-        logoSrc: logoPathForConnectionProvider(c.provider),
-        status: c.status === "connected" ? "ok" : c.status === "error" ? "error" : "pending",
-    }));
+    const sourceItems: OverviewLineItem[] = sources.slice(0, 3).map((c) => {
+        const health = healthStatus(c);
+        const subText = health === "error" 
+            ? "Connection error — check settings"
+            : health === "stale"
+            ? `Last sync ${timeAgo(c.updatedAt) ?? "unknown"} — may need attention`
+            : timeAgo(c.updatedAt) ?? "Pending first sync";
+        return {
+            id: c.id,
+            label: c.name?.trim() ? c.name! : prettyProvider(c.provider),
+            sub: subText,
+            logoSrc: logoPathForConnectionProvider(c.provider),
+            status: health === "error" ? "error" : health === "healthy" ? "ok" : "pending",
+        };
+    });
 
-    const destinationItems: OverviewLineItem[] = destinations.slice(0, 3).map((c) => ({
-        id: c.id,
-        label: c.name?.trim() ? c.name! : prettyProvider(c.provider),
-        sub: c.status === "connected" ? "Connected" : c.status ?? "Pending",
-        logoSrc: logoPathForConnectionProvider(c.provider),
-        status: c.status === "connected" ? "ok" : c.status === "error" ? "error" : "pending",
-    }));
+    const destinationItems: OverviewLineItem[] = destinations.slice(0, 3).map((c) => {
+        const health = healthStatus(c);
+        const subText = health === "error"
+            ? "Connection error"
+            : health === "stale"
+            ? `Last used ${timeAgo(c.updatedAt) ?? "unknown"}`
+            : c.status === "connected" ? "Connected" : c.status ?? "Pending";
+        return {
+            id: c.id,
+            label: c.name?.trim() ? c.name! : prettyProvider(c.provider),
+            sub: subText,
+            logoSrc: logoPathForConnectionProvider(c.provider),
+            status: health === "error" ? "error" : health === "healthy" ? "ok" : "pending",
+        };
+    });
 
     const { recentLogs, successCount, errorCount, pipelineItems } = useMemo(() => {
         const sorted = [...syncLogs].sort(
