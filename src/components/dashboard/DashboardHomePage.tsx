@@ -79,9 +79,13 @@ export function DashboardHomePage() {
 
     const handleManualRefresh = React.useCallback(async () => {
         setIsRefreshing(true);
-        // Scope to /api/ keys only — avoids touching next-auth's internal SWR
-        // session cache which causes 'Cannot destructure auth of e' when revalidated.
-        await mutate((key) => typeof key === "string" && key.startsWith("/api/"), undefined, { revalidate: true });
+        // Exclude /api/auth/* — next-auth v4 uses /api/auth/session as an SWR key internally.
+        // Revalidating it causes "Cannot destructure property 'auth' of 'e' as it is undefined".
+        await mutate(
+            (key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"),
+            undefined,
+            { revalidate: true }
+        );
         setIsRefreshing(false);
     }, [mutate]);
 
