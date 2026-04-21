@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
-import { GitMerge, Plug, Send, FileBarChart2, Zap } from "lucide-react";
+import { GitMerge, Plug, Send, FileBarChart2 } from "lucide-react";
 import { SectionOverviewCard, type OverviewLineItem } from "@/components/dashboard/SectionOverviewCard";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 
@@ -168,9 +167,9 @@ export function PillarGrid({
                             : undefined
                     }
                     items={pipelineItems}
-                    emptyHint="No pipelines yet. Create one to connect a source to a destination."
-                    ctaLabel={totalPipelines ? "Manage pipelines" : "Create a pipeline"}
-                    ctaHref="/pipelines"
+                    emptyHint="Pipelines are created automatically when you connect a source and a destination."
+                    ctaLabel={totalPipelines ? "See sync history" : undefined}
+                    ctaHref={totalPipelines ? "/reports" : undefined}
                 />
             </div>
 
@@ -187,17 +186,6 @@ export function PillarGrid({
                     emptyHint="No sync logs yet. Reports will appear after your first run."
                     ctaLabel="Open reports"
                     ctaHref="/reports"
-                    footerSlot={
-                        noReportsYet ? (
-                            <Link
-                                href="/pipelines"
-                                className="inline-flex items-center gap-1 rounded-full border border-cyan-300 bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700 transition-colors hover:bg-cyan-100 dark:border-cyan-500/40 dark:bg-cyan-500/10 dark:text-cyan-200 dark:hover:bg-cyan-500/20"
-                            >
-                                <Zap className="h-3 w-3" />
-                                Run your first sync
-                            </Link>
-                        ) : null
-                    }
                 />
             </div>
         </div>
