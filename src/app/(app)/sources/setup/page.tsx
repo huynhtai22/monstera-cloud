@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -35,7 +35,8 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
  * 3. Or skip if using add-on / Looker connector directly
  */
 
-export default function SourceSetupPage() {
+// Wrapper component for Suspense boundary
+function SourceSetupPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { activeWorkspaceId } = useWorkspaceStore();
@@ -361,5 +362,22 @@ export default function SourceSetupPage() {
                 )}
             </div>
         </PageShell>
+    );
+}
+
+// Export with Suspense boundary for Next.js static generation
+export default function SourceSetupPage() {
+    return (
+        <Suspense
+            fallback={
+                <PageShell>
+                    <div className="flex h-96 items-center justify-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
+                    </div>
+                </PageShell>
+            }
+        >
+            <SourceSetupPageContent />
+        </Suspense>
     );
 }
