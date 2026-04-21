@@ -6,6 +6,13 @@
 import type { OAuthProviderAdapter, OAuthProviderRegistry } from "./types";
 import { OAuthError } from "./types";
 import { ShopeeOAuthAdapter } from "./providers/shopee";
+import { MetaAdsOAuthAdapter } from "./providers/meta-ads";
+import { GoogleAdsOAuthAdapter } from "./providers/google-ads";
+import { TikTokShopOAuthAdapter } from "./providers/tiktok-shop";
+import { TikTokBusinessOAuthAdapter } from "./providers/tiktok-business";
+import { LazadaOAuthAdapter } from "./providers/lazada";
+import { ShopifyOAuthAdapter } from "./providers/shopify";
+import { AmazonOAuthAdapter } from "./providers/amazon";
 
 /** Lazy-loaded registry */
 let registry: OAuthProviderRegistry | null = null;
@@ -15,14 +22,13 @@ export function getProviderRegistry(): OAuthProviderRegistry {
     
     registry = {
         shopee: new ShopeeOAuthAdapter(),
-        // TODO: Register remaining providers as adapters are implemented
-        // meta_ads: new MetaAdsOAuthAdapter(),
-        // google_ads: new GoogleAdsOAuthAdapter(),
-        // tiktok_shop: new TikTokShopOAuthAdapter(),
-        // tiktok_business: new TikTokBusinessOAuthAdapter(),
-        // lazada: new LazadaOAuthAdapter(),
-        // shopify: new ShopifyOAuthAdapter(),
-        // amazon: new AmazonOAuthAdapter(),
+        meta_ads: new MetaAdsOAuthAdapter(),
+        google_ads: new GoogleAdsOAuthAdapter(),
+        tiktok_shop: new TikTokShopOAuthAdapter(),
+        tiktok_business: new TikTokBusinessOAuthAdapter(),
+        lazada: new LazadaOAuthAdapter(),
+        shopify: new ShopifyOAuthAdapter(),
+        amazon: new AmazonOAuthAdapter(),
     };
     
     return registry;
