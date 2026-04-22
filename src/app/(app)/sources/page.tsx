@@ -387,9 +387,7 @@ const IntegrationCard = React.memo(function IntegrationCard({
                     </button>
                 ) : integration.status === 'connected' ? (
                     <div className="flex flex-col gap-2">
-                        <button
-                            type="button"
-                            disabled={isBusy}
+                        <PrimaryButton
                             onClick={(e) => {
                                 e.stopPropagation();
                                 if (!integration.pipelineId) {
@@ -445,7 +443,7 @@ const IntegrationCard = React.memo(function IntegrationCard({
                         </p>
                     </div>
                 ) : (
-                    <button
+                    <PrimaryButton
                         onClick={(e) => {
                             e.stopPropagation();
                             onConnect(integration);
