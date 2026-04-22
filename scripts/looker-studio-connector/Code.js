@@ -484,51 +484,74 @@ function getData(request) {
 
   // --- Fresh fetch if not cached ---
   if (!parsedResponse) {
-    var url = APP_URL + "/api/looker-studio?" + params.join("&");
-    var response;
+    var urlBase = APP_URL + "/api/looker-studio?" + params.join("&");
+    var allData = [];
+    var cursor = null;
     var fetchError = null;
-    try {
-      response = fetchWithRetry(url, {
-        headers: { Authorization: "Bearer " + apiKey },
-        muteHttpExceptions: true,
-        timeout: 30000,
-      });
-    } catch (e) {
-      fetchError = e;
-    }
+    var rowsFetched = 0;
+
+    do {
+      var pageUrl = urlBase + (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
+      var response = null;
+      try {
+        response = fetchWithRetry(pageUrl, {
+          headers: { Authorization: "Bearer " + apiKey },
+          muteHttpExceptions: true,
+          timeout: 30000,
+        });
+      } catch (e) {
+        fetchError = e;
+        break;
+      }
+
+      var statusCode = response.getResponseCode();
+      var body = response.getContentText();
+
+      if (statusCode !== 200) {
+        fetchError = new Error("API returned status " + statusCode + ": " + body);
+        // Prefer user-facing message where possible
+        cc.newUserError()
+          .setDebugText(fetchError.message)
+          .setText(userMessageForHttpStatus(statusCode, body))
+          .throwException();
+      }
+
+      var pageObj = null;
+      try {
+        pageObj = JSON.parse(body);
+      } catch (e) {
+        fetchError = e;
+        break;
+      }
+
+      if (!pageObj.data || !Array.isArray(pageObj.data)) {
+        fetchError = new Error("No data array in API response page");
+        break;
+      }
+
+      allData = allData.concat(pageObj.data);
+      rowsFetched += pageObj.data.length;
+
+      cursor = pageObj.nextCursor || null;
+
+      if (rowsFetched >= MAX_ROWS_PER_REQUEST) {
+        console.warn("[Monstera] Reached configured MAX_ROWS_PER_REQUEST; stopping early.");
+        break;
+      }
+    } while (cursor);
+
     if (fetchError) {
       cc.newUserError()
-        .setDebugText("Network error after retries: " + fetchError.message)
+        .setDebugText("Network or parse error while fetching paginated results: " + fetchError.message)
         .setText("Could not reach Monstera Cloud after multiple attempts. Check your network and try again.")
         .throwException();
     }
 
-    var statusCode = response.getResponseCode();
-    var body = response.getContentText();
-
-    if (statusCode !== 200) {
-      cc.newUserError()
-        .setDebugText("API returned status " + statusCode + ": " + body)
-        .setText(userMessageForHttpStatus(statusCode, body))
-        .throwException();
-    }
-
-    var parseError = null;
-    try {
-      parsedResponse = JSON.parse(body);
-    } catch (e) {
-      parseError = e;
-    }
-    if (parseError) {
-      cc.newUserError()
-        .setDebugText("Failed to parse API response: " + parseError.message)
-        .setText("Monstera Cloud returned an unexpected response format.")
-        .throwException();
-    }
+    parsedResponse = { data: allData };
 
     // Store in cache with user-selected TTL (silent fail if response exceeds 100 KB limit)
     try {
-      cache.put(cacheKey, body, cacheTtl);
+      cache.put(cacheKey, JSON.stringify(parsedResponse), cacheTtl);
     } catch (e) {
       // Response too large to cache — continue without caching
     }

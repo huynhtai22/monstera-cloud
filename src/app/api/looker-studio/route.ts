@@ -1,5 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { Redis } from "@upstash/redis";
+import { Ratelimit } from "@upstash/ratelimit";
+
+const UPSTASH_AVAILABLE = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+const redis = UPSTASH_AVAILABLE ? Redis.fromEnv() : null;
+
+async function checkPerKeyRateLimit(key: string, plan: string | null) {
+  if (!UPSTASH_AVAILABLE) return { success: true };
+
+  // Map plan -> requests per minute
+  const planMap: Record<string, number> = {
+    free: 60,
+    starter: 300,
+    professional: 1000,
+    pro: 1000,
+    enterprise: 5000,
+  };
+  const limit = plan && planMap[plan] ? planMap[plan] : 60;
+
+  const rl = new Ratelimit({
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(limit, "1 m"),
+    analytics: false,
+    prefix: "monstera:ratelimit:perkey",
+  });
+
+  const res = await rl.limit(`key:${key}`);
+  return res;
+}
+
+const MAX_ROWS_PER_REQUEST = 100000; // server-side hard cap
 
 function isGoogleJwt(token: string): boolean {
   const parts = token.split('.');
@@ -81,7 +112,7 @@ export async function GET(req: NextRequest) {
             { members: { some: { userId: user.id } } },
           ],
         },
-        select: { id: true },
+        select: { id: true, ownerId: true },
       });
       if (!workspace) {
         return NextResponse.json({ error: "No workspace found" }, { status: 404 });
@@ -90,7 +121,8 @@ export async function GET(req: NextRequest) {
 
       const ping = req.nextUrl.searchParams.get("ping");
       if (ping === "1") return NextResponse.json({ ok: true });
-    } else {
+    }
+    else {
       // Looker Studio connector: API key auth
       const keyRecord = await prisma.apiKey.findUnique({
         where: { key: apiKey },
@@ -108,6 +140,41 @@ export async function GET(req: NextRequest) {
         data: { lastUsedAt: new Date() },
       });
       workspaceId = keyRecord.workspaceId;
+      // fetch owner plan for this workspace
+      const owner = await prisma.user.findUnique({ where: { id: keyRecord.workspace.ownerId } });
+      (req as any)._ownerPlan = owner ? owner.plan : null;
+    }
+
+    // Apply per-API-key rate limiting. For Google JWT we key by workspace id; for API keys we key by the key string.
+    try {
+      // Determine plan: prefer owner plan attached earlier for API keys, otherwise derive for Google JWT
+      let plan: string | null = null;
+      if ((req as any)._ownerPlan) plan = (req as any)._ownerPlan;
+      if (!plan && isGoogleJwt(apiKey)) {
+        try {
+          // fetch workspace owner plan if available
+          const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { ownerId: true } });
+          if (ws && ws.ownerId) {
+            const owner = await prisma.user.findUnique({ where: { id: ws.ownerId } });
+            plan = owner ? owner.plan : null;
+          }
+        } catch (ignore) {}
+      }
+
+      const rateKey = isGoogleJwt(apiKey) ? `workspace:${workspaceId}` : `apikey:${apiKey}`;
+
+      const rlRes = await checkPerKeyRateLimit(rateKey, plan);
+      if (!rlRes.success) {
+        const reset = rlRes.reset ? Math.floor(rlRes.reset / 1000) : undefined;
+        const headers: Record<string, string> = {};
+        if (typeof rlRes.limit === "number") headers["x-ratelimit-limit"] = String(rlRes.limit);
+        if (typeof rlRes.remaining === "number") headers["x-ratelimit-remaining"] = String(rlRes.remaining);
+        if (reset) headers["x-ratelimit-reset"] = String(reset);
+        return new NextResponse(JSON.stringify({ error: "Rate limit exceeded" }), { status: 429, headers });
+      }
+    } catch (e) {
+      // If rate limit check fails unexpectedly, log and continue (fail-open)
+      console.warn("Per-key rate limiting check failed:", e);
     }
 
     const startDateParam = req.nextUrl.searchParams.get("startDate");
@@ -125,14 +192,12 @@ export async function GET(req: NextRequest) {
     // Get all accountId parameters (supports multiple: ?accountId=123&accountId=456)
     const accountIdParams = req.nextUrl.searchParams.getAll("accountId");
 
-    const whereClause: {
-      workspaceId: string;
-      date?: { gte?: Date; lte?: Date };
-      platform?: string;
-      accountId?: { in: string[] };
-    } = {
-      workspaceId,
-    };
+    const limitParam = parseInt(req.nextUrl.searchParams.get("limit") || "0", 10) || 0;
+    const limit = Math.min(limitParam > 0 ? limitParam : 10000, MAX_ROWS_PER_REQUEST);
+    const cursorParam = req.nextUrl.searchParams.get("cursor");
+    const includeCount = req.nextUrl.searchParams.get("includeCount") === "1";
+
+    const whereClause: any = { workspaceId };
 
     if (startDateParam || endDateParam) {
       whereClause.date = {};
@@ -167,11 +232,43 @@ export async function GET(req: NextRequest) {
       whereClause.accountId = { in: accountIdParams };
     }
 
+    // Apply cursor-based pagination if provided. Cursor format: encoded "YYYY-MM-DD|<id>" or raw.
+    if (cursorParam) {
+      try {
+        const decoded = decodeURIComponent(cursorParam);
+        const parts = decoded.split("|");
+        if (parts.length === 2) {
+          const lastDate = new Date(parts[0] + "T00:00:00Z");
+          const lastId = parts[1];
+          whereClause.AND = [
+            whereClause,
+            {
+              OR: [
+                { date: { lt: lastDate } },
+                { AND: [{ date: lastDate }, { id: { lt: lastId } }] },
+              ],
+            },
+          ];
+        }
+      } catch (e) {
+        // ignore malformed cursor — fall back to start
+      }
+    }
+
+    const take = Math.min(limit || 10000, MAX_ROWS_PER_REQUEST);
+
     const metrics = await prisma.campaignMetric.findMany({
       where: whereClause,
-      orderBy: { date: "desc" },
-      take: 50_000,
+      orderBy: [{ date: "desc" }, { id: "desc" }],
+      take: take + 1, // fetch one extra to detect nextCursor
     });
+
+    let nextCursor: string | null = null;
+    if (metrics.length > take) {
+      const last = metrics[metrics.length - 1];
+      nextCursor = encodeURIComponent(last.date.toISOString().split("T")[0] + "|" + last.id);
+      metrics.pop();
+    }
 
     const formattedData = metrics.map((m) => ({
       date: m.date.toISOString().split("T")[0].replace(/-/g, ""),
@@ -197,7 +294,32 @@ export async function GET(req: NextRequest) {
       currency: m.currency,
     }));
 
-    return NextResponse.json({ data: formattedData });
+    const resObj: any = { data: formattedData };
+    if (nextCursor) resObj.nextCursor = nextCursor;
+
+    if (includeCount) {
+      try {
+        const countWhere = { ...whereClause };
+        // remove pagination AND when counting
+        if (countWhere.AND) delete countWhere.AND;
+        const totalRows = await prisma.campaignMetric.count({ where: countWhere });
+        resObj.totalRows = totalRows;
+      } catch (e) {
+        // counting failed — omit totalRows
+      }
+    }
+
+    // Optionally cache the page for a short TTL (only if Upstash configured)
+    if (redis) {
+      try {
+        const cacheKey = `looker:page:${workspaceId}:${req.nextUrl.search}`;
+        await redis.set(cacheKey, JSON.stringify(resObj), { ex: 60 });
+      } catch (e) {
+        // ignore cache failures
+      }
+    }
+
+    return NextResponse.json(resObj);
   } catch (error: unknown) {
     console.error("Looker Studio API Error:", error);
     return NextResponse.json(

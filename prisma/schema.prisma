@@ -250,6 +250,9 @@ model CampaignMetric {
   @@unique([connectionId, campaignId, date])
   @@index([workspaceId, platform, date])
   @@index([connectionId, date])
+  // Added composite indexes to improve filtering by account and combined platform/account/date scans
+  @@index([workspaceId, accountId, date])
+  @@index([workspaceId, platform, accountId, date])
 }
 
 model RetailOrder {

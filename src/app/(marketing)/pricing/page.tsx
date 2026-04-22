@@ -62,7 +62,7 @@ export default function PricingPage() {
                         Pricing
                     </div>
                     <h1 className="text-white text-4xl md:text-5xl font-extrabold leading-tight tracking-tight">
-                        One flat price. Every platform. No row caps.
+                        One flat price. Every platform. No permanent row caps.
                     </h1>
                     <p className="text-gray-400 text-lg max-w-xl mx-auto mt-4">
                         Most teams save $2,400/year vs Supermetrics on Pro. Cancel anytime — billing questions reviewed within 14 days (see our{" "}
@@ -247,6 +247,7 @@ export default function PricingPage() {
                                 <FeatureItem accent>Hourly sync</FeatureItem>
                                 <FeatureItem accent>Report every 10 min (3x faster)</FeatureItem>
                                 <FeatureItem accent>Priority job queue</FeatureItem>
+                                <FeatureItem accent>Higher API rate limits &amp; priority exports</FeatureItem>
                                 <FeatureItem accent>Priority email support</FeatureItem>
                             </ul>
                         </div>
@@ -305,6 +306,8 @@ export default function PricingPage() {
                                 <CompareRow label="Job Queue Priority" values={["Low", "Normal", "High"]} />
                                 <CompareRow label="CSV / Excel Export" values={[false, true, true]} />
                                 <CompareRow label="Google Sheets™ Add-on" values={[true, true, true]} />
+                                <CompareRow label="API requests (per min)" values={["60", "300", "1000+"]} />
+                                <CompareRow label="Max sync rows (per request)" values={["5k", "20k", "50k"]} />
                             </tbody>
                         </table>
                     </div>
@@ -318,7 +321,7 @@ export default function PricingPage() {
                     <div className="grid md:grid-cols-2 gap-x-12 gap-y-10">
                         <div>
                             <h4 className="text-white font-semibold text-sm mb-2.5">What happens if I hit a row limit?</h4>
-                            <p className="text-gray-400 text-sm leading-relaxed">Unlike other tools, we don't cap your rows. Your pricing is based strictly on the number of active pipelines and sync frequency, not data volume. Transfer as much data as you need.</p>
+                                <p className="text-gray-400 text-sm leading-relaxed">We don't impose permanent row caps — however, very large synchronous exports are limited to keep performance predictable. Small-to-medium requests are served live; very large exports are handled asynchronously via our job queue (you'll receive a job ID and status). We also enforce per-API-key rate limits to protect service quality (see plan comparison above). If you need higher throughput, upgrade to a higher tier or contact Sales for Enterprise options.</p>
                         </div>
                         <div>
                             <h4 className="text-white font-semibold text-sm mb-2.5">Is my store and ad data secure?</h4>
