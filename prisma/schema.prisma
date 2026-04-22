@@ -91,6 +91,16 @@ model Workspace {
   orders          RetailOrder[]
   utmRules        UtmMappingRule[]
   attributionSnapshots AttributionSnapshot[]
+  
+  // OBSERVABILITY: Data quality rules and violations
+  dataQualityRules   DataQualityRule[]
+  dataQualityViolations DataQualityViolation[]
+  
+  // TEMPLATES: User dashboards
+  userDashboards    UserDashboard[]
+  
+  // Looker Studio integration jobs
+  lookerJobs        LookerJob[]
 }
 
 model Client {
@@ -407,6 +417,7 @@ model DataQualityViolation {
   createdAt       DateTime @default(now())
   
   rule            DataQualityRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   
   @@index([workspaceId, status])
   @@index([ruleId, createdAt])

@@ -12,6 +12,9 @@ import {
 } from "../types";
 import { shopeeClient } from "@/lib/shopee";
 
+// Check if Shopee sandbox mode is enabled
+const isSandbox = () => process.env.SHOPEE_SANDBOX === "true";
+
 export class ShopeeOAuthAdapter implements OAuthProviderAdapter {
     readonly id = "shopee";
     readonly name = "Shopee";
@@ -25,7 +28,7 @@ export class ShopeeOAuthAdapter implements OAuthProviderAdapter {
         redirectUri: string;
         state: string;
     }): string {
-        return shopeeClient.getAuthorizeUrl(redirectUri, state);
+        return shopeeClient.getAuthorizeUrl(redirectUri, state, isSandbox());
     }
 
     async exchangeCode({
@@ -49,8 +52,9 @@ export class ShopeeOAuthAdapter implements OAuthProviderAdapter {
             );
         }
 
-        const tokenData = await shopeeClient.exchangeCode(authCode, shopId);
+        const tokenData = await shopeeClient.exchangeCode(authCode, shopId, isSandbox());
 
+        // Store sandbox flag in extra fields for future refreshes
         const credentials: OAuthCredentials = {
             accessToken: tokenData.access_token,
             refreshToken: tokenData.refresh_token,
@@ -68,6 +72,7 @@ export class ShopeeOAuthAdapter implements OAuthProviderAdapter {
                     Date.now() + 30 * 24 * 60 * 60 * 1000
                 ).toISOString(),
                 product: "shopee",
+                sandbox: isSandbox(), // Store sandbox flag for refresh
             },
         };
 
