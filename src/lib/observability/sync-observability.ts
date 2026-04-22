@@ -243,19 +243,30 @@ export async function getDetailedSyncLogs(
     where: { pipelineId },
     orderBy: { createdAt: "desc" },
     take: limit,
-    include: {
-      details: {
-        orderBy: { createdAt: "asc" },
-        select: {
-          stage: true,
-          status: true,
-          rowsProcessed: true,
-          durationMs: true,
-          errorMessage: true,
-        },
-      },
+  });
+
+  // Fetch details separately (until Prisma migration adds the relation)
+  const logIds = logs.map((log) => log.id);
+  const details = await prisma.syncLogDetail.findMany({
+    where: { syncLogId: { in: logIds } },
+    orderBy: { createdAt: "asc" },
+    select: {
+      syncLogId: true,
+      stage: true,
+      status: true,
+      rowsProcessed: true,
+      durationMs: true,
+      errorMessage: true,
     },
   });
+
+  const detailsByLogId = new Map<string, typeof details>();
+  for (const d of details) {
+    if (!detailsByLogId.has(d.syncLogId)) {
+      detailsByLogId.set(d.syncLogId, []);
+    }
+    detailsByLogId.get(d.syncLogId)!.push(d);
+  }
 
   return logs.map((log) => ({
     id: log.id,
@@ -264,7 +275,7 @@ export async function getDetailedSyncLogs(
     durationMs: log.durationMs,
     errorMsg: log.errorMsg,
     createdAt: log.createdAt,
-    stages: log.details.map((d) => ({
+    stages: (detailsByLogId.get(log.id) || []).map((d) => ({
       stage: d.stage as SyncStage,
       status: d.status as SyncDetailStatus,
       rowsProcessed: d.rowsProcessed,

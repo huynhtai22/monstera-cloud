@@ -6,7 +6,14 @@ import { Ratelimit } from "@upstash/ratelimit";
 const UPSTASH_AVAILABLE = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 const redis = UPSTASH_AVAILABLE ? Redis.fromEnv() : null;
 
-async function checkPerKeyRateLimit(key: string, plan: string | null) {
+type RateLimitResult = {
+  success: boolean;
+  limit?: number;
+  remaining?: number;
+  reset?: number;
+};
+
+async function checkPerKeyRateLimit(key: string, plan: string | null): Promise<RateLimitResult> {
   if (!UPSTASH_AVAILABLE) return { success: true };
 
   // Map plan -> requests per minute
@@ -27,7 +34,12 @@ async function checkPerKeyRateLimit(key: string, plan: string | null) {
   });
 
   const res = await rl.limit(`key:${key}`);
-  return res;
+  return {
+    success: res.success,
+    limit: res.limit,
+    remaining: res.remaining,
+    reset: res.reset,
+  };
 }
 
 const MAX_ROWS_PER_REQUEST = 100000; // server-side hard cap

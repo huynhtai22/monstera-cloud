@@ -29,7 +29,7 @@ async function processJob(jobId: string) {
     await prisma.lookerJob.update({ where: { id: jobId }, data: { status: "running", startedAt: new Date() } });
 
     // Build query from job.params
-    const p = job.params || {};
+    const p = (job.params || {}) as Record<string, any>;
     const where: any = { workspaceId: job.workspaceId };
     if (p.platform) where.platform = p.platform;
     if (p.accountIds && Array.isArray(p.accountIds) && p.accountIds.length) where.accountId = { in: p.accountIds };

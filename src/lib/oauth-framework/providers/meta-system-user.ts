@@ -39,7 +39,7 @@ interface SystemUserConfig {
 export class MetaSystemUserAdapter implements OAuthProviderAdapter {
     readonly id = "meta_ads_system_user";
     readonly name = "Meta Ads (System User)";
-    readonly authType = "api_key" as const; // Not OAuth - uses permanent token
+    readonly authType = "api-key" as const; // Not OAuth - uses permanent token
 
     /**
      * System User tokens are configured directly, no OAuth flow
@@ -114,10 +114,10 @@ export class MetaSystemUserAdapter implements OAuthProviderAdapter {
 
         if (!creds?.extraFields?.adAccountIds) return [];
 
-        return creds.extraFields.adAccountIds.map((id) => ({
+        return creds.extraFields.adAccountIds.map((id: string) => ({
             id,
             name: `Ad Account ${id}`,
-            type: "ad_account",
+            type: "ad-account" as const,
         }));
     }
 

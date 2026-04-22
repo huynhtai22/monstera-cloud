@@ -12,7 +12,7 @@ export interface DashboardWidget {
   dimensions?: string[];
   filters?: Record<string, any>;
   chartType?: "line" | "bar" | "pie" | "funnel" | "table";
-  timeRange?: "today" | "yesterday" | "last_7_days" | "last_30_days" | "last_90_days";
+  timeRange?: "today" | "yesterday" | "last_24_hours" | "last_7_days" | "last_30_days" | "last_90_days";
   comparison?: "previous_period" | "year_over_year";
 }
 
