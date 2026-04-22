@@ -9,16 +9,23 @@ export const primaryButtonLinkClassName = cn(
   "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white",
   "bg-primary hover:bg-primary-hover",
   "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0f172a]",
-  "transition-colors"
+  "transition-colors cursor-pointer"
 );
 
 export interface PrimaryButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   loading?: boolean;
+  size?: "sm" | "md" | "lg";
 }
 
+const sizeClasses = {
+  sm: "px-3 py-1.5 text-xs",
+  md: "px-4 py-2.5 text-sm",
+  lg: "px-6 py-3 text-base",
+};
+
 export const PrimaryButton = React.forwardRef<HTMLButtonElement, PrimaryButtonProps>(
-  ({ className, children, disabled, loading, type = "button", ...props }, ref) => {
+  ({ className, children, disabled, loading, size = "md", type = "button", ...props }, ref) => {
     return (
       <button
         ref={ref}
@@ -26,6 +33,7 @@ export const PrimaryButton = React.forwardRef<HTMLButtonElement, PrimaryButtonPr
         disabled={disabled || loading}
         className={cn(
           primaryButtonLinkClassName,
+          sizeClasses[size],
           "disabled:pointer-events-none disabled:opacity-60",
           className
         )}

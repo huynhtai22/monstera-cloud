@@ -17,6 +17,7 @@ import { trackEvent, trackOnce } from "@/lib/analytics-events";
 import { PageShell } from "@/components/ui/PageShell";
 import { DataFlowExplainer } from "@/components/data-flow/DataFlowExplainer";
 import { RefreshedAt } from "@/components/ui/RefreshedAt";
+import { PrimaryButton, SecondaryButton, primaryButtonLinkClassName } from "@/components/ui";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin" });
@@ -402,17 +403,11 @@ const IntegrationCard = React.memo(function IntegrationCard({
                                 }
                                 onSync(integration.pipelineId, integration.id);
                             }}
-                            className="w-full rounded-lg border border-cyan-600/30 bg-cyan-600 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-cyan-500 dark:border-cyan-500 dark:bg-cyan-600 dark:hover:bg-cyan-500 disabled:pointer-events-none disabled:opacity-50"
+                            className="w-full"
+                            loading={isSyncing}
                         >
-                            {isSyncing ? (
-                                <span className="inline-flex items-center justify-center gap-2">
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    Syncing…
-                                </span>
-                            ) : (
-                                "Sync Now"
-                            )}
-                        </button>
+                            {isSyncing ? "Syncing…" : "Sync Now"}
+                        </PrimaryButton>
                         <button
                             type="button"
                             disabled={isBusy}
@@ -455,10 +450,10 @@ const IntegrationCard = React.memo(function IntegrationCard({
                             e.stopPropagation();
                             onConnect(integration);
                         }}
-                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-600 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-cyan-700"
+                        className="w-full"
                     >
                         Connect <ArrowRight className="h-3.5 w-3.5" />
-                    </button>
+                    </PrimaryButton>
                 )}
             </div>
         </div>
@@ -945,18 +940,14 @@ export default function SourcesPage() {
                     {isAuth ? (
                         <Link
                             href="/login?callbackUrl=%2Fsources"
-                            className="inline-flex items-center rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700"
+                            className={primaryButtonLinkClassName}
                         >
                             Sign in
                         </Link>
                     ) : (
-                        <button
-                            type="button"
-                            onClick={() => mutate("/api/workspaces")}
-                            className="inline-flex items-center rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700"
-                        >
+                        <SecondaryButton onClick={() => mutate("/api/workspaces")}>
                             Retry
-                        </button>
+                        </SecondaryButton>
                     )}
                 </div>
             </div>

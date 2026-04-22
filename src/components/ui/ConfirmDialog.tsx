@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { PrimaryButton, SecondaryButton } from "./index";
 
 type ConfirmDialogProps = {
   open: boolean;
@@ -47,7 +49,7 @@ export function ConfirmDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="presentation">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
       <button
         type="button"
         className="absolute inset-0 bg-black/50 backdrop-blur-sm dark:bg-black/60"
@@ -79,24 +81,18 @@ export function ConfirmDialog({
           {description}
         </p>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-          >
+          <SecondaryButton onClick={onCancel}>
             {cancelLabel}
-          </button>
-          <button
-            type="button"
+          </SecondaryButton>
+          <PrimaryButton
             onClick={onConfirm}
-            className={
-              variant === "danger"
-                ? "inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
-                : "inline-flex items-center justify-center rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700 dark:bg-cyan-500"
-            }
+            className={cn(
+              variant === "danger" &&
+                "bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600 focus-visible:ring-red-500/40"
+            )}
           >
             {confirmLabel}
-          </button>
+          </PrimaryButton>
         </div>
       </div>
     </div>

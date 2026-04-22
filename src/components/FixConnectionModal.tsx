@@ -5,6 +5,7 @@ import { X, AlertCircle, RefreshCw, CheckCircle2, ArrowRight } from "lucide-reac
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
+import { PrimaryButton, SecondaryButton } from "@/components/ui";
 
 interface FixConnectionModalProps {
     isOpen: boolean;
@@ -229,17 +230,10 @@ export function FixConnectionModal({
                             </div>
 
                             {/* Action button */}
-                            <button
-                                onClick={handleReconnect}
-                                className={cn(
-                                    "flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 font-semibold transition-all",
-                                    "bg-cyan-600 text-white hover:bg-cyan-700",
-                                    "dark:bg-cyan-600 dark:hover:bg-cyan-500"
-                                )}
-                            >
+                            <PrimaryButton onClick={handleReconnect} className="w-full py-3">
                                 Reconnect Now
                                 <ArrowRight className="h-4 w-4" />
-                            </button>
+                            </PrimaryButton>
                         </div>
                     )}
 
@@ -274,16 +268,9 @@ export function FixConnectionModal({
                             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
                                 Syncs will resume automatically.
                             </p>
-                            <button
-                                onClick={handleClose}
-                                className={cn(
-                                    "mt-6 w-full rounded-lg px-4 py-2.5 font-semibold",
-                                    "bg-cyan-600 text-white hover:bg-cyan-700",
-                                    "dark:bg-cyan-600 dark:hover:bg-cyan-500"
-                                )}
-                            >
+                            <PrimaryButton onClick={handleClose} className="mt-6 w-full">
                                 Done
-                            </button>
+                            </PrimaryButton>
                         </div>
                     )}
 
@@ -299,19 +286,18 @@ export function FixConnectionModal({
                                 {error}
                             </p>
                             <div className="mt-6 flex gap-3">
-                                <button
+                                <SecondaryButton
                                     onClick={() => setStep("diagnose")}
-                                    className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2.5 font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-300 dark:hover:bg-slate-700"
+                                    className="flex-1"
                                 >
                                     Try Again
-                                </button>
-                                <a
-                                    href={`/sources/${connection.id}`}
+                                </SecondaryButton>
+                                <PrimaryButton
                                     onClick={handleClose}
-                                    className="flex-1 rounded-lg bg-cyan-600 px-4 py-2.5 text-center font-medium text-white hover:bg-cyan-700 dark:bg-cyan-600 dark:hover:bg-cyan-500"
+                                    className="flex-1"
                                 >
                                     View Details
-                                </a>
+                                </PrimaryButton>
                             </div>
                         </div>
                     )}
