@@ -13,27 +13,32 @@ async function resolveWorkspaceFromRequest(req: NextRequest) {
   // Basic API key auth only for jobs (Google JWT not supported here)
   const keyRecord = await prisma.apiKey.findUnique({ where: { key: apiKey } });
   if (!keyRecord) return null;
-  return keyRecord.workspaceId;
+  return { workspaceId: keyRecord.workspaceId, apiKeyId: keyRecord.id };
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const workspaceId = await resolveWorkspaceFromRequest(req);
-    if (!workspaceId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const resolved = await resolveWorkspaceFromRequest(req);
+    if (!resolved) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { workspaceId, apiKeyId } = resolved as { workspaceId: string; apiKeyId: string };
 
     if (!redis) return NextResponse.json({ error: "Job queue unavailable" }, { status: 503 });
 
     const body = await req.json();
     const jobId = uuidv4();
-    const job = {
-      id: jobId,
-      workspaceId,
-      params: body.params || {},
-      status: "queued",
-      createdAt: new Date().toISOString(),
-    };
 
-    await redis.set(`looker:job:${jobId}`, JSON.stringify(job), { ex: 60 * 60 * 24 * 7 });
+    // Persist job metadata in DB
+    await prisma.lookerJob.create({
+      data: {
+        id: jobId,
+        workspaceId,
+        apiKeyId,
+        params: body.params || {},
+        status: "queued",
+      },
+    });
+
+    // Push job id to Redis queue for workers
     await redis.lpush("looker:jobs:queue", jobId);
 
     return NextResponse.json({ jobId });

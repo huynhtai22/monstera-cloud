@@ -346,3 +346,201 @@ model AttributionSnapshot {
   @@unique([workspaceId, date, model])
   @@index([workspaceId, date])
 }
+
+// OBSERVABILITY: Data Quality Rules - Anomaly detection configuration
+model DataQualityRule {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  name          String   // e.g., "Revenue Drop Alert"
+  description   String?
+  
+  // Rule configuration
+  ruleType      String   // threshold | comparison | schema_check
+  metric        String   // revenue | orders | roas | row_count
+  operator      String   // gt | lt | eq | drop_pct | increase_pct
+  threshold     Float?   // Absolute threshold
+  pctThreshold  Float?   // Percentage threshold (e.g., 0.5 for 50%)
+  
+  // Rule scope
+  pipelineId    String?  // Apply to specific pipeline or all
+  connectionId  String?  // Apply to specific connection
+  
+  // Alerting
+  severity      String   @default("warning") // warning | critical
+  enabled       Boolean  @default(true)
+  notifyEmail   Boolean  @default(false)
+  notifyTelegram Boolean @default(true)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  violations    DataQualityViolation[]
+  
+  @@index([workspaceId, enabled])
+  @@index([pipelineId, enabled])
+}
+
+// OBSERVABILITY: Data Quality Violations - Recorded anomalies
+model DataQualityViolation {
+  id              String   @id @default(cuid())
+  ruleId          String
+  workspaceId     String
+  pipelineId      String?
+  connectionId    String?
+  
+  // Violation details
+  expectedValue   Float?   // Expected metric value
+  actualValue     Float    // Actual metric value
+  pctChange       Float?   // Percentage change from expected
+  
+  // Context
+  syncLogId       String?  // Related sync job
+  sampleData      String?  // JSON sample of problematic rows
+  
+  // Status
+  status          String   @default("open") // open | acknowledged | resolved | false_positive
+  acknowledgedBy  String?
+  acknowledgedAt  DateTime?
+  notes           String?
+  
+  createdAt       DateTime @default(now())
+  
+  rule            DataQualityRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  
+  @@index([workspaceId, status])
+  @@index([ruleId, createdAt])
+  @@index([createdAt])
+}
+
+// OBSERVABILITY: Enhanced Sync Log with row-level details
+model SyncLogDetail {
+  id              String   @id @default(cuid())
+  syncLogId       String
+  
+  // Granular sync information
+  stage           String   // extract | transform | load
+  status          String   // success | warning | error
+  
+  // Metrics
+  rowsProcessed   Int      @default(0)
+  rowsInserted    Int      @default(0)
+  rowsUpdated     Int      @default(0)
+  rowsFailed      Int      @default(0)
+  
+  // Performance
+  durationMs      Int      @default(0)
+  apiCalls        Int      @default(0)
+  bytesTransferred Int     @default(0)
+  
+  // Error tracking
+  errorCode       String?
+  errorMessage    String?
+  errorDetails    String?  // JSON stack/error details
+  
+  // Schema tracking
+  schemaVersion   String?  // API schema version at time of sync
+  
+  createdAt       DateTime @default(now())
+  
+  @@index([syncLogId, stage])
+  @@index([createdAt])
+}
+
+// OBSERVABILITY: Schema Version Tracking
+model SchemaVersion {
+  id              String   @id @default(cuid())
+  connectionId    String
+  provider        String   // meta_ads | google_ads | etc.
+  
+  // Schema identification
+  version         String   // e.g., "v12.0" for Meta Marketing API
+  schemaHash      String   // Hash of discovered schema
+  
+  // Schema content (snapshot)
+  fields          String   // JSON array of {name, type, nullable}
+  primaryKeys     String?  // JSON array of primary key fields
+  
+  // Change detection
+  discoveredAt    DateTime @default(now())
+  breakingChanges Int      @default(0) // Count of breaking changes from previous
+  
+  // Status
+  isActive        Boolean  @default(true)
+  deprecatedAt    DateTime?
+  
+  @@unique([connectionId, version])
+  @@index([provider, discoveredAt])
+}
+
+// TEMPLATES: Pre-built Dashboard Templates
+model DashboardTemplate {
+  id              String   @id @default(cuid())
+  slug            String   @unique // meta-ads-roas | shopee-sales | etc.
+  
+  name            String
+  description     String
+  category        String   // ads | marketplace | analytics
+  
+  // Template configuration
+  config          String   // JSON: { sources: [], widgets: [], filters: [] }
+  
+  // Requirements
+  requiredSources String[] // e.g., ["meta_ads", "google_ads"]
+  requiredMetrics String[] // e.g., ["spend", "revenue", "roas"]
+  
+  // Display
+  previewImage    String?
+  isFeatured      Boolean  @default(false)
+  sortOrder       Int      @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// TEMPLATES: User Dashboard Instances
+model UserDashboard {
+  id              String   @id @default(cuid())
+  workspaceId     String
+  templateId      String?
+  
+  name            String
+  description     String?
+  
+  // Configuration (overrides template)
+  config          String   // JSON: user customizations
+  
+  // Filters
+  dateRange       String   @default("last_30_days") // today | last_7 | last_30 | last_90 | custom
+  filters         String?  // JSON: { platforms: [], campaigns: [], etc }
+  
+  isDefault       Boolean  @default(false)
+  isShared        Boolean  @default(false)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  
+  @@index([workspaceId, isDefault])
+}
+
+// Persisted metadata for Looker Studio export jobs
+model LookerJob {
+  id          String   @id
+  workspaceId String
+  apiKeyId    String?
+  params      Json
+  status      String   @default("queued") // queued | running | done | failed
+  resultKey   String?  // S3 object key
+  resultUrl   String?
+  rowCount    Int?     
+  errorMsg    String?
+  createdAt   DateTime @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+}

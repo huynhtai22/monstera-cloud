@@ -14,7 +14,6 @@
     "reset-smoke-plan": "tsx scripts/reset-smoke-test-plan.ts",
     "seed-demo-metrics": "tsx scripts/seed-demo-metrics.ts",
     "encrypt-connection-credentials": "tsx prisma/scripts/encrypt-connection-credentials.ts",
-    "encrypt-connection-credentials:dry-run": "tsx prisma/scripts/encrypt-connection-credentials.ts --dry-run"
     "encrypt-connection-credentials:dry-run": "tsx prisma/scripts/encrypt-connection-credentials.ts --dry-run",
     "job-worker": "tsx scripts/looker-job-worker.ts"
   },

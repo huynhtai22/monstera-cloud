@@ -1,5 +1,7 @@
 import { Redis } from "@upstash/redis";
 import prisma from "@/lib/prisma";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const UPSTASH_AVAILABLE = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 if (!UPSTASH_AVAILABLE) {
@@ -9,18 +11,22 @@ if (!UPSTASH_AVAILABLE) {
 
 const redis = Redis.fromEnv();
 
+const s3Bucket = process.env.S3_BUCKET;
+if (!s3Bucket) {
+  console.error("S3_BUCKET env not set. Exiting.");
+  process.exit(1);
+}
+const s3 = new S3Client({ region: process.env.AWS_REGION });
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
 async function processJob(jobId: string) {
-  const raw = await redis.get(`looker:job:${jobId}`);
-  if (!raw) return;
-  const job = JSON.parse(raw as string);
+  const job = await prisma.lookerJob.findUnique({ where: { id: jobId } });
+  if (!job) return;
   try {
-    job.status = "running";
-    job.startedAt = new Date().toISOString();
-    await redis.set(`looker:job:${jobId}`, JSON.stringify(job));
+    await prisma.lookerJob.update({ where: { id: jobId }, data: { status: "running", startedAt: new Date() } });
 
     // Build query from job.params
     const p = job.params || {};
@@ -85,21 +91,18 @@ async function processJob(jobId: string) {
       ];
     }
 
-    // Store results as NDJSON in Redis (caution: large payloads)
-    const resultKey = `looker:job:result:${jobId}`;
-    await redis.set(resultKey, JSON.stringify({ rows: results }), { ex: 60 * 60 * 24 * 7 });
+    // Upload results to S3
+    const body = JSON.stringify({ rows: results });
+    const key = `looker/results/${jobId}.json`;
+    await s3.send(new PutObjectCommand({ Bucket: s3Bucket, Key: key, Body: body, ContentType: "application/json" }));
 
-    job.status = "done";
-    job.finishedAt = new Date().toISOString();
-    job.resultKey = resultKey;
-    job.rowCount = results.length;
-    await redis.set(`looker:job:${jobId}`, JSON.stringify(job));
+    // Generate presigned URL (valid 7 days)
+    const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: s3Bucket, Key: key }), { expiresIn: 60 * 60 * 24 * 7 });
+
+    await prisma.lookerJob.update({ where: { id: jobId }, data: { status: "done", finishedAt: new Date(), resultKey: key, resultUrl: url, rowCount: results.length } });
   } catch (e: any) {
     console.error("Job processing failed", jobId, e);
-    job.status = "failed";
-    job.errorMsg = String(e.message || e);
-    job.finishedAt = new Date().toISOString();
-    await redis.set(`looker:job:${jobId}`, JSON.stringify(job));
+    await prisma.lookerJob.update({ where: { id: jobId }, data: { status: "failed", errorMsg: String(e.message || e), finishedAt: new Date() } });
   }
 }
 
