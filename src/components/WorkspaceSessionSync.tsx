@@ -45,8 +45,16 @@ export function WorkspaceSessionSync() {
                 /* ignore */
             }
             setActiveWorkspaceId(null);
+            // P1: Use SWR's mutate with filter to avoid auth endpoints
+            // This prevents "Cannot destructure property 'auth' of 'e'" error
             void mutate(
-                (key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"),
+                (key) => {
+                    if (typeof key !== "string") return false;
+                    // Only revalidate data endpoints, never auth endpoints
+                    return key.startsWith("/api/") && 
+                           !key.includes("/api/auth/") && 
+                           !key.includes("/api/session");
+                },
                 undefined,
                 { revalidate: true }
             );

@@ -3,7 +3,7 @@ import { Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
-import { NextAuthProvider } from "@/components/NextAuthProvider";
+import { Providers } from "@/components/SWRProvider";
 import { LiveChatWidget } from "@/components/LiveChatWidget";
 import { MetaPixelAnalytics } from "@/components/MetaPixelAnalytics";
 
@@ -127,11 +127,11 @@ fbq('track', 'PageView');`,
                     }}
                 />
 
-                <NextAuthProvider>
+                <Providers>
                     {children}
                     <MetaPixelAnalytics />
                     <LiveChatWidget />
-                </NextAuthProvider>
+                </Providers>
             </body>
         </html>
     );
