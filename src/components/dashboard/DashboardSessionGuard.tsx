@@ -2,23 +2,22 @@
 
 import { useSession } from "next-auth/react";
 import { DashboardHomePage } from "./DashboardHomePage";
-import { GlobeLoader } from "@/components/GlobeLoader";
 
 /**
  * P1: Session guard to prevent dashboard loading before auth is ready
  * This fixes "Cannot destructure property 'auth' of 'e' as it is undefined" error
  * that occurs when SWR hooks run before NextAuth session is fully initialized
+ * 
+ * Note: AppLayout already shows a GlobeLoader during session loading,
+ * so we just return null here to avoid duplicate loaders.
  */
 export function DashboardSessionGuard() {
     const { status } = useSession();
 
     // Wait for session to be fully loaded before rendering dashboard
+    // AppLayout already shows a loader, so we return null here
     if (status === "loading") {
-        return (
-            <div className="flex h-screen items-center justify-center">
-                <GlobeLoader className="h-12 w-12" />
-            </div>
-        );
+        return null;
     }
 
     // Only render dashboard when authenticated
@@ -26,10 +25,6 @@ export function DashboardSessionGuard() {
         return <DashboardHomePage />;
     }
 
-    // Unauthenticated - will be redirected by middleware, but show loader anyway
-    return (
-        <div className="flex h-screen items-center justify-center">
-            <GlobeLoader className="h-12 w-12" />
-        </div>
-    );
+    // Unauthenticated - will be redirected by middleware
+    return null;
 }
