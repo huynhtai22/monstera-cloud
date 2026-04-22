@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DashboardHomePage } from "@/components/dashboard/DashboardHomePage";
+import { DashboardSessionGuard } from "@/components/dashboard/DashboardSessionGuard";
 
 export const metadata: Metadata = {
     title: "Console",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function ConsolePage() {
-    return <DashboardHomePage />;
+    return <DashboardSessionGuard />;
 }
