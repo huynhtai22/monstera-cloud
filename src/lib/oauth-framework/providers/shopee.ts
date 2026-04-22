@@ -113,6 +113,7 @@ export class ShopeeOAuthAdapter implements OAuthProviderAdapter {
         const creds = credentials as {
             refreshToken?: string;
             shopId?: number;
+            sandbox?: boolean;
         };
 
         if (!creds.refreshToken || !creds.shopId) {
@@ -123,9 +124,13 @@ export class ShopeeOAuthAdapter implements OAuthProviderAdapter {
             );
         }
 
+        // P0 Fix: Pass sandbox flag from stored credentials
+        const sandbox = creds.sandbox ?? isSandbox();
+
         const refreshed = await shopeeClient.refreshAccessToken(
             creds.refreshToken,
-            creds.shopId
+            creds.shopId,
+            sandbox
         );
 
         return {
