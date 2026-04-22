@@ -1,54 +1,47 @@
 /**
- * Redis Configuration - Flux Architecture Compliance
- * Centralized Redis client for token caching and distributed locking
+ * Vercel KV (Redis) Configuration - Flux Architecture Compliance
+ * Centralized KV client for token caching and distributed locking
  */
 
-import Redis from "ioredis";
+import { createClient } from "@vercel/kv";
 
-// Redis connection URL from environment
-const REDIS_URL = process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL || "";
+// Vercel KV client configuration
+const KV_URL = process.env.KV_URL;
+const KV_REST_API_URL = process.env.KV_REST_API_URL;
+const KV_REST_API_TOKEN = process.env.KV_REST_API_TOKEN;
 
-// Global Redis client instance
-let redisClient: Redis | null = null;
+// Global KV client instance
+let kvClient: ReturnType<typeof createClient> | null = null;
 
 /**
- * Get or create Redis client (singleton pattern)
+ * Get or create Vercel KV client (singleton pattern)
  */
-export function getRedis(): Redis {
-  if (!redisClient) {
-    if (!REDIS_URL) {
-      console.warn("[Redis] REDIS_URL not configured, using in-memory fallback");
-      // Create a mock Redis for development if no Redis URL
-      redisClient = createMockRedis();
-    } else {
-      redisClient = new Redis(REDIS_URL, {
-        retryStrategy: (times) => {
-          // Exponential backoff with max 3 second delay
-          return Math.min(times * 50, 3000);
-        },
-        maxRetriesPerRequest: 3,
-      });
-
-      redisClient.on("error", (err) => {
-        console.error("[Redis] Connection error:", err);
-      });
-
-      redisClient.on("connect", () => {
-        console.log("[Redis] Connected successfully");
-      });
+export function getRedis() {
+  if (!kvClient) {
+    // Check if Vercel KV is configured
+    if (!KV_URL && !KV_REST_API_URL) {
+      console.warn("[VercelKV] KV_URL not configured, using in-memory fallback");
+      return createMockKV();
     }
+
+    kvClient = createClient({
+      url: KV_URL || KV_REST_API_URL,
+      token: KV_REST_API_TOKEN,
+    });
+
+    console.log("[VercelKV] Client initialized");
   }
 
-  return redisClient;
+  return kvClient;
 }
 
 /**
- * Mock Redis for local development (fallback when Redis not configured)
+ * Mock KV for local development (fallback when Vercel KV not configured)
  */
-function createMockRedis(): Redis {
+function createMockKV() {
   const store = new Map<string, { value: string; expiry: number }>();
 
-  const mockRedis = {
+  return {
     async get(key: string): Promise<string | null> {
       const item = store.get(key);
       if (!item) return null;
@@ -59,17 +52,20 @@ function createMockRedis(): Redis {
       return item.value;
     },
 
-    async set(key: string, value: string, ...args: any[]): Promise<string> {
-      let ttl: number | undefined;
-      // Handle both set(key, value, "EX", 60) and set(key, value, { EX: 60 })
-      if (args[0] === "EX" && typeof args[1] === "number") {
-        ttl = args[1] * 1000; // Convert seconds to ms
-      }
-      store.set(key, { value, expiry: Date.now() + (ttl || 86400000) });
+    async set(key: string, value: string, opts?: { ex?: number }): Promise<string> {
+      const ttl = opts?.ex ? opts.ex * 1000 : 86400000; // ms
+      store.set(key, { value, expiry: Date.now() + ttl });
       return "OK";
     },
 
-    async del(key: string): Promise<number> {
+    async del(key: string | string[]): Promise<number> {
+      if (Array.isArray(key)) {
+        let count = 0;
+        for (const k of key) {
+          if (store.delete(k)) count++;
+        }
+        return count;
+      }
       return store.delete(key) ? 1 : 0;
     },
 
@@ -95,6 +91,7 @@ function createMockRedis(): Redis {
       return 1;
     },
 
+    // For distributed mutex - simple implementation
     async eval(
       script: string,
       keys: string[],
@@ -114,20 +111,36 @@ function createMockRedis(): Redis {
       return null;
     },
 
-    async quit(): Promise<void> {
-      store.clear();
+    async mget(keys: string[]): Promise<(string | null)[]> {
+      return keys.map((k) => {
+        const item = store.get(k);
+        if (!item) return null;
+        if (Date.now() > item.expiry) {
+          store.delete(k);
+          return null;
+        }
+        return item.value;
+      });
     },
-  } as unknown as Redis;
-
-  return mockRedis;
+  } as any;
 }
 
 /**
- * Close Redis connection (for cleanup)
+ * Check if Vercel KV is properly configured
  */
-export async function closeRedis(): Promise<void> {
-  if (redisClient) {
-    await redisClient.quit();
-    redisClient = null;
-  }
+export function isKVConfigured(): boolean {
+  return !!(KV_URL || KV_REST_API_URL);
+}
+
+/**
+ * Get KV configuration status for health checks
+ */
+export function getKVStatus(): {
+  configured: boolean;
+  type: "vercel" | "memory";
+} {
+  return {
+    configured: isKVConfigured(),
+    type: isKVConfigured() ? "vercel" : "memory",
+  };
 }
