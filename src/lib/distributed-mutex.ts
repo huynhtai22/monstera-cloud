@@ -2,174 +2,288 @@
  * Distributed Mutex Locking - Flux Architecture Compliance (Section 3.2)
  *
  * Requirements:
- * - Acquire lock before token refresh
+ * - Acquire Redis lock before token refresh
  * - 10-second lock timeout
- * - Worker B waits if Worker A is refreshing
- * - Redis-based distributed lock
+ * - Worker B waits/retry if Worker A is refreshing
+ * - Prevent race conditions on token refresh
  */
 
 import { getRedis } from "./redis";
 
 const LOCK_PREFIX = "mutex:";
-const DEFAULT_LOCK_TTL = 10; // 10 seconds as per Flux spec
-const LOCK_RETRY_DELAY = 100; // 100ms between retries
-const MAX_RETRY_ATTEMPTS = 50; // 5 seconds total wait (50 * 100ms)
+const DEFAULT_LOCK_TTL = 10000; // 10 seconds (Flux requirement)
+const RETRY_DELAY_MS = 500; // Wait 500ms between retry attempts
+const MAX_RETRIES = 20; // Max 10 seconds of retrying (20 * 500ms)
 
 interface LockResult {
   release: () => Promise<void>;
+  extend: (ttl: number) => Promise<void>;
 }
 
 /**
- * Acquire a distributed lock
+ * Generate lock key for a resource
+ */
+function buildLockKey(resourceId: string): string {
+  return `${LOCK_PREFIX}${resourceId}`;
+}
+
+/**
+ * Acquire distributed lock with retry logic
  *
- * Flux: "Before initiating a Refresh Token flow, the worker MUST acquire a distributed lock"
+ * Flux pattern: Worker MUST acquire lock before refresh
  */
 export async function acquireLock(
-  lockKey: string,
-  lockValue: string = generateLockValue(),
-  ttlSeconds: number = DEFAULT_LOCK_TTL
+  resourceId: string,
+  options?: {
+    ttl?: number; // Lock TTL in milliseconds (default 10s)
+    retry?: boolean; // Whether to retry if lock is busy (default true)
+    maxRetries?: number; // Max retry attempts
+  }
 ): Promise<LockResult | null> {
   const redis = getRedis();
-  const fullKey = `${LOCK_PREFIX}${lockKey}`;
+  const lockKey = buildLockKey(resourceId);
+  const lockValue = `${process.pid}-${Date.now()}`; // Unique identifier
 
-  // Try to set key with NX (only if not exists) and EX (expiry)
-  const acquired = await redis.set(fullKey, lockValue, "EX", ttlSeconds, "NX");
+  const ttl = options?.ttl || DEFAULT_LOCK_TTL;
+  const shouldRetry = options?.retry !== false;
+  const maxRetries = options?.maxRetries || MAX_RETRIES;
 
-  if (acquired === "OK") {
-    console.log(`[Mutex] Lock acquired: ${lockKey} (TTL: ${ttlSeconds}s)`);
+  // Lua script for atomic lock acquisition (SET if not exists)
+  const acquireScript = `
+    if redis.call("exists", KEYS[1]) == 0 then
+      redis.call("set", KEYS[1], ARGV[1], "PX", ARGV[2])
+      return ARGV[1]
+    else
+      return nil
+    end
+  `;
 
-    return {
-      release: async () => {
-        // Use Lua script to ensure we only delete if we own the lock
-        const script = `
-          if redis.call("get", KEYS[1]) == ARGV[1] then
-            return redis.call("del", KEYS[1])
-          else
-            return 0
-          end
-        `;
-        await redis.eval(script, 1, fullKey, lockValue);
-        console.log(`[Mutex] Lock released: ${lockKey}`);
-      },
-    };
+  let attempts = 0;
+
+  while (attempts <= maxRetries) {
+    try {
+      // Try to acquire lock atomically
+      const result = await redis.eval(
+        acquireScript,
+        [lockKey],
+        [lockValue, ttl.toString()]
+      );
+
+      if (result === lockValue) {
+        console.log(`[Mutex] Lock acquired for ${resourceId} (attempt ${attempts + 1})`);
+
+        // Return lock controls
+        return {
+          release: async () => {
+            await releaseLock(resourceId, lockValue);
+          },
+          extend: async (newTtl: number) => {
+            await extendLock(resourceId, lockValue, newTtl);
+          },
+        };
+      }
+
+      // Lock is held by another worker
+      if (!shouldRetry) {
+        console.log(`[Mutex] Lock busy for ${resourceId}, no retry`);
+        return null;
+      }
+
+      // Wait before retry
+      attempts++;
+      if (attempts <= maxRetries) {
+        console.log(`[Mutex] Lock busy for ${resourceId}, retry ${attempts}/${maxRetries}...`);
+        await sleep(RETRY_DELAY_MS);
+      }
+    } catch (err) {
+      console.error(`[Mutex] Error acquiring lock for ${resourceId}:`, err);
+      return null;
+    }
   }
 
+  console.warn(`[Mutex] Failed to acquire lock for ${resourceId} after ${maxRetries} attempts`);
   return null;
 }
 
 /**
- * Wait for and acquire lock with retry
- *
- * Flux: "Worker B fails to acquire the lock and enters a retry loop"
+ * Release distributed lock (only if we own it)
  */
-export async function waitForLock(
-  lockKey: string,
-  lockValue: string = generateLockValue(),
-  ttlSeconds: number = DEFAULT_LOCK_TTL,
-  maxRetries: number = MAX_RETRY_ATTEMPTS
-): Promise<LockResult> {
-  let attempts = 0;
-
-  while (attempts < maxRetries) {
-    const lock = await acquireLock(lockKey, lockValue, ttlSeconds);
-
-    if (lock) {
-      return lock;
-    }
-
-    // Lock is held by another worker, wait and retry
-    attempts++;
-    console.log(`[Mutex] Lock busy: ${lockKey}, retry ${attempts}/${maxRetries}`);
-
-    // Exponential backoff: 100ms, 200ms, 400ms, max 500ms
-    const delay = Math.min(LOCK_RETRY_DELAY * Math.pow(2, attempts - 1), 500);
-    await sleep(delay);
-  }
-
-  // Max retries reached, force acquire (stale lock scenario)
-  console.warn(`[Mutex] Max retries reached, force acquiring: ${lockKey}`);
+async function releaseLock(resourceId: string, lockValue: string): Promise<void> {
   const redis = getRedis();
-  const fullKey = `${LOCK_PREFIX}${lockKey}`;
+  const lockKey = buildLockKey(resourceId);
 
-  // Delete potentially stale lock and acquire
-  await redis.del(fullKey);
-  const lock = await acquireLock(lockKey, lockValue, ttlSeconds);
+  // Lua script for safe lock release (only if value matches)
+  const releaseScript = `
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+      return redis.call("del", KEYS[1])
+    else
+      return 0
+    end
+  `;
 
-  if (!lock) {
-    throw new Error(`Failed to acquire lock after max retries: ${lockKey}`);
+  try {
+    const result = await redis.eval(releaseScript, [lockKey], [lockValue]);
+    if (result === 1) {
+      console.log(`[Mutex] Lock released for ${resourceId}`);
+    } else {
+      console.warn(`[Mutex] Lock already expired or stolen for ${resourceId}`);
+    }
+  } catch (err) {
+    console.error(`[Mutex] Error releasing lock for ${resourceId}:`, err);
   }
-
-  return lock;
 }
 
 /**
- * Execute function with mutex protection
- *
- * Usage: withMutex(`token:${connectionId}`, async () => { ... refresh token ... })
+ * Extend lock TTL (only if we own it)
  */
-export async function withMutex<T>(
-  lockKey: string,
-  fn: () => Promise<T>,
-  options?: {
-    ttlSeconds?: number;
-    timeoutMs?: number;
-  }
-): Promise<T> {
-  const lockValue = generateLockValue();
-  const ttl = options?.ttlSeconds || DEFAULT_LOCK_TTL;
+async function extendLock(
+  resourceId: string,
+  lockValue: string,
+  ttl: number
+): Promise<void> {
+  const redis = getRedis();
+  const lockKey = buildLockKey(resourceId);
 
-  // Wait for lock
-  const lock = await waitForLock(lockKey, lockValue, ttl);
+  // Lua script for safe lock extension
+  const extendScript = `
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+      return redis.call("pexpire", KEYS[1], ARGV[2])
+    else
+      return 0
+    end
+  `;
 
   try {
-    // Execute protected function
-    const result = await fn();
+    const result = await redis.eval(extendScript, [lockKey], [lockValue, ttl.toString()]);
+    if (result === 1) {
+      console.log(`[Mutex] Lock extended for ${resourceId}`);
+    }
+  } catch (err) {
+    console.error(`[Mutex] Error extending lock for ${resourceId}:`, err);
+  }
+}
+
+/**
+ * Execute function with distributed lock protection
+ *
+ * This is the main API - wraps any operation with mutex protection
+ */
+export async function withLock<T>(
+  resourceId: string,
+  operation: () => Promise<T>,
+  options?: {
+    ttl?: number;
+    retry?: boolean;
+    maxRetries?: number;
+    onLockBusy?: () => void;
+  }
+): Promise<T | null> {
+  const lock = await acquireLock(resourceId, options);
+
+  if (!lock) {
+    // Could not acquire lock
+    options?.onLockBusy?.();
+    return null;
+  }
+
+  try {
+    // Execute the protected operation
+    const result = await operation();
     return result;
   } finally {
-    // Always release lock
+    // Always release lock, even if operation fails
     await lock.release();
   }
 }
 
 /**
- * Check if lock is currently held
+ * Check if a lock is currently held (for monitoring)
  */
-export async function isLocked(lockKey: string): Promise<boolean> {
+export async function isLocked(resourceId: string): Promise<boolean> {
   const redis = getRedis();
-  const fullKey = `${LOCK_PREFIX}${lockKey}`;
-  const ttl = await redis.ttl(fullKey);
-  return ttl > 0;
+  const lockKey = buildLockKey(resourceId);
+
+  try {
+    const exists = await redis.exists(lockKey);
+    return exists === 1;
+  } catch (err) {
+    console.error(`[Mutex] Error checking lock for ${resourceId}:`, err);
+    return false;
+  }
 }
 
 /**
- * Get lock owner value (for debugging)
+ * Get lock TTL remaining (for debugging)
  */
-export async function getLockOwner(lockKey: string): Promise<string | null> {
+export async function getLockTTL(resourceId: string): Promise<number> {
   const redis = getRedis();
-  const fullKey = `${LOCK_PREFIX}${lockKey}`;
-  return redis.get(fullKey);
+  const lockKey = buildLockKey(resourceId);
+
+  try {
+    const ttl = await redis.pttl(lockKey);
+    return ttl; // milliseconds, -1 if no expiry, -2 if doesn't exist
+  } catch (err) {
+    console.error(`[Mutex] Error getting TTL for ${resourceId}:`, err);
+    return -2;
+  }
 }
 
 /**
- * Force release a lock (emergency use only)
+ * Force unlock (use with caution - only for admin/debug)
  */
-export async function forceReleaseLock(lockKey: string): Promise<void> {
+export async function forceUnlock(resourceId: string): Promise<void> {
   const redis = getRedis();
-  const fullKey = `${LOCK_PREFIX}${lockKey}`;
-  await redis.del(fullKey);
-  console.warn(`[Mutex] Force released: ${lockKey}`);
+  const lockKey = buildLockKey(resourceId);
+
+  try {
+    await redis.del(lockKey);
+    console.log(`[Mutex] Force unlocked ${resourceId}`);
+  } catch (err) {
+    console.error(`[Mutex] Error force unlocking ${resourceId}:`, err);
+  }
 }
 
 /**
- * Generate unique lock value (worker identifier)
- */
-function generateLockValue(): string {
-  return `${process.pid || "worker"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-/**
- * Sleep helper
+ * Utility: Sleep for milliseconds
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Specialized: Token refresh lock
+ * Follows Flux pattern for token refresh race condition prevention
+ */
+export async function withTokenRefreshLock<T>(
+  connectionId: string,
+  refreshOperation: () => Promise<T>,
+  options?: {
+    ttl?: number;
+    maxRetries?: number;
+  }
+): Promise<T | null> {
+  const lockId = `token-refresh:${connectionId}`;
+
+  console.log(`[TokenRefresh] Attempting lock for ${connectionId}`);
+
+  return withLock(
+    lockId,
+    async () => {
+      console.log(`[TokenRefresh] Lock acquired, proceeding with refresh for ${connectionId}`);
+
+      // Extend lock if refresh takes longer than default TTL
+      const result = await refreshOperation();
+
+      console.log(`[TokenRefresh] Completed for ${connectionId}`);
+      return result;
+    },
+    {
+      ttl: options?.ttl || 15000, // 15 seconds for token refresh (longer than default)
+      retry: true,
+      maxRetries: options?.maxRetries || 30, // More retries for token refresh
+      onLockBusy: () => {
+        console.log(`[TokenRefresh] Another worker is refreshing token for ${connectionId}, waiting...`);
+      },
+    }
+  );
 }
