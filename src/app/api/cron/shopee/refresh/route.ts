@@ -42,7 +42,9 @@ export async function GET(request: Request) {
                     console.log(`[CRON: SHOPEE REFRESH] Refreshing connection ID: ${conn.id}`);
                     
                     // refreshAccessToken throws on API error, so no need to check fields
-                    const newTokenData = await shopeeClient.refreshAccessToken(creds.refresh_token, creds.shop_id);
+                    // Use sandbox flag from stored credentials (fallback to env for legacy connections)
+                    const isSandbox = creds.sandbox === true || process.env.SHOPEE_SANDBOX === "true";
+                    const newTokenData = await shopeeClient.refreshAccessToken(creds.refresh_token, creds.shop_id, isSandbox);
 
                     await prisma.connection.update({
                         where: { id: conn.id },
@@ -51,7 +53,8 @@ export async function GET(request: Request) {
                                 access_token: newTokenData.access_token,
                                 refresh_token: newTokenData.refresh_token,
                                 expire_in: newTokenData.expire_in,
-                                shop_id: creds.shop_id
+                                shop_id: creds.shop_id,
+                                sandbox: isSandbox
                             }))
                         }
                     });

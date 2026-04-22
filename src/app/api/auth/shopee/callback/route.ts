@@ -9,6 +9,8 @@ import {
   ensureDefaultPipelineAfterSourceConnect,
 } from "@/lib/oauth-pipeline";
 
+const isSandbox = () => process.env.SHOPEE_SANDBOX === "true";
+
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
   if (explicit) return explicit;
@@ -81,7 +83,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const tokenData = await shopeeClient.exchangeCode(code, shopId);
+    const tokenData = await shopeeClient.exchangeCode(code, shopId, isSandbox());
 
     const newConn = await prisma.connection.create({
       data: {
@@ -101,6 +103,7 @@ export async function GET(request: Request) {
             Date.now() + 30 * 24 * 60 * 60 * 1000
           ).toISOString(),
           product: "shopee",
+          sandbox: isSandbox(),
         })),
       },
     });

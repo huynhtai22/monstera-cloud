@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth";
 import { isShopeeConnectEnabled } from "@/lib/integration-flags";
 import { shopeeClient } from "@/lib/shopee";
 
+const isSandbox = () => process.env.SHOPEE_SANDBOX === "true";
+
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
   if (explicit) return explicit;
@@ -42,7 +44,7 @@ export async function GET(request: Request) {
     `${base}/api/auth/shopee/callback`;
 
   try {
-    const url = shopeeClient.getAuthorizeUrl(redirectUri, state);
+    const url = shopeeClient.getAuthorizeUrl(redirectUri, state, isSandbox());
     return NextResponse.redirect(url);
   } catch (e: any) {
     return NextResponse.json(
