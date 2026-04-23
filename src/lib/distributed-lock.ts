@@ -1,22 +1,24 @@
 /**
  * Distributed Mutex Locking - Flux Architecture Compliance (Section 3.2)
+ * Unified Implementation with Pub/Sub Coordination
  * 
  * Requirements:
- * - Acquire lock before token refresh
+ * - Acquire Redis lock before token refresh
  * - 10-second lock timeout
- * - Workers that fail to acquire lock wait for lock release
- * - Prevents multiple workers refreshing same token simultaneously
+ * - Worker B waits via Pub/Sub instead of polling if Worker A is refreshing
+ * - Prevent race conditions on token refresh
  */
 
 import { getRedis } from "./redis";
 
-const LOCK_PREFIX = "lock:";
-const DEFAULT_LOCK_TTL_SECONDS = 10; // 10 seconds as per Flux spec
-const RETRY_DELAY_MS = 500; // 500ms between retry attempts
-const MAX_RETRY_ATTEMPTS = 20; // 10 seconds total (20 * 500ms)
+const LOCK_PREFIX = "mutex:";
+const LOCK_RELEASE_CHANNEL = "lock_released";
+const DEFAULT_LOCK_TTL = 10000; // 10 seconds
+const MAX_WAIT_MS = 15000; // Maximum time a worker will wait for pub/sub before timeout
 
-interface LockResult {
+export interface LockResult {
   release: () => Promise<void>;
+  extend: (ttl: number) => Promise<void>;
   expiresAt: number;
 }
 
@@ -28,232 +30,295 @@ function buildLockKey(resourceId: string): string {
 }
 
 /**
- * Try to acquire a distributed lock
- * 
- * Returns null if lock is already held by another worker
- * Returns lock result with release function if acquired
+ * Try to acquire a lock atomically
  */
 export async function tryAcquireLock(
   resourceId: string,
-  ttlSeconds: number = DEFAULT_LOCK_TTL_SECONDS,
-  workerId: string = generateWorkerId()
+  ttlMs: number = DEFAULT_LOCK_TTL
 ): Promise<LockResult | null> {
   const redis = getRedis();
   const lockKey = buildLockKey(resourceId);
-  const lockValue = `${workerId}:${Date.now()}`;
+  const lockValue = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-  // Use SET NX (Not eXists) - atomic operation
-  const acquired = await redis.setnx(lockKey, lockValue);
+  // Lua script for atomic lock acquisition (SET if not exists)
+  const acquireScript = `
+    if redis.call("exists", KEYS[1]) == 0 then
+      redis.call("set", KEYS[1], ARGV[1], "PX", ARGV[2])
+      return ARGV[1]
+    else
+      return nil
+    end
+  `;
 
-  if (acquired === 1) {
-    // Lock acquired, set TTL
-    await redis.expire(lockKey, ttlSeconds);
-    const expiresAt = Date.now() + ttlSeconds * 1000;
+  try {
+    const result = await redis.eval(
+      acquireScript,
+      [lockKey],
+      [lockValue, ttlMs.toString()]
+    );
 
-    console.log(`[Lock] Acquired lock for ${resourceId} (worker: ${workerId})`);
+    if (result === lockValue) {
+      const expiresAt = Date.now() + ttlMs;
+      console.log(`[Lock] Acquired lock for ${resourceId}`);
 
-    return {
-      release: async () => {
-        // Only delete if we still own the lock (check value matches)
-        const current = await redis.get(lockKey);
-        if (current === lockValue) {
-          await redis.del(lockKey);
-          console.log(`[Lock] Released lock for ${resourceId}`);
-        }
-      },
-      expiresAt,
-    };
+      return {
+        release: async () => {
+          await releaseLock(resourceId, lockValue);
+        },
+        extend: async (newTtlMs: number) => {
+          await extendLock(resourceId, lockValue, newTtlMs);
+        },
+        expiresAt,
+      };
+    }
+  } catch (err) {
+    console.error(`[Lock] Error acquiring lock for ${resourceId}:`, err);
   }
 
-  // Lock already held
-  const currentHolder = await redis.get(lockKey);
-  console.log(`[Lock] Lock held by another worker for ${resourceId}: ${currentHolder}`);
   return null;
 }
 
 /**
- * Acquire lock with retry (blocking wait)
- * 
- * Flux requirement: Worker B fails to acquire lock and enters retry loop
+ * Release distributed lock (only if we own it) and notify via Pub/Sub
  */
-export async function acquireLockWithRetry(
-  resourceId: string,
-  ttlSeconds: number = DEFAULT_LOCK_TTL_SECONDS,
-  maxRetries: number = MAX_RETRY_ATTEMPTS,
-  workerId: string = generateWorkerId()
-): Promise<LockResult> {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const lock = await tryAcquireLock(resourceId, ttlSeconds, workerId);
+async function releaseLock(resourceId: string, lockValue: string): Promise<void> {
+  const redis = getRedis();
+  const lockKey = buildLockKey(resourceId);
 
-    if (lock) {
-      return lock;
+  const releaseScript = `
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+      return redis.call("del", KEYS[1])
+    else
+      return 0
+    end
+  `;
+
+  try {
+    const result = await redis.eval(releaseScript, [lockKey], [lockValue]);
+    if (result === 1) {
+      console.log(`[Lock] Released lock for ${resourceId}`);
+      // Notify waiting workers that this specific resource lock was released
+      await redis.publish(LOCK_RELEASE_CHANNEL, resourceId);
+    } else {
+      console.warn(`[Lock] Lock already expired or stolen for ${resourceId}`);
     }
-
-    // Wait before retry
-    console.log(`[Lock] Retry ${attempt + 1}/${maxRetries} for ${resourceId}...`);
-    await sleep(RETRY_DELAY_MS);
+  } catch (err) {
+    console.error(`[Lock] Error releasing lock for ${resourceId}:`, err);
   }
-
-  throw new Error(`[Lock] Failed to acquire lock for ${resourceId} after ${maxRetries} retries`);
 }
 
 /**
- * Execute function with distributed lock
- * 
- * Automatically acquires lock, runs function, releases lock
+ * Extend lock TTL (only if we own it)
+ */
+async function extendLock(resourceId: string, lockValue: string, ttlMs: number): Promise<void> {
+  const redis = getRedis();
+  const lockKey = buildLockKey(resourceId);
+
+  const extendScript = `
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+      return redis.call("pexpire", KEYS[1], ARGV[2])
+    else
+      return 0
+    end
+  `;
+
+  try {
+    const result = await redis.eval(extendScript, [lockKey], [lockValue, ttlMs.toString()]);
+    if (result === 1) {
+      console.log(`[Lock] Extended lock for ${resourceId} by ${ttlMs}ms`);
+    }
+  } catch (err) {
+    console.error(`[Lock] Error extending lock for ${resourceId}:`, err);
+  }
+}
+
+/**
+ * Acquire distributed lock with Pub/Sub waiting mechanism
+ */
+export async function acquireLock(
+  resourceId: string,
+  options?: {
+    ttl?: number;
+    retry?: boolean;
+    maxWaitMs?: number;
+  }
+): Promise<LockResult | null> {
+  const redis = getRedis();
+  const ttl = options?.ttl || DEFAULT_LOCK_TTL;
+  const shouldRetry = options?.retry !== false;
+  const maxWait = options?.maxWaitMs || MAX_WAIT_MS;
+
+  // Try immediately first
+  let lock = await tryAcquireLock(resourceId, ttl);
+  if (lock) return lock;
+
+  if (!shouldRetry) {
+    console.log(`[Lock] Lock busy for ${resourceId}, no retry`);
+    return null;
+  }
+
+  console.log(`[Lock] Lock busy for ${resourceId}, waiting via Pub/Sub...`);
+
+  // Wait via Pub/Sub
+  return new Promise(async (resolve) => {
+    let handled = false;
+    let fallbackTimer: NodeJS.Timeout;
+
+    // Upstash/VercelKV doesn't strictly support open connections for SUBSCRIBE in serverless
+    // but we use the provided client. If the environment supports it (like a long running worker
+    // or properly mocked client), this avoids polling.
+    const messageHandler = async (channel: string, message: string) => {
+      // Redis subscribe callbacks sometimes have different signatures based on the client,
+      // handled flexibly below.
+      const msg = typeof message === 'string' ? message : channel;
+      
+      if (msg === resourceId && !handled) {
+        console.log(`[Lock] Pub/Sub notified release for ${resourceId}, retrying...`);
+        // Try to acquire again
+        const retryLock = await tryAcquireLock(resourceId, ttl);
+        if (retryLock) {
+          cleanup();
+          resolve(retryLock);
+        }
+      }
+    };
+
+    const cleanup = () => {
+      if (handled) return;
+      handled = true;
+      clearTimeout(fallbackTimer);
+      try {
+        // Standard unsubscribe if available
+        if (typeof redis.unsubscribe === 'function') {
+           redis.unsubscribe(LOCK_RELEASE_CHANNEL, messageHandler).catch(() => {});
+        }
+      } catch (e) {}
+    };
+
+    // Set a maximum wait time timeout, after which we give up or force a final check
+    fallbackTimer = setTimeout(async () => {
+      if (!handled) {
+        console.log(`[Lock] Wait timeout for ${resourceId}, giving up.`);
+        cleanup();
+        resolve(null);
+      }
+    }, maxWait);
+
+    try {
+      if (typeof redis.subscribe === 'function') {
+        await redis.subscribe(LOCK_RELEASE_CHANNEL, messageHandler);
+      } else {
+         // Fallback to polling if client does not support subscribe
+         console.warn("[Lock] Redis client does not support subscribe: falling back to polling");
+         fallbackPoll();
+      }
+    } catch (err) {
+      console.error("[Lock] Pub/sub failed, falling back to polling", err);
+      fallbackPoll();
+    }
+
+    // Polling fallback just in case pub/sub fails conceptually in this environment
+    async function fallbackPoll() {
+      const start = Date.now();
+      while (!handled && (Date.now() - start < maxWait)) {
+         await new Promise(r => setTimeout(r, 1000));
+         if (handled) break;
+         const retryLock = await tryAcquireLock(resourceId, ttl);
+         if (retryLock) {
+            cleanup();
+            resolve(retryLock);
+            break;
+         }
+      }
+    }
+  });
+}
+
+/**
+ * Execute function with distributed lock protection
  */
 export async function withLock<T>(
   resourceId: string,
-  fn: () => Promise<T>,
+  operation: () => Promise<T>,
   options?: {
-    ttlSeconds?: number;
-    maxRetries?: number;
-    onLockFail?: () => void;
+    ttl?: number;
+    retry?: boolean;
+    maxWaitMs?: number;
+    onLockBusy?: () => void;
   }
 ): Promise<T | null> {
-  const lock = await acquireLockWithRetry(
-    resourceId,
-    options?.ttlSeconds,
-    options?.maxRetries
-  );
+  const lock = await acquireLock(resourceId, options);
+
+  if (!lock) {
+    options?.onLockBusy?.();
+    return null;
+  }
 
   try {
-    return await fn();
+    return await operation();
   } finally {
     await lock.release();
   }
 }
 
 /**
- * Check if a lock is currently held (for monitoring/debugging)
+ * Check if a lock is currently held (for monitoring)
  */
 export async function isLocked(resourceId: string): Promise<boolean> {
   const redis = getRedis();
   const lockKey = buildLockKey(resourceId);
-  const value = await redis.get(lockKey);
-  return value !== null;
+
+  try {
+    const exists = await redis.exists(lockKey);
+    return exists === 1;
+  } catch (err) {
+    return false;
+  }
 }
 
 /**
- * Get lock holder info
+ * Force unlock (use with caution - only for admin/debug)
  */
-export async function getLockHolder(resourceId: string): Promise<string | null> {
+export async function forceUnlock(resourceId: string): Promise<void> {
   const redis = getRedis();
   const lockKey = buildLockKey(resourceId);
-  return await redis.get(lockKey);
+
+  try {
+    await redis.del(lockKey);
+    await redis.publish(LOCK_RELEASE_CHANNEL, resourceId);
+    console.log(`[Lock] Force unlocked ${resourceId}`);
+  } catch (err) {}
 }
 
 /**
- * Force release a lock (emergency use only)
+ * Specialized: Token refresh lock
+ * Prevents multiple workers refreshing same token simultaneously
  */
-export async function forceReleaseLock(resourceId: string): Promise<void> {
-  const redis = getRedis();
-  const lockKey = buildLockKey(resourceId);
-  await redis.del(lockKey);
-  console.warn(`[Lock] Force released lock for ${resourceId}`);
-}
-
-/**
- * Generate unique worker ID
- */
-function generateWorkerId(): string {
-  // Combine timestamp, random, and process info if available
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).slice(2, 8);
-  const hostname = typeof process !== "undefined" && process.env.VERCEL_REGION
-    ? process.env.VERCEL_REGION
-    : "local";
-  return `${hostname}:${timestamp}:${random}`;
-}
-
-/**
- * Sleep utility
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Token refresh with distributed locking
- * 
- * This is the main use case - prevents multiple workers refreshing same token
- */
-export async function refreshTokenWithLock(
+export async function withTokenRefreshLock<T>(
   connectionId: string,
-  refreshFn: () => Promise<{ accessToken: string; expiresAt: Date }>,
-  onRefreshed?: (token: { accessToken: string; expiresAt: Date }) => Promise<void>
-): Promise<{ accessToken: string; expiresAt: Date } | null> {
-  const lockResourceId = `refresh:${connectionId}`;
+  refreshOperation: () => Promise<T>,
+  options?: {
+    ttl?: number;
+    maxWaitMs?: number;
+  }
+): Promise<T | null> {
+  const lockId = `token-refresh:${connectionId}`;
 
-  return await withLock(
-    lockResourceId,
+  return withLock(
+    lockId,
     async () => {
-      console.log(`[TokenRefresh] Acquired lock for ${connectionId}, refreshing...`);
-
-      // Perform the actual refresh
-      const token = await refreshFn();
-
-      // Update cache/storage
-      if (onRefreshed) {
-        await onRefreshed(token);
-      }
-
-      console.log(`[TokenRefresh] Successfully refreshed token for ${connectionId}`);
-
-      return token;
+      console.log(`[TokenRefresh] Proceeding with refresh for ${connectionId}`);
+      const result = await refreshOperation();
+      console.log(`[TokenRefresh] Completed for ${connectionId}`);
+      return result;
     },
     {
-      ttlSeconds: 15, // Token refresh should complete within 15 seconds
-      maxRetries: 30, // Wait up to 15 seconds for lock
-      onLockFail: () => {
-        console.error(`[TokenRefresh] Could not acquire lock for ${connectionId}`);
+      ttl: options?.ttl || 15000,
+      retry: true,
+      maxWaitMs: options?.maxWaitMs || 20000, 
+      onLockBusy: () => {
+        console.warn(`[TokenRefresh] Could not acquire lock or wait failed for ${connectionId}`);
       },
     }
   );
-}
-
-/**
- * Multiple workers pattern - read from cache if another worker refreshed
- */
-export async function getOrRefreshToken(
-  connectionId: string,
-  getCachedFn: () => Promise<{ accessToken: string; expiresAt: Date } | null>,
-  refreshFn: () => Promise<{ accessToken: string; expiresAt: Date }>,
-  onRefreshed?: (token: { accessToken: string; expiresAt: Date }) => Promise<void>
-): Promise<{ accessToken: string; expiresAt: Date } | null> {
-  // 1. Check if already refreshed by another worker
-  let token = await getCachedFn();
-
-  if (token && new Date(token.expiresAt).getTime() > Date.now() + 60000) {
-    // Token valid for more than 1 minute, use it
-    return token;
-  }
-
-  // 2. Token expired or expiring - need refresh with lock
-  const lock = await tryAcquireLock(`refresh:${connectionId}`);
-
-  if (!lock) {
-    // Another worker is refreshing, wait and read from cache
-    console.log(`[TokenRefresh] Another worker refreshing ${connectionId}, waiting...`);
-
-    // Wait for other worker to complete (max 10 seconds)
-    for (let i = 0; i < 20; i++) {
-      await sleep(500);
-      token = await getCachedFn();
-      if (token && new Date(token.expiresAt).getTime() > Date.now() + 60000) {
-        return token;
-      }
-    }
-
-    throw new Error(`Timeout waiting for token refresh for ${connectionId}`);
-  }
-
-  // 3. We acquired the lock, perform refresh
-  try {
-    token = await refreshFn();
-    await onRefreshed?.(token);
-    return token;
-  } finally {
-    await lock.release();
-  }
 }

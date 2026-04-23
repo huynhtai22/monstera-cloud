@@ -10,7 +10,7 @@
 
 import crypto from "crypto";
 import { getToken } from "./token-cache";
-import { withTokenRefreshLock } from "./distributed-mutex";
+import { withTokenRefreshLock } from "./distributed-lock";
 
 // Platform-specific signing configurations
 interface PlatformConfig {

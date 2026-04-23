@@ -132,6 +132,39 @@ export async function invalidateToken(connectionId: string): Promise<void> {
 }
 
 /**
+ * Bulk invalidate cache by pattern (e.g., all tokens for a specific shop)
+ * Useful for sweeping cleanup when user scopes change
+ */
+export async function invalidateByPattern(pattern: string): Promise<number> {
+  const redis = getRedis();
+  let cursor = 0;
+  let count = 0;
+  
+  try {
+    do {
+      // NOTE: Vercel KV / Upstash supports SCAN
+      const result = await redis.scan(cursor, { match: pattern, count: 100 });
+      // Depending on the client version, result is either [cursor, keys] or an object
+      cursor = Array.isArray(result) ? parseInt(result[0], 10) : parseInt((result as any).cursor, 10);
+      const keys: string[] = Array.isArray(result) ? result[1] : (result as any).keys || [];
+      
+      if (keys.length > 0) {
+        await redis.del(...keys);
+        count += keys.length;
+      }
+    } while (cursor !== 0);
+    
+    if (count > 0) {
+      console.log(`[TokenCache] Bulk invalidated ${count} keys matching pattern: ${pattern}`);
+    }
+    return count;
+  } catch (err) {
+    console.error(`[TokenCache] Failed to bulk invalidate pattern ${pattern}:`, err);
+    return 0;
+  }
+}
+
+/**
  * Check if token needs refresh (within safety buffer)
  */
 export async function shouldRefreshToken(
