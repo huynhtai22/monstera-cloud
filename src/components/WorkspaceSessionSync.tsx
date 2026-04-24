@@ -45,19 +45,9 @@ export function WorkspaceSessionSync() {
                 /* ignore */
             }
             setActiveWorkspaceId(null);
-            // P1: Use SWR's mutate with filter to avoid auth endpoints
-            // This prevents "Cannot destructure property 'auth' of 'e'" error
-            void mutate(
-                (key) => {
-                    if (typeof key !== "string") return false;
-                    // Only revalidate data endpoints, never auth endpoints
-                    return key.startsWith("/api/") && 
-                           !key.includes("/api/auth/") && 
-                           !key.includes("/api/session");
-                },
-                undefined,
-                { revalidate: true }
-            );
+            // Revalidate only the workspace list after account changes.
+            // Broad cache revalidation can touch auth-internal keys during sign-in.
+            void mutate("/api/workspaces");
         }
     }, [status, session?.user?.id, setActiveWorkspaceId]);
 
