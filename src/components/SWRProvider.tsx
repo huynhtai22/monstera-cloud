@@ -20,14 +20,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
                     fetcher: async (resource: any) => {
                         // SWR keys can be arrays or objects. Extract the URL string if possible.
                         const url = Array.isArray(resource) ? resource[0] : resource;
-                        
-                        // NextAuth internally uses SWR for its session. If we intercept it 
-                        // and throw an error (or return the wrong format), it crashes React with 
-                        // "Cannot destructure property 'auth' of 'e'". We bypass it completely.
-                        if (typeof url === "string" && url.startsWith("/api/auth/")) {
-                            const res = await fetch(url, { credentials: "same-origin" });
-                            return res.json().catch(() => null);
-                        }
 
                         if (typeof url !== "string") {
                             throw new Error("Invalid SWR key format");

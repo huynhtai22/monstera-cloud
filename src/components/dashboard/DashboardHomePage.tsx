@@ -147,8 +147,7 @@ export function DashboardHomePage() {
     const handleManualRefresh = React.useCallback(async () => {
         setIsRefreshing(true);
         try {
-            // Exclude /api/auth/* — next-auth v4 uses /api/auth/session as an SWR key internally.
-            // Revalidating it causes "Cannot destructure property 'auth' of 'e' as it is undefined".
+            // Exclude /api/auth/* to avoid unnecessary session endpoint revalidation during dashboard refreshes.
             await mutate(
                 (key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"),
                 undefined,

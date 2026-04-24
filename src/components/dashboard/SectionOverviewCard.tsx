@@ -25,8 +25,8 @@ type SectionOverviewCardProps = {
     kpi?: { label: string; value: string };
     items?: OverviewLineItem[];
     emptyHint?: string;
-    ctaLabel: string;
-    ctaHref: string;
+    ctaLabel?: string;
+    ctaHref?: string;
     accentClassName?: string;
     className?: string;
     emphasis?: boolean;
@@ -165,13 +165,17 @@ export function SectionOverviewCard({
             </div>
 
             <div className="flex items-center justify-between gap-3">
-                <Link
-                    href={ctaHref}
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-cyan-700 transition-colors hover:text-cyan-800 dark:text-cyan-300 dark:hover:text-cyan-200"
-                >
-                    {ctaLabel}
-                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                </Link>
+                {ctaHref && ctaLabel ? (
+                    <Link
+                        href={ctaHref}
+                        className="inline-flex items-center gap-1.5 text-sm font-semibold text-cyan-700 transition-colors hover:text-cyan-800 dark:text-cyan-300 dark:hover:text-cyan-200"
+                    >
+                        {ctaLabel}
+                        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                    </Link>
+                ) : (
+                    <div />
+                )}
                 {footerSlot ? <div className="shrink-0">{footerSlot}</div> : null}
             </div>
         </div>
