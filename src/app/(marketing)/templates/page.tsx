@@ -38,8 +38,8 @@ export default function TemplatesPage() {
                                 <span>Includes</span>
                             </div>
                             <ul className="space-y-2 mb-6">
-                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-emerald-500 before:rounded-full before:mr-2">Looker Studio report</li>
-                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-emerald-500 before:rounded-full before:mr-2">dbt Core Models</li>
+                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-emerald-500 before:rounded-full before:mr-2">Looker Studio report template</li>
+                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-emerald-500 before:rounded-full before:mr-2">Google Sheets™ summary view</li>
                             </ul>
                             <Link href="/register" className="inline-flex items-center text-sm font-semibold text-white hover:text-purple-400 transition-colors">
                                 Deploy Template <ArrowRight className="w-4 h-4 ml-1" />
@@ -60,8 +60,8 @@ export default function TemplatesPage() {
                                 <span>Includes</span>
                             </div>
                             <ul className="space-y-2 mb-6">
-                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-amber-500 before:rounded-full before:mr-2">Metabase SQL Views</li>
-                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-amber-500 before:rounded-full before:mr-2">Google Sheets™ delivery templates</li>
+                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-amber-500 before:rounded-full before:mr-2">Looker Studio report template</li>
+                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-amber-500 before:rounded-full before:mr-2">Google Sheets™ margin tracker</li>
                             </ul>
                             <Link href="/register" className="inline-flex items-center text-sm font-semibold text-white hover:text-purple-400 transition-colors">
                                 Deploy Template <ArrowRight className="w-4 h-4 ml-1" />

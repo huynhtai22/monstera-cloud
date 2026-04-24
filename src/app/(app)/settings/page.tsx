@@ -1115,23 +1115,11 @@ export default function SettingsPage() {
                                 </div>
                             ) : null}
 
-                            <div className="flex flex-col items-center justify-center py-16 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl px-4">
-                                <span className="inline-flex items-center px-3 py-1 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">Coming Soon</span>
-                                <p className="text-gray-500 dark:text-gray-400 text-sm text-center max-w-md leading-relaxed">
-                                    Invites and workspace roles (owner / admin / member) will land here.{" "}
-                                    <span className="text-gray-600 dark:text-gray-300 font-medium">
-                                        Per-client permissions
-                                    </span>{" "}
-                                    are a larger change (data model + audits); for now, access is per workspace — use
-                                    clients for grouping only.
-                                    {demoMaster ? (
-                                        <>
-                                            {" "}
-                                            The cards above are fictional people for demo mode only.
-                                        </>
-                                    ) : null}
+                            {demoMaster ? (
+                                <p className="text-gray-500 dark:text-gray-400 text-xs text-center">
+                                    The cards above are fictional people for demo mode only.
                                 </p>
-                            </div>
+                            ) : null}
                         </div>
                     )}
 
@@ -1160,10 +1148,12 @@ export default function SettingsPage() {
                                 </div>
                             </div>
 
-                            <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl">
-                                <span className="inline-flex items-center px-3 py-1 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400 text-xs font-bold uppercase tracking-wider mb-3">Coming Soon</span>
-                                <p className="text-gray-500 dark:text-gray-400 text-sm text-center max-w-sm">Payment history, invoice downloads, and subscription management will appear here.</p>
-                            </div>
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                For billing enquiries, contact{" "}
+                                <a href="mailto:support@monsteracloud.com" className="text-cyan-500 hover:underline">
+                                    support@monsteracloud.com
+                                </a>.
+                            </p>
                         </div>
                     )}
 
