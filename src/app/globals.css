@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* ── Tailwind v4 custom design tokens ──────────────────────────────────────
+   In v4 the JS config alone doesn't generate utility classes for custom
+   colors — they must be declared here via @theme so that classes like
+   bg-primary, hover:bg-primary-hover, text-primary-ring, etc. are emitted.
+   ─────────────────────────────────────────────────────────────────────────── */
+@theme {
+  --color-primary: #0891b2;
+  --color-primary-foreground: #ffffff;
+  --color-primary-muted: #ecfeff;
+  --color-primary-ring: #06b6d4;
+  --color-primary-hover: #0e7490;
+  --color-surface-muted: #f9fafb;
+}
+
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
