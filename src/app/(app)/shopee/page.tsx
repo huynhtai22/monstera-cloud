@@ -22,6 +22,8 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { secondaryButtonLinkClassName } from '@/components/ui/SecondaryButton';
 import { INTEGRATION_LOGOS } from '@/lib/integration-logos';
 
+import { maskPII } from '@/lib/pii-masker';
+
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export default function ShopeePage() {
@@ -170,10 +172,54 @@ export default function ShopeePage() {
                 <p className="text-sm opacity-80">{error}</p>
             </div>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center p-12 text-center border-2 border-dashed border-gray-100 rounded-xl m-4 dark:border-slate-800">
-              <ShoppingBag className="h-12 w-12 text-gray-200 dark:text-slate-800 mb-4" />
-              <h4 className="text-lg font-bold text-gray-300 dark:text-slate-700">No orders pulled</h4>
-              <p className="text-sm text-gray-400 dark:text-slate-600">Sync recent orders from your Shopee store.</p>
+            <div className="flex flex-1 flex-col p-6 m-4 border-2 border-cyan-200 bg-cyan-50/50 rounded-xl dark:border-cyan-900/30 dark:bg-slate-800/50">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h4 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 text-cyan-600" />
+                    Shopee App Review Demo
+                  </h4>
+                  <p className="text-sm text-gray-500 mt-1">Demonstrating 90-day search limits and PII Masking requirements.</p>
+                </div>
+                <div className="flex items-center gap-3 bg-white px-4 py-2.5 rounded-lg border border-gray-200 dark:bg-slate-900 dark:border-slate-700 shadow-sm">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-100 px-2 py-1 rounded dark:bg-slate-800">Date Range Limit</span>
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">Max 90 Days</span>
+                </div>
+              </div>
+
+              <div className="rounded-lg overflow-hidden border border-gray-200 dark:border-slate-700">
+                <table className="w-full text-left text-sm">
+                    <thead className="bg-white border-b border-gray-200 dark:bg-slate-900 dark:border-slate-700">
+                        <tr>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase text-[10px] tracking-wider">Shopee Order ID</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase text-[10px] tracking-wider">Buyer PII (Masked)</th>
+                            <th className="px-4 py-3 font-bold text-gray-500 uppercase text-[10px] tracking-wider">Shipping Address (Masked)</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                      <tr className="hover:bg-gray-50 dark:hover:bg-slate-800/50">
+                          <td className="px-4 py-4 font-medium text-gray-900 dark:text-white font-mono text-[11px]">230502NK5PRJ8B</td>
+                          <td className="px-4 py-4">
+                              <p className="text-sm font-bold text-gray-900 dark:text-white">{maskPII.name("William")}</p>
+                              <p className="text-xs text-gray-500 font-mono mt-1">{maskPII.phone("+60123456789")}</p>
+                          </td>
+                          <td className="px-4 py-4 text-xs text-gray-600 dark:text-gray-400 leading-relaxed max-w-[250px]">
+                              {maskPII.address("38, Jalan Teratai 4, Johor Bahru, Johor, Malaysia")}
+                          </td>
+                      </tr>
+                      <tr className="hover:bg-gray-50 dark:hover:bg-slate-800/50 bg-gray-50/50 dark:bg-slate-900/50">
+                          <td className="px-4 py-4 font-medium text-gray-900 dark:text-white font-mono text-[11px]">230502NK5PRJ8C</td>
+                          <td className="px-4 py-4">
+                              <p className="text-sm font-bold text-gray-900 dark:text-white">{maskPII.name("Siti Nurhaliza")}</p>
+                              <p className="text-xs text-gray-500 font-mono mt-1">{maskPII.phone("+60198765432")}</p>
+                          </td>
+                          <td className="px-4 py-4 text-xs text-gray-600 dark:text-gray-400 leading-relaxed max-w-[250px]">
+                              {maskPII.address("15, Lorong Bukit Bintang, Kuala Lumpur, Malaysia")}
+                          </td>
+                      </tr>
+                    </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

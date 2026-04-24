@@ -3,7 +3,7 @@
  * Used by TikTok Ads, Shopee, and any future data pages.
  */
 
-import * as XLSX from "xlsx";
+import * as XLSX from "@e965/xlsx";
 
 /** Trigger a browser CSV file download. */
 export function downloadCsv(rows: Record<string, unknown>[], filename: string) {
