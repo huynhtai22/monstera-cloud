@@ -10,7 +10,11 @@ export async function extractShopeeOrders(
 
   let orders: any[] = [];
 
-  if (sourceCreds?.access_token && sourceCreds?.shop_id) {
+  // Normalise: callback stores camelCase (accessToken/shopId), getValidShopeeCreds stores snake_case
+  const accessToken = sourceCreds?.access_token ?? sourceCreds?.accessToken;
+  const shopId = sourceCreds?.shop_id ?? sourceCreds?.shopId;
+
+  if (accessToken && shopId) {
     try {
       const timeTo = Math.floor(Date.now() / 1000);
       const timeFrom =
@@ -18,7 +22,7 @@ export async function extractShopeeOrders(
           ? cursor.lastTimestamp
           : timeTo - 14 * 24 * 60 * 60;
 
-      const opts = { accessToken: sourceCreds.access_token, shopId: Number(sourceCreds.shop_id) };
+      const opts = { accessToken, shopId: Number(shopId), sandbox: sourceCreds?.sandbox === true };
       
       // 1. Get the list of order SNs
       const listData = await shopeeDataClient.getOrderList(opts, timeFrom, timeTo);
