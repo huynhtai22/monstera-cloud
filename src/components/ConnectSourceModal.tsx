@@ -46,11 +46,19 @@ function isOAuthSourceId(sourceId: string): boolean {
     return (OAUTH_SOURCE_IDS as readonly string[]).includes(sourceId);
 }
 
+// Expo-out easing — starts fast, decelerates naturally; same curve used by Linear & Figma
+const PANEL_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
+const PANEL_DURATION_MS = 360;
+
 export function ConnectSourceModal({ isOpen, onClose, integration, connectedCatalogIds = [] }: ConnectSourceModalProps) {
     const [isProcessing, setIsProcessing] = useState(false);
     const [copiedWhich, setCopiedWhich] = useState<null | "production" | "session">(null);
     const [shopDomain, setShopDomain] = useState("");
     const [draftPick, setDraftPick] = useState<SourcesCatalogItem | null>(null);
+
+    // Keep panel mounted during exit so the slide-out plays before unmounting
+    const [shouldRender, setShouldRender] = useState(isOpen);
+    const [isVisible, setIsVisible] = useState(isOpen);
 
     const connectedSet = useMemo(() => new Set(connectedCatalogIds), [connectedCatalogIds]);
     const effective = integration ?? draftPick;
@@ -172,6 +180,21 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
             setShopDomain("");
             setCopiedWhich(null);
         }
+    }, [isOpen]);
+
+    // Drive enter/exit animation
+    useEffect(() => {
+        if (isOpen) {
+            setShouldRender(true);
+            // Double rAF: first paints the element off-screen, second starts the transition
+            const raf = requestAnimationFrame(() => {
+                requestAnimationFrame(() => setIsVisible(true));
+            });
+            return () => cancelAnimationFrame(raf);
+        }
+        setIsVisible(false);
+        const t = setTimeout(() => setShouldRender(false), PANEL_DURATION_MS);
+        return () => clearTimeout(t);
     }, [isOpen]);
 
     const pickConnector = useCallback((item: SourcesCatalogItem) => {
@@ -325,10 +348,16 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
 
     const oauthPrimaryDisabled = isOAuthSourceId(id) && !activeWorkspaceId;
 
-    if (!isOpen) return null;
+    if (!shouldRender) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/55 backdrop-blur-[2px] animate-in fade-in duration-200 dark:bg-slate-950/70">
+        <div
+            className={cn(
+                "fixed inset-0 z-50 flex justify-end bg-slate-900/55 backdrop-blur-[2px] dark:bg-slate-950/70",
+                "transition-opacity duration-200 ease-out",
+                isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
+            )}
+        >
             {showPicker ? (
                 <div
                     ref={dialogRef}
@@ -337,7 +366,12 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     aria-modal="true"
                     aria-labelledby="connect-source-picker-title"
                     tabIndex={-1}
-                    className="relative w-full max-w-md h-full overflow-hidden rounded-l-2xl border-l border-slate-200/90 bg-white/95 shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none animate-in slide-in-from-right duration-300 dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[-28px_0_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06] flex flex-col"
+                    className={cn(
+                        "relative w-full max-w-md h-full overflow-hidden rounded-l-2xl border-l border-slate-200/90 bg-white/95 shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[-28px_0_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06] flex flex-col",
+                        "transition-transform duration-[360ms]",
+                        isVisible ? "translate-x-0" : "translate-x-full"
+                    )}
+                    style={{ transitionTimingFunction: PANEL_EASE }}
                 >
                     <div className="flex items-start justify-between gap-3 border-b border-slate-100/90 bg-gradient-to-br from-slate-50/90 to-white px-5 py-4 dark:border-white/5 dark:from-slate-800/80 dark:to-slate-900/80">
                         <div className="min-w-0">
@@ -433,7 +467,12 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                 aria-modal="true"
                 aria-labelledby="connect-source-modal-title"
                 tabIndex={-1}
-                className="relative w-full max-w-md h-full overflow-hidden rounded-l-2xl border-l border-slate-200/90 bg-white/95 shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none animate-in slide-in-from-right duration-300 dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[-28px_0_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06] flex flex-col"
+                className={cn(
+                    "relative w-full max-w-md h-full overflow-hidden rounded-l-2xl border-l border-slate-200/90 bg-white/95 shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[-28px_0_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06] flex flex-col",
+                    "transition-transform duration-[360ms]",
+                    isVisible ? "translate-x-0" : "translate-x-full"
+                )}
+                style={{ transitionTimingFunction: PANEL_EASE }}
             >
                 <div className="flex items-center gap-3 border-b border-slate-100/90 bg-gradient-to-br from-slate-50/90 to-white px-5 py-4 dark:border-white/5 dark:from-slate-800/80 dark:to-slate-900/80">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-white to-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ring-1 ring-slate-200/80 dark:from-slate-800 dark:to-slate-900 dark:ring-white/10">
@@ -467,7 +506,10 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-6 py-6">
-                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <div
+                        className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-[240ms]"
+                        style={{ animationTimingFunction: PANEL_EASE }}
+                    >
                         <div className="mb-5">
                             <h4 className="text-base font-bold text-gray-900 dark:text-white mb-1">{step1Content.title}</h4>
                             <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">{step1Content.subtitle}</p>
