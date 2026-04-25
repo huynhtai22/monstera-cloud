@@ -3,37 +3,36 @@ export async function register() {
     // ── New Relic via OpenTelemetry OTLP ──────────────────────────────────────
     // Only initialises when NEW_RELIC_LICENSE_KEY is present (safe to deploy
     // without it during local dev).
+    //
+    // Uses SimpleSpanProcessor instead of the default BatchSpanProcessor so
+    // traces are exported immediately — BatchSpanProcessor buffers and flushes
+    // in the background, which is lost when Vercel serverless functions exit.
     if (process.env.NEW_RELIC_LICENSE_KEY) {
       const { NodeSDK } = await import("@opentelemetry/sdk-node");
       const { OTLPTraceExporter } = await import(
         "@opentelemetry/exporter-trace-otlp-http"
       );
       const { Resource } = await import("@opentelemetry/resources");
-      const {
-        getNodeAutoInstrumentations,
-      } = await import("@opentelemetry/auto-instrumentations-node");
+      const { SimpleSpanProcessor } = await import(
+        "@opentelemetry/sdk-trace-base"
+      );
+
+      const exporter = new OTLPTraceExporter({
+        // New Relic OTLP ingest endpoint (US datacenter)
+        // EU accounts: https://otlp.eu01.nr-data.net:4318/v1/traces
+        url: "https://otlp.nr-data.net:4318/v1/traces",
+        headers: {
+          "api-key": process.env.NEW_RELIC_LICENSE_KEY,
+        },
+      });
 
       const sdk = new NodeSDK({
         resource: new Resource({
-          "service.name":
-            process.env.NEW_RELIC_APP_NAME ?? "monstera-cloud",
+          "service.name": process.env.NEW_RELIC_APP_NAME ?? "monstera-cloud",
           "deployment.environment":
             process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production",
         }),
-        traceExporter: new OTLPTraceExporter({
-          // New Relic OTLP ingest endpoint (US datacenter)
-          // EU: https://otlp.eu01.nr-data.net:4318/v1/traces
-          url: "https://otlp.nr-data.net:4318/v1/traces",
-          headers: {
-            "api-key": process.env.NEW_RELIC_LICENSE_KEY,
-          },
-        }),
-        instrumentations: [
-          getNodeAutoInstrumentations({
-            // Reduces noise — file system spans are rarely useful in prod
-            "@opentelemetry/instrumentation-fs": { enabled: false },
-          }),
-        ],
+        spanProcessors: [new SimpleSpanProcessor(exporter)],
       });
 
       sdk.start();
