@@ -8,36 +8,42 @@ export async function register() {
     // traces are exported immediately — BatchSpanProcessor buffers and flushes
     // in the background, which is lost when Vercel serverless functions exit.
     if (process.env.NEW_RELIC_LICENSE_KEY) {
-      const { NodeSDK } = await import("@opentelemetry/sdk-node");
-      const { OTLPTraceExporter } = await import(
-        "@opentelemetry/exporter-trace-otlp-http"
-      );
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { Resource } = (await import("@opentelemetry/resources")) as any;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { SimpleSpanProcessor } = (await import(
-        "@opentelemetry/sdk-trace-base"
-      )) as any;
+      try {
+        const { NodeSDK } = await import("@opentelemetry/sdk-node");
+        const { OTLPTraceExporter } = await import(
+          "@opentelemetry/exporter-trace-otlp-http"
+        );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { Resource } = (await import("@opentelemetry/resources")) as any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { SimpleSpanProcessor } = (await import(
+          "@opentelemetry/sdk-trace-base"
+        )) as any;
 
-      const exporter = new OTLPTraceExporter({
-        // New Relic OTLP ingest endpoint (US datacenter)
-        // EU accounts: https://otlp.eu01.nr-data.net:4318/v1/traces
-        url: "https://otlp.nr-data.net:4318/v1/traces",
-        headers: {
-          "api-key": process.env.NEW_RELIC_LICENSE_KEY,
-        },
-      });
+        const exporter = new OTLPTraceExporter({
+          // New Relic OTLP ingest endpoint (US datacenter)
+          // EU accounts: https://otlp.eu01.nr-data.net:4318/v1/traces
+          url: "https://otlp.nr-data.net:4318/v1/traces",
+          headers: {
+            "api-key": process.env.NEW_RELIC_LICENSE_KEY,
+          },
+        });
 
-      const sdk = new NodeSDK({
-        resource: new Resource({
-          "service.name": process.env.NEW_RELIC_APP_NAME ?? "monstera-cloud",
-          "deployment.environment":
-            process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production",
-        }),
-        spanProcessors: [new SimpleSpanProcessor(exporter)],
-      });
+        const sdk = new NodeSDK({
+          resource: new Resource({
+            "service.name": process.env.NEW_RELIC_APP_NAME ?? "monstera-cloud",
+            "deployment.environment":
+              process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production",
+          }),
+          spanProcessors: [new SimpleSpanProcessor(exporter)],
+        });
 
-      sdk.start();
+        sdk.start();
+        console.log("[OTel] New Relic tracing started");
+      } catch (err) {
+        // Non-fatal — observability failure must never break the app
+        console.error("[OTel] Failed to start New Relic tracing:", err);
+      }
     }
 
     // ── Sentry (errors + replays) ─────────────────────────────────────────────
