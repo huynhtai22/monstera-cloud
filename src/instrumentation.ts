@@ -12,10 +12,12 @@ export async function register() {
       const { OTLPTraceExporter } = await import(
         "@opentelemetry/exporter-trace-otlp-http"
       );
-      const { Resource } = await import("@opentelemetry/resources");
-      const { SimpleSpanProcessor } = await import(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { Resource } = (await import("@opentelemetry/resources")) as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { SimpleSpanProcessor } = (await import(
         "@opentelemetry/sdk-trace-base"
-      );
+      )) as any;
 
       const exporter = new OTLPTraceExporter({
         // New Relic OTLP ingest endpoint (US datacenter)

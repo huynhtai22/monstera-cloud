@@ -30,6 +30,7 @@
     "@opentelemetry/exporter-trace-otlp-http": "^0.215.0",
     "@opentelemetry/resources": "^2.7.0",
     "@opentelemetry/sdk-node": "^0.215.0",
+    "@opentelemetry/sdk-trace-base": "^2.7.0",
     "@opentelemetry/semantic-conventions": "^1.40.0",
     "@paddle/paddle-js": "^1.6.2",
     "@paddle/paddle-node-sdk": "^3.7.0",
