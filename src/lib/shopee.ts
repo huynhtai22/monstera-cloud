@@ -26,9 +26,18 @@ function partnerId(): number {
 function partnerKey(): string {
   const key = (process.env.SHOPEE_PARTNER_KEY || "").trim();
   if (!key) throw new Error("SHOPEE_PARTNER_KEY is not configured");
-  // Shopee partner keys are prefixed with "shpk" as a format label.
-  // Strip it before using the key for HMAC signing.
+  // Shopee partner keys are prefixed with "shpk" — strip the prefix.
   return key.startsWith("shpk") ? key.slice(4) : key;
+}
+
+/** Returns the HMAC key as a Buffer (hex-decoded raw bytes). */
+function partnerKeyBuffer(): Buffer {
+  const hex = partnerKey();
+  // If valid hex, decode to raw bytes. Otherwise fall back to UTF-8 string bytes.
+  if (/^[0-9a-fA-F]+$/.test(hex) && hex.length % 2 === 0) {
+    return Buffer.from(hex, "hex");
+  }
+  return Buffer.from(hex, "utf8");
 }
 
 function getHost(sandbox = false): string {
@@ -44,7 +53,7 @@ function nowUnix(): number {
 /** HMAC-SHA256 hex signature for auth APIs (no access_token). */
 function signAuth(path: string, timestamp: number): string {
   const base = `${partnerId()}${path}${timestamp}`;
-  return crypto.createHmac("sha256", partnerKey()).update(base).digest("hex");
+  return crypto.createHmac("sha256", partnerKeyBuffer()).update(base).digest("hex");
 }
 
 /** HMAC-SHA256 hex signature for shop-level APIs. */
@@ -55,7 +64,7 @@ function signShop(
   shopId: number
 ): string {
   const base = `${partnerId()}${path}${timestamp}${accessToken}${shopId}`;
-  return crypto.createHmac("sha256", partnerKey()).update(base).digest("hex");
+  return crypto.createHmac("sha256", partnerKeyBuffer()).update(base).digest("hex");
 }
 
 // ── OAuth ─────────────────────────────────────────────────────────────────────
