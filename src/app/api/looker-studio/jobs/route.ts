@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import prisma from "@/lib/prisma";
 import { v4 as uuidv4 } from "uuid";
+import { logger } from "@/lib/logger";
 
 const UPSTASH_AVAILABLE = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 const redis = UPSTASH_AVAILABLE ? Redis.fromEnv() : null;
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ jobId });
   } catch (e) {
-    console.error("Jobs POST error", e);
+    logger.error("Jobs POST error", e);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

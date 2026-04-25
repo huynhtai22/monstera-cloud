@@ -6,6 +6,7 @@ import { getValidGoogleAdsToken } from '@/lib/google-ads-refresh';
 import { clampGoogleAdsDatePeriodForPlan, getPlanLimits } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/google-ads/report
@@ -100,7 +101,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(responsePayload);
   } catch (err: any) {
-    console.error('[GOOGLE_ADS_REPORT]', err);
+    logger.error('[GOOGLE_ADS_REPORT]', err);
     return NextResponse.json({ error: err.message || 'Failed to run Google Ads report' }, { status: 500 });
   }
 }

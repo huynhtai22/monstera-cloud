@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
+import { logger } from "@/lib/logger";
 
 const UPSTASH_AVAILABLE = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 const redis = UPSTASH_AVAILABLE ? Redis.fromEnv() : null;
@@ -186,7 +187,7 @@ export async function GET(req: NextRequest) {
       }
     } catch (e) {
       // If rate limit check fails unexpectedly, log and continue (fail-open)
-      console.warn("Per-key rate limiting check failed:", e);
+      logger.warn("Per-key rate limiting check failed:", e);
     }
 
     const startDateParam = req.nextUrl.searchParams.get("startDate");
@@ -333,7 +334,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(resObj);
   } catch (error: unknown) {
-    console.error("Looker Studio API Error:", error);
+    logger.error("Looker Studio API Error:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }

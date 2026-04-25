@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { buildPerformanceContext } from "@/lib/ai/build-performance-context";
 import { generatePerformanceSummary } from "@/lib/ai/openai-summary";
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/ai/performance-summary
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
         });
     } catch (e: unknown) {
         const message = e instanceof Error ? e.message : "Summary failed";
-        console.error("[POST /api/ai/performance-summary]", e);
+        logger.error("[POST /api/ai/performance-summary]", e);
         return NextResponse.json({ error: message }, { status: 500 });
     }
 }

@@ -7,6 +7,7 @@ import {
   emailsEqual,
   getEmailFromGoogleAccessToken,
 } from "@/lib/google-access-token-email";
+import { logger } from "@/lib/logger";
 
 type RevealBody = {
   workspaceId?: string;
@@ -98,7 +99,7 @@ export async function POST(request: Request) {
       key: keyRow.key,
     });
   } catch (error) {
-    console.error("[POST api-keys/reveal]", error);
+    logger.error("[POST api-keys/reveal]", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

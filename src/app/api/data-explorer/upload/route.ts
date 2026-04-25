@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import os from 'os';
+import { logger } from "@/lib/logger";
 
 // Must set config to disable Next.js default body parser for streaming forms
 // Next.js App Router no longer supports this config object exported this way in Route Handlers.
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
         }, { status: 201 });
 
     } catch (error) {
-        console.error("Error processing file upload:", error);
+        logger.error("Error processing file upload:", error);
         return NextResponse.json({ error: "Failed to process upload" }, { status: 500 });
     }
 }

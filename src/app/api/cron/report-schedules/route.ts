@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { sendClientWeeklyReport, type ClientWeeklyReportSummary } from "@/lib/mail";
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/cron/report-schedules
@@ -137,7 +138,7 @@ export async function GET(req: Request) {
 
         return NextResponse.json({ ok: true, count: results.length, results });
     } catch (err: any) {
-        console.error("[CRON:report-schedules] error:", err);
+        logger.error("[CRON:report-schedules] error:", err);
         return NextResponse.json(
             { ok: false, error: err?.message || "Failed", results },
             { status: 500 },

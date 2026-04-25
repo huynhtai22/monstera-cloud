@@ -5,6 +5,7 @@ import { metaAdsClient } from '@/lib/meta-ads';
 import { getValidMetaToken } from '@/lib/meta-refresh';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/meta-ads/accounts?connectionId=
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
     const accounts = await metaAdsClient.getAdAccounts(accessToken);
     return NextResponse.json({ accounts });
   } catch (err: any) {
-    console.error('[META_ADS_ACCOUNTS]', err);
+    logger.error('[META_ADS_ACCOUNTS]', err);
     return NextResponse.json({ error: err.message || 'Failed to fetch ad accounts' }, { status: 500 });
   }
 }

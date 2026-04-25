@@ -10,6 +10,7 @@
  */
 
 import { getRedis } from "./redis";
+import { logger } from "@/lib/logger";
 
 const LOCK_PREFIX = "mutex:";
 const LOCK_RELEASE_CHANNEL = "lock_released";
@@ -59,7 +60,7 @@ export async function tryAcquireLock(
 
     if (result === lockValue) {
       const expiresAt = Date.now() + ttlMs;
-      console.log(`[Lock] Acquired lock for ${resourceId}`);
+      logger.info(`[Lock] Acquired lock for ${resourceId}`);
 
       return {
         release: async () => {
@@ -72,7 +73,7 @@ export async function tryAcquireLock(
       };
     }
   } catch (err) {
-    console.error(`[Lock] Error acquiring lock for ${resourceId}:`, err);
+    logger.error(`[Lock] Error acquiring lock for ${resourceId}:`, err);
   }
 
   return null;
@@ -96,14 +97,14 @@ async function releaseLock(resourceId: string, lockValue: string): Promise<void>
   try {
     const result = await redis.eval(releaseScript, [lockKey], [lockValue]);
     if (result === 1) {
-      console.log(`[Lock] Released lock for ${resourceId}`);
+      logger.info(`[Lock] Released lock for ${resourceId}`);
       // Notify waiting workers that this specific resource lock was released
       await redis.publish(LOCK_RELEASE_CHANNEL, resourceId);
     } else {
-      console.warn(`[Lock] Lock already expired or stolen for ${resourceId}`);
+      logger.warn(`[Lock] Lock already expired or stolen for ${resourceId}`);
     }
   } catch (err) {
-    console.error(`[Lock] Error releasing lock for ${resourceId}:`, err);
+    logger.error(`[Lock] Error releasing lock for ${resourceId}:`, err);
   }
 }
 
@@ -125,10 +126,10 @@ async function extendLock(resourceId: string, lockValue: string, ttlMs: number):
   try {
     const result = await redis.eval(extendScript, [lockKey], [lockValue, ttlMs.toString()]);
     if (result === 1) {
-      console.log(`[Lock] Extended lock for ${resourceId} by ${ttlMs}ms`);
+      logger.info(`[Lock] Extended lock for ${resourceId} by ${ttlMs}ms`);
     }
   } catch (err) {
-    console.error(`[Lock] Error extending lock for ${resourceId}:`, err);
+    logger.error(`[Lock] Error extending lock for ${resourceId}:`, err);
   }
 }
 
@@ -153,11 +154,11 @@ export async function acquireLock(
   if (lock) return lock;
 
   if (!shouldRetry) {
-    console.log(`[Lock] Lock busy for ${resourceId}, no retry`);
+    logger.info(`[Lock] Lock busy for ${resourceId}, no retry`);
     return null;
   }
 
-  console.log(`[Lock] Lock busy for ${resourceId}, waiting via Pub/Sub...`);
+  logger.info(`[Lock] Lock busy for ${resourceId}, waiting via Pub/Sub...`);
 
   // Wait via Pub/Sub
   return new Promise(async (resolve) => {
@@ -173,7 +174,7 @@ export async function acquireLock(
       const msg = typeof message === 'string' ? message : channel;
       
       if (msg === resourceId && !handled) {
-        console.log(`[Lock] Pub/Sub notified release for ${resourceId}, retrying...`);
+        logger.info(`[Lock] Pub/Sub notified release for ${resourceId}, retrying...`);
         // Try to acquire again
         const retryLock = await tryAcquireLock(resourceId, ttl);
         if (retryLock) {
@@ -198,7 +199,7 @@ export async function acquireLock(
     // Set a maximum wait time timeout, after which we give up or force a final check
     fallbackTimer = setTimeout(async () => {
       if (!handled) {
-        console.log(`[Lock] Wait timeout for ${resourceId}, giving up.`);
+        logger.info(`[Lock] Wait timeout for ${resourceId}, giving up.`);
         cleanup();
         resolve(null);
       }
@@ -209,11 +210,11 @@ export async function acquireLock(
         await redis.subscribe(LOCK_RELEASE_CHANNEL, messageHandler);
       } else {
          // Fallback to polling if client does not support subscribe
-         console.warn("[Lock] Redis client does not support subscribe: falling back to polling");
+         logger.warn("[Lock] Redis client does not support subscribe: falling back to polling");
          fallbackPoll();
       }
     } catch (err) {
-      console.error("[Lock] Pub/sub failed, falling back to polling", err);
+      logger.error("[Lock] Pub/sub failed, falling back to polling", err);
       fallbackPoll();
     }
 
@@ -286,7 +287,7 @@ export async function forceUnlock(resourceId: string): Promise<void> {
   try {
     await redis.del(lockKey);
     await redis.publish(LOCK_RELEASE_CHANNEL, resourceId);
-    console.log(`[Lock] Force unlocked ${resourceId}`);
+    logger.info(`[Lock] Force unlocked ${resourceId}`);
   } catch (err) {}
 }
 
@@ -307,9 +308,9 @@ export async function withTokenRefreshLock<T>(
   return withLock(
     lockId,
     async () => {
-      console.log(`[TokenRefresh] Proceeding with refresh for ${connectionId}`);
+      logger.info(`[TokenRefresh] Proceeding with refresh for ${connectionId}`);
       const result = await refreshOperation();
-      console.log(`[TokenRefresh] Completed for ${connectionId}`);
+      logger.info(`[TokenRefresh] Completed for ${connectionId}`);
       return result;
     },
     {
@@ -317,7 +318,7 @@ export async function withTokenRefreshLock<T>(
       retry: true,
       maxWaitMs: options?.maxWaitMs || 20000, 
       onLockBusy: () => {
-        console.warn(`[TokenRefresh] Could not acquire lock or wait failed for ${connectionId}`);
+        logger.warn(`[TokenRefresh] Could not acquire lock or wait failed for ${connectionId}`);
       },
     }
   );

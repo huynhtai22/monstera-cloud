@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { metaReportClient } from '@/lib/meta-ads';
 import { getValidMetaToken } from '@/lib/meta-refresh';
 import prisma from '@/lib/prisma';
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/meta-ads/report/[reportRunId]?connectionId=&adAccountId=
@@ -58,7 +59,7 @@ export async function GET(
       percent: status.async_percent_completion,
     });
   } catch (err: any) {
-    console.error('[META_ADS_REPORT_POLL]', err);
+    logger.error('[META_ADS_REPORT_POLL]', err);
     return NextResponse.json({ error: err.message || 'Failed to check report status' }, { status: 500 });
   }
 }

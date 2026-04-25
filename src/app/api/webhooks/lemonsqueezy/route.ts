@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyWebhookSignature, planForVariantId } from "@/lib/lemonsqueezy";
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/webhooks/lemonsqueezy
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
   const signature = req.headers.get("x-signature") ?? "";
 
   if (!verifyWebhookSignature(rawBody, signature)) {
-    console.warn("[LS_WEBHOOK] Invalid signature — request rejected");
+    logger.warn("[LS_WEBHOOK] Invalid signature — request rejected");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
     attributes?.variant_id ?? attributes?.first_order_item?.variant_id ?? ""
   );
 
-  console.log("[LS_WEBHOOK]", eventName, { userId, subscriptionId, variantId });
+  logger.info("[LS_WEBHOOK]", eventName, { userId, subscriptionId, variantId });
 
   try {
     switch (eventName) {
@@ -57,14 +58,14 @@ export async function POST(req: Request) {
         if (!userId) break;
         const plan = planForVariantId(variantId);
         if (!plan) {
-          console.warn("[LS_WEBHOOK] Unknown variant ID:", variantId);
+          logger.warn("[LS_WEBHOOK] Unknown variant ID:", variantId);
           break;
         }
         await prisma.user.update({
           where: { id: userId },
           data: { plan, subscriptionId },
         });
-        console.log(`[LS_WEBHOOK] User ${userId} upgraded to ${plan}`);
+        logger.info(`[LS_WEBHOOK] User ${userId} upgraded to ${plan}`);
         break;
       }
 
@@ -82,14 +83,14 @@ export async function POST(req: Request) {
             data: { plan: "free", subscriptionId: null },
           });
         }
-        console.log(`[LS_WEBHOOK] Subscription ${subscriptionId} cancelled — user downgraded to free`);
+        logger.info(`[LS_WEBHOOK] Subscription ${subscriptionId} cancelled — user downgraded to free`);
         break;
       }
 
       case "subscription_payment_failed": {
         // LemonSqueezy handles the dunning/grace period automatically.
         // Log it here so you can monitor in Vercel logs.
-        console.warn(`[LS_WEBHOOK] Payment failed for subscription ${subscriptionId} (user: ${userId})`);
+        logger.warn(`[LS_WEBHOOK] Payment failed for subscription ${subscriptionId} (user: ${userId})`);
         break;
       }
 
@@ -102,7 +103,7 @@ export async function POST(req: Request) {
             where: { id: userId },
             data: { plan },
           });
-          console.log(`[LS_WEBHOOK] One-time order: user ${userId} → ${plan}`);
+          logger.info(`[LS_WEBHOOK] One-time order: user ${userId} → ${plan}`);
         }
         break;
       }
@@ -112,7 +113,7 @@ export async function POST(req: Request) {
         break;
     }
   } catch (err: any) {
-    console.error("[LS_WEBHOOK] DB update failed:", err);
+    logger.error("[LS_WEBHOOK] DB update failed:", err);
     return NextResponse.json({ error: "DB update failed" }, { status: 500 });
   }
 

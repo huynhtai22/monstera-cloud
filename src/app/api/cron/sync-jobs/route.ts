@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getPlanLimits } from "@/lib/plan-config";
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/cron/sync-jobs
@@ -175,7 +176,7 @@ export async function GET(req: Request) {
     }
   }
 
-  console.log(`[SYNC_JOBS_CRON] Processed ${results.length} jobs`, results);
+  logger.info(`[SYNC_JOBS_CRON] Processed ${results.length} jobs`, results);
   return NextResponse.json({ processed: results.length, results });
 }
 

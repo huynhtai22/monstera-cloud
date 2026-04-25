@@ -14,6 +14,7 @@ import {
     ConnectedAccount,
     OAuthError,
 } from "../types";
+import { logger } from "@/lib/logger";
 
 /**
  * Meta System User configuration
@@ -128,7 +129,7 @@ export class MetaSystemUserAdapter implements OAuthProviderAdapter {
         const creds = credentials as { accessToken?: string };
 
         // Just return the same credentials - System User tokens are permanent
-        console.log("[MetaSystemUser] Token is permanent, no refresh needed");
+        logger.info("[MetaSystemUser] Token is permanent, no refresh needed");
 
         return {
             accessToken: creds.accessToken || "",

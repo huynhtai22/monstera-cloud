@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/workspaces/[id]/test-telegram
@@ -77,7 +78,7 @@ export async function POST(
 
         return NextResponse.json({ ok: true });
     } catch (e: unknown) {
-        console.error("[test-telegram]", e);
+        logger.error("[test-telegram]", e);
         return NextResponse.json(
             { error: e instanceof Error ? e.message : "Failed" },
             { status: 500 }

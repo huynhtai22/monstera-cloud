@@ -6,6 +6,7 @@ import {
   verifyPaddleWebhookSignature,
 } from "@/lib/paddle";
 import { sendPaymentPastDueEmail } from "@/lib/mail";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
     req.headers.get("paddle-signature") ?? req.headers.get("Paddle-Signature") ?? "";
 
   if (!verifyPaddleWebhookSignature(rawBody, signature)) {
-    console.warn("[PADDLE_WEBHOOK] Invalid signature — rejected");
+    logger.warn("[PADDLE_WEBHOOK] Invalid signature — rejected");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
@@ -69,7 +70,7 @@ export async function POST(req: Request) {
         break;
     }
   } catch (err: unknown) {
-    console.error("[PADDLE_WEBHOOK] Handler error:", err);
+    logger.error("[PADDLE_WEBHOOK] Handler error:", err);
     return NextResponse.json({ error: "Processing failed" }, { status: 500 });
   }
 
@@ -103,7 +104,7 @@ async function handleTransactionLike(data: Record<string, unknown>) {
     typeof data.subscription_id === "string" ? data.subscription_id : null;
 
   if (!userId || !plan) {
-    console.warn("[PADDLE_WEBHOOK] transaction event missing user_id or unknown price", {
+    logger.warn("[PADDLE_WEBHOOK] transaction event missing user_id or unknown price", {
       userId,
       priceId,
     });
@@ -117,7 +118,7 @@ async function handleTransactionLike(data: Record<string, unknown>) {
       subscriptionId: subscriptionId ?? undefined,
     },
   });
-  console.log(`[PADDLE_WEBHOOK] User ${userId} → ${plan} (transaction)`);
+  logger.info(`[PADDLE_WEBHOOK] User ${userId} → ${plan} (transaction)`);
 }
 
 async function handleSubscriptionUpsert(data: Record<string, unknown>) {
@@ -127,7 +128,7 @@ async function handleSubscriptionUpsert(data: Record<string, unknown>) {
   const subscriptionId = typeof data.id === "string" ? data.id : null;
 
   if (!plan) {
-    console.warn("[PADDLE_WEBHOOK] subscription event — unknown price id", { priceId });
+    logger.warn("[PADDLE_WEBHOOK] subscription event — unknown price id", { priceId });
     return;
   }
 
@@ -139,7 +140,7 @@ async function handleSubscriptionUpsert(data: Record<string, unknown>) {
         subscriptionId: subscriptionId ?? undefined,
       },
     });
-    console.log(`[PADDLE_WEBHOOK] User ${userId} → ${plan} (subscription)`);
+    logger.info(`[PADDLE_WEBHOOK] User ${userId} → ${plan} (subscription)`);
     return;
   }
 
@@ -150,7 +151,7 @@ async function handleSubscriptionUpsert(data: Record<string, unknown>) {
         plan,
       },
     });
-    console.log(`[PADDLE_WEBHOOK] subscription ${subscriptionId} → ${plan} (by subscription id)`);
+    logger.info(`[PADDLE_WEBHOOK] subscription ${subscriptionId} → ${plan} (by subscription id)`);
   }
 }
 
@@ -163,7 +164,7 @@ async function handleSubscriptionCanceled(data: Record<string, unknown>) {
       where: { id: userId },
       data: { plan: "free", subscriptionId: null },
     });
-    console.log(`[PADDLE_WEBHOOK] User ${userId} downgraded (subscription canceled)`);
+    logger.info(`[PADDLE_WEBHOOK] User ${userId} downgraded (subscription canceled)`);
     return;
   }
 
@@ -172,7 +173,7 @@ async function handleSubscriptionCanceled(data: Record<string, unknown>) {
       where: { subscriptionId },
       data: { plan: "free", subscriptionId: null },
     });
-    console.log(`[PADDLE_WEBHOOK] subscription ${subscriptionId} canceled — users downgraded`);
+    logger.info(`[PADDLE_WEBHOOK] subscription ${subscriptionId} canceled — users downgraded`);
   }
 }
 
@@ -195,7 +196,7 @@ async function handleSubscriptionPastDue(data: Record<string, unknown>) {
   }
 
   if (!user) {
-    console.warn("[PADDLE_WEBHOOK] subscription.past_due — could not find user", {
+    logger.warn("[PADDLE_WEBHOOK] subscription.past_due — could not find user", {
       subscriptionId,
       userId,
     });
@@ -203,5 +204,5 @@ async function handleSubscriptionPastDue(data: Record<string, unknown>) {
   }
 
   await sendPaymentPastDueEmail(user.email, user.name ?? "");
-  console.log(`[PADDLE_WEBHOOK] subscription.past_due — past-due email sent to ${user.email}`);
+  logger.info(`[PADDLE_WEBHOOK] subscription.past_due — past-due email sent to ${user.email}`);
 }

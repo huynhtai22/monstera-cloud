@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 async function requireMembership(workspaceId: string, userId: string) {
     return (prisma.workspaceMember as any).findUnique({
@@ -86,7 +87,7 @@ export async function PATCH(
 
         return NextResponse.json(updated);
     } catch (e: unknown) {
-        console.error("[PATCH /api/workspaces/[id]]", e);
+        logger.error("[PATCH /api/workspaces/[id]]", e);
         return NextResponse.json(
             { error: e instanceof Error ? e.message : "Update failed" },
             { status: 500 }

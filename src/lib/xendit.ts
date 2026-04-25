@@ -5,6 +5,7 @@
 
 import Xendit, { XenditSdkError } from 'xendit-node';
 import type { CreateInvoiceRequest } from 'xendit-node/invoice/models';
+import { logger } from "@/lib/logger";
 
 export const XENDIT_WEBHOOK_TOKEN = process.env.XENDIT_WEBHOOK_TOKEN || '';
 
@@ -96,7 +97,7 @@ export class XenditClient {
       metadata: data.metadata,
     };
 
-    console.log('[Xendit] createInvoice payload (no secrets):', JSON.stringify(payload, null, 2));
+    logger.info('[Xendit] createInvoice payload (no secrets):', JSON.stringify(payload, null, 2));
 
     const xendit = new Xendit({ secretKey });
 
@@ -124,7 +125,7 @@ export class XenditClient {
     } catch (e: unknown) {
       if (e instanceof XenditSdkError) {
         const message = formatXenditSdkError(e);
-        console.error('[Xendit] Invoice creation failed:', e.status, message, e.rawResponse);
+        logger.error('[Xendit] Invoice creation failed:', e.status, message, e.rawResponse);
         throw new Error(message);
       }
       throw e;

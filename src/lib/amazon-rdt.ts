@@ -8,6 +8,7 @@
  */
 
 import { getRedis } from "./redis";
+import { logger } from "@/lib/logger";
 
 const RDT_REDIS_PREFIX = "amazon:rdt:";
 const RDT_TTL_SECONDS = 60 * 60; // RDTs expire in 1 hour
@@ -94,13 +95,13 @@ export async function getRDT(
     const rdt: RestrictedDataToken = JSON.parse(cached);
     // Check if still valid (with 5 min buffer)
     if (new Date(rdt.expiration).getTime() > Date.now() + 5 * 60 * 1000) {
-      console.log(`[Amazon RDT] Cache hit for ${connectionId}`);
+      logger.info(`[Amazon RDT] Cache hit for ${connectionId}`);
       return rdt.token;
     }
   }
 
   // Request new RDT
-  console.log(`[Amazon RDT] Requesting new token for ${connectionId}`);
+  logger.info(`[Amazon RDT] Requesting new token for ${connectionId}`);
   const rdt = await requestRDT(accessToken, resources);
 
   // Cache with 1 hour TTL (matches Amazon's RDT expiration)
@@ -241,7 +242,7 @@ export async function logPIIAccess(
   reason: string
 ): Promise<void> {
   // Log to your audit system
-  console.log(`[PII Audit] Accessed ${dataElements.join(", ")} for order ${orderId}`, {
+  logger.info(`[PII Audit] Accessed ${dataElements.join(", ")} for order ${orderId}`, {
     connectionId,
     orderId,
     dataElements,

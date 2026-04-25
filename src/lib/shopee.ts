@@ -16,6 +16,7 @@
 import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { encrypt, safeDecrypt } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 
 function partnerId(): number {
   const id = (process.env.SHOPEE_PARTNER_ID || "").trim();
@@ -353,7 +354,7 @@ export async function getValidShopeeCreds(connectionId: string): Promise<ShopeeC
   if (!needsRefresh) return creds;
 
   // ── Token is about to expire — refresh it now ──────────────────────────────
-  console.log(`[Shopee] Access token for connection ${connectionId} expiring soon — refreshing`);
+  logger.info(`[Shopee] Access token for connection ${connectionId} expiring soon — refreshing`);
 
   const client = new ShopeeClient();
   const fresh  = await client.refreshAccessToken(
@@ -375,6 +376,6 @@ export async function getValidShopeeCreds(connectionId: string): Promise<ShopeeC
     data:  { credentials: encrypt(JSON.stringify(updated)) },
   });
 
-  console.log(`[Shopee] Token refreshed and saved for connection ${connectionId}`);
+  logger.info(`[Shopee] Token refreshed and saved for connection ${connectionId}`);
   return updated;
 }

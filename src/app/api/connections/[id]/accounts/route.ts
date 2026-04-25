@@ -9,6 +9,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { decrypt } from "@/lib/encryption";
 import { getProvider } from "@/lib/oauth-framework/registry";
+import { logger } from "@/lib/logger";
 
 export async function GET(
     _request: Request,
@@ -70,7 +71,7 @@ export async function GET(
             note: "Account listing not yet implemented for this provider",
         });
     } catch (error) {
-        console.error("[GET /api/connections/[id]/accounts]", error);
+        logger.error("[GET /api/connections/[id]/accounts]", error);
         return NextResponse.json(
             { error: "Internal server error" },
             { status: 500 }

@@ -10,6 +10,7 @@
 import { getRedis } from "./redis";
 import prisma from "./prisma";
 import { safeDecrypt } from "./encryption";
+import { logger } from "@/lib/logger";
 
 const REDIS_KEY_PREFIX = "token:";
 const SAFETY_BUFFER_SECONDS = 300; // 5 minutes
@@ -58,18 +59,18 @@ export async function getToken(connectionId: string): Promise<CachedToken | null
       // Verify token is still valid
       const nowSeconds = Math.floor(Date.now() / 1000);
       if (token.expiresAt > nowSeconds + 60) {
-        console.log(`[TokenCache] Hit for ${connectionId}`);
+        logger.info(`[TokenCache] Hit for ${connectionId}`);
         return token;
       }
       // Token expired in cache, delete it
       await redis.del(key);
     }
   } catch (err) {
-    console.error("[TokenCache] Redis error:", err);
+    logger.error("[TokenCache] Redis error:", err);
   }
 
   // 2. Cache miss - fetch from database (slow path)
-  console.log(`[TokenCache] Miss for ${connectionId}, fetching from DB`);
+  logger.info(`[TokenCache] Miss for ${connectionId}, fetching from DB`);
 
   const connection = await prisma.connection.findUnique({
     where: { id: connectionId },
@@ -94,7 +95,7 @@ export async function getToken(connectionId: string): Promise<CachedToken | null
 
     return token;
   } catch (err) {
-    console.error("[TokenCache] Failed to parse credentials:", err);
+    logger.error("[TokenCache] Failed to parse credentials:", err);
     return null;
   }
 }
@@ -110,9 +111,9 @@ export async function setToken(connectionId: string, token: CachedToken): Promis
 
   try {
     await redis.set(key, JSON.stringify(token), "EX", cacheTTL);
-    console.log(`[TokenCache] Stored for ${connectionId}, TTL: ${cacheTTL}s`);
+    logger.info(`[TokenCache] Stored for ${connectionId}, TTL: ${cacheTTL}s`);
   } catch (err) {
-    console.error("[TokenCache] Failed to store token:", err);
+    logger.error("[TokenCache] Failed to store token:", err);
   }
 }
 
@@ -125,9 +126,9 @@ export async function invalidateToken(connectionId: string): Promise<void> {
 
   try {
     await redis.del(key);
-    console.log(`[TokenCache] Invalidated for ${connectionId}`);
+    logger.info(`[TokenCache] Invalidated for ${connectionId}`);
   } catch (err) {
-    console.error("[TokenCache] Failed to invalidate:", err);
+    logger.error("[TokenCache] Failed to invalidate:", err);
   }
 }
 
@@ -155,11 +156,11 @@ export async function invalidateByPattern(pattern: string): Promise<number> {
     } while (cursor !== 0);
     
     if (count > 0) {
-      console.log(`[TokenCache] Bulk invalidated ${count} keys matching pattern: ${pattern}`);
+      logger.info(`[TokenCache] Bulk invalidated ${count} keys matching pattern: ${pattern}`);
     }
     return count;
   } catch (err) {
-    console.error(`[TokenCache] Failed to bulk invalidate pattern ${pattern}:`, err);
+    logger.error(`[TokenCache] Failed to bulk invalidate pattern ${pattern}:`, err);
     return 0;
   }
 }
@@ -194,7 +195,7 @@ export async function getValidToken(
   const needsRefresh = await shouldRefreshToken(connectionId, token);
 
   if (needsRefresh && token.refreshToken) {
-    console.log(`[TokenCache] Token expiring soon for ${connectionId}, refreshing...`);
+    logger.info(`[TokenCache] Token expiring soon for ${connectionId}, refreshing...`);
 
     // Distributed mutex will be handled by the refresh function
     const newToken = await refreshFn(token.refreshToken);
@@ -254,7 +255,7 @@ export async function getTokensBatch(connectionIds: string[]): Promise<
       });
     }
   } catch (err) {
-    console.error("[TokenCache] Batch fetch error:", err);
+    logger.error("[TokenCache] Batch fetch error:", err);
     // Fallback to individual DB fetches
     for (const id of connectionIds) {
       const token = await getToken(id);

@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { sanitizeConnectionCredentials } from "@/lib/sanitize-connection-credentials";
 import { isSeededDemoSourceConnection } from "@/lib/demo-connection";
 import { toPublicApiKeyRow } from "@/lib/mask-api-key";
+import { logger } from "@/lib/logger";
 
 export async function GET() {
     try {
@@ -80,7 +81,7 @@ export async function GET() {
 
         return NextResponse.json(safeWorkspaces);
     } catch (error) {
-        console.error("Error fetching workspaces:", error);
+        logger.error("Error fetching workspaces:", error);
         const body =
             process.env.NODE_ENV === "production"
                 ? { error: "Failed to fetch workspaces" }

@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { XenditClient } from '@/lib/xendit';
 import prisma from '@/lib/prisma';
+import { logger } from "@/lib/logger";
 
 export async function POST(req: Request) {
   try {
@@ -9,7 +10,7 @@ export async function POST(req: Request) {
     const callbackToken = headersList.get('x-callback-token');
 
     if (!XenditClient.verifyWebhookToken(callbackToken)) {
-      console.error('Invalid Xendit Webhook Token');
+      logger.error('Invalid Xendit Webhook Token');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
       const invoiceId = event.id;
       const meta = event.metadata as Record<string, string> | undefined;
 
-      console.log(`Xendit Invoice Paid: ${invoiceId} for ${payerEmail} (${externalId})`);
+      logger.info(`Xendit Invoice Paid: ${invoiceId} for ${payerEmail} (${externalId})`);
 
       // Prefer metadata.plan (new invoices); fall back to external_id (legacy)
       let plan = "free";
@@ -51,9 +52,9 @@ export async function POST(req: Request) {
               subscriptionId: String(invoiceId),
             },
           });
-          console.log(`User ${user.id} upgraded to ${plan} (Xendit, user_id metadata).`);
+          logger.info(`User ${user.id} upgraded to ${plan} (Xendit, user_id metadata).`);
         } else {
-          console.warn("[XENDIT_WEBHOOK] Unknown user_id in metadata", userIdFromInvoice);
+          logger.warn("[XENDIT_WEBHOOK] Unknown user_id in metadata", userIdFromInvoice);
         }
       } else if (payerEmail) {
         await prisma.user.updateMany({
@@ -63,15 +64,15 @@ export async function POST(req: Request) {
             subscriptionId: String(invoiceId),
           },
         });
-        console.log(`User ${payerEmail} upgraded to ${plan} plan (email fallback).`);
+        logger.info(`User ${payerEmail} upgraded to ${plan} plan (email fallback).`);
       }
     } else {
-      console.log(`Unhandled Xendit Invoice Status: ${event.status} for ${event.id}`);
+      logger.info(`Unhandled Xendit Invoice Status: ${event.status} for ${event.id}`);
     }
 
     return NextResponse.json({ received: true });
   } catch (err: any) {
-    console.error(`Xendit Webhook Error: ${err.message}`);
+    logger.error(`Xendit Webhook Error: ${err.message}`);
     return NextResponse.json(
       { error: { message: err.message } },
       { status: 500 }

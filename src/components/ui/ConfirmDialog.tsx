@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PrimaryButton, SecondaryButton } from "./index";
+
+const DIALOG_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
+const DIALOG_DURATION_MS = 280;
 
 type ConfirmDialogProps = {
   open: boolean;
@@ -28,6 +31,22 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
+  const [shouldRender, setShouldRender] = useState(open);
+  const [isVisible, setIsVisible] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setShouldRender(true);
+      const raf = requestAnimationFrame(() => {
+        requestAnimationFrame(() => setIsVisible(true));
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+    setIsVisible(false);
+    const t = setTimeout(() => setShouldRender(false), DIALOG_DURATION_MS);
+    return () => clearTimeout(t);
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -46,13 +65,23 @@ export function ConfirmDialog({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onCancel]);
 
-  if (!open) return null;
+  if (!shouldRender) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="presentation">
+    <div
+      className={cn(
+        "fixed inset-0 z-50 flex items-center justify-center p-4",
+        !isVisible && "pointer-events-none"
+      )}
+      role="presentation"
+    >
       <button
         type="button"
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm dark:bg-black/60"
+        className={cn(
+          "absolute inset-0 bg-black/50 backdrop-blur-sm dark:bg-black/60",
+          "transition-opacity duration-200 ease-out",
+          isVisible ? "opacity-100" : "opacity-0"
+        )}
         aria-label="Close dialog"
         onClick={onCancel}
       />
@@ -62,7 +91,12 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-desc"
-        className="relative z-10 w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        className={cn(
+          "relative z-10 w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900",
+          "transition-all duration-[280ms]",
+          isVisible ? "scale-100 opacity-100" : "scale-95 opacity-0"
+        )}
+        style={{ transitionTimingFunction: DIALOG_EASE }}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 id="confirm-dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white">

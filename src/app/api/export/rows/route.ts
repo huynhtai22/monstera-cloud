@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { shopeeDataClient } from "@/lib/shopee";
 import { safeDecrypt } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/export/rows
@@ -78,7 +79,7 @@ export async function GET(request: Request) {
 
             // Pull live data if OAuth creds exist
             if (sourceCreds.access_token && sourceCreds.shop_id) {
-                console.log("[EXPORT API] Pulling live Shopee data via extension request...");
+                logger.info("[EXPORT API] Pulling live Shopee data via extension request...");
                 try {
                     const timeTo = Math.floor(Date.now() / 1000);
                     const timeFrom = timeTo - (14 * 24 * 60 * 60);
@@ -100,13 +101,13 @@ export async function GET(request: Request) {
                         });
                     }
                 } catch (liveErr) {
-                    console.error("[EXPORT API] Live pull failed.", liveErr);
+                    logger.error("[EXPORT API] Live pull failed.", liveErr);
                 }
             }
 
             // Fallback to Mock Data if actual pull yielded nothing (useful for trial testing)
             if (rows.length === 1) {
-                console.log("[EXPORT API] Using Mock Data Fallback.");
+                logger.info("[EXPORT API] Using Mock Data Fallback.");
                 const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
                 const host = request.headers.get("host") || "localhost:3000";
 
@@ -161,7 +162,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: true, rows }, { status: 200 });
 
     } catch (error) {
-        console.error("Error in /api/export/rows:", error);
+        logger.error("Error in /api/export/rows:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

@@ -9,6 +9,7 @@ import {
   getPlanLimits,
 } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/meta-ads/report
@@ -142,7 +143,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(responsePayload);
   } catch (err: any) {
-    console.error('[META_ADS_REPORT]', err);
+    logger.error('[META_ADS_REPORT]', err);
     return NextResponse.json({ error: err.message || 'Failed to run Meta Ads report' }, { status: 500 });
   }
 }

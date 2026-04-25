@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: Request) {
     try {
@@ -77,12 +78,12 @@ export async function POST(request: Request) {
                 }
             }
         } catch (autoMapError) {
-            console.error("Auto mapping error (ignoring for MVP):", autoMapError);
+            logger.error("Auto mapping error (ignoring for MVP):", autoMapError);
         }
 
         return NextResponse.json(connection, { status: 201 });
     } catch (error) {
-        console.error("Error creating connection:", error);
+        logger.error("Error creating connection:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

@@ -5,6 +5,7 @@ import { getValidGoogleAdsToken } from '@/lib/google-ads-refresh';
 import { googleAdsOAuthClient } from '@/lib/google-ads';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/google-ads/accounts?connectionId=
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
     const customerIds = await googleAdsOAuthClient.listAccessibleCustomers(accessToken);
     return NextResponse.json({ customerIds });
   } catch (err: any) {
-    console.error('[GOOGLE_ADS_ACCOUNTS]', err);
+    logger.error('[GOOGLE_ADS_ACCOUNTS]', err);
     return NextResponse.json({ error: err.message || 'Failed to fetch customer accounts' }, { status: 500 });
   }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createCheckoutUrl } from "@/lib/lemonsqueezy";
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/checkout/lemonsqueezy
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
     );
     return NextResponse.json({ url });
   } catch (err: any) {
-    console.error("[LEMONSQUEEZY_CHECKOUT]", err);
+    logger.error("[LEMONSQUEEZY_CHECKOUT]", err);
     return NextResponse.json(
       { error: err.message || "Failed to create checkout session" },
       { status: 500 }

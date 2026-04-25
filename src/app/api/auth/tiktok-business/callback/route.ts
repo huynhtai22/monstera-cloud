@@ -8,6 +8,7 @@ import {
   buildConsoleOauthSuccessUrl,
   ensureDefaultPipelineAfterSourceConnect,
 } from '@/lib/oauth-pipeline';
+import { logger } from "@/lib/logger";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, '');
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
   const errDesc = searchParams.get('error_description');
 
   if (err) {
-    console.error('[TIKTOK_BUSINESS_OAUTH]', err, errDesc);
+    logger.error('[TIKTOK_BUSINESS_OAUTH]', err, errDesc);
     return NextResponse.redirect(
       new URL(`/sources?tiktok_business_error=${encodeURIComponent(err)}`, base)
     );
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
   const userId = (token?.id ?? token?.sub) as string | undefined;
 
   if (!userId) {
-    console.warn('[TIKTOK_BUSINESS_OAUTH] No session token in callback');
+    logger.warn('[TIKTOK_BUSINESS_OAUTH] No session token in callback');
     return NextResponse.redirect(
       new URL('/sources?tiktok_business_error=session_expired', base)
     );
@@ -72,7 +73,7 @@ export async function GET(request: Request) {
   });
 
   if (!workspace) {
-    console.warn('[TIKTOK_BUSINESS_OAUTH] User %s has no access to workspace %s', userId, workspaceId);
+    logger.warn('[TIKTOK_BUSINESS_OAUTH] User %s has no access to workspace %s', userId, workspaceId);
     return NextResponse.redirect(
       new URL('/sources?tiktok_business_error=workspace_access_denied', base)
     );
@@ -115,7 +116,7 @@ export async function GET(request: Request) {
       buildConsoleOauthSuccessUrl(base, 'tiktok_business', pipelineResult)
     );
   } catch (error: any) {
-    console.error('[TIKTOK_BUSINESS_AUTH_ERROR]', error);
+    logger.error('[TIKTOK_BUSINESS_AUTH_ERROR]', error);
     return NextResponse.redirect(
       new URL(`/sources?tiktok_business_error=${encodeURIComponent(error.message || 'auth_failed')}`, base)
     );

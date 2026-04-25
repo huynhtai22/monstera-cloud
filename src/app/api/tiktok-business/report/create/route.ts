@@ -6,6 +6,7 @@ import { getValidTikTokToken } from '@/lib/tiktok-refresh';
 import { clampTimeRangeToPlanMaxDays, getPlanLimits } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/tiktok-business/report/create
@@ -91,7 +92,7 @@ export async function POST(req: Request) {
     const cached = reportCache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt < limits.tiktokReportCooldownMs) {
       const remainingSec = Math.ceil((limits.tiktokReportCooldownMs - (Date.now() - cached.cachedAt)) / 1000);
-      console.log(`[TIKTOK_REPORT] Cache hit — serving cached result (${remainingSec}s remaining)`);
+      logger.info(`[TIKTOK_REPORT] Cache hit — serving cached result (${remainingSec}s remaining)`);
       return NextResponse.json({
         ...cached.result,
         cached: true,
@@ -137,7 +138,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json(responsePayload);
   } catch (err: any) {
-    console.error('[TIKTOK_REPORT_CREATE]', err);
+    logger.error('[TIKTOK_REPORT_CREATE]', err);
     return NextResponse.json({ error: err.message || 'Failed to create report task' }, { status: 500 });
   }
 }

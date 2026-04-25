@@ -8,6 +8,7 @@ import {
   buildConsoleOauthSuccessUrl,
   ensureDefaultPipelineAfterSourceConnect,
 } from "@/lib/oauth-pipeline";
+import { logger } from "@/lib/logger";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
@@ -106,7 +107,7 @@ export async function GET(request: Request) {
       buildConsoleOauthSuccessUrl(base, "shopify", pipelineResult)
     );
   } catch (error: any) {
-    console.error("[SHOPIFY_AUTH_ERROR]", error);
+    logger.error("[SHOPIFY_AUTH_ERROR]", error);
     return NextResponse.redirect(
       new URL(
         `/sources?shopify_error=${encodeURIComponent(

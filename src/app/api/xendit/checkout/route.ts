@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { XenditClient } from '@/lib/xendit';
+import { logger } from "@/lib/logger";
 
 /** Supported invoice currencies. VND + USD first; IDR only if you set it explicitly. */
 const ALLOWED_CURRENCIES = ['VND', 'USD', 'IDR'] as const;
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
 
     const description = `Monstera Cloud ${plan === 'professional' ? 'Professional' : 'Starter'} Plan (${billingCycle})`;
 
-    console.log(
+    logger.info(
       `Creating Xendit invoice ${externalId}: ${plan} ${billingCycle}, amount=${amount} ${currency}, payer=${session.user.email}`
     );
 
@@ -95,13 +96,13 @@ export async function POST(req: Request) {
       metadata,
     };
 
-    console.log('Sending to Xendit:', JSON.stringify(invoiceData, null, 2));
+    logger.info('Sending to Xendit:', JSON.stringify(invoiceData, null, 2));
 
     const invoice = await XenditClient.createInvoice(invoiceData);
 
     return NextResponse.json({ url: invoice.invoice_url });
   } catch (err: any) {
-    console.error('Error creating Xendit Invoice:', err);
+    logger.error('Error creating Xendit Invoice:', err);
     let message = err.message || 'Failed to create invoice';
     if (typeof message === 'string' && message.includes('SERVER_ERROR')) {
       message +=

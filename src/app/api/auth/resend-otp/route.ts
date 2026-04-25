@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 export async function POST(req: Request) {
   try {
@@ -29,14 +30,14 @@ export async function POST(req: Request) {
       },
     });
 
-    console.log(`[AUTH] Resent OTP for ${email}: ${otp}`); // Log for safety
+    logger.info(`[AUTH] Resent OTP for ${email}: ${otp}`); // Log for safety
 
     // Send Real Email via Resend
     try {
       const { sendOtpEmail } = await import("@/lib/mail");
       await sendOtpEmail(email, otp);
     } catch (mailError) {
-      console.error("[AUTH] Resend OTP Mail Failed:", mailError);
+      logger.error("[AUTH] Resend OTP Mail Failed:", mailError);
     }
 
     return NextResponse.json({ message: "OTP resent successfully" }, { status: 200 });

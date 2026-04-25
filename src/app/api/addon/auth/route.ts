@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { logger } from "@/lib/logger";
 
 async function verifyGoogleIdToken(idToken: string): Promise<string | null> {
   try {
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
       workspaceName: workspace.name,
     });
   } catch (error) {
-    console.error('[ADDON_AUTH]', error);
+    logger.error('[ADDON_AUTH]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

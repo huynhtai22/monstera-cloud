@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Download, FileText, FileSpreadsheet, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface ExportDropdownProps {
   onCsv: () => void;
@@ -16,7 +17,22 @@ interface ExportDropdownProps {
  */
 export function ExportDropdown({ onCsv, onExcel, className = "" }: ExportDropdownProps) {
   const [open, setOpen] = useState(false);
+  const [shouldRenderPanel, setShouldRenderPanel] = useState(false);
+  const [isPanelVisible, setIsPanelVisible] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setShouldRenderPanel(true);
+      const raf = requestAnimationFrame(() => {
+        requestAnimationFrame(() => setIsPanelVisible(true));
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+    setIsPanelVisible(false);
+    const t = setTimeout(() => setShouldRenderPanel(false), 150);
+    return () => clearTimeout(t);
+  }, [open]);
 
   useEffect(() => {
     function handleOutsideClick(e: MouseEvent) {
@@ -45,8 +61,12 @@ export function ExportDropdown({ onCsv, onExcel, className = "" }: ExportDropdow
       </button>
 
       {/* Dropdown panel */}
-      {open && (
-        <div className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg z-50 overflow-hidden py-1">
+      {shouldRenderPanel && (
+        <div className={cn(
+          "absolute right-0 mt-1.5 w-44 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg z-50 overflow-hidden py-1",
+          "transition-all duration-150 ease-out",
+          isPanelVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
+        )}>
           <button
             onClick={() => {
               onCsv();

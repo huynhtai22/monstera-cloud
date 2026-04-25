@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
 import { sendOtpEmail } from "@/lib/mail";
+import { logger } from "@/lib/logger";
 
 export async function POST(req: Request) {
   try {
@@ -60,13 +61,13 @@ export async function POST(req: Request) {
       });
     });
 
-    console.log(`[AUTH] OTP for ${email}: ${otp}`); 
+    logger.info(`[AUTH] OTP for ${email}: ${otp}`); 
     
     // Send Real Email via Resend
     try {
       await sendOtpEmail(email, otp);
     } catch (mailError) {
-      console.error("[AUTH] Mail Sending Failed:", mailError);
+      logger.error("[AUTH] Mail Sending Failed:", mailError);
     }
 
     return NextResponse.json(
@@ -74,7 +75,7 @@ export async function POST(req: Request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error("Error signing up:", error);
+    logger.error("Error signing up:", error);
     return NextResponse.json(
       { message: "An error occurred during registration." },
       { status: 500 }

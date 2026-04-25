@@ -5,6 +5,7 @@
 
 import prisma from "@/lib/prisma";
 import crypto from "crypto";
+import { logger } from "@/lib/logger";
 
 interface DiscoveredField {
   name: string;
@@ -305,7 +306,7 @@ export async function alertOnSchemaChange(
 
   if (result.breakingChanges > 0) {
     // Critical: Breaking changes detected
-    console.error(
+    logger.error(
       `[Schema Change] CRITICAL: ${result.breakingChanges} breaking changes in ${provider} for ${connection.name}`
     );
 
@@ -317,7 +318,7 @@ export async function alertOnSchemaChange(
     // });
   } else {
     // Non-breaking changes
-    console.warn(
+    logger.warn(
       `[Schema Change] Non-breaking changes detected in ${provider} for ${connection.name}`
     );
   }

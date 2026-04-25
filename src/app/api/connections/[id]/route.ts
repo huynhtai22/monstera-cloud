@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { sanitizeConnectionCredentials } from "@/lib/sanitize-connection-credentials";
+import { logger } from "@/lib/logger";
 
 /**
  * GET — connection detail, related pipelines, and last 30 sync logs (for /sources/[id]).
@@ -81,7 +82,7 @@ export async function GET(
             recentLogs,
         });
     } catch (error) {
-        console.error("GET /api/connections/[id]:", error);
+        logger.error("GET /api/connections/[id]:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
@@ -152,7 +153,7 @@ export async function DELETE(
             message: `Disconnected ${connection.name}. You can reconnect this ${connection.type} anytime.`,
         });
     } catch (error) {
-        console.error("DELETE /api/connections/[id]:", error);
+        logger.error("DELETE /api/connections/[id]:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import crypto from "crypto";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: Request) {
     try {
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
             .digest('hex');
 
         if (computedSignature !== authorizationHeader) {
-            console.warn("[SHOPEE WEBHOOK] Invalid signature detected.");
+            logger.warn("[SHOPEE WEBHOOK] Invalid signature detected.");
             return new NextResponse("Invalid Signature.", { status: 403 });
         }
 
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
             const shopId = payload.shop_id;
             
             if (shopId) {
-                console.log(`[SHOPEE WEBHOOK] Received deauthorization for shop: ${shopId}. Purging connections...`);
+                logger.info(`[SHOPEE WEBHOOK] Received deauthorization for shop: ${shopId}. Purging connections...`);
                 
                 // Delete the connection from the database
                 await prisma.connection.deleteMany({
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
         });
 
     } catch (error) {
-        console.error("[SHOPEE WEBHOOK] Fatal processing error:", error);
+        logger.error("[SHOPEE WEBHOOK] Fatal processing error:", error);
         // We still return 200 so Shopee doesn't penalize our webhook health score, 
         // as 5xx errors can cause our app to be temporarily disabled.
         return new NextResponse("Processed with internal errors.", { status: 200 });

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import crypto from "crypto";
 import { toPublicApiKeyRow } from "@/lib/mask-api-key";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: Request) {
     try {
@@ -41,7 +42,7 @@ export async function GET(request: Request) {
 
         return NextResponse.json(keys.map(toPublicApiKeyRow));
     } catch (error) {
-        console.error("Error fetching API keys:", error);
+        logger.error("Error fetching API keys:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
@@ -98,7 +99,7 @@ export async function POST(request: Request) {
             { status: 201 }
         );
     } catch (error) {
-        console.error("Error creating API key:", error);
+        logger.error("Error creating API key:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
@@ -142,7 +143,7 @@ export async function DELETE(request: Request) {
 
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error("Error deleting API key:", error);
+        logger.error("Error deleting API key:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

@@ -5,6 +5,7 @@ import { tiktokReportClient } from '@/lib/tiktok-business';
 import { getValidTikTokToken } from '@/lib/tiktok-refresh';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/tiktok-business/report/[taskId]?connectionId=...&advertiser_id=...
@@ -60,7 +61,7 @@ export async function GET(
 
     return NextResponse.json({ status: taskInfo.status });
   } catch (err: any) {
-    console.error('[TIKTOK_REPORT_CHECK]', err);
+    logger.error('[TIKTOK_REPORT_CHECK]', err);
     return NextResponse.json({ error: err.message || 'Failed to check report task' }, { status: 500 });
   }
 }

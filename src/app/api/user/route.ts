@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
+import { logger } from "@/lib/logger";
 
 export async function GET() {
     try {
@@ -17,7 +18,7 @@ export async function GET() {
             user: session.user
         });
     } catch (error) {
-        console.error("Error fetching user profile:", error);
+        logger.error("Error fetching user profile:", error);
         return new NextResponse(
             JSON.stringify({ error: "Failed to fetch user profile" }),
             { status: 500 }

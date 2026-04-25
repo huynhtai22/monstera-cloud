@@ -9,6 +9,7 @@ import { getProvider, isProviderEnabled } from "@/lib/oauth-framework/registry";
 import { OAuthError } from "@/lib/oauth-framework/types";
 import prisma from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
         );
         
     } catch (error) {
-        console.error("[OAuth Callback] Error:", error);
+        logger.error("[OAuth Callback] Error:", error);
         
         const errorParams = new URLSearchParams({
             error: "oauth_failed",

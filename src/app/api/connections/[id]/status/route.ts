@@ -7,6 +7,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 export async function GET(
     _request: Request,
@@ -51,7 +52,7 @@ export async function GET(
             updatedAt: connection.updatedAt,
         });
     } catch (error) {
-        console.error("[GET /api/connections/[id]/status]", error);
+        logger.error("[GET /api/connections/[id]/status]", error);
         return NextResponse.json(
             { error: "Internal server error" },
             { status: 500 }

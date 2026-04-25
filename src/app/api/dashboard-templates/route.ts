@@ -13,6 +13,7 @@ import {
   getTemplateBySlug,
   instantiateTemplate,
 } from "@/lib/dashboard-templates";
+import { logger } from "@/lib/logger";
 
 // GET /api/dashboard-templates - List available templates
 export async function GET(request: Request) {
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
       templates: getFeaturedTemplates(),
     });
   } catch (error) {
-    console.error("[GET /api/dashboard-templates]", error);
+    logger.error("[GET /api/dashboard-templates]", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
@@ -165,7 +166,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error("[POST /api/dashboard-templates]", error);
+    logger.error("[POST /api/dashboard-templates]", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

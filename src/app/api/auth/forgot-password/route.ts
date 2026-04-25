@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { sendPasswordResetEmail } from "@/lib/mail";
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
 import crypto from "crypto";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: Request) {
     try {
@@ -36,14 +37,14 @@ export async function POST(request: Request) {
 
         const mail = await sendPasswordResetEmail(email, resetUrl);
         if (!mail.success) {
-            console.error("[FORGOT PASSWORD] Resend failed:", mail.error);
+            logger.error("[FORGOT PASSWORD] Resend failed:", mail.error);
             // Still return success so response does not reveal whether the email exists
         }
 
         return NextResponse.json({ success: true });
 
     } catch (error) {
-        console.error("[FORGOT PASSWORD] Error:", error);
+        logger.error("[FORGOT PASSWORD] Error:", error);
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
             if (error.code === "P2021" || error.code === "P2003") {
                 return NextResponse.json(

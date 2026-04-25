@@ -4,6 +4,7 @@
  */
 
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 export type DataQualityRuleType = "threshold" | "comparison" | "schema_check";
 export type DataQualityMetric = "revenue" | "orders" | "roas" | "row_count" | "spend" | "conversions";
@@ -294,7 +295,7 @@ async function sendDataQualityAlert(
   details: { actualValue: number; expectedValue?: number; pctChange?: number }
 ): Promise<void> {
   // This would integrate with your notification system (Telegram, email, etc.)
-  console.warn(`[Data Quality Alert] ${rule.name}: ${details.actualValue} (expected: ${details.expectedValue})`);
+  logger.warn(`[Data Quality Alert] ${rule.name}: ${details.actualValue} (expected: ${details.expectedValue})`);
 
   // TODO: Implement actual notification sending
   // - Telegram alert for critical issues

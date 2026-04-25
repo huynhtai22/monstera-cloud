@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { ShopeeClient } from "@/lib/shopee";
 import { encrypt, safeDecrypt } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
 
 // Vercel Cron Jobs send a specific authorization header.
 // It's recommended to secure cron endpoints using the CRON_SECRET envar.
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
             return new NextResponse('Unauthorized Cron Request', { status: 401 });
         }
 
-        console.log("[CRON: SHOPEE REFRESH] Initiating automated fleet token refresh protocol...");
+        logger.info("[CRON: SHOPEE REFRESH] Initiating automated fleet token refresh protocol...");
 
         const connections = await prisma.connection.findMany({
             where: {
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
                 
                 // If it expires within the next 24 hours (86,400,000 ms), refresh it early.
                 if (expirationTimeMs - now < 86400000) {
-                    console.log(`[CRON: SHOPEE REFRESH] Refreshing connection ID: ${conn.id}`);
+                    logger.info(`[CRON: SHOPEE REFRESH] Refreshing connection ID: ${conn.id}`);
                     
                     // refreshAccessToken throws on API error, so no need to check fields
                     // Use sandbox flag from stored credentials (fallback to env for legacy connections)
@@ -63,7 +64,7 @@ export async function GET(request: Request) {
                 }
 
             } catch (err: any) {
-                console.error(`[CRON: SHOPEE REFRESH] Critical failure for connection ${conn.id}:`, err.message);
+                logger.error(`[CRON: SHOPEE REFRESH] Critical failure for connection ${conn.id}:`, err.message);
                 failedCount++;
                 
                 // We could optionally update status to "disconnected" if refresh token is permanently invalid
@@ -82,7 +83,7 @@ export async function GET(request: Request) {
         });
 
     } catch (error) {
-        console.error("[CRON: SHOPEE REFRESH] Fatal execution error:", error);
+        logger.error("[CRON: SHOPEE REFRESH] Fatal execution error:", error);
         return new NextResponse("Internal Cron Failure", { status: 500 });
     }
 }

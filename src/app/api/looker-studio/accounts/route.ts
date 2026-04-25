@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 /**
  * GET /api/looker-studio/accounts
@@ -73,7 +74,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ accounts: accountList });
   } catch (error: unknown) {
-    console.error("Looker Studio Accounts API Error:", error);
+    logger.error("Looker Studio Accounts API Error:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }

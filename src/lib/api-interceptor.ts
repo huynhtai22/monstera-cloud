@@ -11,6 +11,7 @@
 import crypto from "crypto";
 import { getToken } from "./token-cache";
 import { withTokenRefreshLock } from "./distributed-lock";
+import { logger } from "@/lib/logger";
 
 // Platform-specific signing configurations
 interface PlatformConfig {
@@ -217,7 +218,7 @@ export async function executeApiRequest<T>(
 
   // Handle token expiration (401)
   if (response.status === 401) {
-    console.log(`[API] Token expired for ${context.connectionId}, refreshing...`);
+    logger.info(`[API] Token expired for ${context.connectionId}, refreshing...`);
 
     // Use distributed mutex to prevent race conditions
     const refreshed = await withTokenRefreshLock(
@@ -252,7 +253,7 @@ export async function executeApiRequest<T>(
 async function refreshAndCacheToken(context: RequestContext): Promise<boolean> {
   // This would integrate with your existing refresh logic
   // For now, return false (needs implementation based on your providers)
-  console.log(`[API] Token refresh needed for ${context.connectionId}`);
+  logger.info(`[API] Token refresh needed for ${context.connectionId}`);
   return false;
 }
 

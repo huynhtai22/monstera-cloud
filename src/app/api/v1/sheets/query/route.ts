@@ -8,6 +8,7 @@ import { googleAdsReportClient } from '@/lib/google-ads';
 import { getValidGoogleAdsToken } from '@/lib/google-ads-refresh';
 import { PRODUCT_SITE_URL } from '@/lib/site-url';
 import { safeDecrypt } from '@/lib/encryption';
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/v1/sheets/query
@@ -189,7 +190,7 @@ export async function POST(req: Request) {
       truncated: flatRows.length > maxRows,
     });
   } catch (err: any) {
-    console.error('[SHEETS_QUERY]', err);
+    logger.error('[SHEETS_QUERY]', err);
     return NextResponse.json({ error: err.message || 'Query failed' }, { status: 500 });
   }
 }

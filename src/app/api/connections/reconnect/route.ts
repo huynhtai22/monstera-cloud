@@ -9,6 +9,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getProviderRegistry } from "@/lib/oauth-framework/registry";
 import { buildCallbackUrl } from "@/lib/oauth-framework/session";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: Request) {
     try {
@@ -85,7 +86,7 @@ export async function POST(request: Request) {
             provider: providerId,
         });
     } catch (error) {
-        console.error("[POST /api/connections/reconnect]", error);
+        logger.error("[POST /api/connections/reconnect]", error);
         return NextResponse.json(
             { error: "Internal server error" },
             { status: 500 }

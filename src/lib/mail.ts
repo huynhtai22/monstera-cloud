@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { logger } from "@/lib/logger";
 
 // Vercel build phase evaluates this file statically. If RESEND_API_KEY is missing during
 // the build phase, the Resend constructor throws a fatal error and breaks the build.
@@ -32,13 +33,13 @@ export const sendOtpEmail = async (email: string, otp: string) => {
     });
 
     if (error) {
-      console.error('[MAIL] Resend Error:', error);
+      logger.error('[MAIL] Resend Error:', error);
       return { success: false, error };
     }
 
     return { success: true, data };
   } catch (err) {
-    console.error('[MAIL] Unexpected Error:', err);
+    logger.error('[MAIL] Unexpected Error:', err);
     return { success: false, error: err };
   }
 };
@@ -72,13 +73,13 @@ export const sendPasswordResetEmail = async (email: string, resetUrl: string) =>
     });
 
     if (error) {
-      console.error('[MAIL] Resend Error:', error);
+      logger.error('[MAIL] Resend Error:', error);
       return { success: false, error };
     }
 
     return { success: true, data };
   } catch (err) {
-    console.error('[MAIL] Unexpected Error:', err);
+    logger.error('[MAIL] Unexpected Error:', err);
     return { success: false, error: err };
   }
 };
@@ -110,13 +111,13 @@ ${safeError}
     });
 
     if (error) {
-      console.error('[MAIL] SyncFailure Resend Error:', error);
+      logger.error('[MAIL] SyncFailure Resend Error:', error);
       return { success: false, error };
     }
 
     return { success: true, data };
   } catch (err) {
-    console.error('[MAIL] SyncFailure Unexpected Error:', err);
+    logger.error('[MAIL] SyncFailure Unexpected Error:', err);
     return { success: false, error: err };
   }
 };
@@ -143,12 +144,12 @@ export const sendDataFreshnessAlertEmail = async (to: string, workspaceName: str
       `,
     });
     if (error) {
-      console.error('[MAIL] Freshness Resend Error:', error);
+      logger.error('[MAIL] Freshness Resend Error:', error);
       return { success: false, error };
     }
     return { success: true, data };
   } catch (err) {
-    console.error('[MAIL] Freshness Unexpected Error:', err);
+    logger.error('[MAIL] Freshness Unexpected Error:', err);
     return { success: false, error: err };
   }
 };
@@ -183,13 +184,13 @@ export const sendPaymentPastDueEmail = async (to: string, name: string) => {
     });
 
     if (error) {
-      console.error('[MAIL] PaymentPastDue Resend Error:', error);
+      logger.error('[MAIL] PaymentPastDue Resend Error:', error);
       return { success: false, error };
     }
 
     return { success: true, data };
   } catch (err) {
-    console.error('[MAIL] PaymentPastDue Unexpected Error:', err);
+    logger.error('[MAIL] PaymentPastDue Unexpected Error:', err);
     return { success: false, error: err };
   }
 };
@@ -265,12 +266,12 @@ export const sendClientWeeklyReport = async (
       `,
     });
     if (error) {
-      console.error('[MAIL] ClientWeeklyReport Resend Error:', error);
+      logger.error('[MAIL] ClientWeeklyReport Resend Error:', error);
       return { success: false, error };
     }
     return { success: true, data };
   } catch (err) {
-    console.error('[MAIL] ClientWeeklyReport Unexpected Error:', err);
+    logger.error('[MAIL] ClientWeeklyReport Unexpected Error:', err);
     return { success: false, error: err };
   }
 };
@@ -301,12 +302,12 @@ export const sendPerformanceAlertEmail = async (to: string, workspaceName: strin
       `,
     });
     if (error) {
-      console.error('[MAIL] Performance Resend Error:', error);
+      logger.error('[MAIL] Performance Resend Error:', error);
       return { success: false, error };
     }
     return { success: true, data };
   } catch (err) {
-    console.error('[MAIL] Performance Unexpected Error:', err);
+    logger.error('[MAIL] Performance Unexpected Error:', err);
     return { success: false, error: err };
   }
 };

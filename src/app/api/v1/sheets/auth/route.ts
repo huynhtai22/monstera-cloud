@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { effectiveSheetsPlan } from '@/lib/sheets-reviewer';
 import { PRODUCT_SITE_URL } from '@/lib/site-url';
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/v1/sheets/auth
@@ -69,7 +70,7 @@ export async function POST(req: Request) {
       upgradeUrl: isPaid ? null : `${PRODUCT_SITE_URL}/pricing`,
     });
   } catch (err: any) {
-    console.error('[SHEETS_AUTH]', err);
+    logger.error('[SHEETS_AUTH]', err);
     return NextResponse.json({ error: err.message || 'Auth failed' }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
+import { logger } from "@/lib/logger";
 
 async function verifyGoogleIdToken(idToken: string): Promise<string | null> {
   try {
@@ -107,7 +108,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ accounts });
   } catch (error) {
-    console.error('[ADDON_ACCOUNTS]', error);
+    logger.error('[ADDON_ACCOUNTS]', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Redis } from "@upstash/redis";
+import { logger } from "@/lib/logger";
 
 const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN ? Redis.fromEnv() : null;
 
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(res);
   } catch (e) {
-    console.error('Looker Studio Meta API Error', e);
+    logger.error('Looker Studio Meta API Error', e);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

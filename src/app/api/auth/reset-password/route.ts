@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 export async function POST(request: Request) {
     try {
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true });
 
     } catch (error) {
-        console.error("[RESET PASSWORD] Error:", error);
+        logger.error("[RESET PASSWORD] Error:", error);
         return NextResponse.json({ error: "Internal server error." }, { status: 500 });
     }
 }

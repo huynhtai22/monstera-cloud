@@ -7,6 +7,7 @@
  */
 
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 
 export async function sendAgencyAlert(opts: {
     workspaceId: string;
@@ -23,7 +24,7 @@ export async function sendAgencyAlert(opts: {
         ws?.telegramChatId?.trim() || process.env.TELEGRAM_CHAT_ID?.trim();
 
     if (!telegramBotToken || !telegramChatId) {
-        console.warn(
+        logger.warn(
             "[ALERTS] Telegram bot token or chat id missing — set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID or workspace Telegram chat ID in Settings."
         );
         return;
@@ -59,9 +60,9 @@ _Action Required: Check API credentials in dashboard._
         );
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
-            console.error("[ALERTS] Telegram send failed", res.status, err);
+            logger.error("[ALERTS] Telegram send failed", res.status, err);
         }
     } catch (e) {
-        console.error("[ALERTS] Failed to send Telegram alert", e);
+        logger.error("[ALERTS] Failed to send Telegram alert", e);
     }
 }

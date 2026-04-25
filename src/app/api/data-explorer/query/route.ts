@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse';
+import { logger } from "@/lib/logger";
 
 export async function GET(request: Request) {
     // 1. Authenticate Request
@@ -88,7 +89,7 @@ export async function GET(request: Request) {
             });
 
             parser.on('error', (err) => {
-                console.error("CSV Parse Error:", err);
+                logger.error("CSV Parse Error:", err);
                 if (!isResolved) {
                     isResolved = true;
                     resolve(NextResponse.json({ error: "Failed to parse dataset" }, { status: 500 }));
@@ -97,7 +98,7 @@ export async function GET(request: Request) {
         });
 
     } catch (error) {
-        console.error("Error querying data lake:", error);
+        logger.error("Error querying data lake:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }

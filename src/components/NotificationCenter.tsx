@@ -19,6 +19,8 @@ type NotifItem = { id: string; title: string; detail: string; href?: string; ton
 export function NotificationCenter() {
     const { activeWorkspaceId } = useWorkspaceStore();
     const [open, setOpen] = useState(false);
+    const [shouldRenderPanel, setShouldRenderPanel] = useState(false);
+    const [isPanelVisible, setIsPanelVisible] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
 
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
@@ -26,6 +28,19 @@ export function NotificationCenter() {
         activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}&status=error` : null,
         fetcher
     );
+
+    useEffect(() => {
+        if (open) {
+            setShouldRenderPanel(true);
+            const raf = requestAnimationFrame(() => {
+                requestAnimationFrame(() => setIsPanelVisible(true));
+            });
+            return () => cancelAnimationFrame(raf);
+        }
+        setIsPanelVisible(false);
+        const t = setTimeout(() => setShouldRenderPanel(false), 150);
+        return () => clearTimeout(t);
+    }, [open]);
 
     useEffect(() => {
         function onDoc(e: MouseEvent) {
@@ -83,8 +98,12 @@ export function NotificationCenter() {
                 ) : null}
             </button>
 
-            {open ? (
-                <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-[min(100vw-2rem,22rem)] rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900">
+            {shouldRenderPanel ? (
+                <div className={cn(
+                    "absolute right-0 top-[calc(100%+8px)] z-50 w-[min(100vw-2rem,22rem)] rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900",
+                    "transition-all duration-150 ease-out",
+                    isPanelVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
+                )}>
                     <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-slate-800">
                         <span className="text-sm font-bold text-gray-900 dark:text-white">Notifications</span>
                         <button type="button" onClick={() => setOpen(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800" aria-label="Close">

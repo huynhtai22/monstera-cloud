@@ -9,7 +9,7 @@ import {
     ConnectedAccount,
     OAuthError,
 } from "../types";
-import { tiktokClient } from "@/lib/tiktok";
+import { tiktokClient } from "@/lib/tiktok-shop";
 
 export class TikTokShopOAuthAdapter implements OAuthProviderAdapter {
     readonly id = "tiktok_shop";

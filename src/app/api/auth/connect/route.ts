@@ -11,6 +11,7 @@ import {
 } from "@/lib/oauth-framework/session";
 import { getProvider, isProviderEnabled } from "@/lib/oauth-framework/registry";
 import { OAuthError } from "@/lib/oauth-framework/types";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: NextRequest) {
     try {
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.redirect(authorizeUrl);
         
     } catch (error) {
-        console.error("[OAuth Connect] Error:", error);
+        logger.error("[OAuth Connect] Error:", error);
         
         if (error instanceof OAuthError) {
             const params = new URLSearchParams({

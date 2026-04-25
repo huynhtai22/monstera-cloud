@@ -10,6 +10,7 @@ import type { EtlProvider } from "@/etl/types";
 import { sendAgencyAlert } from "@/lib/alerts";
 import { classifyIngestionError, formatLogError } from "@/lib/ingestion/error-taxonomy";
 import { markConnectionsSyncedOk, markConnectionsSyncError } from "@/lib/ingestion/connection-sync-state";
+import { logger } from "@/lib/logger";
 
 export async function POST(req: Request, context: { params: any }) {
     const syncStartTime = Date.now();
@@ -134,7 +135,7 @@ export async function POST(req: Request, context: { params: any }) {
             rowsSynced: etl.rowsSynced,
         });
     } catch (error: any) {
-        console.error("Pipeline Sync Error:", error);
+        logger.error("Pipeline Sync Error:", error);
 
         const classified = classifyIngestionError(error);
         const logLine = formatLogError(classified);
@@ -184,7 +185,7 @@ export async function POST(req: Request, context: { params: any }) {
                     );
                 }
             } catch (e) {
-                console.error("[pipeline/run] failed to persist error state", e);
+                logger.error("[pipeline/run] failed to persist error state", e);
             }
         }
 

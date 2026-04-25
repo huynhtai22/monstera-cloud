@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createPaddleCheckoutUrl, isPaddleConfigured } from "@/lib/paddle";
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/checkout/paddle
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ url, transactionId });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to create Paddle checkout";
-    console.error("[PADDLE_CHECKOUT]", err);
+    logger.error("[PADDLE_CHECKOUT]", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

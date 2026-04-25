@@ -12,6 +12,7 @@
  */
 
 import { getRedis } from "./redis";
+import { logger } from "@/lib/logger";
 
 const REDIS_KEY_PREFIX = "meta:system_user:";
 
@@ -41,7 +42,7 @@ export async function storeSystemUserToken(
     365 * 24 * 60 * 60 // 1 year (essentially permanent, but we verify periodically)
   );
 
-  console.log(`[Meta System User] Stored token for workspace ${workspaceId}`);
+  logger.info(`[Meta System User] Stored token for workspace ${workspaceId}`);
 }
 
 /**
@@ -161,7 +162,7 @@ export async function migrateToSystemUser(
   });
 
   // Mark original connection as migrated
-  console.log(
+  logger.info(
     `[Meta System User] Migrated connection ${connectionId} to System User token`
   );
 }

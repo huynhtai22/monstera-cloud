@@ -1,3 +1,4 @@
+import { logger } from "@/lib/logger";
 /**
  * Client-only Meta Pixel helpers. fbq is injected by layout.tsx.
  * Event names use an MC_ prefix so custom conversions are easy to find in Events Manager.
@@ -38,7 +39,7 @@ function runWhenFbqReady(fn: (fbq: NonNullable<Window["fbq"]>) => void): void {
         if (Date.now() - started >= FBQ_WAIT_MS) {
             window.clearInterval(id);
             if (process.env.NODE_ENV === "development") {
-                console.warn(
+                logger.warn(
                     "[Meta Pixel] fbq never became available — ad blocker, CSP, or script order. Events were not sent."
                 );
             }

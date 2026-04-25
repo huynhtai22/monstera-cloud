@@ -5,6 +5,7 @@
  */
 
 import { createClient } from "@vercel/kv";
+import { logger } from "@/lib/logger";
 
 // Vercel KV client configuration
 const KV_URL = process.env.KV_URL;
@@ -36,7 +37,7 @@ export function getRedis() {
   // Manage circuit state
   if (circuitState === 'OPEN') {
     if (Date.now() - lastFailureTime > RESET_TIMEOUT_MS) {
-      console.log("[VercelKV] Circuit HALF-OPEN: Testing connection...");
+      logger.info("[VercelKV] Circuit HALF-OPEN: Testing connection...");
       circuitState = 'HALF_OPEN';
     } else {
       if (!mockKvClient) mockKvClient = createMockKV();
@@ -60,7 +61,7 @@ export function getRedis() {
               // Upstash handles commands sequentially, binding is required
               const result = await origMethod.apply(target, args);
               if (circuitState === 'HALF_OPEN') {
-                console.log("[VercelKV] Circuit CLOSED: Connection recovered");
+                logger.info("[VercelKV] Circuit CLOSED: Connection recovered");
                 circuitState = 'CLOSED';
                 failureCount = 0;
               }
@@ -68,10 +69,10 @@ export function getRedis() {
             } catch (err) {
               failureCount++;
               lastFailureTime = Date.now();
-              console.error(`[VercelKV] Redis operation failed (${failureCount}/${FAILURE_THRESHOLD}): ${prop.toString()}`, err);
+              logger.error(`[VercelKV] Redis operation failed (${failureCount}/${FAILURE_THRESHOLD}): ${prop.toString()}`, err);
               
               if (failureCount >= FAILURE_THRESHOLD && circuitState !== 'OPEN') {
-                console.warn("[VercelKV] Circuit OPEN: Falling back to in-memory KV");
+                logger.warn("[VercelKV] Circuit OPEN: Falling back to in-memory KV");
                 circuitState = 'OPEN';
               }
               // If we fail during HALF_OPEN, instantly go back to OPEN
@@ -82,7 +83,7 @@ export function getRedis() {
               // Fallback for this immediate call so the app doesn't crash on this request
               if (!mockKvClient) mockKvClient = createMockKV();
               if (typeof mockKvClient[prop] === 'function') {
-                console.log(`[VercelKV] Executing fallback for method: ${prop.toString()}`);
+                logger.info(`[VercelKV] Executing fallback for method: ${prop.toString()}`);
                 return mockKvClient[prop](...args);
               }
               throw err; 
@@ -93,7 +94,7 @@ export function getRedis() {
       }
     });
 
-    console.log("[VercelKV] Client initialized with Circuit Breaker");
+    logger.info("[VercelKV] Client initialized with Circuit Breaker");
   }
 
   return proxyClient;

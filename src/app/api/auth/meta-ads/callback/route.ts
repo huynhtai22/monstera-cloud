@@ -8,6 +8,7 @@ import {
   buildConsoleOauthSuccessUrl,
   ensureDefaultPipelineAfterSourceConnect,
 } from '@/lib/oauth-pipeline';
+import { logger } from "@/lib/logger";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, '');
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
     const errDesc = searchParams.get('error_description');
 
     if (err) {
-      console.error('[META_ADS_OAUTH]', err, errDesc);
+      logger.error('[META_ADS_OAUTH]', err, errDesc);
       return NextResponse.redirect(
         new URL(`/sources?meta_ads_error=${encodeURIComponent(err)}`, base)
       );
@@ -62,7 +63,7 @@ export async function GET(request: Request) {
     userId = (token?.id ?? token?.sub) as string;
     
     if (!userId) {
-      console.warn('[META_ADS_OAUTH] No session token in callback');
+      logger.warn('[META_ADS_OAUTH] No session token in callback');
       return NextResponse.redirect(
         new URL(`/sources?meta_ads_error=session_expired`, base)
       );
@@ -80,7 +81,7 @@ export async function GET(request: Request) {
     select: { id: true },
   });
   if (!workspace) {
-    console.warn('[META_ADS_OAUTH] User %s has no access to workspace %s', userId, workspaceId);
+    logger.warn('[META_ADS_OAUTH] User %s has no access to workspace %s', userId, workspaceId);
     return NextResponse.redirect(
       new URL('/sources?meta_ads_error=workspace_access_denied', base)
     );
@@ -128,7 +129,7 @@ export async function GET(request: Request) {
       buildConsoleOauthSuccessUrl(base, 'meta_ads', pipelineResult)
     );
   } catch (error: any) {
-    console.error('[META_ADS_AUTH_ERROR]', error);
+    logger.error('[META_ADS_AUTH_ERROR]', error);
     return NextResponse.redirect(
       new URL(`/sources?meta_ads_error=${encodeURIComponent(error.message || 'auth_failed')}`, base)
     );

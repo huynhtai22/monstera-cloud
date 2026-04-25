@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { tiktokClient } from "@/lib/tiktok";
+import { tiktokClient } from "@/lib/tiktok-shop";
 import prisma from "@/lib/prisma";
 import { isTikTokShopConnectEnabled } from "@/lib/integration-flags";
 import { encrypt } from "@/lib/encryption";
@@ -8,6 +8,7 @@ import {
   buildConsoleOauthSuccessUrl,
   ensureDefaultPipelineAfterSourceConnect,
 } from "@/lib/oauth-pipeline";
+import { logger } from "@/lib/logger";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
   const err = searchParams.get("error");
 
   if (err) {
-    console.error('[TIKTOK_SHOP_OAUTH]', err);
+    logger.error('[TIKTOK_SHOP_OAUTH]', err);
     return NextResponse.redirect(
       new URL(`/sources?tiktok_error=${encodeURIComponent(err)}`, base)
     );
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
   const userId = (token?.id ?? token?.sub) as string | undefined;
 
   if (!userId) {
-    console.warn("[TIKTOK_SHOP_OAUTH] No session token in callback");
+    logger.warn("[TIKTOK_SHOP_OAUTH] No session token in callback");
     return NextResponse.redirect(
       new URL("/sources?tiktok_error=session_expired", base)
     );
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
   });
 
   if (!workspace) {
-    console.warn("[TIKTOK_SHOP_OAUTH] User %s has no access to workspace %s", userId, workspaceId);
+    logger.warn("[TIKTOK_SHOP_OAUTH] User %s has no access to workspace %s", userId, workspaceId);
     return NextResponse.redirect(
       new URL("/sources?tiktok_error=workspace_access_denied", base)
     );
@@ -109,7 +110,7 @@ export async function GET(request: Request) {
       buildConsoleOauthSuccessUrl(base, "tiktok_shop", pipelineResult)
     );
   } catch (error: any) {
-    console.error("[TIKTOK_SHOP_AUTH_ERROR]", error);
+    logger.error("[TIKTOK_SHOP_AUTH_ERROR]", error);
     return NextResponse.redirect(
       new URL(`/sources?tiktok_error=${encodeURIComponent(error.message || "auth_failed")}`, base)
     );

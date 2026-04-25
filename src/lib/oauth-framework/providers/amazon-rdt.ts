@@ -6,6 +6,7 @@
  */
 
 import { getRedis } from "@/lib/redis";
+import { logger } from "@/lib/logger";
 
 // RDT Token data structure
 interface RestrictedDataToken {
@@ -36,7 +37,7 @@ export async function requestRestrictedDataToken(
         // Check cache first
         const cached = await getCachedRDT(orderIds);
         if (cached) {
-            console.log(`[AmazonRDT] Using cached RDT for ${orderIds.length} orders`);
+            logger.info(`[AmazonRDT] Using cached RDT for ${orderIds.length} orders`);
             return cached;
         }
 
@@ -67,7 +68,7 @@ export async function requestRestrictedDataToken(
 
         if (!response.ok) {
             const error = await response.text();
-            console.error("[AmazonRDT] Failed to request RDT:", error);
+            logger.error("[AmazonRDT] Failed to request RDT:", error);
             return null;
         }
 
@@ -82,11 +83,11 @@ export async function requestRestrictedDataToken(
         // Cache the RDT
         await cacheRDT(orderIds, rdt);
 
-        console.log(`[AmazonRDT] New RDT acquired for ${orderIds.length} orders`);
+        logger.info(`[AmazonRDT] New RDT acquired for ${orderIds.length} orders`);
 
         return rdt;
     } catch (err) {
-        console.error("[AmazonRDT] Error requesting token:", err);
+        logger.error("[AmazonRDT] Error requesting token:", err);
         return null;
     }
 }
@@ -109,7 +110,7 @@ async function getCachedRDT(orderIds: string[]): Promise<RestrictedDataToken | n
             }
         }
     } catch (err) {
-        console.error("[AmazonRDT] Cache error:", err);
+        logger.error("[AmazonRDT] Cache error:", err);
     }
 
     return null;
@@ -128,7 +129,7 @@ async function cacheRDT(orderIds: string[], rdt: RestrictedDataToken): Promise<v
     try {
         await redis.set(key, JSON.stringify(rdt), "EX", ttl);
     } catch (err) {
-        console.error("[AmazonRDT] Failed to cache RDT:", err);
+        logger.error("[AmazonRDT] Failed to cache RDT:", err);
     }
 }
 
@@ -150,7 +151,7 @@ export async function fetchOrderWithPII(
     );
 
     if (!rdt) {
-        console.error(`[AmazonRDT] Could not get RDT for order ${orderId}`);
+        logger.error(`[AmazonRDT] Could not get RDT for order ${orderId}`);
         return null;
     }
 
@@ -168,13 +169,13 @@ export async function fetchOrderWithPII(
 
         if (!response.ok) {
             const error = await response.text();
-            console.error(`[AmazonRDT] Order fetch failed:`, error);
+            logger.error(`[AmazonRDT] Order fetch failed:`, error);
             return null;
         }
 
         return await response.json();
     } catch (err) {
-        console.error(`[AmazonRDT] Network error:`, err);
+        logger.error(`[AmazonRDT] Network error:`, err);
         return null;
     }
 }
@@ -198,7 +199,7 @@ export async function fetchOrdersWithPII(
     });
 
     if (!rdt) {
-        console.error(`[AmazonRDT] Could not get RDT for ${orderIds.length} orders`);
+        logger.error(`[AmazonRDT] Could not get RDT for ${orderIds.length} orders`);
         return results;
     }
 
@@ -220,10 +221,10 @@ export async function fetchOrdersWithPII(
                     const order = await response.json();
                     results.set(orderId, order);
                 } else {
-                    console.warn(`[AmazonRDT] Failed to fetch order ${orderId}`);
+                    logger.warn(`[AmazonRDT] Failed to fetch order ${orderId}`);
                 }
             } catch (err) {
-                console.error(`[AmazonRDT] Error fetching order ${orderId}:`, err);
+                logger.error(`[AmazonRDT] Error fetching order ${orderId}:`, err);
             }
         })
     );

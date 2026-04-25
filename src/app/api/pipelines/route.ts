@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { getPlanLimits, userSyncCron } from "@/lib/plan-config";
+import { logger } from "@/lib/logger";
 
 /**
  * POST /api/pipelines
@@ -108,7 +109,7 @@ export async function GET(request: Request) {
 
         return NextResponse.json(pipelines);
     } catch (error) {
-        console.error("Error fetching pipelines:", error);
+        logger.error("Error fetching pipelines:", error);
         return NextResponse.json({ error: "Failed to fetch pipelines" }, { status: 500 });
     }
 }

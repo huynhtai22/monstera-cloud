@@ -4,6 +4,7 @@
  */
 
 import { getRedis } from "./redis";
+import { logger } from "@/lib/logger";
 
 const QUEUE_PREFIX = "queue:";
 const ACTIVE_PREFIX = "queue_active:";
@@ -31,7 +32,7 @@ export async function enqueueJob(type: string, data: any): Promise<string> {
 
   // Push to left of the list (LPUSH)
   await redis.lpush(queueKey, JSON.stringify(job));
-  console.log(`[JobQueue] Enqueued job ${job.id} for type: ${type}`);
+  logger.info(`[JobQueue] Enqueued job ${job.id} for type: ${type}`);
   
   return job.id;
 }
@@ -61,7 +62,7 @@ export async function dequeueJob(type: string): Promise<JobPayload | null> {
     
     return job;
   } catch (err) {
-    console.error(`[JobQueue] Error parsing job payload for ${type}`, err);
+    logger.error(`[JobQueue] Error parsing job payload for ${type}`, err);
     return null;
   }
 }
@@ -74,7 +75,7 @@ export async function completeJob(job: JobPayload): Promise<void> {
   const activeKey = `${ACTIVE_PREFIX}${job.type}`;
   
   await redis.srem(activeKey, JSON.stringify(job));
-  console.log(`[JobQueue] Completed job ${job.id}`);
+  logger.info(`[JobQueue] Completed job ${job.id}`);
 }
 
 /**
@@ -97,14 +98,14 @@ export async function processQueue(
       await completeJob(job);
       processed++;
     } catch (err) {
-      console.error(`[JobQueue] Failed processing job ${job.id}:`, err);
+      logger.error(`[JobQueue] Failed processing job ${job.id}:`, err);
       failed++;
       // A full implementation would move this to a DLQ (Dead Letter Queue)
     }
   }
   
   if (processed > 0 || failed > 0) {
-    console.log(`[JobQueue] Processed ${processed} jobs, ${failed} failed for type: ${type}`);
+    logger.info(`[JobQueue] Processed ${processed} jobs, ${failed} failed for type: ${type}`);
   }
   
   return { processed, failed };

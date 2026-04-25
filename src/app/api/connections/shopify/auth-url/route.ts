@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { ShopifyOAuthClient } from "@/lib/shopify";
 import { isShopifyConnectEnabled } from "@/lib/integration-flags";
+import { logger } from "@/lib/logger";
 
 export async function GET(request: Request) {
   try {
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ url: authUrl });
   } catch (error) {
-    console.error("Error generating Shopify Auth URL:", error);
+    logger.error("Error generating Shopify Auth URL:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
