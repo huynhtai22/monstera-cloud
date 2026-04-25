@@ -66,7 +66,7 @@ export function isProviderEnabled(id: string): boolean {
 /** Check if all required environment variables are present for a provider */
 export function isProviderConfigured(id: string): boolean {
     const configChecks: Record<string, () => boolean> = {
-        shopee: () => !!(process.env.SHOPEE_APP_ID && process.env.SHOPEE_APP_SECRET),
+        shopee: () => !!(process.env.SHOPEE_PARTNER_ID && process.env.SHOPEE_PARTNER_KEY),
         lazada: () => !!(process.env.LAZADA_APP_KEY && process.env.LAZADA_APP_SECRET),
         meta_ads: () => !!(process.env.META_APP_ID && process.env.META_APP_SECRET),
         google_ads: () => !!(process.env.GOOGLE_ADS_CLIENT_ID && process.env.GOOGLE_ADS_CLIENT_SECRET),

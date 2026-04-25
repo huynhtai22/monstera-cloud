@@ -229,7 +229,8 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
 
         if (id === "shopee") {
             trackEvent("oauth_started", { provider: id });
-            window.location.href = `/api/auth/shopee/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
+            // Unified oauth-framework route — replaces /api/auth/shopee/authorize
+            window.location.href = `/api/auth/connect?provider=shopee&workspaceId=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
         if (id === "tiktok_shop") {
@@ -259,7 +260,8 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
         }
         if (id === "lazada") {
             trackEvent("oauth_started", { provider: id });
-            window.location.href = `/api/auth/lazada/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
+            // Unified oauth-framework route — replaces /api/auth/lazada/authorize
+            window.location.href = `/api/auth/connect?provider=lazada&workspaceId=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
         if (id === "shopify") {
