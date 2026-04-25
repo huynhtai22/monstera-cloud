@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { X, AlertCircle, RefreshCw, CheckCircle2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,9 @@ interface FixConnectionModalProps {
 
 type FixStep = "diagnose" | "reconnect" | "success" | "error";
 
+const DIALOG_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
+const DIALOG_DURATION_MS = 280;
+
 export function FixConnectionModal({
     isOpen,
     onClose,
@@ -33,6 +36,22 @@ export function FixConnectionModal({
     const [step, setStep] = useState<FixStep>("diagnose");
     const [isReconnecting, setIsReconnecting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const [shouldRender, setShouldRender] = useState(isOpen);
+    const [isVisible, setIsVisible] = useState(isOpen);
+
+    useEffect(() => {
+        if (isOpen) {
+            setShouldRender(true);
+            const raf = requestAnimationFrame(() => {
+                requestAnimationFrame(() => setIsVisible(true));
+            });
+            return () => cancelAnimationFrame(raf);
+        }
+        setIsVisible(false);
+        const t = setTimeout(() => setShouldRender(false), DIALOG_DURATION_MS);
+        return () => clearTimeout(t);
+    }, [isOpen]);
 
     const reset = useCallback(() => {
         setStep("diagnose");
@@ -161,20 +180,34 @@ export function FixConnectionModal({
         }
     }, [connection, onReconnected]);
 
-    if (!isOpen || !connection) return null;
+    if (!shouldRender || !connection) return null;
 
     const logo = logoPathForConnectionProvider(connection.provider);
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className={cn(
+            "fixed inset-0 z-50 flex items-center justify-center p-4",
+            !isVisible && "pointer-events-none"
+        )}>
             {/* Backdrop */}
-            <div 
-                className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            <div
+                className={cn(
+                    "absolute inset-0 bg-black/50 backdrop-blur-sm",
+                    "transition-opacity duration-200 ease-out",
+                    isVisible ? "opacity-100" : "opacity-0"
+                )}
                 onClick={handleClose}
             />
-            
+
             {/* Modal */}
-            <div className="relative w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div
+                className={cn(
+                    "relative w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900",
+                    "transition-all duration-[280ms]",
+                    isVisible ? "scale-100 opacity-100" : "scale-95 opacity-0"
+                )}
+                style={{ transitionTimingFunction: DIALOG_EASE }}
+            >
                 {/* Header */}
                 <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-slate-800">
                     <div className="flex items-center gap-3">

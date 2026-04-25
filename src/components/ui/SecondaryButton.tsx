@@ -8,7 +8,7 @@ export const secondaryButtonLinkClassName = cn(
   "inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700",
   "hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 dark:hover:bg-slate-700",
   "focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300/80 focus-visible:ring-offset-2 dark:focus-visible:ring-slate-600",
-  "transition-colors cursor-pointer"
+  "transition-all active:scale-[0.97] cursor-pointer"
 );
 
 export interface SecondaryButtonProps

@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 import { X, Loader2, CheckCircle2, ChevronRight, Settings2, FileSpreadsheet, Lock, Plus } from "lucide-react";
 import useSWR, { useSWRConfig } from "swr";
 import { signIn } from "next-auth/react";
@@ -11,6 +12,9 @@ import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { trackEvent } from "@/lib/analytics-events";
 import { PostConnectChecklist } from "@/components/destinations/PostConnectChecklist";
 import { DESTINATION_HELP_PATHS } from "@/lib/destination-help-urls";
+
+const PANEL_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
+const PANEL_DURATION_MS = 360;
 
 interface ConnectDestinationModalProps {
     isOpen: boolean;
@@ -48,7 +52,24 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
 
     const [forceSetup, setForceSetup] = useState(false);
     const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
-    
+
+    // Animation state for enter/exit transitions
+    const [shouldRender, setShouldRender] = useState(isOpen);
+    const [isVisible, setIsVisible] = useState(isOpen);
+
+    useEffect(() => {
+        if (isOpen) {
+            setShouldRender(true);
+            const raf = requestAnimationFrame(() => {
+                requestAnimationFrame(() => setIsVisible(true));
+            });
+            return () => cancelAnimationFrame(raf);
+        }
+        setIsVisible(false);
+        const t = setTimeout(() => setShouldRender(false), PANEL_DURATION_MS);
+        return () => clearTimeout(t);
+    }, [isOpen]);
+
     // Reset internal state when modal closes
     React.useEffect(() => {
         if (!isOpen) {
@@ -73,7 +94,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
     const apiKeyMasked = firstKey?.keyMasked ?? "";
     const hasApiKey = Boolean(firstKey);
 
-    if (!isOpen) return null;
+    if (!shouldRender) return null;
 
     const handleAuthenticate = () => {
         setStep(2); // Move to Configure step
@@ -139,8 +160,19 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex justify-end bg-gray-900/50 backdrop-blur-[2px] animate-in fade-in duration-200 dark:bg-slate-800/60">
-            <div className="relative flex h-full w-full max-w-md flex-col overflow-hidden rounded-l-2xl border-l border-gray-200 bg-white shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] animate-in slide-in-from-right duration-300 dark:border-slate-700 dark:bg-slate-900">
+        <div className={cn(
+            "fixed inset-0 z-50 flex justify-end bg-gray-900/50 backdrop-blur-[2px] dark:bg-slate-800/60",
+            "transition-opacity duration-200 ease-out",
+            isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
+        )}>
+            <div
+                className={cn(
+                    "relative flex h-full w-full max-w-md flex-col overflow-hidden rounded-l-2xl border-l border-gray-200 bg-white shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-900",
+                    "transition-transform duration-[360ms]",
+                    isVisible ? "translate-x-0" : "translate-x-full"
+                )}
+                style={{ transitionTimingFunction: PANEL_EASE }}
+            >
 
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-3">

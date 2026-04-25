@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { Search, ArrowRight, Send, Plus, Loader2, CheckCircle2, Circle, MapPin } from "lucide-react";
+import { Search, ArrowRight, Send, Plus, Loader2, CheckCircle2, Circle, MapPin, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConnectDestinationModal } from "@/components/ConnectDestinationModal";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
@@ -22,6 +22,26 @@ const fetcher = async (url: string) => {
     }
     return data;
 };
+
+function DestinationCardSkeleton() {
+    return (
+        <div
+            className="relative overflow-hidden rounded-2xl border border-white/80 dark:border-slate-700/60 bg-white/60 dark:bg-slate-800/60 p-5 animate-pulse"
+            aria-hidden
+        >
+            <div className="flex items-start justify-between mb-3">
+                <div className="h-12 w-12 rounded-xl bg-gray-200/90 dark:bg-slate-700/90" />
+                <div className="h-5 w-5 rounded-full bg-gray-200/80 dark:bg-slate-700/80" />
+            </div>
+            <div className="mb-5 space-y-2">
+                <div className="h-4 max-w-[8rem] rounded bg-gray-200/90 dark:bg-slate-700/90" />
+                <div className="h-3 w-full rounded bg-gray-100 dark:bg-slate-800/90" />
+                <div className="h-3 max-w-[12rem] rounded bg-gray-100 dark:bg-slate-800/90" />
+            </div>
+            <div className="h-8 w-20 rounded-lg bg-gray-200/80 dark:bg-slate-700/80" />
+        </div>
+    );
+}
 
 const availableDestinations = [
     { id: 'gsheets', name: 'Google Sheets', description: 'Export data directly to spreadsheets.', status: 'available', logoSrc: INTEGRATION_LOGOS.googleSheets },
@@ -227,21 +247,21 @@ export default function DestinationsPage() {
                     <button
                         type="button"
                         onClick={() => setActiveFilter("all")}
-                        className={`px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm transition-colors ${activeFilter === "all" ? "bg-gray-900 dark:bg-slate-800 text-white cursor-default" : "bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300 dark:text-gray-600 hover:bg-gray-50 dark:bg-slate-800"}`}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 ${activeFilter === "all" ? "bg-gray-900 dark:bg-slate-800 text-white cursor-default" : "bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50"}`}
                     >
                         All Destinations
                     </button>
                     <button
                         type="button"
                         onClick={() => setActiveFilter("reports")}
-                        className={`px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm transition-colors ${activeFilter === "reports" ? "bg-gray-900 dark:bg-slate-800 text-white cursor-default" : "bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300 dark:text-gray-600 hover:bg-gray-50 dark:bg-slate-800"}`}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 ${activeFilter === "reports" ? "bg-gray-900 dark:bg-slate-800 text-white cursor-default" : "bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50"}`}
                     >
                         Reports & alerts
                     </button>
                     <button
                         type="button"
                         onClick={() => setActiveFilter("spreadsheets")}
-                        className={`px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm transition-colors ${activeFilter === "spreadsheets" ? "bg-gray-900 dark:bg-slate-800 text-white cursor-default" : "bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300 dark:text-gray-600 hover:bg-gray-50 dark:bg-slate-800"}`}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 ${activeFilter === "spreadsheets" ? "bg-gray-900 dark:bg-slate-800 text-white cursor-default" : "bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50"}`}
                     >
                         Spreadsheets
                     </button>
@@ -252,9 +272,8 @@ export default function DestinationsPage() {
             <h2 className="text-sm font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-4 relative z-10">Available Destinations</h2>
 
             {isLoading ? (
-                <div className="w-full py-20 flex flex-col items-center justify-center text-center relative z-10">
-                    <Loader2 className="w-8 h-8 text-cyan-500 animate-spin mb-4" />
-                    <p className="text-sm font-medium text-gray-500">Loading your destinations...</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
+                    {Array.from({ length: 3 }).map((_, i) => <DestinationCardSkeleton key={i} />)}
                 </div>
             ) : filteredDestinations.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
@@ -418,7 +437,17 @@ export default function DestinationsPage() {
             ) : (
                 <div className="w-full py-20 flex flex-col items-center justify-center text-center border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl bg-gray-50 dark:bg-slate-800/50">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No destinations found</h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 max-w-sm mb-6">We couldn't find any destinations matching "{searchQuery}".</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 max-w-sm mb-6">
+                        No destinations match &quot;{searchQuery}&quot;.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => { setSearchQuery(""); setActiveFilter("all"); }}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 dark:hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40"
+                    >
+                        <X className="h-4 w-4" />
+                        Clear search
+                    </button>
                 </div>
             )}
 

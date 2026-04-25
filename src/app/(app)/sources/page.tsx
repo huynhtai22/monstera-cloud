@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Link from "next/link";
 import { toast } from "sonner";
-import { Database, Search, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Unplug, ChevronRight, ArrowRight, ChevronDown } from "lucide-react";
+import { Database, Search, Plus, RefreshCw, AlertCircle, Loader2, CheckCircle2, CloudOff, Unplug, ChevronRight, ArrowRight, ChevronDown, X } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
 import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -1262,7 +1262,7 @@ export default function SourcesPage() {
                         role="tab"
                         aria-selected={activeFilter === 'all'}
                         onClick={() => setActiveFilter('all')}
-                        className={`pb-3 text-sm font-semibold transition-colors ${activeFilter === 'all' ? 'border-b-2 border-cyan-500 text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
+                        className={`pb-3 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'all' ? 'border-b-2 border-cyan-500 text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
                     >
                         All Sources
                     </button>
@@ -1270,7 +1270,7 @@ export default function SourcesPage() {
                         role="tab"
                         aria-selected={activeFilter === 'connected'}
                         onClick={() => setActiveFilter('connected')}
-                        className={`pb-3 text-sm font-medium transition-colors ${activeFilter === 'connected' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
+                        className={`pb-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'connected' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
                     >
                         Connected ({isLoading ? '…' : connectedSourceCount})
                     </button>
@@ -1278,7 +1278,7 @@ export default function SourcesPage() {
                         role="tab"
                         aria-selected={activeFilter === 'available'}
                         onClick={() => setActiveFilter('available')}
-                        className={`pb-3 text-sm font-medium transition-colors ${activeFilter === 'available' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
+                        className={`pb-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'available' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
                     >
                         Available
                     </button>
@@ -1296,7 +1296,19 @@ export default function SourcesPage() {
                 <div className="flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 py-20 text-center dark:border-slate-600 dark:bg-slate-800/60" role="tabpanel" aria-live="polite">
                     <Database className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" />
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No integrations found</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm mb-6">We couldn&apos;t find any data sources matching &quot;{searchQuery}&quot;. Try a different keyword or category.</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm mb-6">
+                        No data sources match &quot;{searchQuery}&quot;.
+                    </p>
+                    {searchQuery && (
+                        <button
+                            type="button"
+                            onClick={() => { setSearchQuery(""); setActiveFilter("all"); }}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 dark:hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40"
+                        >
+                            <X className="h-4 w-4" />
+                            Clear search
+                        </button>
+                    )}
                 </div>
             ) : (
                 <div role="tabpanel" aria-live="polite" className="space-y-8">
