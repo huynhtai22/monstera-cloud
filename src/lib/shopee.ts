@@ -26,7 +26,9 @@ function partnerId(): number {
 function partnerKey(): string {
   const key = (process.env.SHOPEE_PARTNER_KEY || "").trim();
   if (!key) throw new Error("SHOPEE_PARTNER_KEY is not configured");
-  return key;
+  // Shopee partner keys are prefixed with "shpk" as a format label.
+  // Strip it before using the key for HMAC signing.
+  return key.startsWith("shpk") ? key.slice(4) : key;
 }
 
 function getHost(sandbox = false): string {
