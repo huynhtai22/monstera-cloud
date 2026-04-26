@@ -64,10 +64,12 @@ export function SectionOverviewCard({
     emphasis,
     footerSlot,
 }: SectionOverviewCardProps) {
+    const titleId = `section-${title.replace(/\s+/g, "-").toLowerCase()}`;
+    const safeItems = items ?? [];
     const hasItems = Array.isArray(items) && items.length > 0;
 
     return (
-        <div
+        <section aria-labelledby={titleId}
             className={cn(
                 "group relative flex h-full flex-col justify-between rounded-2xl border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md",
                 emphasis
@@ -90,7 +92,7 @@ export function SectionOverviewCard({
                         >
                             {icon}
                         </div>
-                        <h3 className="min-w-0 flex-1 truncate text-sm font-bold text-gray-900 dark:text-white">{title}</h3>
+                        <h3 id={titleId} className="min-w-0 flex-1 truncate text-sm font-bold text-gray-900 dark:text-white">{title}</h3>
                         {kpi ? (
                             <div className="shrink-0 text-right">
                                 <div className="text-2xl font-black leading-none tracking-tight text-gray-900 dark:text-white">
@@ -109,7 +111,7 @@ export function SectionOverviewCard({
 
                 {hasItems ? (
                     <ul className="mb-4 flex flex-col gap-1.5">
-                        {items!.slice(0, 3).map((item) => (
+                        {safeItems.slice(0, 3).map((item) => (
                             <li
                                 key={item.id}
                                 className="flex items-center gap-2 rounded-lg px-1.5 py-1 text-sm text-gray-700 dark:text-gray-200"
@@ -171,11 +173,9 @@ export function SectionOverviewCard({
                         {ctaLabel}
                         <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                     </Link>
-                ) : (
-                    <div />
-                )}
+                ) : null}
                 {footerSlot ? <div className="shrink-0">{footerSlot}</div> : null}
             </div>
-        </div>
+        </section>
     );
 }

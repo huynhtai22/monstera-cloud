@@ -90,7 +90,7 @@ export function RecentActivity({
                                     </div>
 
                                     <div className="mt-2">
-                                        <SecondaryButton size="sm" onClick={() => onSync(pipeline.id)} disabled={syncingPipelineId === pipeline.id}>
+                                        <SecondaryButton size="sm" aria-label={`Sync ${pipeline.name}`} onClick={() => onSync(pipeline.id)} disabled={syncingPipelineId === pipeline.id}>
                                             {syncingPipelineId === pipeline.id ? (
                                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                             ) : (

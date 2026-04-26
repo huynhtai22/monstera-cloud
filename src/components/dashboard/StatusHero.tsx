@@ -49,6 +49,8 @@ export function StatusHero({
                     Today, {todayLabel}
                 </h1>
 
+                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Monstera moves ad and marketplace data into Google Sheets &amp; Looker Studio — managed pipelines and automatic syncs.</p>
+
                 {/* D2: Colour-coded health pill */}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                     {totalPipelines === 0 ? (

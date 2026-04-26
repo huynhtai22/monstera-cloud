@@ -231,21 +231,21 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold">
                     <Link
                         href="/docs"
-                        className="text-cyan-700 underline hover:no-underline dark:text-cyan-300"
+                        className="text-cyan-800 underline hover:no-underline dark:text-cyan-300"
                         onClick={() => trackEvent("wizard_help_link_click", { href: "/docs", step: "sheets_looker_hint" })}
                     >
                         Sheets add-on docs
                     </Link>
                     <Link
                         href="/looker-studio"
-                        className="text-cyan-700 underline hover:no-underline dark:text-cyan-300"
+                        className="text-cyan-800 underline hover:no-underline dark:text-cyan-300"
                         onClick={() => trackEvent("wizard_help_link_click", { href: "/looker-studio", step: "sheets_looker_hint" })}
                     >
                         Looker Studio guide
                     </Link>
                     <Link
                         href="/destinations"
-                        className="text-cyan-700 underline hover:no-underline dark:text-cyan-300"
+                        className="text-cyan-800 underline hover:no-underline dark:text-cyan-300"
                         onClick={() => trackEvent("wizard_help_link_click", { href: "/destinations", step: "sheets_looker_hint" })}
                     >
                         Destinations

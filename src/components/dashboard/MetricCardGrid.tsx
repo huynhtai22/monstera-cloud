@@ -24,7 +24,7 @@ export function MetricCardGrid({ snapshots }: { snapshots: Snapshot[] }) {
     if (!latest) {
         return (
             <div className={cn(tokens["card-muted"], "mb-8 text-sm text-gray-500 dark:text-gray-400")}>
-                Run a sync to populate spend and ROAS cards.
+                Run a sync to populate spend and ROAS.
             </div>
         );
     }
