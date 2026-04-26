@@ -19,14 +19,17 @@ function fmt(level: string, msg: string): string {
 }
 
 export const logger = {
-  info(msg: string, ctx?: object) {
+  info(msg: any, ...args: any[]) {
     if (!isDev) return; // suppress in prod — use warn/error for signals
-    console.log(fmt("INFO", msg), ...(ctx ? [ctx] : []));
+    if (typeof msg === "string") console.log(`[INFO] ${msg}`, ...args);
+    else console.log("[INFO]", msg, ...args);
   },
-  warn(msg: string, ctx?: object) {
-    console.warn(fmt("WARN", msg), ...(ctx ? [ctx] : []));
+  warn(msg: any, ...args: any[]) {
+    if (typeof msg === "string") console.warn(`[WARN] ${msg}`, ...args);
+    else console.warn("[WARN]", msg, ...args);
   },
-  error(msg: string, ctx?: object) {
-    console.error(fmt("ERROR", msg), ...(ctx ? [ctx] : []));
+  error(msg: any, ...args: any[]) {
+    if (typeof msg === "string") console.error(`[ERROR] ${msg}`, ...args);
+    else console.error("[ERROR]", msg, ...args);
   },
 };
