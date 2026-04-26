@@ -1,0 +1,54 @@
+:root{
+  /* Colors */
+  --color-bg: 255 255 255;
+  --color-fg: 15 23 42;
+  --color-primary: 8 145 178;
+  --color-primary-foreground: 255 255 255;
+
+  /* Spacing scale (base 4px) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Shadows */
+  --shadow-card: 0 6px 18px rgba(2,6,23,0.06);
+  --shadow-elevated: 0 12px 32px rgba(2,6,23,0.08);
+
+  /* Animation durations */
+  --dur-short: 180ms;
+  --dur-medium: 320ms;
+}
+
+/* Utility tokens for backgrounds and foregrounds */
+.theme-light {
+  background-color: rgb(var(--color-bg));
+  color: rgb(var(--color-fg));
+}
+
+.btn {
+  display:inline-flex; align-items:center; justify-content:center; gap:0.5rem;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform var(--dur-short) cubic-bezier(.2,.9,.2,1), box-shadow var(--dur-short) cubic-bezier(.2,.9,.2,1);
+}
+.btn-primary{
+  background: rgb(var(--color-primary)); color: rgb(var(--color-primary-foreground));
+  box-shadow: var(--shadow-card);
+}
+.btn-ghost{
+  background: transparent; color: rgb(var(--color-fg));
+}
+.btn-sm{ padding: 6px 10px; font-size: 0.875rem }
+.btn-md{ padding: 10px 16px; font-size: 1rem }
+.btn-lg{ padding: 14px 20px; font-size: 1.125rem }
+
+.btn:hover{ transform: translateY(-2px); }
