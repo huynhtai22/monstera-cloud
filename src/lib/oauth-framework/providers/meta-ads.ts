@@ -80,4 +80,25 @@ export class MetaAdsOAuthAdapter implements OAuthProviderAdapter {
             type: "ad-account" as const,
         }));
     }
+
+    async refreshCredentials(credentials: unknown): Promise<OAuthCredentials> {
+        const creds = credentials as { accessToken?: string; expiresAt?: string; systemUser?: boolean };
+        if (!creds.accessToken) {
+            throw new OAuthError("provider_error", "No access token available", this.id);
+        }
+        
+        // System user tokens never expire
+        if (creds.systemUser === true) {
+            return {
+                accessToken: creds.accessToken,
+                expiresAt: creds.expiresAt ? new Date(creds.expiresAt) : new Date("2099-12-31T23:59:59Z"),
+            };
+        }
+
+        const refreshed = await metaAdsClient.exchangeForLongLived(creds.accessToken);
+        return {
+            accessToken: refreshed.access_token,
+            expiresAt: new Date(Date.now() + (refreshed.expires_in ?? 5183944) * 1000),
+        };
+    }
 }

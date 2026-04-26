@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { metaReportClient, MetaInsightsParams, META_DEFAULT_FIELDS } from '@/lib/meta-ads';
-import { getValidMetaToken } from '@/lib/meta-refresh';
+import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import {
   clampMetaDatePresetForPlan,
   clampTimeRangeToPlanMaxDays,
@@ -118,7 +118,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ...cached.result, cached: true, cache_expires_in_seconds: remainingSec });
     }
 
-    const accessToken = await getValidMetaToken(conn);
+    const accessToken = await getValidOAuthToken(conn);
 
     let responsePayload: Record<string, unknown>;
 

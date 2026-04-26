@@ -9,7 +9,7 @@ import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import useSWR, { useSWRConfig } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
-import { integrationCatalogId } from "@/lib/integration-catalog";
+import { integrationCatalogId } from "@/lib/sources-integration-catalog";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { SOURCES_CATALOG, isSourceEnvReady } from "@/lib/sources-integration-catalog";
 import { cn } from "@/lib/utils";

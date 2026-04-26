@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { getValidGoogleAdsToken } from '@/lib/google-ads-refresh';
+import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import { googleAdsOAuthClient } from '@/lib/google-ads';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
     }
 
     // Refresh customer list from API
-    const accessToken = await getValidGoogleAdsToken(conn);
+    const accessToken = await getValidOAuthToken(conn);
     const customerIds = await googleAdsOAuthClient.listAccessibleCustomers(accessToken);
     return NextResponse.json({ customerIds });
   } catch (err: any) {

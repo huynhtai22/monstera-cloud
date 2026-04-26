@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import useSWR from 'swr';
 import { useWorkspaceStore } from '@/store/workspace';
-import { integrationCatalogId } from '@/lib/integration-catalog';
+import { integrationCatalogId } from '@/lib/sources-integration-catalog';
 import { cn } from '@/lib/utils';
 import { IntegrationPageLayout } from '@/components/ui/IntegrationPageLayout';
 import { INTEGRATION_LOGOS } from '@/lib/integration-logos';

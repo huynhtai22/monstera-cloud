@@ -20,7 +20,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
-import { integrationCatalogId } from "@/lib/integration-catalog";
+import { integrationCatalogId } from "@/lib/sources-integration-catalog";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { cn } from "@/lib/utils";
 import { AccountScopePanel } from "@/components/sources/AccountScopePanel";

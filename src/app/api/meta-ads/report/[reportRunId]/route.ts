@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { metaReportClient } from '@/lib/meta-ads';
-import { getValidMetaToken } from '@/lib/meta-refresh';
+import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import prisma from '@/lib/prisma';
 import { logger } from "@/lib/logger";
 
@@ -42,7 +42,7 @@ export async function GET(
   }
 
   try {
-    const accessToken = await getValidMetaToken(conn);
+    const accessToken = await getValidOAuthToken(conn);
     const status = await metaReportClient.checkAsyncReport(accessToken, reportRunId);
 
     if (status.async_status === 'Job Completed') {

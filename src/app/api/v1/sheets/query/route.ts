@@ -3,9 +3,8 @@ import prisma from '@/lib/prisma';
 import { effectiveSheetsPlan } from '@/lib/sheets-reviewer';
 import { tiktokReportClient } from '@/lib/tiktok-business';
 import { metaReportClient, META_DEFAULT_FIELDS } from '@/lib/meta-ads';
-import { getValidMetaToken } from '@/lib/meta-refresh';
+import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import { googleAdsReportClient } from '@/lib/google-ads';
-import { getValidGoogleAdsToken } from '@/lib/google-ads-refresh';
 import { PRODUCT_SITE_URL } from '@/lib/site-url';
 import { safeDecrypt } from '@/lib/encryption';
 import { logger } from "@/lib/logger";
@@ -125,7 +124,7 @@ export async function POST(req: Request) {
       });
       if (!conn) return NextResponse.json({ error: 'Meta Ads connection not found' }, { status: 404 });
 
-      const accessToken = await getValidMetaToken(conn);
+      const accessToken = await getValidOAuthToken(conn);
       const metaRows = await metaReportClient.getInsights(accessToken, {
         adAccountId,
         fields: fields ?? META_DEFAULT_FIELDS,
@@ -156,7 +155,7 @@ export async function POST(req: Request) {
       });
       if (!conn) return NextResponse.json({ error: 'Google Ads connection not found' }, { status: 404 });
 
-      const accessToken = await getValidGoogleAdsToken(conn);
+      const accessToken = await getValidOAuthToken(conn);
       const creds = JSON.parse(safeDecrypt(conn.credentials)) as { mccId?: string };
 
       let googleRows;
