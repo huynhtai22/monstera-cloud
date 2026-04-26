@@ -181,7 +181,7 @@ async function handleSubscriptionPastDue(data: Record<string, unknown>) {
   const subscriptionId = typeof data.id === "string" ? data.id : "";
   const userId = userIdFromPaddleCustomData(data.custom_data);
 
-  let user: { email: string; name: string | null } | null = null;
+  let user: { email: string | null; name: string | null } | null = null;
 
   if (userId) {
     user = await prisma.user.findUnique({
@@ -195,14 +195,13 @@ async function handleSubscriptionPastDue(data: Record<string, unknown>) {
     });
   }
 
-  if (!user) {
+  if (!user || !user.email) {
     logger.warn("[PADDLE_WEBHOOK] subscription.past_due — could not find user", {
       subscriptionId,
       userId,
     });
     return;
   }
-
   await sendPaymentPastDueEmail(user.email, user.name ?? "");
   logger.info(`[PADDLE_WEBHOOK] subscription.past_due — past-due email sent to ${user.email}`);
 }

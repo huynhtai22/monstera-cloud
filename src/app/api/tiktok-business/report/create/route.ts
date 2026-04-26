@@ -109,15 +109,15 @@ export async function POST(req: Request) {
     // Sandbox: use synchronous report endpoint (async tasks not supported)
     if (creds.sandbox === true) {
       const rows = await tiktokReportClient.getSyncReport(accessToken, {
-        advertiser_id,
         ...taskParams,
+        advertiser_id,
       });
       responsePayload = { mode: 'sync', rows };
     } else {
       // Production: create async task
       const taskId = await tiktokReportClient.createTask(
         accessToken,
-        { advertiser_id, ...taskParams },
+        { ...taskParams, advertiser_id },
         false,
       );
       responsePayload = { mode: 'async', task_id: taskId };

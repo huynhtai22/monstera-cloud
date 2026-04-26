@@ -222,11 +222,11 @@ export async function getTokensBatch(connectionIds: string[]): Promise<
 
   // Try to get all from Redis in one pipeline
   try {
-    const cached = await redis.mget(...keys);
+    const cached = (await redis.mget(...keys)) as Array<string | null>;
 
     const missingIds: string[] = [];
 
-    cached.forEach((value, index) => {
+    cached.forEach((value: string | null, index: number) => {
       const connectionId = connectionIds[index];
       if (value) {
         const token: CachedToken = JSON.parse(value);
@@ -244,11 +244,9 @@ export async function getTokensBatch(connectionIds: string[]): Promise<
 
     // Fetch missing from DB
     if (missingIds.length > 0) {
-      const dbTokens = await Promise.all(
-        missingIds.map((id) => getToken(id))
-      );
+      const dbTokens = await Promise.all(missingIds.map((id) => getToken(id)));
 
-      dbTokens.forEach((token, index) => {
+      dbTokens.forEach((token: CachedToken | null, index: number) => {
         if (token) {
           result.set(missingIds[index], token);
         }

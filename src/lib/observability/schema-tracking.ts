@@ -196,7 +196,13 @@ export async function getSchemaHistory(
     },
   });
 
-  return schemas;
+  return schemas.map((s) => ({
+    version: s.version,
+    discoveredAt: s.discoveredAt,
+    breakingChanges: s.breakingChanges,
+    isActive: s.isActive,
+    deprecatedAt: s.deprecatedAt ?? undefined,
+  }));
 }
 
 /**

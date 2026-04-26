@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import styles from "./animations.module.css";
+import styles from "./system/animations.module.css";
 
 type ToastProps = {
   children: React.ReactNode;

@@ -1,5 +1,5 @@
 import React from "react";
-import styles from "./animations.module.css";
+import styles from "./system/animations.module.css";
 
 type Props = React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "solid" | "ghost" };
 
