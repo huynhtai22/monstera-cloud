@@ -1,8 +1,4 @@
-:root{
-  --anim-short: 180ms;
-  --anim-medium: 320ms;
-  --anim-ease: cubic-bezier(.2,.9,.2,1);
-}
+/* CSS variables are declared globally in src/app/globals.css */
 
 @media (prefers-reduced-motion: reduce){
   .skeleton, .toast, .ctaButton, .reveal { animation: none !important; transition: none !important; }

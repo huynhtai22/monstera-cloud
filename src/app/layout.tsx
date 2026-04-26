@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+// Use system font stack to avoid remote font fetch during build/deploy
 import Script from "next/script";
 import "./globals.css";
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
@@ -20,7 +20,6 @@ const FBQ_INIT_OPTIONS =
         ? `, ${JSON.stringify({ test_event_code: META_TEST_EVENT_CODE })}`
         : "";
 
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
     title: {
@@ -78,7 +77,7 @@ export default function RootLayout({
                     dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
                 />
             </head>
-            <body className={inter.className}>
+            <body className="antialiased">
                 {/* Google Tag Manager (noscript fallback for users with JS disabled) */}
                 <noscript>
                     <iframe
