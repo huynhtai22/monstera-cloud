@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Link from "next/link";
 import { toast } from "sonner";
-import { Database, Search, Plus, RefreshCw, AlertCircle, Loader2, ChevronRight, ChevronDown, X } from "lucide-react";
+import { Database, Search, Plus, RefreshCw, AlertCircle, CheckCircle2, Loader2, ChevronRight, ChevronDown, X } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
 import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -66,14 +66,7 @@ function catalogIntegrationFromId(catalogId: string) {
 // See src/components/sources/ for extracted sub-components.
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Console Page
- * ───────────────────────────────────────────────────────────────────────────── */
-    return (
-        <div
-            className="relative overflow-hidden rounded-2xl border border-white/80 dark:border-slate-600/50 bg-white/40 dark:bg-slate-800/60 p-5 animate-pulse"
-
-/* ─────────────────────────────────────────────────────────────────────────────
- * Console Page
+ * Sources Page
  * ───────────────────────────────────────────────────────────────────────────── */
 
 export default function SourcesPage() {
