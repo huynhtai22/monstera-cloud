@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Clock, Loader2, AlertCircle, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
+import { SecondaryButton, secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
 
 type Pipeline = {
     id: string;
@@ -32,12 +33,12 @@ export function RecentActivity({
 }: RecentActivityProps) {
     return (
         <div className="flex min-h-[320px] flex-col rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/40 lg:min-h-[400px]">
-            <div className="mb-4 flex items-center justify-between gap-2">
+                <div className="mb-4 flex items-center justify-between gap-2">
                 <div>
                     <h2 className="text-lg font-bold text-gray-900 dark:text-white">Recent activity</h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400">Latest events from your pipelines.</p>
                 </div>
-                <Link href="/reports" className="text-xs font-semibold text-cyan-700 hover:underline dark:text-cyan-300">
+                <Link href="/reports" className={"text-xs font-semibold " + secondaryButtonLinkClassName}>
                     See all logs
                 </Link>
             </div>
@@ -89,19 +90,14 @@ export function RecentActivity({
                                     </div>
 
                                     <div className="mt-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => onSync(pipeline.id)}
-                                            disabled={syncingPipelineId === pipeline.id}
-                                            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-800"
-                                        >
+                                        <SecondaryButton size="sm" onClick={() => onSync(pipeline.id)} disabled={syncingPipelineId === pipeline.id}>
                                             {syncingPipelineId === pipeline.id ? (
                                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                             ) : (
                                                 <Zap className="h-3.5 w-3.5" />
                                             )}
                                             Sync now
-                                        </button>
+                                        </SecondaryButton>
                                     </div>
                                 </div>
                             </div>

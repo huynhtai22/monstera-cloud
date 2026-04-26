@@ -2,6 +2,7 @@
 
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import tokens from "@/components/ui/system/tokens.module.css";
 
 type Snapshot = { date: string; netRoas: number; adSpend: number; attributedRevenue: number };
 
@@ -22,7 +23,7 @@ export function MetricCardGrid({ snapshots }: { snapshots: Snapshot[] }) {
 
     if (!latest) {
         return (
-            <div className="mb-8 rounded-2xl border border-dashed border-gray-200 bg-white/40 p-6 text-sm text-gray-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-gray-400">
+            <div className={cn(tokens["card-muted"], "mb-8 text-sm text-gray-500 dark:text-gray-400")}>
                 Run a sync to populate spend and ROAS cards.
             </div>
         );
@@ -58,10 +59,7 @@ export function MetricCardGrid({ snapshots }: { snapshots: Snapshot[] }) {
     return (
         <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {cards.map((c) => (
-                <div
-                    key={c.label}
-                    className="rounded-2xl border border-gray-200/80 bg-white/70 p-5 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/50"
-                >
+                <div key={c.label} className={cn(tokens.card, "p-5")}>
                     <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{c.label}</div>
                     <div className="mt-2 flex items-end justify-between gap-2">
                         <div className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">{c.value}</div>

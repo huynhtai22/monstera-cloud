@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, Circle, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
 
 export type OverviewStatus = "ok" | "pending" | "error" | "neutral";
 
@@ -166,10 +167,7 @@ export function SectionOverviewCard({
 
             <div className="flex items-center justify-between gap-3">
                 {ctaHref && ctaLabel ? (
-                    <Link
-                        href={ctaHref}
-                        className="inline-flex items-center gap-1.5 text-sm font-semibold text-cyan-700 transition-colors hover:text-cyan-800 dark:text-cyan-300 dark:hover:text-cyan-200"
-                    >
+                    <Link href={ctaHref} className={"inline-flex items-center gap-1.5 text-sm font-semibold " + secondaryButtonLinkClassName}>
                         {ctaLabel}
                         <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                     </Link>

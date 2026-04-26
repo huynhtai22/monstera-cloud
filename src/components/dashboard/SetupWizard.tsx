@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { CheckCircle2, Circle, ArrowRight, Sparkles } from "lucide-react";
 import { trackEvent } from "@/lib/analytics-events";
 import { cn } from "@/lib/utils";
+import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
 
 type SetupWizardProps = {
     hasSource: boolean;
@@ -64,12 +65,12 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
                         <p className="text-sm text-gray-600 dark:text-gray-400">
                             Your first sync is complete. Open{" "}
                             <Link
-                                href="/looker-studio"
-                                className="font-semibold text-cyan-700 underline hover:no-underline dark:text-cyan-300"
-                                onClick={() => trackEvent("wizard_help_link_click", { href: "/looker-studio", step: "all_done" })}
-                            >
-                                Looker Studio
-                            </Link>{" "}
+                                    href="/looker-studio"
+                                    className="font-semibold text-cyan-700 underline hover:no-underline dark:text-cyan-300"
+                                    onClick={() => trackEvent("wizard_help_link_click", { href: "/looker-studio", step: "all_done" })}
+                                >
+                                    Looker Studio
+                                </Link>{" "}
                             or the{" "}
                             <Link
                                 href="/docs"
@@ -84,7 +85,7 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
                     <div className="ml-auto flex items-center gap-3">
                         <Link
                             href="/reports"
-                            className="inline-flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 transition-colors"
+                            className={primaryButtonLinkClassName + " inline-flex items-center gap-2"}
                             onClick={() => trackEvent("wizard_step_completed", { step: "view_reports" })}
                         >
                             View Reports <ArrowRight className="h-3.5 w-3.5" />

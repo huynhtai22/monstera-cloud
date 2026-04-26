@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { RefreshCw, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { PrimaryButton } from "@/components/ui/PrimaryButton";
+import { PrimaryButton, primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
+import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
 
 type StatusHeroProps = {
     workspaceName: string;
@@ -64,7 +65,7 @@ export function StatusHero({
                         <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-800 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-300">
                             <AlertTriangle className="h-3 w-3" />
                             {summary}
-                            <Link href="/reports" className="ml-1 underline underline-offset-2 opacity-80 hover:opacity-100">
+                            <Link href="/reports" className={"ml-1 " + secondaryButtonLinkClassName}>
                                 See logs →
                             </Link>
                         </span>

@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
+import Button from "./Button";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** Shared classes for `<Link>` that should look like a primary button (avoid nesting `<button>` inside `<a>`). */
+/** Backwards-compatible class string for links styled like the primary button. */
 export const primaryButtonLinkClassName = cn(
   "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white",
   "bg-primary hover:bg-primary-hover",
@@ -18,25 +19,16 @@ export interface PrimaryButtonProps
   size?: "sm" | "md" | "lg";
 }
 
-const sizeClasses = {
-  sm: "px-3 py-1.5 text-xs",
-  md: "px-4 py-2.5 text-sm",
-  lg: "px-6 py-3 text-base",
-};
-
 export const PrimaryButton = React.forwardRef<HTMLButtonElement, PrimaryButtonProps>(
   ({ className, children, disabled, loading, size = "md", type = "button", ...props }, ref) => {
     return (
-      <button
+      <Button
         ref={ref}
         type={type}
         disabled={disabled || loading}
-        className={cn(
-          primaryButtonLinkClassName,
-          sizeClasses[size],
-          "disabled:pointer-events-none disabled:opacity-60",
-          className
-        )}
+        variant="primary"
+        size={size}
+        className={className}
         {...props}
       >
         {loading ? (
@@ -47,7 +39,7 @@ export const PrimaryButton = React.forwardRef<HTMLButtonElement, PrimaryButtonPr
         ) : (
           children
         )}
-      </button>
+      </Button>
     );
   }
 );
