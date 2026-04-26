@@ -1,0 +1,46 @@
+:root{
+  --anim-short: 180ms;
+  --anim-medium: 320ms;
+  --anim-ease: cubic-bezier(.2,.9,.2,1);
+}
+
+@media (prefers-reduced-motion: reduce){
+  .skeleton, .toast, .ctaButton, .reveal { animation: none !important; transition: none !important; }
+}
+
+.skeleton{
+  background: #f3f4f6;
+  position: relative;
+  overflow: hidden;
+}
+.skeleton::after{
+  content: "";
+  position: absolute;
+  top: 0; left: -150%; height: 100%; width: 250%;
+  background: linear-gradient(90deg, rgba(255,255,255,0) 25%, rgba(255,255,255,0.6) 50%, rgba(255,255,255,0) 75%);
+  transform: translateZ(0);
+  animation: shimmer 1.2s linear infinite;
+}
+@keyframes shimmer{0%{transform:translateX(0)}100%{transform:translateX(-40%)}}
+
+.toast{
+  display:inline-flex; align-items:center; gap:0.5rem;
+  padding:0.6rem 0.9rem; border-radius:0.5rem; background:rgba(17,24,39,0.96); color:#fff;
+  transform-origin:right bottom; will-change: transform, opacity;
+  opacity:0; transform: translateY(8px) scale(.995);
+  transition: opacity var(--anim-short) var(--anim-ease), transform var(--anim-short) var(--anim-ease);
+}
+.enter{ opacity:1; transform: translateY(0) scale(1); }
+.exit{ opacity:0; transform: translateY(6px) scale(.995); }
+
+.ctaButton{
+  display:inline-flex; align-items:center; justify-content:center; gap:0.5rem;
+  padding:0.6rem 1rem; border-radius:0.5rem; cursor:pointer; border:1px solid transparent;
+  transition: transform var(--anim-short) var(--anim-ease), box-shadow var(--anim-short) var(--anim-ease), background-position 600ms var(--anim-ease);
+  transform-origin:center center; will-change: transform;
+}
+.ctaButton:hover{ transform:scale(1.03); box-shadow:0 8px 20px rgba(2,6,23,0.08); }
+.ctaGhost:hover{ box-shadow:none; transform:translateY(-2px); }
+
+.reveal{ opacity:0; transform:translateY(10px); transition:opacity var(--anim-medium) var(--anim-ease), transform var(--anim-medium) var(--anim-ease); }
+.visible{ opacity:1; transform:translateY(0); }
