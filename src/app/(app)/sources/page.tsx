@@ -18,7 +18,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { DataFlowExplainer } from "@/components/data-flow/DataFlowExplainer";
 import { RefreshedAt } from "@/components/ui/RefreshedAt";
 import { SecondaryButton, primaryButtonLinkClassName } from "@/components/ui";
-import { ConnectedSourceRow } from "@/components/sources/ConnectedSourceRow";
+import { ConnectedSourceCard } from "@/components/sources/ConnectedSourceCard";
 import { IntegrationCard, IntegrationCardSkeleton } from "@/components/sources/IntegrationCard";
 import { RecentSyncsSection } from "@/components/sources/RecentSyncsSection";
 import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
@@ -813,7 +813,7 @@ export default function SourcesPage() {
                 <div role="tabpanel" aria-live="polite" className="space-y-8">
                     {connectedRows.length > 0 ? (
                         <section aria-labelledby="sources-connected-heading">
-                            <div className="mb-3 flex items-end justify-between">
+                            <div className="mb-4 flex items-end justify-between">
                                 <h2
                                     id="sources-connected-heading"
                                     className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400"
@@ -824,62 +824,23 @@ export default function SourcesPage() {
                                     {connectedRows.length} connected
                                 </span>
                             </div>
-                            <div className="space-y-4">
-                            {(() => {
-                                // Group by provider
-                                const groups = Object.entries(
-                                    connectedRows.reduce((acc, row) => {
-                                        const p = (row as any).catalogId || "other";
-                                        acc[p] = acc[p] || [];
-                                        acc[p].push(row);
-                                        return acc;
-                                    }, {} as Record<string, any[]>)
-                                );
-                                const multiProvider = groups.length > 1;
-
-                                return groups.map(([provider, rows]) => (
-                                    <div key={provider}>
-                                        {/* Only show provider label when there are multiple platforms */}
-                                        {multiProvider && (
-                                            <div className="mb-2 flex items-center gap-2">
-                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                <img
-                                                    src={(rows[0] as any).logoSrc}
-                                                    alt=""
-                                                    width={14}
-                                                    height={14}
-                                                    className="h-3.5 w-3.5 object-contain opacity-70"
-                                                />
-                                                <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-gray-400 dark:text-slate-500">
-                                                    {SOURCES_CATALOG.find(c => c.id === provider)?.name || provider}
-                                                </span>
-                                                <span className="h-px flex-1 bg-gray-100 dark:bg-slate-800" />
-                                                <span className="text-[10px] text-gray-400 dark:text-slate-500">
-                                                    {rows.length} {rows.length === 1 ? 'account' : 'accounts'}
-                                                </span>
-                                            </div>
-                                        )}
-                                        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                                            {rows.map((integration: any) => (
-                                                <ConnectedSourceRow
-                                                    key={integration.id}
-                                                    integration={integration}
-                                                    busyActions={busyActions}
-                                                    onSync={handleSync}
-                                                    onDisconnect={disconnectSource}
-                                                    onFixConnection={handleFixConnection}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-                                ));
-                            })()}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 auto-rows-fr [&>*]:h-full">
+                                {connectedRows.map((integration: any) => (
+                                    <ConnectedSourceCard
+                                        key={integration.id}
+                                        integration={integration}
+                                        busyActions={busyActions}
+                                        onSync={handleSync}
+                                        onDisconnect={disconnectSource}
+                                        onFixConnection={handleFixConnection}
+                                    />
+                                ))}
                             </div>
                         </section>
                     ) : null}
                     {availableCards.length > 0 ? (
                         <section aria-labelledby="sources-available-heading">
-                            <div className="mb-3 flex items-end justify-between">
+                            <div className="mb-4 flex items-end justify-between">
                                 <h2
                                     id="sources-available-heading"
                                     className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400"
