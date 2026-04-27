@@ -29,20 +29,31 @@ export function UpgradeNudge() {
 
     return (
         <div
-            className="border-b border-amber-200/80 bg-amber-50/95 px-4 py-2.5 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-50"
+            className="border-b border-cyan-200/40 bg-gradient-to-r from-cyan-50/90 via-white to-violet-50/80 px-4 py-3 dark:border-cyan-900/30 dark:from-cyan-950/40 dark:via-slate-950/80 dark:to-violet-950/30"
             role="status"
         >
-            <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-2 text-center sm:justify-between sm:text-left">
-                <span className="inline-flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                    <span>
-                        You&apos;re at your plan&apos;s pipeline limit ({limits.maxPipelines}). Upgrade for more syncs and
-                        higher cadence.
-                    </span>
-                </span>
+            <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                <div className="flex min-w-0 items-start gap-3 sm:items-center">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-amber-200/80 bg-white/80 text-amber-600 shadow-sm dark:border-amber-800/60 dark:bg-slate-900/80 dark:text-amber-400">
+                        <AlertTriangle className="h-4 w-4" aria-hidden />
+                    </div>
+                    <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                            Pipeline limit reached
+                        </p>
+                        <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+                            Your workspace has{" "}
+                            <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">
+                                {pipelineCount}/{limits.maxPipelines}
+                            </span>{" "}
+                            pipelines — the maximum for your current plan. Upgrade to add more pipelines and unlock higher
+                            sync cadence.
+                        </p>
+                    </div>
+                </div>
                 <Link
                     href="/pricing"
-                    className="shrink-0 font-semibold text-amber-900 underline decoration-amber-700/50 hover:text-amber-950 dark:text-amber-100 dark:hover:text-white"
+                    className="inline-flex shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-cyan-500 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-cyan-900/20 ring-1 ring-cyan-400/30 transition hover:from-cyan-400 hover:to-cyan-500 hover:shadow-lg dark:shadow-black/40"
                 >
                     View plans
                 </Link>

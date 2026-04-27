@@ -20,84 +20,117 @@ export function HealthGauge({
 }: HealthGaugeProps) {
     const percentage = totalPipelines > 0 ? (healthyCount / totalPipelines) * 100 : 0;
     
-    // Determine color based on health percentage
+    // Center label + ring tint (SVG stroke uses separate currentColor classes below)
     const getColor = (pct: number) => {
-        if (pct === 100) return { bg: "bg-emerald-500", text: "text-emerald-600 dark:text-emerald-400", ring: "ring-emerald-200 dark:ring-emerald-500/30" };
-        if (pct >= 85) return { bg: "bg-amber-500", text: "text-amber-600 dark:text-amber-400", ring: "ring-amber-200 dark:ring-amber-500/30" };
-        return { bg: "bg-red-500", text: "text-red-600 dark:text-red-400", ring: "ring-red-200 dark:ring-red-500/30" };
+        if (pct === 100)
+            return { text: "text-emerald-600 dark:text-emerald-400", ring: "ring-emerald-200/80 dark:ring-emerald-500/25" };
+        if (pct >= 85)
+            return { text: "text-amber-600 dark:text-amber-400", ring: "ring-amber-200/80 dark:ring-amber-500/25" };
+        return { text: "text-red-600 dark:text-red-400", ring: "ring-red-200/80 dark:ring-red-500/25" };
     };
 
     const colors = getColor(percentage);
     
-    // Sizes
+    // Ring + label scale together: the previous md size was too small for bold % text.
     const sizeMap = {
-        sm: { container: "w-12 h-12", text: "text-xs", label: "text-[10px]" },
-        md: { container: "w-16 h-16", text: "text-sm", label: "text-xs" },
-        lg: { container: "w-20 h-20", text: "text-base", label: "text-xs" },
-    };
+        sm: {
+            box: "h-12 w-12",
+            viewBox: 40,
+            r: 16,
+            stroke: 2,
+            pct: "text-[10px] font-semibold leading-none",
+            sub: "text-[7px] font-medium leading-none",
+            ratio: "text-[9px] font-semibold tabular-nums",
+        },
+        md: {
+            box: "h-[5.5rem] w-[5.5rem]",
+            viewBox: 40,
+            r: 16,
+            stroke: 2.5,
+            pct: "text-xs font-bold leading-none tracking-tight",
+            sub: "text-[9px] font-medium leading-none text-slate-500 dark:text-slate-400",
+            ratio: "text-[10px] font-semibold tabular-nums",
+        },
+        lg: {
+            box: "h-24 w-24",
+            viewBox: 40,
+            r: 16,
+            stroke: 2.5,
+            pct: "text-sm font-extrabold leading-none",
+            sub: "text-[10px] font-medium leading-none",
+            ratio: "text-xs font-semibold tabular-nums",
+        },
+    } as const;
 
-    const dimensions = sizeMap[size];
-    const circumference = 2 * Math.PI * 18; // r=18 for a 40px diameter circle
+    const s = sizeMap[size];
+    const c = s.viewBox / 2;
+    const circumference = 2 * Math.PI * s.r;
     const offset = circumference * ((100 - percentage) / 100);
+    // stroke color for SVG — bg-* on circle stroke doesn't work; use currentColor
+    const strokeClass =
+        percentage === 100
+            ? "text-emerald-500 dark:text-emerald-400"
+            : percentage >= 85
+              ? "text-amber-500 dark:text-amber-400"
+              : "text-red-500 dark:text-red-400";
 
     return (
-        <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-col items-center gap-1.5">
             <div
                 className={cn(
-                    "relative flex items-center justify-center rounded-full ring-2",
-                    dimensions.container,
+                    "relative flex items-center justify-center rounded-full p-0.5 ring-1",
+                    s.box,
                     colors.ring,
-                    "bg-gray-50 dark:bg-slate-800"
+                    "bg-gradient-to-b from-white to-slate-50/90 shadow-sm ring-inset dark:from-slate-800 dark:to-slate-900/90"
                 )}
             >
                 <svg
-                    viewBox="0 0 40 40"
+                    viewBox={`0 0 ${s.viewBox} ${s.viewBox}`}
                     className="absolute -rotate-90"
                     style={{ width: "100%", height: "100%" }}
                 >
-                    {/* Background circle */}
                     <circle
-                        cx="20"
-                        cy="20"
-                        r="18"
+                        cx={c}
+                        cy={c}
+                        r={s.r}
                         fill="none"
                         stroke="currentColor"
-                        strokeWidth="2"
-                        className="text-gray-200 dark:text-slate-700"
+                        strokeWidth={s.stroke}
+                        className="text-slate-200/90 dark:text-slate-600"
                     />
-                    {/* Progress circle */}
                     <circle
-                        cx="20"
-                        cy="20"
-                        r="18"
+                        cx={c}
+                        cy={c}
+                        r={s.r}
                         fill="none"
                         stroke="currentColor"
-                        strokeWidth="2.5"
+                        strokeWidth={s.stroke + 0.2}
                         strokeDasharray={circumference}
                         strokeDashoffset={offset}
                         strokeLinecap="round"
-                        className={cn(colors.bg, "transition-all duration-500 ease-out")}
-                        style={animated ? { "--offset": offset } as React.CSSProperties : undefined}
+                        className={cn(
+                            strokeClass,
+                            animated && "transition-[stroke-dashoffset] duration-500 ease-out",
+                        )}
                     />
                 </svg>
                 
                 {/* Center text */}
-                <div className="flex flex-col items-center text-center">
-                    <span className={cn(dimensions.text, "font-bold", colors.text)}>
-                        {Math.round(percentage)}%
-                    </span>
-                    {size !== "sm" && (
-                        <span className={cn(dimensions.label, "text-gray-500 dark:text-gray-400")}>
-                            healthy
-                        </span>
-                    )}
+                <div className="flex flex-col items-center justify-center px-1.5 text-center">
+                    <span className={cn(s.pct, colors.text)}>{Math.round(percentage)}%</span>
+                    {size !== "sm" && <span className={cn("mt-0.5", s.sub)}>healthy</span>}
                 </div>
             </div>
 
             {showLabel && size !== "sm" && (
-                <div className="text-center text-xs text-gray-600 dark:text-gray-400">
-                    <span className="font-semibold">{healthyCount}</span>
-                    <span className="text-gray-400 dark:text-gray-600">/</span>
+                <div
+                    className={cn(
+                        "text-center text-slate-500 dark:text-slate-400",
+                        s.ratio
+                    )}
+                >
+                    <span className="text-slate-700 dark:text-slate-200">{healthyCount}</span>
+                    <span className="text-slate-300 dark:text-slate-600">/</span>
                     <span>{totalPipelines}</span>
                 </div>
             )}
