@@ -6,6 +6,7 @@ import { Database } from "lucide-react";
 import useSWR, { useSWRConfig } from "swr";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
+import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
 import { AiPerformanceSummary } from "@/components/AiPerformanceSummary";
 import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -306,7 +307,7 @@ export function DashboardHomePage() {
         return (
             <PageShell>
                 <EmptyState
-                    icon={<Database className="h-12 w-12" />}
+                    icon={<Database className="h-5 w-5" />}
                     title="No workspace"
                     description="We couldn't load a workspace for your account. Try refreshing or contact support."
                 />
@@ -319,12 +320,21 @@ export function DashboardHomePage() {
             return (
                 <PageShell>
                     <EmptyState
-                        icon={<Database className="h-12 w-12" />}
+                        icon={<Database className="h-5 w-5" />}
                         title="No sources connected"
-                        description="Connect TikTok, Meta, Google Ads, or Shopee to start syncing data into your workspace."
+                        description="Connect an ad platform or marketplace source. After that, add a destination (like Google Sheets) so your first sync has somewhere to land."
                         primaryAction={
                             <Link href="/sources" className={primaryButtonLinkClassName} onClick={() => trackEvent("source_connect_clicked", { from: "dashboard_empty" })}>
                                 Connect a source
+                            </Link>
+                        }
+                        secondaryAction={
+                            <Link
+                                href="/destinations"
+                                className={secondaryButtonLinkClassName}
+                                onClick={() => trackEvent("destinations_opened", { from: "dashboard_empty_secondary" })}
+                            >
+                                Add a destination
                             </Link>
                         }
                     />
