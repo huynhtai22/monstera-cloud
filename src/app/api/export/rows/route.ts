@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { shopeeDataClient } from "@/lib/shopee";
 import { safeDecrypt } from "@/lib/encryption";
+import { verifyApiKey } from "@/lib/api-key-utils";
 import { logger } from "@/lib/logger";
 
 /**
@@ -25,10 +26,7 @@ export async function GET(request: Request) {
         const apiKeyString = authHeader.split(" ")[1];
 
         // 1. Authenticate API Key
-        const apiKey = await prisma.apiKey.findUnique({
-            where: { key: apiKeyString },
-            include: { workspace: true }
-        });
+        const apiKey = await verifyApiKey(prisma, apiKeyString);
 
         if (!apiKey) {
             return NextResponse.json({ error: "Invalid API Key" }, { status: 401 });

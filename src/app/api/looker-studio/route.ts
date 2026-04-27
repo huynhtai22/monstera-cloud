@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
+import { verifyApiKey } from "@/lib/api-key-utils";
 import { logger } from "@/lib/logger";
 
 const UPSTASH_AVAILABLE = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
@@ -137,10 +138,7 @@ export async function GET(req: NextRequest) {
     }
     else {
       // Looker Studio connector: API key auth
-      const keyRecord = await prisma.apiKey.findUnique({
-        where: { key: apiKey },
-        include: { workspace: true },
-      });
+      const keyRecord = await verifyApiKey(prisma, apiKey);
       if (!keyRecord) {
         return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
       }

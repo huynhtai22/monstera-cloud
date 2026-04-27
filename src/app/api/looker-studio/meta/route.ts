@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { verifyApiKey } from "@/lib/api-key-utils";
 import { Redis } from "@upstash/redis";
 import { logger } from "@/lib/logger";
 
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized. Missing API key." }, { status: 401 });
     }
 
-    const keyRecord = await prisma.apiKey.findUnique({ where: { key: apiKey } });
+    const keyRecord = await verifyApiKey(prisma, apiKey);
     if (!keyRecord) return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
 
     const workspaceId = keyRecord.workspaceId;

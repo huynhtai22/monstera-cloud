@@ -367,24 +367,84 @@ export default function MarketingHomePage() {
                 </div>
             </section>
 
-            {/* ── DEMO PLACEHOLDER ───────────────────────────── */}
+            {/* ── PRODUCT DEMO ───────────────────────────── */}
             <section className="py-24 px-4 sm:px-6 lg:px-8 border-b border-white/5 relative bg-[#09090b]">
                 <div className="max-w-5xl mx-auto">
                     <div className="text-center mb-12">
                         <p className="font-mono text-[10px] text-cyan-500/60 uppercase tracking-widest mb-4">See it in action</p>
                         <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight">Set up once. Never export CSVs again.</h2>
                     </div>
-                    {/* Placeholder for real product UI / GIF */}
-                    <div className="aspect-video relative rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden flex flex-col items-center justify-center group shadow-2xl">
+                    {/* Live product UI mockup */}
+                    <div className="aspect-video relative rounded-2xl border border-white/10 bg-[#0f1115] overflow-hidden shadow-2xl">
                         <div className="absolute inset-0 bg-cyan-500/5 blur-[100px] pointer-events-none" />
-                        <div className="text-center z-10 transition-opacity opacity-70 group-hover:opacity-100 p-8">
-                            <div className="w-16 h-16 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center mx-auto mb-4">
-                                <span className="font-mono text-cyan-300 text-xs">GIF</span>
+                        <div className="relative z-10 h-full flex flex-col">
+                            {/* Fake browser chrome */}
+                            <div className="h-8 bg-[#16181d] border-b border-white/5 flex items-center px-3 gap-2">
+                                <div className="flex gap-1.5">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
+                                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+                                    <div className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
+                                </div>
+                                <div className="flex-1 mx-4">
+                                    <div className="h-4 bg-white/5 rounded text-[9px] text-gray-500 flex items-center justify-center font-mono">console.monsteracloud.com</div>
+                                </div>
                             </div>
-                            <p className="text-gray-300 font-semibold mb-2">Product UI Demo</p>
-                            <p className="text-gray-500 text-xs max-w-xs mx-auto leading-relaxed mt-1">
-                                [Placeholder] Add a 10–15s real usage GIF demo or a high-res application screenshot here to build immediate product trust.
-                            </p>
+                            {/* Fake dashboard content */}
+                            <div className="flex-1 p-6 grid grid-cols-12 gap-4">
+                                <div className="col-span-3 bg-[#13151a] rounded-xl border border-white/5 p-4 space-y-3">
+                                    <div className="h-2 w-20 bg-white/10 rounded" />
+                                    <div className="h-2 w-28 bg-white/5 rounded" />
+                                    <div className="h-2 w-24 bg-white/5 rounded" />
+                                    <div className="mt-4 h-8 bg-cyan-500/20 rounded-lg border border-cyan-500/30" />
+                                </div>
+                                <div className="col-span-9 space-y-4">
+                                    <div className="grid grid-cols-4 gap-3">
+                                        <div className="bg-[#13151a] rounded-xl border border-white/5 p-4">
+                                            <div className="text-[10px] text-gray-500 mb-2">Impressions</div>
+                                            <div className="text-lg font-bold text-white">2.4M</div>
+                                            <div className="text-[10px] text-emerald-400 mt-1">+12.3%</div>
+                                        </div>
+                                        <div className="bg-[#13151a] rounded-xl border border-white/5 p-4">
+                                            <div className="text-[10px] text-gray-500 mb-2">Clicks</div>
+                                            <div className="text-lg font-bold text-white">84.2K</div>
+                                            <div className="text-[10px] text-emerald-400 mt-1">+8.7%</div>
+                                        </div>
+                                        <div className="bg-[#13151a] rounded-xl border border-white/5 p-4">
+                                            <div className="text-[10px] text-gray-500 mb-2">Spend</div>
+                                            <div className="text-lg font-bold text-white">$14.2K</div>
+                                            <div className="text-[10px] text-rose-400 mt-1">-3.1%</div>
+                                        </div>
+                                        <div className="bg-[#13151a] rounded-xl border border-white/5 p-4">
+                                            <div className="text-[10px] text-gray-500 mb-2">ROAS</div>
+                                            <div className="text-lg font-bold text-white">4.2x</div>
+                                            <div className="text-[10px] text-emerald-400 mt-1">+0.8x</div>
+                                        </div>
+                                    </div>
+                                    <div className="bg-[#13151a] rounded-xl border border-white/5 p-4 flex-1">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div className="h-2 w-32 bg-white/10 rounded" />
+                                            <div className="h-2 w-16 bg-cyan-500/30 rounded" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="h-8 bg-white/[0.03] rounded-lg flex items-center px-3 gap-3">
+                                                <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                                                <div className="h-2 w-24 bg-white/10 rounded" />
+                                                <div className="ml-auto h-2 w-12 bg-white/5 rounded" />
+                                            </div>
+                                            <div className="h-8 bg-white/[0.03] rounded-lg flex items-center px-3 gap-3">
+                                                <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                                                <div className="h-2 w-32 bg-white/10 rounded" />
+                                                <div className="ml-auto h-2 w-12 bg-white/5 rounded" />
+                                            </div>
+                                            <div className="h-8 bg-white/[0.03] rounded-lg flex items-center px-3 gap-3">
+                                                <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                                                <div className="h-2 w-28 bg-white/10 rounded" />
+                                                <div className="ml-auto h-2 w-12 bg-white/5 rounded" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

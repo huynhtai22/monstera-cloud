@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Redis } from "@upstash/redis";
 import prisma from "@/lib/prisma";
+import { verifyApiKey } from "@/lib/api-key-utils";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "@/lib/logger";
 
@@ -12,7 +13,7 @@ async function resolveWorkspaceFromRequest(req: NextRequest) {
   const apiKey = authHeader && authHeader.startsWith("Bearer ") ? authHeader.substring(7).trim() : req.nextUrl.searchParams.get("apiKey")?.trim() ?? null;
   if (!apiKey) return null;
   // Basic API key auth only for jobs (Google JWT not supported here)
-  const keyRecord = await prisma.apiKey.findUnique({ where: { key: apiKey } });
+  const keyRecord = await verifyApiKey(prisma, apiKey);
   if (!keyRecord) return null;
   return { workspaceId: keyRecord.workspaceId, apiKeyId: keyRecord.id };
 }

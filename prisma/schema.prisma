@@ -198,6 +198,8 @@ model TransformationRule {
 model ApiKey {
   id          String    @id @default(cuid())
   key         String    @unique
+  keyHash     String?   @unique
+  keyPrefix   String?
   name        String    @default("Default Key")
   workspaceId String
   createdAt   DateTime  @default(now())

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import crypto from "crypto";
 import { toPublicApiKeyRow } from "@/lib/mask-api-key";
+import { hashApiKey, getKeyPrefix } from "@/lib/api-key-utils";
 import { logger } from "@/lib/logger";
 
 export async function GET(request: Request) {
@@ -78,10 +79,14 @@ export async function POST(request: Request) {
         // Generate a secure API Key
         const rawKey = crypto.randomBytes(32).toString('hex');
         const formattedKey = `mc_${rawKey}`;
+        const keyHash = hashApiKey(formattedKey);
+        const keyPrefix = getKeyPrefix(formattedKey);
 
         const newKey = await prisma.apiKey.create({
             data: {
                 key: formattedKey,
+                keyHash,
+                keyPrefix,
                 name: name || "Default Extension Key",
                 workspaceId: workspaceId
             }
@@ -95,6 +100,7 @@ export async function POST(request: Request) {
                 workspaceId: newKey.workspaceId,
                 createdAt: newKey.createdAt,
                 key: formattedKey,
+                keyPrefix,
             },
             { status: 201 }
         );

@@ -49,7 +49,7 @@ export async function POST(request: Request) {
 
     const keyRow = await prisma.apiKey.findFirst({
       where: { id: keyId, workspaceId },
-      select: { id: true, key: true, name: true },
+      select: { id: true, key: true, name: true, keyPrefix: true },
     });
     if (!keyRow) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -97,6 +97,7 @@ export async function POST(request: Request) {
       id: keyRow.id,
       name: keyRow.name,
       key: keyRow.key,
+      keyPrefix: keyRow.keyPrefix,
     });
   } catch (error) {
     logger.error("[POST api-keys/reveal]", error);

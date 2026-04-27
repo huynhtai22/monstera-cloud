@@ -7,7 +7,7 @@ import { Providers } from "@/components/SWRProvider";
 import { LiveChatWidget } from "@/components/LiveChatWidget";
 import { MetaPixelAnalytics } from "@/components/MetaPixelAnalytics";
 
-const GTM_ID = "GTM-KMLZHNVV";
+const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID?.trim() || "GTM-KMLZHNVV";
 
 /** Meta Pixel — override via NEXT_PUBLIC_META_PIXEL_ID in Vercel */
 const META_PIXEL_ID =

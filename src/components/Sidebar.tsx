@@ -20,7 +20,7 @@ import {
     Globe,
     Users,
 } from "lucide-react";
-import useSWR from "swr";
+import useSWR, { mutate } from "swr";
 import { useSession, signOut } from "next-auth/react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { trackEvent } from "@/lib/analytics-events";
@@ -187,6 +187,22 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                         <div className="my-1 h-px bg-gray-100 dark:bg-slate-700" />
                         <button
                             type="button"
+                            onClick={async () => {
+                                const name = typeof window !== "undefined" ? window.prompt("Workspace name:") : null;
+                                if (!name || !name.trim()) return;
+                                try {
+                                    const res = await fetch("/api/workspaces", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ name: name.trim() }),
+                                    });
+                                    if (res.ok) {
+                                        mutate("/api/workspaces");
+                                    }
+                                } catch {
+                                    // silently fail
+                                }
+                            }}
                             className="flex w-full items-center rounded-lg px-2 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-slate-700"
                         >
                             <div className="mr-2 flex h-6 w-6 items-center justify-center rounded border border-dashed border-gray-300 dark:border-gray-500">
