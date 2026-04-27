@@ -71,22 +71,30 @@ export function SectionOverviewCard({
     return (
         <section aria-labelledby={titleId}
             className={cn(
-                "group relative flex h-full flex-col justify-between rounded-2xl border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md",
+                "group relative flex h-full flex-col justify-between rounded-2xl border-l-4 pl-4 border transition-all",
+                "shadow-md hover:shadow-lg hover:-translate-y-1 duration-300 ease-out",
+                "pillar-fade",
                 emphasis
-                    ? "border-cyan-200 bg-gradient-to-br from-cyan-50/80 via-white/80 to-white/80 dark:border-cyan-500/30 dark:from-cyan-500/10 dark:via-slate-900/60 dark:to-slate-900/60"
-                    : "border-gray-200/80 bg-white/80 dark:border-slate-700/60 dark:bg-slate-900/60",
+                    ? "border-l-cyan-500 border-cyan-200 bg-gradient-to-br from-cyan-50/80 via-white/80 to-white/80 dark:border-l-cyan-400 dark:border-cyan-500/30 dark:from-cyan-500/10 dark:via-slate-900/60 dark:to-slate-900/60 shadow-cyan-100/40 dark:shadow-cyan-950/40"
+                    : "border-l-gray-300 border-gray-200/80 bg-gradient-to-br from-white/95 to-gray-50/80 dark:border-l-slate-600 dark:border-slate-700/60 dark:from-slate-900/70 dark:to-slate-800/50",
                 className
             )}
         >
-            <div>
+            {/* Accent glow gradient on hover (emphasis only) */}
+            {emphasis && (
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-cyan-400/0 to-cyan-500/0 group-hover:from-cyan-400/5 group-hover:to-cyan-500/5 transition-all duration-300" />
+            )}
+
+            <div className="relative z-10">
                 <div className="mb-3 space-y-1">
                     <div className="flex items-center gap-2">
                         <div
                             className={cn(
-                                "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border shadow-sm",
+                                "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border shadow-sm transition-all",
+                                "group-hover:shadow-md group-hover:scale-110 duration-300",
                                 emphasis
-                                    ? "border-cyan-200 bg-cyan-100/70 text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-300"
-                                    : "border-gray-200 bg-white text-gray-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
+                                    ? "border-cyan-200 bg-gradient-to-br from-cyan-100/80 to-cyan-50/60 text-cyan-700 dark:border-cyan-500/30 dark:from-cyan-500/20 dark:to-cyan-500/5 dark:text-cyan-300"
+                                    : "border-gray-200 bg-gradient-to-br from-gray-100 to-white text-gray-700 dark:border-slate-700 dark:from-slate-800 dark:to-slate-700/80 dark:text-slate-200",
                                 accentClassName
                             )}
                         >
@@ -114,21 +122,20 @@ export function SectionOverviewCard({
                         {safeItems.slice(0, 3).map((item) => (
                             <li
                                 key={item.id}
-                                className="flex items-center gap-2 rounded-lg px-1.5 py-1 text-sm text-gray-700 dark:text-gray-200"
-                                title={item.sub} // P1: Tooltip showing full status/sub text
+                                className="flex items-center gap-2 rounded-lg px-1.5 py-1 text-sm text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50/60 dark:hover:bg-slate-800/60"
+                                title={item.sub}
                             >
                                 {item.logoSrc ? (
-                                    // P1: Logo with account count badge for multi-account sources
                                     <div className="relative shrink-0">
                                         <img
                                             src={item.logoSrc}
                                             alt=""
                                             width={16}
                                             height={16}
-                                            className="h-4 w-4 object-contain"
+                                            className="h-4 w-4 object-contain transition-transform group-hover:scale-110 duration-200"
                                         />
                                         {item.accountCount && item.accountCount > 1 && (
-                                            <span className="absolute -right-1.5 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-cyan-500 px-0.5 text-[7px] font-bold text-white">
+                                            <span className="absolute -right-1.5 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-cyan-500 px-0.5 text-[7px] font-bold text-white shadow-sm">
                                                 {item.accountCount}
                                             </span>
                                         )}
@@ -137,7 +144,6 @@ export function SectionOverviewCard({
                                     <StatusDot status={item.status} isStale={item.sub?.includes("may need attention")} />
                                 )}
                                 <span className="truncate font-medium">{item.label}</span>
-                                {/* P1: Account hint for quick identification */}
                                 {item.accountHint && (
                                     <span className="ml-1 truncate text-[10px] text-gray-400 dark:text-gray-500 max-w-[60px]">
                                         {item.accountHint}

@@ -51,16 +51,21 @@
     --radius-md: 8px;
     --radius-lg: 12px;
 
-    /* Shadows */
+    /* Shadows — enhanced depth */
     --shadow-card: 0 6px 18px rgba(2,6,23,0.06);
     --shadow-elevated: 0 12px 32px rgba(2,6,23,0.08);
+    --shadow-glow: 0 0 24px rgba(8, 145, 178, 0.12);
+    --shadow-soft: 0 4px 12px rgba(2,6,23,0.04);
+    --shadow-depth: 0 20px 48px rgba(2,6,23,0.12);
 
     /* Animation durations */
     --dur-short: 180ms;
     --dur-medium: 320ms;
+    --dur-long: 500ms;
     --anim-short: 180ms;
     --anim-medium: 320ms;
     --anim-ease: cubic-bezier(.2,.9,.2,1);
+    --anim-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dark {
@@ -90,11 +95,13 @@ html.disable-transitions *::after {
     transition: none !important;
 }
 
-/* Subtle staggered fade/rise for dashboard pillar cards */
+/* ── Enhanced Dashboard Animations ──────────────────────────────────────── */
+
+/* Staggered fade/rise for dashboard cards */
 @keyframes pillarFadeUp {
     from {
         opacity: 0;
-        transform: translateY(6px);
+        transform: translateY(8px);
     }
     to {
         opacity: 1;
@@ -103,11 +110,73 @@ html.disable-transitions *::after {
 }
 
 .pillar-fade {
-    animation: pillarFadeUp 420ms ease-out both;
+    animation: pillarFadeUp 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Metric card entrance with scale */
+@keyframes metricCardEntry {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.metric-card-enter {
+    animation: metricCardEntry 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Smooth gauge circle animation */
+@keyframes gaugeStroke {
+    from {
+        stroke-dashoffset: 100%;
+    }
+    to {
+        stroke-dashoffset: var(--offset);
+    }
+}
+
+.gauge-animate {
+    animation: gaugeStroke 800ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Subtle pulse for accent elements */
+@keyframes accentPulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.accent-pulse {
+    animation: accentPulse 3s ease-in-out infinite;
+}
+
+/* Gentle drift for floating elements */
+@keyframes gentleDrift {
+    0%, 100% {
+        transform: translateY(0px);
+    }
+    50% {
+        transform: translateY(-2px);
+    }
+}
+
+.drift-float {
+    animation: gentleDrift 4s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .pillar-fade {
+    .pillar-fade,
+    .metric-card-enter,
+    .gauge-animate,
+    .accent-pulse,
+    .drift-float {
         animation: none;
     }
 }

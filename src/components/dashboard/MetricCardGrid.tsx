@@ -58,22 +58,45 @@ export function MetricCardGrid({ snapshots }: { snapshots: Snapshot[] }) {
 
     return (
         <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {cards.map((c) => (
-                <div key={c.label} className={cn(tokens.card, "p-5")}>
-                    <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{c.label}</div>
-                    <div className="mt-2 flex items-end justify-between gap-2">
-                        <div className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">{c.value}</div>
-                        {c.delta ? (
-                            <span
-                                className={cn(
-                                    "inline-flex items-center gap-0.5 text-xs font-semibold",
-                                    c.delta.positive ? "text-cyan-600 dark:text-cyan-400" : "text-red-600 dark:text-red-400"
-                                )}
-                            >
-                                {c.delta.positive ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-                                {c.delta.label}
-                            </span>
-                        ) : null}
+            {cards.map((c, idx) => (
+                <div
+                    key={c.label}
+                    className={cn(
+                        tokens.card,
+                        "group relative overflow-hidden p-5",
+                        "border-l-4 border-primary/40",
+                        "shadow-md hover:shadow-lg hover:border-primary/80",
+                        "bg-gradient-to-br from-white/95 to-gray-50/80 dark:from-slate-900/80 dark:to-slate-800/60",
+                        "transition-all duration-300 ease-out hover:-translate-y-1",
+                        "metric-card-enter"
+                    )}
+                    style={{ animationDelay: `${idx * 80}ms` }}
+                >
+                    {/* Accent glow on hover */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/0 to-primary/0 group-hover:from-primary/5 group-hover:to-primary/2 transition-all duration-300" />
+                    
+                    <div className="relative z-10">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            {c.label}
+                        </div>
+                        <div className="mt-3 flex items-end justify-between gap-2">
+                            <div className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
+                                {c.value}
+                            </div>
+                            {c.delta ? (
+                                <span
+                                    className={cn(
+                                        "inline-flex items-center gap-0.5 text-xs font-bold transition-all duration-200",
+                                        c.delta.positive
+                                            ? "text-emerald-600 dark:text-emerald-400"
+                                            : "text-red-600 dark:text-red-400"
+                                    )}
+                                >
+                                    {c.delta.positive ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                                    {c.delta.label}
+                                </span>
+                            ) : null}
+                        </div>
                     </div>
                 </div>
             ))}
