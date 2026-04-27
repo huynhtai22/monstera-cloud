@@ -61,33 +61,54 @@ export async function POST(req: Request, context: { params: any }) {
         // Interactive runs are queued and executed by the cron worker.
         // This keeps heavy ETL work outside the end-user request lifecycle.
         if (!isCron) {
-            const existingJob = await (prisma.syncJob as any).findFirst({
-                where: {
-                    pipelineId: pipeline.id,
-                    status: { in: ["queued", "running"] },
-                },
-                select: { id: true, status: true, scheduledAt: true },
-            });
+            let queuedJob: { id: string; status: string; scheduledAt: Date } | null = null;
 
-            if (existingJob) {
-                return NextResponse.json({
-                    success: true,
-                    queued: true,
-                    message: "A sync is already queued or running for this pipeline.",
-                    job: existingJob,
-                }, { status: 202 });
+            try {
+                queuedJob = await (prisma.syncJob as any).create({
+                    data: {
+                        pipelineId: pipeline.id,
+                        activeKey: pipeline.id,
+                        userId: userIdForLimits,
+                        plan: user?.plan ?? "free",
+                        status: "queued",
+                        priority: limits.priority,
+                        scheduledAt: new Date(),
+                    },
+                    select: { id: true, status: true, scheduledAt: true },
+                });
+            } catch (err: any) {
+                // Unique activeKey collision means another request already queued/running this pipeline.
+                if (err?.code === "P2002") {
+                    const existingJob = await (prisma.syncJob as any).findFirst({
+                        where: {
+                            pipelineId: pipeline.id,
+                            status: { in: ["queued", "running"] },
+                        },
+                        select: { id: true, status: true, scheduledAt: true },
+                    });
+
+                    if (existingJob) {
+                        logger.info(`[pipeline/run] enqueue skipped due to active job for pipeline ${pipeline.id}`, {
+                            pipelineId: pipeline.id,
+                            jobId: existingJob.id,
+                            status: existingJob.status,
+                        });
+                        return NextResponse.json({
+                            success: true,
+                            queued: true,
+                            message: "A sync is already queued or running for this pipeline.",
+                            job: existingJob,
+                        }, { status: 202 });
+                    }
+                }
+
+                throw err;
             }
 
-            const queuedJob = await (prisma.syncJob as any).create({
-                data: {
-                    pipelineId: pipeline.id,
-                    userId: userIdForLimits,
-                    plan: user?.plan ?? "free",
-                    status: "queued",
-                    priority: limits.priority,
-                    scheduledAt: new Date(),
-                },
-                select: { id: true, status: true, scheduledAt: true },
+            logger.info(`[pipeline/run] queued sync job for pipeline ${pipeline.id}`, {
+                pipelineId: pipeline.id,
+                jobId: queuedJob?.id,
+                priority: limits.priority,
             });
 
             return NextResponse.json({

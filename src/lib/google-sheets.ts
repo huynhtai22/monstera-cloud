@@ -232,17 +232,30 @@ export async function writeToSheetChunked(
   chunkSize: number = 2000,
 ): Promise<{ updatedRows: number }> {
   const token = await refreshIfNeeded(userId);
+  const stagingName = `__staging_${sheetName}_${Date.now()}`;
 
-  await fetch(
-    `${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent(sheetName)}:clear`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+  // Create staging tab to avoid destructive clear-first writes on the live tab.
+  const addSheetRes = await fetch(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
     },
-  );
+    body: JSON.stringify({
+      requests: [{ addSheet: { properties: { title: stagingName } } }],
+    }),
+  });
+  const addSheetData = await addSheetRes.json();
+  if (addSheetData.error) {
+    throw new Error(`Sheets staging tab create error: ${addSheetData.error.message}`);
+  }
+  const stagingSheetId = addSheetData.replies?.[0]?.addSheet?.properties?.sheetId as number | undefined;
+  if (typeof stagingSheetId !== 'number') {
+    throw new Error('Sheets staging tab create error: missing staging sheet id');
+  }
 
-  // Header write
-  const headerRange = `${sheetName}!A1`;
+  // Header write to staging tab
+  const headerRange = `${stagingName}!A1`;
   const headerRes = await fetch(
     `${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent(headerRange)}?valueInputOption=RAW`,
     {
@@ -267,7 +280,7 @@ export async function writeToSheetChunked(
     if (chunk.length === 0) continue;
 
     const appendRes = await fetch(
-      `${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent(`${sheetName}!A1`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      `${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent(`${stagingName}!A1`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
       {
         method: 'POST',
         headers: {
@@ -284,6 +297,54 @@ export async function writeToSheetChunked(
     }
 
     updatedRows += appendData.updates?.updatedRows || chunk.length;
+  }
+
+  // Swap staging tab into the live tab name.
+  const metaRes = await fetch(`${SHEETS_BASE}/${spreadsheetId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const metaData = await metaRes.json();
+  if (metaData.error) {
+    throw new Error(`Sheets metadata read error: ${metaData.error.message}`);
+  }
+
+  const sheets = (metaData.sheets as any[]) || [];
+  const currentTarget = sheets.find((s: any) => s?.properties?.title === sheetName);
+  const currentTargetId = currentTarget?.properties?.sheetId as number | undefined;
+  const backupName = `__backup_${sheetName}_${Date.now()}`;
+
+  const swapRequests: any[] = [];
+  if (typeof currentTargetId === 'number') {
+    swapRequests.push({
+      updateSheetProperties: {
+        properties: { sheetId: currentTargetId, title: backupName },
+        fields: 'title',
+      },
+    });
+  }
+
+  swapRequests.push({
+    updateSheetProperties: {
+      properties: { sheetId: stagingSheetId, title: sheetName },
+      fields: 'title',
+    },
+  });
+
+  if (typeof currentTargetId === 'number') {
+    swapRequests.push({ deleteSheet: { sheetId: currentTargetId } });
+  }
+
+  const swapRes = await fetch(`${SHEETS_BASE}/${spreadsheetId}:batchUpdate`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ requests: swapRequests }),
+  });
+  const swapData = await swapRes.json();
+  if (swapData.error) {
+    throw new Error(`Sheets staging swap error: ${swapData.error.message}`);
   }
 
   return { updatedRows };

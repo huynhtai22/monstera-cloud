@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import prisma from "@/lib/prisma";
 import { getPlanLimits } from "@/lib/plan-config";
 import { logger } from "@/lib/logger";
@@ -16,6 +17,7 @@ import { logger } from "@/lib/logger";
 
 const BATCH_SIZE = 10;
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+const LEASE_MS = 5 * 60 * 1000;
 
 export async function GET(req: Request) {
   // Verify this was called by Vercel Cron and not a public caller
@@ -25,6 +27,26 @@ export async function GET(req: Request) {
   }
 
   const now = new Date();
+
+  // Recover jobs whose worker lease expired (worker crashed/aborted).
+  const recovered = await (prisma.syncJob as any).updateMany({
+    where: {
+      status: "running",
+      leaseExpiresAt: { lt: now },
+    },
+    data: {
+      status: "queued",
+      startedAt: null,
+      leaseId: null,
+      leaseExpiresAt: null,
+      heartbeatAt: null,
+      errorMsg: "Lease expired; requeued for retry",
+    },
+  });
+
+  if (recovered.count > 0) {
+    logger.warn(`[SYNC_JOBS_CRON] Recovered ${recovered.count} expired lease jobs`);
+  }
 
   // Enqueue due pipelines for a ~4-hour cadence (respects plan cooldowns).
   // This keeps the queue filled even if nothing explicitly enqueues jobs elsewhere.
@@ -67,7 +89,7 @@ export async function GET(req: Request) {
     pipelinesWithPendingJobs.map((job: { pipelineId: string }) => job.pipelineId)
   );
 
-  const jobsToCreate: { pipelineId: string; userId: string; plan: string; status: string; priority: number; scheduledAt: Date }[] = [];
+  const jobsToCreate: { pipelineId: string; activeKey: string; userId: string; plan: string; status: string; priority: number; scheduledAt: Date }[] = [];
 
   for (const p of pipelines) {
     const ownerId = p.workspace?.ownerId;
@@ -84,6 +106,7 @@ export async function GET(req: Request) {
 
     jobsToCreate.push({
       pipelineId: p.id,
+      activeKey: p.id,
       userId: ownerId,
       plan: ownerPlan,
       status: "queued",
@@ -93,7 +116,7 @@ export async function GET(req: Request) {
   }
 
   if (jobsToCreate.length > 0) {
-    await (prisma.syncJob as any).createMany({ data: jobsToCreate });
+    await (prisma.syncJob as any).createMany({ data: jobsToCreate, skipDuplicates: true });
   }
 
   // Claim up to BATCH_SIZE queued jobs that are due, highest priority first
@@ -117,17 +140,28 @@ export async function GET(req: Request) {
   // Claim jobs with compare-and-set updates so parallel cron invocations cannot double-run them.
   const claimedJobs: any[] = [];
   for (const job of jobs) {
+    const leaseId = randomUUID();
     const claim = await (prisma.syncJob as any).updateMany({
-      where: { id: job.id, status: "queued" },
-      data: { status: "running", startedAt: now },
+      where: {
+        id: job.id,
+        status: "queued",
+      },
+      data: {
+        status: "running",
+        startedAt: now,
+        leaseId,
+        leaseExpiresAt: new Date(Date.now() + LEASE_MS),
+        heartbeatAt: now,
+      },
     });
 
     if (claim.count === 1) {
-      claimedJobs.push(job);
+      claimedJobs.push({ ...job, leaseId });
     }
   }
 
   if (claimedJobs.length === 0) {
+    logger.info("[SYNC_JOBS_CRON] No jobs claimed after compare-and-set");
     return NextResponse.json({ processed: 0, message: "No jobs claimed" });
   }
 
@@ -154,7 +188,14 @@ export async function GET(req: Request) {
       if (res.ok) {
         await (prisma.syncJob as any).update({
           where: { id: job.id },
-          data: { status: "done", finishedAt: new Date() },
+          data: {
+            status: "done",
+            finishedAt: new Date(),
+            activeKey: null,
+            leaseId: null,
+            leaseExpiresAt: null,
+            heartbeatAt: new Date(),
+          },
         });
         results.push({ jobId: job.id, pipelineId: job.pipelineId, status: "done" });
       } else {
@@ -172,8 +213,12 @@ export async function GET(req: Request) {
               status: "queued",
               retryCount: nextRetryCount,
               scheduledAt: new Date(Date.now() + delayMs),
+              startedAt: null,
               finishedAt: null,
               errorMsg,
+              leaseId: null,
+              leaseExpiresAt: null,
+              heartbeatAt: new Date(),
             },
           });
           results.push({
@@ -185,7 +230,15 @@ export async function GET(req: Request) {
         } else {
           await (prisma.syncJob as any).update({
             where: { id: job.id },
-            data: { status: "failed", finishedAt: new Date(), errorMsg },
+            data: {
+              status: "failed",
+              finishedAt: new Date(),
+              errorMsg,
+              activeKey: null,
+              leaseId: null,
+              leaseExpiresAt: null,
+              heartbeatAt: new Date(),
+            },
           });
           results.push({ jobId: job.id, pipelineId: job.pipelineId, status: "failed", error: err.slice(0, 200) });
         }
@@ -204,8 +257,12 @@ export async function GET(req: Request) {
             status: "queued",
             retryCount: nextRetryCount,
             scheduledAt: new Date(Date.now() + delayMs),
+            startedAt: null,
             finishedAt: null,
             errorMsg: msg,
+            leaseId: null,
+            leaseExpiresAt: null,
+            heartbeatAt: new Date(),
           },
         });
         results.push({
@@ -217,7 +274,15 @@ export async function GET(req: Request) {
       } else {
         await (prisma.syncJob as any).update({
           where: { id: job.id },
-          data: { status: "failed", finishedAt: new Date(), errorMsg: msg },
+          data: {
+            status: "failed",
+            finishedAt: new Date(),
+            errorMsg: msg,
+            activeKey: null,
+            leaseId: null,
+            leaseExpiresAt: null,
+            heartbeatAt: new Date(),
+          },
         });
         results.push({ jobId: job.id, pipelineId: job.pipelineId, status: "failed", error: msg.slice(0, 200) });
       }

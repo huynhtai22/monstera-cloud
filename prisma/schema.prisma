@@ -212,6 +212,7 @@ model ApiKey {
 model SyncJob {
   id          String    @id @default(cuid())
   pipelineId  String
+  activeKey   String?   @unique
   userId      String
   plan        String    @default("free")
   status      String    @default("queued")  // queued | running | done | failed
@@ -221,12 +222,16 @@ model SyncJob {
   scheduledAt DateTime
   startedAt   DateTime?
   finishedAt  DateTime?
+  leaseId     String?
+  leaseExpiresAt DateTime?
+  heartbeatAt DateTime?
   errorMsg    String?
   createdAt   DateTime  @default(now())
 
   pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 
   @@index([status, priority, scheduledAt])
+  @@index([status, leaseExpiresAt])
 }
 
 model CampaignMetric {

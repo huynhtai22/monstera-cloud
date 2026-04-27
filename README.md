@@ -49,8 +49,8 @@ SHOPEE_APP_SECRET="your-shopee-app-secret"
 # Cron / background sync
 CRON_SECRET="your-shared-cron-secret"
 
-# Optional object-storage backend for Data Explorer datasets
-# If omitted, local tmp/datalake storage is used.
+# Data Explorer storage backend
+# Required in production. Local tmp/datalake is development-only fallback.
 DATA_LAKE_BUCKET="your-s3-bucket"
 DATA_LAKE_PREFIX="datasets/"
 AWS_REGION="ap-southeast-1"
@@ -59,6 +59,7 @@ AWS_REGION="ap-southeast-1"
 
 ### Data Explorer Storage Backend
 - Default behavior uses local disk under `tmp/datalake` (development fallback).
+- Production uploads require `DATA_LAKE_BUCKET`; requests return `503` if not configured.
 - When `DATA_LAKE_BUCKET` is set, dataset uploads/reads use object storage (S3-compatible via AWS SDK).
 - Dataset IDs are owner-scoped (`<userId>_<uuid>`) and query access is enforced to that owner.
 

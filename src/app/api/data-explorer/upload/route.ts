@@ -23,6 +23,14 @@ export async function POST(req: Request) {
     }
 
     try {
+        if (process.env.NODE_ENV === 'production' && !usesObjectStorage()) {
+            logger.error('[DataExplorer] Upload blocked: DATA_LAKE_BUCKET is required in production');
+            return NextResponse.json(
+                { error: 'Data Explorer storage is not configured for production.' },
+                { status: 503 }
+            );
+        }
+
         // 2. Process multipart form payload
         const formData = await req.formData();
         const file = formData.get('file') as File | null;
