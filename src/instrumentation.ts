@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/nextjs";
+
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     // ── New Relic via OpenTelemetry OTLP ──────────────────────────────────────
@@ -54,3 +56,6 @@ export async function register() {
     await import("../sentry.edge.config");
   }
 }
+
+// Next.js App Router hook for capturing request errors (Sentry SDK expects this export).
+export const onRequestError = Sentry.captureRequestError;

@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 
+// Client-side Sentry initialization (replaces legacy sentry.client.config.ts)
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN ?? process.env.SENTRY_DSN,
   environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "development",
@@ -16,3 +17,5 @@ Sentry.init({
   // Don't capture errors in local development to avoid noise
   enabled: process.env.NODE_ENV !== "development",
 });
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
