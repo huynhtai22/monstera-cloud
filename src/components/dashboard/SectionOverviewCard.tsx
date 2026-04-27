@@ -71,7 +71,7 @@ export function SectionOverviewCard({
     return (
         <section aria-labelledby={titleId}
             className={cn(
-                "group relative flex h-full flex-col justify-between rounded-2xl border-l-4 pl-4 border transition-all",
+                "group relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border-l-4 border px-4 py-4 pl-3 transition-all",
                 "shadow-md hover:shadow-lg hover:-translate-y-1 duration-300 ease-out",
                 "pillar-fade",
                 emphasis
@@ -87,7 +87,7 @@ export function SectionOverviewCard({
 
             <div className="relative z-10">
                 <div className="mb-3 space-y-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-start gap-2">
                         <div
                             className={cn(
                                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border shadow-sm transition-all",
@@ -100,13 +100,18 @@ export function SectionOverviewCard({
                         >
                             {icon}
                         </div>
-                        <h3 id={titleId} className="min-w-0 flex-1 truncate text-sm font-bold text-gray-900 dark:text-white">{title}</h3>
+                        <h3 id={titleId} className="min-w-0 flex-1 truncate pt-0.5 text-sm font-bold leading-tight text-gray-900 dark:text-white">{title}</h3>
                         {kpi ? (
-                            <div className="shrink-0 text-right">
-                                <div className="text-2xl font-black leading-none tracking-tight text-gray-900 dark:text-white">
+                            <div
+                                className={cn(
+                                    "shrink-0 rounded-xl border px-2.5 py-1.5 text-right",
+                                    "border-gray-200/80 bg-white/60 shadow-sm backdrop-blur-sm dark:border-slate-600/60 dark:bg-slate-900/50",
+                                )}
+                            >
+                                <div className="text-xl font-black leading-none tracking-tight text-gray-900 tabular-nums dark:text-white sm:text-2xl">
                                     {kpi.value}
                                 </div>
-                                <div className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                                <div className="mt-0.5 text-[9px] font-bold uppercase leading-none tracking-widest text-gray-500 dark:text-gray-400">
                                     {kpi.label}
                                 </div>
                             </div>
