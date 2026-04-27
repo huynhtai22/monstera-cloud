@@ -25,11 +25,18 @@
 
 /* Design tokens and animation durations (moved from UI system modules) */
 :root {
-    /* Colors (component tokens use rgb(var(--color-...))) */
-    --color-bg: 255 255 255;
-    --color-fg: 15 23 42;
-    --color-primary: 8 145 178;
-    --color-primary-foreground: 255 255 255;
+        /*
+            UI system tokens (RGB triplets) — used by CSS Modules in src/components/ui/system/*.
+            NOTE: Do not override Tailwind's `--color-*` variables here; Tailwind v4 emits utilities
+            like `bg-primary` using `--color-primary` from @theme above.
+        */
+        --ui-bg-rgb: 255 255 255;
+        --ui-fg-rgb: 15 23 42;
+        --ui-border-rgb: 226 232 240; /* slate-200 */
+        --ui-muted-bg-rgb: 248 250 252; /* slate-50 */
+        --ui-muted-fg-rgb: 100 116 139; /* slate-500 */
+        --ui-primary-rgb: 8 145 178;
+        --ui-primary-foreground-rgb: 255 255 255;
 
     /* Spacing scale (base 4px) */
     --space-1: 4px;
@@ -37,6 +44,7 @@
     --space-3: 12px;
     --space-4: 16px;
     --space-5: 24px;
+    --space-card: 20px;
 
     /* Radii */
     --radius-sm: 6px;
@@ -61,6 +69,13 @@
     /* slate-900 */
     --foreground: #f1f5f9;
     /* slate-100 — slightly softer than pure white on black */
+
+    /* UI system tokens (RGB triplets) */
+    --ui-bg-rgb: 15 23 42;
+    --ui-fg-rgb: 241 245 249;
+    --ui-border-rgb: 51 65 85; /* slate-700 */
+    --ui-muted-bg-rgb: 30 41 59; /* slate-800 */
+    --ui-muted-fg-rgb: 148 163 184; /* slate-400 */
 }
 
 body {

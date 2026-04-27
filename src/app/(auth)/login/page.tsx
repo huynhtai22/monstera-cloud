@@ -27,6 +27,9 @@ function LoginContent() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const isRegistered = searchParams.get("registered") === "true";
 
+  const inputClassName =
+    "appearance-none block w-full px-5 py-4 border border-slate-200 dark:border-slate-700 rounded-md placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-ring/40 focus:border-primary-ring sm:text-[16px] bg-white dark:bg-slate-800 text-gray-900 dark:text-white transition-colors";
+
   useEffect(() => {
     if (status === "authenticated") {
       router.replace(afterLoginPath);
@@ -36,7 +39,7 @@ function LoginContent() {
   if (status === "loading") {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white dark:bg-slate-950">
-        <Loader2 className="w-8 h-8 animate-spin text-[#1ba177]" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -44,7 +47,7 @@ function LoginContent() {
   if (status === "authenticated") {
     return (
       <div className="flex items-center justify-center min-h-screen bg-white dark:bg-slate-950">
-        <Loader2 className="w-8 h-8 animate-spin text-[#1ba177]" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -177,7 +180,7 @@ function LoginContent() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="appearance-none block w-full px-5 py-4 border border-[#d2ddec] dark:border-slate-700 rounded-md placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#1ba177] focus:border-[#1ba177] sm:text-[16px] bg-[#f0f4f9] dark:bg-slate-800 text-gray-900 dark:text-white transition-colors"
+              className={inputClassName}
             />
           </div>
 
@@ -188,7 +191,7 @@ function LoginContent() {
               </label>
               <Link
                 href="/forgot-password"
-                className="text-sm text-[#1ba177] hover:underline font-medium"
+                className="text-sm text-primary hover:underline font-medium"
               >
                 Forgot password?
               </Link>
@@ -202,7 +205,7 @@ function LoginContent() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="appearance-none block w-full px-5 py-4 border border-[#d2ddec] dark:border-slate-700 rounded-md placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#1ba177] focus:border-[#1ba177] sm:text-[16px] bg-[#f0f4f9] dark:bg-slate-800 text-gray-900 dark:text-white transition-colors"
+              className={inputClassName}
             />
           </div>
 
@@ -212,7 +215,7 @@ function LoginContent() {
               type="checkbox"
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
-              className="mt-1 h-4 w-4 rounded border-gray-300 text-[#1ba177] focus:ring-[#1ba177]"
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary-ring/40"
             />
             <label htmlFor="rememberMe" className="text-[14px] text-gray-600 dark:text-gray-400 leading-snug cursor-pointer select-none">
               Keep me signed in for 30 days on this device
@@ -223,7 +226,7 @@ function LoginContent() {
             <button
               type="submit"
               disabled={isLoading || isGoogleLoading}
-              className="w-full flex justify-center py-4 px-4 border border-transparent rounded-md text-[16px] font-medium text-white bg-[#1ba177] hover:bg-[#178c66] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1ba177] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="w-full flex justify-center py-4 px-4 border border-transparent rounded-md text-[16px] font-medium text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-ring/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Continue"}
             </button>
@@ -234,7 +237,7 @@ function LoginContent() {
           Don&apos;t have an account?{" "}
           <Link
             href="/register"
-            className="text-[#1ba177] hover:underline font-medium"
+            className="text-primary hover:underline font-medium"
           >
             Sign up
           </Link>
@@ -249,7 +252,7 @@ export default function LoginPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-[#1ba177]" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     }>
       <LoginContent />

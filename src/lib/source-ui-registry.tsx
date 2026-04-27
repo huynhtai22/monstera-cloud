@@ -219,7 +219,7 @@ export function buildSourceAuthUrl(
 /** Get button class for source */
 export function getSourceButtonClass(buttonStyle: string): string {
     const baseClasses =
-        "inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-colors";
+        "inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0f172a]";
 
     switch (buttonStyle) {
         case "facebook":
@@ -227,6 +227,6 @@ export function getSourceButtonClass(buttonStyle: string): string {
         case "google":
             return `${baseClasses} border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700`;
         default:
-            return `${baseClasses} bg-cyan-600 hover:bg-cyan-700 text-white`;
+            return `${baseClasses} bg-primary hover:bg-primary-hover text-primary-foreground`;
     }
 }

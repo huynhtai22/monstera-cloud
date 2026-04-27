@@ -250,7 +250,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                         onClick={() =>
                                             trackEvent("looker_open_api_settings", { workspaceId: activeWorkspaceId })
                                         }
-                                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-cyan-200 bg-cyan-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-cyan-700 dark:border-cyan-700 dark:bg-cyan-700 dark:hover:bg-cyan-600"
+                                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-primary-ring/30 bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
                                     >
                                         <Settings2 className="h-4 w-4" />
                                         {hasApiKey ? "Open API keys" : "Create API key"}
@@ -304,7 +304,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
 
                         <button
                             onClick={() => setForceSetup(true)}
-                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50/60 dark:border-cyan-800/50 dark:bg-cyan-950/30 py-3 text-sm font-semibold text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100/50 dark:hover:bg-cyan-950/50 transition-colors"
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary-ring/25 bg-primary-muted py-3 text-sm font-semibold text-slate-800 hover:bg-primary-muted/80 dark:text-slate-100 transition-colors"
                         >
                             <Plus className="h-4 w-4" />
                             Add Another Account
@@ -352,7 +352,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                             <input
                                                 type="text"
                                                 defaultValue="Monstera Cloud Sync: User Data"
-                                                className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-cyan-500 focus:border-cyan-500 block p-2.5 shadow-sm"
+                                                className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-primary-ring/40 focus:border-primary-ring block p-2.5 shadow-sm"
                                             />
                                             <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1.5">If a sheet with this name exists, data will be written to a new tab.</p>
                                         </div>
@@ -363,11 +363,11 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                             </label>
                                             <div className="space-y-2">
                                                 <label className="flex items-center space-x-3 cursor-pointer">
-                                                    <input type="radio" name="writemode" className="text-cyan-500 focus:ring-cyan-500 w-4 h-4" defaultChecked />
+                                                    <input type="radio" name="writemode" className="text-primary focus:ring-primary-ring/40 w-4 h-4" defaultChecked />
                                                     <span className="text-sm text-gray-700 dark:text-slate-300 font-medium">Append (Add new rows only)</span>
                                                 </label>
                                                 <label className="flex items-center space-x-3 cursor-pointer">
-                                                    <input type="radio" name="writemode" className="text-cyan-500 focus:ring-cyan-500 w-4 h-4" />
+                                                    <input type="radio" name="writemode" className="text-primary focus:ring-primary-ring/40 w-4 h-4" />
                                                     <span className="text-sm text-gray-700 dark:text-slate-300">Upsert (Update existing, add new)</span>
                                                 </label>
                                             </div>
@@ -431,7 +431,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                 <button
                                     onClick={handleAuthenticate}
                                     disabled={isProcessing}
-                                    className="px-5 py-2.5 text-sm font-medium text-white bg-cyan-600 rounded-xl hover:bg-cyan-700 transition-all disabled:opacity-70 flex items-center shadow-sm"
+                                    className="px-5 py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-xl hover:bg-primary-hover transition-all disabled:opacity-70 flex items-center shadow-sm"
                                 >
                                     {isProcessing ? (
                                         <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Authenticating...</>
@@ -445,7 +445,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                 <button
                                     onClick={handleCreateDestination}
                                     disabled={isProcessing}
-                                    className="px-5 py-2.5 text-sm font-bold text-white bg-cyan-600 rounded-xl hover:bg-cyan-700 transition-all disabled:opacity-70 flex items-center shadow-md shadow-cyan-500/20"
+                                    className="px-5 py-2.5 text-sm font-bold text-primary-foreground bg-primary rounded-xl hover:bg-primary-hover transition-all disabled:opacity-70 flex items-center shadow-md shadow-cyan-500/20"
                                 >
                                     {isProcessing ? (
                                         <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>

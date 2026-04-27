@@ -115,12 +115,15 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
 
     return (
         <div
-            className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-[#e2e8f0] bg-[#f8fafc] shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-transform duration-300 ease-in-out dark:border-slate-700/90 dark:bg-slate-950 dark:shadow-[4px_0_32px_rgba(0,0,0,0.45)] lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
+            className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-slate-50 shadow-[4px_0_24px_rgba(0,0,0,0.02)] transition-transform duration-300 ease-in-out dark:border-slate-700/90 dark:bg-slate-950 dark:shadow-[4px_0_32px_rgba(0,0,0,0.45)] lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
         >
             <div ref={workspaceRef} className="relative z-20 border-b border-gray-200/60 px-4 py-5 dark:border-slate-800">
                 <button
                     type="button"
                     onClick={() => setIsWorkspaceOpen(!isWorkspaceOpen)}
+                    aria-expanded={isWorkspaceOpen}
+                    aria-controls="workspace-menu"
+                    aria-haspopup="menu"
                     className="group flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-sm transition-all hover:border-cyan-500/30 hover:shadow-md dark:border-slate-700 dark:bg-slate-800 dark:hover:border-cyan-500/50"
                 >
                     <div className="flex items-center">
@@ -153,7 +156,10 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                 </button>
 
                 {isWorkspaceOpen && Array.isArray(workspaces) && (
-                    <div className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200 dark:border-slate-700 dark:bg-slate-800">
+                    <div
+                        id="workspace-menu"
+                        className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200 dark:border-slate-700 dark:bg-slate-800"
+                    >
                         <div className="mb-1 px-2 py-1 text-xs font-bold uppercase text-gray-400 dark:text-gray-500">
                             Your Workspaces
                         </div>
@@ -219,6 +225,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
                                             setIsWorkspaceOpen(false);
                                             setIsOpen?.(false);
                                         }}
+                                        aria-current={isActive ? "page" : undefined}
                                         className={`group flex items-center rounded-lg px-3 py-2 text-sm font-medium transition-all ${isActive
                                             ? "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/55 dark:text-cyan-100 dark:ring-1 dark:ring-cyan-700/50"
                                             : "text-gray-600 hover:bg-gray-50/80 hover:text-gray-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
@@ -257,7 +264,10 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
 
                 <div className="relative">
                     {isProfileOpen && (
-                        <div className="absolute bottom-[calc(100%+8px)] left-0 w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg p-2 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50">
+                        <div
+                            id="profile-menu"
+                            className="absolute bottom-[calc(100%+8px)] left-0 w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg p-2 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50"
+                        >
                             <Link href="/settings" onClick={() => { setIsOpen && setIsOpen(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
                                 <Settings className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" /> Settings
                             </Link>
@@ -286,6 +296,9 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode 
 
                     <button
                         onClick={() => setIsProfileOpen(!isProfileOpen)}
+                        aria-expanded={isProfileOpen}
+                        aria-controls="profile-menu"
+                        aria-haspopup="menu"
                         className="flex justify-between items-center w-full p-2 bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
                     >
                         <div className="flex items-center flex-1">
