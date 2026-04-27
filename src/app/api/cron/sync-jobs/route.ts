@@ -37,25 +37,63 @@ export async function GET(req: Request) {
     },
   });
 
+  const ownerIds = Array.from(new Set(
+    pipelines
+      .map((p) => p.workspace?.ownerId)
+      .filter((id): id is string => Boolean(id))
+  ));
+
+  const owners = ownerIds.length > 0
+    ? await prisma.user.findMany({
+      where: { id: { in: ownerIds } },
+      select: { id: true, plan: true },
+    })
+    : [];
+
+  const ownerPlanMap = new Map(owners.map((u) => [u.id, u.plan] as const));
+
+  const pipelineIds = pipelines.map((p) => p.id);
+  const pipelinesWithPendingJobs = pipelineIds.length > 0
+    ? await (prisma.syncJob as any).findMany({
+      where: {
+        pipelineId: { in: pipelineIds },
+        status: { in: ["queued", "running"] },
+      },
+      select: { pipelineId: true },
+      distinct: ["pipelineId"],
+    })
+    : [];
+  const pendingPipelineIds = new Set(
+    pipelinesWithPendingJobs.map((job: { pipelineId: string }) => job.pipelineId)
+  );
+
+  const jobsToCreate: { pipelineId: string; userId: string; plan: string; status: string; priority: number; scheduledAt: Date }[] = [];
+
   for (const p of pipelines) {
     const ownerId = p.workspace?.ownerId;
     if (!ownerId) continue;
 
-    const owner = await prisma.user.findUnique({ where: { id: ownerId }, select: { plan: true } });
-    const limits = getPlanLimits(owner?.plan ?? "free");
+    const ownerPlan = ownerPlanMap.get(ownerId) ?? "free";
+    const limits = getPlanLimits(ownerPlan);
     const cadenceMs = Math.max(FOUR_HOURS_MS, limits.syncIntervalMs);
 
     const last = p.lastSyncedAt?.getTime() ?? 0;
     if (Date.now() - last < cadenceMs) continue;
 
-    // Avoid duplicate queued/running jobs for the same pipeline
-    const existing = await (prisma.syncJob as any).findFirst({
-      where: { pipelineId: p.id, status: { in: ["queued", "running"] } },
-      select: { id: true },
-    });
-    if (existing) continue;
+    if (pendingPipelineIds.has(p.id)) continue;
 
-    await enqueueSyncJob(p.id, ownerId, owner?.plan ?? "free", now);
+    jobsToCreate.push({
+      pipelineId: p.id,
+      userId: ownerId,
+      plan: ownerPlan,
+      status: "queued",
+      priority: limits.priority,
+      scheduledAt: now,
+    });
+  }
+
+  if (jobsToCreate.length > 0) {
+    await (prisma.syncJob as any).createMany({ data: jobsToCreate });
   }
 
   // Claim up to BATCH_SIZE queued jobs that are due, highest priority first
@@ -76,12 +114,22 @@ export async function GET(req: Request) {
     return NextResponse.json({ processed: 0, message: "No jobs due" });
   }
 
-  // Mark all as running atomically before executing
-  const jobIds = jobs.map((j: any) => j.id);
-  await (prisma.syncJob as any).updateMany({
-    where: { id: { in: jobIds } },
-    data: { status: "running", startedAt: now },
-  });
+  // Claim jobs with compare-and-set updates so parallel cron invocations cannot double-run them.
+  const claimedJobs: any[] = [];
+  for (const job of jobs) {
+    const claim = await (prisma.syncJob as any).updateMany({
+      where: { id: job.id, status: "queued" },
+      data: { status: "running", startedAt: now },
+    });
+
+    if (claim.count === 1) {
+      claimedJobs.push(job);
+    }
+  }
+
+  if (claimedJobs.length === 0) {
+    return NextResponse.json({ processed: 0, message: "No jobs claimed" });
+  }
 
   const results: { jobId: string; pipelineId: string; status: string; error?: string }[] = [];
 
@@ -91,9 +139,9 @@ export async function GET(req: Request) {
     return minutes * 60_000;
   };
 
-  for (const job of jobs) {
+  for (const job of claimedJobs) {
     try {
-      const baseUrl = process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? "";
+      const baseUrl = (process.env.NEXTAUTH_URL?.replace(/\/$/, "") || new URL(req.url).origin).replace(/\/$/, "");
       const res = await fetch(`${baseUrl}/api/pipelines/${job.pipelineId}/run`, {
         method: "POST",
         headers: {
@@ -176,30 +224,6 @@ export async function GET(req: Request) {
     }
   }
 
-  logger.info(`[SYNC_JOBS_CRON] Processed ${results.length} jobs`, results);
+  logger.info(`[SYNC_JOBS_CRON] Claimed ${claimedJobs.length} jobs, processed ${results.length}`, results);
   return NextResponse.json({ processed: results.length, results });
-}
-
-/**
- * Helper: enqueue a sync job for a pipeline.
- * Call this when a pipeline is created or when scheduling the next run.
- * (Not exported — Next.js route files may only export HTTP handlers.)
- */
-async function enqueueSyncJob(
-  pipelineId: string,
-  userId: string,
-  plan: string,
-  scheduledAt: Date,
-) {
-  const limits = getPlanLimits(plan);
-  return (prisma.syncJob as any).create({
-    data: {
-      pipelineId,
-      userId,
-      plan,
-      status: "queued",
-      priority: limits.priority,
-      scheduledAt,
-    },
-  });
 }

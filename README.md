@@ -45,8 +45,27 @@ NEXTAUTH_SECRET="your-generated-secret-key"
 # Integrations (Example)
 NEXT_PUBLIC_SHOPEE_APP_ID="your-shopee-app-id"
 SHOPEE_APP_SECRET="your-shopee-app-secret"
+
+# Cron / background sync
+CRON_SECRET="your-shared-cron-secret"
+
+# Optional object-storage backend for Data Explorer datasets
+# If omitted, local tmp/datalake storage is used.
+DATA_LAKE_BUCKET="your-s3-bucket"
+DATA_LAKE_PREFIX="datasets/"
+AWS_REGION="ap-southeast-1"
 ```
 *(Note: Generate a random `NEXTAUTH_SECRET` using `openssl rand -base64 32`)*
+
+### Data Explorer Storage Backend
+- Default behavior uses local disk under `tmp/datalake` (development fallback).
+- When `DATA_LAKE_BUCKET` is set, dataset uploads/reads use object storage (S3-compatible via AWS SDK).
+- Dataset IDs are owner-scoped (`<userId>_<uuid>`) and query access is enforced to that owner.
+
+### Pipeline Run Execution Model
+- Interactive `POST /api/pipelines/[id]/run` calls now enqueue a `SyncJob` and return `202 Accepted`.
+- Actual ETL execution is handled by cron worker processing (`/api/cron/sync-jobs`).
+- This keeps heavy ETL work out of user-facing request latency paths.
 
 ### 4. Database Setup
 Run Prisma to sync your database schema and generate the strongly-typed client:

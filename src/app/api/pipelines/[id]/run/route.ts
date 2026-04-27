@@ -58,6 +58,46 @@ export async function POST(req: Request, context: { params: any }) {
         const user = await prisma.user.findUnique({ where: { id: userIdForLimits }, select: { plan: true } });
         const limits = getPlanLimits(user?.plan ?? "free");
 
+        // Interactive runs are queued and executed by the cron worker.
+        // This keeps heavy ETL work outside the end-user request lifecycle.
+        if (!isCron) {
+            const existingJob = await (prisma.syncJob as any).findFirst({
+                where: {
+                    pipelineId: pipeline.id,
+                    status: { in: ["queued", "running"] },
+                },
+                select: { id: true, status: true, scheduledAt: true },
+            });
+
+            if (existingJob) {
+                return NextResponse.json({
+                    success: true,
+                    queued: true,
+                    message: "A sync is already queued or running for this pipeline.",
+                    job: existingJob,
+                }, { status: 202 });
+            }
+
+            const queuedJob = await (prisma.syncJob as any).create({
+                data: {
+                    pipelineId: pipeline.id,
+                    userId: userIdForLimits,
+                    plan: user?.plan ?? "free",
+                    status: "queued",
+                    priority: limits.priority,
+                    scheduledAt: new Date(),
+                },
+                select: { id: true, status: true, scheduledAt: true },
+            });
+
+            return NextResponse.json({
+                success: true,
+                queued: true,
+                message: "Pipeline sync queued successfully.",
+                job: queuedJob,
+            }, { status: 202 });
+        }
+
         if (pipeline.lastSyncedAt) {
             const msSinceLast = Date.now() - pipeline.lastSyncedAt.getTime();
             if (msSinceLast < limits.syncIntervalMs) {

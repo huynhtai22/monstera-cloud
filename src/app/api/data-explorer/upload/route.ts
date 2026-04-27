@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import fs from 'fs';
-import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import os from 'os';
 import { logger } from "@/lib/logger";
+import { writeDatasetCsv, usesObjectStorage } from '@/lib/datalake-storage';
 
 // Must set config to disable Next.js default body parser for streaming forms
 // Next.js App Router no longer supports this config object exported this way in Route Handlers.
@@ -19,18 +17,13 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const userId = (session.user as { id?: string }).id;
+    if (!userId) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     try {
-        // 2. Setup Datalake path (using a local tmp directory for this prototype)
-        // In production, this would stream directly to S3 or GCS
-        const projectRoot = process.cwd();
-        const uploadDir = path.join(projectRoot, 'tmp', 'datalake');
-
-        // Ensure directory exists
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-
-        // 3. Process the multipart form data manually (since App Router Request doesn't play nice with old Formidable directly)
+        // 2. Process multipart form payload
         const formData = await req.formData();
         const file = formData.get('file') as File | null;
 
@@ -42,26 +35,23 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Only CSV files are currently supported for the Data Explorer preview." }, { status: 400 });
         }
 
-        // 4. Generate a unique Dataset ID
-        const datasetId = uuidv4();
-        const safeFilename = `${datasetId}.csv`;
-        const filepath = path.join(uploadDir, safeFilename);
+        // 3. Prefix dataset ID with owner ID to enforce object-level access checks.
+        const datasetId = `${userId}_${uuidv4()}`;
 
-        // 5. Stream the file to the "Datalake" (Disk)
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        fs.writeFileSync(filepath, buffer);
+        // 4. Stream to configured storage backend (S3 if configured, local disk otherwise)
+        const { sizeBytes } = await writeDatasetCsv(datasetId, file);
 
         // Calculate size for the UI
-        const sizeInMb = (buffer.length / (1024 * 1024)).toFixed(2);
+        const sizeInMb = (sizeBytes / (1024 * 1024)).toFixed(2);
 
-        // 6. Return the Dataset ID so the frontend can query it via AG Grid
+        // 5. Return dataset ID for subsequent paginated queries
         return NextResponse.json({
             success: true,
             datasetId,
             filename: file.name,
             size: `${sizeInMb} MB`,
-            message: "File successfully ingested into Datalake."
+            storage: usesObjectStorage() ? 'object-storage' : 'local-disk',
+            message: "File successfully ingested into data lake."
         }, { status: 201 });
 
     } catch (error) {

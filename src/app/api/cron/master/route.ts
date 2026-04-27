@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     const hour = now.getUTCHours();
     const minute = now.getUTCMinutes();
     
-    const baseUrl = process.env.NEXTAUTH_URL?.replace(/\/$/, "") ?? "";
+    const baseUrl = (process.env.NEXTAUTH_URL?.replace(/\/$/, "") || new URL(req.url).origin).replace(/\/$/, "");
     const results: any = {};
 
     // 1. Task: Sync Jobs (Every minute - high priority)

@@ -1,16 +1,22 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import fs from 'fs';
-import path from 'path';
 import { parse } from 'csv-parse';
 import { logger } from "@/lib/logger";
+import { readDatasetCsv } from '@/lib/datalake-storage';
+
+const DATASET_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 export async function GET(request: Request) {
     // 1. Authenticate Request
     const session = await getServerSession(authOptions);
 
     if (!session || !session.user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = (session.user as { id?: string }).id;
+    if (!userId) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -25,22 +31,27 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: "Missing datasetId" }, { status: 400 });
         }
 
-        const projectRoot = process.cwd();
-        const filepath = path.join(projectRoot, 'tmp', 'datalake', `${datasetId}.csv`);
+        if (!DATASET_ID_PATTERN.test(datasetId)) {
+            return NextResponse.json({ error: "Invalid datasetId" }, { status: 400 });
+        }
 
-        if (!fs.existsSync(filepath)) {
+        // Dataset IDs are prefixed with owner ID at upload time.
+        if (!datasetId.startsWith(`${userId}_`)) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
+        const readStream = await readDatasetCsv(datasetId);
+        if (!readStream) {
             return NextResponse.json({ error: "Dataset not found in Datalake" }, { status: 404 });
         }
 
         // 2. Stream and Parse ONLY the requested rows
         // Using csv-parse stream to avoid loading a 100MB file into memory
-        return new Promise<NextResponse>((resolve, reject) => {
+        return new Promise<NextResponse>((resolve) => {
             const results: any[] = [];
             let currentRow = 0;
             let headers: string[] = [];
             let isResolved = false;
-
-            const readStream = fs.createReadStream(filepath);
 
             const parser = readStream.pipe(
                 parse({

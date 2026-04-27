@@ -220,6 +220,76 @@ export async function writeToSheet(
 }
 
 /**
+ * Replace full sheet contents while writing data in chunks.
+ * This reduces payload spikes and request failures for large syncs.
+ */
+export async function writeToSheetChunked(
+  userId: string,
+  spreadsheetId: string,
+  sheetName: string,
+  columns: string[],
+  rows: (string | number | null)[][],
+  chunkSize: number = 2000,
+): Promise<{ updatedRows: number }> {
+  const token = await refreshIfNeeded(userId);
+
+  await fetch(
+    `${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent(sheetName)}:clear`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+
+  // Header write
+  const headerRange = `${sheetName}!A1`;
+  const headerRes = await fetch(
+    `${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent(headerRange)}?valueInputOption=RAW`,
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ values: [columns] }),
+    },
+  );
+  const headerData = await headerRes.json();
+  if (headerData.error) {
+    throw new Error(`Sheets header write error: ${headerData.error.message}`);
+  }
+
+  let updatedRows = 1;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows
+      .slice(i, i + chunkSize)
+      .map((row) => row.map((v) => (v === null ? '' : v)) as (string | number)[]);
+    if (chunk.length === 0) continue;
+
+    const appendRes = await fetch(
+      `${SHEETS_BASE}/${spreadsheetId}/values/${encodeURIComponent(`${sheetName}!A1`)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ values: chunk }),
+      },
+    );
+
+    const appendData = await appendRes.json();
+    if (appendData.error) {
+      throw new Error(`Sheets chunk append error: ${appendData.error.message}`);
+    }
+
+    updatedRows += appendData.updates?.updatedRows || chunk.length;
+  }
+
+  return { updatedRows };
+}
+
+/**
  * Append rows to a sheet tab (add after existing data).
  */
 export async function appendToSheet(
