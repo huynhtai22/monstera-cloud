@@ -189,7 +189,7 @@ export function DashboardHomePage() {
     } = useSWR<DashboardSummary, Error>(
         workspaceId ? `/api/dashboard/summary?workspaceId=${workspaceId}&days=14` : null,
         fetcher,
-        { refreshInterval: 5000 }
+        { refreshInterval: 30000 }
     );
 
     const pipelines = summary?.pipelines ?? [];
