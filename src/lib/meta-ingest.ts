@@ -2,17 +2,21 @@
  * Meta Ads insight ingestion — production-grade, memory-safe.
  *
  * Design goals:
- *  1. Atomic upserts  — uses prisma.campaignMetric.upsert on the DB-level composite
- *     unique key so concurrent sync triggers are idempotent.
- *  2. Chunked processing — never holds the full Meta JSON response in memory;
- *     streams pages into the DB in batches of CHUNK_SIZE.
- *  3. breakdownHash    — stable SHA-1 of sorted breakdown key=value pairs so rows
- *     with different breakdown slices get distinct keys.
+ *  1. Fenced atomic upserts — delegates to upsertMetaMetric() which first asserts
+ *     SyncLock lease ownership (fencingToken check) before writing. Zombie workers
+ *     are rejected before they can create duplicates.
+ *  2. Chunked processing — never holds the full API response in memory; processes
+ *     rows in batches of CHUNK_SIZE, calling heartbeat between chunks.
+ *  3. buildBreakdownHash — stable SHA-1 of sorted breakdown key=value pairs.
  */
 
 import { createHash } from 'crypto';
-import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import {
+  upsertMetaMetric,
+  heartbeatMetaSyncLock,
+  type MetaMetricPayload,
+} from '@/lib/meta-sync-lock';
 import type { MetaInsightsRow, MetaAction } from '@/lib/meta-ads';
 
 const CHUNK_SIZE = 100;
@@ -25,6 +29,10 @@ export interface IngestMetaRowsOpts {
   level: string;
   breakdowns?: string[];
   rows: MetaInsightsRow[];
+  syncJobId: string;
+  lockScope: string;
+  leaseId: string;
+  fencingToken: bigint;
 }
 
 export interface IngestResult {
@@ -34,15 +42,28 @@ export interface IngestResult {
 
 /**
  * Build a stable, deterministic SHA-1 hash from the breakdown slice values
- * present on a row. Returns "" if no breakdowns are requested or present.
+ * present on a row. Returns "none" if no breakdowns are requested or present.
  */
 export function buildBreakdownHash(row: MetaInsightsRow, breakdowns: string[]): string {
-  if (!breakdowns.length) return '';
+  if (!breakdowns.length) return 'none';
   const parts = breakdowns
     .map((b) => `${b}=${String(row[b] ?? '')}`)
     .sort()
     .join('|');
   return createHash('sha1').update(parts).digest('hex').slice(0, 16);
+}
+
+/**
+ * Derive the entityId for the composite unique key based on the level being synced.
+ * campaign → campaign_id, adset → adset_id, ad → ad_id, account → account_id.
+ */
+function resolveEntityId(row: MetaInsightsRow, level: string, accountId: string): string {
+  switch (level) {
+    case 'ad':      return String(row.ad_id      ?? row.id ?? '');
+    case 'adset':   return String(row.adset_id   ?? row.id ?? '');
+    case 'account': return accountId;
+    default:        return String(row.campaign_id ?? row.id ?? '');
+  }
 }
 
 function parseFloatSafe(v: string | number | undefined): number {
@@ -57,30 +78,50 @@ function parseIntSafe(v: string | number | undefined): number {
   return isNaN(n) ? 0 : n;
 }
 
-function extractPurchaseRoas(row: MetaInsightsRow): number | undefined {
+function extractPurchaseRoas(row: MetaInsightsRow): number {
   const actions = row.purchase_roas as MetaAction[] | undefined;
-  if (!actions?.length) return undefined;
+  if (!actions?.length) return 0;
   const v = parseFloat(actions[0]?.value ?? '');
-  return isNaN(v) ? undefined : v;
+  return isNaN(v) ? 0 : v;
 }
 
-function extractConversions(row: MetaInsightsRow): number | undefined {
+function extractConversions(row: MetaInsightsRow): number {
   const actions = row.actions as MetaAction[] | undefined;
-  if (!actions) return undefined;
-  const purchase = actions.find((a) => a.action_type === 'purchase' || a.action_type === 'offsite_conversion.fb_pixel_purchase');
-  if (!purchase) return undefined;
+  if (!actions) return 0;
+  const purchase = actions.find(
+    (a) =>
+      a.action_type === 'purchase' ||
+      a.action_type === 'offsite_conversion.fb_pixel_purchase',
+  );
+  if (!purchase) return 0;
   const v = parseFloat(purchase.value ?? '');
-  return isNaN(v) ? undefined : v;
+  return isNaN(v) ? 0 : v;
+}
+
+function extractRevenue(row: MetaInsightsRow): number {
+  const actionValues = row.action_values as MetaAction[] | undefined;
+  if (!actionValues) return 0;
+  const purchase = actionValues.find(
+    (a) =>
+      a.action_type === 'purchase' ||
+      a.action_type === 'offsite_conversion.fb_pixel_purchase',
+  );
+  if (!purchase) return 0;
+  const v = parseFloat(purchase.value ?? '');
+  return isNaN(v) ? 0 : v;
 }
 
 /**
- * Upsert a single page of Meta insight rows into the CampaignMetric table.
- * Called per-page from the ingestion loop to keep memory bounded.
+ * Process one chunk of rows with fenced upserts.
+ * Calls heartbeat before the chunk to keep the lease alive.
  */
-async function upsertChunk(
+async function processChunk(
   opts: Omit<IngestMetaRowsOpts, 'rows'>,
   chunk: MetaInsightsRow[],
 ): Promise<{ upserted: number; failed: number }> {
+  // Heartbeat before each chunk — extends the lease and detects stolen locks early
+  await heartbeatMetaSyncLock({ scope: opts.lockScope, leaseId: opts.leaseId });
+
   let upserted = 0;
   let failed = 0;
 
@@ -89,74 +130,54 @@ async function upsertChunk(
       try {
         const date = new Date(row.date_start ?? '');
         if (isNaN(date.getTime())) {
-          logger.warn('[META_INGEST] Skipping row with invalid date_start', { row });
+          logger.warn('[META_INGEST] Skipping row — invalid date_start', { row });
           failed++;
           return;
         }
 
-        const campaignId = String(row.campaign_id ?? row.id ?? 'unknown');
+        const entityId    = resolveEntityId(row, opts.level, opts.accountId);
+        const campaignId  = String(row.campaign_id ?? '');
         const campaignName = String(row.campaign_name ?? '');
-        const adsetId = String(row.adset_id ?? '');
-        const adsetName = String(row.adset_name ?? '');
+        const adsetId     = String(row.adset_id ?? '');
+        const adId        = String(row.ad_id ?? '');
         const breakdownHash = buildBreakdownHash(row, opts.breakdowns ?? []);
 
-        const data = {
-          workspaceId: opts.workspaceId,
+        const metrics: MetaMetricPayload = {
+          impressions:  parseIntSafe(row.impressions),
+          clicks:       parseIntSafe(row.clicks),
+          spend:        parseFloatSafe(row.spend),
+          reach:        parseIntSafe(row.reach),
+          cpc:          parseFloatSafe(row.cpc),
+          ctr:          parseFloatSafe(row.ctr),
+          conversions:  extractConversions(row),
+          revenue:      extractRevenue(row),
+          roas:         extractPurchaseRoas(row),
+          rawData:      row,
+        };
+
+        await upsertMetaMetric({
+          workspaceId:  opts.workspaceId,
           connectionId: opts.connectionId,
-          platform: 'meta_ads',
-          accountId: opts.accountId,
-          accountName: opts.accountName ?? null,
+          accountId:    opts.accountId,
+          accountName:  opts.accountName,
+          level:        opts.level,
+          entityId,
           campaignId,
           campaignName,
           adsetId,
-          adsetName: adsetName || null,
+          adId,
           date,
-          level: opts.level,
           breakdownHash,
-          impressions: parseIntSafe(row.impressions),
-          clicks: parseIntSafe(row.clicks),
-          spend: parseFloatSafe(row.spend),
-          reach: row.reach !== undefined ? parseIntSafe(row.reach) : null,
-          cpc: row.cpc !== undefined ? parseFloatSafe(row.cpc) : null,
-          ctr: row.ctr !== undefined ? parseFloatSafe(row.ctr) : null,
-          conversions: extractConversions(row) ?? null,
-          roas: extractPurchaseRoas(row) ?? null,
-          rawData: JSON.stringify(row),
-          pulledAt: new Date(),
-        };
-
-        await (prisma.campaignMetric as any).upsert({
-          where: {
-            connectionId_accountId_date_level_campaignId_breakdownHash: {
-              connectionId: opts.connectionId,
-              accountId: opts.accountId,
-              date,
-              level: opts.level,
-              campaignId,
-              breakdownHash,
-            },
-          },
-          create: data,
-          update: {
-            campaignName: data.campaignName,
-            adsetId: data.adsetId,
-            adsetName: data.adsetName,
-            impressions: data.impressions,
-            clicks: data.clicks,
-            spend: data.spend,
-            reach: data.reach,
-            cpc: data.cpc,
-            ctr: data.ctr,
-            conversions: data.conversions,
-            roas: data.roas,
-            rawData: data.rawData,
-            pulledAt: data.pulledAt,
-          },
+          metrics,
+          syncJobId:    opts.syncJobId,
+          lockScope:    opts.lockScope,
+          leaseId:      opts.leaseId,
+          fencingToken: opts.fencingToken,
         });
 
         upserted++;
       } catch (err) {
-        logger.error('[META_INGEST] Row upsert failed', { err, row });
+        logger.error('[META_INGEST] Row upsert failed', { err });
         failed++;
       }
     }),
@@ -167,8 +188,10 @@ async function upsertChunk(
 
 /**
  * Top-level entry point.
- * Splits rows into CHUNK_SIZE batches and upserts each sequentially
- * to keep DB connection pressure low.
+ * Splits rows into CHUNK_SIZE batches, processes sequentially to bound DB pressure,
+ * and heartbeats between each chunk.
+ *
+ * Callers must acquire a SyncLock before calling this and release it after.
  */
 export async function ingestMetaRows(opts: IngestMetaRowsOpts): Promise<IngestResult> {
   const { rows, ...rest } = opts;
@@ -177,12 +200,15 @@ export async function ingestMetaRows(opts: IngestMetaRowsOpts): Promise<IngestRe
 
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
     const chunk = rows.slice(i, i + CHUNK_SIZE);
-    const { upserted, failed } = await upsertChunk(rest, chunk);
+    const { upserted, failed } = await processChunk(rest, chunk);
     totalUpserted += upserted;
     totalFailed += failed;
-    logger.info(`[META_INGEST] Chunk ${Math.floor(i / CHUNK_SIZE) + 1}: ${upserted} upserted, ${failed} failed`);
+    logger.info(
+      `[META_INGEST] Chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(rows.length / CHUNK_SIZE)}: ` +
+      `${upserted} upserted, ${failed} failed`,
+    );
   }
 
-  logger.info(`[META_INGEST] Done — ${totalUpserted} total upserted, ${totalFailed} total failed`);
+  logger.info(`[META_INGEST] Complete — ${totalUpserted} upserted, ${totalFailed} failed`);
   return { upserted: totalUpserted, failed: totalFailed };
 }
