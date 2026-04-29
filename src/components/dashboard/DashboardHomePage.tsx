@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Database } from "lucide-react";
+import { Database, Plug, Send, GitMerge } from "lucide-react";
 import useSWR, { useSWRConfig } from "swr";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
@@ -315,7 +315,18 @@ export function DashboardHomePage() {
         );
     }
 
-    if (connectedSourcesCount === 0) {
+    // ── Onboarding State Machine ──────────────────────────
+    // Stage 0: no sources, no destinations
+    // Stage 1: sources > 0, but no destinations
+    // Stage 2: sources + destinations, but no pipelines
+    // Stage 3: pipelines exist → full active dashboard
+    const dashboardStage =
+        connectedSourcesCount === 0 && connectedDestinationsCount === 0 ? 0
+        : connectedSourcesCount > 0 && connectedDestinationsCount === 0 ? 1
+        : connectedSourcesCount > 0 && connectedDestinationsCount > 0 && activePipelinesCount === 0 ? 2
+        : 3;
+
+    if (dashboardStage === 0) {
         if (wizardDismissed) {
             return (
                 <PageShell>
@@ -349,6 +360,97 @@ export function DashboardHomePage() {
                     hasSuccessfulSync={hasSuccessfulSync}
                     onDismiss={dismissWizard}
                 />
+            </PageShell>
+        );
+    }
+
+    if (dashboardStage === 1) {
+        return (
+            <PageShell>
+                <div className="mb-6">
+                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{workspaceName}</p>
+                    <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Today, {todayLabel}</h1>
+                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Source connected — now add a destination to start syncing.</p>
+                </div>
+                <div className="relative grid grid-cols-1 gap-6 sm:grid-cols-2">
+                    <div className="min-w-0 rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50/80 to-white p-5 shadow-md dark:border-cyan-500/30 dark:from-cyan-500/10 dark:to-slate-900/60">
+                        <div className="mb-3 flex items-center gap-2">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-200 bg-cyan-100/80 text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/20 dark:text-cyan-300">
+                                <Plug className="h-4 w-4" />
+                            </div>
+                            <p className="text-sm font-bold text-gray-900 dark:text-white">Sources</p>
+                            <span className="ml-auto rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-bold text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-300">{connectedSourcesCount} connected</span>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Your ad &amp; marketplace sources are ready to sync.</p>
+                        <Link href="/sources" className={cn(secondaryButtonLinkClassName, "mt-4 inline-flex text-xs font-semibold")}>Manage sources →</Link>
+                    </div>
+
+                    {/* Animated dashed bridge */}
+                    <div className="pointer-events-none absolute inset-x-0 top-1/2 hidden -translate-y-1/2 items-center justify-center sm:flex" aria-hidden>
+                        <svg width="48" height="24" viewBox="0 0 48 24" fill="none" className="text-cyan-400 dark:text-cyan-600">
+                            <line x1="0" y1="12" x2="48" y2="12" stroke="currentColor" strokeWidth="2" strokeDasharray="6 4"
+                                className="[stroke-dashoffset:0] animate-[dash_1.5s_linear_infinite]"
+                                style={{ animation: "dashMove 1.5s linear infinite" }}
+                            />
+                        </svg>
+                    </div>
+
+                    <div className="min-w-0 rounded-2xl border border-dashed border-gray-300 bg-gradient-to-br from-gray-50/80 to-white p-5 shadow-sm dark:border-slate-600 dark:from-slate-900/70 dark:to-slate-800/50">
+                        <div className="mb-3 flex items-center gap-2">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-100 text-gray-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-500">
+                                <Send className="h-4 w-4" />
+                            </div>
+                            <p className="text-sm font-bold text-gray-400 dark:text-slate-500">Destination</p>
+                        </div>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">Add Google Sheets or Looker Studio so your data has somewhere to land.</p>
+                        <Link href="/destinations" className={cn(primaryButtonLinkClassName, "mt-4 inline-flex text-xs font-semibold")} onClick={() => trackEvent("destination_cta_clicked", { from: "stage1_bridge" })}>Add a destination →</Link>
+                    </div>
+                </div>
+            </PageShell>
+        );
+    }
+
+    if (dashboardStage === 2) {
+        return (
+            <PageShell>
+                <div className="mb-6">
+                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{workspaceName}</p>
+                    <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Today, {todayLabel}</h1>
+                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Almost there — your first pipeline is being set up.</p>
+                </div>
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:grid-cols-3">
+                    <div className="min-w-0 rounded-2xl border border-cyan-200 bg-white p-5 shadow-sm dark:border-cyan-500/30 dark:bg-slate-900">
+                        <div className="mb-2 flex items-center gap-2">
+                            <Plug className="h-4 w-4 text-cyan-500" />
+                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Sources</p>
+                            <span className="ml-auto text-sm font-bold tabular-nums text-gray-900 dark:text-white">{connectedSourcesCount}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Connected and ready</p>
+                    </div>
+                    <div className="min-w-0 rounded-2xl border border-cyan-200 bg-white p-5 shadow-sm dark:border-cyan-500/30 dark:bg-slate-900">
+                        <div className="mb-2 flex items-center gap-2">
+                            <Send className="h-4 w-4 text-cyan-500" />
+                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Destinations</p>
+                            <span className="ml-auto text-sm font-bold tabular-nums text-gray-900 dark:text-white">{connectedDestinationsCount}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Ready to receive data</p>
+                    </div>
+                    <div className="min-w-0 animate-pulse rounded-2xl border border-dashed border-cyan-400 bg-gradient-to-br from-cyan-50/60 to-white p-5 shadow-sm dark:border-cyan-500/40 dark:from-cyan-500/10 dark:to-slate-900 sm:col-span-2 md:col-span-1">
+                        <div className="mb-2 flex items-center gap-2">
+                            <GitMerge className="h-4 w-4 text-cyan-500" />
+                            <p className="text-xs font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Pipelines</p>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Waiting for first sync — your pipeline will appear here automatically.</p>
+                    </div>
+                </div>
+                <div className="mt-8">
+                    <SetupWizard
+                        hasSource={hasSource}
+                        hasDestination={hasDestination}
+                        hasSuccessfulSync={hasSuccessfulSync}
+                        onDismiss={dismissWizard}
+                    />
+                </div>
             </PageShell>
         );
     }

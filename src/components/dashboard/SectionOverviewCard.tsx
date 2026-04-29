@@ -68,15 +68,19 @@ export function SectionOverviewCard({
     const safeItems = items ?? [];
     const hasItems = Array.isArray(items) && items.length > 0;
 
+    const hasError = Array.isArray(items) && items.some((i) => i.status === "error");
+
     return (
         <section aria-labelledby={titleId}
             className={cn(
-                "group relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border-l-4 border px-4 py-4 pl-3 transition-all",
-                "shadow-md hover:shadow-lg hover:-translate-y-1 duration-300 ease-out",
+                "group relative flex h-full min-w-0 flex-col justify-between rounded-2xl border-l-4 border px-4 py-4 pl-3 transition-all",
+                "duration-300 ease-out",
+                "hover:scale-[1.02] hover:shadow-xl",
                 "pillar-fade",
                 emphasis
-                    ? "border-l-cyan-500 border-cyan-200 bg-gradient-to-br from-cyan-50/80 via-white/80 to-white/80 dark:border-l-cyan-400 dark:border-cyan-500/30 dark:from-cyan-500/10 dark:via-slate-900/60 dark:to-slate-900/60 shadow-cyan-100/40 dark:shadow-cyan-950/40"
-                    : "border-l-gray-300 border-gray-200/80 bg-gradient-to-br from-white/95 to-gray-50/80 dark:border-l-slate-600 dark:border-slate-700/60 dark:from-slate-900/70 dark:to-slate-800/50",
+                    ? "border-l-cyan-500 border-cyan-200 bg-gradient-to-br from-cyan-50/80 via-white/80 to-white/80 shadow-md dark:border-l-cyan-400 dark:border-cyan-500/30 dark:from-cyan-500/10 dark:via-slate-900/60 dark:to-slate-900/60 shadow-cyan-100/40 dark:shadow-cyan-950/40"
+                    : "border-l-gray-300 border-gray-200/80 bg-gradient-to-br from-white/95 to-gray-50/80 shadow-md dark:border-l-slate-600 dark:border-slate-700/60 dark:from-slate-900/70 dark:to-slate-800/50",
+                hasError && "animate-[errorPulse_2s_ease-in-out_infinite]",
                 className
             )}
         >
@@ -123,7 +127,7 @@ export function SectionOverviewCard({
                 </div>
 
                 {hasItems ? (
-                    <ul className="mb-4 flex flex-col gap-1.5">
+                    <ul className="mb-4 flex max-h-[140px] flex-col gap-1.5 overflow-y-auto">
                         {safeItems.slice(0, 3).map((item) => (
                             <li
                                 key={item.id}
