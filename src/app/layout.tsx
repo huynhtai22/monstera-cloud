@@ -70,7 +70,7 @@ export default function RootLayout({
     };
 
     return (
-        <html lang="en" className="antialiased">
+        <html lang="en" className="antialiased dark">
             <head>
                 <script
                     type="application/ld+json"
