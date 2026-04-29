@@ -824,16 +824,17 @@ export default function SourcesPage() {
                                     {connectedRows.length} connected
                                 </span>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 auto-rows-fr [&>*]:h-full">
+                            <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ gridAutoRows: "minmax(0,auto)" }}>
                                 {connectedRows.map((integration: any) => (
+                                    <div key={integration.id} className="stagger-item min-w-0">
                                     <ConnectedSourceCard
-                                        key={integration.id}
                                         integration={integration}
                                         busyActions={busyActions}
                                         onSync={handleSync}
                                         onDisconnect={disconnectSource}
                                         onFixConnection={handleFixConnection}
                                     />
+                                    </div>
                                 ))}
                             </div>
                         </section>
@@ -851,10 +852,10 @@ export default function SourcesPage() {
                                     {availableCards.length} to connect
                                 </span>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 auto-rows-fr [&>*]:h-full">
+                            <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ gridAutoRows: "minmax(0,auto)" }}>
                                 {availableCards.map((integration: any) => (
+                                    <div key={integration.id} className="stagger-item min-w-0">
                                     <IntegrationCard
-                                        key={integration.id}
                                         integration={integration}
                                         busyActions={busyActions}
                                         onSync={handleSync}
@@ -862,6 +863,7 @@ export default function SourcesPage() {
                                         onFixConnection={handleFixConnection}
                                         onConnect={handleConnect}
                                     />
+                                    </div>
                                 ))}
                             </div>
                         </section>

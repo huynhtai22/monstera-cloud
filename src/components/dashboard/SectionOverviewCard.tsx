@@ -41,12 +41,26 @@ function StatusDot({ status, isStale }: { status?: OverviewStatus; isStale?: boo
         status === "pending" ? "Pending" :
         "Idle";
     
-    // P1: Pulse animation for error and stale states to draw attention
-    const pulseClass = (status === "error" || isStale) ? "animate-pulse" : "";
-    
-    if (status === "ok") return <CheckCircle2 aria-label={label} className={cn("h-3.5 w-3.5 shrink-0 text-cyan-500 dark:text-cyan-400", pulseClass)} />;
-    if (status === "error") return <AlertCircle aria-label={label} className={cn("h-3.5 w-3.5 shrink-0 text-red-500", pulseClass)} />;
-    if (status === "pending") return <Circle aria-label={label} className={cn("h-3.5 w-3.5 shrink-0 text-amber-500", pulseClass)} />;
+    if (status === "ok" && !isStale) return (
+        <span className="pulse-healthy inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full">
+            <CheckCircle2 aria-label={label} className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" />
+        </span>
+    );
+    if (status === "ok" && isStale) return (
+        <span className="pulse-stale inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full">
+            <CheckCircle2 aria-label={label} className="h-3.5 w-3.5 text-amber-500" />
+        </span>
+    );
+    if (status === "error") return (
+        <span className="pulse-error inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full">
+            <AlertCircle aria-label={label} className="h-3.5 w-3.5 text-red-500" />
+        </span>
+    );
+    if (status === "pending") return (
+        <span className="pulse-stale inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full">
+            <Circle aria-label={label} className="h-3.5 w-3.5 text-amber-500" />
+        </span>
+    );
     return <Circle aria-label={label} className="h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600" />;
 }
 
@@ -73,9 +87,8 @@ export function SectionOverviewCard({
     return (
         <section aria-labelledby={titleId}
             className={cn(
-                "group relative flex h-full min-w-0 flex-col justify-between rounded-2xl border-l-4 border px-4 py-4 pl-3 transition-all",
-                "duration-300 ease-out",
-                "hover:scale-[1.02] hover:shadow-xl",
+                "group relative flex h-full min-w-0 flex-col justify-between rounded-2xl border-l-4 border px-4 py-4 pl-3",
+                "bento-hover",
                 "pillar-fade",
                 emphasis
                     ? "border-l-cyan-500 border-cyan-200 bg-gradient-to-br from-cyan-50/80 via-white/80 to-white/80 shadow-md dark:border-l-cyan-400 dark:border-cyan-500/30 dark:from-cyan-500/10 dark:via-slate-900/60 dark:to-slate-900/60 shadow-cyan-100/40 dark:shadow-cyan-950/40"

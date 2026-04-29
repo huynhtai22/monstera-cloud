@@ -276,7 +276,7 @@ export default function DestinationsPage() {
                     {Array.from({ length: 3 }).map((_, i) => <DestinationCardSkeleton key={i} />)}
                 </div>
             ) : filteredDestinations.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
+                <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
                     {(() => {
                         const firstAvailableId = filteredDestinations.find((d: any) => d.status !== 'connected')?.id;
                         return filteredDestinations.map((destination: any) => {
@@ -287,7 +287,7 @@ export default function DestinationsPage() {
                                 <div
                                     key={destination.id}
                                     className={cn(
-                                        "relative overflow-hidden rounded-2xl border p-5 transition-all duration-500 ease-out flex flex-col justify-between group",
+                                        "stagger-item bento-hover relative rounded-2xl border p-5 flex flex-col justify-between group",
                                         isConnected
                                             ? "border-cyan-200/50 bg-cyan-50/40 dark:border-cyan-800/40 dark:bg-cyan-950/20"
                                             : isActive

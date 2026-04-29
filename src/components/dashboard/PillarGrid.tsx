@@ -170,8 +170,8 @@ export function PillarGrid({
     const noReportsYet = syncLogs.length === 0;
 
     return (
-        <div className="relative z-10 grid grid-cols-1 gap-4 md:grid-cols-2" style={{ gridAutoRows: "minmax(160px, auto)" }}>
-            <div className="pillar-fade" style={{ animationDelay: "0ms" }}>
+        <div className="relative z-10 stagger-list grid grid-cols-1 gap-4 md:grid-cols-2" style={{ gridAutoRows: "minmax(160px, auto)" }}>
+            <div className="stagger-item min-w-0">
                 <SectionOverviewCard
                     icon={<Plug className="h-5 w-5" />}
                     title="Sources"
@@ -184,7 +184,7 @@ export function PillarGrid({
                 />
             </div>
 
-            <div className="pillar-fade" style={{ animationDelay: "60ms" }}>
+            <div className="stagger-item min-w-0">
                 <SectionOverviewCard
                     icon={<Send className="h-5 w-5" />}
                     title="Destinations"
@@ -197,7 +197,7 @@ export function PillarGrid({
                 />
             </div>
 
-            <div className="pillar-fade md:col-span-2" style={{ animationDelay: "120ms" }}>
+            <div className="stagger-item min-w-0">
                 <SectionOverviewCard
                     icon={<GitMerge className="h-5 w-5" />}
                     title="Pipelines"
@@ -215,7 +215,7 @@ export function PillarGrid({
                 />
             </div>
 
-            <div className="pillar-fade md:col-span-2" style={{ animationDelay: "180ms" }}>
+            <div className="stagger-item min-w-0">
                 <SectionOverviewCard
                     icon={<FileBarChart2 className="h-5 w-5" />}
                     title="Reports"

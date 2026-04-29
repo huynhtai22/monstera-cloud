@@ -66,6 +66,8 @@
     --anim-medium: 320ms;
     --anim-ease: cubic-bezier(.2,.9,.2,1);
     --anim-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    /* Premium spring easing — momentum-based, non-robotic */
+    --spring: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 .dark {
@@ -188,12 +190,87 @@ html.disable-transitions *::after {
     }
 }
 
+/* ── Staggered list-item entrance ────────────────────────────────────────── */
+@keyframes fadeSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.stagger-item {
+    animation: fadeSlideUp 380ms var(--spring, cubic-bezier(0.25, 1, 0.5, 1)) both;
+}
+
+/* Apply via index: nth-child selectors for up to 12 items */
+.stagger-list > *:nth-child(1)  { animation-delay:  0ms; }
+.stagger-list > *:nth-child(2)  { animation-delay: 50ms; }
+.stagger-list > *:nth-child(3)  { animation-delay: 100ms; }
+.stagger-list > *:nth-child(4)  { animation-delay: 150ms; }
+.stagger-list > *:nth-child(5)  { animation-delay: 200ms; }
+.stagger-list > *:nth-child(6)  { animation-delay: 250ms; }
+.stagger-list > *:nth-child(7)  { animation-delay: 300ms; }
+.stagger-list > *:nth-child(8)  { animation-delay: 350ms; }
+.stagger-list > *:nth-child(9)  { animation-delay: 400ms; }
+.stagger-list > *:nth-child(10) { animation-delay: 450ms; }
+.stagger-list > *:nth-child(11) { animation-delay: 500ms; }
+.stagger-list > *:nth-child(12) { animation-delay: 550ms; }
+
+/* ── Status dot pulse variants ───────────────────────────────────────────── */
+
+/* Healthy / connected — slow, calming green pulse */
+@keyframes pulseHealthy {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
+    50%       { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0); }
+}
+.pulse-healthy {
+    animation: pulseHealthy 2.8s ease-in-out infinite;
+}
+
+/* Stale / warning — faster amber pulse */
+@keyframes pulseStale {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5); }
+    50%       { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0); }
+}
+.pulse-stale {
+    animation: pulseStale 1.8s ease-in-out infinite;
+}
+
+/* Error — red heartbeat shadow */
+@keyframes pulseError {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+    50%       { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+}
+.pulse-error {
+    animation: pulseError 1.4s ease-in-out infinite;
+}
+
+/* ── Bento spring hover — reusable utility ───────────────────────────────── */
+.bento-hover {
+    transition: transform 300ms var(--spring, cubic-bezier(0.25,1,0.5,1)),
+                box-shadow 300ms var(--spring, cubic-bezier(0.25,1,0.5,1));
+}
+.bento-hover:hover {
+    transform: scale(1.02) translateY(-1px);
+    box-shadow: 0 12px 32px rgba(2,6,23,0.10);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .pillar-fade,
     .metric-card-enter,
     .gauge-animate,
     .accent-pulse,
-    .drift-float {
+    .drift-float,
+    .stagger-item,
+    .pulse-healthy,
+    .pulse-stale,
+    .pulse-error,
+    .bento-hover {
         animation: none;
+        transition: none;
     }
 }
