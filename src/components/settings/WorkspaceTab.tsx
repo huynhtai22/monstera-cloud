@@ -95,9 +95,9 @@ export function WorkspaceTab({
                 </p>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-slate-800/40 backdrop-blur-sm p-6">
-                <h4 className="text-sm font-medium text-white mb-4 flex items-center">
-                    <MessageCircle className="w-4 h-4 mr-2 text-cyan-400" />
+            <div className="rounded-2xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-slate-800/40 backdrop-blur-sm p-6 shadow-sm">
+                <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-4 flex items-center">
+                    <MessageCircle className="w-4 h-4 mr-2 text-cyan-600 dark:text-cyan-400" />
                     Telegram Notifications
                 </h4>
                 <div className="space-y-4 max-w-xl">
@@ -108,7 +108,7 @@ export function WorkspaceTab({
                             placeholder="-100123456789"
                             value={telegramChatDraft}
                             onChange={(e) => setTelegramChatDraft(e.target.value)}
-                            className="w-full px-4 py-2.5 bg-slate-900/60 border border-white/10 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400/50 transition-all placeholder:text-slate-500"
+                            className="w-full px-4 py-2.5 bg-black/5 dark:bg-slate-900/60 border border-black/10 dark:border-white/10 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/50 transition-all placeholder:text-slate-400"
                         />
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                             Add our bot to your group and enter the Chat ID. Starts with a minus sign for groups.
@@ -133,7 +133,7 @@ export function WorkspaceTab({
                 </div>
             </div>
 
-            <div id="product-demo" className="rounded-2xl border border-violet-500/20 bg-slate-800/40 backdrop-blur-sm p-6 relative overflow-hidden group">
+            <div id="product-demo" className="rounded-2xl border border-violet-500/20 bg-white/70 dark:bg-slate-800/40 backdrop-blur-sm p-6 shadow-sm relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-32 bg-violet-400/5 dark:bg-violet-400/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
 
                 <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-4 flex items-center">

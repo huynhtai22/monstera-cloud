@@ -233,10 +233,10 @@ export default function SettingsPage() {
             </div>
 
             {/* Unified bento: sidebar + content in one softened container */}
-            <div className="rounded-2xl border border-white/10 bg-slate-800/40 shadow-xl backdrop-blur-md">
+            <div className="rounded-2xl border border-black/10 bg-white/60 dark:bg-slate-800/40 shadow-xl backdrop-blur-md dark:border-white/10">
                 <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr]">
                     {/* Sidebar */}
-                    <div className="rounded-tl-2xl rounded-bl-2xl border-b border-white/10 bg-slate-900/60 px-3 py-4 lg:border-b-0 lg:border-r">
+                    <div className="rounded-tl-2xl rounded-bl-2xl border-b border-black/5 dark:border-white/10 bg-white/80 dark:bg-slate-900/60 px-3 py-4 lg:border-b-0 lg:border-r">
                         <nav className="space-y-0.5 lg:sticky lg:top-8">
                             {[
                                 { id: 'workspace', label: 'Workspace', icon: Building2 },
@@ -252,8 +252,8 @@ export default function SettingsPage() {
                                         "flex items-center w-full px-3 py-2.5 rounded-lg text-sm transition-all",
                                         "border-l-2",
                                         activeTab === tab.id
-                                            ? "border-l-cyan-400 bg-cyan-500/10 font-semibold text-cyan-300"
-                                            : "border-l-transparent font-medium text-slate-400 hover:bg-white/5 hover:text-white"
+                                            ? "border-l-cyan-500 bg-cyan-500/10 font-semibold text-cyan-700 dark:text-cyan-300"
+                                            : "border-l-transparent font-medium text-slate-500 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white"
                                     )}
                                     style={{ transition: "all 250ms var(--spring, cubic-bezier(0.25,1,0.5,1))" }}
                                 >
