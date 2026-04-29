@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Database, Plug, Send, GitMerge, ChevronRight, Plus } from "lucide-react";
+import { Database, Plug, Send, GitMerge, ChevronRight, Plus, Loader2 } from "lucide-react";
 import useSWR, { useSWRConfig } from "swr";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
@@ -144,6 +144,8 @@ export function DashboardHomePage() {
     const [syncMsg, setSyncMsg] = React.useState<string>("");
     const [wizardDismissed, setWizardDismissed] = React.useState(false);
     const [isRefreshing, setIsRefreshing] = React.useState(false);
+    const [mockPipelines, setMockPipelines] = React.useState<Pipeline[] | null>(null);
+    const [templateBusy, setTemplateBusy] = React.useState<string | null>(null);
 
     const handleManualRefresh = React.useCallback(async () => {
         setIsRefreshing(true);
@@ -182,7 +184,7 @@ export function DashboardHomePage() {
         fetcher
     );
 
-    const activePipelinesCount = pipelines?.length ?? 0;
+    const activePipelinesCount = mockPipelines ? mockPipelines.length : (pipelines?.length ?? 0);
 
     const { data: syncLogsData } = useSWR<{ logs: SyncLog[] }>(
         workspaceId ? `/api/sync-logs?workspaceId=${workspaceId}` : null,
@@ -463,23 +465,45 @@ export function DashboardHomePage() {
                         Create your pipeline — start with a template
                     </p>
                     <div className="stagger-list grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        {stage2Templates.map((tpl) => (
-                            <Link
-                                key={tpl.id}
-                                href={tpl.href}
-                                className="stagger-item bento-hover group flex min-w-0 items-center justify-between gap-3 rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/60"
-                                onClick={() => trackEvent("pipeline_template_clicked", { template: tpl.id, from: "stage2" })}
-                            >
-                                <div className="flex min-w-0 items-center gap-3">
-                                    <div className="shrink-0">{tpl.icons}</div>
-                                    <div className="min-w-0">
-                                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{tpl.title}</p>
-                                        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{tpl.subtitle}</p>
+                        {stage2Templates.map((tpl) => {
+                            const isBusy = templateBusy === tpl.id;
+                            return (
+                                <button
+                                    key={tpl.id}
+                                    type="button"
+                                    disabled={templateBusy !== null}
+                                    className="stagger-item bento-hover group flex min-w-0 items-center justify-between gap-3 rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm disabled:opacity-60 dark:border-slate-700/60 dark:bg-slate-900/60"
+                                    onClick={() => {
+                                        if (templateBusy) return;
+                                        trackEvent("pipeline_template_clicked", { template: tpl.id, from: "stage2" });
+                                        setTemplateBusy(tpl.id);
+                                        setTimeout(() => {
+                                            setMockPipelines([{
+                                                id: `mock-${tpl.id}`,
+                                                name: tpl.title,
+                                                status: "active",
+                                                updatedAt: new Date().toISOString(),
+                                                logs: [],
+                                                sourceConnection: { name: "Source" },
+                                                destinationConnection: { name: "Destination" },
+                                            }]);
+                                            setTemplateBusy(null);
+                                        }, 600);
+                                    }}
+                                >
+                                    <div className="flex min-w-0 items-center gap-3">
+                                        <div className="shrink-0">{tpl.icons}</div>
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{tpl.title}</p>
+                                            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{tpl.subtitle}</p>
+                                        </div>
                                     </div>
-                                </div>
-                                <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 transition-colors group-hover:text-cyan-500 dark:text-slate-600 dark:group-hover:text-cyan-400" />
-                            </Link>
-                        ))}
+                                    {isBusy
+                                        ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-cyan-500" />
+                                        : <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 transition-colors group-hover:text-cyan-500 dark:text-slate-600 dark:group-hover:text-cyan-400" />}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             </PageShell>
