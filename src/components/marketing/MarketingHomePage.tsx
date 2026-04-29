@@ -24,7 +24,7 @@ const MARKETING_LANG_KEY = "marketing_lang";
 const COPY = {
     en: {
         hero: {
-            h1: ["Stop reconciling spreadsheets", "at midnight."],
+            h1: ["Your ad data, updated", "before your morning coffee."],
             sub: "Monstera Cloud pulls TikTok Ads, Meta, Shopee, and Google Ads into one clean Google Sheet — automatically, every day. Built for sellers and agencies in Southeast Asia.",
             cta: "Start free — first sync in 5 min",
             ctaSub: "Documentation",
@@ -300,7 +300,25 @@ export default function MarketingHomePage() {
                                 {c.hero.ctaSub} <ChevronRight className="w-3.5 h-3.5" />
                             </Link>
                         </div>
-                        <p className="mt-6 text-xs text-gray-500">{c.hero.heroTrust}</p>
+
+                        {/* TrustStrip */}
+                        <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+                            <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+                                <Shield className="w-3.5 h-3.5 text-cyan-600" />
+                                AES-256 encrypted credentials
+                            </span>
+                            <span className="h-3 w-px bg-white/10 hidden sm:block" />
+                            <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+                                <Database className="w-3.5 h-3.5 text-cyan-600" />
+                                Workspace-isolated data
+                            </span>
+                            <span className="h-3 w-px bg-white/10 hidden sm:block" />
+                            <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                No card required
+                            </span>
+                        </div>
+                        <p className="mt-3 text-xs text-gray-500">{c.hero.heroTrust}</p>
                     </div>
 
                     {/* Architecture diagram */}

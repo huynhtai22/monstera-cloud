@@ -269,8 +269,89 @@ html.disable-transitions *::after {
     .pulse-healthy,
     .pulse-stale,
     .pulse-error,
-    .bento-hover {
+    .bento-hover,
+    .sync-shimmer::after {
         animation: none;
         transition: none;
+    }
+}
+
+/* ── Liquid Glass utilities ──────────────────────────────────────────────── */
+
+/* Refractive gradient border — simulates light-leak edge */
+.glass-panel {
+    position: relative;
+    border-radius: 1rem;
+    /* Use backdrop-blur-md as the safe default (not xl) */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    /* Gradient border via background-clip trick */
+    background-clip: padding-box;
+    border: 1px solid transparent;
+    background-image:
+        linear-gradient(var(--glass-surface, rgba(255,255,255,0.7)), var(--glass-surface, rgba(255,255,255,0.7))),
+        linear-gradient(135deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.05) 50%, rgba(6,182,212,0.12) 100%);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+}
+
+.dark .glass-panel {
+    --glass-surface: rgba(20, 24, 33, 0.55);
+    background-image:
+        linear-gradient(var(--glass-surface), var(--glass-surface)),
+        linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.02) 50%, rgba(6,182,212,0.08) 100%);
+}
+
+/* Hero section only — heavier blur */
+.glass-hero {
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+}
+
+/* Shimmer sweep — used on sync-success indicators */
+@keyframes shimmerSweep {
+    0%   { transform: translateX(-100%) skewX(-15deg); }
+    100% { transform: translateX(250%) skewX(-15deg); }
+}
+
+.sync-shimmer {
+    position: relative;
+    overflow: hidden;
+}
+
+.sync-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255,255,255,0.45) 50%,
+        transparent 100%
+    );
+    animation: shimmerSweep 1.2s var(--spring, cubic-bezier(0.25,1,0.5,1)) forwards;
+}
+
+/* ── Accessibility: forced-colors / reduced-transparency ────────────────── */
+
+/* High-contrast mode: replace blurs with opaque solid fills */
+@media (forced-colors: active) {
+    .glass-panel {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        background: Canvas;
+        border: 1px solid ButtonText;
+    }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    .glass-panel,
+    .glass-hero {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        background: var(--background) !important;
+        background-image: none !important;
+        border: 1px solid var(--ui-border-rgb) !important;
     }
 }
