@@ -9,6 +9,7 @@ import {
   ensureDefaultPipelineAfterSourceConnect,
 } from "@/lib/oauth-pipeline";
 import { logger } from "@/lib/logger";
+import { upsertSourceConnection } from "@/lib/connection-upsert";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
@@ -88,28 +89,25 @@ export async function GET(request: Request) {
       Date.now() + (tokenData.expires_in || 3600) * 1000
     ).toISOString();
 
-    const newConn = await prisma.connection.create({
-      data: {
-        workspaceId,
-        name: `Amazon SP (${sellingPartnerId})`,
-        type: "source",
-        provider: "amazon",
-        status: "connected",
-        credentials: encrypt(
-          JSON.stringify({
-            refreshToken: tokenData.refresh_token,
-            accessToken: tokenData.access_token,
-            expiresAt,
-            sellingPartnerId,
-            product: "amazon",
-          })
-        ),
+    const connection = await upsertSourceConnection({
+      workspaceId,
+      provider: "amazon",
+      remoteAccountId: sellingPartnerId ?? "amazon",
+      name: `Amazon SP (${sellingPartnerId})`,
+      type: "source",
+      credentials: {
+        refreshToken: tokenData.refresh_token,
+        accessToken: tokenData.access_token,
+        expiresAt,
+        sellingPartnerId,
+        product: "amazon",
       },
+      status: "connected",
     });
 
     const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
       workspaceId,
-      sourceConnectionId: newConn.id,
+      sourceConnectionId: connection.id,
       actingUserId: workspace.ownerId,
     });
 

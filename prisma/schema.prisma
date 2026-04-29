@@ -137,6 +137,7 @@ model Connection {
   type                 String
   provider             String
   credentials          String
+  remoteAccountId      String           @default("") // Identity key for deduplication (e.g. adAccountId, shop domain)
   status               String           @default("connected")
   lastError            String?          // UX: Actionable Error Tracking
   lastSyncAt           DateTime?        // UX: Freshness Tracking
@@ -148,6 +149,8 @@ model Connection {
   sourcePipelines      Pipeline[]       @relation("SourceConnection")
   campaignMetrics      CampaignMetric[]
   orders              RetailOrder[]
+
+  @@unique([workspaceId, provider, remoteAccountId])
 }
 
 model Pipeline {

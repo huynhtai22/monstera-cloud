@@ -356,7 +356,18 @@ export default function SourcesPage() {
         if (!Array.isArray(workspaces) || !activeWorkspaceId) return catalogIntegrations;
 
         const workspace = workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0];
-        const sourceConnections = (workspace?.connections || []).filter((c: any) => c.type === 'source');
+        const rawSourceConnections = (workspace?.connections || []).filter((c: any) => c.type === 'source');
+
+        // Identity Deduplication: keep only the most recent connection per provider
+        const sourceConnections = Object.values(
+            rawSourceConnections.reduce((acc: Record<string, any>, conn: any) => {
+                const existing = acc[conn.provider];
+                if (!existing || new Date(conn.updatedAt) > new Date(existing.updatedAt)) {
+                    acc[conn.provider] = conn;
+                }
+                return acc;
+            }, {})
+        );
 
         const connectedCatalogIds = new Set(
             sourceConnections.map((c: any) => integrationCatalogId(c.provider))

@@ -10,6 +10,7 @@ import { OAuthError } from "@/lib/oauth-framework/types";
 import prisma from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
+import { upsertSourceConnection } from "@/lib/connection-upsert";
 
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
@@ -93,21 +94,24 @@ export async function GET(request: NextRequest) {
             return NextResponse.redirect(`/sources?${successParams.toString()}`);
         }
         
-        // Create new connection record
-        const connection = await prisma.connection.create({
-            data: {
-                workspaceId,
-                name: metadata.name,
-                type: "source",
-                provider: providerId,
-                credentials: encrypt(JSON.stringify({
-                    ...credentials,
-                    ...metadata.extraFields,
-                })),
-                status: "connected",
+        // Upsert connection by identity triple (workspaceId + provider + remoteAccountId)
+        const remoteAccountId =
+            metadata.accountIdentifiers?.[0] ??
+            (metadata.name ? metadata.name.replace(/\s+/g, "_").toLowerCase() : providerId);
+
+        const connection = await upsertSourceConnection({
+            workspaceId,
+            provider: providerId,
+            remoteAccountId,
+            name: metadata.name,
+            type: "source",
+            credentials: {
+                ...credentials,
+                ...metadata.extraFields,
             },
+            status: "connected",
         });
-        
+
         // Redirect to explicit setup flow (replaces auto-pipeline creation)
         // User chooses destination or skips if using add-on/Looker
         return NextResponse.redirect(

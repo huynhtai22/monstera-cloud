@@ -9,6 +9,7 @@ import {
   ensureDefaultPipelineAfterSourceConnect,
 } from "@/lib/oauth-pipeline";
 import { logger } from "@/lib/logger";
+import { upsertSourceConnection } from "@/lib/connection-upsert";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
@@ -79,27 +80,24 @@ export async function GET(request: Request) {
   try {
     const tokenData = await client.exchangeCode(shop, code);
 
-    const newConn = await prisma.connection.create({
-      data: {
-        workspaceId,
-        name: `Shopify (${shop})`,
-        type: "source",
-        provider: "shopify",
-        status: "connected",
-        credentials: encrypt(
-          JSON.stringify({
-            accessToken: tokenData.access_token,
-            shop,
-            scope: tokenData.scope,
-            product: "shopify",
-          })
-        ),
+    const connection = await upsertSourceConnection({
+      workspaceId,
+      provider: "shopify",
+      remoteAccountId: shop ?? "shopify",
+      name: `Shopify (${shop})`,
+      type: "source",
+      credentials: {
+        accessToken: tokenData.access_token,
+        shop,
+        scope: tokenData.scope,
+        product: "shopify",
       },
+      status: "connected",
     });
 
     const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
       workspaceId,
-      sourceConnectionId: newConn.id,
+      sourceConnectionId: connection.id,
       actingUserId: workspace.ownerId,
     });
 

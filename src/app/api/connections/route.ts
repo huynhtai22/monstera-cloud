@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
+import { upsertSourceConnection } from "@/lib/connection-upsert";
 
 export async function POST(request: Request) {
     try {
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
         }
 
         const body = await request.json();
-        const { workspaceId, clientId, name, type, provider, credentials } = body;
+        const { workspaceId, clientId, name, type, provider, credentials, remoteAccountId: bodyRemoteAccountId } = body;
 
         if (!workspaceId || !name || !type || !provider) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -34,16 +35,19 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Unauthorized for this workspace" }, { status: 403 });
         }
 
-        // Create the connection
-        const connection = await prisma.connection.create({
-            data: {
-                workspaceId,
-                clientId,
-                name,
-                type,
-                provider,
-                credentials: encrypt(credentials || "{}")
-            }
+        // Upsert connection by identity triple (workspaceId + provider + remoteAccountId)
+        const remoteAccountId = bodyRemoteAccountId ||
+            (name ? name.replace(/\s+/g, "_").toLowerCase() : provider);
+
+        const connection = await upsertSourceConnection({
+            workspaceId,
+            provider,
+            remoteAccountId,
+            name,
+            type,
+            credentials: credentials || "{}",
+            status: body.status || "connected",
+            clientId: clientId || undefined,
         });
 
         // ---------------------------------------------------------------------

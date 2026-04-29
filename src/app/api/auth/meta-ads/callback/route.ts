@@ -9,6 +9,7 @@ import {
   ensureDefaultPipelineAfterSourceConnect,
 } from '@/lib/oauth-pipeline';
 import { logger } from "@/lib/logger";
+import { upsertSourceConnection } from "@/lib/connection-upsert";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, '');
@@ -98,30 +99,30 @@ export async function GET(request: Request) {
     const primaryAccount = adAccounts[0];
     const adAccountIds = adAccounts.map((a) => a.id);
 
-    const newConn = await prisma.connection.create({
-      data: {
-        workspaceId,
-        name: primaryAccount
-          ? `Meta Ads (${primaryAccount.name})`
-          : 'Meta Ads',
-        type: 'source',
-        provider: 'meta_ads',
-        status: 'connected',
-        credentials: encrypt(JSON.stringify({
-          accessToken: tokenData.access_token,
-          adAccountIds,
-          adAccounts,
-          expiresAt: new Date(
-            Date.now() + (tokenData.expires_in ?? 5183944) * 1000
-          ).toISOString(),
-          product: 'meta_ads',
-        })),
+    const remoteAccountId = primaryAccount?.id ?? adAccountIds[0] ?? 'meta_ads';
+    const connection = await upsertSourceConnection({
+      workspaceId,
+      provider: 'meta_ads',
+      remoteAccountId,
+      name: primaryAccount
+        ? `Meta Ads (${primaryAccount.name})`
+        : 'Meta Ads',
+      type: 'source',
+      credentials: {
+        accessToken: tokenData.access_token,
+        adAccountIds,
+        adAccounts,
+        expiresAt: new Date(
+          Date.now() + (tokenData.expires_in ?? 5183944) * 1000
+        ).toISOString(),
+        product: 'meta_ads',
       },
+      status: 'connected',
     });
 
     const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
       workspaceId,
-      sourceConnectionId: newConn.id,
+      sourceConnectionId: connection.id,
       actingUserId: userId,
     });
 
