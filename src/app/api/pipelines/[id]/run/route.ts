@@ -11,6 +11,7 @@ import { sendAgencyAlert } from "@/lib/alerts";
 import { classifyIngestionError, formatLogError } from "@/lib/ingestion/error-taxonomy";
 import { markConnectionsSyncedOk, markConnectionsSyncError } from "@/lib/ingestion/connection-sync-state";
 import { logger } from "@/lib/logger";
+import { getWorkspaceMembership, requireWorkspaceAccess, RbacError } from "@/lib/rbac";
 
 export async function POST(req: Request, context: { params: any }) {
     const syncStartTime = Date.now();
@@ -53,6 +54,27 @@ export async function POST(req: Request, context: { params: any }) {
 
         activePipeline = pipeline;
         pipelineNameForNotify = pipeline.name ?? "Pipeline";
+
+        // RBAC: Interactive users must be workspace members.
+        // Cron/system calls bypass membership check (trusted infra).
+        if (!isCron && session?.user?.id) {
+            try {
+                await requireWorkspaceAccess(
+                    session.user.id,
+                    pipeline.workspaceId,
+                    "member"
+                );
+            } catch (err) {
+                if (err instanceof RbacError) {
+                    logger.warn(`[RBAC] Pipeline run denied for user ${session.user.id} on workspace ${pipeline.workspaceId}: ${err.message}`);
+                    return NextResponse.json(
+                        { error: err.message, code: err.code },
+                        { status: err.statusCode }
+                    );
+                }
+                throw err;
+            }
+        }
 
         const userIdForLimits = session?.user?.id || pipeline.workspace.ownerId;
         const user = await prisma.user.findUnique({ where: { id: userIdForLimits }, select: { plan: true } });
@@ -150,6 +172,7 @@ export async function POST(req: Request, context: { params: any }) {
                 sourceConnectionId: pipeline.sourceConnectionId,
             },
             sourceCreds,
+            jobId: undefined, // TODO: pass jobId when called from sync-jobs cron
         });
 
         const durationMs = Date.now() - syncStartTime;

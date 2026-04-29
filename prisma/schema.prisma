@@ -184,15 +184,39 @@ model SyncLog {
   pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 }
 
+model SyncCheckpoint {
+  id            String   @id @default(cuid())
+  pipelineId    String
+  jobId         String?
+  entityType    String   @default("campaign")
+  cursor        String
+  rowsProcessed Int      @default(0)
+  rowsInserted  Int      @default(0)
+  rowsFailed    Int      @default(0)
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([pipelineId, status])
+  @@index([jobId])
+}
+
 model TransformationRule {
-  id         String   @id @default(cuid())
-  pipelineId String
-  type       String
-  config     String
-  orderIndex Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  pipelineId  String
+  type        String
+  config      String
+  orderIndex  Int      @default(0)
+
+  // In-flight normalization: custom field calculations
+  formula     String?  // e.g. "spend * 1.2"
+  targetField String?  // output field name
+  dependsOn   String[] // input field names
+  condition   String?  // filter expression
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 }
 
 model ApiKey {
