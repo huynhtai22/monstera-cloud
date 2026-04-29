@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Database, Plug, Send, GitMerge } from "lucide-react";
+import { Database, Plug, Send, GitMerge, ChevronRight, Plus } from "lucide-react";
 import useSWR, { useSWRConfig } from "swr";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
@@ -411,45 +411,76 @@ export function DashboardHomePage() {
     }
 
     if (dashboardStage === 2) {
+        const stage2Templates = [
+            {
+                id: "paid-media",
+                title: "Paid Media Performance",
+                subtitle: "Compare ad spend and ROI across Meta and Google Ads.",
+                icons: (
+                    <div className="flex items-center gap-1.5">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-600 text-[10px] font-black text-white">f</div>
+                        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-red-500 text-[9px] font-black text-white">G</div>
+                    </div>
+                ),
+                href: "/pipelines/new?template=paid-media",
+            },
+            {
+                id: "facebook-insights",
+                title: "Facebook Insights",
+                subtitle: "Deep dive into campaign and ad-set level metrics.",
+                icons: (
+                    <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-600 text-[10px] font-black text-white">f</div>
+                ),
+                href: "/pipelines/new?template=facebook-insights",
+            },
+            {
+                id: "custom",
+                title: "Custom Pipeline",
+                subtitle: "Map your own fields and build from scratch.",
+                icons: (
+                    <div className="flex h-6 w-6 items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-400 dark:border-slate-600">
+                        <Plus className="h-3.5 w-3.5" />
+                    </div>
+                ),
+                href: "/pipelines/new",
+            },
+        ];
+
         return (
             <PageShell>
-                <div className="mb-6">
+                {/* Context strip */}
+                <div className="mb-5">
                     <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{workspaceName}</p>
-                    <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Today, {todayLabel}</h1>
-                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Almost there — your first pipeline is being set up.</p>
+                    <h1 className="mt-1 text-xl font-bold tracking-tight text-gray-900 dark:text-white">Today, {todayLabel}</h1>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {connectedSourcesCount}s · {connectedDestinationsCount}d connected — pick a template to create your first pipeline.
+                    </p>
                 </div>
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:grid-cols-3">
-                    <div className="min-w-0 rounded-2xl border border-cyan-200 bg-white p-5 shadow-sm dark:border-cyan-500/30 dark:bg-slate-900">
-                        <div className="mb-2 flex items-center gap-2">
-                            <Plug className="h-4 w-4 text-cyan-500" />
-                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Sources</p>
-                            <span className="ml-auto text-sm font-bold tabular-nums text-gray-900 dark:text-white">{connectedSourcesCount}</span>
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Connected and ready</p>
+
+                {/* Template selection bento */}
+                <div className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-5 shadow-sm dark:border-slate-700/60 dark:bg-slate-800/30">
+                    <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                        Create your pipeline — start with a template
+                    </p>
+                    <div className="stagger-list grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        {stage2Templates.map((tpl) => (
+                            <Link
+                                key={tpl.id}
+                                href={tpl.href}
+                                className="stagger-item bento-hover group flex min-w-0 items-center justify-between gap-3 rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/60"
+                                onClick={() => trackEvent("pipeline_template_clicked", { template: tpl.id, from: "stage2" })}
+                            >
+                                <div className="flex min-w-0 items-center gap-3">
+                                    <div className="shrink-0">{tpl.icons}</div>
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{tpl.title}</p>
+                                        <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{tpl.subtitle}</p>
+                                    </div>
+                                </div>
+                                <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 transition-colors group-hover:text-cyan-500 dark:text-slate-600 dark:group-hover:text-cyan-400" />
+                            </Link>
+                        ))}
                     </div>
-                    <div className="min-w-0 rounded-2xl border border-cyan-200 bg-white p-5 shadow-sm dark:border-cyan-500/30 dark:bg-slate-900">
-                        <div className="mb-2 flex items-center gap-2">
-                            <Send className="h-4 w-4 text-cyan-500" />
-                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Destinations</p>
-                            <span className="ml-auto text-sm font-bold tabular-nums text-gray-900 dark:text-white">{connectedDestinationsCount}</span>
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Ready to receive data</p>
-                    </div>
-                    <div className="min-w-0 animate-pulse rounded-2xl border border-dashed border-cyan-400 bg-gradient-to-br from-cyan-50/60 to-white p-5 shadow-sm dark:border-cyan-500/40 dark:from-cyan-500/10 dark:to-slate-900 sm:col-span-2 md:col-span-1">
-                        <div className="mb-2 flex items-center gap-2">
-                            <GitMerge className="h-4 w-4 text-cyan-500" />
-                            <p className="text-xs font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Pipelines</p>
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Waiting for first sync — your pipeline will appear here automatically.</p>
-                    </div>
-                </div>
-                <div className="mt-8">
-                    <SetupWizard
-                        hasSource={hasSource}
-                        hasDestination={hasDestination}
-                        hasSuccessfulSync={hasSuccessfulSync}
-                        onDismiss={dismissWizard}
-                    />
                 </div>
             </PageShell>
         );
