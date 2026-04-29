@@ -835,7 +835,7 @@ export default function SourcesPage() {
                                     {connectedRows.length} connected
                                 </span>
                             </div>
-                            <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ gridAutoRows: "minmax(0,auto)" }}>
+                            <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ gridAutoRows: "minmax(0,auto)", isolation: "isolate" }}>
                                 {connectedRows.map((integration: any) => (
                                     <div key={integration.id} className="stagger-item min-w-0">
                                     <ConnectedSourceCard
@@ -863,7 +863,7 @@ export default function SourcesPage() {
                                     {availableCards.length} to connect
                                 </span>
                             </div>
-                            <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ gridAutoRows: "minmax(0,auto)" }}>
+                            <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ gridAutoRows: "minmax(0,auto)", isolation: "isolate" }}>
                                 {availableCards.map((integration: any) => (
                                     <div key={integration.id} className="stagger-item min-w-0">
                                     <IntegrationCard

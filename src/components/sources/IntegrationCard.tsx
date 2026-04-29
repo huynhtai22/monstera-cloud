@@ -16,7 +16,7 @@ import { PrimaryButton } from "@/components/ui";
 export function IntegrationCardSkeleton() {
   return (
     <div
-      className="relative overflow-hidden rounded-2xl border border-white/80 dark:border-slate-600/50 bg-white/40 dark:bg-slate-800/60 p-5 animate-pulse"
+      className="relative overflow-hidden rounded-2xl border border-white/10 dark:border-white/10 bg-white/5 dark:bg-slate-950/20 backdrop-blur-md p-5 animate-pulse"
       aria-hidden
     >
       <div className="flex items-start justify-between mb-4">
@@ -56,20 +56,22 @@ export const IntegrationCard = React.memo(function IntegrationCard({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border p-5 transition-all duration-200 group flex flex-col justify-between bg-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/80 dark:bg-slate-800/90 dark:shadow-[0_12px_40px_rgba(0,0,0,0.35)] dark:hover:bg-slate-800 dark:ring-1 dark:ring-white/5
+      className={`relative overflow-hidden rounded-2xl border p-5 transition-all duration-200 group flex flex-col justify-between
+        bg-white/5 dark:bg-slate-950/20 backdrop-blur-md
+        shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:shadow-[0_12px_40px_rgb(0,0,0,0.14)] hover:-translate-y-1
+        dark:shadow-[0_12px_40px_rgba(0,0,0,0.5)] dark:hover:shadow-[0_16px_48px_rgba(0,0,0,0.65)]
         ${integration.status === "error"
-          ? "border-red-200/80 hover:border-red-300 dark:border-red-800/70 dark:hover:border-red-700"
+          ? "border-red-200/70 hover:border-red-300/80 dark:border-red-700/40 dark:hover:border-red-600/60"
           : integration.status === "available"
-            ? "border-cyan-200/80 bg-cyan-50/30 dark:border-cyan-700/50 dark:bg-cyan-950/20 hover:border-cyan-300 dark:hover:border-cyan-600"
-            : "border-gray-200/80 dark:border-slate-600/80 hover:border-cyan-200/80 dark:hover:border-cyan-600/50"}`}
+            ? "border-white/10 hover:border-white/20 dark:border-white/10 dark:hover:border-white/20"
+            : "border-white/10 hover:border-white/20 dark:border-white/10 dark:hover:border-white/20"}`}
     >
       <div className="flex items-start justify-between mb-3 relative z-10">
         <div
-          className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 transition-colors bg-white/70 dark:bg-slate-900/80 overflow-hidden
-            ${integration.status === "connected" ? "border-cyan-100/50 dark:border-cyan-700/40" :
-              integration.status === "syncing" ? "border-blue-100/50 dark:border-blue-700/40" :
-                integration.status === "error" ? "border-red-100/50 dark:border-red-800/50" :
-                  "border-cyan-100/50 dark:border-cyan-700/40"}`}
+          className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 bg-white/10 dark:bg-slate-900/60 overflow-hidden
+            ${integration.status === "error"
+              ? "border-red-400/20 dark:border-red-700/30"
+              : "border-white/10 dark:border-white/10"}`}
         >
           <img
             src={integration.logoSrc}
@@ -77,13 +79,14 @@ export const IntegrationCard = React.memo(function IntegrationCard({
             width={28}
             height={28}
             className="object-contain"
+            style={{ filter: 'drop-shadow(0 0 8px rgba(0,0,0,0.5))' }}
           />
         </div>
 
         <div className="flex items-center">
           {integration.status === "connected" && (
-            <div className="flex items-center rounded-md bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-800 dark:bg-emerald-950/70 dark:text-emerald-300 dark:ring-1 dark:ring-emerald-800/50">
-              <CheckCircle2 className="mr-1 h-3.5 w-3.5 dark:text-emerald-400" />
+            <div className="flex items-center rounded-md bg-cyan-950/60 px-2 py-1 text-xs font-semibold text-cyan-300 ring-1 ring-cyan-500/30 shadow-[0_0_10px_rgba(34,211,238,0.4)] dark:bg-cyan-950/60 dark:text-cyan-300 dark:ring-cyan-500/30">
+              <CheckCircle2 className="mr-1 h-3.5 w-3.5 text-cyan-400" />
               Connected
             </div>
           )}
@@ -118,7 +121,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
             </h3>
           )}
         </div>
-        <p className="text-sm leading-relaxed text-gray-600 line-clamp-2 dark:text-slate-300">
+        <p className="text-sm leading-relaxed text-gray-500 line-clamp-2 dark:text-slate-300">
           {integration.description}
         </p>
 
@@ -133,7 +136,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
         )}
         {integration.status !== "available" &&
           integration.status !== "error" && (
-            <p className="mt-2 text-xs font-medium text-gray-500 dark:text-slate-400">
+            <p className="mt-2 text-xs font-medium text-gray-500 dark:text-slate-300">
               Last synced: {integration.lastSync}
             </p>
           )}
