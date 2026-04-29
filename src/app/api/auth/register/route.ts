@@ -6,23 +6,34 @@ import { logger } from "@/lib/logger";
 
 export async function POST(req: Request) {
   try {
-    const { name, email, password } = await req.json();
+    const { name, email: rawEmail, password } = await req.json();
 
-    if (!name || !email || !password) {
+    if (!name || !rawEmail || !password) {
       return NextResponse.json(
         { message: "Missing required fields." },
         { status: 400 }
       );
     }
 
-    // Check if user already exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+    // Normalize email: trim whitespace and lowercase to enforce single identity
+    const email = rawEmail.trim().toLowerCase();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json(
+        { message: "Invalid email address." },
+        { status: 400 }
+      );
+    }
+
+    // Case-insensitive duplicate check — catches "Tai@gmail.com" vs "tai@gmail.com"
+    const existingUser = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+      select: { id: true },
     });
 
     if (existingUser) {
       return NextResponse.json(
-        { message: "User already exists with this email." },
+        { message: "An account with this email already exists." },
         { status: 400 }
       );
     }
@@ -32,14 +43,14 @@ export async function POST(req: Request) {
 
     // Generate a 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes from now
+    const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Create user and a default workspace in a transaction
+    // Atomic transaction: user + workspace + membership — all or nothing
     await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
-          name,
-          email,
+          name: name.trim(),
+          email, // always store normalized lowercase
           hashedPassword,
           otp,
           otpExpires,
@@ -54,28 +65,36 @@ export async function POST(req: Request) {
           members: {
             create: {
               userId: user.id,
-              role: "owner"
-            }
-          }
-        }
+              role: "owner",
+            },
+          },
+        },
       });
     });
 
-    logger.info(`[AUTH] OTP for ${email}: ${otp}`); 
-    
-    // Send Real Email via Resend
+    logger.info(`[AUTH] OTP for ${email}: ${otp}`);
+
+    // Send verification email — non-fatal: user can request resend
     try {
       await sendOtpEmail(email, otp);
     } catch (mailError) {
-      logger.error("[AUTH] Mail Sending Failed:", mailError);
+      logger.error("[AUTH] Mail sending failed:", mailError);
     }
 
     return NextResponse.json(
-      { message: "User created successfully. Verification code sent." },
+      { message: "Account created. Verification code sent." },
       { status: 201 }
     );
-  } catch (error) {
-    logger.error("Error signing up:", error);
+  } catch (error: any) {
+    // Surface Prisma unique constraint violations as user-facing messages
+    // rather than raw 500s (e.g. race condition on concurrent registrations)
+    if (error?.code === "P2002") {
+      return NextResponse.json(
+        { message: "An account with this email already exists." },
+        { status: 400 }
+      );
+    }
+    logger.error("[AUTH] Registration error:", error);
     return NextResponse.json(
       { message: "An error occurred during registration." },
       { status: 500 }

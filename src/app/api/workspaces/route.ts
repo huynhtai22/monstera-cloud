@@ -32,28 +32,55 @@ export async function GET() {
             }
         });
 
-        // Fail-safe: If no workspaces exist for the user, create a default one on the fly
+        // Fail-safe: If no workspaces exist for the user, provision a default one.
+        // Wrapped in try/catch for P2002 — concurrent requests may both find empty
+        // and race to create; the loser safely re-fetches the winner's workspace.
         if (workspaces.length === 0) {
-            const newWorkspace = await prisma.workspace.create({
-                data: {
-                    name: "Personal Workspace",
-                    slug: `personal-${session.user.id.slice(0, 8)}`,
-                    ownerId: session.user.id,
-                    members: {
-                        create: {
-                            userId: session.user.id,
-                            role: "owner"
-                        }
-                    }
-                },
-                include: {
-                    members: true,
-                    connections: true,
-                    pipelines: true,
-                    apiKeys: true
+            try {
+                const newWorkspace = await prisma.$transaction(async (tx) => {
+                    const ws = await tx.workspace.create({
+                        data: {
+                            name: "Personal Workspace",
+                            slug: `personal-${session.user.id.slice(0, 8)}`,
+                            ownerId: session.user.id,
+                            members: {
+                                create: {
+                                    userId: session.user.id,
+                                    role: "owner",
+                                },
+                            },
+                        },
+                        include: {
+                            members: true,
+                            connections: true,
+                            pipelines: true,
+                            apiKeys: true,
+                        },
+                    });
+                    return ws;
+                });
+                workspaces = [newWorkspace];
+            } catch (err: any) {
+                if (err?.code === "P2002") {
+                    // Race condition: another request created the workspace; re-fetch
+                    workspaces = await prisma.workspace.findMany({
+                        where: {
+                            OR: [
+                                { ownerId: session.user.id },
+                                { members: { some: { userId: session.user.id } } },
+                            ],
+                        },
+                        include: {
+                            members: true,
+                            connections: true,
+                            pipelines: true,
+                            apiKeys: true,
+                        },
+                    });
+                } else {
+                    throw err;
                 }
-            });
-            workspaces = [newWorkspace];
+            }
         }
 
         const safeWorkspaces = workspaces.map((w: any) => {

@@ -14,6 +14,40 @@ const SESSION_SHORT_AGE_SECONDS = 24 * 60 * 60
 
 const isProduction = process.env.NODE_ENV === "production"
 
+/**
+ * Provisions a default Personal Workspace for a user if they don't already have one.
+ * Idempotent — safe to call multiple times; workspace is only created once.
+ * Must be called OUTSIDE of an auth transaction to avoid deadlocks.
+ */
+async function ensureWorkspace(userId: string): Promise<void> {
+    const existing = await prisma.workspaceMember.findFirst({
+        where: { userId },
+        select: { id: true },
+    });
+    if (existing) return;
+
+    try {
+        await prisma.$transaction(async (tx) => {
+            const workspace = await tx.workspace.create({
+                data: {
+                    name: "Personal Workspace",
+                    slug: `personal-${userId.slice(0, 8)}`,
+                    ownerId: userId,
+                },
+            });
+            await tx.workspaceMember.create({
+                data: { workspaceId: workspace.id, userId, role: "owner" },
+            });
+        });
+    } catch (err: any) {
+        // P2002 = unique constraint — workspace already created by a concurrent request; safe to ignore
+        if (err?.code !== "P2002") {
+            logger.error("[AUTH] ensureWorkspace failed:", err);
+            throw err;
+        }
+    }
+}
+
 export const authOptions: NextAuthOptions = {
     adapter: PrismaAdapter(prisma),
     // Only pin the short-lived OAuth handshake cookies (state + PKCE verifier).
@@ -129,6 +163,72 @@ export const authOptions: NextAuthOptions = {
         error: '/login', // Error code passed in query string as ?error=
     },
     callbacks: {
+        /**
+         * Google OAuth account linking:
+         * If a user signs in with Google but an account already exists for that email
+         * (created via credentials), we link the OAuth Account record to the existing
+         * user instead of letting PrismaAdapter create a duplicate User row (which
+         * would throw a P2002 unique constraint error on User.email).
+         */
+        async signIn({ user, account, profile }: any) {
+            if (account?.provider !== "google") return true;
+
+            const rawEmail = profile?.email ?? user?.email;
+            if (!rawEmail) return true;
+
+            const email = rawEmail.trim().toLowerCase();
+
+            // Check if an existing user row exists for this email
+            const existingUser = await prisma.user.findFirst({
+                where: { email: { equals: email, mode: "insensitive" } },
+                select: { id: true },
+            });
+
+            if (!existingUser) {
+                // Truly new user — PrismaAdapter will create the row normally
+                return true;
+            }
+
+            // Email already belongs to a credentials (or other provider) account.
+            // Check whether this Google account is already linked.
+            const existingAccount = await prisma.account.findUnique({
+                where: {
+                    provider_providerAccountId: {
+                        provider: account.provider,
+                        providerAccountId: account.providerAccountId,
+                    },
+                },
+                select: { id: true },
+            });
+
+            if (existingAccount) {
+                // Already linked — nothing to do; allow sign-in
+                return true;
+            }
+
+            // Link this Google account to the existing user — preserves all data
+            await prisma.account.create({
+                data: {
+                    userId: existingUser.id,
+                    type: account.type,
+                    provider: account.provider,
+                    providerAccountId: account.providerAccountId,
+                    access_token: account.access_token,
+                    refresh_token: account.refresh_token,
+                    expires_at: account.expires_at,
+                    token_type: account.token_type,
+                    scope: account.scope,
+                    id_token: account.id_token,
+                    session_state: account.session_state,
+                },
+            });
+
+            // Mutate user.id so the JWT callback gets the existing user's ID
+            user.id = existingUser.id;
+            logger.info(`[AUTH] Linked Google account to existing user: ${email}`);
+            return true;
+        },
+
         async jwt({ token, user, account }: any) {
             if (user) {
                 token.id = user.id
@@ -175,5 +275,21 @@ export const authOptions: NextAuthOptions = {
             }
             return session
         }
-    }
+    },
+
+    /**
+     * Idempotent workspace provisioning for any new user — credentials or OAuth.
+     * Credentials users already get a workspace via the register transaction.
+     * This covers Google OAuth (and any future provider) first-sign-in.
+     */
+    events: {
+        async createUser({ user }) {
+            if (!user?.id) return;
+            try {
+                await ensureWorkspace(user.id);
+            } catch (err) {
+                logger.error("[AUTH] createUser workspace provisioning failed:", err);
+            }
+        },
+    },
 }
