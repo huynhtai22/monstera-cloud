@@ -723,75 +723,62 @@ export default function SourcesPage() {
                 </div>
             </div>
 
-            {!isLoading ? <DataFlowExplainer variant="sources" /> : null}
+            {/* DataFlowExplainer — only shown to first-time users (no connections yet); returning users see the compact pill */}
+            {!isLoading && connectedSourceCount === 0 ? <DataFlowExplainer variant="sources" /> : null}
 
-            {!isLoading && activeWorkspace && filteredIntegrations.length > 0 ? (
-                <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-gray-200/90 bg-gray-50/90 px-4 py-3 text-sm dark:border-slate-600/70 dark:bg-slate-800/60">
-                    <span className="text-gray-600 dark:text-slate-300">
-                        In view:{" "}
-                        <strong className="font-semibold text-gray-900 dark:text-white">{filterStats.connected}</strong> connected
-                    </span>
-                    <span className="text-slate-300 dark:text-slate-600">·</span>
-                    <span className="text-gray-600 dark:text-slate-300">
-                        <strong
-                            className={
-                                filterStats.needsAttention > 0
-                                    ? "font-semibold text-red-600 dark:text-red-300"
-                                    : "font-semibold text-gray-900 dark:text-white"
-                            }
+            {/* Search + Filter tabs — stats inline on the right, no separate stat block */}
+            <div className="mb-8 space-y-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-0">
+                    <div className="relative flex-1 max-w-md group">
+                        <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-cyan-500 dark:text-slate-500" aria-hidden="true" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search integrations..."
+                            aria-label="Search integrations"
+                            className="w-full rounded-xl border border-gray-200/80 bg-white/90 py-2.5 pl-10 pr-12 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100 dark:placeholder:text-slate-500"
+                        />
+                    </div>
+                    {!isLoading && filterStats.needsAttention > 0 && (
+                        <span className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-red-200/80 bg-red-50/80 px-2.5 py-1.5 text-xs font-semibold text-red-700 dark:border-red-800/50 dark:bg-red-950/40 dark:text-red-300">
+                            <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                            {filterStats.needsAttention} need attention
+                        </span>
+                    )}
+                </div>
+                <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-600/80">
+                    <div className="flex space-x-6" role="tablist" aria-label="Filter integrations">
+                        <button
+                            role="tab"
+                            aria-selected={activeFilter === 'all'}
+                            onClick={() => setActiveFilter('all')}
+                            className={`pb-3 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'all' ? 'border-b-2 border-cyan-500 text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
                         >
-                            {filterStats.needsAttention}
-                        </strong>{" "}
-                        need attention
-                    </span>
-                    <span className="text-slate-300 dark:text-slate-600">·</span>
-                    <span className="text-gray-600 dark:text-slate-300">
-                        <strong className="font-semibold text-gray-900 dark:text-white">{filterStats.available}</strong> available to
-                        connect
-                    </span>
-                </div>
-            ) : null}
-
-            {/* Search and Filter — #9: ARIA tab pattern */}
-            <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-8 mb-8">
-                <div className="relative flex-1 max-w-md group">
-                    <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-cyan-500 dark:text-slate-500" aria-hidden="true" />
-                    {/* #9 — added aria-label to search input */}
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search integrations..."
-                        aria-label="Search integrations"
-                        className="w-full rounded-xl border border-gray-200/80 bg-white/90 py-2.5 pl-10 pr-12 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100 dark:placeholder:text-slate-500"
-                    />
-                </div>
-                {/* #9 — ARIA tab pattern for filter tabs */}
-                <div className="flex space-x-6 border-b border-gray-200 dark:border-slate-600/80" role="tablist" aria-label="Filter integrations">
-                    <button
-                        role="tab"
-                        aria-selected={activeFilter === 'all'}
-                        onClick={() => setActiveFilter('all')}
-                        className={`pb-3 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'all' ? 'border-b-2 border-cyan-500 text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
-                    >
-                        All Sources
-                    </button>
-                    <button
-                        role="tab"
-                        aria-selected={activeFilter === 'connected'}
-                        onClick={() => setActiveFilter('connected')}
-                        className={`pb-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'connected' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
-                    >
-                        Connected ({isLoading ? '…' : connectedSourceCount})
-                    </button>
-                    <button
-                        role="tab"
-                        aria-selected={activeFilter === 'available'}
-                        onClick={() => setActiveFilter('available')}
-                        className={`pb-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'available' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
-                    >
-                        Available
-                    </button>
+                            All Sources
+                        </button>
+                        <button
+                            role="tab"
+                            aria-selected={activeFilter === 'connected'}
+                            onClick={() => setActiveFilter('connected')}
+                            className={`pb-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'connected' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
+                        >
+                            Connected ({isLoading ? '…' : connectedSourceCount})
+                        </button>
+                        <button
+                            role="tab"
+                            aria-selected={activeFilter === 'available'}
+                            onClick={() => setActiveFilter('available')}
+                            className={`pb-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'available' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
+                        >
+                            Available
+                        </button>
+                    </div>
+                    {!isLoading && connectedSourceCount > 0 && (
+                        <span className="pb-2 text-xs text-gray-400 dark:text-slate-500">
+                            {filterStats.connected} connected · {filterStats.available} available
+                        </span>
+                    )}
                 </div>
             </div>
 
