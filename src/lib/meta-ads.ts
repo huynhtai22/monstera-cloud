@@ -12,6 +12,8 @@
  *   Check x-fb-ads-insights-throttle header — back off at >80% utilization.
  */
 
+import { logger } from '@/lib/logger';
+
 const META_API_VERSION = 'v23.0';
 const META_GRAPH_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
 const META_AUTH_BASE = 'https://www.facebook.com/dialog/oauth';
@@ -194,6 +196,94 @@ export class MetaAdsClient {
 
 export const metaAdsClient = new MetaAdsClient();
 
+// ── Rate-limit utilities ────────────────────────────────────────────────────
+
+/** Parsed utilization from x-business-use-case-usage or x-fb-ads-insights-throttle */
+export interface MetaThrottleState {
+  callCount: number;
+  totalCalls: number;
+  pct: number; // 0-100
+  estimatedTimeToRegainAccess?: number; // ms
+}
+
+/**
+ * Parse Meta's x-business-use-case-usage header.
+ * Format: { "<adAccountId>": [{ call_count, total_cputime, total_time, type, estimated_time_to_regain_access }] }
+ */
+function parseThrottleHeader(res: Response): MetaThrottleState | null {
+  const raw =
+    res.headers.get('x-business-use-case-usage') ??
+    res.headers.get('x-fb-ads-insights-throttle');
+  if (!raw) return null;
+  try {
+    const parsed: Record<string, Array<{ call_count?: number; total_cputime?: number; total_time?: number; estimated_time_to_regain_access?: number }>> = JSON.parse(raw);
+    const entries = Object.values(parsed).flat();
+    if (!entries.length) return null;
+    const callCount = entries[0]?.call_count ?? 0;
+    const totalTime = entries[0]?.total_time ?? 0;
+    const regain = entries[0]?.estimated_time_to_regain_access;
+    return {
+      callCount,
+      totalCalls: 100,
+      pct: Math.max(callCount, totalTime),
+      estimatedTimeToRegainAccess: regain ? regain * 1000 : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Jittered exponential backoff: base * 2^attempt + random(0..jitter) ms */
+async function backoff(attempt: number, baseMs = 1000, jitterMs = 500): Promise<void> {
+  const delay = Math.min(baseMs * Math.pow(2, attempt) + Math.random() * jitterMs, 60_000);
+  logger.warn(`[META_RATE_LIMIT] Backing off ${Math.round(delay)}ms (attempt ${attempt + 1})`);
+  await new Promise((r) => setTimeout(r, delay));
+}
+
+/**
+ * Throttle-aware fetch wrapper.
+ * - Retries on 429 / error code 17 (rate limit) with jittered backoff.
+ * - Pauses automatically if utilization > 85%.
+ */
+async function metaFetch(
+  url: URL,
+  options?: RequestInit,
+  maxRetries = 4,
+): Promise<{ res: Response; throttle: MetaThrottleState | null }> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const res = await fetch(url.toString(), options);
+    const throttle = parseThrottleHeader(res);
+
+    // Proactive throttle: if usage > 85%, wait before returning
+    if (throttle && throttle.pct >= 85) {
+      const pauseMs = throttle.estimatedTimeToRegainAccess ?? 15_000;
+      logger.warn(`[META_RATE_LIMIT] Usage at ${throttle.pct}%, pausing ${pauseMs}ms before continuing`);
+      await new Promise((r) => setTimeout(r, pauseMs));
+    }
+
+    // 429 or Meta error code 17/32/613 → back off and retry
+    if (res.status === 429) {
+      if (attempt < maxRetries - 1) { await backoff(attempt); continue; }
+    }
+
+    // Peek at body only if it's a potential rate-limit JSON error (keep body readable)
+    if (!res.ok) {
+      const clone = res.clone();
+      try {
+        const errJson = await clone.json() as { error?: { code?: number; message?: string } };
+        const code = errJson?.error?.code;
+        if ((code === 17 || code === 32 || code === 613) && attempt < maxRetries - 1) {
+          await backoff(attempt);
+          continue;
+        }
+      } catch { /* non-JSON error body, fall through */ }
+    }
+
+    return { res, throttle };
+  }
+  throw new Error('Meta API: max retries exceeded after rate-limit backoff');
+}
+
 // ── Meta Insights (reporting) client ────────────────────────────────────────
 
 export class MetaReportClient {
@@ -225,7 +315,7 @@ export class MetaReportClient {
       if (params.filtering?.length) url.searchParams.set('filtering', JSON.stringify(params.filtering));
       if (afterCursor) url.searchParams.set('after', afterCursor);
 
-      const res = await fetch(url.toString());
+      const { res } = await metaFetch(url);
       const json = await res.json() as {
         data: MetaInsightsRow[];
         paging?: { cursors?: { after?: string }; next?: string };
@@ -266,11 +356,7 @@ export class MetaReportClient {
     }
     if (params.filtering?.length) body.set('filtering', JSON.stringify(params.filtering));
 
-    const res = await fetch(url.toString(), {
-      method: 'POST',
-      body,
-    });
-
+    const { res } = await metaFetch(url, { method: 'POST', body });
     const json = await res.json() as { report_run_id?: string; error?: { message: string; code: number } };
     if (json.error) throw new Error(`Meta async report error ${json.error.code}: ${json.error.message}`);
     if (!json.report_run_id) throw new Error('Meta async report did not return a report_run_id');
@@ -285,7 +371,7 @@ export class MetaReportClient {
     const url = new URL(`${META_GRAPH_BASE}/${reportRunId}`);
     url.searchParams.set('access_token', accessToken);
 
-    const res = await fetch(url.toString());
+    const { res } = await metaFetch(url);
     const json = await res.json() as MetaAsyncReportStatus & { error?: { message: string; code: number } };
     if ((json as any).error) throw new Error(`Meta async status error ${(json as any).error.code}: ${(json as any).error.message}`);
 
@@ -306,7 +392,7 @@ export class MetaReportClient {
       url.searchParams.set('limit', '500');
       if (afterCursor) url.searchParams.set('after', afterCursor);
 
-      const res = await fetch(url.toString());
+      const { res } = await metaFetch(url);
       const json = await res.json() as {
         data: MetaInsightsRow[];
         paging?: { cursors?: { after?: string }; next?: string };

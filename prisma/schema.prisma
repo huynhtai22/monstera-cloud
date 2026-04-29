@@ -262,37 +262,39 @@ model SyncJob {
 }
 
 model CampaignMetric {
-  id           String     @id @default(cuid())
-  workspaceId  String
-  connectionId String
-  platform     String
-  accountId    String
-  accountName  String?
-  campaignId   String
-  campaignName String
-  adsetId      String?
-  adsetName    String?
-  date         DateTime
-  impressions  Int        @default(0)
-  clicks       Int        @default(0)
-  spend        Float      @default(0)
-  reach        Int?
-  cpc          Float?
-  ctr          Float?
-  conversions  Float?
-  revenue      Float?
-  roas         Float?
-  currency     String     @default("USD")
-  rawData      String?
-  pulledAt     DateTime   @default(now())
-  createdAt    DateTime   @default(now())
-  workspace    Workspace  @relation(fields: [workspaceId], references: [id])
-  connection   Connection @relation(fields: [connectionId], references: [id])
+  id            String     @id @default(cuid())
+  workspaceId   String
+  connectionId  String
+  platform      String
+  accountId     String
+  accountName   String?
+  campaignId    String
+  campaignName  String
+  adsetId       String?    @default("")
+  adsetName     String?
+  date          DateTime
+  level         String     @default("campaign")  // account | campaign | adset | ad
+  breakdownHash String     @default("")           // stable SHA-1 of sorted breakdown key=value pairs; "" = no breakdown
+  impressions   Int        @default(0)
+  clicks        Int        @default(0)
+  spend         Float      @default(0)
+  reach         Int?
+  cpc           Float?
+  ctr           Float?
+  conversions   Float?
+  revenue       Float?
+  roas          Float?
+  currency      String     @default("USD")
+  rawData       String?
+  pulledAt      DateTime   @default(now())
+  createdAt     DateTime   @default(now())
+  workspace     Workspace  @relation(fields: [workspaceId], references: [id])
+  connection    Connection @relation(fields: [connectionId], references: [id])
 
-  @@unique([connectionId, campaignId, date])
+  // DB-level idempotency key: one row per (connection, account, date, level, entity, breakdown)
+  @@unique([connectionId, accountId, date, level, campaignId, breakdownHash])
   @@index([workspaceId, platform, date])
   @@index([connectionId, date])
-  // Added composite indexes to improve filtering by account and combined platform/account/date scans
   @@index([workspaceId, accountId, date])
   @@index([workspaceId, platform, accountId, date])
 }
