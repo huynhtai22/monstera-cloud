@@ -154,7 +154,7 @@ export default function DestinationsPage() {
     }
 
     return (
-        <div className="relative max-w-7xl mx-auto px-8 py-10 w-full animate-in fade-in duration-300">
+        <div className="relative max-w-7xl mx-auto px-6 py-6 w-full animate-in fade-in duration-300">
             {/* Subtle Liquid Mesh Background underlay */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
                 <div className="absolute top-[10%] left-[30%] w-[40%] h-[50%] rounded-full bg-blue-200/20 dark:bg-blue-900/20 blur-[120px]" />
@@ -162,20 +162,17 @@ export default function DestinationsPage() {
             </div>
 
             {/* Header */}
-            <div className="relative z-10 mb-10 flex flex-col justify-between space-y-4 sm:flex-row sm:items-start sm:space-y-0">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                        <Send className="h-5 w-5" aria-hidden />
+            <div className="relative z-10 mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                        <Send className="h-4 w-4" aria-hidden />
                     </div>
                     <div>
-                        <h1 className="mb-2 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-                            Destinations
-                        </h1>
-                        <p className="max-w-2xl text-base text-gray-600 dark:text-gray-400">
-                            Choose where Monstera Cloud should push your clean, transformed data on a schedule.
-                        </p>
-                        <p className="mt-1 max-w-2xl text-sm text-gray-400 dark:text-gray-500">
-                            Using our Google Sheets Add-on or Looker Studio Connector? Your destination is configured inside those tools — you don't need to set one up here.
+                        <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">Destinations</h1>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {activePipelineCount > 0
+                                ? `${activePipelineCount} pipeline${activePipelineCount === 1 ? '' : 's'} active · choose where data lands`
+                                : 'Choose where Monstera pushes your data — Sheets, Looker, or Slack'}
                         </p>
                     </div>
                 </div>
@@ -214,25 +211,8 @@ export default function DestinationsPage() {
                 </div>
             ) : null}
 
-            {/* Dst1: Active Pipelines — real count */}
-            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-xl p-4 mb-8 flex items-center justify-between shadow-sm">
-                <div className="flex items-center space-x-3 text-blue-800 dark:text-blue-300">
-                    <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg shrink-0">
-                        <Send className="w-5 h-5" />
-                    </div>
-                    <div>
-                        <p className="font-semibold text-sm">Active Data Pipelines</p>
-                        <p className="text-xs text-blue-600/80 dark:text-blue-400/80">
-                            {activePipelineCount === 0
-                                ? "No active pipelines yet — connect a source and destination to start."
-                                : `${activePipelineCount} pipeline${activePipelineCount === 1 ? "" : "s"} sending data to your destinations.`}
-                        </p>
-                    </div>
-                </div>
-            </div>
-
             {/* Search and Filter */}
-            <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 mb-8">
+            <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 mb-4">
                 <div className="relative flex-1 max-w-md">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 w-5 h-5" />
                     <input

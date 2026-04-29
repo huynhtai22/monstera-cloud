@@ -531,12 +531,12 @@ export function DashboardHomePage() {
                 4. Deeper analysis  → AiPerformanceSummary (when you have time)
                 5. Infrastructure   → HealthSummaryBar (confirmation strip, not discovery)
             */}
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
 
                 {/* ── RIGHT: Status snapshot (2/5) — shown FIRST on mobile via order-first */}
                 <div className="order-first xl:order-last xl:col-span-2">
-                    <div className="mb-3 flex items-center justify-between">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                    <div className="mb-2 flex items-center justify-between">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                             Status
                         </p>
                         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-slate-800 dark:text-slate-400">
@@ -552,12 +552,12 @@ export function DashboardHomePage() {
                 </div>
 
                 {/* ── LEFT: Detail (3/5) — KPIs → Activity → AI Digest */}
-                <div className="space-y-8 xl:col-span-3">
+                <div className="space-y-5 xl:col-span-3">
 
                     {/* 2 · KPI metrics — morning number check */}
                     {snapshots.length > 0 && (
                         <section>
-                            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                                 Performance
                             </p>
                             <MetricCardGrid snapshots={snapshots} />
@@ -566,7 +566,7 @@ export function DashboardHomePage() {
 
                     {/* 3 · Recent Activity — what ran, what failed, one-click re-sync */}
                     <section>
-                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                             Recent Activity
                         </p>
                         <RecentActivity
@@ -580,7 +580,7 @@ export function DashboardHomePage() {
 
                     {/* 4 · AI Digest — deeper analysis, read when you have time */}
                     <section>
-                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                             AI Insights
                         </p>
                         <AiPerformanceSummary workspaceId={workspaceId} />
@@ -589,7 +589,7 @@ export function DashboardHomePage() {
             </div>
 
             {/* 5 · System Health — confirmation strip, not discovery */}
-            <section className="mt-8 border-t border-gray-100 pt-6 dark:border-slate-800">
+            <section className="mt-4 border-t border-gray-100 pt-4 dark:border-slate-800">
                 <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                     Infrastructure
                 </p>

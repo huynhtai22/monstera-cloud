@@ -233,10 +233,10 @@ export default function SettingsPage() {
             </div>
 
             {/* Unified bento: sidebar + content in one softened container */}
-            <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-gray-50/60 shadow-sm dark:border-slate-700/60 dark:bg-slate-800/30">
+            <div className="rounded-2xl border border-gray-200/80 bg-gray-50/60 shadow-sm dark:border-slate-700/60 dark:bg-slate-800/30">
                 <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr]">
                     {/* Sidebar */}
-                    <div className="border-b border-gray-200/80 bg-white/70 px-3 py-4 dark:border-slate-700/60 dark:bg-slate-900/60 lg:border-b-0 lg:border-r">
+                    <div className="rounded-tl-2xl rounded-bl-2xl border-b border-gray-200/80 bg-white/70 px-3 py-4 dark:border-slate-700/60 dark:bg-slate-900/60 lg:border-b-0 lg:border-r">
                         <nav className="space-y-0.5 lg:sticky lg:top-8">
                             {[
                                 { id: 'workspace', label: 'Workspace', icon: Building2 },
