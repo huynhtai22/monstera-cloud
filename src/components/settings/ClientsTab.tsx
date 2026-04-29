@@ -61,9 +61,9 @@ export function ClientsTab({
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Left: Clients List */}
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-                        <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-gray-50/30 dark:bg-slate-800/20">
-                            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Your Clients</h4>
+                    <div className="rounded-2xl border border-white/10 bg-slate-800/40 backdrop-blur-sm overflow-hidden">
+                        <div className="p-4 border-b border-white/10 flex justify-between items-center bg-slate-900/40">
+                            <h4 className="text-sm font-medium text-slate-300">Your Clients</h4>
                             <button
                                 onClick={() => setIsAddingClient(true)}
                                 className="text-xs font-semibold text-cyan-600 hover:text-cyan-700 flex items-center"
@@ -73,7 +73,7 @@ export function ClientsTab({
                         </div>
 
                         {isAddingClient && (
-                            <div className="p-4 bg-cyan-50/30 dark:bg-cyan-900/10 border-b border-cyan-100 dark:border-cyan-900/20 animate-in slide-in-from-top-1">
+                            <div className="p-4 bg-cyan-500/10 border-b border-cyan-400/20 animate-in slide-in-from-top-1">
                                 <div className="flex gap-2">
                                     <input
                                         autoFocus
@@ -81,7 +81,7 @@ export function ClientsTab({
                                         value={newClientName}
                                         onChange={e => setNewClientName(e.target.value)}
                                         onKeyDown={e => e.key === 'Enter' && handleAddClient()}
-                                        className="flex-1 px-3 py-1.5 text-sm bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500/20"
+                                        className="px-3 py-1.5 text-xs bg-slate-900/60 border border-white/10 rounded-lg outline-none focus:ring-2 focus:ring-cyan-400/50 text-white flex-1 placeholder:text-slate-500"
                                     />
                                     <button onClick={handleAddClient} className="px-3 py-1.5 bg-cyan-600 text-white text-xs font-bold rounded-lg">Add</button>
                                     <button onClick={() => setIsAddingClient(false)} className="px-3 py-1.5 text-gray-500 text-xs font-medium">Cancel</button>
@@ -89,7 +89,7 @@ export function ClientsTab({
                             </div>
                         )}
 
-                        <div className="divide-y divide-gray-100 dark:divide-slate-800">
+                        <div className="divide-y divide-white/5 px-4 pb-4">
                             {clients.length === 0 ? (
                                 <div className="p-8 text-center">
                                     <Briefcase className="w-8 h-8 text-gray-300 dark:text-gray-700 mx-auto mb-2" />
@@ -103,7 +103,7 @@ export function ClientsTab({
                                                 <input
                                                     value={editClientNameValue}
                                                     onChange={e => setEditClientNameValue(e.target.value)}
-                                                    className="px-2 py-1 text-sm bg-white dark:bg-slate-800 border border-gray-200 rounded-md outline-none"
+                                                    className="px-2 py-1 text-sm bg-slate-900/60 border border-white/10 rounded-md outline-none text-white placeholder:text-slate-500 focus:ring-1 focus:ring-cyan-400/50"
                                                 />
                                                 <button onClick={() => handleUpdateClient(client.id)} className="text-xs text-cyan-600 font-bold">Save</button>
                                                 <button onClick={() => setEditingClientId(null)} className="text-xs text-gray-500">Cancel</button>
@@ -126,9 +126,9 @@ export function ClientsTab({
 
                                     <div className="space-y-2">
                                         {client.connections?.map((conn: any) => (
-                                            <div key={conn.id} className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-white dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/50 shadow-sm">
+                                            <div key={conn.id} className="flex items-center justify-between text-xs p-2.5 rounded-xl bg-slate-900/40 border border-white/5">
                                                 <div className="flex items-center">
-                                                    <div className="w-6 h-6 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center mr-2 text-[10px] font-bold text-gray-500">
+                                                    <div className="w-6 h-6 rounded-lg bg-slate-700/60 flex items-center justify-center mr-2 text-[10px] font-bold text-slate-400">
                                                         {conn.provider.charAt(0).toUpperCase()}
                                                     </div>
                                                     <span className="font-medium text-gray-700 dark:text-gray-300">{conn.name || conn.provider}</span>
@@ -153,10 +153,10 @@ export function ClientsTab({
 
                 {/* Right: Unassigned Inventory */}
                 <div className="space-y-4">
-                    <div className="bg-gray-50/50 dark:bg-slate-800/20 border border-dashed border-gray-200 dark:border-slate-700 rounded-2xl p-5">
+                    <div className="rounded-2xl border border-dashed border-white/10 bg-slate-800/30 backdrop-blur-sm p-5">
                         <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500">Unassigned Sources</h4>
-                            <span className="bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-gray-300 text-[10px] px-2 py-0.5 rounded-full font-bold">
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Unassigned Sources</h4>
+                            <span className="bg-slate-700/60 text-slate-300 text-[10px] px-2 py-0.5 rounded-full font-bold">
                                 {unassignedConns.length}
                             </span>
                         </div>
@@ -167,7 +167,7 @@ export function ClientsTab({
                                 placeholder="Search connections..."
                                 value={unassignedSearch}
                                 onChange={e => setUnassignedSearch(e.target.value)}
-                                className="w-full pl-9 pr-3 py-2 text-xs bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500/10"
+                                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-900/60 border border-white/10 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400/50 text-white placeholder:text-slate-500"
                             />
                         </div>
 
@@ -175,7 +175,7 @@ export function ClientsTab({
                             {filteredUnassigned.length === 0 ? (
                                 <p className="text-center text-xs text-gray-400 py-8">All clear!</p>
                             ) : filteredUnassigned.map(conn => (
-                                <div key={conn.id} className="group p-3 bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-xl shadow-sm hover:border-cyan-200 dark:hover:border-cyan-900/30 transition-all">
+                                <div key={conn.id} className="group p-3 bg-slate-900/40 border border-white/5 rounded-xl hover:border-cyan-400/30 transition-all" style={{ transition: 'all 250ms cubic-bezier(0.25,1,0.5,1)' }}>
                                     <div className="flex items-center justify-between mb-2">
                                         <div className="flex items-center">
                                             <Activity className="w-3 h-3 mr-2 text-green-500" />
@@ -189,7 +189,7 @@ export function ClientsTab({
                                             <button
                                                 key={client.id}
                                                 onClick={() => handleAssignClient(conn.id, client.id)}
-                                                className="text-[10px] px-2 py-0.5 bg-gray-50 dark:bg-slate-800 hover:bg-cyan-50 dark:hover:bg-cyan-900/20 text-gray-500 dark:text-gray-400 hover:text-cyan-600 border border-gray-100 dark:border-slate-700 rounded-md transition-colors"
+                                                className="text-[10px] px-2 py-0.5 bg-slate-800/60 hover:bg-cyan-500/10 text-slate-400 hover:text-cyan-300 border border-white/5 hover:border-cyan-400/20 rounded-md transition-colors"
                                             >
                                                 + {client.name}
                                             </button>
