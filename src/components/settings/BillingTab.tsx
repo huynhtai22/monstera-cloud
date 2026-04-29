@@ -16,7 +16,7 @@ export function BillingTab({ userPlan }: { userPlan: string }) {
                 </p>
             </div>
 
-            <div className="rounded-2xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-slate-800/40 backdrop-blur-sm p-6 shadow-sm flex items-center justify-between">
+            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-800/40 backdrop-blur-sm p-6 shadow-sm flex items-center justify-between">
                 <div>
                     <h4 className="text-sm font-medium text-gray-900 dark:text-white flex items-center">
                         Current Plan
@@ -37,14 +37,14 @@ export function BillingTab({ userPlan }: { userPlan: string }) {
                 </div>
                 <Link
                     href="/pricing"
-                    className="px-4 py-2 bg-black/5 dark:bg-slate-700/60 border border-black/10 dark:border-white/10 text-gray-700 dark:text-slate-200 hover:bg-black/10 dark:hover:bg-slate-600/60 rounded-xl text-sm font-medium transition-all"
+                    className="px-4 py-2 bg-slate-100 dark:bg-slate-700/60 border border-slate-200 dark:border-white/10 text-gray-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600/60 rounded-xl text-sm font-medium transition-all"
                     style={{ transition: 'all 250ms cubic-bezier(0.25,1,0.5,1)' }}
                 >
                     Change Plan
                 </Link>
             </div>
 
-            <div className="rounded-2xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-slate-800/40 backdrop-blur-sm p-6 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-800/40 backdrop-blur-sm p-6 shadow-sm">
                 <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-4">Features Included</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {['Automated Daily Syncs', 'Looker Studio Integration', 'Google Sheets Add-on', 'Priority Support'].map(f => (
