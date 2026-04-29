@@ -43,68 +43,92 @@ export function DataFlowExplainer({ variant }: { variant: Variant }) {
     }
 
     return (
-        <div className="mb-8 rounded-2xl border border-cyan-200/80 bg-gradient-to-br from-cyan-50/90 to-white p-5 shadow-sm dark:border-cyan-900/40 dark:from-cyan-950/30 dark:to-slate-900/40">
-            <div className="mb-3 flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wide text-cyan-800 dark:text-cyan-200">
-                    How data moves
-                </p>
+        <div className="mb-6 rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/60">
+            {/* Header */}
+            <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Info className="h-3.5 w-3.5 text-cyan-500" aria-hidden />
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                        How data moves
+                    </p>
+                </div>
                 <button
                     type="button"
                     onClick={dismiss}
-                    className="rounded-md p-1 text-cyan-600/60 transition-colors hover:bg-cyan-100 hover:text-cyan-800 dark:text-cyan-500/60 dark:hover:bg-cyan-900/40 dark:hover:text-cyan-300"
+                    className="rounded-md p-1 text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-500 dark:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-400"
                     aria-label="Dismiss"
                 >
                     <X className="h-3.5 w-3.5" />
                 </button>
             </div>
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:gap-6">
-                <div className="flex min-w-0 flex-1 gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-100 text-cyan-800 dark:bg-cyan-900/60 dark:text-cyan-100">
-                        <Database className="h-4 w-4" aria-hidden />
+
+            {/* Steps row */}
+            <div className="flex items-center gap-2">
+                {/* Step 1 */}
+                <div className="flex min-w-0 flex-1 items-start gap-3 rounded-xl border border-cyan-100 bg-cyan-50/60 p-3 dark:border-cyan-900/40 dark:bg-cyan-950/20">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cyan-500 text-[10px] font-bold text-white">
+                        1
                     </div>
                     <div className="min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white">1. Sources — ad platforms</p>
-                        <p className="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                            Sign in with your <strong>Facebook</strong>, <strong>Google Ads</strong>, or <strong>TikTok</strong>{" "}
-                            identity. Monstera reads metrics for <strong>accounts granted in OAuth</strong>.
+                        <div className="flex items-center gap-1.5">
+                            <Database className="h-3.5 w-3.5 shrink-0 text-cyan-600 dark:text-cyan-400" aria-hidden />
+                            <p className="text-xs font-semibold text-gray-900 dark:text-white">Sources</p>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                            Sign in with <strong className="text-gray-700 dark:text-gray-200">Facebook</strong>,{" "}
+                            <strong className="text-gray-700 dark:text-gray-200">Google Ads</strong>, or{" "}
+                            <strong className="text-gray-700 dark:text-gray-200">TikTok</strong>. Monstera reads metrics for accounts granted in OAuth.
                         </p>
                     </div>
                 </div>
-                <div className="hidden items-center justify-center md:flex md:pt-2">
-                    <ArrowRight className="h-5 w-5 text-cyan-500/80" aria-hidden />
+
+                {/* Connector */}
+                <div className="flex shrink-0 flex-col items-center gap-1" aria-hidden>
+                    <div className="h-px w-8 border-t-2 border-dashed border-cyan-300 dark:border-cyan-700" />
+                    <ArrowRight className="h-3.5 w-3.5 text-cyan-400 dark:text-cyan-600" />
                 </div>
-                <div className="flex min-w-0 flex-1 gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100">
-                        <Send className="h-4 w-4" aria-hidden />
+
+                {/* Step 2 */}
+                <div className="flex min-w-0 flex-1 items-start gap-3 rounded-xl border border-gray-200/80 bg-gray-50/60 p-3 dark:border-slate-700/60 dark:bg-slate-800/40">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-400 text-[10px] font-bold text-white dark:bg-slate-600">
+                        2
                     </div>
                     <div className="min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white">2. Destinations — often another Google</p>
-                        <p className="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                            <strong>Google Sheets</strong> and <strong>Looker Studio</strong> can be a <strong>different</strong>{" "}
-                            Google login from your ads — the pipeline links them inside this workspace.
+                        <div className="flex items-center gap-1.5">
+                            <Send className="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-slate-400" aria-hidden />
+                            <p className="text-xs font-semibold text-gray-900 dark:text-white">Destinations</p>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+                            <strong className="text-gray-700 dark:text-gray-200">Google Sheets</strong> and{" "}
+                            <strong className="text-gray-700 dark:text-gray-200">Looker Studio</strong> can use a{" "}
+                            <strong className="text-gray-700 dark:text-gray-200">different</strong> Google login — the pipeline links them inside this workspace.
                         </p>
                     </div>
                 </div>
             </div>
-            {!isSources ? (
-                <p className="mt-4 flex flex-wrap items-center gap-2 border-t border-cyan-100/80 pt-4 text-xs text-gray-500 dark:border-cyan-900/30 dark:text-gray-400">
-                    <Unplug className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                    Connect sources first on the{" "}
-                    <Link href="/sources" className="font-semibold text-cyan-700 underline hover:no-underline dark:text-cyan-300">
-                        Sources
-                    </Link>{" "}
-                    page, then add Sheets or Looker here so we can create a pipeline.
-                </p>
-            ) : (
-                <p className="mt-4 flex flex-wrap items-center gap-2 border-t border-cyan-100/80 pt-4 text-xs text-gray-500 dark:border-cyan-900/30 dark:text-gray-400">
-                    <Send className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                    After sources are connected, open{" "}
-                    <Link href="/destinations" className="font-semibold text-cyan-700 underline hover:no-underline dark:text-cyan-300">
-                        Destinations
-                    </Link>{" "}
-                    to choose where rows and dashboards land.
-                </p>
-            )}
+
+            {/* Footer hint */}
+            <p className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
+                {!isSources ? (
+                    <>
+                        <Unplug className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        Connect sources first on the{" "}
+                        <Link href="/sources" className="font-semibold text-cyan-600 hover:underline dark:text-cyan-400">
+                            Sources
+                        </Link>{" "}
+                        page, then add Sheets or Looker here to create a pipeline.
+                    </>
+                ) : (
+                    <>
+                        <Send className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        After connecting sources, open{" "}
+                        <Link href="/destinations" className="font-semibold text-cyan-600 hover:underline dark:text-cyan-400">
+                            Destinations
+                        </Link>{" "}
+                        to choose where your data lands.
+                    </>
+                )}
+            </p>
         </div>
     );
 }
