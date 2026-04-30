@@ -103,8 +103,9 @@ export function SectionOverviewCard({
             )}
 
             <div className="relative z-10">
-                <div className="mb-3 space-y-1">
-                    <div className="flex items-start gap-2">
+                {/* Header: icon + title on one row, KPI chip + subtitle on next row */}
+                <div className="mb-3">
+                    <div className="flex items-center gap-2">
                         <div
                             className={cn(
                                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border shadow-sm transition-all",
@@ -117,86 +118,95 @@ export function SectionOverviewCard({
                         >
                             {icon}
                         </div>
-                        <h3 id={titleId} className="min-w-0 flex-1 truncate pt-0.5 text-sm font-bold leading-tight text-gray-900 dark:text-white">{title}</h3>
+                        <h3 id={titleId} className="min-w-0 flex-1 text-sm font-bold leading-tight text-gray-900 dark:text-white">{title}</h3>
+                    </div>
+                    {/* Second row: subtitle left, KPI chip right */}
+                    <div className="mt-2 flex items-center justify-between gap-2 pl-10">
+                        {subtitle ? (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>
+                        ) : <span />}
                         {kpi ? (
                             <div
                                 className={cn(
-                                    "shrink-0 rounded-xl border px-3 py-2 text-right min-w-[4.5rem]",
+                                    "shrink-0 rounded-lg border px-2.5 py-1 text-right",
                                     "border-gray-200/80 bg-white/60 shadow-sm backdrop-blur-sm dark:border-slate-600/60 dark:bg-slate-900/50",
                                 )}
                             >
                                 <div
                                     className={cn(
-                                        "text-lg font-semibold leading-none tracking-tight tabular-nums [font-variant-numeric:tabular-nums] sm:text-xl",
+                                        "text-base font-semibold leading-none tabular-nums [font-variant-numeric:tabular-nums]",
                                         kpi.label.toLowerCase().includes("healthy") || kpi.label.toLowerCase().includes("connected") || kpi.label.toLowerCase().includes("success")
-                                            ? "text-emerald-900 dark:text-emerald-300"
+                                            ? "text-emerald-700 dark:text-emerald-300"
                                             : "text-gray-900 dark:text-white"
                                     )}
                                 >
                                     {kpi.value}
                                 </div>
-                                <div className="mt-1 text-[10px] font-semibold uppercase leading-none tracking-wider text-gray-500 dark:text-gray-400">
+                                <div className="text-[9px] font-semibold uppercase leading-none tracking-wider text-gray-400 dark:text-gray-500 mt-0.5">
                                     {kpi.label}
                                 </div>
                             </div>
                         ) : null}
                     </div>
-                    {subtitle ? (
-                        <p className="pl-10 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>
-                    ) : null}
                 </div>
 
                 {hasItems ? (
-                    <ul className="mb-4 flex max-h-[140px] flex-col gap-1.5 overflow-y-auto">
+                    <ul className="mb-4 flex flex-col gap-0.5">
                         {safeItems.slice(0, 3).map((item) => (
                             <li
                                 key={item.id}
-                                className="flex items-center gap-2 rounded-lg px-1.5 py-1 text-sm text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50/60 dark:hover:bg-slate-800/60"
+                                className="flex items-center gap-2 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-gray-50/60 dark:hover:bg-slate-800/60"
                                 title={item.sub}
                             >
-                                {item.logoSrc ? (
-                                    <div className="relative shrink-0">
-                                        <img
-                                            src={item.logoSrc}
-                                            alt=""
-                                            width={16}
-                                            height={16}
-                                            className="h-4 w-4 object-contain transition-transform group-hover:scale-110 duration-200"
-                                        />
-                                        {item.accountCount && item.accountCount > 1 && (
-                                            <span className="absolute -right-1.5 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-cyan-500 px-0.5 text-[7px] font-bold text-white shadow-sm">
-                                                {item.accountCount}
-                                            </span>
+                                {/* Logo or status dot */}
+                                <div className="relative shrink-0">
+                                    {item.logoSrc ? (
+                                        <>
+                                            <img
+                                                src={item.logoSrc}
+                                                alt=""
+                                                width={16}
+                                                height={16}
+                                                className="h-4 w-4 object-contain"
+                                            />
+                                            {item.accountCount && item.accountCount > 1 && (
+                                                <span className="absolute -right-1.5 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-cyan-500 px-0.5 text-[7px] font-bold text-white shadow-sm">
+                                                    {item.accountCount}
+                                                </span>
+                                            )}
+                                        </>
+                                    ) : (
+                                        <StatusDot status={item.status} isStale={item.sub?.includes("may need attention")} />
+                                    )}
+                                </div>
+                                {/* Label + sub stacked */}
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="truncate text-xs font-medium text-gray-800 dark:text-gray-200">{item.label}</span>
+                                        {item.logoSrc && (
+                                            <StatusDot status={item.status} isStale={item.sub?.includes("may need attention")} />
                                         )}
                                     </div>
-                                ) : (
-                                    <StatusDot status={item.status} isStale={item.sub?.includes("may need attention")} />
-                                )}
-                                <span className="truncate font-medium">{item.label}</span>
-                                {item.accountHint && (
-                                    <span className="ml-1 truncate text-[10px] text-gray-400 dark:text-gray-500 max-w-[60px]">
-                                        {item.accountHint}
-                                    </span>
-                                )}
-                                {item.sub ? (
-                                    <span
-                                        className={cn(
-                                            "ml-auto truncate text-xs",
-                                            item.status === "error"
-                                                ? "text-red-500 dark:text-red-400"
-                                                : item.status === "pending"
-                                                    ? "text-amber-600 dark:text-amber-400"
-                                                    : "text-gray-500 dark:text-gray-400"
-                                        )}
-                                    >
-                                        {item.sub}
-                                    </span>
-                                ) : null}
+                                    {item.sub ? (
+                                        <p
+                                            className={cn(
+                                                "truncate text-[10px] leading-tight mt-0.5",
+                                                item.status === "error"
+                                                    ? "text-red-500 dark:text-red-400"
+                                                    : item.status === "pending"
+                                                        ? "text-amber-600 dark:text-amber-400"
+                                                        : "text-gray-400 dark:text-gray-500"
+                                            )}
+                                        >
+                                            {item.sub}
+                                        </p>
+                                    ) : null}
+                                </div>
                             </li>
                         ))}
                     </ul>
                 ) : (
-                    <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
+                    <p className="mb-4 text-xs text-gray-500 dark:text-gray-400">
                         {emptyHint ?? "Nothing connected yet."}
                     </p>
                 )}

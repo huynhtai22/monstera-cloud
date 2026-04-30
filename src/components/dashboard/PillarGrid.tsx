@@ -82,9 +82,9 @@ export function PillarGrid({
         // P1: Use timezone-aware formatting for last sync
         const timeInfo = timeAgo(c.updatedAt, { staleThresholdMins: STALE_MINUTES });
         const subText = health === "error" 
-            ? "Connection error — check settings"
+            ? "Connection error"
             : health === "stale"
-            ? `Last sync ${timeInfo.text ?? "unknown"} — may need attention`
+            ? `Last sync ${timeInfo.text ?? "unknown"}`
             : timeInfo.text ?? "Pending first sync";
         
         // P1: Extract account information from name for multi-account sources
