@@ -726,18 +726,19 @@ export default function SourcesPage() {
             {/* DataFlowExplainer — only shown to first-time users (no connections yet); returning users see the compact pill */}
             {!isLoading && connectedSourceCount === 0 ? <DataFlowExplainer variant="sources" /> : null}
 
-            {/* Search + Filter tabs — stats inline on the right, no separate stat block */}
-            <div className="mb-8 space-y-0">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-0">
+            {/* Search + Filter tabs — visually separated card */}
+            <div className="mb-8 rounded-2xl border border-gray-200/80 bg-white shadow-sm dark:border-white/8 dark:bg-slate-900/60 dark:backdrop-blur-sm overflow-hidden">
+                {/* Search row */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 pt-4 pb-3">
                     <div className="relative flex-1 max-w-md group">
-                        <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-cyan-500 dark:text-slate-500" aria-hidden="true" />
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-cyan-500 dark:text-slate-500" aria-hidden="true" />
                         <input
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="Search integrations..."
                             aria-label="Search integrations"
-                            className="w-full rounded-xl border border-gray-200/80 bg-white/90 py-2.5 pl-10 pr-12 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100 dark:placeholder:text-slate-500"
+                            className="w-full rounded-xl border border-gray-200/80 bg-gray-50/80 py-2 pl-9 pr-10 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500/25 focus:bg-white dark:border-slate-700/60 dark:bg-slate-800/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800"
                         />
                     </div>
                     {!isLoading && filterStats.needsAttention > 0 && (
@@ -747,13 +748,14 @@ export default function SourcesPage() {
                         </span>
                     )}
                 </div>
-                <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-600/80">
+                {/* Filter tabs row */}
+                <div className="flex items-center justify-between border-t border-gray-100 dark:border-white/5 px-4">
                     <div className="flex space-x-6" role="tablist" aria-label="Filter integrations">
                         <button
                             role="tab"
                             aria-selected={activeFilter === 'all'}
                             onClick={() => setActiveFilter('all')}
-                            className={`pb-3 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'all' ? 'border-b-2 border-cyan-500 text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
+                            className={`py-3 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'all' ? 'border-b-2 border-cyan-500 text-gray-900 dark:text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
                         >
                             All Sources
                         </button>
@@ -761,7 +763,7 @@ export default function SourcesPage() {
                             role="tab"
                             aria-selected={activeFilter === 'connected'}
                             onClick={() => setActiveFilter('connected')}
-                            className={`pb-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'connected' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
+                            className={`py-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'connected' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
                         >
                             Connected ({isLoading ? '…' : connectedSourceCount})
                         </button>
@@ -769,14 +771,14 @@ export default function SourcesPage() {
                             role="tab"
                             aria-selected={activeFilter === 'available'}
                             onClick={() => setActiveFilter('available')}
-                            className={`pb-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'available' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
+                            className={`py-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'available' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
                         >
                             Available
                         </button>
                     </div>
                     {!isLoading && connectedSourceCount > 0 && (
-                        <span className="pb-2 text-xs text-gray-400 dark:text-slate-500">
-                            {filterStats.connected} connected · {filterStats.available} available
+                        <span className="text-xs text-gray-400 dark:text-slate-500">
+                            {filterStats.connected} connected · {filterStats.available} to connect
                         </span>
                     )}
                 </div>
