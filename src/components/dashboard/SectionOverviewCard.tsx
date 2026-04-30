@@ -121,14 +121,21 @@ export function SectionOverviewCard({
                         {kpi ? (
                             <div
                                 className={cn(
-                                    "shrink-0 rounded-xl border px-2.5 py-1.5 text-right",
+                                    "shrink-0 rounded-xl border px-3 py-2 text-right min-w-[4.5rem]",
                                     "border-gray-200/80 bg-white/60 shadow-sm backdrop-blur-sm dark:border-slate-600/60 dark:bg-slate-900/50",
                                 )}
                             >
-                                <div className="text-xl font-black leading-none tracking-tight text-gray-900 tabular-nums dark:text-white sm:text-2xl">
+                                <div
+                                    className={cn(
+                                        "text-lg font-semibold leading-none tracking-tight tabular-nums [font-variant-numeric:tabular-nums] sm:text-xl",
+                                        kpi.label.toLowerCase().includes("healthy") || kpi.label.toLowerCase().includes("connected") || kpi.label.toLowerCase().includes("success")
+                                            ? "text-emerald-900 dark:text-emerald-300"
+                                            : "text-gray-900 dark:text-white"
+                                    )}
+                                >
                                     {kpi.value}
                                 </div>
-                                <div className="mt-0.5 text-[9px] font-bold uppercase leading-none tracking-widest text-gray-500 dark:text-gray-400">
+                                <div className="mt-1 text-[10px] font-semibold uppercase leading-none tracking-wider text-gray-500 dark:text-gray-400">
                                     {kpi.label}
                                 </div>
                             </div>
