@@ -10,61 +10,37 @@ export function MarketingFooter() {
                     <div>
                         <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">Product</h3>
                         <ul className="space-y-3">
-                            <li><Link href="/docs#architecture" className="text-sm text-gray-400 hover:text-white transition-colors">Platform Overview</Link></li>
+                            <li><Link href="/docs#architecture" className="text-sm text-gray-300 hover:text-white transition-colors">Product Overview</Link></li>
                             <li><Link href="/pricing" className="text-sm text-gray-400 hover:text-white transition-colors">Pricing</Link></li>
-                            <li><Link href="/templates" className="text-sm text-gray-400 hover:text-white transition-colors">BI Templates</Link></li>
-                            <li><Link href="/docs#sources" className="text-sm text-gray-400 hover:text-white transition-colors">Connectors</Link></li>
-                            <li><Link href="/docs#authentication" className="text-sm text-gray-400 hover:text-white transition-colors">Security</Link></li>
-                            <li><Link href="/changelog" className="text-sm text-cyan-400 hover:text-cyan-300 transition-colors">Changelog</Link></li>
+                            <li><Link href="/templates" className="text-sm text-gray-300 hover:text-white transition-colors">Templates</Link></li>
+                            <li><Link href="/docs#sources" className="text-sm text-gray-300 hover:text-white transition-colors">Integrations</Link></li>
+                            <li><Link href="/docs" className="text-sm text-gray-300 hover:text-white transition-colors">Docs</Link></li>
                         </ul>
                     </div>
                     <div>
                         <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">Solutions</h3>
                         <ul className="space-y-3">
-                            <li><Link href="/solutions/agencies" className="text-sm text-gray-400 hover:text-white transition-colors">For Marketing Agencies</Link></li>
-                            <li>
-                                <Link href="/integrations/shopee-to-google-sheets" className="text-sm text-gray-400 hover:text-white transition-colors">
-                                    Shopee → Google Sheets
-                                </Link>
-                            </li>
-                            <li>
-                                <Link href="/integrations/shopee-to-looker-studio" className="text-sm text-gray-400 hover:text-white transition-colors">
-                                    Shopee → Looker Studio
-                                </Link>
-                            </li>
-                            <li>
-                                <Link href="/integrations/lazada-to-google-sheets" className="text-sm text-gray-400 hover:text-white transition-colors">
-                                    Lazada → Google Sheets
-                                </Link>
-                            </li>
-                            <li>
-                                <Link href="/integrations/tiktok-shop-to-looker-studio" className="text-sm text-gray-400 hover:text-white transition-colors">
-                                    TikTok Shop → Looker Studio
-                                </Link>
-                            </li>
-                            <li className="text-sm text-gray-500">For E-commerce <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
-                            <li className="text-sm text-gray-500">For Enterprises <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
-                            <li className="text-sm text-gray-500">Data Warehousing <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
+                            <li><Link href="/solutions/smes" className="text-sm text-gray-300 hover:text-white transition-colors">For Sellers</Link></li>
+                            <li><Link href="/solutions/agencies" className="text-sm text-gray-300 hover:text-white transition-colors">For Agencies</Link></li>
+                            <li><Link href="/pricing" className="text-sm text-gray-300 hover:text-white transition-colors">Pricing</Link></li>
                         </ul>
                     </div>
                     <div>
                         <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">Resources</h3>
                         <ul className="space-y-3">
-                            <li className="text-sm text-gray-500">Blog <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
-                            <li><Link href="/docs" className="text-sm text-gray-400 hover:text-white transition-colors">Documentation</Link></li>
-                            <li><Link href="/docs#looker-studio" className="text-sm text-gray-400 hover:text-white transition-colors">Looker Studio connector</Link></li>
-                            <li><Link href="/id" className="text-sm text-gray-400 hover:text-white transition-colors">Bahasa Indonesia</Link></li>
-                            <li className="text-sm text-gray-500">Help Center <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
-                            <li><Link href="/docs#api" className="text-sm text-gray-400 hover:text-white transition-colors">API Reference</Link></li>
+                            <li><Link href="/docs" className="text-sm text-gray-300 hover:text-white transition-colors">Docs</Link></li>
+                            <li><Link href="/templates" className="text-sm text-gray-300 hover:text-white transition-colors">Templates</Link></li>
+                            <li><Link href="/docs#sources" className="text-sm text-gray-300 hover:text-white transition-colors">Integrations</Link></li>
+                            <li><Link href="/changelog" className="text-sm text-gray-300 hover:text-white transition-colors">Product Updates</Link></li>
                         </ul>
                     </div>
                     <div>
                         <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider">Company</h3>
                         <ul className="space-y-3">
-                            <li><Link href="/about" className="text-sm text-gray-400 hover:text-white transition-colors">About Us</Link></li>
-                            <li className="text-sm text-gray-500">Careers <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
-                            <li className="text-sm text-gray-500">Contact Sales <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
-                            <li className="text-sm text-gray-500">Partners <span className="text-[10px] ml-1 bg-white/10 px-1.5 py-0.5 rounded text-white">Soon</span></li>
+                            <li><Link href="/about" className="text-sm text-gray-300 hover:text-white transition-colors">About</Link></li>
+                            <li><Link href="/support" className="text-sm text-gray-300 hover:text-white transition-colors">Contact</Link></li>
+                            <li><Link href="/legal/privacy-policy" className="text-sm text-gray-300 hover:text-white transition-colors">Privacy Policy</Link></li>
+                            <li><Link href="/legal/terms-of-service" className="text-sm text-gray-300 hover:text-white transition-colors">Terms</Link></li>
                         </ul>
                     </div>
                 </div>
