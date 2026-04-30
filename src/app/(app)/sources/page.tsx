@@ -727,7 +727,7 @@ export default function SourcesPage() {
             {!isLoading && connectedSourceCount === 0 ? <DataFlowExplainer variant="sources" /> : null}
 
             {/* Search + Filter tabs — visually separated card */}
-            <div className="mb-8 rounded-2xl border border-gray-200/80 bg-white shadow-sm dark:border-white/8 dark:bg-slate-900/60 dark:backdrop-blur-sm overflow-hidden">
+            <div className="glass-panel mb-8 overflow-hidden">
                 {/* Search row */}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 pt-4 pb-3">
                     <div className="relative flex-1 max-w-md group">

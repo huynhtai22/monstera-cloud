@@ -77,15 +77,10 @@ export const IntegrationCard = React.memo(function IntegrationCard({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border p-5 transition-all duration-200 group flex flex-col justify-between
-        bg-white/5 dark:bg-slate-950/20 backdrop-blur-md
-        shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:shadow-[0_12px_40px_rgb(0,0,0,0.14)] hover:-translate-y-1
-        dark:shadow-[0_12px_40px_rgba(0,0,0,0.5)] dark:hover:shadow-[0_16px_48px_rgba(0,0,0,0.65)]
+      className={`glass-card relative overflow-hidden rounded-2xl p-5 transition-all duration-200 group flex flex-col justify-between
         ${integration.status === "error"
-          ? "border-red-200/70 hover:border-red-300/80 dark:border-red-700/40 dark:hover:border-red-600/60"
-          : integration.status === "available"
-            ? "border-white/10 hover:border-white/20 dark:border-white/10 dark:hover:border-white/20"
-            : "border-white/10 hover:border-white/20 dark:border-white/10 dark:hover:border-white/20"}`}
+          ? "!border !border-red-200/70 hover:!border-red-300/80 dark:!border-red-700/40 dark:hover:!border-red-600/60"
+          : ""}`}
     >
       <div className="flex items-start justify-between mb-3 relative z-10">
         <div
