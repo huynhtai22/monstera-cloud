@@ -275,7 +275,7 @@ export default function MarketingHomePage() {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
                     <div className="max-w-3xl mx-auto text-center mb-14">
 
-                        <h1 className="text-5xl md:text-[4.5rem] font-black text-white tracking-tight leading-[1.05] mb-6">
+                        <h1 className="text-5xl md:text-[4.5rem] font-bold text-white tracking-tight leading-[1.05] mb-6">
                             {c.hero.h1[0]}
                             <br />
                             {c.hero.h1[1]}
@@ -295,30 +295,29 @@ export default function MarketingHomePage() {
                             </Link>
                             <Link
                                 href="/docs"
-                                className="inline-flex items-center gap-2 px-7 py-3.5 text-sm font-medium text-gray-400 hover:text-white border border-white/10 hover:border-white/20 rounded-xl transition-colors"
+                                className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors"
                             >
                                 {c.hero.ctaSub} <ChevronRight className="w-3.5 h-3.5" />
                             </Link>
                         </div>
 
-                        {/* TrustStrip */}
-                        <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+                        {/* TrustStrip — immediately below CTAs, consolidated single line */}
+                        <div className="mt-5 flex flex-wrap items-center justify-center gap-4">
                             <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
                                 <Shield className="w-3.5 h-3.5 text-cyan-600" />
-                                AES-256 encrypted credentials
+                                AES-256 encrypted
                             </span>
                             <span className="h-3 w-px bg-white/10 hidden sm:block" />
                             <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
                                 <Database className="w-3.5 h-3.5 text-cyan-600" />
-                                Workspace-isolated data
+                                Workspace-isolated
                             </span>
                             <span className="h-3 w-px bg-white/10 hidden sm:block" />
                             <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                No card required
+                                {c.hero.heroTrust}
                             </span>
                         </div>
-                        <p className="mt-3 text-xs text-gray-500">{c.hero.heroTrust}</p>
                     </div>
 
                     {/* Architecture diagram */}
@@ -390,7 +389,7 @@ export default function MarketingHomePage() {
                 <div className="max-w-5xl mx-auto">
                     <div className="text-center mb-12">
                         <p className="font-mono text-[10px] text-cyan-500/60 uppercase tracking-widest mb-4">See it in action</p>
-                        <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight">Set up once. Never export CSVs again.</h2>
+                        <h2 className="text-3xl md:text-4xl font-bold text-white tracking-tight">Set up once. Never export CSVs again.</h2>
                     </div>
                     {/* Placeholder for real product UI / GIF */}
                     <div className="aspect-video relative rounded-2xl border border-white/10 bg-white/[0.02] overflow-hidden flex flex-col items-center justify-center group shadow-2xl">
@@ -414,7 +413,7 @@ export default function MarketingHomePage() {
                     <div className="grid lg:grid-cols-2 gap-16 items-start">
                         <div>
                             <p className="font-mono text-[10px] text-gray-600 uppercase tracking-widest mb-4">{c.grid.eyebrow}</p>
-                            <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight leading-tight mb-6">
+                            <h2 className="text-3xl md:text-4xl font-bold text-white tracking-tight leading-tight mb-6">
                                 {c.grid.h2[0]}<br />{c.grid.h2[1]}
                             </h2>
                             <p className="text-gray-400 text-sm leading-relaxed max-w-md mb-8">{c.grid.sub}</p>
@@ -526,7 +525,7 @@ export default function MarketingHomePage() {
                     <div className="grid lg:grid-cols-2 gap-20 items-center">
                         <div>
                             <p className="font-mono text-[10px] text-gray-600 uppercase tracking-widest mb-4">{c.sea.eyebrow}</p>
-                            <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-6">{c.sea.h2}</h2>
+                            <h2 className="text-3xl md:text-4xl font-bold text-white tracking-tight">{c.sea.h2}</h2>
                             <p className="text-gray-400 text-sm leading-relaxed mb-8 max-w-md">{c.sea.sub}</p>
                             <Link href="/pricing" className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-xl transition-colors">
                                 {c.sea.cta} <ChevronRight className="w-3.5 h-3.5" />
@@ -560,7 +559,7 @@ export default function MarketingHomePage() {
                         <div className="pointer-events-none absolute bottom-0 right-0 w-64 h-64 bg-cyan-500/8 blur-[80px]" />
                         <div className="relative px-8 py-20 text-center max-w-2xl mx-auto">
                             <p className="font-mono text-[10px] text-cyan-500/60 uppercase tracking-widest mb-4">{c.cta.eyebrow}</p>
-                            <h2 className="text-3xl md:text-5xl font-black text-white tracking-tight mb-5">
+                            <h2 className="text-3xl md:text-5xl font-bold text-white tracking-tight mb-5">
                                 {c.cta.h2[0]}<br />{c.cta.h2[1]}
                             </h2>
                             <p className="text-gray-400 text-sm mb-10 leading-relaxed">{c.cta.sub}</p>

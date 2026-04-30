@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -12,6 +12,26 @@ import {
   Unplug,
 } from "lucide-react";
 import { PrimaryButton } from "@/components/ui";
+
+const SYNC_PHRASES = [
+  "Fetching campaigns…",
+  "Reading impressions…",
+  "Pulling spend data…",
+  "Loading ROAS metrics…",
+  "Writing rows…",
+  "Syncing ad accounts…",
+  "Processing metrics…",
+];
+
+function useSyncPhrase(active: boolean) {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (!active) { setIdx(0); return; }
+    const t = setInterval(() => setIdx((i) => (i + 1) % SYNC_PHRASES.length), 1800);
+    return () => clearInterval(t);
+  }, [active]);
+  return SYNC_PHRASES[idx];
+}
 
 export function IntegrationCardSkeleton() {
   return (
@@ -53,6 +73,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
   const isSyncing = busyActions.has(`sync:${integration.pipelineId}`);
   const isDisconnecting = busyActions.has(integration.id);
   const isBusy = busyActions.size > 0;
+  const syncPhrase = useSyncPhrase(isSyncing);
 
   return (
     <div
@@ -181,7 +202,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
             disabled
             className="flex w-full cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 py-2 text-sm font-semibold text-slate-500 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-400"
           >
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Syncing...
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" /> {syncPhrase}
           </button>
         ) : integration.status === "connected" ? (
           <div className="flex flex-col gap-2">
@@ -204,7 +225,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
               className="w-full"
               loading={isSyncing}
             >
-              {isSyncing ? "Syncing…" : "Sync Now"}
+              {isSyncing ? syncPhrase : "Sync Now"}
             </PrimaryButton>
             <button
               type="button"

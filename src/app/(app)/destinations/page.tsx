@@ -26,7 +26,7 @@ const fetcher = async (url: string) => {
 function DestinationCardSkeleton() {
     return (
         <div
-            className="relative overflow-hidden rounded-2xl border border-white/80 dark:border-slate-700/60 bg-white/60 dark:bg-slate-800/60 p-5 animate-pulse"
+            className="relative overflow-hidden rounded-2xl border border-white/10 dark:border-white/10 bg-white/5 dark:bg-slate-950/20 backdrop-blur-md p-5 animate-pulse"
             aria-hidden
         >
             <div className="flex items-start justify-between mb-3">
@@ -189,7 +189,8 @@ export default function DestinationsPage() {
                 </div>
             </div>
 
-            <DataFlowExplainer variant="destinations" />
+            {/* DataFlowExplainer — only shown to first-time users (no destination yet); returning users see compact pill */}
+            {!isLoading && !hasConnectedDestination ? <DataFlowExplainer variant="destinations" /> : null}
 
             {hasConnectedSource && !hasConnectedDestination && !isLoading ? (
                 <div className="relative z-10 mb-8 flex flex-col gap-4 rounded-2xl border border-amber-200/90 bg-amber-50/90 p-5 shadow-sm dark:border-amber-900/50 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
@@ -268,11 +269,14 @@ export default function DestinationsPage() {
                                     key={destination.id}
                                     className={cn(
                                         "stagger-item bento-hover relative rounded-2xl border p-5 flex flex-col justify-between group",
+                                        "bg-white/5 dark:bg-slate-950/20 backdrop-blur-md",
+                                        "shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:shadow-[0_12px_40px_rgb(0,0,0,0.14)] hover:-translate-y-1",
+                                        "dark:shadow-[0_12px_40px_rgba(0,0,0,0.5)] dark:hover:shadow-[0_16px_48px_rgba(0,0,0,0.65)]",
                                         isConnected
-                                            ? "border-cyan-200/50 bg-cyan-50/40 dark:border-cyan-800/40 dark:bg-cyan-950/20"
+                                            ? "border-white/10 dark:border-white/10"
                                             : isActive
-                                              ? "border-cyan-200 bg-cyan-50/70 shadow-sm dark:border-cyan-700/60 dark:bg-cyan-950/30 hover:shadow-md hover:-translate-y-1"
-                                              : "border-white bg-white/40 dark:border-slate-700/60 dark:bg-slate-900/20 opacity-80 hover:opacity-100 hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-900/5 hover:border-cyan-200/50 dark:hover:border-cyan-700/50 dark:hover:shadow-cyan-900/20"
+                                              ? "border-white/20 dark:border-white/20"
+                                              : "border-white/10 dark:border-white/10"
                                     )}
                                 >
                                     {/* Hover mock gradient glow */}
@@ -281,23 +285,24 @@ export default function DestinationsPage() {
                                     )}
                                     <div className="flex items-start justify-between mb-3 relative z-10">
                                         {/* Logo */}
-                                        <div className={cn(
-                                            "relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 bg-white/70 dark:bg-slate-900/80 overflow-hidden",
-                                            isConnected ? "border-cyan-100/50 dark:border-cyan-700/40" : "border-gray-200 dark:border-slate-600"
-                                        )}>
+                                        <div className="relative w-12 h-12 rounded-xl border border-white/10 dark:border-white/10 flex items-center justify-center shrink-0 bg-white/10 dark:bg-slate-900/60 overflow-hidden">
                                             <img
                                                 src={destination.logoSrc}
                                                 alt={`${destination.name} logo`}
                                                 width={28}
                                                 height={28}
                                                 className="object-contain"
+                                                style={{ filter: 'drop-shadow(0 0 8px rgba(0,0,0,0.5))' }}
                                             />
                                         </div>
 
-                                        {/* Step icon */}
+                                        {/* Status badge */}
                                         <div className="mt-0.5 shrink-0">
                                             {isConnected ? (
-                                                <CheckCircle2 className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
+                                                <div className="inline-flex items-center rounded-md bg-cyan-950/60 px-2 py-1 text-xs font-semibold text-cyan-300 ring-1 ring-cyan-500/30 shadow-[0_0_10px_rgba(34,211,238,0.4)]">
+                                                    <CheckCircle2 className="mr-1 h-3.5 w-3.5 text-cyan-400" />
+                                                    Connected
+                                                </div>
                                             ) : isActive ? (
                                                 <div className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-cyan-500">
                                                     <div className="h-2 w-2 rounded-full bg-cyan-500" />
@@ -332,33 +337,31 @@ export default function DestinationsPage() {
                                                 Coming soon
                                             </span>
                                         )}
-                                        {/* Dst2: Connected badge — no strikethrough */}
-                                        <h3 className="font-semibold mb-1 text-gray-900 dark:text-white">{destination.name}</h3>
                                         {isConnected ? (
-                                            <div className="flex items-center gap-1.5">
-                                                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                                                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">Connected</span>
-                                                {/* Dst5: last write timestamp */}
-                                                {destination.lastWrite && (
-                                                    <span className="text-xs text-gray-400 dark:text-slate-500">
-                                                        · Last write{" "}
-                                                        {(() => {
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">{destination.name}</h3>
+                                                <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-slate-400">
+                                                    {destination.lastWrite && (
+                                                        <span>Last write: {(() => {
                                                             const diff = Date.now() - new Date(destination.lastWrite).getTime();
                                                             const h = Math.floor(diff / 3600000);
                                                             const d = Math.floor(h / 24);
                                                             return d > 0 ? `${d}d ago` : h > 0 ? `${h}h ago` : "recently";
-                                                        })()}
-                                                    </span>
-                                                )}
-                                                {!destination.lastWrite && (
-                                                    <span className="text-xs text-gray-400 dark:text-slate-500">· No writes yet</span>
-                                                )}
+                                                        })()}</span>
+                                                    )}
+                                                    {!destination.lastWrite && (
+                                                        <span>· No writes yet</span>
+                                                    )}
+                                                </div>
                                             </div>
                                         ) : (
-                                            <p className={cn(
-                                                "text-sm line-clamp-2",
-                                                isActive ? "text-gray-600 dark:text-gray-400" : "text-gray-400 dark:text-gray-600"
-                                            )}>{destination.description}</p>
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">{destination.name}</h3>
+                                                <p className={cn(
+                                                    "text-sm line-clamp-2",
+                                                    isActive ? "text-gray-500 dark:text-slate-300" : "text-gray-400 dark:text-slate-500"
+                                                )}>{destination.description}</p>
+                                            </div>
                                         )}
                                     </div>
 

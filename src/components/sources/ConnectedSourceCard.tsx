@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -11,6 +11,26 @@ import {
   Unplug,
 } from "lucide-react";
 import { PrimaryButton } from "@/components/ui";
+
+const SYNC_PHRASES = [
+  "Fetching campaigns…",
+  "Reading impressions…",
+  "Pulling spend data…",
+  "Loading ROAS metrics…",
+  "Writing rows…",
+  "Syncing ad accounts…",
+  "Processing metrics…",
+];
+
+function useSyncPhrase(active: boolean) {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (!active) { setIdx(0); return; }
+    const t = setInterval(() => setIdx((i) => (i + 1) % SYNC_PHRASES.length), 1800);
+    return () => clearInterval(t);
+  }, [active]);
+  return SYNC_PHRASES[idx];
+}
 
 export interface ConnectedSourceCardProps {
   integration: any;
@@ -31,6 +51,7 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
   const isDisconnecting = busyActions.has(integration.id);
   const isBusy = busyActions.size > 0;
   const isError = integration.status === "error";
+  const syncPhrase = useSyncPhrase(isSyncing);
 
   // Detect token/auth expiry to show better CTA
   const isAuthError =
@@ -206,7 +227,7 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
               disabled={isSyncing || isBusy}
               loading={isSyncing}
             >
-              {isSyncing ? "Syncing…" : "Sync Now"}
+              {isSyncing ? syncPhrase : "Sync Now"}
             </PrimaryButton>
             <button
               type="button"
