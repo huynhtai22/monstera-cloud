@@ -77,7 +77,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
 
   return (
     <div
-      className={`glass-card relative overflow-hidden rounded-2xl p-5 transition-all duration-200 group flex flex-col justify-between
+      className={`glass-card bento-hover relative overflow-hidden rounded-2xl p-5 group flex flex-col justify-between
         ${integration.status === "error"
           ? "!border !border-red-200/70 hover:!border-red-300/80 dark:!border-red-700/40 dark:hover:!border-red-600/60"
           : ""}`}
