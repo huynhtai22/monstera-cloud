@@ -1,28 +1,175 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-    ArrowRight, ChevronRight, CheckCircle2, Shield,
-    Lock, RotateCcw, Eye, Plus, Minus, RefreshCw,
+    ArrowRight,
+    ChevronRight,
+    Zap,
+    Globe,
+    Shield,
+    Clock,
+    Database,
+    RefreshCw,
+    CheckCircle2,
 } from "lucide-react";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 
-function track(event: string, props?: Record<string, string>) {
-    if (typeof window !== "undefined" && (window as any).gtag) {
-        (window as any).gtag("event", event, props ?? {});
-    }
-}
-
 const MARKETING_LANG_KEY = "marketing_lang";
-type Lang = "en" | "vi";
 
-// ── Sub-components ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// Copy — EN / VI
+// ─────────────────────────────────────────────
+const COPY = {
+    en: {
+        hero: {
+            h1: ["Stop reconciling spreadsheets", "at midnight."],
+            sub: "Monstera Cloud pulls TikTok Ads, Meta, Shopee, and Google Ads into one clean Google Sheet — automatically, every day. Built for sellers and agencies in Southeast Asia.",
+            cta: "Start free — first sync in 5 min",
+            ctaSub: "See a live dashboard",
+            heroTrust: "No card · Vietnamese support · Upgrade when you need more",
+        },
+        diff: [
+            { num: "01", title: "Live in under 60 seconds",  body: "Connect your first platform, pick your metrics, and data is in your spreadsheet before your coffee goes cold." },
+            { num: "02", title: "No code. No setup.",         body: "OAuth sign-in, click a few fields, done. Built for business owners — not developers." },
+            { num: "03", title: "Every SEA platform",         body: "TikTok Ads, Meta Ads, Shopee, Google Ads — all the channels your business actually runs on." },
+            { num: "04", title: "VND + USD billing",          body: "Priced for sellers and agencies in Vietnam, Indonesia, and Thailand." },
+        ],
+        grid: {
+            eyebrow: "What you can connect",
+            h2: ["Every channel.", "One workspace."],
+            sub: "Stop switching between five tabs. Monstera pulls all your ad and store data into one place — clean, normalised, and always up to date.",
+            link: "See how sellers use Monstera",
+            sources: "Data sources",
+            destinations: "Destinations",
+        },
+        how: {
+            eyebrow: "How it works",
+            steps: [
+                { num: "01", title: "Connect your platforms",          body: "Sign in with TikTok Ads, Meta, Shopee, or Google Ads. Takes 2 minutes. We handle the auth — you just click Authorize." },
+                { num: "02", title: "Pick your metrics and schedule",   body: "Choose what you want to track — spend, ROAS, orders, revenue. Set hourly or daily auto-refresh." },
+                { num: "03", title: "Your data shows up automatically", body: "Numbers go straight into your Google Sheets™ or Looker Studio. Always fresh, zero manual work." },
+            ],
+            card: {
+                filename: "My Business Dashboard.xlsx",
+                synced: "All platforms synced",
+                updated: "Updated 2 min ago",
+                footer: "Next auto-refresh in 58 min · Powered by Monstera",
+            },
+        },
+        sea: {
+            eyebrow: "Region",
+            h2: "Built for Southeast Asia",
+            sub: "Designed for Vietnamese and SEA sellers managing TikTok Shop, Shopee, and Lazada. Pay in VND or USD. Infrastructure hosted in Singapore for low latency.",
+            cta: "See Plans",
+            stats: [
+                { stat: "< 60s",   label: "Time to first sync" },
+                { stat: "1h",      label: "Min auto-refresh interval" },
+                { stat: "5+",      label: "Ad platforms connected" },
+                { stat: "TLS 1.3", label: "Encrypted in transit" },
+            ],
+        },
+        cta: {
+            eyebrow: "Get started",
+            h2: ["Your data.", "In your spreadsheet."],
+            sub: "Connect your first platform in under 60 seconds. Free plan includes TikTok Ads + Shopee. No credit card required.",
+            btn: "Create free account",
+            trust: "No credit card · TLS encrypted · VND + USD billing",
+            legal: "Google Sheets™ and Google Workspace™ are trademarks of Google LLC. Monstera Cloud is not affiliated with Google.",
+        },
+        card: {
+            synced: "All platforms synced",
+            updated: "Updated 2 min ago",
+            footer: "Next auto-refresh in 58 min · Powered by Monstera",
+            platforms: [
+                { label: "TikTok Ads",  value: "$3,240 spend",   delta: "+12%" },
+                { label: "Meta Ads",    value: "4.2x ROAS",      delta: "+8%"  },
+                { label: "Shopee",      value: "$8,910 revenue",  delta: "+31%" },
+                { label: "Google Ads",  value: "$0.91 CPC",       delta: "-5%"  },
+            ],
+        },
+        partner: "Official API Partner",
+    },
+    vi: {
+        hero: {
+            h1: ["Dừng đối chiếu bảng tính", "lúc nửa đêm."],
+            sub: "Monstera Cloud đưa TikTok Ads, Meta, Shopee và Google Ads vào một Google Sheet sạch — tự động mỗi ngày. Dành cho seller và agency Đông Nam Á.",
+            cta: "Dùng thử miễn phí — đồng bộ đầu tiên trong 5 phút",
+            ctaSub: "Xem dashboard mẫu",
+            heroTrust: "Không cần thẻ · Hỗ trợ tiếng Việt · Nâng cấp khi cần thêm tính năng",
+        },
+        diff: [
+            { num: "01", title: "Kết nối trong 60 giây",          body: "Kết nối nền tảng đầu tiên, chọn chỉ số, và dữ liệu đã có trong bảng tính của bạn — nhanh hơn một ly cà phê." },
+            { num: "02", title: "Không code. Không cài đặt.",      body: "Đăng nhập OAuth, chọn vài trường là xong. Được xây dựng cho chủ kinh doanh — không phải lập trình viên." },
+            { num: "03", title: "Toàn bộ nền tảng SEA",            body: "TikTok Ads, Meta Ads, Shopee, Google Ads — tất cả kênh bán hàng bạn đang dùng mỗi ngày." },
+            { num: "04", title: "Thanh toán VND + USD",            body: "Mức giá phù hợp cho nhà bán và agency tại Việt Nam, Indonesia và Thái Lan." },
+        ],
+        grid: {
+            eyebrow: "Kết nối với",
+            h2: ["Mọi kênh bán hàng.", "Một nơi quản lý."],
+            sub: "Hết cảnh mở 5 tab cùng lúc. Monstera tổng hợp toàn bộ dữ liệu quảng cáo và cửa hàng của bạn vào một nơi — sạch sẽ, chuẩn hóa và luôn cập nhật.",
+            link: "Xem cách nhà bán dùng Monstera",
+            sources: "Nguồn dữ liệu",
+            destinations: "Đích đến",
+        },
+        how: {
+            eyebrow: "Cách hoạt động",
+            steps: [
+                { num: "01", title: "Kết nối nền tảng của bạn",    body: "Đăng nhập TikTok Ads, Meta, Shopee hoặc Google Ads. Chỉ mất 2 phút. Chúng tôi xử lý xác thực — bạn chỉ cần nhấn Cho phép." },
+                { num: "02", title: "Chọn chỉ số và lịch cập nhật", body: "Chọn những gì bạn muốn theo dõi — chi phí, ROAS, đơn hàng, doanh thu. Đặt lịch tự động cập nhật theo giờ hoặc ngày." },
+                { num: "03", title: "Dữ liệu tự động hiển thị",     body: "Số liệu chạy thẳng vào Google Sheets™ hoặc Looker Studio của bạn. Luôn mới nhất, không tốn công thủ công." },
+            ],
+            card: {
+                filename: "Báo cáo kinh doanh.xlsx",
+                synced: "Tất cả nền tảng đã đồng bộ",
+                updated: "Cập nhật 2 phút trước",
+                footer: "Tự động cập nhật sau 58 phút · Bởi Monstera",
+            },
+        },
+        sea: {
+            eyebrow: "Khu vực",
+            h2: "Được xây dựng cho Đông Nam Á",
+            sub: "Được thiết kế cho nhà bán hàng Việt Nam và Đông Nam Á đang quản lý TikTok Shop, Shopee và Lazada. Thanh toán bằng VND hoặc USD. Hạ tầng đặt tại Singapore để đảm bảo tốc độ.",
+            cta: "Xem gói cước",
+            stats: [
+                { stat: "< 60s",   label: "Thời gian đồng bộ đầu tiên" },
+                { stat: "1h",      label: "Chu kỳ cập nhật tối thiểu" },
+                { stat: "5+",      label: "Nền tảng quảng cáo" },
+                { stat: "TLS 1.3", label: "Mã hóa kết nối" },
+            ],
+        },
+        cta: {
+            eyebrow: "Bắt đầu ngay",
+            h2: ["Dữ liệu của bạn.", "Trong bảng tính của bạn."],
+            sub: "Kết nối nền tảng đầu tiên trong vòng 60 giây. Gói miễn phí bao gồm TikTok Ads + Shopee. Không cần thẻ tín dụng.",
+            btn: "Tạo tài khoản miễn phí",
+            trust: "Không cần thẻ · Mã hóa TLS · Thanh toán VND + USD",
+            legal: "Google Sheets™ và Google Workspace™ là thương hiệu của Google LLC. Monstera Cloud không liên kết với Google.",
+        },
+        card: {
+            synced: "Tất cả nền tảng đã đồng bộ",
+            updated: "Cập nhật 2 phút trước",
+            footer: "Tự động cập nhật sau 58 phút · Bởi Monstera",
+            platforms: [
+                { label: "TikTok Ads",  value: "$3,240 chi phí",    delta: "+12%" },
+                { label: "Meta Ads",    value: "4.2x ROAS",          delta: "+8%"  },
+                { label: "Shopee",      value: "$8,910 doanh thu",   delta: "+31%" },
+                { label: "Google Ads",  value: "$0.91 CPC",          delta: "-5%"  },
+            ],
+        },
+        partner: "Đối tác API Chính thức",
+    },
+} as const;
 
+type Lang = keyof typeof COPY;
+
+// ─────────────────────────────────────────────
+// Architecture nodes
+// ─────────────────────────────────────────────
 function SourceNode({ label, logo, alt, tint }: { label: string; logo: string; alt: string; tint: string }) {
     return (
-        <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${tint}`}>
-            <img src={logo} alt={alt} className="h-4 w-4 object-contain brightness-0 invert opacity-70 flex-shrink-0" />
+        <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl border ${tint} min-w-[148px]`}>
+            <img src={logo} alt={alt} className="h-4 w-4 object-contain brightness-0 invert opacity-75 flex-shrink-0" />
             <span className="text-xs text-gray-300 font-medium whitespace-nowrap">{label}</span>
         </div>
     );
@@ -30,366 +177,360 @@ function SourceNode({ label, logo, alt, tint }: { label: string; logo: string; a
 
 function DestNode({ label, logo, alt }: { label: string; logo: string; alt: string }) {
     return (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/25">
-            <img src={logo} alt={alt} className="h-4 w-4 object-contain brightness-0 invert opacity-70 flex-shrink-0" />
+        <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-cyan-500/8 border border-cyan-500/25 min-w-[160px]">
+            <img src={logo} alt={alt} className="h-4 w-4 object-contain brightness-0 invert opacity-75 flex-shrink-0" />
             <span className="text-xs text-cyan-300 font-medium whitespace-nowrap">{label}</span>
         </div>
     );
 }
 
-function FAQItem({ q, a }: { q: string; a: string }) {
-    const [open, setOpen] = useState(false);
+// ─────────────────────────────────────────────
+// Differentiator card
+// ─────────────────────────────────────────────
+function DiffCard({ num, title, body, icon: Icon }: { num: string; title: string; body: string; icon: React.ElementType }) {
     return (
-        <div className="border-b border-white/5">
-            <button
-                className="w-full flex items-center justify-between py-4 text-left gap-4 group"
-                onClick={() => setOpen(!open)}
-                aria-expanded={open}
-            >
-                <span className="text-sm font-medium text-gray-200 group-hover:text-white transition-colors">{q}</span>
-                {open
-                    ? <Minus className="w-4 h-4 text-cyan-500 flex-shrink-0" />
-                    : <Plus className="w-4 h-4 text-gray-500 flex-shrink-0 group-hover:text-gray-300 transition-colors" />
-                }
-            </button>
-            {open && <p className="pb-4 text-sm text-gray-400 leading-relaxed max-w-2xl">{a}</p>}
+        <div className="flex flex-col gap-4 p-6 border border-white/8 bg-white/[0.02] hover:border-white/20 transition-colors duration-300">
+            <div className="flex items-start justify-between">
+                <span className="font-mono text-[10px] text-gray-600 tracking-widest">{num}</span>
+                <Icon className="w-4 h-4 text-gray-500" />
+            </div>
+            <div>
+                <h3 className="text-sm font-semibold text-white mb-1.5">{title}</h3>
+                <p className="text-xs text-gray-500 leading-relaxed">{body}</p>
+            </div>
         </div>
     );
 }
 
-// ── Sheet preview data ─────────────────────────────────────────────────────
-const SHEET_ROWS = [
-    { date: "2024-01-15", platform: "TikTok Ads",  spend: "$420",  revenue: "$2,940", orders: "84",  roas: "7.0x", synced: "2m ago" },
-    { date: "2024-01-15", platform: "Meta Ads",    spend: "$310",  revenue: "$1,240", orders: "41",  roas: "4.0x", synced: "2m ago" },
-    { date: "2024-01-15", platform: "Shopee",      spend: "–",     revenue: "$8,910", orders: "312", roas: "–",    synced: "2m ago" },
-    { date: "2024-01-15", platform: "Google Ads",  spend: "$185",  revenue: "$740",   orders: "22",  roas: "4.0x", synced: "2m ago" },
-    { date: "2024-01-14", platform: "TikTok Shop", spend: "–",     revenue: "$3,200", orders: "97",  roas: "–",    synced: "6h ago" },
-];
-const SHEET_COLS = ["Date", "Platform", "Spend", "Revenue", "Orders", "ROAS", "Last synced"];
+// ─────────────────────────────────────────────
+// Step
+// ─────────────────────────────────────────────
+function Step({ num, title, body }: { num: string; title: string; body: string }) {
+    return (
+        <div className="flex gap-5 group">
+            <div className="flex-shrink-0 w-9 h-9 rounded-full border border-white/10 flex items-center justify-center group-hover:border-cyan-500/40 transition-colors mt-0.5">
+                <span className="font-mono text-xs text-gray-500 group-hover:text-cyan-400 transition-colors">{num}</span>
+            </div>
+            <div>
+                <h3 className="text-base font-semibold text-white mb-1.5">{title}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed">{body}</p>
+            </div>
+        </div>
+    );
+}
 
-const FAQS = [
-    { q: "Which platforms are supported?",
-      a: "Live: TikTok Ads, Meta Ads, Google Ads, TikTok Shop, Shopee. Google Sheets as destination. Lazada, Shopify, GA4, and Looker Studio are rolling out progressively." },
-    { q: "How often does data refresh?",
-      a: "Daily on the free plan. Hourly and more frequent refresh on paid plans." },
-    { q: "Can I use my existing Google Sheet?",
-      a: "Yes. Point a pipeline at an existing spreadsheet and Monstera writes into a new tab, leaving your existing data untouched." },
-    { q: "Is my data secure?",
-      a: "All connections use official OAuth. Tokens are AES-256 encrypted at rest. Traffic uses TLS 1.3. We do not sell your data." },
-    { q: "Do I need a data warehouse or developer?",
-      a: "No. Monstera is built for teams that live in Google Sheets. No SQL, no warehouse, no engineering." },
-    { q: "Is there a free plan?",
-      a: "Yes — 1 workspace, TikTok Ads and Shopee as sources, Google Sheets destination, daily refresh. No credit card." },
-];
+const PLATFORM_LOGOS = [
+    { logo: INTEGRATION_LOGOS.tiktok,    color: "text-pink-400" },
+    { logo: INTEGRATION_LOGOS.meta,      color: "text-blue-400" },
+    { logo: INTEGRATION_LOGOS.shopee,    color: "text-orange-400" },
+    { logo: INTEGRATION_LOGOS.googleAds, color: "text-green-400" },
+] as const;
 
-// ── Main page ───────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// Main page
+// ─────────────────────────────────────────────
 export default function MarketingHomePage() {
-    const [_lang, setLang] = useState<Lang>("en");
+    const [lang, setLang] = useState<Lang>("en");
 
     useEffect(() => {
         if (typeof window === "undefined") return;
-        const apply = (v: string | null) => { if (v === "en" || v === "vi") setLang(v); };
-        apply(window.localStorage.getItem(MARKETING_LANG_KEY));
-        const onStorage = (e: StorageEvent) => { if (e.key === MARKETING_LANG_KEY) apply(e.newValue); };
-        const onCustom = (e: Event) => apply((e as CustomEvent<Lang>).detail);
+
+        const applyLang = (value: string | null) => {
+            if (value === "en" || value === "vi") {
+                setLang(value);
+            }
+        };
+
+        applyLang(window.localStorage.getItem(MARKETING_LANG_KEY));
+
+        const onStorage = (event: StorageEvent) => {
+            if (event.key === MARKETING_LANG_KEY) {
+                applyLang(event.newValue);
+            }
+        };
+
+        const onMarketingLangChange = (event: Event) => {
+            const nextLang = (event as CustomEvent<Lang>).detail;
+            applyLang(nextLang);
+        };
+
         window.addEventListener("storage", onStorage);
-        window.addEventListener("marketing-lang-change", onCustom as EventListener);
+        window.addEventListener("marketing-lang-change", onMarketingLangChange as EventListener);
+
         return () => {
             window.removeEventListener("storage", onStorage);
-            window.removeEventListener("marketing-lang-change", onCustom as EventListener);
+            window.removeEventListener("marketing-lang-change", onMarketingLangChange as EventListener);
         };
     }, []);
 
+    const c = COPY[lang];
+
     return (
         <div className="relative min-h-screen bg-[#09090b] selection:bg-cyan-500/30">
+            {/* ── HERO ──────────────────────────────────────────── */}
+            <section className="relative pt-32 pb-24 border-b border-white/5 overflow-hidden">
+                <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-cyan-500/6 blur-[140px] rounded-full" />
 
-            {/* ── 1. HERO ─────────────────────────────────────────────────── */}
-            <section className="relative pt-32 pb-28 border-b border-white/5 overflow-hidden">
-                <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[380px] bg-cyan-500/6 blur-[140px] rounded-full" />
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-                    <div className="max-w-3xl mx-auto text-center mb-16">
-                        <h1 className="text-5xl md:text-[4.5rem] font-bold text-white tracking-tight leading-[1.06] mb-5">
-                            Stop exporting CSVs.
+                    <div className="max-w-3xl mx-auto text-center mb-14">
+
+                        <h1 className="text-5xl md:text-[4.5rem] font-black text-white tracking-tight leading-[1.05] mb-6">
+                            {c.hero.h1[0]}
+                            <br />
+                            {c.hero.h1[1]}
                         </h1>
-                        <p className="text-lg text-gray-400 mb-10 max-w-lg mx-auto leading-relaxed">
-                            Monstera syncs your SEA marketplace and ad data into clean Google Sheets automatically.
+
+                        <p className="text-lg text-gray-400 mb-10 max-w-xl mx-auto leading-relaxed">
+                            {c.hero.sub}
                         </p>
+
                         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                             <Link
                                 href="/register"
-                                onClick={() => track("cta_start_free", { location: "hero" })}
-                                className="group inline-flex items-center gap-2 px-7 py-3.5 min-h-[48px] w-full sm:w-auto justify-center text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-xl transition-colors shadow-lg shadow-cyan-900/40"
+                                className="group inline-flex items-center gap-2 px-7 py-3.5 text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-xl transition-colors shadow-lg shadow-cyan-900/40"
                             >
-                                Start free
+                                {c.hero.cta}
                                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                             </Link>
-                            <a
-                                href="#sheet-preview"
-                                onClick={() => track("cta_sample_sheet", { location: "hero" })}
-                                className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors min-h-[48px] px-3"
+                            <Link
+                                href="/showcase"
+                                className="inline-flex items-center gap-2 px-7 py-3.5 text-sm font-medium text-gray-400 hover:text-white border border-white/10 hover:border-white/20 rounded-xl transition-colors"
                             >
-                                View sample sheet <ChevronRight className="w-3.5 h-3.5" />
-                            </a>
+                                {c.hero.ctaSub} <ChevronRight className="w-3.5 h-3.5" />
+                            </Link>
                         </div>
-                        <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-                            {["No credit card", "OAuth access", "Google Sheets destination", "Built for SEA sellers"].map((t) => (
-                                <span key={t} className="inline-flex items-center gap-1.5 text-xs text-gray-500">
-                                    <CheckCircle2 className="w-3 h-3 text-cyan-700 flex-shrink-0" />{t}
-                                </span>
-                            ))}
-                        </div>
+                        <p className="mt-6 text-xs text-gray-500">{c.hero.heroTrust}</p>
                     </div>
 
-                    {/* Flow diagram */}
-                    <div className="flex items-center justify-center gap-0 w-full max-w-4xl mx-auto overflow-x-auto pb-2">
-                        {/* Sources */}
-                        <div className="flex-shrink-0 grid grid-cols-1 gap-2">
-                            <SourceNode label="TikTok Shop" logo={INTEGRATION_LOGOS.tiktok}    alt="TikTok Shop" tint="bg-pink-500/5 border-pink-500/20" />
-                            <SourceNode label="Shopee"      logo={INTEGRATION_LOGOS.shopee}    alt="Shopee"      tint="bg-orange-500/5 border-orange-500/20" />
-                            <SourceNode label="TikTok Ads"  logo={INTEGRATION_LOGOS.tiktok}    alt="TikTok Ads"  tint="bg-pink-500/5 border-pink-500/20" />
-                            <SourceNode label="Meta Ads"    logo={INTEGRATION_LOGOS.meta}      alt="Meta Ads"    tint="bg-blue-500/5 border-blue-500/20" />
-                            <SourceNode label="Google Ads"  logo={INTEGRATION_LOGOS.googleAds} alt="Google Ads"  tint="bg-green-500/5 border-green-500/20" />
+                    {/* Architecture diagram */}
+                    <div className="flex items-center gap-0 w-full max-w-5xl mx-auto">
+                        {/* Sources: 2×2 grid */}
+                        <div className="flex-shrink-0 grid grid-cols-2 gap-2.5">
+                            <SourceNode label="TikTok Ads"  logo={INTEGRATION_LOGOS.tiktok}    alt="TikTok"     tint="bg-red-500/5 border-red-500/20" />
+                            <SourceNode label="Meta Ads"    logo={INTEGRATION_LOGOS.meta}      alt="Meta"       tint="bg-blue-500/5 border-blue-500/20" />
+                            <SourceNode label="Shopee"      logo={INTEGRATION_LOGOS.shopee}    alt="Shopee"     tint="bg-orange-500/5 border-orange-500/20" />
+                            <SourceNode label="Google Ads"  logo={INTEGRATION_LOGOS.googleAds} alt="Google Ads" tint="bg-green-500/5 border-green-500/20" />
                         </div>
-                        {/* Arrow */}
-                        <div className="flex-1 relative h-[2px] mx-4 min-w-[20px]">
+
+                        {/* Left connector */}
+                        <div className="flex-1 relative h-[2px] mx-4">
                             <div className="absolute inset-0 bg-gradient-to-r from-white/5 via-white/20 to-white/10" />
+                            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/30" />
                         </div>
-                        {/* Monstera hub */}
-                        <div className="flex-shrink-0 w-28 h-28 rounded-2xl border border-cyan-500/30 bg-cyan-500/5 flex flex-col items-center justify-center gap-2 relative">
+
+                        {/* Center — Monstera */}
+                        <div className="flex-shrink-0 w-36 h-36 rounded-2xl border border-cyan-500/30 bg-cyan-500/5 flex flex-col items-center justify-center gap-3 relative">
                             <div className="absolute inset-0 rounded-2xl bg-cyan-400/5 blur-sm pointer-events-none" />
-                            <div className="relative w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center">
-                                <span className="font-bold text-cyan-400 text-base leading-none">M</span>
+                            <div className="relative w-11 h-11 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center">
+                                <span className="font-black text-cyan-400 text-xl leading-none">M</span>
                             </div>
-                            <span className="relative font-mono text-[9px] text-cyan-400/70 tracking-widest uppercase text-center leading-tight">Monstera</span>
+                            <span className="relative font-mono text-[9px] text-cyan-400/70 tracking-widest uppercase text-center leading-tight">Monstera<br />Cloud</span>
                         </div>
-                        {/* Arrow */}
-                        <div className="flex-1 relative h-[2px] mx-4 min-w-[20px]">
+
+                        {/* Right connector */}
+                        <div className="flex-1 relative h-[2px] mx-4">
                             <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 via-cyan-500/30 to-cyan-500/5" />
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-cyan-500/50" />
                         </div>
-                        {/* Destination */}
-                        <div className="flex-shrink-0">
+
+                        {/* Destinations */}
+                        <div className="flex-shrink-0 flex flex-col gap-2.5">
                             <DestNode label="Google Sheets™" logo={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" />
+                            <DestNode label="Looker Studio"   logo={INTEGRATION_LOGOS.looker}       alt="Looker Studio" />
+                            <DestNode label="Direct Export"   logo={INTEGRATION_LOGOS.postgresql}   alt="Export" />
+                        </div>
+                    </div>
+
+                    {/* Partner strip */}
+                    <div className="mt-12 pt-8 border-t border-white/5 flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
+                        <span className="text-[10px] font-mono text-gray-600 uppercase tracking-widest">{c.partner}</span>
+                        <div className="flex items-center gap-6 opacity-40 hover:opacity-60 transition-opacity">
+                            <img src={INTEGRATION_LOGOS.tiktok}       alt="TikTok"        className="h-5 w-auto brightness-0 invert" />
+                            <img src={INTEGRATION_LOGOS.meta}         alt="Meta"          className="h-5 w-auto brightness-0 invert" />
+                            <img src={INTEGRATION_LOGOS.googleAds}    alt="Google Ads"    className="h-5 w-auto brightness-0 invert" />
+                            <img src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" className="h-5 w-auto brightness-0 invert" />
                         </div>
                     </div>
                 </div>
             </section>
 
-            {/* ── 2. PLATFORMS ────────────────────────────────────────────── */}
-            <section className="py-20 px-4 sm:px-6 lg:px-8 border-b border-white/5">
-                <div className="max-w-4xl mx-auto">
-                    <div className="text-center mb-10">
-                        <h2 className="text-2xl font-bold text-white tracking-tight">Works with the platforms SEA sellers use daily</h2>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-                        {[
-                            { logo: INTEGRATION_LOGOS.tiktok,       label: "TikTok Shop",  alt: "TikTok Shop" },
-                            { logo: INTEGRATION_LOGOS.shopee,       label: "Shopee",       alt: "Shopee" },
-                            { logo: INTEGRATION_LOGOS.tiktok,       label: "TikTok Ads",   alt: "TikTok Ads" },
-                            { logo: INTEGRATION_LOGOS.meta,         label: "Meta Ads",     alt: "Meta Ads" },
-                            { logo: INTEGRATION_LOGOS.googleAds,    label: "Google Ads",   alt: "Google Ads" },
-                            { logo: INTEGRATION_LOGOS.googleSheets, label: "Google Sheets™", alt: "Google Sheets" },
-                        ].map(({ logo, label, alt }) => (
-                            <div key={label} className="flex flex-col items-center gap-2.5 p-4 rounded-xl border border-white/8 bg-white/[0.02] hover:border-white/18 transition-colors">
-                                <img src={logo} alt={alt} className="h-6 w-6 object-contain brightness-0 invert opacity-60" />
-                                <span className="text-[11px] text-gray-400 text-center font-medium leading-tight">{label}</span>
-                            </div>
-                        ))}
-                    </div>
-                    <p className="text-center text-xs text-gray-600">
-                        Lazada, GA4, Shopify, and Looker Studio support are rolling out progressively.
-                    </p>
-                </div>
-            </section>
-
-            {/* ── 3. HOW IT WORKS ─────────────────────────────────────────── */}
-            <section className="py-20 px-4 sm:px-6 lg:px-8 border-b border-white/5">
-                <div className="max-w-4xl mx-auto">
-                    <div className="text-center mb-12">
-                        <p className="font-mono text-[10px] text-gray-600 uppercase tracking-widest mb-3">How it works</p>
-                        <h2 className="text-2xl font-bold text-white tracking-tight">Set up once. Open a fresh sheet every day.</h2>
-                    </div>
-                    <div className="grid md:grid-cols-3 gap-5">
-                        {[
-                            { num: "01", title: "Connect your accounts",    body: "Authorize your ad and marketplace platforms with OAuth." },
-                            { num: "02", title: "Choose what to sync",      body: "Pick the metrics your team reports on: spend, revenue, orders, and ROAS." },
-                            { num: "03", title: "Open your updated sheet",  body: "Monstera refreshes your Google Sheet automatically." },
-                        ].map(({ num, title, body }) => (
-                            <div key={num} className="p-6 rounded-2xl border border-white/8 bg-white/[0.02] hover:border-white/15 transition-colors">
-                                <span className="font-mono text-[10px] text-gray-600 tracking-widest">{num}</span>
-                                <h3 className="mt-3 mb-2 text-sm font-semibold text-white">{title}</h3>
-                                <p className="text-xs text-gray-500 leading-relaxed">{body}</p>
-                            </div>
+            {/* ── DIFFERENTIATOR STRIP ────────────────────────── */}
+            <section className="border-b border-white/5">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-white/5">
+                        {c.diff.map((d, i) => (
+                            <DiffCard key={i} num={d.num} title={d.title} body={d.body}
+                                icon={[Zap, CheckCircle2, Globe, RefreshCw][i]} />
                         ))}
                     </div>
                 </div>
             </section>
 
-            {/* ── 4. SHEET PREVIEW ────────────────────────────────────────── */}
-            <section id="sheet-preview" className="py-20 px-4 sm:px-6 lg:px-8 border-b border-white/5">
-                <div className="max-w-5xl mx-auto">
-                    <div className="text-center mb-10">
-                        <p className="font-mono text-[10px] text-gray-600 uppercase tracking-widest mb-3">Output</p>
-                        <h2 className="text-2xl font-bold text-white tracking-tight mb-2">Your daily report, already filled in</h2>
-                        <p className="text-xs text-gray-600">Demo data shown only to illustrate the output format.</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 overflow-hidden bg-[#0d0d10] shadow-2xl">
-                        {/* Chrome */}
-                        <div className="flex items-center gap-2 px-4 py-3 border-b border-white/5 bg-white/[0.02]">
-                            <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
-                            <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
-                            <div className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
-                            <span className="ml-3 text-[11px] text-gray-500 font-medium">SEA Ads Dashboard.xlsx</span>
-                            <div className="ml-auto flex items-center gap-1.5">
-                                <span className="relative flex h-1.5 w-1.5">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
-                                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500" />
-                                </span>
-                                <span className="text-[10px] text-cyan-400/80">Live sync</span>
+            {/* ── CAPABILITY GRID ─────────────────────────────── */}
+            <section className="py-28 px-4 sm:px-6 lg:px-8 border-b border-white/5">
+                <div className="max-w-7xl mx-auto">
+                    <div className="grid lg:grid-cols-2 gap-16 items-start">
+                        <div>
+                            <p className="font-mono text-[10px] text-gray-600 uppercase tracking-widest mb-4">{c.grid.eyebrow}</p>
+                            <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight leading-tight mb-6">
+                                {c.grid.h2[0]}<br />{c.grid.h2[1]}
+                            </h2>
+                            <p className="text-gray-400 text-sm leading-relaxed max-w-md mb-8">{c.grid.sub}</p>
+                            <Link href="/solutions/smes" className="inline-flex items-center gap-1.5 text-sm text-cyan-400 hover:text-cyan-300 transition-colors font-medium">
+                                {c.grid.link} <ChevronRight className="w-3.5 h-3.5" />
+                            </Link>
+                        </div>
+
+                        <div>
+                            <p className="font-mono text-[10px] text-gray-600 uppercase tracking-widest mb-4">{c.grid.sources}</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-px bg-white/5 border border-white/5 mb-6">
+                                {[
+                                    { logo: INTEGRATION_LOGOS.tiktok,          label: "TikTok Ads" },
+                                    { logo: INTEGRATION_LOGOS.meta,            label: "Meta Ads" },
+                                    { logo: INTEGRATION_LOGOS.shopee,          label: "Shopee" },
+                                    { logo: INTEGRATION_LOGOS.googleAds,       label: "Google Ads" },
+                                    { logo: INTEGRATION_LOGOS.shopify,         label: "Shopify" },
+                                    { logo: INTEGRATION_LOGOS.lazada,          label: "Lazada" },
+                                    { logo: INTEGRATION_LOGOS.googleAnalytics, label: "GA4" },
+                                    { logo: INTEGRATION_LOGOS.slack,           label: "Slack Alerts" },
+                                ].map(({ logo, label }) => (
+                                    <div key={label} className="flex flex-col items-center justify-center gap-2 p-4 bg-[#09090b] hover:bg-white/[0.03] transition-colors">
+                                        <img src={logo} alt={label} className="h-5 w-5 object-contain brightness-0 invert opacity-60" />
+                                        <span className="text-[10px] text-gray-600 text-center leading-tight">{label}</span>
+                                    </div>
+                                ))}
                             </div>
-                        </div>
-                        {/* Table */}
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-xs">
-                                <thead>
-                                    <tr className="border-b border-white/5 bg-white/[0.03]">
-                                        {SHEET_COLS.map((col) => (
-                                            <th key={col} className="px-4 py-3 text-left font-semibold text-gray-500 whitespace-nowrap">{col}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {SHEET_ROWS.map((row, i) => (
-                                        <tr key={i} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
-                                            <td className="px-4 py-3 text-gray-500 font-mono whitespace-nowrap">{row.date}</td>
-                                            <td className="px-4 py-3 text-gray-300 font-medium whitespace-nowrap">{row.platform}</td>
-                                            <td className="px-4 py-3 text-gray-300 font-mono whitespace-nowrap">{row.spend}</td>
-                                            <td className="px-4 py-3 text-emerald-400 font-mono whitespace-nowrap">{row.revenue}</td>
-                                            <td className="px-4 py-3 text-gray-300 font-mono whitespace-nowrap">{row.orders}</td>
-                                            <td className="px-4 py-3 text-cyan-400 font-mono whitespace-nowrap">{row.roas}</td>
-                                            <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{row.synced}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div className="px-4 py-3 border-t border-white/5 bg-white/[0.01]">
-                            <span className="text-[10px] text-gray-600 font-mono">Demo data only · Auto-refreshed daily · Powered by Monstera</span>
+
+                            <p className="font-mono text-[10px] text-gray-600 uppercase tracking-widest mb-4">{c.grid.destinations}</p>
+                            <div className="grid grid-cols-3 gap-px bg-white/5 border border-white/5">
+                                {[
+                                    { logo: INTEGRATION_LOGOS.googleSheets, label: "Google Sheets™" },
+                                    { logo: INTEGRATION_LOGOS.looker,       label: "Looker Studio" },
+                                    { logo: INTEGRATION_LOGOS.postgresql,   label: "Direct Export" },
+                                ].map(({ logo, label }) => (
+                                    <div key={label} className="flex flex-col items-center justify-center gap-2 p-4 bg-[#09090b] hover:bg-white/[0.03] transition-colors">
+                                        <img src={logo} alt={label} className="h-5 w-5 object-contain brightness-0 invert opacity-60" />
+                                        <span className="text-[10px] text-gray-600 text-center leading-tight">{label}</span>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 </div>
             </section>
 
-            {/* ── 5. TRUST + FINAL CTA ────────────────────────────────────── */}
-            <section className="py-20 px-4 sm:px-6 lg:px-8 border-b border-white/5">
-                <div className="max-w-4xl mx-auto">
-                    {/* Trust block */}
-                    <div className="mb-16">
-                        <div className="text-center mb-8">
-                            <p className="font-mono text-[10px] text-gray-600 uppercase tracking-widest mb-3">Security</p>
-                            <h2 className="text-2xl font-bold text-white tracking-tight">Your data stays under your control</h2>
+            {/* ── HOW IT WORKS ────────────────────────────────── */}
+            <section className="py-28 px-4 sm:px-6 lg:px-8 border-b border-white/5">
+                <div className="max-w-7xl mx-auto">
+                    <div className="grid lg:grid-cols-2 gap-16 items-center">
+                        <div>
+                            <p className="font-mono text-[10px] text-gray-600 uppercase tracking-widest mb-8">{c.how.eyebrow}</p>
+                            <div className="flex flex-col gap-10">
+                                {c.how.steps.map((s) => (
+                                    <Step key={s.num} num={s.num} title={s.title} body={s.body} />
+                                ))}
+                            </div>
                         </div>
-                        <div className="grid sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
-                            {[
-                                { icon: Shield,    text: "OAuth access only — no shared passwords" },
-                                { icon: Lock,      text: "Credentials encrypted at rest" },
-                                { icon: RotateCcw, text: "Revoke access anytime" },
-                                { icon: Eye,       text: "We do not sell your ad or sales data" },
-                            ].map(({ icon: Icon, text }) => (
-                                <div key={text} className="flex items-start gap-3 p-4 rounded-xl border border-white/8 bg-white/[0.02]">
-                                    <Icon className="w-4 h-4 text-cyan-500 flex-shrink-0 mt-0.5" aria-hidden />
-                                    <span className="text-sm text-gray-300">{text}</span>
+
+                        <div className="relative">
+                            <div className="absolute inset-0 bg-cyan-500/5 blur-[80px] rounded-full pointer-events-none" />
+                            <div className="relative border border-white/10 rounded-2xl overflow-hidden bg-[#0d0d10]">
+                                <div className="flex items-center gap-2 px-5 py-3.5 border-b border-white/5 bg-white/[0.02]">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
+                                    <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+                                    <div className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
+                                    <span className="ml-3 text-[11px] text-gray-500 font-medium">{c.how.card.filename}</span>
                                 </div>
-                            ))}
+
+                                <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between bg-cyan-500/[0.04]">
+                                    <div className="flex items-center gap-2">
+                                        <span className="relative flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500" />
+                                        </span>
+                                        <span className="text-xs text-cyan-400 font-medium">{c.how.card.synced}</span>
+                                    </div>
+                                    <span className="text-[10px] text-gray-600">{c.how.card.updated}</span>
+                                </div>
+
+                                <div className="p-5 flex flex-col gap-3">
+                                    {c.card.platforms.map(({ label, value, delta }, i) => (
+                                        <div key={label} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-colors">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center">
+                                                    <img src={PLATFORM_LOGOS[i].logo} alt={label} className="h-3.5 w-3.5 object-contain brightness-0 invert opacity-70" />
+                                                </div>
+                                                <span className="text-sm text-gray-300 font-medium">{label}</span>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <span className={`text-sm font-semibold ${PLATFORM_LOGOS[i].color}`}>{value}</span>
+                                                <span className="text-[10px] text-gray-600 font-mono bg-white/5 px-2 py-0.5 rounded-full">{delta}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <div className="mt-1 text-center">
+                                        <span className="text-[10px] text-gray-600 font-mono">{c.how.card.footer}</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
+                </div>
+            </section>
 
-                    {/* Final CTA */}
-                    <div className="relative border border-cyan-500/20 bg-cyan-500/[0.04] rounded-3xl overflow-hidden text-center px-8 py-16">
+            {/* ── SEA SECTION ─────────────────────────────────── */}
+            <section className="py-28 px-4 sm:px-6 lg:px-8 border-b border-white/5">
+                <div className="max-w-7xl mx-auto">
+                    <div className="grid lg:grid-cols-2 gap-20 items-center">
+                        <div>
+                            <p className="font-mono text-[10px] text-gray-600 uppercase tracking-widest mb-4">{c.sea.eyebrow}</p>
+                            <h2 className="text-3xl md:text-4xl font-black text-white tracking-tight mb-6">{c.sea.h2}</h2>
+                            <p className="text-gray-400 text-sm leading-relaxed mb-8 max-w-md">{c.sea.sub}</p>
+                            <Link href="/pricing" className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-xl transition-colors">
+                                {c.sea.cta} <ChevronRight className="w-3.5 h-3.5" />
+                            </Link>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            {c.sea.stats.map(({ stat, label }, i) => {
+                                const icons = [Clock, RefreshCw, Database, Shield];
+                                const Icon = icons[i];
+                                return (
+                                    <div key={label} className="p-6 border border-white/8 bg-white/[0.02] hover:border-white/20 rounded-2xl transition-colors">
+                                        <Icon className="w-4 h-4 text-gray-600 mb-4" />
+                                        <div className="text-2xl font-black text-white mb-1">{stat}</div>
+                                        <div className="text-[11px] text-gray-500 leading-snug">{label}</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* ── CTA ─────────────────────────────────────────── */}
+            <section className="py-28 px-4 sm:px-6 lg:px-8">
+                <div className="max-w-7xl mx-auto">
+                    <div className="relative border border-cyan-500/20 bg-cyan-500/[0.04] rounded-3xl overflow-hidden">
                         <div className="pointer-events-none absolute top-0 left-0 w-64 h-64 bg-cyan-500/8 blur-[80px]" />
                         <div className="pointer-events-none absolute bottom-0 right-0 w-64 h-64 bg-cyan-500/8 blur-[80px]" />
-                        <div className="relative">
-                            <h2 className="text-3xl md:text-4xl font-bold text-white tracking-tight mb-5">
-                                Ready to stop exporting CSVs?
+                        <div className="relative px-8 py-20 text-center max-w-2xl mx-auto">
+                            <p className="font-mono text-[10px] text-cyan-500/60 uppercase tracking-widest mb-4">{c.cta.eyebrow}</p>
+                            <h2 className="text-3xl md:text-5xl font-black text-white tracking-tight mb-5">
+                                {c.cta.h2[0]}<br />{c.cta.h2[1]}
                             </h2>
-                            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                                <Link
-                                    href="/register"
-                                    onClick={() => track("cta_start_free", { location: "final_cta" })}
-                                    className="group inline-flex items-center gap-2 px-7 py-3.5 min-h-[48px] w-full sm:w-auto justify-center text-sm font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-xl transition-colors shadow-lg shadow-cyan-900/40"
-                                >
-                                    Start free
-                                    <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-                                </Link>
-                                <a
-                                    href="#sheet-preview"
-                                    onClick={() => track("cta_sample_sheet", { location: "final_cta" })}
-                                    className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-300 transition-colors min-h-[48px] px-3"
-                                >
-                                    View sample sheet <ChevronRight className="w-3.5 h-3.5" />
-                                </a>
-                            </div>
-                            <p className="mt-6 text-[11px] text-gray-600">No credit card · Free plan includes TikTok Ads + Shopee</p>
+                            <p className="text-gray-400 text-sm mb-10 leading-relaxed">{c.cta.sub}</p>
+                            <Link href="/register" className="group inline-flex items-center gap-2 px-8 py-4 text-base font-semibold text-white bg-cyan-600 hover:bg-cyan-700 rounded-xl transition-colors shadow-xl shadow-cyan-900/40">
+                                {c.cta.btn}
+                                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                            </Link>
+                            <p className="mt-8 font-mono text-[10px] text-gray-700 uppercase tracking-widest">{c.cta.trust}</p>
                         </div>
                     </div>
+
+                    <p className="mt-12 text-center text-[10px] text-gray-600 italic">{c.cta.legal}</p>
                 </div>
             </section>
-
-            {/* ── FAQ ─────────────────────────────────────────────────────── */}
-            <section className="py-20 px-4 sm:px-6 lg:px-8 border-b border-white/5">
-                <div className="max-w-2xl mx-auto">
-                    <div className="text-center mb-10">
-                        <h2 className="text-2xl font-bold text-white tracking-tight">Common questions</h2>
-                    </div>
-                    {FAQS.map((f) => <FAQItem key={f.q} q={f.q} a={f.a} />)}
-                </div>
-            </section>
-
-            {/* ── FOOTER ──────────────────────────────────────────────────── */}
-            <footer className="py-14 px-4 sm:px-6 lg:px-8">
-                <div className="max-w-7xl mx-auto">
-                    <div className="flex flex-col md:flex-row items-start justify-between gap-8 mb-10">
-                        {/* Brand */}
-                        <div className="flex-shrink-0">
-                            <div className="flex items-center gap-2 mb-3">
-                                <div className="w-6 h-6 rounded-lg bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center">
-                                    <span className="text-cyan-400 font-bold text-xs">M</span>
-                                </div>
-                                <span className="text-sm text-gray-400 font-medium">Monstera Cloud</span>
-                            </div>
-                            <p className="text-xs text-gray-600 max-w-[200px] leading-relaxed">SEA ecommerce reporting for teams that live in Google Sheets.</p>
-                        </div>
-                        {/* Links */}
-                        <div className="flex flex-wrap gap-x-10 gap-y-4">
-                            {[
-                                { label: "Product", href: "/" },
-                                { label: "Pricing", href: "/pricing" },
-                                { label: "Docs", href: "/docs" },
-                                { label: "Privacy Policy", href: "/legal/privacy-policy" },
-                                { label: "Terms", href: "/legal/terms" },
-                                { label: "Contact", href: "/contact" },
-                            ].map(({ label, href }) => (
-                                <Link key={label} href={href} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">{label}</Link>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="pt-6 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-3">
-                        <p className="text-[11px] text-gray-600">Built for Southeast Asia · Infrastructure in Singapore</p>
-                        <p className="text-[11px] text-gray-600 text-center">
-                            Google Sheets™ is a trademark of Google LLC. Monstera Cloud is not affiliated with Google.
-                        </p>
-                        <div className="flex items-center gap-4 opacity-25 hover:opacity-40 transition-opacity">
-                            {[
-                                { src: INTEGRATION_LOGOS.tiktok,       alt: "TikTok" },
-                                { src: INTEGRATION_LOGOS.meta,         alt: "Meta" },
-                                { src: INTEGRATION_LOGOS.shopee,       alt: "Shopee" },
-                                { src: INTEGRATION_LOGOS.googleSheets, alt: "Google Sheets" },
-                            ].map(({ src, alt }) => (
-                                <img key={alt} src={src} alt={alt} className="h-4 w-auto brightness-0 invert" />
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </footer>
         </div>
     );
 }
