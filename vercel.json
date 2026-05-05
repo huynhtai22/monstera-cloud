@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/meta-keep-alive",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 10 * * *"
     }
   ]
 }
