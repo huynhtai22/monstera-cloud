@@ -525,14 +525,6 @@ export default function SourcesPage() {
             className="w-full"
             withBackdrop
         >
-            <div
-                className="absolute inset-0 overflow-hidden pointer-events-none -z-10 motion-reduce:hidden max-lg:hidden"
-                aria-hidden
-            >
-                <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-cyan-200/20 dark:bg-cyan-900/20 blur-[120px]" />
-                <div className="absolute top-[20%] right-[-10%] w-[40%] h-[60%] rounded-full bg-blue-200/20 dark:bg-blue-900/20 blur-[120px]" />
-                <div className="absolute bottom-[-20%] left-[10%] w-[60%] h-[50%] rounded-full bg-cyan-100/30 dark:bg-cyan-900/30 blur-[140px]" />
-            </div>
 
             {oauthBanner && (
                 <OAuthSuccessBanner
@@ -547,7 +539,7 @@ export default function SourcesPage() {
                 <div>
                     {isLoading ? (
                         <>
-                            <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Sources</h1>
+                            <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Sources</h1>
                             {activeWorkspace ? (
                                 <p className="mb-1 text-sm font-medium text-gray-600 dark:text-slate-400">
                                     {activeWorkspace.name} · Sources
@@ -559,7 +551,7 @@ export default function SourcesPage() {
                         </>
                     ) : connectedSourceCount === 0 ? (
                         <>
-                            <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Sources</h1>
+                            <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Sources</h1>
                             {activeWorkspace ? (
                                 <p className="mb-1 text-sm font-medium text-gray-600 dark:text-slate-400">
                                     {activeWorkspace.name} · Sources
@@ -572,7 +564,7 @@ export default function SourcesPage() {
                         </>
                     ) : (
                         <>
-                            <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Sources</h1>
+                            <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Sources</h1>
                             {activeWorkspace ? (
                                 <p className="mb-1 text-sm font-medium text-gray-600 dark:text-slate-400">
                                     {activeWorkspace.name} · Sources
@@ -595,7 +587,7 @@ export default function SourcesPage() {
                             aria-expanded={addSourceMenuOpen}
                             aria-haspopup="listbox"
                             onClick={() => setAddSourceMenuOpen((o) => !o)}
-                            className="inline-flex h-10 min-h-[2.5rem] items-center gap-2 rounded-xl border border-cyan-500/35 bg-gradient-to-b from-cyan-500 to-cyan-600 px-3.5 text-sm font-semibold text-white shadow-md shadow-cyan-900/25 transition-all hover:from-cyan-400 hover:to-cyan-500 hover:shadow-lg hover:shadow-cyan-900/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 active:scale-[0.98] dark:border-cyan-400/30 dark:from-cyan-600 dark:to-cyan-700 dark:shadow-black/50 dark:focus-visible:ring-offset-slate-900 sm:px-4"
+                            className="inline-flex h-10 min-h-[2.5rem] items-center gap-2 rounded-lg bg-cyan-600 px-3.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-cyan-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 active:bg-cyan-800 dark:bg-cyan-600 dark:hover:bg-cyan-500 sm:px-4"
                         >
                             <Plus className="h-4 w-4 shrink-0" aria-hidden />
                             <span className="hidden sm:inline">Add data source</span>
@@ -611,7 +603,7 @@ export default function SourcesPage() {
                                 role="presentation"
                             >
                                 <div
-                                    className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_22px_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[0_28px_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06]"
+                                    className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
                                     role="listbox"
                                     aria-label="Connect a source"
                                 >

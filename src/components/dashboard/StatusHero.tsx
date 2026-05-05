@@ -49,7 +49,7 @@ export function StatusHero({
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{workspaceName}</p>
-                    <h1 className="mt-1 text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white">
+                    <h1 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
                         Today, {todayLabel}
                     </h1>
 

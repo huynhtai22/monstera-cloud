@@ -371,7 +371,7 @@ export function DashboardHomePage() {
             <PageShell>
                 <div className="mb-6">
                     <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{workspaceName}</p>
-                    <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Today, {todayLabel}</h1>
+                    <h1 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Today, {todayLabel}</h1>
                     <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Source connected — now add a destination to start syncing.</p>
                 </div>
                 <div className="relative grid grid-cols-1 gap-6 sm:grid-cols-2">

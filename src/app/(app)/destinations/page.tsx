@@ -154,12 +154,7 @@ export default function DestinationsPage() {
     }
 
     return (
-        <div className="relative max-w-7xl mx-auto px-6 py-6 w-full animate-in fade-in duration-300">
-            {/* Subtle Liquid Mesh Background underlay */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-                <div className="absolute top-[10%] left-[30%] w-[40%] h-[50%] rounded-full bg-blue-200/20 dark:bg-blue-900/20 blur-[120px]" />
-                <div className="absolute top-[40%] right-[10%] w-[30%] h-[60%] rounded-full bg-cyan-200/20 dark:bg-cyan-900/20 blur-[120px]" />
-            </div>
+        <div className="relative w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12 animate-in fade-in duration-300">
 
             {/* Header */}
             <div className="relative z-10 mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">

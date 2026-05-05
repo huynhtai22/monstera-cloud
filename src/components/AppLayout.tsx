@@ -10,11 +10,12 @@ import { DemoModeBanner } from './DemoModeBanner';
 import { KeyboardShortcutsProvider } from './KeyboardShortcutsProvider';
 import { NotificationCenter } from './NotificationCenter';
 import { UpgradeNudge } from './UpgradeNudge';
-import { Menu, Moon, Sun } from 'lucide-react';
+import { Menu, Moon, Sun, ChevronRight } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { rememberAppPath } from "@/lib/app-return-path";
 
 const THEME_STORAGE_KEY = "monstera-theme";
+const SIDEBAR_COLLAPSED_KEY = "monstera-sidebar-collapsed";
 
 function mobileSectionTitle(pathname: string | null): string {
     if (!pathname) return "Home";
@@ -46,10 +47,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const mobileTitle = useMemo(() => mobileSectionTitle(pathname), [pathname]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(false);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     /** After first client read of localStorage — avoids stripping .dark before preference is restored (e.g. layout remount on route change). */
     const themeReady = useRef(false);
 
-    // Restore theme on mount so navigations that remount AppLayout (e.g. /console ↔ /sources) keep dark mode.
+    // Restore theme + sidebar state on mount
     useLayoutEffect(() => {
         try {
             const s = localStorage.getItem(THEME_STORAGE_KEY);
@@ -61,6 +63,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         } finally {
             themeReady.current = true;
         }
+        try {
+            setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+        } catch {}
     }, []);
 
     // Sync .dark on <html> and persist; skip until initial read above has run so we don't flash light.
@@ -134,11 +139,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 setIsOpen={setIsSidebarOpen}
                 isDarkMode={isDarkMode}
                 toggleDarkMode={toggleDarkMode}
+                collapsed={sidebarCollapsed}
+                setCollapsed={setSidebarCollapsed}
             />
 
-            <div className="relative flex min-w-0 flex-1 flex-col bg-gradient-to-b from-cyan-50/40 via-[var(--background)] to-[var(--background)] text-slate-900 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(900px_circle_at_20%_-10%,rgba(6,182,212,0.16),transparent_55%)] before:opacity-100 after:pointer-events-none after:absolute after:inset-0 after:bg-[radial-gradient(900px_circle_at_90%_20%,rgba(59,130,246,0.12),transparent_55%)] after:opacity-100 dark:bg-gradient-to-b dark:from-slate-950 dark:via-[var(--background)] dark:to-[var(--background)] dark:before:bg-[radial-gradient(900px_circle_at_20%_-10%,rgba(34,211,238,0.10),transparent_55%)] dark:after:bg-[radial-gradient(900px_circle_at_90%_20%,rgba(59,130,246,0.10),transparent_55%)] lg:pl-64">
+            <div className={`relative flex min-w-0 flex-1 flex-col bg-gray-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 ${sidebarCollapsed ? "lg:pl-[68px]" : "lg:pl-64"}`} style={{ transition: "padding-left 220ms cubic-bezier(0.25,0.1,0.25,1)" }}>
                 <div className="h-16 shrink-0 lg:hidden" />
-                <div className="z-20 hidden items-center justify-end gap-3 border-b border-gray-200/80 bg-[var(--background)] px-6 py-2 dark:border-slate-700/80 lg:sticky lg:top-0 lg:flex">
+                <div className="z-20 hidden items-center justify-between gap-3 border-b border-gray-200/80 bg-gray-50 px-6 py-2.5 dark:border-slate-700/80 dark:bg-slate-950 lg:sticky lg:top-0 lg:flex">
+                    <nav className="flex items-center gap-1 text-sm" aria-label="Breadcrumb">
+                        <span className="font-medium text-gray-400 dark:text-slate-500">Monstera</span>
+                        <ChevronRight className="h-3.5 w-3.5 text-gray-300 dark:text-slate-600" aria-hidden />
+                        <span className="font-medium text-gray-700 dark:text-slate-200">{mobileTitle}</span>
+                    </nav>
                     <NotificationCenter />
                 </div>
                 <UpgradeNudge />

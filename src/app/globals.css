@@ -287,47 +287,21 @@ html.disable-transitions *::after {
 */
 .glass-panel {
     position: relative;
-    border-radius: 1rem;
-    backdrop-filter: blur(14px) saturate(1.6);
-    -webkit-backdrop-filter: blur(14px) saturate(1.6);
-    border: 1px solid transparent;
-    background-image:
-        linear-gradient(var(--glass-surface, rgba(255,255,255,0.72)), var(--glass-surface, rgba(255,255,255,0.72))),
-        linear-gradient(135deg,
-            rgba(255,255,255,0.55)  0%,
-            rgba(255,255,255,0.08) 40%,
-            rgba(6,182,212,0.20)   80%,
-            rgba(6,182,212,0.35)  100%);
-    background-origin: border-box;
-    background-clip: padding-box, border-box;
-    box-shadow:
-        0 8px 32px rgba(0,0,0,0.08),
-        inset 0 1px 0 rgba(255,255,255,0.55);
+    border-radius: 0.75rem;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .dark .glass-panel {
-    --glass-surface: rgba(15, 20, 30, 0.42);
-    backdrop-filter: blur(16px) saturate(1.8);
-    -webkit-backdrop-filter: blur(16px) saturate(1.8);
-    background-image:
-        linear-gradient(var(--glass-surface), var(--glass-surface)),
-        linear-gradient(135deg,
-            rgba(255,255,255,0.18)  0%,
-            rgba(255,255,255,0.03) 45%,
-            rgba(6,182,212,0.14)   78%,
-            rgba(6,182,212,0.26)  100%);
-    box-shadow:
-        0 12px 40px rgba(0,0,0,0.55),
-        inset 0 1px 0 rgba(255,255,255,0.10),
-        inset 0 -1px 0 rgba(6,182,212,0.08);
+    border-color: rgba(255,255,255,0.08);
+    background: rgb(15, 23, 42);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
 .dark .glass-panel:hover {
-    --glass-surface: rgba(15, 20, 30, 0.36);
-    box-shadow:
-        0 16px 48px rgba(0,0,0,0.65),
-        inset 0 1px 0 rgba(255,255,255,0.14),
-        inset 0 -1px 0 rgba(6,182,212,0.14);
+    border-color: rgba(255,255,255,0.12);
 }
 
 /*
@@ -336,51 +310,62 @@ html.disable-transitions *::after {
 */
 .glass-card {
     position: relative;
-    border-radius: 1rem;
-    backdrop-filter: blur(12px) saturate(1.5);
-    -webkit-backdrop-filter: blur(12px) saturate(1.5);
-    border: 1px solid transparent;
-    background-image:
-        linear-gradient(var(--glass-card-surface, rgba(255,255,255,0.65)), var(--glass-card-surface, rgba(255,255,255,0.65))),
-        linear-gradient(145deg,
-            rgba(255,255,255,0.50)  0%,
-            rgba(255,255,255,0.06) 50%,
-            rgba(6,182,212,0.18)  100%);
-    background-origin: border-box;
-    background-clip: padding-box, border-box;
-    box-shadow:
-        0 4px 20px rgba(0,0,0,0.06),
-        inset 0 1px 0 rgba(255,255,255,0.60);
-    transition: box-shadow 0.2s ease, transform 0.2s ease;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    will-change: transform, box-shadow;
+}
+
+.glass-card:hover {
+    border-color: rgba(0,0,0,0.12);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transform: translateY(-2px);
 }
 
 .dark .glass-card {
-    --glass-card-surface: rgba(12, 18, 28, 0.40);
-    background-image:
-        linear-gradient(var(--glass-card-surface), var(--glass-card-surface)),
-        linear-gradient(145deg,
-            rgba(255,255,255,0.15)  0%,
-            rgba(255,255,255,0.02) 50%,
-            rgba(6,182,212,0.12)  100%);
-    box-shadow:
-        0 8px 32px rgba(0,0,0,0.50),
-        inset 0 1px 0 rgba(255,255,255,0.09),
-        inset 0 -1px 0 rgba(6,182,212,0.06);
+    border-color: rgba(255,255,255,0.08);
+    background: rgb(15, 23, 42);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 
 .dark .glass-card:hover {
-    --glass-card-surface: rgba(12, 18, 28, 0.32);
-    box-shadow:
-        0 14px 44px rgba(0,0,0,0.62),
-        0 0 0 1px rgba(6,182,212,0.18),
-        inset 0 1px 0 rgba(255,255,255,0.13),
-        inset 0 -1px 0 rgba(6,182,212,0.12);
+    border-color: rgba(255,255,255,0.14);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    transform: translateY(-2px);
 }
 
-/* Hero section only — heavier blur */
+/* Hero section only — kept for marketing pages */
 .glass-hero {
     backdrop-filter: blur(28px) saturate(2);
     -webkit-backdrop-filter: blur(28px) saturate(2);
+}
+
+/* Social proof ticker — continuous horizontal scroll */
+@keyframes ticker {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+@keyframes ticker-reverse {
+    0%   { transform: translateX(-50%); }
+    100% { transform: translateX(0); }
+}
+
+/* Tab progress bar — linear fill for auto-advancing tabs */
+@keyframes progress {
+    from { width: 0; }
+    to   { width: 100%; }
+}
+
+/* Hero word rotator — vertical slide-fade cycle */
+@keyframes wordSlideUp {
+    0%       { transform: translateY(0);    opacity: 1; }
+    18%      { transform: translateY(0);    opacity: 1; }
+    22%      { transform: translateY(-100%); opacity: 0; }
+    23%      { transform: translateY(100%);  opacity: 0; }
+    27%      { transform: translateY(0);    opacity: 1; }
+    100%     { transform: translateY(0);    opacity: 1; }
 }
 
 /* Shimmer sweep — used on sync-success indicators */

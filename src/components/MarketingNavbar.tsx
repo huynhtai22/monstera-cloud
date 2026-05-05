@@ -14,15 +14,15 @@ type Lang = "en" | "vi";
 
 function LangToggle({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
     return (
-        <div className="inline-flex rounded-full border border-white/10 overflow-hidden bg-white/[0.03] p-0.5">
+        <div className="inline-flex rounded-full border border-gray-200 overflow-hidden bg-gray-50 p-0.5">
             {(["en", "vi"] as Lang[]).map((l) => (
                 <button
                     key={l}
                     onClick={() => setLang(l)}
                     className={`px-3 py-1 text-xs font-semibold rounded-full transition-all duration-200 ${
                         lang === l
-                            ? "bg-white/10 text-white shadow-sm"
-                            : "text-gray-500 hover:text-gray-300"
+                            ? "bg-white text-slate-900 shadow-sm"
+                            : "text-slate-400 hover:text-slate-600"
                     }`}
                 >
                     {l.toUpperCase()}
@@ -61,7 +61,7 @@ export function MarketingNavbar() {
     };
 
     return (
-        <nav className="fixed top-0 w-full z-50 bg-[#09090b]/80 backdrop-blur-md border-b border-white/10">
+        <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-md border-b border-gray-200/60">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between items-center h-16">
                     <div className="flex-shrink-0 flex items-center">
@@ -70,20 +70,20 @@ export function MarketingNavbar() {
                         </Link>
                     </div>
                     <div className="hidden md:flex items-center space-x-8">
-                        <Link href="/solutions/smes" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
+                        <Link href="/solutions/smes" className="text-slate-500 hover:text-slate-900 text-sm font-medium transition-colors">
                             For SMEs
                         </Link>
-<Link href="/docs" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
+                        <Link href="/docs" className="text-slate-500 hover:text-slate-900 text-sm font-medium transition-colors">
                             Docs
                         </Link>
-                        <Link href="/pricing" className="text-gray-400 hover:text-white text-sm font-medium transition-colors">
+                        <Link href="/pricing" className="text-slate-500 hover:text-slate-900 text-sm font-medium transition-colors">
                             Pricing
                         </Link>
                     </div>
                     <div className="flex items-center space-x-3 sm:space-x-4">
                         <Link
                             href="/id"
-                            className="hidden text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-300 sm:block"
+                            className="hidden text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600 sm:block"
                         >
                             ID
                         </Link>
@@ -91,13 +91,13 @@ export function MarketingNavbar() {
                         {isAuthed ? (
                             <Link
                                 href={consoleHref}
-                                className="inline-flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 text-sm font-medium transition-colors"
+                                className="inline-flex items-center gap-1.5 text-cyan-600 hover:text-cyan-700 text-sm font-medium transition-colors"
                             >
                                 <SquareTerminal className="w-4 h-4" />
                                 Console
                             </Link>
                         ) : (
-                            <Link href="/login" className="hidden sm:block text-gray-400 hover:text-white text-sm font-medium transition-colors">
+                            <Link href="/login" className="hidden sm:block text-slate-500 hover:text-slate-900 text-sm font-medium transition-colors">
                                 Log in
                             </Link>
                         )}

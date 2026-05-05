@@ -48,7 +48,7 @@ function isOAuthSourceId(sourceId: string): boolean {
 
 // Expo-out easing — starts fast, decelerates naturally; same curve used by Linear & Figma
 const PANEL_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
-const PANEL_DURATION_MS = 360;
+const PANEL_DURATION_MS = 280;
 
 export function ConnectSourceModal({ isOpen, onClose, integration, connectedCatalogIds = [] }: ConnectSourceModalProps) {
     const [isProcessing, setIsProcessing] = useState(false);
@@ -355,10 +355,11 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     return (
         <div
             className={cn(
-                "fixed inset-0 z-50 flex justify-end bg-slate-900/55 backdrop-blur-[2px] dark:bg-slate-950/70",
+                "fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 p-4",
                 "transition-opacity duration-200 ease-out",
                 isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
             )}
+            onClick={(e) => { if (e.target === e.currentTarget && !isProcessing) handleClose(); }}
         >
             {showPicker ? (
                 <div
@@ -369,9 +370,9 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     aria-labelledby="connect-source-picker-title"
                     tabIndex={-1}
                     className={cn(
-                        "relative w-full max-w-md h-full overflow-hidden rounded-l-2xl border-l border-slate-200/90 bg-white/95 shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[-28px_0_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06] flex flex-col",
-                        "transition-transform duration-[360ms]",
-                        isVisible ? "translate-x-0" : "translate-x-full"
+                        "relative w-full max-w-md max-h-[85vh] overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xl ring-1 ring-slate-900/[0.04] outline-none dark:border-white/10 dark:bg-slate-900/95 dark:ring-white/[0.06] flex flex-col",
+                        "transition-all duration-[280ms]",
+                        isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
                     )}
                     style={{ transitionTimingFunction: PANEL_EASE }}
                 >
@@ -470,9 +471,9 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                 aria-labelledby="connect-source-modal-title"
                 tabIndex={-1}
                 className={cn(
-                    "relative w-full max-w-md h-full overflow-hidden rounded-l-2xl border-l border-slate-200/90 bg-white/95 shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[-28px_0_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06] flex flex-col",
-                    "transition-transform duration-[360ms]",
-                    isVisible ? "translate-x-0" : "translate-x-full"
+                    "relative w-full max-w-lg max-h-[85vh] overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xl ring-1 ring-slate-900/[0.04] outline-none dark:border-white/10 dark:bg-slate-900/95 dark:ring-white/[0.06] flex flex-col",
+                    "transition-all duration-[280ms]",
+                    isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
                 )}
                 style={{ transitionTimingFunction: PANEL_EASE }}
             >

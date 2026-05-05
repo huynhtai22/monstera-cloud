@@ -220,7 +220,7 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="px-6 py-6 max-w-7xl mx-auto">
+        <div className="w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
             {/* Compact header */}
             <div className="mb-6 flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-md shadow-cyan-500/20">

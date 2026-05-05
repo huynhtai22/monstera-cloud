@@ -48,28 +48,28 @@ export default function DocsLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <div className="min-h-screen bg-[#09090b] text-slate-300 pt-16 flex font-sans">
+        <div className="min-h-screen bg-white text-slate-600 pt-16 flex font-sans">
             
             {/* LEFT SIDEBAR (Desktop) */}
-            <aside className="hidden md:flex flex-col w-72 border-r border-white/5 h-[calc(100vh-4rem)] sticky top-16 overflow-y-auto px-6 py-10 no-scrollbar">
+            <aside className="hidden md:flex flex-col w-72 border-r border-gray-100 h-[calc(100vh-4rem)] sticky top-16 overflow-y-auto px-6 py-10 no-scrollbar">
                 
                 <div className="mb-8">
-                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Documentation</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Documentation</p>
                 </div>
 
                 <div className="space-y-8">
                     {SIDEBAR_LINKS.map((section, idx) => (
                         <div key={idx}>
-                            <h4 className="flex items-center text-sm font-semibold text-white mb-3">
-                                <section.icon className="w-4 h-4 mr-2 text-gray-400" />
+                            <h4 className="flex items-center text-sm font-semibold text-slate-900 mb-3">
+                                <section.icon className="w-4 h-4 mr-2 text-slate-400" />
                                 {section.title}
                             </h4>
-                            <ul className="space-y-2 border-l border-white/10 ml-2 pl-4">
+                            <ul className="space-y-2 border-l border-gray-200 ml-2 pl-4">
                                 {section.links.map((link, jdx) => (
                                     <li key={jdx}>
                                         <Link 
                                             href={link.href} 
-                                            className="text-sm text-gray-400 hover:text-cyan-500 transition-colors block py-1"
+                                            className="text-sm text-slate-400 hover:text-cyan-600 transition-colors block py-1"
                                         >
                                             {link.label}
                                         </Link>
