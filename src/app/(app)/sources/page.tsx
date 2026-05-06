@@ -160,6 +160,37 @@ export default function SourcesPage() {
         }
     }, [addBusy, removeBusy, activeWorkspaceId, mutate]);
 
+    /* Direct sync for ad platforms - no pipeline needed, syncs to CampaignMetric for Data Explorer */
+    const handleDirectSync = useCallback(async (connectionId: string, provider: string) => {
+        const key = `direct-sync:${connectionId}`;
+        addBusy(key);
+        try {
+            const res = await fetch(`/api/connections/${connectionId}/sync`, { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+                toast.success(
+                    <span>
+                        Synced {data.rowsIngested || 0} rows to Data Explorer.
+                        <a href="/synced-data" className="ml-2 underline font-medium">View Data</a>
+                    </span>
+                );
+            } else {
+                toast.error(
+                    typeof data.error === "string"
+                        ? data.error
+                        : "Sync failed. Check connection settings."
+                );
+            }
+        } catch {
+            toast.error("Network error during sync.");
+        } finally {
+            removeBusy(key);
+            if (activeWorkspaceId) {
+                void mutate(`/api/sync-logs?workspaceId=${activeWorkspaceId}`);
+            }
+        }
+    }, [addBusy, removeBusy, activeWorkspaceId, mutate]);
+
     const handleFixConnection = useCallback((integration: any) => {
         const catalogId = integration.catalogId;
         if (!catalogId) {
@@ -823,6 +854,7 @@ export default function SourcesPage() {
                                         integration={integration}
                                         busyActions={busyActions}
                                         onSync={handleSync}
+                                        onDirectSync={handleDirectSync}
                                         onDisconnect={disconnectSource}
                                         onFixConnection={handleFixConnection}
                                     />

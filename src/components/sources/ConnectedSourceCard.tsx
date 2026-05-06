@@ -36,6 +36,7 @@ export interface ConnectedSourceCardProps {
   integration: any;
   busyActions: Set<string>;
   onSync: (pipelineId: string, integrationId: string) => void;
+  onDirectSync?: (connectionId: string, provider: string) => void; // NEW: Sync without pipeline
   onDisconnect: (connectionId: string, displayName: string) => void;
   onFixConnection: (integration: any) => void;
 }
@@ -44,10 +45,11 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
   integration,
   busyActions,
   onSync,
+  onDirectSync,
   onDisconnect,
   onFixConnection,
 }: ConnectedSourceCardProps) {
-  const isSyncing = busyActions.has(`sync:${integration.pipelineId}`);
+  const isSyncing = busyActions.has(`sync:${integration.pipelineId}`) || busyActions.has(`direct-sync:${integration.id}`);
   const isDisconnecting = busyActions.has(integration.id);
   const isBusy = busyActions.size > 0;
   const isError = integration.status === "error";
@@ -207,14 +209,19 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
               onClick={(e) => {
                 e.stopPropagation();
                 if (!integration.pipelineId) {
-                  toast.error(
-                    <span>
-                      Add a destination (like Google Sheets) to start syncing.{" "}
-                      <a href="/destinations" className="underline font-medium">
-                        Open Destinations
-                      </a>
-                    </span>
-                  );
+                  // No pipeline - use direct connection sync for Data Explorer
+                  if (onDirectSync && ["meta_ads", "google_ads", "tiktok_business"].includes(integration.provider)) {
+                    onDirectSync(integration.id, integration.provider);
+                  } else {
+                    toast.error(
+                      <span>
+                        Add a destination (like Google Sheets) to start syncing.{" "}
+                        <a href="/destinations" className="underline font-medium">
+                          Open Destinations
+                        </a>
+                      </span>
+                    );
+                  }
                   return;
                 }
                 onSync(integration.pipelineId, integration.id);
