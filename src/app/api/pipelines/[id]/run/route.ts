@@ -159,8 +159,35 @@ export async function POST(req: Request, context: { params: any }) {
 
         const provider = pipeline.sourceConnection.provider as EtlProvider;
         const sourceCreds = JSON.parse(safeDecrypt(pipeline.sourceConnection.credentials));
-
         const requestOrigin = new URL(req.url).origin;
+
+        // For ad platforms, first sync from API to CampaignMetric
+        // This ensures Data Explorer has data and pipeline can read from DB
+        const adPlatforms = ['meta_ads', 'google_ads', 'tiktok_business'];
+        if (adPlatforms.includes(provider)) {
+            logger.info(`[Pipeline Run] Pre-syncing ad platform data for ${provider} before ETL`);
+            try {
+                const syncRes = await fetch(`${requestOrigin}/api/connections/${pipeline.sourceConnectionId}/sync`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(session?.user ? {} : { 'x-cron-secret': process.env.CRON_SECRET ?? '' }),
+                    },
+                });
+                if (!syncRes.ok) {
+                    const err = await syncRes.text();
+                    logger.warn(`[Pipeline Run] Pre-sync warning for ${provider}: ${err}`);
+                    // Continue anyway - maybe there's existing data
+                } else {
+                    const syncData = await syncRes.json();
+                    logger.info(`[Pipeline Run] Pre-sync complete: ${syncData.rowsIngested || 0} rows ingested`);
+                }
+            } catch (syncErr: any) {
+                logger.error(`[Pipeline Run] Pre-sync failed for ${provider}:`, syncErr);
+                // Continue - don't block pipeline on sync error
+            }
+        }
+
         const etl = await runEtlPipeline({
             userId: userIdForLimits,
             provider,
