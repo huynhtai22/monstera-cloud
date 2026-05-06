@@ -366,6 +366,33 @@ export default function SyncedDataPage() {
               )}
               <span className="ml-2">Refresh</span>
             </PrimaryButton>
+            {/* DEBUG: Direct sync test for ad platforms */}
+            {activeWorkspaceId && (
+              <button
+                onClick={async () => {
+                  try {
+                    // Get connections for this workspace
+                    const res = await fetch(`/api/workspaces/${activeWorkspaceId}/connections`);
+                    const data = await res.json();
+                    const metaConn = data.connections?.find((c: any) => c.provider === 'meta_ads');
+                    if (metaConn) {
+                      alert(`Found Meta connection: ${metaConn.id}. Triggering direct sync...`);
+                      const syncRes = await fetch(`/api/connections/${metaConn.id}/sync`, { method: 'POST' });
+                      const syncData = await syncRes.json();
+                      alert(`Sync result: ${JSON.stringify(syncData, null, 2)}`);
+                      mutate(); // Refresh data explorer
+                    } else {
+                      alert('No Meta Ads connection found in this workspace');
+                    }
+                  } catch (e: any) {
+                    alert('Error: ' + e.message);
+                  }
+                }}
+                className="h-10 px-3 rounded-lg bg-amber-600 text-white text-sm hover:bg-amber-700"
+              >
+                🐛 Debug Sync
+              </button>
+            )}
             <SecondaryButton
               onClick={handleExport}
               disabled={!metrics.length}
