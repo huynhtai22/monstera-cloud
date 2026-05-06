@@ -3,28 +3,49 @@ import prisma from "@/lib/prisma";
 import crypto from "crypto";
 import { logger } from "@/lib/logger";
 
+/** Get partner key with shpk prefix stripped (same logic as shopee.ts) */
+function getPartnerKey(): string {
+    const key = (process.env.SHOPEE_PARTNER_KEY || "").trim();
+    if (!key) throw new Error("SHOPEE_PARTNER_KEY not configured");
+    // Shopee partner keys are prefixed with "shpk" — strip the prefix
+    return key.startsWith("shpk") ? key.slice(4) : key;
+}
+
+/** Returns the HMAC key as a Buffer (hex-decoded raw bytes) */
+function getPartnerKeyBuffer(): Buffer {
+    const hex = getPartnerKey();
+    // If valid hex, decode to raw bytes. Otherwise fall back to UTF-8 string bytes.
+    if (/^[0-9a-fA-F]+$/.test(hex) && hex.length % 2 === 0) {
+        return Buffer.from(hex, "hex");
+    }
+    return Buffer.from(hex, "utf8");
+}
+
 export async function POST(request: Request) {
     try {
-        const url = request.url;
         const authorizationHeader = request.headers.get("authorization");
         
         if (!authorizationHeader) {
+            logger.warn("[SHOPEE WEBHOOK] Missing Authorization header");
             return new NextResponse("Missing Authorization Header.", { status: 401 });
         }
 
         const rawBody = await request.text();
         
         // Validate Shopee Webhook Signature
-        // HMAC-SHA256(partnerKey, webhook_url + request_body)
-        const partnerKey = process.env.SHOPEE_PARTNER_KEY || "";
-        const baseString = `${url}|${rawBody}`;
+        // Format: HMAC-SHA256(partner_key, request_body)
+        // Note: Shopee webhooks use body-only signing (not url|body like some other endpoints)
+        const partnerKeyBuf = getPartnerKeyBuffer();
         const computedSignature = crypto
-            .createHmac('sha256', partnerKey)
-            .update(baseString)
+            .createHmac('sha256', partnerKeyBuf)
+            .update(rawBody)
             .digest('hex');
 
         if (computedSignature !== authorizationHeader) {
-            logger.warn("[SHOPEE WEBHOOK] Invalid signature detected.");
+            logger.warn("[SHOPEE WEBHOOK] Invalid signature", {
+                expected: computedSignature,
+                received: authorizationHeader,
+            });
             return new NextResponse("Invalid Signature.", { status: 403 });
         }
 
@@ -35,19 +56,37 @@ export async function POST(request: Request) {
         // Sometimes it's structured differently based on API v2 push configurations.
         // We will catch the universal `shop_id` + `code` indicating unbind.
         
+        // Handle deauthorization webhooks (code 3 = shop deauth, code 4 = app deauth)
         if (payload.code === 3 || payload.code === 4 || payload.type === "shop_authorization") {
             const shopId = payload.shop_id;
             
             if (shopId) {
                 logger.info(`[SHOPEE WEBHOOK] Received deauthorization for shop: ${shopId}. Purging connections...`);
                 
-                // Delete the connection from the database
-                await prisma.connection.deleteMany({
+                // Find connections by shopId - search in credentials JSON or by name pattern
+                const connections = await prisma.connection.findMany({
                     where: {
                         provider: "shopee",
-                        name: `Shopee ID: ${shopId}`
+                        OR: [
+                            { name: { contains: String(shopId) } },
+                            { name: `Shopee Shop (${shopId})` },
+                            { name: `Shopee ID: ${shopId}` },
+                        ]
                     }
                 });
+                
+                for (const conn of connections) {
+                    // Delete associated pipelines first to avoid foreign key issues
+                    await prisma.pipeline.deleteMany({
+                        where: { sourceConnectionId: conn.id }
+                    });
+                    
+                    await prisma.connection.delete({
+                        where: { id: conn.id }
+                    });
+                    
+                    logger.info(`[SHOPEE WEBHOOK] Deleted connection ${conn.id} for shop ${shopId}`);
+                }
                 
                 // Note: Prisma will cascade delete any pipelines dependent on this connection
                 // if the schema was configured with onDelete: Cascade, otherwise we might leave orphans.
