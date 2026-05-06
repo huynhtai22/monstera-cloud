@@ -170,6 +170,10 @@ export default function SourcesPage() {
                 : `/api/connections/${connectionId}/sync`;
             const res = await fetch(url, { method: 'POST' });
             const data = await res.json();
+            
+            // DEBUG: Always show response for now
+            console.log('[DirectSync] Response:', { status: res.status, ok: res.ok, data });
+            
             if (res.ok) {
                 toast.success(
                     <span>
@@ -177,15 +181,15 @@ export default function SourcesPage() {
                         <a href="/synced-data" className="ml-2 underline font-medium">View Data</a>
                     </span>
                 );
-            } else if (data.error?.includes('already queued') || data.error?.includes('running')) {
+            } else if (data.code === 'SYNC_ACTIVE' || data.error?.includes('already queued') || data.error?.includes('running')) {
                 // Show option to force unlock
                 toast.error(
                     <div className="max-w-md">
                         <p className="font-semibold mb-2">Sync Blocked</p>
-                        <p className="text-sm mb-3">{data.error}</p>
+                        <p className="text-sm mb-3">{data.error || "A sync is already running"}</p>
                         <button
                             onClick={() => {
-                                toast.dismiss();
+                                toast.dismiss('sync-blocked');
                                 handleDirectSync(connectionId, provider, true);
                             }}
                             className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded"
