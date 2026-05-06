@@ -82,13 +82,29 @@ export async function GET(req: Request) {
     `;
     const dateRange = (dateRangeRaw as any[])[0] || null;
 
+    // Convert BigInt to string for JSON serialization
+    const safeAccounts = (accounts as any[]).map((a: any) => ({
+      ...a,
+      fencingToken: a.fencingToken?.toString?.() ?? null,
+    }));
+
+    // platformCounts COUNT returns BigInt
+    const safePlatformCounts = (platformCounts as any[]).map((p: any) => ({
+      platform: p.platform,
+      count: p.count?.toString?.() ?? p.count,
+    }));
+
     return NextResponse.json({
       workspaceId,
-      totalCount,
-      platformCounts,
+      totalCount: typeof totalCount === 'bigint' ? (totalCount as any).toString() : totalCount,
+      platformCounts: safePlatformCounts,
       sampleRows,
-      accounts,
-      dateRange,
+      accounts: safeAccounts,
+      dateRange: dateRange ? {
+        earliest: dateRange.earliest?.toISOString?.() ?? dateRange.earliest,
+        latest: dateRange.latest?.toISOString?.() ?? dateRange.latest,
+        total: dateRange.total?.toString?.() ?? dateRange.total,
+      } : null,
       debug: {
         queryTime: new Date().toISOString(),
         userId: session.user.id,
