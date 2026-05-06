@@ -109,19 +109,35 @@ export async function POST(
         return NextResponse.json({ error: "Failed to get valid token" }, { status: 401 });
       }
 
-      // Get ad accounts from credentials - use selected or all if none selected
-      let adAccounts = credentials.adAccounts || 
-        (credentials.adAccountIds || []).map((id: string) => ({ id, name: id }));
+      // DEBUG: Log credentials structure
+      logger.info(`[Meta Sync] DEBUG credentials keys:`, Object.keys(credentials));
+      logger.info(`[Meta Sync] DEBUG extraFields keys:`, Object.keys(credentials.extraFields || {}));
+      logger.info(`[Meta Sync] DEBUG extraFields.adAccounts:`, JSON.stringify(credentials.extraFields?.adAccounts));
+
+      // Get ad accounts from extraFields (where OAuth adapter stores them)
+      const extraFields = credentials.extraFields || {};
+      let adAccounts = extraFields.adAccounts || 
+        (extraFields.adAccountIds || []).map((id: string) => ({ id, name: id }));
       
       // Filter to selected accounts if selection exists
-      if (credentials.selectedAdAccountIds?.length > 0) {
-        adAccounts = adAccounts.filter((acc: any) => 
-          credentials.selectedAdAccountIds.includes(acc.id)
-        );
+      const selectedIds = extraFields.selectedAdAccountIds || credentials.selectedAdAccountIds;
+      if (selectedIds?.length > 0) {
+        adAccounts = adAccounts.filter((acc: any) => selectedIds.includes(acc.id));
+        logger.info(`[Meta Sync] Filtered to ${adAccounts.length} selected accounts`);
       }
 
+      logger.info(`[Meta Sync] Will sync ${adAccounts.length} ad accounts`);
+
       if (!adAccounts?.length) {
-        return NextResponse.json({ error: "No ad accounts selected for sync" }, { status: 400 });
+        return NextResponse.json({ 
+          error: "No ad accounts configured", 
+          debug: {
+            credentialKeys: Object.keys(credentials),
+            extraFieldsKeys: Object.keys(extraFields),
+            hasAdAccounts: !!extraFields.adAccounts,
+            adAccountsCount: extraFields.adAccounts?.length || 0,
+          }
+        }, { status: 400 });
       }
 
       const jobId = `manual-${Date.now()}`;
@@ -194,6 +210,11 @@ export async function POST(
         success: true,
         rowsIngested: totalRows,
         message: `Synced ${totalRows} rows from Meta Ads`,
+        debug: {
+          accountsProcessed: adAccounts.length,
+          jobId,
+          timestamp: new Date().toISOString(),
+        }
       });
     }
 
