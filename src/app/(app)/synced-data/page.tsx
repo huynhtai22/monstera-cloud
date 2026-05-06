@@ -3,9 +3,10 @@
 import { useState, useEffect, useMemo } from "react";
 import useSWR from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
+import { Input } from "@/components/ui/Input";
 import { PageShell } from "@/components/ui/PageShell";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
-import { Input } from "@/components/ui/Input";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { downloadCsv } from "@/lib/export-utils";
 import {
   Database,
@@ -17,6 +18,9 @@ import {
   TrendingUp,
   Layers,
   ChevronDown,
+  Facebook,
+  Globe,
+  ShoppingBag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -47,12 +51,22 @@ interface MetricRow {
 
 const PLATFORM_LABELS: Record<string, string> = {
   meta_ads: "Meta Ads",
-  tiktok_ads: "TikTok Ads",
+  tiktok_business: "TikTok Ads",
   google_ads: "Google Ads",
   shopee: "Shopee",
   lazada: "Lazada",
   shopify: "Shopify",
 };
+
+const PLATFORM_OPTIONS = [
+  { value: "", label: "All Platforms", icon: <Layers className="h-4 w-4" /> },
+  { value: "meta_ads", label: "Meta Ads", icon: <Facebook className="h-4 w-4 text-blue-600" /> },
+  { value: "tiktok_business", label: "TikTok Ads", icon: <Globe className="h-4 w-4" /> },
+  { value: "google_ads", label: "Google Ads", icon: <Globe className="h-4 w-4 text-green-600" /> },
+  { value: "shopee", label: "Shopee", icon: <ShoppingBag className="h-4 w-4 text-orange-500" /> },
+  { value: "lazada", label: "Lazada", icon: <ShoppingBag className="h-4 w-4 text-blue-500" /> },
+  { value: "shopify", label: "Shopify", icon: <ShoppingBag className="h-4 w-4 text-green-600" /> },
+];
 
 const PLATFORM_COLORS: Record<string, string> = {
   meta_ads: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
@@ -332,18 +346,12 @@ export default function SyncedDataPage() {
               <Layers className="inline h-3 w-3 mr-1" />
               Platform
             </label>
-            <select
+            <Dropdown
               value={selectedPlatform}
-              onChange={(e) => setSelectedPlatform(e.target.value)}
-              className="w-full h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-            >
-              <option value="">All Platforms</option>
-              {availablePlatforms.map((p: string) => (
-                <option key={p} value={p}>
-                  {PLATFORM_LABELS[p] || p}
-                </option>
-              ))}
-            </select>
+              onChange={setSelectedPlatform}
+              options={PLATFORM_OPTIONS.filter(opt => opt.value === "" || availablePlatforms.includes(opt.value))}
+              placeholder="All Platforms"
+            />
           </div>
           <div className="flex items-end gap-2">
             <PrimaryButton
