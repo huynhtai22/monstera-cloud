@@ -477,25 +477,45 @@ export default function SyncedDataPage() {
               onClick={async () => {
                 if (!activeWorkspaceId) return;
                 try {
-                  // Query without date filters to see ALL data
-                  const res = await fetch(`/api/metrics/query?workspaceId=${activeWorkspaceId}&startDate=2024-01-01&endDate=2026-12-31`);
+                  // Use debug endpoint for detailed info
+                  const res = await fetch(`/api/debug/campaign-metrics?workspaceId=${activeWorkspaceId}`);
                   const data = await res.json();
                   
-                  // Show platforms found
-                  const platforms = data.platforms?.join(', ') || 'None';
-                  const count = data.totalCount || 0;
-                  const sample = data.metrics?.slice(0, 3).map((m: any) => 
-                    `${m.platform}: ${m.accountName} (${m.date?.split('T')[0]})`
-                  ).join('\n') || 'No rows';
+                  if (data.error) {
+                    alert(`Error: ${data.error}\n${data.details || ''}`);
+                    return;
+                  }
                   
-                  alert(`Database Check:\n\nTotal rows: ${count}\nPlatforms: ${platforms}\n\nSample rows:\n${sample}\n\nQuery used:\nworkspaceId: ${activeWorkspaceId}\ndate: 2024-01-01 to 2026-12-31`);
+                  const platforms = (data.platformCounts || []).map((p: any) => 
+                    `${p.platform}: ${p.count} rows`
+                  ).join('\n') || 'None';
+                  
+                  const samples = (data.sampleRows || []).map((m: any) => 
+                    `• ${m.platform} | ${m.accountName || m.accountId} | ${m.campaignName || 'N/A'} | $${m.spend} | ${m.date?.split('T')[0]}`
+                  ).join('\n') || 'No sample rows';
+                  
+                  const dateRange = data.dateRange;
+                  const dateInfo = dateRange 
+                    ? `Earliest: ${dateRange.earliest?.split('T')[0]}\nLatest: ${dateRange.latest?.split('T')[0]}`
+                    : 'No date range info';
+                  
+                  alert(
+                    `📊 CampaignMetric Database Report\n` +
+                    `Workspace: ${data.workspaceId?.slice(0, 20)}...\n` +
+                    `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
+                    `Total Rows: ${data.totalCount}\n\n` +
+                    `By Platform:\n${platforms}\n\n` +
+                    `Date Range:\n${dateInfo}\n\n` +
+                    `Sample Rows:\n${samples}\n\n` +
+                    `Accounts Found:\n${(data.accounts || []).map((a: any) => `• ${a.platform}: ${a.accountName || a.accountId}`).join('\n') || 'None'}`
+                  );
                 } catch (e: any) {
                   alert('Error checking database: ' + e.message);
                 }
               }}
               className="text-xs text-cyan-600 hover:text-cyan-700 underline"
             >
-              Check Database (see what data exists)
+              Check Database (detailed report)
             </button>
             
             <Link
