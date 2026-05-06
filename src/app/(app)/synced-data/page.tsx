@@ -17,7 +17,6 @@ import {
   TrendingUp,
   Layers,
   ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -64,12 +63,20 @@ const PLATFORM_COLORS: Record<string, string> = {
   shopify: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
 };
 
+const MAX_DATE_RANGE_DAYS = 90;
+
 export default function SyncedDataPage() {
   const { activeWorkspaceId } = useWorkspaceStore();
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<string>("");
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  
+  // Pagination state
+  const [allMetrics, setAllMetrics] = useState<MetricRow[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   // Calculate default date range (last 30 days)
   useEffect(() => {
@@ -80,8 +87,21 @@ export default function SyncedDataPage() {
     setStartDate(start.toISOString().split("T")[0]);
   }, []);
 
+  // Validate date range
+  const dateRangeError = useMemo(() => {
+    if (!startDate || !endDate) return null;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const days = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+    if (days > MAX_DATE_RANGE_DAYS) {
+      return `Maximum date range is ${MAX_DATE_RANGE_DAYS} days. Please narrow your selection.`;
+    }
+    if (days < 0) return "Start date must be before end date.";
+    return null;
+  }, [startDate, endDate]);
+
   const queryUrl = useMemo(() => {
-    if (!activeWorkspaceId || !startDate || !endDate) return null;
+    if (!activeWorkspaceId || !startDate || !endDate || dateRangeError) return null;
     const params = new URLSearchParams({
       workspaceId: activeWorkspaceId,
       startDate,
@@ -89,13 +109,40 @@ export default function SyncedDataPage() {
     });
     if (selectedPlatform) params.set("platform", selectedPlatform);
     return `/api/metrics/query?${params.toString()}`;
-  }, [activeWorkspaceId, startDate, endDate, selectedPlatform]);
+  }, [activeWorkspaceId, startDate, endDate, selectedPlatform, dateRangeError]);
 
   const { data, error, isLoading, mutate } = useSWR(queryUrl, fetcher, {
-    refreshInterval: 60000, // Refresh every minute
+    refreshInterval: 60000,
+    onSuccess: (newData) => {
+      // Reset pagination on filter change
+      setAllMetrics(newData?.metrics || []);
+      setCursor(newData?.pagination?.nextCursor || null);
+      setHasMore(newData?.pagination?.hasMore || false);
+    },
   });
 
-  const metrics: MetricRow[] = data?.metrics || [];
+  // Load more data
+  const loadMore = async () => {
+    if (!queryUrl || !cursor || isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const url = new URL(queryUrl, window.location.origin);
+      url.searchParams.set("cursor", cursor);
+      const res = await fetch(url.toString());
+      const newData = await res.json();
+      if (newData.metrics) {
+        setAllMetrics((prev) => [...prev, ...newData.metrics]);
+        setCursor(newData.pagination?.nextCursor || null);
+        setHasMore(newData.pagination?.hasMore || false);
+      }
+    } catch (e) {
+      console.error("Failed to load more:", e);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  const metrics = allMetrics;
   const summary = data?.summary;
 
   // Detect data gaps (days with no data)
@@ -106,6 +153,10 @@ export default function SyncedDataPage() {
     const gaps: string[] = [];
     const start = new Date(startDate);
     const end = new Date(endDate);
+    const days = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+    
+    // Limit gap detection to reasonable range
+    if (days > 365) return [];
     
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dateStr = d.toISOString().split("T")[0];
@@ -113,7 +164,7 @@ export default function SyncedDataPage() {
         gaps.push(dateStr);
       }
     }
-    return gaps.slice(-7); // Show last 7 gaps max
+    return gaps.slice(-7);
   }, [metrics, startDate, endDate]);
 
   // Totals
@@ -176,8 +227,20 @@ export default function SyncedDataPage() {
         </div>
       </div>
 
+      {/* Date Range Error */}
+      {dateRangeError && (
+        <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 dark:border-red-800/50 dark:bg-red-950/30">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 text-red-500 dark:text-red-400" />
+            <p className="text-sm font-medium text-red-900 dark:text-red-100">
+              {dateRangeError}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Data Gaps Warning */}
-      {dataGaps.length > 0 && (
+      {dataGaps.length > 0 && !dateRangeError && (
         <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-950/30">
           <div className="flex items-start gap-3">
             <AlertCircle className="mt-0.5 h-4 w-4 text-amber-500 dark:text-amber-400" />
@@ -406,11 +469,32 @@ export default function SyncedDataPage() {
               </tbody>
             </table>
           </div>
-          {metrics.length > 100 && (
-            <div className="px-4 py-3 bg-gray-50 dark:bg-slate-800 text-center text-xs text-gray-500 dark:text-slate-400">
-              Showing first 100 of {metrics.length.toLocaleString()} records. Use Export to get all data.
+          {/* Pagination */}
+          <div className="px-4 py-3 bg-gray-50 dark:bg-slate-800 border-t border-gray-200 dark:border-slate-700">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500 dark:text-slate-400">
+                Showing {metrics.length.toLocaleString()} 
+                {data?.pagination?.totalApprox && ` of ~${data.pagination.totalApprox.toLocaleString()}`} records
+                {hasMore && " (more available)"}
+              </span>
+              {hasMore && (
+                <SecondaryButton
+                  onClick={loadMore}
+                  disabled={isLoadingMore}
+                  className="h-8 px-3 text-xs"
+                >
+                  {isLoadingMore ? (
+                    <RefreshCw className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <>
+                      Load more
+                      <ChevronDown className="ml-1 h-3 w-3" />
+                    </>
+                  )}
+                </SecondaryButton>
+              )}
             </div>
-          )}
+          </div>
         </div>
       )}
     </PageShell>
