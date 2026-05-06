@@ -175,14 +175,27 @@ export default function SourcesPage() {
                     </span>
                 );
             } else {
+                // DEBUG: Show full error details since Vercel logs are unavailable
+                const errorDetails = JSON.stringify(data, null, 2);
                 toast.error(
-                    typeof data.error === "string"
-                        ? data.error
-                        : "Sync failed. Check connection settings."
+                    <div className="max-w-md">
+                        <p className="font-semibold mb-2">Sync Failed:</p>
+                        <p className="text-sm mb-2">{data.error || "Unknown error"}</p>
+                        <details className="text-xs">
+                            <summary className="cursor-pointer text-red-300 hover:text-red-200">Show Debug Info</summary>
+                            <pre className="mt-2 p-2 bg-red-950/50 rounded text-left overflow-auto max-h-40">{errorDetails}</pre>
+                        </details>
+                    </div>,
+                    { duration: 10000 }
                 );
             }
-        } catch {
-            toast.error("Network error during sync.");
+        } catch (e: any) {
+            toast.error(
+                <div>
+                    <p className="font-semibold">Network Error</p>
+                    <p className="text-xs mt-1">{e.message}</p>
+                </div>
+            );
         } finally {
             removeBusy(key);
             if (activeWorkspaceId) {
