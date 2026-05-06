@@ -161,11 +161,14 @@ export default function SourcesPage() {
     }, [addBusy, removeBusy, activeWorkspaceId, mutate]);
 
     /* Direct sync for ad platforms - no pipeline needed, syncs to CampaignMetric for Data Explorer */
-    const handleDirectSync = useCallback(async (connectionId: string, provider: string) => {
+    const handleDirectSync = useCallback(async (connectionId: string, provider: string, force: boolean = false) => {
         const key = `direct-sync:${connectionId}`;
         addBusy(key);
         try {
-            const res = await fetch(`/api/connections/${connectionId}/sync`, { method: 'POST' });
+            const url = force 
+                ? `/api/connections/${connectionId}/sync?force=true` 
+                : `/api/connections/${connectionId}/sync`;
+            const res = await fetch(url, { method: 'POST' });
             const data = await res.json();
             if (res.ok) {
                 toast.success(
@@ -173,6 +176,24 @@ export default function SourcesPage() {
                         Synced {data.rowsIngested || 0} rows to Data Explorer.
                         <a href="/synced-data" className="ml-2 underline font-medium">View Data</a>
                     </span>
+                );
+            } else if (data.error?.includes('already queued') || data.error?.includes('running')) {
+                // Show option to force unlock
+                toast.error(
+                    <div className="max-w-md">
+                        <p className="font-semibold mb-2">Sync Blocked</p>
+                        <p className="text-sm mb-3">{data.error}</p>
+                        <button
+                            onClick={() => {
+                                toast.dismiss();
+                                handleDirectSync(connectionId, provider, true);
+                            }}
+                            className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded"
+                        >
+                            Force Unlock & Retry
+                        </button>
+                    </div>,
+                    { duration: 30000, id: 'sync-blocked' }
                 );
             } else {
                 // DEBUG: Show full error details since Vercel logs are unavailable

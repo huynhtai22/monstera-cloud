@@ -28,13 +28,17 @@ import {
 } from "@/lib/meta-sync-lock";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Check for force unlock parameter
+  const { searchParams } = new URL(request.url);
+  const force = searchParams.get("force") === "true";
 
   try {
     const { id: connectionId } = await context.params;
@@ -143,6 +147,16 @@ export async function POST(
       const jobId = `manual-${Date.now()}`;
       let totalRows = 0;
 
+      // Force unlock: clear any existing locks before starting
+      if (force) {
+        logger.info(`[Meta Sync] Force unlock requested, clearing locks for ${adAccounts.length} accounts`);
+        for (const account of adAccounts) {
+          const scope = `meta_ads:${connection.workspaceId}:${connectionId}:${account.id}`;
+          await prisma.$executeRaw`DELETE FROM "SyncLock" WHERE scope = ${scope}`;
+          logger.info(`[Meta Sync] Cleared lock for ${scope}`);
+        }
+      }
+
       // Sync each ad account
       for (const account of adAccounts) {
         const accountId = account.id;
@@ -157,7 +171,19 @@ export async function POST(
         });
 
         if (!lockResult.acquired) {
-          logger.warn(`[Meta Sync] Could not acquire lock for ${accountId}`);
+          const reason = lockResult.reason === 'active' 
+            ? 'A sync is already running for this account'
+            : 'Database lock is busy';
+          logger.warn(`[Meta Sync] Could not acquire lock for ${accountId}: ${reason}`);
+          
+          // Return error so user can force unlock
+          if (lockResult.reason === 'active') {
+            return NextResponse.json({
+              error: `A sync is already queued or running for this account (${accountId}). Wait for it to complete or use Force Unlock.`,
+              code: 'SYNC_ACTIVE',
+              accountId,
+            }, { status: 423 });
+          }
           continue;
         }
         
