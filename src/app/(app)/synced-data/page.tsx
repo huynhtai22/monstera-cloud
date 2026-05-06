@@ -374,18 +374,26 @@ export default function SyncedDataPage() {
                     // Get connections for this workspace
                     const res = await fetch(`/api/workspaces/${activeWorkspaceId}/connections`);
                     const data = await res.json();
-                    const metaConn = data.connections?.find((c: any) => c.provider === 'meta_ads');
+                    console.log('All connections:', data);
+                    
+                    // List all providers found
+                    const providers = data.connections?.map((c: any) => `${c.provider} (${c.id})`).join('\n') || 'None';
+                    
+                    // Try different provider names
+                    let metaConn = data.connections?.find((c: any) => c.provider === 'meta_ads' || c.provider === 'meta-ads');
+                    
                     if (metaConn) {
-                      alert(`Found Meta connection: ${metaConn.id}. Triggering direct sync...`);
+                      alert(`Found Meta connection: ${metaConn.id}\nProvider: ${metaConn.provider}\nName: ${metaConn.name}\n\nTriggering direct sync...`);
                       const syncRes = await fetch(`/api/connections/${metaConn.id}/sync`, { method: 'POST' });
                       const syncData = await syncRes.json();
                       alert(`Sync result: ${JSON.stringify(syncData, null, 2)}`);
                       mutate(); // Refresh data explorer
                     } else {
-                      alert('No Meta Ads connection found in this workspace');
+                      alert(`No Meta Ads connection found.\n\nAll connections in workspace:\n${providers}\n\nCheck console for full data.`);
                     }
                   } catch (e: any) {
                     alert('Error: ' + e.message);
+                    console.error(e);
                   }
                 }}
                 className="h-10 px-3 rounded-lg bg-amber-600 text-white text-sm hover:bg-amber-700"
