@@ -4,6 +4,17 @@ import prisma from "@/lib/prisma";
 import { sendOtpEmail } from "@/lib/mail";
 import { logger } from "@/lib/logger";
 
+/**
+ * GET handler - Explicitly reject GET requests to prevent sensitive data
+ * from being exposed in URL query parameters (OWASP security requirement)
+ */
+export async function GET() {
+  return NextResponse.json(
+    { message: "Method not allowed. Use POST to register." },
+    { status: 405 }
+  );
+}
+
 export async function POST(req: Request) {
   try {
     const { name, email: rawEmail, password } = await req.json();

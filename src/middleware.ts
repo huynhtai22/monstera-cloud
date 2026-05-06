@@ -62,24 +62,38 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Add CORS headers for /api/v1/sheets/* routes (called by Google Apps Script)
+  // Add CORS headers for /api/v1/sheets/* routes (called by Google Apps Script add-on)
+  // OWASP Fix: Use specific origin instead of wildcard (*) for security compliance
+  const ALLOWED_ORIGINS = [
+    'https://monsteracloud.com',
+    'https://www.monsteracloud.com',
+    // Google Apps Script origins - required for Sheets add-on functionality
+    'https://script.google.com',
+    'https://script.googleusercontent.com',
+  ];
+  
   if (request.nextUrl.pathname.startsWith('/api/v1/sheets')) {
+    const origin = request.headers.get('origin') || 'https://monsteracloud.com';
+    const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : 'https://monsteracloud.com';
+    
     if (request.method === 'OPTIONS') {
       return new NextResponse(null, {
         status: 200,
         headers: {
-          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Origin': allowedOrigin,
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Max-Age': '86400',
+          'Vary': 'Origin',
         },
       });
     }
 
     const response = NextResponse.next();
-    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    response.headers.set('Vary', 'Origin');
     return response;
   }
 
