@@ -109,12 +109,19 @@ export async function POST(
         return NextResponse.json({ error: "Failed to get valid token" }, { status: 401 });
       }
 
-      // Get ad accounts from credentials
-      const adAccounts = credentials.adAccounts || 
+      // Get ad accounts from credentials - use selected or all if none selected
+      let adAccounts = credentials.adAccounts || 
         (credentials.adAccountIds || []).map((id: string) => ({ id, name: id }));
+      
+      // Filter to selected accounts if selection exists
+      if (credentials.selectedAdAccountIds?.length > 0) {
+        adAccounts = adAccounts.filter((acc: any) => 
+          credentials.selectedAdAccountIds.includes(acc.id)
+        );
+      }
 
       if (!adAccounts?.length) {
-        return NextResponse.json({ error: "No ad accounts configured" }, { status: 400 });
+        return NextResponse.json({ error: "No ad accounts selected for sync" }, { status: 400 });
       }
 
       const jobId = `manual-${Date.now()}`;
@@ -201,10 +208,18 @@ export async function POST(
         return NextResponse.json({ error: "Failed to get valid token" }, { status: 401 });
       }
 
-      // Get customer IDs from credentials
-      const customerIds = credentials.customerIds || [];
+      // Get customer IDs from credentials - use selected or all if none selected
+      let customerIds = credentials.customerIds || [];
+      
+      // Filter to selected customers if selection exists
+      if (credentials.selectedCustomerIds?.length > 0) {
+        customerIds = customerIds.filter((id: string) => 
+          credentials.selectedCustomerIds.includes(id)
+        );
+      }
+      
       if (!customerIds.length) {
-        return NextResponse.json({ error: "No customer accounts configured" }, { status: 400 });
+        return NextResponse.json({ error: "No customer accounts selected for sync" }, { status: 400 });
       }
 
       const jobId = `manual-${Date.now()}`;
@@ -281,10 +296,18 @@ export async function POST(
         return NextResponse.json({ error: "Failed to get valid token" }, { status: 401 });
       }
 
-      // Get advertiser IDs from credentials
-      const advertiserIds = credentials.advertiserIds || [];
+      // Get advertiser IDs from credentials - use selected or all if none selected
+      let advertiserIds = credentials.advertiserIds || [];
+      
+      // Filter to selected advertisers if selection exists
+      if (credentials.selectedAdvertiserIds?.length > 0) {
+        advertiserIds = advertiserIds.filter((id: string) => 
+          credentials.selectedAdvertiserIds.includes(id)
+        );
+      }
+      
       if (!advertiserIds.length) {
-        return NextResponse.json({ error: "No advertisers configured" }, { status: 400 });
+        return NextResponse.json({ error: "No advertisers selected for sync" }, { status: 400 });
       }
 
       const jobId = `manual-${Date.now()}`;

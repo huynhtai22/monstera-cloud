@@ -7,8 +7,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { decrypt } from "@/lib/encryption";
-import { getProvider } from "@/lib/oauth-framework/registry";
+import { decrypt, encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 
 export async function GET(
@@ -56,22 +55,150 @@ export async function GET(
         // Decrypt credentials
         const credentials = JSON.parse(decrypt(connection.credentials));
         
-        // Get provider adapter
-        const adapter = getProvider(connection.provider);
+        // Extract accounts from stored credentials
+        let accounts: Array<{ id: string; name: string; type: string; selected?: boolean }> = [];
         
-        // Fetch accounts using the adapter
-        // Note: This requires the adapter to have a listAccounts method
-        // For now, return mock data structure
-        // TODO: Implement listAccounts in provider adapters
+        if (connection.provider === "meta_ads") {
+            // Meta stores adAccounts array or adAccountIds
+            const adAccounts = credentials.adAccounts || [];
+            const adAccountIds = credentials.adAccountIds || [];
+            const selectedIds = credentials.selectedAdAccountIds || adAccountIds;
+            
+            if (adAccounts.length > 0) {
+                accounts = adAccounts.map((acc: any) => ({
+                    id: acc.id,
+                    name: acc.name || `Ad Account ${acc.id}`,
+                    type: "ad_account",
+                    selected: selectedIds.length === 0 || selectedIds.includes(acc.id),
+                }));
+            } else if (adAccountIds.length > 0) {
+                accounts = adAccountIds.map((id: string) => ({
+                    id,
+                    name: `Ad Account ${id}`,
+                    type: "ad_account",
+                    selected: selectedIds.includes(id),
+                }));
+            }
+        } else if (connection.provider === "google_ads") {
+            // Google stores customerIds array
+            const customerIds = credentials.customerIds || [];
+            const selectedIds = credentials.selectedCustomerIds || customerIds;
+            
+            accounts = customerIds.map((id: string) => ({
+                id,
+                name: `Customer ${id}`,
+                type: "customer",
+                selected: selectedIds.length === 0 || selectedIds.includes(id),
+            }));
+        } else if (connection.provider === "tiktok_business") {
+            // TikTok stores advertiserIds array
+            const advertiserIds = credentials.advertiserIds || [];
+            const selectedIds = credentials.selectedAdvertiserIds || advertiserIds;
+            
+            accounts = advertiserIds.map((id: string) => ({
+                id,
+                name: `Advertiser ${id}`,
+                type: "advertiser",
+                selected: selectedIds.length === 0 || selectedIds.includes(id),
+            }));
+        }
         
-        // Return a structure that the UI expects
         return NextResponse.json({
-            accounts: [], // Placeholder - would be populated by adapter.listAccounts()
+            accounts,
             provider: connection.provider,
-            note: "Account listing not yet implemented for this provider",
+            total: accounts.length,
+            selected: accounts.filter(a => a.selected).length,
         });
     } catch (error) {
         logger.error("[GET /api/connections/[id]/accounts]", error);
+        return NextResponse.json(
+            { error: "Internal server error" },
+            { status: 500 }
+        );
+    }
+}
+
+/**
+ * POST - Save selected accounts for a connection
+ * Body: { selectedIds: string[] }
+ */
+export async function POST(
+    request: Request,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    try {
+        const session = await getServerSession(authOptions);
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const { id } = await params;
+        const body = await request.json();
+        const { selectedIds } = body;
+
+        if (!Array.isArray(selectedIds)) {
+            return NextResponse.json(
+                { error: "selectedIds must be an array" },
+                { status: 400 }
+            );
+        }
+
+        // Get connection with permission check
+        const connection = await prisma.connection.findFirst({
+            where: {
+                id,
+                workspace: {
+                    members: {
+                        some: {
+                            userId: session.user.id,
+                        },
+                    },
+                },
+            },
+        });
+
+        if (!connection) {
+            return NextResponse.json(
+                { error: "Connection not found" },
+                { status: 404 }
+            );
+        }
+
+        // Only for ad platforms
+        const supportedProviders = ["meta_ads", "google_ads", "tiktok_business"];
+        if (!supportedProviders.includes(connection.provider)) {
+            return NextResponse.json(
+                { error: "Provider does not support account selection" },
+                { status: 400 }
+            );
+        }
+
+        // Decrypt and update credentials
+        const credentials = JSON.parse(decrypt(connection.credentials));
+        
+        if (connection.provider === "meta_ads") {
+            credentials.selectedAdAccountIds = selectedIds;
+        } else if (connection.provider === "google_ads") {
+            credentials.selectedCustomerIds = selectedIds;
+        } else if (connection.provider === "tiktok_business") {
+            credentials.selectedAdvertiserIds = selectedIds;
+        }
+
+        // Save updated credentials
+        await prisma.connection.update({
+            where: { id },
+            data: {
+                credentials: encrypt(JSON.stringify(credentials)),
+            },
+        });
+
+        return NextResponse.json({
+            success: true,
+            message: `Selected ${selectedIds.length} accounts`,
+            selectedIds,
+        });
+    } catch (error) {
+        logger.error("[POST /api/connections/[id]/accounts]", error);
         return NextResponse.json(
             { error: "Internal server error" },
             { status: 500 }
