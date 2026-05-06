@@ -8,6 +8,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { downloadCsv } from "@/lib/export-utils";
+import Link from "next/link";
 import {
   Database,
   Calendar,
@@ -21,6 +22,7 @@ import {
   Facebook,
   Globe,
   ShoppingBag,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -465,9 +467,22 @@ export default function SyncedDataPage() {
           <p className="text-sm text-gray-500 dark:text-slate-400">
             No data found for the selected date range.
           </p>
-          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">
+          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 mb-4">
             Try adjusting your filters or run a sync first.
           </p>
+          {/* CTA to connect sources */}
+          <div className="flex flex-col items-center gap-2">
+            <Link
+              href="/sources"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 transition-colors"
+            >
+              <Plus className="h-4 w-4" />
+              Connect a Data Source
+            </Link>
+            <p className="text-xs text-gray-400 dark:text-slate-500">
+              Connect Meta Ads, Google Ads, or TikTok to see data here
+            </p>
+          </div>
         </div>
       ) : (
         <div className="rounded-xl border border-gray-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
