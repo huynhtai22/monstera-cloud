@@ -16,6 +16,7 @@ import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { SetupWizard } from "@/components/dashboard/SetupWizard";
 import { PillarGrid } from "@/components/dashboard/PillarGrid";
 import { HealthSummaryBar } from "@/components/dashboard/HealthSummaryBar";
+import { TodaysDataFlow } from "@/components/dashboard/TodaysDataFlow";
 import { RefreshedAt } from "@/components/ui/RefreshedAt";
 import { trackEvent, trackOnce } from "@/lib/analytics-events";
 import { cn } from "@/lib/utils";
@@ -576,6 +577,12 @@ export function DashboardHomePage() {
                     />
                 </div>
             ) : null}
+
+            {/* ── Data Flow Indicator ─────────────────────────── */}
+            {/* Shows today's synced records with source breakdown */}
+            <div className="mb-6">
+                <TodaysDataFlow />
+            </div>
 
             {/* ── Main Body ─────────────────────────────────────── */}
             {/*
