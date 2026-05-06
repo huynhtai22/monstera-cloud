@@ -24,6 +24,7 @@ import { integrationCatalogId } from "@/lib/sources-integration-catalog";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { cn } from "@/lib/utils";
 import { AccountScopePanel } from "@/components/sources/AccountScopePanel";
+import { AccountSelector } from "@/components/sources/AccountSelector";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin" });
@@ -218,7 +219,16 @@ export default function SourceDetailPage() {
             </div>
 
             {isSource && ["meta_ads", "google_ads", "tiktok_business"].includes(connection.provider) ? (
-                <AccountScopePanel provider={connection.provider} credentialsJson={connection.credentials} />
+                <>
+                    <AccountScopePanel provider={connection.provider} credentialsJson={connection.credentials} />
+                    <div className="mb-10">
+                        <h2 className="mb-3 text-lg font-bold text-gray-900 dark:text-white">Account Selection</h2>
+                        <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">
+                            Choose which accounts to include in syncs. Only selected accounts will have data pulled into the workspace.
+                        </p>
+                        <AccountSelector connectionId={connection.id} provider={connection.provider} />
+                    </div>
+                </>
             ) : null}
 
             {/* Health */}
