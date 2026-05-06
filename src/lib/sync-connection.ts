@@ -89,15 +89,17 @@ async function syncMetaAds(opts: {
   }
   logger.info(`[syncMetaAds] Got access token`);
 
-  // Get ad accounts
-  let adAccounts = credentials.adAccounts || 
-    (credentials.adAccountIds || []).map((id: string) => ({ id, name: id }));
-  logger.info(`[syncMetaAds] Total ad accounts:`, adAccounts.length);
+  // Get ad accounts - stored in extraFields.adAccounts from OAuth
+  const extraFields = credentials.extraFields || {};
+  let adAccounts = extraFields.adAccounts || 
+    (extraFields.adAccountIds || credentials.adAccountIds || []).map((id: string) => ({ id, name: id }));
+  logger.info(`[syncMetaAds] Total ad accounts from extraFields:`, adAccounts.length);
 
   // Filter to selected if specified
-  if (credentials.selectedAdAccountIds?.length > 0) {
+  const selectedIds = extraFields.selectedAdAccountIds || credentials.selectedAdAccountIds;
+  if (selectedIds?.length > 0) {
     adAccounts = adAccounts.filter((acc: any) => 
-      credentials.selectedAdAccountIds.includes(acc.id)
+      selectedIds.includes(acc.id)
     );
     logger.info(`[syncMetaAds] Filtered to ${adAccounts.length} selected accounts`);
   }
@@ -200,14 +202,19 @@ async function syncGoogleAds(opts: {
     return { success: false, rowsIngested: 0, error: "Failed to get valid token" };
   }
 
-  let customerIds = credentials.customerIds || [];
+  // Google stores customerIds in extraFields
+  const extraFields = credentials.extraFields || {};
+  let customerIds = extraFields.customerIds || credentials.customerIds || [];
+  logger.info(`[syncGoogleAds] Total customer IDs:`, customerIds.length);
   
-  if (credentials.selectedCustomerIds?.length > 0) {
+  const selectedIds = extraFields.selectedCustomerIds || credentials.selectedCustomerIds;
+  if (selectedIds?.length > 0) {
     customerIds = customerIds.filter((id: string) => 
-      credentials.selectedCustomerIds.includes(id)
+      selectedIds.includes(id)
     );
+    logger.info(`[syncGoogleAds] Filtered to ${customerIds.length} selected customers`);
   }
-
+  
   if (!customerIds.length) {
     return { success: false, rowsIngested: 0, error: "No customer accounts selected" };
   }
@@ -282,14 +289,19 @@ async function syncTikTok(opts: {
     return { success: false, rowsIngested: 0, error: "Failed to get valid token" };
   }
 
-  let advertiserIds = credentials.advertiserIds || [];
+  // TikTok stores advertiserIds in extraFields
+  const extraFields = credentials.extraFields || {};
+  let advertiserIds = extraFields.advertiserIds || credentials.advertiserIds || [];
+  logger.info(`[syncTikTok] Total advertiser IDs:`, advertiserIds.length);
   
-  if (credentials.selectedAdvertiserIds?.length > 0) {
+  const selectedIds = extraFields.selectedAdvertiserIds || credentials.selectedAdvertiserIds;
+  if (selectedIds?.length > 0) {
     advertiserIds = advertiserIds.filter((id: string) => 
-      credentials.selectedAdvertiserIds.includes(id)
+      selectedIds.includes(id)
     );
+    logger.info(`[syncTikTok] Filtered to ${advertiserIds.length} selected advertisers`);
   }
-
+  
   if (!advertiserIds.length) {
     return { success: false, rowsIngested: 0, error: "No advertisers selected" };
   }

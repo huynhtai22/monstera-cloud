@@ -54,15 +54,16 @@ export async function GET(
 
         // Decrypt credentials
         const credentials = JSON.parse(decrypt(connection.credentials));
+        const extraFields = credentials.extraFields || {};
         
         // Extract accounts from stored credentials
         let accounts: Array<{ id: string; name: string; type: string; selected?: boolean }> = [];
         
         if (connection.provider === "meta_ads") {
-            // Meta stores adAccounts array or adAccountIds
-            const adAccounts = credentials.adAccounts || [];
-            const adAccountIds = credentials.adAccountIds || [];
-            const selectedIds = credentials.selectedAdAccountIds || adAccountIds;
+            // Meta stores adAccounts array in extraFields
+            const adAccounts = extraFields.adAccounts || credentials.adAccounts || [];
+            const adAccountIds = extraFields.adAccountIds || credentials.adAccountIds || [];
+            const selectedIds = extraFields.selectedAdAccountIds || credentials.selectedAdAccountIds || adAccountIds;
             
             if (adAccounts.length > 0) {
                 accounts = adAccounts.map((acc: any) => ({
@@ -80,9 +81,9 @@ export async function GET(
                 }));
             }
         } else if (connection.provider === "google_ads") {
-            // Google stores customerIds array
-            const customerIds = credentials.customerIds || [];
-            const selectedIds = credentials.selectedCustomerIds || customerIds;
+            // Google stores customerIds in extraFields
+            const customerIds = extraFields.customerIds || credentials.customerIds || [];
+            const selectedIds = extraFields.selectedCustomerIds || credentials.selectedCustomerIds || customerIds;
             
             accounts = customerIds.map((id: string) => ({
                 id,
@@ -91,9 +92,9 @@ export async function GET(
                 selected: selectedIds.length === 0 || selectedIds.includes(id),
             }));
         } else if (connection.provider === "tiktok_business") {
-            // TikTok stores advertiserIds array
-            const advertiserIds = credentials.advertiserIds || [];
-            const selectedIds = credentials.selectedAdvertiserIds || advertiserIds;
+            // TikTok stores advertiserIds in extraFields
+            const advertiserIds = extraFields.advertiserIds || credentials.advertiserIds || [];
+            const selectedIds = extraFields.selectedAdvertiserIds || credentials.selectedAdvertiserIds || advertiserIds;
             
             accounts = advertiserIds.map((id: string) => ({
                 id,
@@ -175,13 +176,14 @@ export async function POST(
 
         // Decrypt and update credentials
         const credentials = JSON.parse(decrypt(connection.credentials));
+        credentials.extraFields = credentials.extraFields || {};
         
         if (connection.provider === "meta_ads") {
-            credentials.selectedAdAccountIds = selectedIds;
+            credentials.extraFields.selectedAdAccountIds = selectedIds;
         } else if (connection.provider === "google_ads") {
-            credentials.selectedCustomerIds = selectedIds;
+            credentials.extraFields.selectedCustomerIds = selectedIds;
         } else if (connection.provider === "tiktok_business") {
-            credentials.selectedAdvertiserIds = selectedIds;
+            credentials.extraFields.selectedAdvertiserIds = selectedIds;
         }
 
         // Save updated credentials
