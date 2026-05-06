@@ -63,8 +63,6 @@ const PLATFORM_COLORS: Record<string, string> = {
   shopify: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
 };
 
-const MAX_DATE_RANGE_DAYS = 90;
-
 export default function SyncedDataPage() {
   const { activeWorkspaceId } = useWorkspaceStore();
   const [startDate, setStartDate] = useState("");
@@ -87,19 +85,6 @@ export default function SyncedDataPage() {
     setStartDate(start.toISOString().split("T")[0]);
   }, []);
 
-  // Validate date range
-  const dateRangeError = useMemo(() => {
-    if (!startDate || !endDate) return null;
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const days = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
-    if (days > MAX_DATE_RANGE_DAYS) {
-      return `Maximum date range is ${MAX_DATE_RANGE_DAYS} days. Please narrow your selection.`;
-    }
-    if (days < 0) return "Start date must be before end date.";
-    return null;
-  }, [startDate, endDate]);
-
   // Fetch platforms separately (not tied to date range)
   const platformsUrl = useMemo(() => {
     if (!activeWorkspaceId) return null;
@@ -107,6 +92,23 @@ export default function SyncedDataPage() {
   }, [activeWorkspaceId]);
 
   const { data: platformsData } = useSWR(platformsUrl, fetcher);
+
+  // Hardcoded free tier limits for client-side validation (pre-API call)
+  // API will enforce actual plan-based limits
+  const FREE_TIER_MAX_DAYS = 30;
+
+  // Pre-API date validation (using free tier as conservative default)
+  const dateRangeError = useMemo(() => {
+    if (!startDate || !endDate) return null;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const days = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+    if (days > FREE_TIER_MAX_DAYS) {
+      return `Date range too large. Maximum ${FREE_TIER_MAX_DAYS} days (upgrade for more).`;
+    }
+    if (days < 0) return "Start date must be before end date.";
+    return null;
+  }, [startDate, endDate]);
 
   const queryUrl = useMemo(() => {
     if (!activeWorkspaceId || !startDate || !endDate || dateRangeError) return null;
@@ -128,6 +130,9 @@ export default function SyncedDataPage() {
       setHasMore(newData?.pagination?.hasMore || false);
     },
   });
+
+  // Plan limits from API response (shown for transparency)
+  const limits = data?.limits;
 
   // Load more data
   const loadMore = async () => {
@@ -237,6 +242,29 @@ export default function SyncedDataPage() {
           </div>
         </div>
       </div>
+
+      {/* Plan Badge & Limits Info */}
+      {limits && (
+        <div className="mb-4 flex items-center gap-3">
+          <span className={cn(
+            "inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-medium capitalize",
+            limits.plan === 'free' ? "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" :
+            limits.plan === 'starter' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" :
+            limits.plan === 'professional' ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" :
+            "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+          )}>
+            {limits.plan} Plan
+          </span>
+          <span className="text-xs text-gray-500 dark:text-slate-400">
+            Max {limits.maxDateRangeDays} days · {limits.maxRowsPerQuery.toLocaleString()} rows/query
+          </span>
+          {limits.plan === 'free' && (
+            <a href="/pricing" className="text-xs text-cyan-600 hover:text-cyan-700 dark:text-cyan-400">
+              Upgrade →
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Date Range Error */}
       {dateRangeError && (

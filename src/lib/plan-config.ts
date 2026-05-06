@@ -40,6 +40,10 @@ export interface PlanLimits {
   priority: number;
   /** Human-readable sync cadence label */
   syncLabel: string;
+  /** Data Explorer: max date range in days per query */
+  explorerMaxDateRangeDays: number;
+  /** Data Explorer: max rows returned per query (pagination enforced) */
+  explorerMaxRowsPerQuery: number;
 }
 
 export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
@@ -52,6 +56,8 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     googleReportCooldownMs: 60 * 60 * 1000,      // 1 hour cooldown
     priority: 1,
     syncLabel: 'Daily',
+    explorerMaxDateRangeDays: 30,                 // 30 days max per query
+    explorerMaxRowsPerQuery: 500,                 // 500 rows per query
   },
   starter: {
     maxPipelines: 5,
@@ -61,6 +67,8 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     googleReportCooldownMs: 30 * 60 * 1000,       // 30 min cooldown
     priority: 2,
     syncLabel: 'Daily',
+    explorerMaxDateRangeDays: 90,                 // 90 days max per query
+    explorerMaxRowsPerQuery: 1000,                 // 1000 rows per query
   },
   professional: {
     maxPipelines: 15,
@@ -70,6 +78,8 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     googleReportCooldownMs: 10 * 60 * 1000,      // 10 min cooldown
     priority: 3,
     syncLabel: 'Hourly',
+    explorerMaxDateRangeDays: 365,                // 1 year max per query
+    explorerMaxRowsPerQuery: 5000,               // 5000 rows per query
   },
   enterprise: {
     maxPipelines: Infinity,
@@ -79,6 +89,8 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     googleReportCooldownMs: 5 * 60 * 1000,       // 5 min cooldown
     priority: 4,
     syncLabel: 'Real-time',
+    explorerMaxDateRangeDays: 730,                // 2 years max per query
+    explorerMaxRowsPerQuery: 10000,              // 10000 rows per query
   },
 };
 

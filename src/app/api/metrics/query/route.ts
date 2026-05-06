@@ -2,22 +2,21 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { getPlanLimits } from "@/lib/plan-config";
 
 /**
  * GET /api/metrics/query?workspaceId=...&startDate=...&endDate=...&platform=...&cursor=...
  * 
- * Query stored CampaignMetric data with pagination safeguards for large datasets.
+ * Query stored CampaignMetric data with plan-based pagination safeguards.
  * 
- * LIMITS:
- * - Max date range: 90 days per query
- * - Max rows per query: 1,000
- * - Cursor-based pagination for efficient deep paging
+ * TIERED LIMITS (per query):
+ * - Free: 30 days, 500 rows
+ * - Starter: 90 days, 1,000 rows  
+ * - Pro: 365 days, 5,000 rows
+ * - Enterprise: 730 days, 10,000 rows
  * 
  * This prevents OOM errors and query timeouts when tables have millions of rows.
  */
-
-const MAX_DATE_RANGE_DAYS = 90;
-const MAX_ROWS_PER_QUERY = 1000;
 
 interface MetricWhereClause {
   workspaceId: string;
@@ -47,6 +46,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
   }
 
+  // Fetch user plan and get tiered limits
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { plan: true },
+  });
+  const plan = user?.plan ?? 'free';
+  const limits = getPlanLimits(plan);
+
   // Validate and parse dates
   const startDate = startDateStr ? new Date(startDateStr) : null;
   const endDate = endDateStr ? new Date(endDateStr) : null;
@@ -62,9 +69,16 @@ export async function GET(req: Request) {
   const dateRangeMs = endDate.getTime() - startDate.getTime();
   const dateRangeDays = dateRangeMs / (1000 * 60 * 60 * 24);
 
-  if (dateRangeDays > MAX_DATE_RANGE_DAYS) {
+  if (dateRangeDays > limits.explorerMaxDateRangeDays) {
     return NextResponse.json(
-      { error: `Date range too large. Maximum is ${MAX_DATE_RANGE_DAYS} days.` },
+      { 
+        error: `Date range too large. Your ${plan} plan allows maximum ${limits.explorerMaxDateRangeDays} days. Upgrade for more.`,
+        plan,
+        limits: {
+          maxDateRangeDays: limits.explorerMaxDateRangeDays,
+          maxRowsPerQuery: limits.explorerMaxRowsPerQuery,
+        }
+      },
       { status: 400 }
     );
   }
@@ -105,11 +119,11 @@ export async function GET(req: Request) {
 
     // Parallel queries for efficiency
     const [metrics, countResult, dateRangeAgg, platforms] = await Promise.all([
-      // Main data query with strict limit
+      // Main data query with plan-based limit
       prisma.campaignMetric.findMany({
         where,
         orderBy: [{ date: "desc" }, { id: "desc" }], // Stable ordering for pagination
-        take: MAX_ROWS_PER_QUERY,
+        take: limits.explorerMaxRowsPerQuery,
         select: {
           id: true,
           platform: true,
@@ -157,7 +171,7 @@ export async function GET(req: Request) {
     ]);
 
     // Determine if there are more pages
-    const hasMore = metrics.length === MAX_ROWS_PER_QUERY;
+    const hasMore = metrics.length === limits.explorerMaxRowsPerQuery;
     const nextCursor = hasMore ? metrics[metrics.length - 1]?.id : null;
 
     // Aggregation for the current page only (fast)
@@ -179,7 +193,12 @@ export async function GET(req: Request) {
         nextCursor,
         returned: metrics.length,
         totalApprox: countResult >= 0 ? countResult : undefined,
-        maxPerPage: MAX_ROWS_PER_QUERY,
+        maxPerPage: limits.explorerMaxRowsPerQuery,
+      },
+      limits: {
+        plan,
+        maxDateRangeDays: limits.explorerMaxDateRangeDays,
+        maxRowsPerQuery: limits.explorerMaxRowsPerQuery,
       },
       summary: {
         pageTotals,
