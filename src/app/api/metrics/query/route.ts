@@ -117,6 +117,10 @@ export async function GET(req: Request) {
       where.id = { lt: cursor };
     }
 
+    // DEBUG: Log query parameters
+    console.log('[Metrics Query] DEBUG where clause:', JSON.stringify(where, null, 2));
+    console.log('[Metrics Query] DEBUG workspaceId:', workspaceId, 'platform:', platform);
+
     // Parallel queries for efficiency
     const [metrics, countResult, dateRangeAgg, platforms] = await Promise.all([
       // Main data query with plan-based limit

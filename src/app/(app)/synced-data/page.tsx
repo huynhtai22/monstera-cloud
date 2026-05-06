@@ -470,8 +470,34 @@ export default function SyncedDataPage() {
           <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 mb-4">
             Try adjusting your filters or run a sync first.
           </p>
-          {/* CTA to connect sources */}
-          <div className="flex flex-col items-center gap-2">
+          
+          {/* DEBUG: Check what data exists */}
+          <div className="flex flex-col items-center gap-3">
+            <button
+              onClick={async () => {
+                if (!activeWorkspaceId) return;
+                try {
+                  // Query without date filters to see ALL data
+                  const res = await fetch(`/api/metrics/query?workspaceId=${activeWorkspaceId}&startDate=2024-01-01&endDate=2026-12-31`);
+                  const data = await res.json();
+                  
+                  // Show platforms found
+                  const platforms = data.platforms?.join(', ') || 'None';
+                  const count = data.totalCount || 0;
+                  const sample = data.metrics?.slice(0, 3).map((m: any) => 
+                    `${m.platform}: ${m.accountName} (${m.date?.split('T')[0]})`
+                  ).join('\n') || 'No rows';
+                  
+                  alert(`Database Check:\n\nTotal rows: ${count}\nPlatforms: ${platforms}\n\nSample rows:\n${sample}\n\nQuery used:\nworkspaceId: ${activeWorkspaceId}\ndate: 2024-01-01 to 2026-12-31`);
+                } catch (e: any) {
+                  alert('Error checking database: ' + e.message);
+                }
+              }}
+              className="text-xs text-cyan-600 hover:text-cyan-700 underline"
+            >
+              Check Database (see what data exists)
+            </button>
+            
             <Link
               href="/sources"
               className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 transition-colors"
@@ -479,9 +505,6 @@ export default function SyncedDataPage() {
               <Plus className="h-4 w-4" />
               Connect a Data Source
             </Link>
-            <p className="text-xs text-gray-400 dark:text-slate-500">
-              Connect Meta Ads, Google Ads, or TikTok to see data here
-            </p>
           </div>
         </div>
       ) : (
