@@ -100,6 +100,14 @@ export default function SyncedDataPage() {
     return null;
   }, [startDate, endDate]);
 
+  // Fetch platforms separately (not tied to date range)
+  const platformsUrl = useMemo(() => {
+    if (!activeWorkspaceId) return null;
+    return `/api/metrics/platforms?workspaceId=${activeWorkspaceId}`;
+  }, [activeWorkspaceId]);
+
+  const { data: platformsData } = useSWR(platformsUrl, fetcher);
+
   const queryUrl = useMemo(() => {
     if (!activeWorkspaceId || !startDate || !endDate || dateRangeError) return null;
     const params = new URLSearchParams({
@@ -144,6 +152,9 @@ export default function SyncedDataPage() {
 
   const metrics = allMetrics;
   const summary = data?.summary;
+  
+  // Merge platforms from separate fetch and query response
+  const availablePlatforms: string[] = platformsData?.platforms || summary?.platforms || [];
 
   // Detect data gaps (days with no data)
   const dataGaps = useMemo(() => {
@@ -299,7 +310,7 @@ export default function SyncedDataPage() {
               className="w-full h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-white"
             >
               <option value="">All Platforms</option>
-              {summary?.platforms?.map((p: string) => (
+              {availablePlatforms.map((p: string) => (
                 <option key={p} value={p}>
                   {PLATFORM_LABELS[p] || p}
                 </option>
