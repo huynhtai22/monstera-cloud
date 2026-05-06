@@ -165,21 +165,24 @@ export async function POST(req: Request, context: { params: any }) {
         // This ensures Data Explorer has data and pipeline can read from DB
         const adPlatforms = ['meta_ads', 'google_ads', 'tiktok_business'];
         if (adPlatforms.includes(provider)) {
-            logger.info(`[Pipeline Run] Pre-syncing ad platform data for ${provider} before ETL`);
+            logger.info(`[Pipeline Run] Pre-syncing ad platform data for ${provider} before ETL. SourceConnectionId: ${pipeline.sourceConnectionId}, WorkspaceId: ${pipeline.workspaceId}`);
             try {
                 // Call sync endpoint internally with service role
                 const { syncConnectionData } = await import('@/lib/sync-connection');
+                logger.info(`[Pipeline Run] Calling syncConnectionData for ${provider}`);
                 const syncResult = await syncConnectionData({
                     connectionId: pipeline.sourceConnectionId,
                     provider,
                     credentials: sourceCreds,
                     workspaceId: pipeline.workspaceId,
                 });
-                logger.info(`[Pipeline Run] Pre-sync complete for ${provider}:`, syncResult);
+                logger.info(`[Pipeline Run] Pre-sync complete for ${provider}:`, JSON.stringify(syncResult));
             } catch (syncErr: any) {
                 logger.error(`[Pipeline Run] Pre-sync failed for ${provider}:`, syncErr);
                 // Continue - don't block pipeline on sync error
             }
+        } else {
+            logger.info(`[Pipeline Run] Provider ${provider} is not an ad platform, skipping pre-sync`);
         }
 
         const etl = await runEtlPipeline({

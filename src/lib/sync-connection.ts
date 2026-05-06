@@ -40,7 +40,8 @@ interface SyncResult {
 export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult> {
   const { connectionId, provider, credentials, workspaceId } = opts;
   
-  logger.info(`[syncConnectionData] Starting sync for ${provider} connection ${connectionId}`);
+  logger.info(`[syncConnectionData] Starting sync for ${provider} connection ${connectionId} in workspace ${workspaceId}`);
+  logger.info(`[syncConnectionData] Credentials keys:`, Object.keys(credentials || {}));
 
   try {
     if (provider === "meta_ads") {
@@ -50,6 +51,7 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
     } else if (provider === "tiktok_business") {
       return await syncTikTok({ connectionId, credentials, workspaceId });
     } else {
+      logger.error(`[syncConnectionData] Unsupported provider: ${provider}`);
       return { success: false, rowsIngested: 0, error: `Unsupported provider: ${provider}` };
     }
   } catch (error: any) {
@@ -64,39 +66,56 @@ async function syncMetaAds(opts: {
   workspaceId: string;
 }): Promise<SyncResult> {
   const { connectionId, credentials, workspaceId } = opts;
+  
+  logger.info(`[syncMetaAds] Starting. adAccounts:`, credentials.adAccounts?.length || 0, 
+    'adAccountIds:', credentials.adAccountIds?.length || 0);
 
   // Get valid token
-  const accessToken = await getValidOAuthToken({
-    id: connectionId,
-    credentials: encrypt(JSON.stringify(credentials)),
-    provider: "meta_ads",
-  });
+  let accessToken: string;
+  try {
+    accessToken = await getValidOAuthToken({
+      id: connectionId,
+      credentials: encrypt(JSON.stringify(credentials)),
+      provider: "meta_ads",
+    });
+  } catch (err: any) {
+    logger.error(`[syncMetaAds] Token refresh failed:`, err);
+    return { success: false, rowsIngested: 0, error: `Token failed: ${err.message}` };
+  }
 
   if (!accessToken) {
+    logger.error(`[syncMetaAds] No access token returned`);
     return { success: false, rowsIngested: 0, error: "Failed to get valid token" };
   }
+  logger.info(`[syncMetaAds] Got access token`);
 
   // Get ad accounts
   let adAccounts = credentials.adAccounts || 
     (credentials.adAccountIds || []).map((id: string) => ({ id, name: id }));
+  logger.info(`[syncMetaAds] Total ad accounts:`, adAccounts.length);
 
   // Filter to selected if specified
   if (credentials.selectedAdAccountIds?.length > 0) {
     adAccounts = adAccounts.filter((acc: any) => 
       credentials.selectedAdAccountIds.includes(acc.id)
     );
+    logger.info(`[syncMetaAds] Filtered to ${adAccounts.length} selected accounts`);
   }
 
   if (!adAccounts?.length) {
+    logger.error(`[syncMetaAds] No ad accounts to sync`);
     return { success: false, rowsIngested: 0, error: "No ad accounts selected" };
   }
 
   const jobId = `pipeline-${Date.now()}`;
   let totalRows = 0;
 
+  logger.info(`[syncMetaAds] Starting sync for ${adAccounts.length} accounts`);
+
   for (const account of adAccounts) {
     const accountId = account.id;
     const accountName = account.name;
+    logger.info(`[syncMetaAds] Processing account ${accountId}`);
 
     // Acquire sync lock
     const lockResult = await acquireMetaSyncLock({
@@ -107,7 +126,7 @@ async function syncMetaAds(opts: {
     });
 
     if (!lockResult.acquired) {
-      logger.warn(`[Meta Sync] Could not acquire lock for ${accountId}`);
+      logger.warn(`[syncMetaAds] Could not acquire lock for ${accountId}`);
       continue;
     }
 
@@ -115,6 +134,7 @@ async function syncMetaAds(opts: {
 
     try {
       // Fetch insights from Meta API
+      logger.info(`[syncMetaAds] Fetching Meta API for ${accountId}`);
       const rows = await metaReportClient.getInsights(accessToken, {
         adAccountId: accountId.replace("act_", ""),
         fields: META_DEFAULT_FIELDS,
@@ -122,9 +142,11 @@ async function syncMetaAds(opts: {
         datePreset: "last_30d",
         timeIncrement: 1,
       });
+      logger.info(`[syncMetaAds] Meta API returned ${rows.length} rows for ${accountId}`);
 
       if (rows.length > 0) {
         // Ingest to CampaignMetric
+        logger.info(`[syncMetaAds] Ingesting ${rows.length} rows to CampaignMetric`);
         const result = await ingestMetaRows({
           workspaceId,
           connectionId,
@@ -138,13 +160,16 @@ async function syncMetaAds(opts: {
           fencingToken: lock.fencingToken,
         });
 
+        logger.info(`[syncMetaAds] Ingested ${result.upserted} rows, failed: ${result.failed}`);
         totalRows += result.upserted;
+      } else {
+        logger.info(`[syncMetaAds] No rows to ingest for ${accountId}`);
       }
 
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: true });
     } catch (error) {
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: false });
-      logger.error(`[Meta Sync] Failed for account ${accountId}:`, error);
+      logger.error(`[syncMetaAds] Failed for account ${accountId}:`, error);
       // Continue with next account
     }
   }
