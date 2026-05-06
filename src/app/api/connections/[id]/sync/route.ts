@@ -18,6 +18,9 @@ import { logger } from "@/lib/logger";
 import { safeDecrypt } from "@/lib/encryption";
 import { ingestMetaRows } from "@/lib/meta-ingest";
 import { metaReportClient, META_DEFAULT_FIELDS } from "@/lib/meta-ads";
+import { googleAdsReportClient } from "@/lib/google-ads";
+import { tiktokReportClient } from "@/lib/tiktok-business";
+import { ingestGoogleAdsRows, ingestTiktokRows } from "@/lib/ad-platform-ingest";
 import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import {
   acquireMetaSyncLock,
@@ -187,9 +190,199 @@ export async function POST(
       });
     }
 
-    // TODO: Implement Google Ads and TikTok ingest
+    // Handle Google Ads sync
+    if (connection.provider === "google_ads") {
+      const accessToken = await getValidOAuthToken({
+        id: connectionId,
+        credentials: connection.credentials,
+        provider: connection.provider,
+      });
+      if (!accessToken) {
+        return NextResponse.json({ error: "Failed to get valid token" }, { status: 401 });
+      }
+
+      // Get customer IDs from credentials
+      const customerIds = credentials.customerIds || [];
+      if (!customerIds.length) {
+        return NextResponse.json({ error: "No customer accounts configured" }, { status: 400 });
+      }
+
+      const jobId = `manual-${Date.now()}`;
+      let totalRows = 0;
+
+      // Sync each customer account
+      for (const customerId of customerIds) {
+        try {
+          // Fetch campaign performance from Google Ads API
+          const rows = await googleAdsReportClient.getCampaignPerformance(
+            accessToken,
+            customerId,
+            "LAST_30_DAYS",
+            credentials.mccId
+          );
+
+          if (rows.length > 0) {
+            // Transform to expected format
+            const transformedRows = rows.map((r: any) => ({
+              campaign_id: r.campaign_id || r.campaign_name,
+              campaign_name: r.campaign_name,
+              ad_group_id: r.ad_group_id,
+              ad_group_name: r.ad_group_name,
+              date: r.date,
+              impressions: r.impressions,
+              clicks: r.clicks,
+              cost: r.cost,
+              cpc: r.average_cpc,
+              ctr: r.ctr,
+              conversions: r.conversions,
+              conversion_value: r.conversion_value,
+              currency: r.currency,
+              raw: r,
+            }));
+
+            // Ingest to CampaignMetric
+            const result = await ingestGoogleAdsRows(transformedRows, {
+              workspaceId: connection.workspaceId,
+              connectionId,
+              accountId: customerId,
+              accountName: `Customer ${customerId}`,
+              syncJobId: jobId,
+            });
+
+            totalRows += result.upserted;
+          }
+        } catch (error) {
+          logger.error(`[Google Ads Sync] Failed for customer ${customerId}:`, error);
+          // Continue with next account
+        }
+      }
+
+      // Update connection sync time
+      await prisma.connection.update({
+        where: { id: connectionId },
+        data: { lastSyncAt: new Date() },
+      });
+
+      return NextResponse.json({
+        success: true,
+        rowsIngested: totalRows,
+        message: `Synced ${totalRows} rows from Google Ads`,
+      });
+    }
+
+    // Handle TikTok sync
+    if (connection.provider === "tiktok_business") {
+      const accessToken = await getValidOAuthToken({
+        id: connectionId,
+        credentials: connection.credentials,
+        provider: connection.provider,
+      });
+      if (!accessToken) {
+        return NextResponse.json({ error: "Failed to get valid token" }, { status: 401 });
+      }
+
+      // Get advertiser IDs from credentials
+      const advertiserIds = credentials.advertiserIds || [];
+      if (!advertiserIds.length) {
+        return NextResponse.json({ error: "No advertisers configured" }, { status: 400 });
+      }
+
+      const jobId = `manual-${Date.now()}`;
+      let totalRows = 0;
+
+      // Calculate date range (last 30 days)
+      const endDate = new Date().toISOString().split("T")[0];
+      const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+      // Sync each advertiser
+      for (const advertiserId of advertiserIds) {
+        try {
+          // Create async report task
+          const taskId = await tiktokReportClient.createTask(accessToken, {
+            advertiser_id: advertiserId,
+            report_type: "BASIC",
+            data_level: "AUCTION_CAMPAIGN",
+            dimensions: ["campaign_id", "campaign_name", "adgroup_id", "adgroup_name", "stat_time_day"],
+            metrics: ["impression", "click", "spend", "cpc", "ctr", "conversion", "revenue", "roas"],
+            start_date: startDate,
+            end_date: endDate,
+            page_size: 1000,
+          }, credentials.sandbox === true);
+
+          // Poll for completion (simple version - up to 30 seconds)
+          let status = await tiktokReportClient.checkTask(accessToken, advertiserId, taskId, credentials.sandbox === true);
+          let attempts = 0;
+          while (status.status !== "COMPLETED" && status.status !== "FAILED" && attempts < 10) {
+            await new Promise((r) => setTimeout(r, 3000));
+            status = await tiktokReportClient.checkTask(accessToken, advertiserId, taskId, credentials.sandbox === true);
+            attempts++;
+          }
+
+          if (status.status === "COMPLETED" && status.url) {
+            // Download and parse report
+            const reportRes = await fetch(status.url);
+            const reportText = await reportRes.text();
+            const reportRows = reportText.split("\n").filter((l) => l.trim()).slice(1); // Skip header
+
+            // Parse CSV-like format (simplified)
+            const rows = reportRows.map((line) => {
+              const parts = line.split(",");
+              return {
+                dimensions: {
+                  campaign_id: parts[0],
+                  campaign_name: parts[1],
+                  adgroup_id: parts[2],
+                  adgroup_name: parts[3],
+                  stat_time_day: parts[4],
+                },
+                metrics: {
+                  impression: parts[5],
+                  click: parts[6],
+                  spend: parts[7],
+                  cpc: parts[8],
+                  ctr: parts[9],
+                  conversion: parts[10],
+                  revenue: parts[11],
+                  roas: parts[12],
+                },
+              };
+            });
+
+            if (rows.length > 0) {
+              // Ingest to CampaignMetric
+              const result = await ingestTiktokRows(rows, {
+                workspaceId: connection.workspaceId,
+                connectionId,
+                accountId: advertiserId,
+                accountName: `Advertiser ${advertiserId}`,
+                syncJobId: jobId,
+              });
+
+              totalRows += result.upserted;
+            }
+          }
+        } catch (error) {
+          logger.error(`[TikTok Sync] Failed for advertiser ${advertiserId}:`, error);
+          // Continue with next advertiser
+        }
+      }
+
+      // Update connection sync time
+      await prisma.connection.update({
+        where: { id: connectionId },
+        data: { lastSyncAt: new Date() },
+      });
+
+      return NextResponse.json({
+        success: true,
+        rowsIngested: totalRows,
+        message: `Synced ${totalRows} rows from TikTok Ads`,
+      });
+    }
+
+    // Should not reach here
     return NextResponse.json(
-      { error: `${connection.provider} sync not yet implemented` },
+      { error: `${connection.provider} sync not supported` },
       { status: 501 }
     );
   } catch (error: any) {
