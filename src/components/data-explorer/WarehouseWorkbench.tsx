@@ -712,10 +712,14 @@ export function WarehouseWorkbench() {
                           <span
                             className={cn(
                               "font-medium",
-                              m.roas >= 2 ? "text-emerald-600 dark:text-emerald-400" : m.roas >= 1 ? "text-blue-600" : "text-red-600",
+                              (m.roas ?? 0) >= 2
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : (m.roas ?? 0) >= 1
+                                  ? "text-blue-600"
+                                  : "text-red-600",
                             )}
                           >
-                            {m.roas?.toFixed(2)}x
+                            {m.roas != null ? `${m.roas.toFixed(2)}x` : "—"}
                           </span>
                         </td>
                       </tr>
