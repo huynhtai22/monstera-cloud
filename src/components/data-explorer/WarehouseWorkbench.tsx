@@ -17,6 +17,9 @@ import {
   RefreshCw,
   CloudDownload,
   ShoppingBag,
+  Search,
+  SlidersHorizontal,
+  ArrowUpDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -79,6 +82,241 @@ const PLATFORM_COLORS: Record<string, string> = {
   lazada: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200",
 };
 
+type WarehouseColId =
+  | "date"
+  | "platform"
+  | "account"
+  | "campaign"
+  | "adset"
+  | "currency"
+  | "impressions"
+  | "clicks"
+  | "spend"
+  | "cpc"
+  | "ctr"
+  | "conversions"
+  | "revenue"
+  | "roas"
+  | "reach";
+
+type ColumnDef = {
+  id: WarehouseColId;
+  label: string;
+  group: "dimension" | "metric";
+  defaultOn: boolean;
+};
+
+/** Dimensions & metrics available in the warehouse table (alphabetical labels within each group in the picker). */
+const WAREHOUSE_COLUMNS: ColumnDef[] = [
+  { id: "account", label: "Account", group: "dimension", defaultOn: true },
+  { id: "adset", label: "Ad set", group: "dimension", defaultOn: false },
+  { id: "campaign", label: "Campaign", group: "dimension", defaultOn: true },
+  { id: "currency", label: "Currency", group: "dimension", defaultOn: false },
+  { id: "date", label: "Date", group: "dimension", defaultOn: true },
+  { id: "platform", label: "Platform", group: "dimension", defaultOn: true },
+  { id: "clicks", label: "Clicks", group: "metric", defaultOn: true },
+  { id: "conversions", label: "Conversions", group: "metric", defaultOn: true },
+  { id: "cpc", label: "CPC", group: "metric", defaultOn: false },
+  { id: "ctr", label: "CTR", group: "metric", defaultOn: false },
+  { id: "impressions", label: "Impressions", group: "metric", defaultOn: true },
+  { id: "reach", label: "Reach", group: "metric", defaultOn: false },
+  { id: "revenue", label: "Revenue", group: "metric", defaultOn: false },
+  { id: "roas", label: "ROAS", group: "metric", defaultOn: true },
+  { id: "spend", label: "Spend", group: "metric", defaultOn: true },
+];
+
+const DEFAULT_VISIBLE = new Set(
+  WAREHOUSE_COLUMNS.filter((c) => c.defaultOn).map((c) => c.id),
+);
+
+function rowSearchBlob(m: MetricRow): string {
+  const parts = [
+    m.date,
+    m.platform,
+    m.accountName,
+    m.accountId,
+    m.campaignName,
+    m.campaignId,
+    m.adsetName,
+    m.adsetId,
+    m.currency,
+    String(m.impressions ?? ""),
+    String(m.clicks ?? ""),
+    String(m.spend ?? ""),
+    String(m.cpc ?? ""),
+    String(m.ctr ?? ""),
+    String(m.conversions ?? ""),
+    String(m.revenue ?? ""),
+    String(m.roas ?? ""),
+    String(m.reach ?? ""),
+  ];
+  return parts.join(" ").toLowerCase();
+}
+
+function getSortValue(m: MetricRow, id: WarehouseColId): number | string {
+  switch (id) {
+    case "date":
+      return new Date(m.date).getTime();
+    case "platform":
+      return (PLATFORM_LABELS[m.platform] || m.platform).toLowerCase();
+    case "account":
+      return (m.accountName || m.accountId || "").toLowerCase();
+    case "campaign":
+      return (m.campaignName || m.campaignId || "").toLowerCase();
+    case "adset":
+      return (m.adsetName || m.adsetId || "").toLowerCase();
+    case "currency":
+      return (m.currency || "").toLowerCase();
+    case "impressions":
+      return m.impressions ?? 0;
+    case "clicks":
+      return m.clicks ?? 0;
+    case "spend":
+      return m.spend ?? 0;
+    case "cpc":
+      return m.cpc ?? 0;
+    case "ctr": {
+      const t = m.ctr;
+      if (typeof t !== "number") return 0;
+      return t <= 1 ? t * 100 : t;
+    }
+    case "conversions":
+      return m.conversions ?? 0;
+    case "revenue":
+      return m.revenue ?? 0;
+    case "roas":
+      return m.roas ?? 0;
+    case "reach":
+      return m.reach ?? 0;
+    default:
+      return "";
+  }
+}
+
+function compareRowsForSort(a: MetricRow, b: MetricRow, id: WarehouseColId, dir: "asc" | "desc"): number {
+  const av = getSortValue(a, id);
+  const bv = getSortValue(b, id);
+  const mul = dir === "asc" ? 1 : -1;
+  if (typeof av === "number" && typeof bv === "number") {
+    const tie = av - bv;
+    return tie === 0 ? a.id.localeCompare(b.id) * mul : tie * mul;
+  }
+  const cmp = String(av).localeCompare(String(bv), undefined, { sensitivity: "base", numeric: true });
+  return cmp === 0 ? a.id.localeCompare(b.id) * mul : cmp * mul;
+}
+
+function formatExportCell(m: MetricRow, id: WarehouseColId, ctrFmt: (row: MetricRow) => string): string | number {
+  switch (id) {
+    case "date":
+      return m.date.split("T")[0];
+    case "platform":
+      return PLATFORM_LABELS[m.platform] || m.platform;
+    case "account":
+      return m.accountName || m.accountId;
+    case "campaign":
+      return m.campaignName || m.campaignId;
+    case "adset":
+      return m.adsetName || m.adsetId || "-";
+    case "currency":
+      return m.currency || "-";
+    case "impressions":
+      return m.impressions ?? 0;
+    case "clicks":
+      return m.clicks ?? 0;
+    case "spend":
+      return Number((m.spend ?? 0).toFixed(2));
+    case "cpc":
+      return m.cpc != null ? Number(m.cpc.toFixed(4)) : "-";
+    case "ctr":
+      return ctrFmt(m);
+    case "conversions":
+      return m.conversions ?? 0;
+    case "revenue":
+      return Number((m.revenue ?? 0).toFixed(2));
+    case "roas":
+      return m.roas != null ? Number(m.roas.toFixed(2)) : "-";
+    case "reach":
+      return m.reach ?? 0;
+    default:
+      return "";
+  }
+}
+
+function renderWarehouseTableCell(
+  m: MetricRow,
+  col: ColumnDef,
+  ctrFmt: (row: MetricRow) => string,
+): React.ReactNode {
+  const alignRight = col.group === "metric";
+  const wrap = (node: React.ReactNode) => (
+    <td
+      className={cn(
+        "px-4 py-3 text-gray-900 dark:text-white",
+        alignRight ? "text-right tabular-nums" : "max-w-[180px] truncate",
+      )}
+    >
+      {node}
+    </td>
+  );
+
+  switch (col.id) {
+    case "date":
+      return wrap(m.date.split("T")[0]);
+    case "platform":
+      return wrap(
+        <span
+          className={cn(
+            "inline-flex rounded-lg px-2 py-0.5 text-xs font-medium",
+            PLATFORM_COLORS[m.platform] || "bg-gray-100 text-gray-700 dark:bg-slate-800",
+          )}
+        >
+          {PLATFORM_LABELS[m.platform] || m.platform}
+        </span>,
+      );
+    case "account":
+      return wrap(m.accountName || m.accountId);
+    case "campaign":
+      return wrap(m.campaignName || m.campaignId);
+    case "adset":
+      return wrap(m.adsetName || m.adsetId || "—");
+    case "currency":
+      return wrap(m.currency || "—");
+    case "impressions":
+      return wrap(m.impressions?.toLocaleString() ?? "0");
+    case "clicks":
+      return wrap(m.clicks?.toLocaleString() ?? "0");
+    case "spend":
+      return wrap(`$${(m.spend ?? 0).toFixed(2)}`);
+    case "cpc":
+      return wrap(m.cpc != null ? `$${m.cpc.toFixed(2)}` : "—");
+    case "ctr":
+      return wrap(ctrFmt(m));
+    case "conversions":
+      return wrap(m.conversions?.toFixed(0) ?? "0");
+    case "revenue":
+      return wrap(`$${(m.revenue ?? 0).toFixed(2)}`);
+    case "roas":
+      return wrap(
+        <span
+          className={cn(
+            "font-medium",
+            (m.roas ?? 0) >= 2
+              ? "text-emerald-600 dark:text-emerald-400"
+              : (m.roas ?? 0) >= 1
+                ? "text-blue-600"
+                : "text-red-600",
+          )}
+        >
+          {m.roas != null ? `${m.roas.toFixed(2)}x` : "—"}
+        </span>,
+      );
+    case "reach":
+      return wrap(m.reach?.toLocaleString() ?? "0");
+    default:
+      return wrap("—");
+  }
+}
+
 type ConnRow = { id: string; name: string; provider: string; type: string };
 
 function ToggleChip({
@@ -133,6 +371,14 @@ export function WarehouseWorkbench() {
   const [batchImporting, setBatchImporting] = useState(false);
   const [batchMessage, setBatchMessage] = useState<string | null>(null);
   const [batchError, setBatchError] = useState<string | null>(null);
+
+  /** Warehouse table: which columns show, sort, quick row filter (client-side, loaded rows only). */
+  const [visibleColIds, setVisibleColIds] = useState<WarehouseColId[]>(() =>
+    WAREHOUSE_COLUMNS.filter((c) => c.defaultOn).map((c) => c.id),
+  );
+  const [sortColumn, setSortColumn] = useState<WarehouseColId>("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [rowSearch, setRowSearch] = useState("");
 
   useEffect(() => {
     const end = new Date();
@@ -240,6 +486,29 @@ export function WarehouseWorkbench() {
 
   const metrics = allMetrics;
   const summary = data?.summary;
+
+  const visibleColSet = useMemo(() => new Set(visibleColIds), [visibleColIds]);
+  const visibleColumnsOrdered = useMemo(
+    () => WAREHOUSE_COLUMNS.filter((c) => visibleColSet.has(c.id)),
+    [visibleColSet],
+  );
+
+  const sortOptionsAlpha = useMemo(
+    () => [...WAREHOUSE_COLUMNS].sort((a, b) => a.label.localeCompare(b.label)),
+    [],
+  );
+
+  const processedRows = useMemo(() => {
+    let rows = metrics;
+    const q = rowSearch.trim().toLowerCase();
+    if (q) rows = rows.filter((m) => rowSearchBlob(m).includes(q));
+    if (sortColumn) {
+      rows = [...rows].sort((a, b) => compareRowsForSort(a, b, sortColumn, sortDir));
+    }
+    return rows;
+  }, [metrics, rowSearch, sortColumn, sortDir]);
+
+  const tableDisplayRows = useMemo(() => processedRows.slice(0, 100), [processedRows]);
 
   const availablePlatforms: string[] =
     platformsData?.platforms || summary?.platforms || [];
@@ -357,7 +626,7 @@ export function WarehouseWorkbench() {
   }, [metrics, startDate, endDate]);
 
   const totals = useMemo(() => {
-    return metrics.reduce(
+    return processedRows.reduce(
       (acc, m) => ({
         impressions: acc.impressions + (m.impressions || 0),
         clicks: acc.clicks + (m.clicks || 0),
@@ -367,7 +636,7 @@ export function WarehouseWorkbench() {
       }),
       { impressions: 0, clicks: 0, spend: 0, conversions: 0, revenue: 0 },
     );
-  }, [metrics]);
+  }, [processedRows]);
 
   const ctrLabel = (m: MetricRow) => {
     if (typeof m.ctr !== "number") return "-";
@@ -376,22 +645,15 @@ export function WarehouseWorkbench() {
   };
 
   const handleExport = () => {
-    if (!metrics.length) return;
-    const rows = metrics.map((m) => ({
-      Date: m.date.split("T")[0],
-      Platform: PLATFORM_LABELS[m.platform] || m.platform,
-      Account: m.accountName || m.accountId,
-      Campaign: m.campaignName || m.campaignId,
-      "Ad Set": m.adsetName || m.adsetId || "-",
-      Impressions: m.impressions,
-      Clicks: m.clicks,
-      Spend: m.spend.toFixed(2),
-      CPC: m.cpc?.toFixed(2) ?? "-",
-      CTR: ctrLabel(m),
-      Conversions: m.conversions,
-      Revenue: m.revenue?.toFixed(2) ?? "-",
-      ROAS: m.roas?.toFixed(2) ?? "-",
-    }));
+    if (!processedRows.length) return;
+    const cols = visibleColumnsOrdered.length ? visibleColumnsOrdered : WAREHOUSE_COLUMNS;
+    const rows = processedRows.map((m) => {
+      const o: Record<string, string | number> = {};
+      for (const c of cols) {
+        o[c.label] = formatExportCell(m, c.id, ctrLabel);
+      }
+      return o;
+    });
     downloadCsv(rows, "warehouse-export");
   };
 
@@ -400,6 +662,33 @@ export function WarehouseWorkbench() {
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setExpandedRows(next);
+  };
+
+  const toggleWarehouseColumn = (id: WarehouseColId) => {
+    setVisibleColIds((prev) => {
+      if (prev.includes(id)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter((x) => x !== id);
+      }
+      return [...prev, id].sort(
+        (a, b) =>
+          WAREHOUSE_COLUMNS.findIndex((c) => c.id === a) - WAREHOUSE_COLUMNS.findIndex((c) => c.id === b),
+      );
+    });
+  };
+
+  const resetWarehouseColumns = () => {
+    setVisibleColIds(WAREHOUSE_COLUMNS.filter((c) => c.defaultOn).map((c) => c.id));
+  };
+
+  const onSortHeaderClick = (id: WarehouseColId) => {
+    if (sortColumn === id) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortColumn(id);
+      const g = WAREHOUSE_COLUMNS.find((c) => c.id === id)?.group;
+      setSortDir(g === "metric" ? "desc" : "asc");
+    }
   };
 
   const metricPanelCls =
@@ -603,7 +892,7 @@ export function WarehouseWorkbench() {
               {isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               <span className="ml-2">Refresh</span>
             </PrimaryButton>
-            <SecondaryButton type="button" onClick={handleExport} disabled={!metrics.length} className="h-10 px-4">
+            <SecondaryButton type="button" onClick={handleExport} disabled={!processedRows.length} className="h-10 px-4">
               <Download className="h-4 w-4" />
               <span className="ml-2">Export</span>
             </SecondaryButton>
@@ -630,9 +919,126 @@ export function WarehouseWorkbench() {
           </div>
         )}
 
+        <div className="mb-4 rounded-xl border border-gray-200/80 bg-gradient-to-br from-white/90 to-slate-50/40 p-4 dark:border-slate-700 dark:from-slate-900/60 dark:to-slate-950/40">
+          <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-500">
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            Result table — columns & row layout
+          </div>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+            <div className="min-w-0 flex-1">
+              <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-slate-400">
+                Search in loaded rows
+              </label>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Input
+                  type="search"
+                  value={rowSearch}
+                  onChange={(e) => setRowSearch(e.target.value)}
+                  placeholder="Filter by any visible text in loaded rows…"
+                  className="h-10 border-gray-200 bg-white pl-10 dark:border-slate-600 dark:bg-slate-900"
+                />
+              </div>
+            </div>
+            <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-auto lg:min-w-[280px] lg:grid-cols-2">
+              <Dropdown
+                label="Sort by (A–Z list)"
+                value={sortColumn}
+                onChange={(v) => {
+                  const id = v as WarehouseColId;
+                  setSortColumn(id);
+                  const g = WAREHOUSE_COLUMNS.find((c) => c.id === id)?.group;
+                  setSortDir(g === "metric" ? "desc" : "asc");
+                }}
+                options={sortOptionsAlpha.map((c) => ({ value: c.id, label: c.label }))}
+                placeholder="Column"
+                className="min-w-[140px]"
+              />
+              <Dropdown
+                label="Order"
+                value={sortDir}
+                onChange={(v) => setSortDir(v as "asc" | "desc")}
+                options={[
+                  { value: "asc", label: "Ascending (A→Z, low→high)" },
+                  { value: "desc", label: "Descending (Z→A, high→low)" },
+                ]}
+                className="min-w-[140px]"
+              />
+            </div>
+          </div>
+
+          <details className="mt-4 rounded-lg border border-gray-200/90 bg-white/70 dark:border-slate-600 dark:bg-slate-900/40">
+            <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-medium text-gray-800 marker:hidden dark:text-slate-200 [&::-webkit-details-marker]:hidden">
+              <span className="inline-flex items-center gap-2">
+                <ArrowUpDown className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                Columns — dimensions & metrics (alphabetical)
+                <ChevronDown className="ml-1 h-4 w-4 transition-transform group-open:rotate-180 [[details[open]_&]]:rotate-180" />
+              </span>
+            </summary>
+            <div className="grid gap-4 border-t border-gray-100 px-3 pb-3 pt-2 sm:grid-cols-2 dark:border-slate-800">
+              <div>
+                <p className="mb-2 text-xs font-semibold text-gray-600 dark:text-slate-400">Dimensions</p>
+                <ul className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
+                  {[...WAREHOUSE_COLUMNS]
+                    .filter((c) => c.group === "dimension")
+                    .sort((a, b) => a.label.localeCompare(b.label))
+                    .map((c) => (
+                      <li key={c.id}>
+                        <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                          <input
+                            type="checkbox"
+                            className="rounded border-gray-300 text-cyan-600"
+                            checked={visibleColSet.has(c.id)}
+                            onChange={() => toggleWarehouseColumn(c.id)}
+                          />
+                          {c.label}
+                        </label>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-semibold text-gray-600 dark:text-slate-400">Metrics</p>
+                <ul className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
+                  {[...WAREHOUSE_COLUMNS]
+                    .filter((c) => c.group === "metric")
+                    .sort((a, b) => a.label.localeCompare(b.label))
+                    .map((c) => (
+                      <li key={c.id}>
+                        <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                          <input
+                            type="checkbox"
+                            className="rounded border-gray-300 text-cyan-600"
+                            checked={visibleColSet.has(c.id)}
+                            onChange={() => toggleWarehouseColumn(c.id)}
+                          />
+                          {c.label}
+                        </label>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 px-3 py-2 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={resetWarehouseColumns}
+                className="text-xs font-medium text-cyan-600 hover:underline dark:text-cyan-400"
+              >
+                Reset columns to default
+              </button>
+            </div>
+          </details>
+        </div>
+
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
           {[
-            ["Records loaded", metrics.length.toLocaleString()],
+            [
+              rowSearch.trim() ? "Rows (after search)" : "Rows (loaded)",
+              `${processedRows.length.toLocaleString()}${
+                metrics.length !== processedRows.length ? ` / ${metrics.length.toLocaleString()} loaded` : ""
+              }`,
+            ],
             ["Impressions", `${(totals.impressions / 1000).toFixed(1)}k`],
             ["Spend", `$${totals.spend.toFixed(0)}`],
             ["Conv.", totals.conversions.toFixed(0)],
@@ -670,69 +1076,77 @@ export function WarehouseWorkbench() {
               <Plus className="h-4 w-4" /> Add a source
             </Link>
           </div>
+        ) : processedRows.length === 0 ? (
+          <div className="rounded-xl border border-amber-200/80 bg-amber-50/80 px-4 py-8 text-center dark:border-amber-900/40 dark:bg-amber-950/20">
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-100">No loaded rows match your search.</p>
+            <p className="mt-1 text-xs text-amber-800/90 dark:text-amber-200/90">
+              {metrics.length.toLocaleString()} row{metrics.length === 1 ? "" : "s"} hidden — clear or change the search box.
+            </p>
+            <SecondaryButton type="button" className="mt-4 h-9 px-4 text-xs" onClick={() => setRowSearch("")}>
+              Clear search
+            </SecondaryButton>
+          </div>
+        ) : visibleColumnsOrdered.length === 0 ? (
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+            Select at least one column in <strong>Columns — dimensions &amp; metrics</strong> above.
+          </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-gray-200/80 bg-white/60 dark:border-slate-700 dark:bg-slate-950/40">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50/90 dark:bg-slate-900/70">
                   <tr>
-                    {["Date", "Platform", "Account", "Campaign", "Spend", "Impr.", "Clicks", "Conv.", "ROAS"].map((h) => (
-                      <th
-                        key={h}
-                        className={cn(
-                          "px-4 py-3 text-xs font-semibold text-gray-500 dark:text-slate-400",
-                          ["Spend", "Impr.", "Clicks", "Conv.", "ROAS"].includes(h) ? "text-right" : "text-left",
-                        )}
-                      >
-                        {h}
-                      </th>
-                    ))}
+                    {visibleColumnsOrdered.map((col) => {
+                      const active = sortColumn === col.id;
+                      return (
+                        <th
+                          key={col.id}
+                          className={cn(
+                            "select-none px-4 py-3 text-xs font-semibold text-gray-500 dark:text-slate-400",
+                            col.group === "metric" ? "text-right" : "text-left",
+                          )}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => onSortHeaderClick(col.id)}
+                            className={cn(
+                              "inline-flex w-full items-center gap-1 rounded-md px-1 py-0.5 text-left hover:bg-gray-200/80 dark:hover:bg-slate-800/80",
+                              col.group === "metric" ? "justify-end text-right" : "justify-start",
+                            )}
+                          >
+                            {col.label}
+                            {active ? (
+                              <span className="font-mono text-[10px] text-cyan-600 dark:text-cyan-400">
+                                {sortDir === "asc" ? "↑" : "↓"}
+                              </span>
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 shrink-0 opacity-40" aria-hidden />
+                            )}
+                          </button>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
-                  {metrics.slice(0, 100).map((m) => (
+                  {tableDisplayRows.map((m) => (
                     <React.Fragment key={m.id}>
                       <tr
                         className="cursor-pointer hover:bg-cyan-50/40 dark:hover:bg-slate-800/60"
                         onClick={() => toggleRow(m.id)}
                       >
-                        <td className="whitespace-nowrap px-4 py-3 text-gray-900 dark:text-white">{m.date.split("T")[0]}</td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={cn(
-                              "inline-flex rounded-lg px-2 py-0.5 text-xs font-medium",
-                              PLATFORM_COLORS[m.platform] || "bg-gray-100 text-gray-700 dark:bg-slate-800",
-                            )}
-                          >
-                            {PLATFORM_LABELS[m.platform] || m.platform}
-                          </span>
-                        </td>
-                        <td className="max-w-[120px] truncate px-4 py-3 text-gray-700 dark:text-slate-300">{m.accountName || m.accountId}</td>
-                        <td className="max-w-[150px] truncate px-4 py-3 text-gray-700 dark:text-slate-300">{m.campaignName || m.campaignId}</td>
-                        <td className="px-4 py-3 text-right text-gray-900 dark:text-white">${m.spend?.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right text-gray-700 dark:text-slate-300">{m.impressions?.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right text-gray-700 dark:text-slate-300">{m.clicks?.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right text-gray-700 dark:text-slate-300">{m.conversions?.toFixed(0)}</td>
-                        <td className="px-4 py-3 text-right">
-                          <span
-                            className={cn(
-                              "font-medium",
-                              (m.roas ?? 0) >= 2
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : (m.roas ?? 0) >= 1
-                                  ? "text-blue-600"
-                                  : "text-red-600",
-                            )}
-                          >
-                            {m.roas != null ? `${m.roas.toFixed(2)}x` : "—"}
-                          </span>
-                        </td>
+                        {visibleColumnsOrdered.map((col) => (
+                          <React.Fragment key={col.id}>{renderWarehouseTableCell(m, col, ctrLabel)}</React.Fragment>
+                        ))}
                       </tr>
                       {expandedRows.has(m.id) && (
                         <tr className="bg-gray-50/70 dark:bg-slate-900/50">
-                          <td colSpan={9} className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400">
-                            <strong>Ad set:</strong> {m.adsetName || m.adsetId || "-"} · <strong>CPC:</strong> ${m.cpc?.toFixed(2)} ·
-                            <strong> CTR:</strong> {ctrLabel(m)}
+                          <td
+                            colSpan={Math.max(visibleColumnsOrdered.length, 1)}
+                            className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400"
+                          >
+                            <strong>Ad set:</strong> {m.adsetName || m.adsetId || "-"} · <strong>CPC:</strong> $
+                            {m.cpc?.toFixed(2)} ·<strong> CTR:</strong> {ctrLabel(m)}
                             ·<strong> Revenue:</strong> ${m.revenue?.toFixed(2)} ·<strong> Synced:</strong>{" "}
                             {new Date(m.pulledAt).toLocaleString()}
                           </td>
@@ -743,11 +1157,17 @@ export function WarehouseWorkbench() {
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-4 py-3 dark:border-slate-800">
               <span className="text-xs text-gray-500 dark:text-slate-500">
-                Showing {metrics.length.toLocaleString()}
-                {data?.pagination?.totalApprox != null && ` of ~${data.pagination.totalApprox.toLocaleString()} approx.`}
-                {hasMore ? " · more available" : ""}
+                Showing {tableDisplayRows.length.toLocaleString()}
+                {processedRows.length > tableDisplayRows.length
+                  ? ` of ${processedRows.length.toLocaleString()} matching rows`
+                  : processedRows.length > 0
+                    ? ` row${processedRows.length === 1 ? "" : "s"}`
+                    : ""}
+                {metrics.length > processedRows.length && rowSearch.trim() ? ` (${metrics.length.toLocaleString()} loaded)` : ""}
+                {data?.pagination?.totalApprox != null && ` · ~${data.pagination.totalApprox.toLocaleString()} in range (approx.)`}
+                {hasMore ? " · more available (load)" : ""}
               </span>
               {hasMore && (
                 <SecondaryButton type="button" onClick={loadMore} disabled={isLoadingMore} className="h-8 px-3 text-xs">
