@@ -16,6 +16,7 @@ import {
   Plus,
   RefreshCw,
   CloudDownload,
+  ShoppingBag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -26,7 +27,7 @@ import { downloadCsv } from "@/lib/export-utils";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-const AD_SOURCES = ["meta_ads", "google_ads", "tiktok_business"] as const;
+const AD_SOURCES = ["meta_ads", "google_ads", "tiktok_business", "shopee", "lazada"] as const;
 
 interface MetricRow {
   id: string;
@@ -65,6 +66,8 @@ const PLATFORM_OPTIONS = [
   { value: "meta_ads", label: "Meta Ads", icon: <Facebook className="h-4 w-4 text-blue-600" /> },
   { value: "tiktok_business", label: "TikTok Ads", icon: <Globe className="h-4 w-4" /> },
   { value: "google_ads", label: "Google Ads", icon: <Globe className="h-4 w-4 text-green-600" /> },
+  { value: "shopee", label: "Shopee", icon: <ShoppingBag className="h-4 w-4 text-orange-500" /> },
+  { value: "lazada", label: "Lazada", icon: <ShoppingBag className="h-4 w-4 text-blue-500" /> },
 ];
 
 const PLATFORM_COLORS: Record<string, string> = {
@@ -72,6 +75,8 @@ const PLATFORM_COLORS: Record<string, string> = {
   tiktok_ads: "bg-gray-900 text-white dark:bg-gray-800",
   tiktok_business: "bg-slate-800 text-white dark:bg-slate-700",
   google_ads: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+  shopee: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200",
+  lazada: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200",
 };
 
 type ConnRow = { id: string; name: string; provider: string; type: string };
@@ -409,8 +414,8 @@ export function WarehouseWorkbench() {
               Refresh warehouse from sources
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-gray-600 dark:text-slate-400">
-              Pull recent campaign metrics into the internal warehouse for the date range below. Meta uses your chosen range per account;
-              Google Ads and TikTok use each provider&apos;s default sync window (then appear here once synced).
+              Pull recent campaign or marketplace metrics into the internal warehouse for the date range below. Meta, Google Ads, and TikTok respect
+              this range (clamped to your plan). Shopee and Lazada pull orders in range and store daily rollups (orders count + revenue) per shop/seller.
             </p>
           </div>
           <PrimaryButton

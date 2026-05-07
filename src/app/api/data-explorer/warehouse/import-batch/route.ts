@@ -8,7 +8,13 @@ import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { logger } from "@/lib/logger";
 
-const AD_PROVIDERS = new Set(["meta_ads", "google_ads", "tiktok_business"]);
+const AD_PROVIDERS = new Set([
+  "meta_ads",
+  "google_ads",
+  "tiktok_business",
+  "shopee",
+  "lazada",
+]);
 
 /** One import job — Meta may repeat per ad account id */
 export interface BatchImportItem {
@@ -134,6 +140,9 @@ export async function POST(req: Request) {
           provider: conn.provider,
           credentials,
           workspaceId,
+          since,
+          until,
+          userPlan: plan,
         });
         results.push({
           connectionId: conn.id,

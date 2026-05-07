@@ -152,3 +152,44 @@ export async function exchangeLazadaAuthorizationCode(
 
   return parseTokenJson(merged);
 }
+
+/**
+ * Lazada Open Platform — list orders in a creation-time window.
+ * Uses Lazop signed POST (same signing model as token exchange).
+ *
+ * @see https://open.lazada.com/apps/doc/api?path=/orders/get
+ */
+export async function lazadaOrdersGet(
+  accessToken: string,
+  query: Record<string, string>,
+): Promise<Record<string, unknown>> {
+  const apiPath = "/orders/get";
+  const timestamp = String(Date.now());
+  const signParams: Record<string, string> = {
+    app_key: appKey(),
+    sign_method: "sha256",
+    timestamp,
+    partner_id: partnerId(),
+    access_token: accessToken,
+    ...query,
+  };
+  const sign = lazadaSign(apiPath, signParams);
+  const body = new URLSearchParams({ ...signParams, sign });
+
+  const url = `${lazadaApiBase()}${apiPath}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error((json.message as string) || `Lazada orders HTTP ${res.status}`);
+  }
+  const code = json.code;
+  if (code !== undefined && String(code) !== "0") {
+    throw new Error((json.message as string) || `Lazada orders error code ${String(code)}`);
+  }
+  return json;
+}

@@ -7,6 +7,15 @@ import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import { encrypt } from "@/lib/encryption";
+import {
+  getPlanLimits,
+  clampTimeRangeToPlanMaxDays,
+  clampGoogleAdsDatePeriodForPlan,
+} from "@/lib/plan-config";
+import {
+  syncShopeeWarehouseMetrics,
+  syncLazadaWarehouseMetrics,
+} from "@/lib/sync-marketplace-warehouse";
 
 // Meta imports
 import { ingestMetaRows } from "@/lib/meta-ingest";
@@ -24,11 +33,19 @@ import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
 import { tiktokReportClient } from "@/lib/tiktok-business";
 import { ingestTiktokRows } from "@/lib/ad-platform-ingest";
 
-interface SyncOptions {
+export interface SyncOptions {
   connectionId: string;
   provider: string;
   credentials: any;
   workspaceId: string;
+  /**
+   * When set together, Google Ads / TikTok / marketplaces use this window (clamped to the user plan).
+   * When omitted, Google uses a plan-aware preset window; TikTok uses last 30 days; Shopee/Lazada use a rolling window.
+   */
+  since?: string;
+  until?: string;
+  /** Used for date clamping when `since`/`until` are provided or for marketplace defaults. */
+  userPlan?: string;
 }
 
 interface SyncResult {
@@ -39,7 +56,8 @@ interface SyncResult {
 
 export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult> {
   const { connectionId, provider, credentials, workspaceId } = opts;
-  
+  const plan = opts.userPlan ?? "free";
+
   logger.info(`[syncConnectionData] Starting sync for ${provider} connection ${connectionId} in workspace ${workspaceId}`);
   logger.info(`[syncConnectionData] Credentials keys:`, Object.keys(credentials || {}));
 
@@ -47,9 +65,41 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
     if (provider === "meta_ads") {
       return await syncMetaAds({ connectionId, credentials, workspaceId });
     } else if (provider === "google_ads") {
-      return await syncGoogleAds({ connectionId, credentials, workspaceId });
+      return await syncGoogleAds({
+        connectionId,
+        credentials,
+        workspaceId,
+        since: opts.since,
+        until: opts.until,
+        userPlan: plan,
+      });
     } else if (provider === "tiktok_business") {
-      return await syncTikTok({ connectionId, credentials, workspaceId });
+      return await syncTikTok({
+        connectionId,
+        credentials,
+        workspaceId,
+        since: opts.since,
+        until: opts.until,
+        userPlan: plan,
+      });
+    } else if (provider === "shopee") {
+      const r = defaultRollingRange(plan);
+      return await syncShopeeWarehouseMetrics({
+        connectionId,
+        workspaceId,
+        userPlan: plan,
+        since: opts.since ?? r.since,
+        until: opts.until ?? r.until,
+      });
+    } else if (provider === "lazada") {
+      const r = defaultRollingRange(plan);
+      return await syncLazadaWarehouseMetrics({
+        connectionId,
+        workspaceId,
+        userPlan: plan,
+        since: opts.since ?? r.since,
+        until: opts.until ?? r.until,
+      });
     } else {
       logger.error(`[syncConnectionData] Unsupported provider: ${provider}`);
       return { success: false, rowsIngested: 0, error: `Unsupported provider: ${provider}` };
@@ -58,6 +108,16 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
     logger.error(`[syncConnectionData] Sync failed for ${provider}:`, error);
     return { success: false, rowsIngested: 0, error: error.message };
   }
+}
+
+function defaultRollingRange(plan: string): { since: string; until: string } {
+  const days = Math.min(30, getPlanLimits(plan).explorerMaxDateRangeDays);
+  const until = new Date();
+  const since = new Date(until.getTime() - (days - 1) * 86400000);
+  return {
+    since: since.toISOString().slice(0, 10),
+    until: until.toISOString().slice(0, 10),
+  };
 }
 
 async function syncMetaAds(opts: {
@@ -196,8 +256,11 @@ async function syncGoogleAds(opts: {
   connectionId: string;
   credentials: any;
   workspaceId: string;
+  since?: string;
+  until?: string;
+  userPlan: string;
 }): Promise<SyncResult> {
-  const { connectionId, credentials, workspaceId } = opts;
+  const { connectionId, credentials, workspaceId, userPlan } = opts;
 
   const accessToken = await getValidOAuthToken({
     id: connectionId,
@@ -213,18 +276,24 @@ async function syncGoogleAds(opts: {
   const extraFields = credentials.extraFields || {};
   let customerIds = extraFields.customerIds || credentials.customerIds || [];
   logger.info(`[syncGoogleAds] Total customer IDs:`, customerIds.length);
-  
+
   const selectedIds = extraFields.selectedCustomerIds || credentials.selectedCustomerIds;
   if (selectedIds?.length > 0) {
-    customerIds = customerIds.filter((id: string) => 
-      selectedIds.includes(id)
-    );
+    customerIds = customerIds.filter((id: string) => selectedIds.includes(id));
     logger.info(`[syncGoogleAds] Filtered to ${customerIds.length} selected customers`);
   }
-  
+
   if (!customerIds.length) {
     return { success: false, rowsIngested: 0, error: "No customer accounts selected" };
   }
+
+  const dateSpec =
+    opts.since && opts.until
+      ? (() => {
+          const r = clampTimeRangeToPlanMaxDays(userPlan, { since: opts.since!, until: opts.until! });
+          return `BETWEEN '${r.since}' AND '${r.until}'`;
+        })()
+      : clampGoogleAdsDatePeriodForPlan(userPlan, "LAST_30_DAYS");
 
   const jobId = `pipeline-${Date.now()}`;
   let totalRows = 0;
@@ -234,8 +303,8 @@ async function syncGoogleAds(opts: {
       const rows = await googleAdsReportClient.getCampaignPerformance(
         accessToken,
         customerId,
-        "LAST_30_DAYS",
-        credentials.mccId
+        dateSpec,
+        credentials.mccId,
       );
 
       if (rows.length > 0) {
@@ -283,8 +352,11 @@ async function syncTikTok(opts: {
   connectionId: string;
   credentials: any;
   workspaceId: string;
+  since?: string;
+  until?: string;
+  userPlan: string;
 }): Promise<SyncResult> {
-  const { connectionId, credentials, workspaceId } = opts;
+  const { connectionId, credentials, workspaceId, userPlan } = opts;
 
   const accessToken = await getValidOAuthToken({
     id: connectionId,
@@ -300,15 +372,13 @@ async function syncTikTok(opts: {
   const extraFields = credentials.extraFields || {};
   let advertiserIds = extraFields.advertiserIds || credentials.advertiserIds || [];
   logger.info(`[syncTikTok] Total advertiser IDs:`, advertiserIds.length);
-  
+
   const selectedIds = extraFields.selectedAdvertiserIds || credentials.selectedAdvertiserIds;
   if (selectedIds?.length > 0) {
-    advertiserIds = advertiserIds.filter((id: string) => 
-      selectedIds.includes(id)
-    );
+    advertiserIds = advertiserIds.filter((id: string) => selectedIds.includes(id));
     logger.info(`[syncTikTok] Filtered to ${advertiserIds.length} selected advertisers`);
   }
-  
+
   if (!advertiserIds.length) {
     return { success: false, rowsIngested: 0, error: "No advertisers selected" };
   }
@@ -316,8 +386,16 @@ async function syncTikTok(opts: {
   const jobId = `pipeline-${Date.now()}`;
   let totalRows = 0;
 
-  const endDate = new Date().toISOString().split("T")[0];
-  const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  let endDate: string;
+  let startDate: string;
+  if (opts.since && opts.until) {
+    const r = clampTimeRangeToPlanMaxDays(userPlan, { since: opts.since, until: opts.until });
+    startDate = r.since;
+    endDate = r.until;
+  } else {
+    endDate = new Date().toISOString().split("T")[0];
+    startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  }
 
   for (const advertiserId of advertiserIds) {
     try {

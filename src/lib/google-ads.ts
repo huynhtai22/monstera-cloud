@@ -247,13 +247,17 @@ export class GoogleAdsReportClient {
 
   /**
    * Get campaign performance summary.
+   * @param dateDuringOrBetween GAQL `DURING` preset (e.g. LAST_30_DAYS) OR `BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`
    */
   async getCampaignPerformance(
     accessToken: string,
     customerId: string,
-    datePeriod: string,
+    dateDuringOrBetween: string,
     mccId?: string,
   ): Promise<NormalizedGoogleAdsRow[]> {
+    const dateClause = dateDuringOrBetween.trim().startsWith("BETWEEN")
+      ? `segments.date ${dateDuringOrBetween.trim()}`
+      : `segments.date DURING ${dateDuringOrBetween.trim()}`;
     const gaql = `
       SELECT
         campaign.name,
@@ -270,7 +274,7 @@ export class GoogleAdsReportClient {
         metrics.search_impression_share,
         segments.date
       FROM campaign
-      WHERE segments.date DURING ${datePeriod}
+      WHERE ${dateClause}
         AND campaign.status != 'REMOVED'
       ORDER BY metrics.cost_micros DESC
     `;

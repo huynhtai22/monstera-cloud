@@ -163,7 +163,7 @@ export async function POST(req: Request, context: { params: any }) {
 
         // For ad platforms, first sync from API to CampaignMetric
         // This ensures Data Explorer has data and pipeline can read from DB
-        const adPlatforms = ['meta_ads', 'google_ads', 'tiktok_business'];
+        const adPlatforms = ["meta_ads", "google_ads", "tiktok_business", "shopee", "lazada"];
         if (adPlatforms.includes(provider)) {
             logger.info(`[Pipeline Run] Pre-syncing ad platform data for ${provider} before ETL. SourceConnectionId: ${pipeline.sourceConnectionId}, WorkspaceId: ${pipeline.workspaceId}`);
             try {
@@ -175,6 +175,7 @@ export async function POST(req: Request, context: { params: any }) {
                     provider,
                     credentials: sourceCreds,
                     workspaceId: pipeline.workspaceId,
+                    userPlan: user?.plan ?? 'free',
                 });
                 logger.info(`[Pipeline Run] Pre-sync complete for ${provider}:`, JSON.stringify(syncResult));
             } catch (syncErr: any) {
