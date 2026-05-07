@@ -187,6 +187,7 @@ export async function POST(req: Request, context: { params: any }) {
 
         const etl = await runEtlPipeline({
             userId: userIdForLimits,
+            userPlan: user?.plan ?? "free",
             provider,
             pipeline,
             ctx: {
@@ -194,6 +195,7 @@ export async function POST(req: Request, context: { params: any }) {
                 pipelineId: pipeline.id,
                 pipelineName: pipeline.name,
                 sourceConnectionId: pipeline.sourceConnectionId,
+                workspaceId: pipeline.workspaceId,
             },
             sourceCreds,
             jobId: undefined, // TODO: pass jobId when called from sync-jobs cron

@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 
 export async function runEtlPipeline(opts: {
   userId: string;
+  userPlan: string;
   provider: EtlProvider;
   pipeline: any;
   ctx: PipelineContext;
@@ -31,6 +32,7 @@ export async function runEtlPipeline(opts: {
     ctx: opts.ctx,
     sourceCreds: opts.sourceCreds,
     cursorRaw,
+    userPlan: opts.userPlan,
   });
 
   // ── 2. Data Drift Detection ──
