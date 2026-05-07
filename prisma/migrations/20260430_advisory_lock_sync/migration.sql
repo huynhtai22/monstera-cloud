@@ -43,7 +43,11 @@ CREATE INDEX IF NOT EXISTS "SyncLock_jobId_idx"
     ON "SyncLock" ("jobId");
 
 -- ── 3. CampaignMetric — add new columns ───────────────────────────────────
--- level and breakdownHash were added in the previous migration; skip if present.
+-- Migrations sort lexically: this file runs *before* 20260430_campaign_metric_idempotency,
+-- even though comments originally assumed the opposite — add columns first.
+ALTER TABLE "CampaignMetric" ADD COLUMN IF NOT EXISTS "level" TEXT NOT NULL DEFAULT 'campaign';
+ALTER TABLE "CampaignMetric" ADD COLUMN IF NOT EXISTS "breakdownHash" TEXT NOT NULL DEFAULT '';
+
 ALTER TABLE "CampaignMetric"
     ADD COLUMN IF NOT EXISTS "entityId"      TEXT    NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS "campaignName"  TEXT    NOT NULL DEFAULT '',
