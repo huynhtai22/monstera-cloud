@@ -30,6 +30,24 @@ END
 FROM ranked
 WHERE "Connection".id = ranked.id;
 
+-- 2b. Safety: if any rows still share the same (workspaceId, provider, remoteAccountId)
+-- (e.g. duplicate Meta connections that tied on name + timing), force uniqueness with id suffix.
+UPDATE "Connection" AS c
+SET "remoteAccountId" = LEFT(
+  COALESCE(NULLIF(TRIM(c."remoteAccountId"), ''), c.id) || '::id-' || c.id,
+  250
+)
+FROM (
+  SELECT id,
+    ROW_NUMBER() OVER (
+      PARTITION BY "workspaceId", provider, "remoteAccountId"
+      ORDER BY "updatedAt" DESC NULLS LAST, id ASC
+    ) AS rn_dup
+  FROM "Connection"
+) AS d
+WHERE c.id = d.id
+  AND d.rn_dup > 1;
+
 -- 3. Add composite unique constraint
 CREATE UNIQUE INDEX IF NOT EXISTS "Connection_workspaceId_provider_remoteAccountId_key"
 ON "Connection"("workspaceId", provider, "remoteAccountId");
