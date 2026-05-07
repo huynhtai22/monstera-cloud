@@ -8,6 +8,7 @@ import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import { getPlanLimits, clampTimeRangeToPlanMaxDays } from "@/lib/plan-config";
 import { logger } from "@/lib/logger";
 import { safeDecrypt } from "@/lib/encryption";
+import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";
 
 /** Campaign-level daily insights fields mapped into CampaignMetric */
@@ -111,7 +112,7 @@ export async function syncMetaInsightsIntoWarehouse(
     throw new Error("Meta Ads connection not found for workspace");
   }
 
-  const creds = JSON.parse(safeDecrypt(conn.credentials)) as {
+  const creds = parseConnectionCredentialsJson(safeDecrypt(conn.credentials)) as {
     adAccountIds?: string[];
     adAccounts?: Array<{ id: string; name?: string; currency?: string }>;
   };

@@ -94,11 +94,14 @@ export async function POST(req: Request) {
       columns: [...WAREHOUSE_COLUMN_LIST],
       message: `Imported ${result.upserted} campaign-day rows from ${result.accounts} ad account(s).`,
     });
-  } catch (e: any) {
+  } catch (e: unknown) {
     logger.error("[warehouse/import]", e);
-    return NextResponse.json(
-      { error: e?.message ?? "Import failed" },
-      { status: 500 },
-    );
+    const msg =
+      e instanceof Error ? e.message : typeof e === "string" ? e : "Import failed";
+    const hint =
+      msg.includes("credentials") || msg.includes("JSON") || msg.includes("parse")
+        ? " If this persists, disconnect Meta under Sources and connect again."
+        : "";
+    return NextResponse.json({ error: `${msg}${hint}` }, { status: 500 });
   }
 }
