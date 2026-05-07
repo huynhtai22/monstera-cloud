@@ -8,6 +8,7 @@ import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import { getPlanLimits, clampTimeRangeToPlanMaxDays } from "@/lib/plan-config";
 import { logger } from "@/lib/logger";
 import { safeDecrypt } from "@/lib/encryption";
+import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";
 
 /** Campaign-level daily insights fields mapped into CampaignMetric */
 const META_WAREHOUSE_FIELDS = [
@@ -214,61 +215,40 @@ async function upsertOneRow(opts: {
   const reach =
     row.reach !== undefined && row.reach !== ""
       ? Math.round(num(row.reach))
-      : null;
-  const cpc = nullableFloat(row.cpc);
-  const ctr = nullableFloat(row.ctr);
-  const conversions = parseConversions(row.actions);
-  const roas = parseRoas(row.purchase_roas);
+      : 0;
+  const cpc = nullableFloat(row.cpc) ?? 0;
+  const ctr = nullableFloat(row.ctr) ?? 0;
+  const conversions = parseConversions(row.actions) ?? 0;
+  const roas = parseRoas(row.purchase_roas) ?? 0;
 
-  const rawData = JSON.stringify({
+  const rawPayload = {
     date_start: row.date_start,
     date_stop: row.date_stop,
-  });
+  };
 
-  await prisma.campaignMetric.upsert({
-    where: {
-      connectionId_campaignId_date: {
-        connectionId: opts.connectionId,
-        campaignId,
-        date: day,
-      },
-    },
-    create: {
-      workspaceId: opts.workspaceId,
-      connectionId: opts.connectionId,
-      platform: opts.platform,
-      accountId: opts.accountId,
-      accountName: opts.accountName,
-      campaignId,
-      campaignName,
-      date: day,
-      impressions,
-      clicks,
-      spend,
-      reach,
-      cpc,
-      ctr,
-      conversions,
-      revenue: null,
-      roas,
-      currency: opts.currency,
-      rawData,
-    },
-    update: {
-      campaignName,
-      accountName: opts.accountName,
-      impressions,
-      clicks,
-      spend,
-      reach,
-      cpc,
-      ctr,
-      conversions,
-      roas,
-      currency: opts.currency,
-      rawData,
-      pulledAt: new Date(),
-    },
+  await upsertCampaignMetric({
+    workspaceId: opts.workspaceId,
+    connectionId: opts.connectionId,
+    platform: opts.platform,
+    accountId: opts.accountId,
+    accountName: opts.accountName ?? undefined,
+    level: "campaign",
+    entityId: campaignId,
+    campaignId,
+    campaignName,
+    date: day,
+    breakdownHash: "none",
+    impressions,
+    clicks,
+    spend,
+    reach,
+    cpc,
+    ctr,
+    conversions,
+    revenue: 0,
+    roas,
+    currency: opts.currency,
+    rawData: rawPayload,
   });
 
   return true;
