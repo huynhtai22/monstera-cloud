@@ -26,38 +26,48 @@ export interface Checkpoint {
 /**
  * Load the latest active checkpoint for a pipeline.
  * Returns null if no checkpoint exists or the latest is completed.
+ * Gracefully handles missing SyncCheckpoint table (e.g., after migrations).
  */
 export async function loadCheckpoint(
     pipelineId: string,
     jobId?: string
 ): Promise<Checkpoint | null> {
-    const where: any = {
-        pipelineId,
-        status: "active",
-    };
-    if (jobId) where.jobId = jobId;
-
-    const row = await cp().findFirst({
-        where,
-        orderBy: { updatedAt: "desc" },
-    });
-
-    if (!row) return null;
-
     try {
-        const cursor = JSON.parse(row.cursor);
-        return {
-            id: row.id,
-            cursor,
-            rowsProcessed: row.rowsProcessed,
-            rowsInserted: row.rowsInserted,
-            rowsFailed: row.rowsFailed,
-            entityType: row.entityType,
-            status: row.status as Checkpoint["status"],
+        const where: any = {
+            pipelineId,
+            status: "active",
         };
-    } catch {
-        logger.warn(`[CHECKPOINT] Failed to parse cursor for checkpoint ${row.id}`);
-        return null;
+        if (jobId) where.jobId = jobId;
+
+        const row = await cp().findFirst({
+            where,
+            orderBy: { updatedAt: "desc" },
+        });
+
+        if (!row) return null;
+
+        try {
+            const cursor = JSON.parse(row.cursor);
+            return {
+                id: row.id,
+                cursor,
+                rowsProcessed: row.rowsProcessed,
+                rowsInserted: row.rowsInserted,
+                rowsFailed: row.rowsFailed,
+                entityType: row.entityType,
+                status: row.status as Checkpoint["status"],
+            };
+        } catch {
+            logger.warn(`[CHECKPOINT] Failed to parse cursor for checkpoint ${row.id}`);
+            return null;
+        }
+    } catch (error: any) {
+        // Gracefully handle missing SyncCheckpoint table
+        if (error.message?.includes('SyncCheckpoint') || error.code === 'P2021') {
+            logger.warn(`[CHECKPOINT] SyncCheckpoint table not found, returning null`);
+            return null;
+        }
+        throw error;
     }
 }
 
@@ -75,14 +85,41 @@ export async function saveCheckpoint(opts: {
     rowsInserted: number;
     rowsFailed: number;
     existingCheckpointId?: string;
-}): Promise<Checkpoint> {
-    const cursorJson = JSON.stringify(opts.cursor);
+}): Promise<Checkpoint | null> {
+    try {
+        const cursorJson = JSON.stringify(opts.cursor);
 
-    // If we have an existing checkpoint ID, update it atomically
-    if (opts.existingCheckpointId) {
-        const updated = await cp().update({
-            where: { id: opts.existingCheckpointId },
+        // If we have an existing checkpoint ID, update it atomically
+        if (opts.existingCheckpointId) {
+            const updated = await cp().update({
+                where: { id: opts.existingCheckpointId },
+                data: {
+                    cursor: cursorJson,
+                    rowsProcessed: opts.rowsProcessed,
+                    rowsInserted: opts.rowsInserted,
+                    rowsFailed: opts.rowsFailed,
+                    status: "active",
+                    updatedAt: new Date(),
+                },
+            });
+
+            return {
+                id: updated.id,
+                cursor: opts.cursor,
+                rowsProcessed: updated.rowsProcessed,
+                rowsInserted: updated.rowsInserted,
+                rowsFailed: updated.rowsFailed,
+                entityType: updated.entityType,
+                status: "active",
+            };
+        }
+
+        // Otherwise create a new checkpoint
+        const created = await cp().create({
             data: {
+                pipelineId: opts.pipelineId,
+                jobId: opts.jobId,
+                entityType: opts.entityType,
                 cursor: cursorJson,
                 rowsProcessed: opts.rowsProcessed,
                 rowsInserted: opts.rowsInserted,
@@ -93,66 +130,66 @@ export async function saveCheckpoint(opts: {
         });
 
         return {
-            id: updated.id,
+            id: created.id,
             cursor: opts.cursor,
-            rowsProcessed: updated.rowsProcessed,
-            rowsInserted: updated.rowsInserted,
-            rowsFailed: updated.rowsFailed,
-            entityType: updated.entityType,
+            rowsProcessed: created.rowsProcessed,
+            rowsInserted: created.rowsInserted,
+            rowsFailed: created.rowsFailed,
+            entityType: created.entityType,
             status: "active",
         };
+    } catch (error: any) {
+        // Gracefully handle missing SyncCheckpoint table
+        if (error.message?.includes('SyncCheckpoint') || error.code === 'P2021') {
+            logger.warn(`[CHECKPOINT] SyncCheckpoint table not found, skipping checkpoint save`);
+            return null;
+        }
+        throw error;
     }
-
-    // Otherwise create a new checkpoint
-    const created = await cp().create({
-        data: {
-            pipelineId: opts.pipelineId,
-            jobId: opts.jobId,
-            entityType: opts.entityType,
-            cursor: cursorJson,
-            rowsProcessed: opts.rowsProcessed,
-            rowsInserted: opts.rowsInserted,
-            rowsFailed: opts.rowsFailed,
-            status: "active",
-            updatedAt: new Date(),
-        },
-    });
-
-    return {
-        id: created.id,
-        cursor: opts.cursor,
-        rowsProcessed: created.rowsProcessed,
-        rowsInserted: created.rowsInserted,
-        rowsFailed: created.rowsFailed,
-        entityType: created.entityType,
-        status: "active",
-    };
 }
 
 /**
  * Mark a checkpoint as completed after the full sync succeeds.
  */
 export async function completeCheckpoint(checkpointId: string): Promise<void> {
-    await cp().update({
-        where: { id: checkpointId },
-        data: {
-            status: "completed",
-            updatedAt: new Date(),
-        },
-    });
+    try {
+        await cp().update({
+            where: { id: checkpointId },
+            data: {
+                status: "completed",
+                updatedAt: new Date(),
+            },
+        });
+    } catch (error: any) {
+        // Gracefully handle missing table
+        if (error.message?.includes('SyncCheckpoint') || error.code === 'P2021') {
+            logger.warn(`[CHECKPOINT] SyncCheckpoint table not found, skipping complete`);
+            return;
+        }
+        throw error;
+    }
 }
 
 /**
  * Mark a checkpoint as failed (kept for forensic analysis).
  */
 export async function failCheckpoint(checkpointId: string): Promise<void> {
-    await cp().update({
-        where: { id: checkpointId },
-        data: {
-            status: "failed",
-            updatedAt: new Date(),
-        },
-    });
+    try {
+        await cp().update({
+            where: { id: checkpointId },
+            data: {
+                status: "failed",
+                updatedAt: new Date(),
+            },
+        });
+    } catch (error: any) {
+        // Gracefully handle missing table
+        if (error.message?.includes('SyncCheckpoint') || error.code === 'P2021') {
+            logger.warn(`[CHECKPOINT] SyncCheckpoint table not found, skipping fail`);
+            return;
+        }
+        throw error;
+    }
 }
 
 /**
