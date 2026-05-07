@@ -178,7 +178,9 @@ export default function SourcesPage() {
                 toast.success(
                     <span>
                         Synced {data.rowsIngested || 0} rows to Data Explorer.
-                        <a href="/synced-data" className="ml-2 underline font-medium">View Data</a>
+                        <a href="/explorer" className="ml-2 font-medium underline">
+                            View Data
+                        </a>
                     </span>
                 );
             } else if (data.code === 'SYNC_ACTIVE' || data.error?.includes('already queued') || data.error?.includes('running')) {

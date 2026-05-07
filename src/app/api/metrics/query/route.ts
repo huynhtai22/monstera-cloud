@@ -21,8 +21,8 @@ import { getPlanLimits } from "@/lib/plan-config";
 interface MetricWhereClause {
   workspaceId: string;
   date?: { gte?: Date; lte?: Date };
-  platform?: string;
-  accountId?: string;
+  platform?: string | { in: string[] };
+  accountId?: string | { in: string[] };
   campaignId?: string;
   id?: { lt?: string }; // For cursor pagination
 }
@@ -38,7 +38,9 @@ export async function GET(req: Request) {
   const startDateStr = searchParams.get("startDate"); // YYYY-MM-DD
   const endDateStr = searchParams.get("endDate"); // YYYY-MM-DD
   const platform = searchParams.get("platform");
+  const platformsParam = searchParams.get("platforms"); // comma-separated
   const accountId = searchParams.get("accountId");
+  const accountIdsParam = searchParams.get("accountIds"); // comma-separated
   const campaignId = searchParams.get("campaignId");
   const cursor = searchParams.get("cursor"); // Pagination cursor (last row ID)
 
@@ -108,8 +110,22 @@ export async function GET(req: Request) {
       lte: endDate,
     };
 
-    if (platform) where.platform = platform;
-    if (accountId) where.accountId = accountId;
+    if (platformsParam) {
+      const list = platformsParam.split(",").map((s) => s.trim()).filter(Boolean);
+      if (list.length === 1) where.platform = list[0];
+      else if (list.length > 1) where.platform = { in: list };
+    } else if (platform) {
+      where.platform = platform;
+    }
+
+    if (accountIdsParam) {
+      const list = accountIdsParam.split(",").map((s) => s.trim()).filter(Boolean);
+      if (list.length === 1) where.accountId = list[0];
+      else if (list.length > 1) where.accountId = { in: list };
+    } else if (accountId) {
+      where.accountId = accountId;
+    }
+
     if (campaignId) where.campaignId = campaignId;
     
     // Cursor pagination: only fetch rows with ID < cursor (descending order)

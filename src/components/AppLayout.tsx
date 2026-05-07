@@ -28,7 +28,7 @@ function mobileSectionTitle(pathname: string | null): string {
         reports: "Reports",
         settings: "Settings",
         console: "Dashboard",
-        explorer: "Explorer",
+        explorer: "Data explorer",
         transformations: "Transformations",
         "internal-templates": "Templates",
         "google-ads": "Google Ads",

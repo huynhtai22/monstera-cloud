@@ -114,7 +114,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                 { name: "Clients", href: "/clients", icon: Users },
                 { name: "Sources", href: "/sources", icon: DatabaseZap },
                 { name: "Destinations", href: "/destinations", icon: Send },
-                { name: "Synced Data", href: "/synced-data", icon: Database },
+                { name: "Data explorer", href: "/explorer", icon: Database },
             ],
         },
         {
