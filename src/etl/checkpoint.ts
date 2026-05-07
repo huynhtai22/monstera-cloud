@@ -11,7 +11,20 @@ import { logger } from "@/lib/logger";
 
 // SyncCheckpoint model is defined in schema.prisma but requires
 // `npx prisma generate` after migration to type-check fully.
-const cp = () => (prisma as any).syncCheckpoint;
+// Gracefully handle missing model by returning safe no-op object
+const cp = () => {
+  const client = (prisma as any).syncCheckpoint;
+  if (!client) {
+    // Return no-op object that won't throw during query validation
+    logger.warn('[CHECKPOINT] syncCheckpoint model not found in Prisma client, using no-op');
+    return {
+      findFirst: async () => null,
+      create: async () => ({ id: 'noop', rowsProcessed: 0, rowsInserted: 0, rowsFailed: 0 }),
+      update: async () => ({ id: 'noop' }),
+    };
+  }
+  return client;
+};
 
 export interface Checkpoint {
     id: string;
