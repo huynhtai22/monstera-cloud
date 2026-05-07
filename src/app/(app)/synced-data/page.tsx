@@ -467,10 +467,22 @@ export default function SyncedDataPage() {
           <p className="text-sm text-gray-500 dark:text-slate-400">
             No data found for the selected date range.
           </p>
-          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 mb-4">
+          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 mb-2">
             Try adjusting your filters or run a sync first.
           </p>
-          
+          <p className="text-xs text-gray-500 dark:text-slate-400 mb-4 max-w-md mx-auto leading-relaxed">
+            This view only shows rows already saved in your workspace (<span className="font-medium">CampaignMetric</span>).
+            To pull Meta for a date range into storage, open{" "}
+            <Link href="/explorer" className="font-medium text-cyan-600 hover:underline">
+              Data Explorer
+            </Link>{" "}
+            → <span className="font-medium">Internal warehouse</span> → Import, or run a sync from{" "}
+            <Link href="/sources" className="font-medium text-cyan-600 hover:underline">
+              Sources
+            </Link>
+            .
+          </p>
+
           {/* DEBUG: Check what data exists */}
           <div className="flex flex-col items-center gap-3">
             <button
