@@ -141,6 +141,7 @@ export async function POST(req: Request, context: { params: any }) {
         const requestOrigin = new URL(req.url).origin;
         const etl = await runEtlPipeline({
             userId: userIdForLimits,
+            userPlan: user?.plan ?? "free",
             provider,
             pipeline,
             ctx: {
@@ -148,6 +149,7 @@ export async function POST(req: Request, context: { params: any }) {
                 pipelineId: pipeline.id,
                 pipelineName: pipeline.name,
                 sourceConnectionId: pipeline.sourceConnectionId,
+                workspaceId: pipeline.workspaceId,
             },
             sourceCreds,
         });

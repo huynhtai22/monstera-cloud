@@ -4,6 +4,7 @@ import { loadToGoogleSheets } from '@/etl/loaders/googleSheets';
 
 export async function runEtlPipeline(opts: {
   userId: string;
+  userPlan: string;
   provider: EtlProvider;
   pipeline: any;
   ctx: PipelineContext;
@@ -18,6 +19,7 @@ export async function runEtlPipeline(opts: {
     ctx: opts.ctx,
     sourceCreds: opts.sourceCreds,
     cursorRaw: opts.pipeline.syncCursor ?? null,
+    userPlan: opts.userPlan,
   });
 
   // Data Drift Detection: compare columns with last sync
