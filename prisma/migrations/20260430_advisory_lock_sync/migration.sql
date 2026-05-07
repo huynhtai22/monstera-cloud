@@ -13,6 +13,10 @@ RETURNS bigint AS $$
 $$ LANGUAGE sql IMMUTABLE;
 
 -- ── 2. SyncLock table ──────────────────────────────────────────────────────
+-- If a broken "SyncLock" exists (wrong columns / failed run), CREATE IF NOT EXISTS
+-- skips and CREATE INDEX fails. Drop so we recreate (leases are ephemeral).
+DROP TABLE IF EXISTS "SyncLock" CASCADE;
+
 CREATE TABLE IF NOT EXISTS "SyncLock" (
     "scope"          TEXT      PRIMARY KEY,
     "provider"       TEXT      NOT NULL,
