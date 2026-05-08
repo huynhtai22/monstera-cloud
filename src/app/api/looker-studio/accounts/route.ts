@@ -6,7 +6,9 @@ import { logger } from "@/lib/logger";
  * GET /api/looker-studio/accounts
  * 
  * Returns all unique accounts in a workspace for Looker Studio connector config dropdown.
- * Requires valid API key in Authorization header.
+ * Supports:
+ * - Looker Studio OAuth2 (Google ID token in Authorization header)
+ * - Legacy API key auth (Authorization header or apiKey query param)
  * 
  * Response:
  * {
@@ -32,18 +34,50 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const keyRecord = await prisma.apiKey.findUnique({
-      where: { key: apiKey },
-      include: { workspace: true },
-    });
+    // Heuristic: Google ID tokens are JWT-like (3 segments)
+    const isGoogleJwt = apiKey.split(".").length === 3 && apiKey.startsWith("eyJ");
 
-    if (!keyRecord) {
-      return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
+    let workspaceId: string | null = null;
+
+    if (isGoogleJwt) {
+      // OAuth2 connector: verify the Google ID token by calling tokeninfo
+      const email = await verifyGoogleIdToken(apiKey);
+      if (!email) {
+        return NextResponse.json({ error: "Invalid or expired Google token" }, { status: 401 });
+      }
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
+        return NextResponse.json({ error: "No Monstera account found", code: "NO_ACCOUNT" }, { status: 404 });
+      }
+      const workspace = await prisma.workspace.findFirst({
+        where: {
+          OR: [
+            { ownerId: user.id },
+            { members: { some: { userId: user.id } } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!workspace) {
+        return NextResponse.json({ error: "No workspace found" }, { status: 404 });
+      }
+      workspaceId = workspace.id;
+    } else {
+      // Legacy connector: API key auth
+      const keyRecord = await prisma.apiKey.findUnique({
+        where: { key: apiKey },
+        include: { workspace: true },
+      });
+
+      if (!keyRecord) {
+        return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
+      }
+      workspaceId = keyRecord.workspaceId;
     }
 
     // Fetch all unique accounts in workspace, ordered by account name
     const accounts = await prisma.campaignMetric.findMany({
-      where: { workspaceId: keyRecord.workspaceId },
+      where: { workspaceId: workspaceId as string },
       distinct: ["accountId"],
       select: {
         accountId: true,
@@ -79,5 +113,24 @@ export async function GET(req: NextRequest) {
       { error: "Internal Server Error" },
       { status: 500 }
     );
+  }
+}
+
+async function verifyGoogleIdToken(idToken: string): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as Record<string, unknown>;
+    const email = data.email;
+    const verified = data.email_verified;
+    const exp = data.exp;
+    if (typeof email !== "string" || !email) return null;
+    if (String(verified) !== "true") return null;
+    if (exp && Number(exp) * 1000 < Date.now()) return null;
+    return email;
+  } catch {
+    return null;
   }
 }
