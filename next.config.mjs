@@ -20,6 +20,9 @@ const nextConfig = {
       { source: "/meta-ads", destination: "/reports?source=meta_ads", permanent: true },
       { source: "/google-ads", destination: "/reports?source=google_ads", permanent: true },
       { source: "/shopee", destination: "/reports?source=shopee", permanent: true },
+      // Legacy: merged into Data Explorer (warehouse + column picker + batch import)
+      { source: "/synced-data", destination: "/explorer", permanent: true },
+      { source: "/synced-data/:path*", destination: "/explorer", permanent: true },
       // Short URL for payment gateways and app store listings
       { source: "/refund", destination: "/legal/refund-policy", permanent: true },
     ];
