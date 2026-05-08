@@ -529,12 +529,9 @@ export default function SourcesPage() {
     }, [searchQuery, activeFilter, workspaces, activeWorkspaceId, catalogIntegrations]);
 
     const { connectedRows, availableCards } = useMemo(() => {
-        const connected = (filteredIntegrations as Array<{ status: string }>).filter(
-            (i) => i.status !== "available",
-        );
-        const available = (filteredIntegrations as Array<{ status: string }>).filter(
-            (i) => i.status === "available",
-        );
+        // Keep typing wide enough for both card and list render paths.
+        const connected = (filteredIntegrations as any[]).filter((i) => i.status !== "available");
+        const available = (filteredIntegrations as any[]).filter((i) => i.status === "available");
         return { connectedRows: connected, availableCards: available };
     }, [filteredIntegrations]);
 
