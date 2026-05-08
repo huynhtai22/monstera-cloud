@@ -30,44 +30,64 @@ function getAuthType() {
   var AuthTypes = cc.AuthType;
   return cc
     .newAuthTypeResponse()
-    .setAuthType(AuthTypes.KEY)
+    .setAuthType(AuthTypes.OAUTH2)
     .setHelpUrl(APP_URL + "/looker-studio")
     .build();
 }
 
 function resetAuth() {
-  PropertiesService.getUserProperties().deleteProperty("ds.key");
-}
-
-/** Lightweight ping — avoids fetching campaign rows on every auth refresh. */
-function pingMonsteraWithKey(key) {
-  if (!key || !key.trim()) return 401;
-  try {
-    var response = UrlFetchApp.fetch(APP_URL + "/api/looker-studio?ping=1", {
-      headers: { Authorization: "Bearer " + key.trim() },
-      muteHttpExceptions: true,
-    });
-    return response.getResponseCode();
-  } catch (e) {
-    return 0;
-  }
+  getOAuthService().reset();
 }
 
 function isAuthValid() {
-  var key = PropertiesService.getUserProperties().getProperty("ds.key");
-  if (!key) return false;
-  return pingMonsteraWithKey(key) === 200;
+  return getOAuthService().hasAccess();
 }
 
-function setCredentials(request) {
-  var key = request.key;
-  if (!key || !key.trim()) return { errorCode: "INVALID_CREDENTIALS" };
-  var code = pingMonsteraWithKey(key);
-  if (code === 200) {
-    PropertiesService.getUserProperties().setProperty("ds.key", key.trim());
-    return { errorCode: "NONE" };
+/**
+ * OAuth2 service: Google Sign-In, returns an ID token used to authenticate
+ * against Monstera backend (no API key required).
+ *
+ * Required Script Properties (set in Apps Script project):
+ * - LOOKER_OAUTH_CLIENT_ID
+ * - LOOKER_OAUTH_CLIENT_SECRET
+ */
+function getOAuthService() {
+  var props = PropertiesService.getScriptProperties();
+  var clientId = props.getProperty("LOOKER_OAUTH_CLIENT_ID");
+  var clientSecret = props.getProperty("LOOKER_OAUTH_CLIENT_SECRET");
+  if (!clientId || !clientSecret) {
+    throw new Error("Missing LOOKER_OAUTH_CLIENT_ID / LOOKER_OAUTH_CLIENT_SECRET in Script Properties");
   }
-  return { errorCode: "INVALID_CREDENTIALS" };
+
+  return OAuth2.createService("monstera-looker")
+    .setAuthorizationBaseUrl("https://accounts.google.com/o/oauth2/v2/auth")
+    .setTokenUrl("https://oauth2.googleapis.com/token")
+    .setClientId(clientId)
+    .setClientSecret(clientSecret)
+    .setPropertyStore(PropertiesService.getUserProperties())
+    .setCallbackFunction("authCallback")
+    // Minimal identity scopes. We use id_token to map email -> Monstera user/workspace.
+    .setScope("openid email profile")
+    // Ensure we always get an id_token.
+    .setParam("access_type", "offline")
+    .setParam("prompt", "consent");
+}
+
+function authCallback(request) {
+  var authorized = getOAuthService().handleCallback(request);
+  if (authorized) {
+    return HtmlService.createHtmlOutput("Success! You can close this tab.");
+  }
+  return HtmlService.createHtmlOutput("Denied. You can close this tab.");
+}
+
+function get3PAuthorizationUrls() {
+  return getOAuthService().getAuthorizationUrl();
+}
+
+function getIdToken_() {
+  var token = getOAuthService().getToken();
+  return token && token.id_token ? String(token.id_token) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -289,13 +309,13 @@ function getSchema(request) {
  * users just won't see a pre-populated account list (all accounts are returned by default).
  */
 function getAccountOptions() {
-  var apiKey = PropertiesService.getUserProperties().getProperty("ds.key");
-  if (!apiKey) return [];
+  var idToken = getIdToken_();
+  if (!idToken) return [];
 
   var response;
   try {
     response = UrlFetchApp.fetch(APP_URL + "/api/looker-studio/accounts", {
-      headers: { Authorization: "Bearer " + apiKey },
+      headers: { Authorization: "Bearer " + idToken },
       muteHttpExceptions: true,
     });
   } catch (e) {
@@ -387,7 +407,7 @@ function safeNumber(val) {
 
 function userMessageForHttpStatus(statusCode, responseBody) {
   if (statusCode === 401) {
-    return "Your API key was rejected. Create or copy a workspace API key from Monstera Settings, reset connector credentials, and try again.";
+    return "Your session was rejected. Re-authorize the connector and try again.";
   }
   if (statusCode === 400) {
     try {
@@ -424,11 +444,11 @@ function getData(request) {
     request.fields.map(function (field) { return field.name; })
   );
 
-  var apiKey = PropertiesService.getUserProperties().getProperty("ds.key");
-  if (!apiKey) {
+  var idToken = getIdToken_();
+  if (!idToken) {
     cc.newUserError()
-      .setDebugText("No stored API key for getData")
-      .setText("Authorize this connector with your Monstera workspace API key.")
+      .setDebugText("No stored OAuth token for getData")
+      .setText("Authorize this connector with your Google account to continue.")
       .throwException();
   }
 
@@ -495,7 +515,7 @@ function getData(request) {
       var response = null;
       try {
         response = fetchWithRetry(pageUrl, {
-          headers: { Authorization: "Bearer " + apiKey },
+          headers: { Authorization: "Bearer " + idToken },
           muteHttpExceptions: true,
           timeout: 30000,
         });
