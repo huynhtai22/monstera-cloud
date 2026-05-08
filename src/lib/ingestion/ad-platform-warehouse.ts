@@ -1,0 +1,227 @@
+import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
+import { encrypt } from "@/lib/encryption";
+import { googleAdsReportClient } from "@/lib/google-ads";
+import { tiktokReportClient } from "@/lib/tiktok-business";
+import { ingestGoogleAdsRows, ingestTiktokRows } from "@/lib/ad-platform-ingest";
+import { logger } from "@/lib/logger";
+
+function gaqlBetween(since: string, until: string) {
+  // GAQL requires single quotes around date literals.
+  return `segments.date BETWEEN '${since}' AND '${until}'`;
+}
+
+export async function syncGoogleAdsIntoWarehouse(params: {
+  workspaceId: string;
+  connectionId: string;
+  credentials: any;
+  since: string;
+  until: string;
+  customerId?: string;
+}): Promise<{ upserted: number; accounts: number; failed: number }> {
+  const { workspaceId, connectionId, credentials, since, until, customerId } = params;
+
+  const accessToken = await getValidOAuthToken({
+    id: connectionId,
+    credentials: encrypt(JSON.stringify(credentials)),
+    provider: "google_ads",
+  });
+
+  if (!accessToken) throw new Error("Failed to get valid token");
+
+  const extraFields = credentials.extraFields || {};
+  let customerIds: string[] = extraFields.customerIds || credentials.customerIds || [];
+
+  const selectedIds = extraFields.selectedCustomerIds || credentials.selectedCustomerIds;
+  if (selectedIds?.length) {
+    customerIds = customerIds.filter((id) => selectedIds.includes(id));
+  }
+
+  if (customerId) {
+    customerIds = customerIds.filter((id) => id === customerId);
+  }
+
+  if (!customerIds.length) throw new Error("No customer accounts selected");
+
+  const jobId = `explorer-${Date.now()}`;
+  let upserted = 0;
+  let failed = 0;
+
+  for (const cid of customerIds) {
+    try {
+      // Query with explicit date range for Explorer imports.
+      const gaql = `
+        SELECT
+          campaign.name,
+          campaign.status,
+          metrics.impressions,
+          metrics.clicks,
+          metrics.cost_micros,
+          metrics.conversions,
+          metrics.conversion_value,
+          metrics.ctr,
+          metrics.average_cpc,
+          segments.date
+        FROM campaign
+        WHERE ${gaqlBetween(since, until)}
+          AND campaign.status != 'REMOVED'
+      `;
+
+      const rows = await googleAdsReportClient.searchStream(accessToken, cid, gaql, credentials.mccId);
+
+      const transformedRows = rows.map((r: any) => ({
+        campaign_id: r.campaign_id || r.campaign_name,
+        campaign_name: r.campaign_name,
+        ad_group_id: r.ad_group_id,
+        ad_group_name: r.ad_group_name,
+        date: r.date,
+        impressions: r.impressions,
+        clicks: r.clicks,
+        cost: r.cost,
+        cpc: r.average_cpc,
+        ctr: r.ctr,
+        conversions: r.conversions,
+        conversion_value: r.conversion_value,
+        currency: r.currency,
+        raw: r,
+      }));
+
+      const result = await ingestGoogleAdsRows(transformedRows, {
+        workspaceId,
+        connectionId,
+        accountId: cid,
+        accountName: `Customer ${cid}`,
+        syncJobId: jobId,
+      });
+
+      upserted += result.upserted;
+      failed += result.failed;
+    } catch (e) {
+      logger.error(`[Explorer Google Ads Import] failed for customer ${cid}:`, e);
+      failed++;
+    }
+  }
+
+  return { upserted, accounts: customerIds.length, failed };
+}
+
+export async function syncTikTokIntoWarehouse(params: {
+  workspaceId: string;
+  connectionId: string;
+  credentials: any;
+  since: string;
+  until: string;
+  advertiserId?: string;
+}): Promise<{ upserted: number; accounts: number; failed: number }> {
+  const { workspaceId, connectionId, credentials, since, until, advertiserId } = params;
+
+  const accessToken = await getValidOAuthToken({
+    id: connectionId,
+    credentials: encrypt(JSON.stringify(credentials)),
+    provider: "tiktok_business",
+  });
+
+  if (!accessToken) throw new Error("Failed to get valid token");
+
+  const extraFields = credentials.extraFields || {};
+  let advertiserIds: string[] = extraFields.advertiserIds || credentials.advertiserIds || [];
+
+  const selectedIds = extraFields.selectedAdvertiserIds || credentials.selectedAdvertiserIds;
+  if (selectedIds?.length) {
+    advertiserIds = advertiserIds.filter((id) => selectedIds.includes(id));
+  }
+
+  if (advertiserId) {
+    advertiserIds = advertiserIds.filter((id) => id === advertiserId);
+  }
+
+  if (!advertiserIds.length) throw new Error("No advertisers selected");
+
+  const jobId = `explorer-${Date.now()}`;
+  let upserted = 0;
+  let failed = 0;
+
+  for (const aid of advertiserIds) {
+    try {
+      const taskId = await tiktokReportClient.createTask(
+        accessToken,
+        {
+          advertiser_id: aid,
+          report_type: "BASIC",
+          data_level: "AUCTION_CAMPAIGN",
+          dimensions: ["campaign_id", "campaign_name", "adgroup_id", "adgroup_name", "stat_time_day"],
+          metrics: ["impression", "click", "spend", "cpc", "ctr", "conversion", "revenue", "roas"],
+          start_date: since,
+          end_date: until,
+          page_size: 1000,
+        },
+        credentials.sandbox === true,
+      );
+
+      let status = await tiktokReportClient.checkTask(
+        accessToken,
+        aid,
+        taskId,
+        credentials.sandbox === true,
+      );
+      let attempts = 0;
+      while (status.status !== "COMPLETED" && status.status !== "FAILED" && attempts < 20) {
+        await new Promise((r) => setTimeout(r, 3000));
+        status = await tiktokReportClient.checkTask(
+          accessToken,
+          aid,
+          taskId,
+          credentials.sandbox === true,
+        );
+        attempts++;
+      }
+
+      if (status.status !== "COMPLETED" || !status.url) {
+        throw new Error(`TikTok report not ready (status=${status.status})`);
+      }
+
+      const reportRes = await fetch(status.url);
+      const reportText = await reportRes.text();
+      const reportRows = reportText.split("\n").filter((l) => l.trim()).slice(1);
+
+      const rows = reportRows.map((line) => {
+        const parts = line.split(",");
+        return {
+          dimensions: {
+            campaign_id: parts[0],
+            campaign_name: parts[1],
+            adgroup_id: parts[2],
+            adgroup_name: parts[3],
+            stat_time_day: parts[4],
+          },
+          metrics: {
+            impression: parts[5],
+            click: parts[6],
+            spend: parts[7],
+            cpc: parts[8],
+            ctr: parts[9],
+            conversion: parts[10],
+            revenue: parts[11],
+            roas: parts[12],
+          },
+        };
+      });
+
+      const result = await ingestTiktokRows(rows, {
+        workspaceId,
+        connectionId,
+        accountId: aid,
+        accountName: `Advertiser ${aid}`,
+        syncJobId: jobId,
+      });
+
+      upserted += result.upserted;
+      failed += result.failed;
+    } catch (e) {
+      logger.error(`[Explorer TikTok Import] failed for advertiser ${aid}:`, e);
+      failed++;
+    }
+  }
+
+  return { upserted, accounts: advertiserIds.length, failed };
+}
+

@@ -3,6 +3,12 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getPlanLimits } from "@/lib/plan-config";
+import {
+  ADS_DIMENSIONS,
+  ADS_METRICS,
+  ADS_CALCULATED_METRICS,
+  ADS_FIELDS_BY_ID,
+} from "@/lib/ads-field-registry";
 
 /**
  * GET /api/metrics/query?workspaceId=...&startDate=...&endDate=...&platform=...&cursor=...
@@ -41,6 +47,9 @@ export async function GET(req: Request) {
   const accountIdsParam = searchParams.get("accountIds"); // comma-separated
   const campaignId = searchParams.get("campaignId");
   const cursor = searchParams.get("cursor"); // Pagination cursor (last row ID)
+  const dimensionsParam = searchParams.get("dimensions");
+  const metricsParam = searchParams.get("metrics");
+  const mode = searchParams.get("mode"); // "raw" | "aggregate"
 
   if (!workspaceId) {
     return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
@@ -117,9 +126,180 @@ export async function GET(req: Request) {
       where.id = { lt: cursor };
     }
 
-    // DEBUG: Log query parameters
-    console.log('[Metrics Query] DEBUG where clause:', JSON.stringify(where, null, 2));
-    console.log('[Metrics Query] DEBUG workspaceId:', workspaceId, 'platform:', platform);
+    const wantsAggregate =
+      mode === "aggregate" || Boolean(dimensionsParam) || Boolean(metricsParam);
+
+    if (wantsAggregate) {
+      const dimIds =
+        dimensionsParam?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+      const metricIds =
+        metricsParam?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+
+      // Enforce stable dimensions: only allow canonical dimensions from registry.
+      const allowedDimIds = new Set(ADS_DIMENSIONS.map((d) => d.id));
+      const allowedMetricIds = new Set([
+        ...ADS_METRICS.map((m) => m.id),
+        ...ADS_CALCULATED_METRICS.map((m) => m.id),
+      ]);
+
+      const dimensions = (dimIds.length ? dimIds : ["date", "platform"]).filter((id) =>
+        allowedDimIds.has(id),
+      );
+      const metrics = (metricIds.length ? metricIds : ["spend", "impressions"]).filter((id) =>
+        allowedMetricIds.has(id),
+      );
+
+      if (dimensions.length === 0) {
+        return NextResponse.json(
+          { error: "At least one stable dimension is required." },
+          { status: 400 },
+        );
+      }
+      if (metrics.length === 0) {
+        return NextResponse.json(
+          { error: "At least one metric is required." },
+          { status: 400 },
+        );
+      }
+
+      // Dimensions map directly to DB fields; ignore any that lack backing storage.
+      const by = dimensions
+        .map((id) => ADS_FIELDS_BY_ID[id]?.prismaField)
+        .filter(Boolean) as string[];
+
+      if (by.length === 0) {
+        return NextResponse.json(
+          { error: "No supported dimensions for aggregation." },
+          { status: 400 },
+        );
+      }
+
+      const sumFields: Record<string, boolean> = {};
+      const wantsCalculated = new Set<string>();
+
+      // Always aggregate raw measurable components via SUM.
+      // Calculated metrics are computed from the SUMs (never averaged directly).
+      for (const id of metrics) {
+        const f = ADS_FIELDS_BY_ID[id] as any;
+        if (!f || f.kind !== "metric") continue;
+
+        if (f.isCalculatedMetric) {
+          wantsCalculated.add(id);
+          // ensure required raw components are included in SUM
+          for (const dep of (f.requires as string[] | undefined) ?? []) {
+            const depField = ADS_FIELDS_BY_ID[dep] as any;
+            if (depField?.prismaField) sumFields[depField.prismaField] = true;
+          }
+          continue;
+        }
+
+        if (f.prismaField) sumFields[f.prismaField] = true;
+      }
+
+      // Safety: if user only asked calculated metrics, still need sums.
+      if (Object.keys(sumFields).length === 0) {
+        sumFields.spend = true;
+        sumFields.impressions = true;
+      }
+
+      // Grouped result set (no cursor pagination yet; keep bounded by plan limit).
+      const rows = await prisma.campaignMetric.groupBy({
+        where,
+        by: by as any,
+        ...(Object.keys(sumFields).length ? { _sum: sumFields as any } : {}),
+        take: limits.explorerMaxRowsPerQuery,
+        orderBy: [{ date: "desc" }] as any,
+      });
+
+      const columns = [
+        ...dimensions,
+        ...metrics.map((m) => `metric:${m}`),
+      ];
+
+      const safeDiv = (num: number, den: number) => (den === 0 ? 0 : num / den);
+
+      const outRows = rows.map((r: any) => {
+        const obj: Record<string, unknown> = {};
+        for (const dimId of dimensions) {
+          const prismaField = ADS_FIELDS_BY_ID[dimId]?.prismaField;
+          if (!prismaField) {
+            obj[dimId] = "";
+            continue;
+          }
+          const val = r[prismaField];
+          obj[dimId] =
+            prismaField === "date" && val instanceof Date ? val.toISOString().slice(0, 10) : val ?? "";
+        }
+        for (const metricId of metrics) {
+          const field = ADS_FIELDS_BY_ID[metricId] as any;
+          if (!field || field.kind !== "metric") {
+            obj[`metric:${metricId}`] = 0;
+            continue;
+          }
+
+          if (field.isCalculatedMetric) {
+            const sum = (name: string) => Number(r._sum?.[name] ?? 0);
+            // Calculated metrics (computed from SUMs; never average averages).
+            switch (metricId) {
+              case "ctr": {
+                obj[`metric:${metricId}`] = safeDiv(sum("clicks"), sum("impressions"));
+                break;
+              }
+              case "cpc": {
+                obj[`metric:${metricId}`] = safeDiv(sum("spend"), sum("clicks"));
+                break;
+              }
+              case "cpm": {
+                obj[`metric:${metricId}`] = safeDiv(sum("spend"), sum("impressions")) * 1000;
+                break;
+              }
+              case "cvr": {
+                obj[`metric:${metricId}`] = safeDiv(sum("conversions"), sum("clicks"));
+                break;
+              }
+              case "cpa": {
+                obj[`metric:${metricId}`] = safeDiv(sum("spend"), sum("conversions"));
+                break;
+              }
+              case "roas": {
+                // conversion_value is stored as `revenue` in DB
+                obj[`metric:${metricId}`] = safeDiv(sum("revenue"), sum("spend"));
+                break;
+              }
+              case "frequency": {
+                obj[`metric:${metricId}`] = safeDiv(sum("impressions"), sum("reach"));
+                break;
+              }
+              default: {
+                obj[`metric:${metricId}`] = 0;
+              }
+            }
+            continue;
+          }
+
+          const prismaField = field.prismaField as string | undefined;
+          if (!prismaField) {
+            obj[`metric:${metricId}`] = 0;
+            continue;
+          }
+
+          obj[`metric:${metricId}`] = Number(r._sum?.[prismaField] ?? 0);
+        }
+        return obj;
+      });
+
+      return NextResponse.json({
+        mode: "aggregate",
+        columns,
+        rows: outRows,
+        limits: {
+          plan,
+          maxDateRangeDays: limits.explorerMaxDateRangeDays,
+          maxRowsPerQuery: limits.explorerMaxRowsPerQuery,
+        },
+        selection: { dimensions, metrics },
+      });
+    }
 
     // Parallel queries for efficiency
     const [metrics, countResult, dateRangeAgg, platforms] = await Promise.all([

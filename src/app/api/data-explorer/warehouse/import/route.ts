@@ -3,7 +3,9 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { syncMetaInsightsIntoWarehouse } from "@/lib/ingestion/meta-campaign-metrics";
+import { syncGoogleAdsIntoWarehouse, syncTikTokIntoWarehouse } from "@/lib/ingestion/ad-platform-warehouse";
 import { logger } from "@/lib/logger";
+import { decrypt } from "@/lib/encryption";
 
 const WAREHOUSE_COLUMN_LIST = [
   "date",
@@ -38,7 +40,8 @@ export async function POST(req: Request) {
     connectionId?: string;
     since?: string;
     until?: string;
-    adAccountId?: string;
+    adAccountId?: string; // meta
+    accountId?: string; // google/tiktok
   };
   try {
     body = await req.json();
@@ -46,7 +49,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { workspaceId, connectionId, since, until, adAccountId } = body;
+  const { workspaceId, connectionId, since, until, adAccountId, accountId } = body;
   if (!workspaceId || !connectionId || !since || !until) {
     return NextResponse.json(
       { error: "workspaceId, connectionId, since, until are required (YYYY-MM-DD)" },
@@ -78,23 +81,86 @@ export async function POST(req: Request) {
   const plan = user?.plan ?? "free";
 
   try {
-    const result = await syncMetaInsightsIntoWarehouse({
-      workspaceId,
-      connectionId,
-      since,
-      until,
-      userPlan: plan,
-      adAccountId: adAccountId || undefined,
+    const conn = await prisma.connection.findFirst({
+      where: { id: connectionId, workspaceId, type: "source" },
+      select: { provider: true, credentials: true },
     });
+    if (!conn) {
+      return NextResponse.json({ error: "Connection not found in workspace" }, { status: 404 });
+    }
 
-    return NextResponse.json({
-      success: true,
-      upserted: result.upserted,
-      accounts: result.accounts,
-      columns: [...WAREHOUSE_COLUMN_LIST],
-      message: `Imported ${result.upserted} campaign-day rows from ${result.accounts} ad account(s).`,
-    });
-  } catch (e: unknown) {
+    const provider = conn.provider;
+
+    if (provider === "meta_ads") {
+      const result = await syncMetaInsightsIntoWarehouse({
+        workspaceId,
+        connectionId,
+        since,
+        until,
+        userPlan: plan,
+        adAccountId: adAccountId || undefined,
+      });
+
+      return NextResponse.json({
+        success: true,
+        provider,
+        upserted: result.upserted,
+        accounts: result.accounts,
+        columns: [...WAREHOUSE_COLUMN_LIST],
+        message: `Imported ${result.upserted} campaign-day rows from ${result.accounts} ad account(s).`,
+      });
+    }
+
+    // Other ad platforms: decrypt credentials here and use simple upserts.
+    const credentials = JSON.parse(decrypt(conn.credentials));
+
+    if (provider === "google_ads") {
+      const result = await syncGoogleAdsIntoWarehouse({
+        workspaceId,
+        connectionId,
+        credentials,
+        since,
+        until,
+        customerId: accountId || undefined,
+      });
+
+      return NextResponse.json({
+        success: true,
+        provider,
+        upserted: result.upserted,
+        accounts: result.accounts,
+        failed: result.failed,
+        columns: [...WAREHOUSE_COLUMN_LIST],
+        message: `Imported ${result.upserted} campaign-day rows from ${result.accounts} customer account(s).`,
+      });
+    }
+
+    if (provider === "tiktok_business") {
+      const result = await syncTikTokIntoWarehouse({
+        workspaceId,
+        connectionId,
+        credentials,
+        since,
+        until,
+        advertiserId: accountId || undefined,
+      });
+
+      return NextResponse.json({
+        success: true,
+        provider,
+        upserted: result.upserted,
+        accounts: result.accounts,
+        failed: result.failed,
+        columns: [...WAREHOUSE_COLUMN_LIST],
+        message: `Imported ${result.upserted} campaign-day rows from ${result.accounts} advertiser account(s).`,
+      });
+    }
+
+    return NextResponse.json(
+      { error: `Provider not supported for warehouse import: ${provider}` },
+      { status: 400 },
+    );
+  } catch (e: any) {
     logger.error("[warehouse/import]", e);
     const msg =
       e instanceof Error ? e.message : typeof e === "string" ? e : "Import failed";
