@@ -7,7 +7,6 @@ import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getValidShopeeCreds, shopeeDataClient } from "@/lib/shopee";
 import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";
-import { clampTimeRangeToPlanMaxDays } from "@/lib/plan-config";
 import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { lazadaOrdersGet } from "@/lib/lazada";
@@ -34,11 +33,8 @@ export async function syncShopeeWarehouseMetrics(opts: {
   since: string;
   until: string;
 }): Promise<MarketplaceSyncResult> {
-  const { connectionId, workspaceId, userPlan } = opts;
-  let { since, until } = clampTimeRangeToPlanMaxDays(userPlan, {
-    since: opts.since,
-    until: opts.until,
-  });
+  const { connectionId, workspaceId } = opts;
+  const { since, until } = opts;
 
   const rangeStart = parseYmd(since).getTime() / 1000;
   const rangeEnd = Math.floor(parseYmd(until).getTime() / 1000) + 86400 - 1;
@@ -158,11 +154,8 @@ export async function syncLazadaWarehouseMetrics(opts: {
   since: string;
   until: string;
 }): Promise<MarketplaceSyncResult> {
-  const { connectionId, workspaceId, userPlan } = opts;
-  const range = clampTimeRangeToPlanMaxDays(userPlan, {
-    since: opts.since,
-    until: opts.until,
-  });
+  const { connectionId, workspaceId } = opts;
+  const range = { since: opts.since, until: opts.until };
   const since = range.since;
   const until = range.until;
 

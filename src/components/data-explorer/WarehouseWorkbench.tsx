@@ -205,6 +205,24 @@ function compareRowsForSort(a: MetricRow, b: MetricRow, id: WarehouseColId, dir:
   return cmp === 0 ? a.id.localeCompare(b.id) * mul : cmp * mul;
 }
 
+function formatMoney(amount: number, currency: string | null | undefined): string {
+  const c = (currency || "").trim();
+  const n = Number(amount || 0);
+  if (!c) return n.toLocaleString();
+  try {
+    // VND is typically shown without decimals; Intl handles this well but we cap to avoid noisy cents.
+    const fmt = new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: c,
+      maximumFractionDigits: c.toUpperCase() === "VND" ? 0 : 2,
+    });
+    return fmt.format(n);
+  } catch {
+    // Unknown currency code
+    return `${n.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${c}`;
+  }
+}
+
 function formatExportCell(m: MetricRow, id: WarehouseColId, ctrFmt: (row: MetricRow) => string): string | number {
   switch (id) {
     case "date":
@@ -286,15 +304,15 @@ function renderWarehouseTableCell(
     case "clicks":
       return wrap(m.clicks?.toLocaleString() ?? "0");
     case "spend":
-      return wrap(`$${(m.spend ?? 0).toFixed(2)}`);
+      return wrap(formatMoney(m.spend ?? 0, m.currency));
     case "cpc":
-      return wrap(m.cpc != null ? `$${m.cpc.toFixed(2)}` : "—");
+      return wrap(m.cpc != null ? formatMoney(m.cpc, m.currency) : "—");
     case "ctr":
       return wrap(ctrFmt(m));
     case "conversions":
       return wrap(m.conversions?.toFixed(0) ?? "0");
     case "revenue":
-      return wrap(`$${(m.revenue ?? 0).toFixed(2)}`);
+      return wrap(formatMoney(m.revenue ?? 0, m.currency));
     case "roas":
       return wrap(
         <span
@@ -630,13 +648,48 @@ export function WarehouseWorkbench() {
       (acc, m) => ({
         impressions: acc.impressions + (m.impressions || 0),
         clicks: acc.clicks + (m.clicks || 0),
-        spend: acc.spend + (m.spend || 0),
         conversions: acc.conversions + (m.conversions || 0),
-        revenue: acc.revenue + (m.revenue || 0),
       }),
-      { impressions: 0, clicks: 0, spend: 0, conversions: 0, revenue: 0 },
+      { impressions: 0, clicks: 0, conversions: 0 },
     );
   }, [processedRows]);
+
+  const moneyTotals = useMemo(() => {
+    const byCurrency = new Map<string, { spend: number; revenue: number }>();
+    for (const m of processedRows) {
+      const c = (m.currency || "—").trim() || "—";
+      const cur = byCurrency.get(c) ?? { spend: 0, revenue: 0 };
+      cur.spend += Number(m.spend ?? 0) || 0;
+      cur.revenue += Number(m.revenue ?? 0) || 0;
+      byCurrency.set(c, cur);
+    }
+    return byCurrency;
+  }, [processedRows]);
+
+  const moneyKpiNode = useCallback(
+    (kind: "spend" | "revenue") => {
+      const entries = [...moneyTotals.entries()].filter(([c]) => c !== "—");
+      if (entries.length === 0) return <span>—</span>;
+      if (entries.length === 1) {
+        const [cur, vals] = entries[0]!;
+        return <span>{formatMoney(vals[kind], cur)}</span>;
+      }
+      // Multi-currency: show a compact list (top 2) + count.
+      const sorted = entries.sort((a, b) => (b[1][kind] ?? 0) - (a[1][kind] ?? 0));
+      const top = sorted.slice(0, 2);
+      const rest = sorted.length - top.length;
+      return (
+        <span className="inline-flex flex-col leading-tight">
+          <span className="font-semibold">Mixed</span>
+          <span className="text-[11px] text-gray-500 dark:text-slate-400">
+            {top.map(([cur, vals]) => `${cur} ${Math.round(vals[kind]).toLocaleString()}`).join(" · ")}
+            {rest > 0 ? ` · +${rest}` : ""}
+          </span>
+        </span>
+      );
+    },
+    [moneyTotals],
+  );
 
   const ctrLabel = (m: MetricRow) => {
     if (typeof m.ctr !== "number") return "-";
@@ -703,8 +756,8 @@ export function WarehouseWorkbench() {
               Refresh warehouse from sources
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-gray-600 dark:text-slate-400">
-              Pull recent campaign or marketplace metrics into the internal warehouse for the date range below. Meta, Google Ads, and TikTok respect
-              this range (clamped to your plan). Shopee and Lazada pull orders in range and store daily rollups (orders count + revenue) per shop/seller.
+              Pull campaign or marketplace metrics into the internal warehouse for the date range below. Meta, Google Ads, TikTok, Shopee, and Lazada
+              all respect this range (large rewinds may take longer and paginate).
             </p>
           </div>
           <PrimaryButton
@@ -825,13 +878,8 @@ export function WarehouseWorkbench() {
               {limits.plan} plan
             </span>
             <span className="text-gray-500 dark:text-slate-500">
-              Max {limits.maxDateRangeDays} days · {limits.maxRowsPerQuery.toLocaleString()} rows / query
+              {limits.maxRowsPerQuery.toLocaleString()} rows / query (rewind is unrestricted)
             </span>
-            {limits.plan === "free" && (
-              <a href="/pricing" className="text-cyan-600 hover:underline dark:text-cyan-400">
-                Upgrade →
-              </a>
-            )}
           </div>
         )}
 
@@ -905,7 +953,7 @@ export function WarehouseWorkbench() {
               Narrow by stored ad account <span className="font-normal">(optional)</span>
             </p>
             <div className="flex flex-wrap gap-2">
-              {warehousedAccounts.slice(0, 40).map((a) => (
+              {warehousedAccounts.map((a) => (
                 <ToggleChip
                   key={`${a.platform}-${a.accountId}`}
                   active={accountFilterIds.includes(a.accountId)}
@@ -1032,7 +1080,7 @@ export function WarehouseWorkbench() {
         </div>
 
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-          {[
+          {([
             [
               rowSearch.trim() ? "Rows (after search)" : "Rows (loaded)",
               `${processedRows.length.toLocaleString()}${
@@ -1040,10 +1088,10 @@ export function WarehouseWorkbench() {
               }`,
             ],
             ["Impressions", `${(totals.impressions / 1000).toFixed(1)}k`],
-            ["Spend", `$${totals.spend.toFixed(0)}`],
+            ["Spend", moneyKpiNode("spend")],
             ["Conv.", totals.conversions.toFixed(0)],
-            ["Revenue", `$${totals.revenue.toFixed(0)}`],
-          ].map(([k, v]) => (
+            ["Revenue", moneyKpiNode("revenue")],
+          ] as Array<[string, React.ReactNode]>).map(([k, v]) => (
             <div
               key={k}
               className="rounded-xl border border-cyan-500/15 bg-gradient-to-br from-white to-cyan-50/40 p-4 dark:border-cyan-500/20 dark:from-slate-900 dark:to-slate-900/70"

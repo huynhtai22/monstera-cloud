@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { tiktokReportClient, CreateReportTaskParams } from '@/lib/tiktok-business';
 import { getValidTikTokToken } from '@/lib/tiktok-refresh';
-import { clampTimeRangeToPlanMaxDays, getPlanLimits } from '@/lib/plan-config';
+import { getPlanLimits } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { logger } from "@/lib/logger";
@@ -78,14 +78,8 @@ export async function POST(req: Request) {
     const plan = user?.plan ?? 'free';
     const limits = getPlanLimits(plan);
 
-    let taskParams = { ...reportParams } as CreateReportTaskParams;
-    if (limits.maxHistoryDays && taskParams.start_date && taskParams.end_date) {
-      const c = clampTimeRangeToPlanMaxDays(plan, {
-        since: taskParams.start_date,
-        until: taskParams.end_date,
-      });
-      taskParams = { ...taskParams, start_date: c.since, end_date: c.until };
-    }
+    // \"Free rewind\": do not clamp user-provided date range.
+    const taskParams = { ...reportParams } as CreateReportTaskParams;
 
     // Check report cache — return cached result if within cooldown window
     const cacheKey = buildCacheKey(connectionId, advertiser_id, taskParams);
