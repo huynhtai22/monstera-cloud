@@ -1,5 +1,7 @@
 import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
+// IMPORTANT: `middleware.ts` runs in the Edge Runtime. Force the fetch-based Redis client
+// so Next.js does not bundle the Node.js entrypoint (`process.version` / `process.features`).
+import { Redis } from "@upstash/redis/cloudflare";
 
 /**
  * Global API rate limit (per-IP).
