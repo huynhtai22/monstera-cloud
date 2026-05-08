@@ -1,3 +1,10 @@
+/**
+ * Credentials encryption (AES-256-GCM).
+ *
+ * Third-party OAuth tokens and API secrets for Meta, Google Ads, TikTok, Shopee, Lazada, etc.
+ * are persisted on `Connection.credentials` via `encrypt(JSON.stringify(...))` so secrets are
+ * ciphertext-at-rest. Legacy plaintext rows are still readable via `safeDecrypt`.
+ */
 import crypto from "crypto";
 
 const ALGORITHM = "aes-256-gcm";

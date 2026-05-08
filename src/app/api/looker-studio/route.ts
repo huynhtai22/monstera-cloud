@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
 import { logger } from "@/lib/logger";
+import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
 
 const UPSTASH_AVAILABLE = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 const redis = UPSTASH_AVAILABLE ? Redis.fromEnv() : null;
@@ -50,21 +51,6 @@ function isGoogleJwt(token: string): boolean {
   return parts.length === 3 && parts[0].startsWith('eyJ');
 }
 
-async function verifyGoogleIdToken(idToken: string): Promise<string | null> {
-  try {
-    const res = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data.email || data.email_verified !== 'true') return null;
-    if (data.exp && Number(data.exp) * 1000 < Date.now()) return null;
-    return data.email as string;
-  } catch {
-    return null;
-  }
-}
-
 /** Parse YYYYMMDD or YYYY-MM-DD (Looker Studio sends the latter when date range is required). */
 function parseDateFilter(value: string): Date | null {
   const compact = /^(\d{4})(\d{2})(\d{2})$/.exec(value);
@@ -110,10 +96,13 @@ export async function GET(req: NextRequest) {
 
     if (isGoogleJwt(apiKey)) {
       // Google Sheets add-on: identity token auth
-      const email = await verifyGoogleIdToken(apiKey);
-      if (!email) {
+      const verification = await verifyGoogleIdToken(apiKey, {
+        audiences: getGoogleIdTokenAudienceAllowlist(),
+      });
+      if (!verification) {
         return NextResponse.json({ error: "Invalid or expired Google token" }, { status: 401 });
       }
+      const email = verification.email;
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user) {
         return NextResponse.json({ error: "No Monstera account found", code: "NO_ACCOUNT" }, { status: 404 });

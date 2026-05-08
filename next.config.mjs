@@ -43,7 +43,18 @@ const nextConfig = {
           },
           {
             key: "Content-Security-Policy",
-            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https:; frame-ancestors 'self'; upgrade-insecure-requests;",
+            value: [
+              "default-src 'self'",
+              "base-uri 'self'",
+              "frame-ancestors 'self'",
+              "frame-src 'self' https://www.googletagmanager.com https://www.google.com",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://www.googletagmanager.com https://connect.facebook.net",
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data: https: blob:",
+              "font-src 'self' data:",
+              "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://stats.g.doubleclick.net https://connect.facebook.net https://www.facebook.com https://graph.facebook.com https://*.facebook.com https://accounts.google.com https://oauth2.googleapis.com https://*.googleapis.com https://*.tiktok.com https://*.tiktokglobalshop.com https://partner.shopeemobile.com https://open.shopee.com https://api.lazada.sg https://*.lazada.com https://auth.lazada.com https://googleads.googleapis.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://vitals.vercel-insights.com https://*.vercel-insights.com",
+              "upgrade-insecure-requests",
+            ].join("; "),
           },
           {
             key: "Strict-Transport-Security",

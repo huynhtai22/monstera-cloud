@@ -68,7 +68,7 @@ export default function ForgotPasswordPage() {
                         </Link>
                     </div>
                 ) : (
-                    <form className="space-y-6" onSubmit={handleSubmit}>
+                    <form className="space-y-6" method="post" action="#" onSubmit={handleSubmit}>
                         {error && (
                             <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center">
                                 {error}

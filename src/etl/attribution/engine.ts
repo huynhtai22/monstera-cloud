@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma';
 import { timeDecayWeights } from '@/etl/attribution/timeDecay';
+import { scopeCampaignMetricWhere, scopeRetailOrderWhere } from '@/lib/workspace-scope';
 
 /**
  * Multi-touch attribution (time-decay) on a per-workspace basis.
@@ -19,10 +20,9 @@ export async function computeAttributionSnapshots(opts: {
   const halfLifeHours = opts.halfLifeHours ?? 24;
 
   const orders = await prisma.retailOrder.findMany({
-    where: {
-      workspaceId: opts.workspaceId,
+    where: scopeRetailOrderWhere(opts.workspaceId, {
       createdAt: { gte: opts.startDate, lte: opts.endDate },
-    },
+    }),
     select: {
       id: true,
       createdAtIso: true,
@@ -36,10 +36,9 @@ export async function computeAttributionSnapshots(opts: {
 
   // Load campaign metrics (spend) in the same date window.
   const metrics = await prisma.campaignMetric.findMany({
-    where: {
-      workspaceId: opts.workspaceId,
+    where: scopeCampaignMetricWhere(opts.workspaceId, {
       date: { gte: opts.startDate, lte: opts.endDate },
-    },
+    }),
     select: {
       id: true,
       date: true,

@@ -1,6 +1,13 @@
-
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+
+/** Reject GET so OTPs are never sent in URL query parameters (CWE-598). */
+export async function GET() {
+  return NextResponse.json(
+    { message: "Method not allowed. Use POST with JSON body { email, otp }." },
+    { status: 405 },
+  );
+}
 
 export async function POST(req: Request) {
   try {

@@ -11,7 +11,7 @@ import { metaPixelCustom, metaPixelStandard } from "@/lib/meta-pixel";
 function VerifyContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const email = searchParams.get("email") || "";
+  const [email, setEmail] = useState("");
   
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState("");
@@ -26,6 +26,27 @@ function VerifyContent() {
       return () => clearInterval(interval);
     }
   }, [timer]);
+
+  /** Prefer sessionStorage (set at registration) so email is not leaked via URL (CWE-598). */
+  useEffect(() => {
+    const q = searchParams.get("email")?.trim() || "";
+    if (typeof window === "undefined") return;
+    if (q) {
+      try {
+        sessionStorage.setItem("monstera_pending_verify_email", q);
+      } catch {
+        /* ignore */
+      }
+      setEmail(q);
+      router.replace("/verify");
+      return;
+    }
+    try {
+      setEmail(sessionStorage.getItem("monstera_pending_verify_email")?.trim() || "");
+    } catch {
+      setEmail("");
+    }
+  }, [searchParams, router]);
 
   const handleChange = (index: number, value: string) => {
     if (value.length > 1) value = value[value.length - 1];
@@ -75,6 +96,11 @@ function VerifyContent() {
 
       metaPixelStandard("CompleteRegistration", { content_name: "email_verified" });
       metaPixelCustom("MC_SignUp_Email_Verified", { method: "email" });
+      try {
+        sessionStorage.removeItem("monstera_pending_verify_email");
+      } catch {
+        /* ignore */
+      }
       router.push("/login?registered=true");
     } catch (err: any) {
       setError(err.message || "An error occurred.");
@@ -120,12 +146,25 @@ function VerifyContent() {
             Verify your email
           </h2>
           <p className="mt-4 text-gray-500 text-[15px]">
-            We've sent a 6-digit code to <span className="font-semibold text-gray-900 dark:text-white">{email}</span>. 
-            Enter it below to complete your registration.
+            {email ? (
+              <>
+                We&apos;ve sent a 6-digit code to{" "}
+                <span className="font-semibold text-gray-900 dark:text-white">{email}</span>. Enter it below to complete
+                your registration.
+              </>
+            ) : (
+              <>
+                If you just registered, open this page from the same browser, or{" "}
+                <Link href="/register" className="text-[#1ba177] font-semibold hover:underline">
+                  start again
+                </Link>
+                .
+              </>
+            )}
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
+        <form onSubmit={handleSubmit} method="post" action="#" className="space-y-8">
           {error && (
             <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center">
               {error}
