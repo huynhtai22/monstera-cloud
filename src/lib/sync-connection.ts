@@ -9,7 +9,6 @@ import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import { encrypt } from "@/lib/encryption";
 import {
   getPlanLimits,
-  clampTimeRangeToPlanMaxDays,
   clampGoogleAdsDatePeriodForPlan,
 } from "@/lib/plan-config";
 import {
@@ -39,12 +38,12 @@ export interface SyncOptions {
   credentials: any;
   workspaceId: string;
   /**
-   * When set together, Google Ads / TikTok / marketplaces use this window (clamped to the user plan).
+   * When set together, Google Ads / TikTok / marketplaces use this window (\"free rewind\" — not clamped).
    * When omitted, Google uses a plan-aware preset window; TikTok uses last 30 days; Shopee/Lazada use a rolling window.
    */
   since?: string;
   until?: string;
-  /** Used for date clamping when `since`/`until` are provided or for marketplace defaults. */
+  /** Used for marketplace defaults and any remaining plan-based behaviors. */
   userPlan?: string;
 }
 
@@ -290,8 +289,7 @@ async function syncGoogleAds(opts: {
   const dateSpec =
     opts.since && opts.until
       ? (() => {
-          const r = clampTimeRangeToPlanMaxDays(userPlan, { since: opts.since!, until: opts.until! });
-          return `BETWEEN '${r.since}' AND '${r.until}'`;
+          return `BETWEEN '${opts.since}' AND '${opts.until}'`;
         })()
       : clampGoogleAdsDatePeriodForPlan(userPlan, "LAST_30_DAYS");
 
@@ -389,9 +387,8 @@ async function syncTikTok(opts: {
   let endDate: string;
   let startDate: string;
   if (opts.since && opts.until) {
-    const r = clampTimeRangeToPlanMaxDays(userPlan, { since: opts.since, until: opts.until });
-    startDate = r.since;
-    endDate = r.until;
+    startDate = opts.since;
+    endDate = opts.until;
   } else {
     endDate = new Date().toISOString().split("T")[0];
     startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];

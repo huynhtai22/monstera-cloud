@@ -10,12 +10,10 @@ import { getPlanLimits } from "@/lib/plan-config";
  * Query stored CampaignMetric data with plan-based pagination safeguards.
  * 
  * TIERED LIMITS (per query):
- * - Free: 30 days, 500 rows
- * - Starter: 90 days, 1,000 rows  
- * - Pro: 365 days, 5,000 rows
- * - Enterprise: 730 days, 10,000 rows
- * 
- * This prevents OOM errors and query timeouts when tables have millions of rows.
+ * - Rows per query is plan-based to protect DB performance.
+ *
+ * Date ranges are intentionally not clamped (\"free rewind\") — large ranges may be slower and
+ * require pagination, but are supported.
  */
 
 interface MetricWhereClause {
@@ -60,30 +58,16 @@ export async function GET(req: Request) {
   const startDate = startDateStr ? new Date(startDateStr) : null;
   const endDate = endDateStr ? new Date(endDateStr) : null;
 
-  // Enforce date range constraints to prevent unbounded queries
+  // Validate date range inputs
   if (!startDate || !endDate) {
     return NextResponse.json(
-      { error: "startDate and endDate are required (max 90 days range)" },
+      { error: "startDate and endDate are required" },
       { status: 400 }
     );
   }
 
   const dateRangeMs = endDate.getTime() - startDate.getTime();
   const dateRangeDays = dateRangeMs / (1000 * 60 * 60 * 24);
-
-  if (dateRangeDays > limits.explorerMaxDateRangeDays) {
-    return NextResponse.json(
-      { 
-        error: `Date range too large. Your ${plan} plan allows maximum ${limits.explorerMaxDateRangeDays} days. Upgrade for more.`,
-        plan,
-        limits: {
-          maxDateRangeDays: limits.explorerMaxDateRangeDays,
-          maxRowsPerQuery: limits.explorerMaxRowsPerQuery,
-        }
-      },
-      { status: 400 }
-    );
-  }
 
   if (dateRangeDays < 0) {
     return NextResponse.json(
@@ -233,7 +217,7 @@ export async function GET(req: Request) {
   } catch (error) {
     console.error("[metrics/query] Error:", error);
     return NextResponse.json(
-      { error: "Failed to query metrics. Try a smaller date range." },
+      { error: "Failed to query metrics. Try again or narrow filters." },
       { status: 500 }
     );
   }

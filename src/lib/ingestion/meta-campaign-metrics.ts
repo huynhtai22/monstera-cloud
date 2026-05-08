@@ -5,7 +5,7 @@ import {
   type MetaAction,
 } from "@/lib/meta-ads";
 import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
-import { getPlanLimits, clampTimeRangeToPlanMaxDays } from "@/lib/plan-config";
+import { getPlanLimits } from "@/lib/plan-config";
 import { logger } from "@/lib/logger";
 import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
@@ -129,10 +129,7 @@ export async function syncMetaInsightsIntoWarehouse(
     throw new Error("No Meta ad accounts on this connection. Reconnect Meta Ads.");
   }
 
-  let range = clampTimeRangeToPlanMaxDays(params.userPlan, {
-    since: params.since,
-    until: params.until,
-  });
+  const range = { since: params.since, until: params.until };
 
   const accessToken = await getValidOAuthToken(conn);
 
@@ -171,14 +168,6 @@ export async function syncMetaInsightsIntoWarehouse(
       });
       if (ok) total += 1;
     }
-  }
-
-  if (range.clamped) {
-    logger.info("[meta-warehouse] Date range clamped by plan", {
-      connectionId: params.connectionId,
-      requestedSince: params.since,
-      usedSince: range.since,
-    });
   }
 
   return { upserted: total, accounts: acctCount };
