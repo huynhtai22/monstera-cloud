@@ -22,6 +22,7 @@ import { ConnectedSourceCard } from "@/components/sources/ConnectedSourceCard";
 import { IntegrationCard, IntegrationCardSkeleton } from "@/components/sources/IntegrationCard";
 import { RecentSyncsSection } from "@/components/sources/RecentSyncsSection";
 import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
+import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin" });
@@ -77,6 +78,22 @@ export default function SourcesPage() {
     const [activeFilter, setActiveFilter] = useState('all');
     const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
     const addSourceMenuRef = useRef<HTMLDivElement>(null);
+
+    type ViewMode = "cards" | "list";
+    const [viewMode, setViewMode] = useState<ViewMode>("cards");
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        try {
+            const raw = window.localStorage.getItem("mc_sources_view_mode");
+            if (raw === "list" || raw === "cards") setViewMode(raw);
+        } catch { /* ignore */ }
+    }, []);
+    const setViewModePersisted = (m: ViewMode) => {
+        setViewMode(m);
+        try {
+            window.localStorage.setItem("mc_sources_view_mode", m);
+        } catch { /* ignore */ }
+    };
     
     // P1: Fix It flow state
     const [fixConnectionTarget, setFixConnectionTarget] = useState<{
@@ -476,6 +493,7 @@ export default function SourcesPage() {
 
                 return {
                     id: conn.id,
+                    provider: conn.provider,
                     catalogId,
                     name: conn.name,
                     description: desc,
@@ -839,6 +857,33 @@ export default function SourcesPage() {
                             Available
                         </button>
                     </div>
+                    {/* View mode toggle — cards for onboarding, list for inventory/bulk */}
+                    <div className="hidden sm:flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setViewModePersisted("cards")}
+                            className={cn(
+                                "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors",
+                                viewMode === "cards"
+                                    ? "border-cyan-300/60 bg-cyan-50 text-cyan-900 dark:border-cyan-600/40 dark:bg-cyan-950/40 dark:text-cyan-100"
+                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:bg-slate-900",
+                            )}
+                        >
+                            Cards
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewModePersisted("list")}
+                            className={cn(
+                                "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors",
+                                viewMode === "list"
+                                    ? "border-cyan-300/60 bg-cyan-50 text-cyan-900 dark:border-cyan-600/40 dark:bg-cyan-950/40 dark:text-cyan-100"
+                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:bg-slate-900",
+                            )}
+                        >
+                            List
+                        </button>
+                    </div>
                     {!isLoading && connectedSourceCount > 0 && (
                         <span className="text-xs text-gray-400 dark:text-slate-500">
                             {filterStats.connected} connected · {filterStats.available} to connect
@@ -887,20 +932,31 @@ export default function SourcesPage() {
                                     {connectedRows.length} connected
                                 </span>
                             </div>
-                            <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ gridAutoRows: "minmax(0,auto)", isolation: "isolate" }}>
-                                {connectedRows.map((integration: any) => (
-                                    <div key={integration.id} className="stagger-item min-w-0">
-                                    <ConnectedSourceCard
-                                        integration={integration}
-                                        busyActions={busyActions}
-                                        onSync={handleSync}
-                                        onDirectSync={handleDirectSync}
-                                        onDisconnect={disconnectSource}
-                                        onFixConnection={handleFixConnection}
-                                    />
-                                    </div>
-                                ))}
-                            </div>
+                            {viewMode === "list" && activeFilter !== "available" ? (
+                                <ConnectedSourceList
+                                    rows={connectedRows}
+                                    busyActions={busyActions}
+                                    onSync={handleSync}
+                                    onDirectSync={(id, provider) => handleDirectSync(id, provider)}
+                                    onDisconnect={disconnectSource}
+                                    onFixConnection={handleFixConnection}
+                                />
+                            ) : (
+                                <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ gridAutoRows: "minmax(0,auto)", isolation: "isolate" }}>
+                                    {connectedRows.map((integration: any) => (
+                                        <div key={integration.id} className="stagger-item min-w-0">
+                                        <ConnectedSourceCard
+                                            integration={integration}
+                                            busyActions={busyActions}
+                                            onSync={handleSync}
+                                            onDirectSync={handleDirectSync}
+                                            onDisconnect={disconnectSource}
+                                            onFixConnection={handleFixConnection}
+                                        />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </section>
                     ) : null}
                     {availableCards.length > 0 ? (
