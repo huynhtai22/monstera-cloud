@@ -476,6 +476,7 @@ export default function SourcesPage() {
 
                 return {
                     id: conn.id,
+                    provider: conn.provider,
                     catalogId,
                     name: conn.name,
                     description: desc,
