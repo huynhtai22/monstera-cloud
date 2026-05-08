@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
+export async function GET() {
+  return NextResponse.json(
+    { message: "Method not allowed. Use POST with JSON body { email }." },
+    { status: 405 },
+  );
+}
+
 export async function POST(req: Request) {
   try {
     const { email } = await req.json();

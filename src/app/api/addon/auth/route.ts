@@ -1,21 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { logger } from "@/lib/logger";
-
-async function verifyGoogleIdToken(idToken: string): Promise<string | null> {
-  try {
-    const res = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data.email || data.email_verified !== 'true') return null;
-    if (data.exp && Number(data.exp) * 1000 < Date.now()) return null;
-    return data.email as string;
-  } catch {
-    return null;
-  }
-}
+import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,10 +10,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing idToken' }, { status: 400 });
     }
 
-    const email = await verifyGoogleIdToken(idToken);
-    if (!email) {
+    const verification = await verifyGoogleIdToken(idToken, {
+      audiences: getGoogleIdTokenAudienceAllowlist(),
+    });
+    if (!verification) {
       return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
     }
+    const email = verification.email;
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {

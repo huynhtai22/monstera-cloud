@@ -3,6 +3,11 @@ import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { apiRatelimit } from "@/lib/ratelimit";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
+import {
+  pathnameNeedsAgencyRewrite,
+  resolveAgencySlugFromHost,
+  stripAgencyPath,
+} from "@/lib/agency-host";
 
 /** Logged-in app surfaces (must match routes under `src/app/(app)/`). */
 const APP_AUTH_SEGMENTS = [
@@ -16,6 +21,13 @@ const APP_AUTH_SEGMENTS = [
   "destinations",
   "transformations",
   "internal-templates",
+  "overview",
+  "quickstart",
+  "ops",
+  "meta-ads",
+  "shopee",
+  "google-ads",
+  "tiktok-ads",
 ] as const;
 
 function pathnameNeedsAppAuth(pathname: string): boolean {
@@ -25,6 +37,21 @@ function pathnameNeedsAppAuth(pathname: string): boolean {
 }
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const host = request.headers.get("host") ?? "";
+
+  const agencySlug =
+    !pathname.startsWith("/agencies/")
+      ? resolveAgencySlugFromHost(host)
+      : null;
+  const shouldAgencyRewrite = Boolean(
+    agencySlug && pathnameNeedsAgencyRewrite(pathname),
+  );
+
+  const authCheckPath = pathname.startsWith("/agencies/")
+    ? stripAgencyPath(pathname)
+    : pathname;
+
   // Global rate limit for all /api/* routes (excluding add-on endpoints)
   // Uses Upstash if configured; otherwise no-op.
   if (
@@ -100,7 +127,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Require a session JWT for in-app pages (otherwise /api/workspaces returns 401 and the UI looks "broken").
-  if (pathnameNeedsAppAuth(request.nextUrl.pathname)) {
+  if (pathnameNeedsAppAuth(authCheckPath)) {
     const token = await getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET,
@@ -108,7 +135,7 @@ export async function middleware(request: NextRequest) {
     if (!token) {
       const login = new URL("/login", request.url);
       const nextPath =
-        request.nextUrl.pathname +
+        authCheckPath +
         (request.nextUrl.search || "");
       login.searchParams.set(
         "callbackUrl",
@@ -116,6 +143,15 @@ export async function middleware(request: NextRequest) {
       );
       return NextResponse.redirect(login);
     }
+  }
+
+  if (shouldAgencyRewrite && agencySlug) {
+    const url = request.nextUrl.clone();
+    const suffix = pathname === "/" ? "/console" : pathname;
+    url.pathname = `/agencies/${agencySlug}${suffix}`;
+    const res = NextResponse.rewrite(url);
+    res.headers.set("x-monstera-agency-slug", agencySlug);
+    return res;
   }
 
   return NextResponse.next();
@@ -148,5 +184,21 @@ export const config = {
     "/internal-templates/:path*",
     "/console",
     "/console/:path*",
+    "/agencies",
+    "/agencies/:path*",
+    "/overview",
+    "/overview/:path*",
+    "/quickstart",
+    "/quickstart/:path*",
+    "/ops",
+    "/ops/:path*",
+    "/meta-ads",
+    "/meta-ads/:path*",
+    "/shopee",
+    "/shopee/:path*",
+    "/google-ads",
+    "/google-ads/:path*",
+    "/tiktok-ads",
+    "/tiktok-ads/:path*",
   ],
 };
