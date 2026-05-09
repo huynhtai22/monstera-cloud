@@ -71,17 +71,14 @@
 }
 
 .dark {
-    /* Slightly lifted from slate-950 so surfaces/cards can separate clearly */
-    --background: #0f172a;
-    /* slate-900 */
-    --foreground: #f1f5f9;
-    /* slate-100 — slightly softer than pure white on black */
+    --background: #0f172a; /* slate-900 */
+    --foreground: #f8fafc; /* slate-50 */
 
     /* UI system tokens (RGB triplets) */
     --ui-bg-rgb: 15 23 42;
-    --ui-fg-rgb: 241 245 249;
-    --ui-border-rgb: 51 65 85; /* slate-700 */
-    --ui-muted-bg-rgb: 30 41 59; /* slate-800 */
+    --ui-fg-rgb: 248 250 252;
+    --ui-border-rgb: 30 41 59; /* slate-800 */
+    --ui-muted-bg-rgb: 2 6 23; /* slate-950 */
     --ui-muted-fg-rgb: 148 163 184; /* slate-400 */
 }
 
@@ -296,8 +293,8 @@ html.disable-transitions *::after {
 
 .dark .glass-panel {
     border-color: rgba(255,255,255,0.08);
-    background: rgb(15, 23, 42);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    background: rgba(15, 23, 42, 0.4);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
 .dark .glass-panel:hover {
@@ -326,8 +323,8 @@ html.disable-transitions *::after {
 
 .dark .glass-card {
     border-color: rgba(255,255,255,0.08);
-    background: rgb(15, 23, 42);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    background: rgba(15, 23, 42, 0.5);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
 .dark .glass-card:hover {

@@ -154,7 +154,7 @@ export function PillarGrid({
     const noReportsYet = syncLogs.length === 0;
 
     return (
-        <div className="relative z-10 stagger-list grid grid-cols-1 gap-4 md:grid-cols-3" style={{ gridAutoRows: "minmax(160px, auto)" }}>
+        <div className="relative z-10 stagger-list grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-3" style={{ gridAutoRows: "minmax(160px, auto)" }}>
             <div className="stagger-item min-w-0">
                 <SectionOverviewCard
                     icon={<Plug className="h-5 w-5" />}
