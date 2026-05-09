@@ -19,7 +19,7 @@ export function EmptyState({ icon, title, description, primaryAction, secondaryA
                 className
             )}
         >
-            <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-200/50 bg-white/80 text-cyan-600 shadow-sm dark:border-cyan-800/50 dark:bg-slate-950/40 dark:text-cyan-300 [&>svg]:h-5 [&>svg]:w-5">
+            <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-200/50 bg-white/80 text-cyan-600 shadow-sm dark:border-cyan-800/50 dark:bg-[#000000]/40 dark:text-cyan-300 [&>svg]:h-5 [&>svg]:w-5">
                 {icon}
             </div>
             <h3 className="mb-1 text-lg font-semibold text-gray-900 dark:text-white">{title}</h3>

@@ -75,7 +75,7 @@ export function AiPerformanceSummary({ workspaceId }: Props) {
                     onClick={() => void run()}
                     disabled={loading || !workspaceId}
                     className={cn(
-                        "inline-flex shrink-0 items-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 py-2 text-xs font-semibold text-indigo-900 shadow-sm transition hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-800 dark:bg-slate-900 dark:text-indigo-100 dark:hover:bg-indigo-950/60"
+                        "inline-flex shrink-0 items-center gap-2 rounded-xl border border-indigo-200 bg-white px-4 py-2 text-xs font-semibold text-indigo-900 shadow-sm transition hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-800 dark:bg-[#000000] dark:text-indigo-100 dark:hover:bg-indigo-950/60"
                     )}
                 >
                     {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}

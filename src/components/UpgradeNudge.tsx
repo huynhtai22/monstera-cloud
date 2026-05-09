@@ -34,7 +34,7 @@ export function UpgradeNudge() {
         >
             <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div className="flex min-w-0 items-start gap-3 sm:items-center">
-                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-amber-200/80 bg-white/80 text-amber-600 shadow-sm dark:border-amber-800/60 dark:bg-slate-900/80 dark:text-amber-400">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-amber-200/80 bg-white/80 text-amber-600 shadow-sm dark:border-amber-800/60 dark:bg-[#000000]/80 dark:text-amber-400">
                         <AlertTriangle className="h-4 w-4" aria-hidden />
                     </div>
                     <div className="min-w-0">

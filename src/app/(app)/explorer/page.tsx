@@ -150,14 +150,14 @@ export default function DataExplorerPage() {
                 </div>
             </div>
 
-            <div className="mb-8 flex shrink-0 flex-wrap gap-2 border-b border-gray-200/80 pb-4 dark:border-slate-700/80">
+            <div className="mb-8 flex shrink-0 flex-wrap gap-2 border-b border-gray-200/80 pb-4 dark:border-[#2f3336]/80">
                 <button
                     type="button"
                     onClick={() => setTab("warehouse")}
                     className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
                         tab === "warehouse"
                             ? "bg-cyan-600 text-white shadow-md shadow-cyan-500/25"
-                            : "border border-gray-200 bg-white/80 text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-200 dark:hover:bg-slate-800"
+                            : "border border-gray-200 bg-white/80 text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/50 dark:text-slate-200 dark:hover:bg-[#16181c]"
                     }`}
                 >
                     <Database className="h-4 w-4" />
@@ -169,7 +169,7 @@ export default function DataExplorerPage() {
                     className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
                         tab === "csv"
                             ? "bg-cyan-600 text-white shadow-md shadow-cyan-500/25"
-                            : "border border-gray-200 bg-white/80 text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900/50 dark:text-slate-200 dark:hover:bg-slate-800"
+                            : "border border-gray-200 bg-white/80 text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/50 dark:text-slate-200 dark:hover:bg-[#16181c]"
                     }`}
                 >
                     <UploadCloud className="h-4 w-4" />
@@ -180,7 +180,7 @@ export default function DataExplorerPage() {
             {tab === "warehouse" && <WarehouseWorkbench />}
 
             {tab === "csv" && !showCsvGrid && (
-                <div className="group relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-gray-200/90 bg-white/50 p-8 text-center backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/40">
+                <div className="group relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-gray-200/90 bg-white/50 p-8 text-center backdrop-blur-xl dark:border-[#2f3336] dark:bg-[#000000]/40">
                     <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-cyan-500/10 to-transparent" />
 
                     <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border-4 border-cyan-100 bg-cyan-50 transition-transform duration-500 group-hover:scale-105 dark:border-cyan-900/60 dark:bg-cyan-950/40">
@@ -196,7 +196,7 @@ export default function DataExplorerPage() {
                     <input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
 
                     {file && (
-                        <div className="mb-8 flex min-w-[300px] items-center justify-between rounded-xl border border-cyan-100 bg-white p-4 shadow-sm dark:bg-slate-800">
+                        <div className="mb-8 flex min-w-[300px] items-center justify-between rounded-xl border border-cyan-100 bg-white p-4 shadow-sm dark:bg-[#16181c]">
                             <div className="flex items-center">
                                 <Table className="mr-3 h-5 w-5 text-cyan-500" />
                                 <div className="text-left">
@@ -215,7 +215,7 @@ export default function DataExplorerPage() {
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center rounded-xl bg-gray-900 px-6 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-black dark:bg-slate-800"
+                            className="flex items-center rounded-xl bg-gray-900 px-6 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-black dark:bg-[#16181c]"
                         >
                             Select .csv file
                         </button>
@@ -248,8 +248,8 @@ export default function DataExplorerPage() {
             )}
 
             {tab === "csv" && showCsvGrid && (
-                <div className="flex min-h-[480px] flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white/80 shadow-sm dark:border-slate-700 dark:bg-slate-900/60">
-                    <div className="flex shrink-0 items-center justify-between border-b border-gray-200/80 bg-gray-50/90 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/80">
+                <div className="flex min-h-[480px] flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white/80 shadow-sm dark:border-[#2f3336] dark:bg-[#000000]/60">
+                    <div className="flex shrink-0 items-center justify-between border-b border-gray-200/80 bg-gray-50/90 px-4 py-3 dark:border-[#2f3336] dark:bg-[#000000]/80">
                         <div className="flex items-center space-x-3">
                             <div className="rounded-lg bg-cyan-100 p-1.5 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-300">
                                 <Database className="h-4 w-4" />
@@ -264,7 +264,7 @@ export default function DataExplorerPage() {
                         <button
                             type="button"
                             onClick={clearCsv}
-                            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-200"
                         >
                             Clear
                         </button>

@@ -56,7 +56,7 @@ export default function TemplatesGallery() {
 
             {/* Header Section */}
             <div className="mb-10 text-center max-w-2xl mx-auto">
-                <div className="w-12 h-12 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md border border-white dark:border-slate-700/60 dark:border-slate-700/40 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-sm text-indigo-600">
+                <div className="w-12 h-12 bg-white/50 dark:bg-[#000000]/50 backdrop-blur-md border border-white dark:border-[#2f3336]/60 dark:border-[#2f3336]/40 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-sm text-indigo-600">
                     <LayoutTemplate className="w-6 h-6" />
                 </div>
                 <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white mb-3">Template Gallery</h1>
@@ -66,14 +66,14 @@ export default function TemplatesGallery() {
             </div>
 
             {/* Controls Bar */}
-            <div className="bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-white dark:border-slate-700/60 dark:border-slate-700/40 shadow-[0_8px_30px_rgb(0,0,0,0.02)] rounded-2xl p-2 mb-10 flex items-center justify-between">
+            <div className="bg-white/40 dark:bg-[#000000]/40 backdrop-blur-md border border-white dark:border-[#2f3336]/60 dark:border-[#2f3336]/40 shadow-[0_8px_30px_rgb(0,0,0,0.02)] rounded-2xl p-2 mb-10 flex items-center justify-between">
                 <div className="flex px-1 space-x-1">
                     {['All Templates', 'E-commerce', 'Marketing', 'Marketplace'].map((filter) => (
                         <button
                             key={filter}
                             onClick={() => setActiveFilter(filter)}
                             className={`px-4 py-1.5 text-sm font-medium rounded-xl transition-all ${activeFilter === filter
-                                    ? 'bg-white dark:bg-slate-800 shadow-sm text-indigo-600 border border-white dark:border-slate-700/80 dark:border-slate-700/60'
+                                    ? 'bg-white dark:bg-[#16181c] shadow-sm text-indigo-600 border border-white dark:border-[#2f3336]/80 dark:border-[#2f3336]/60'
                                     : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-900 dark:text-white hover:bg-white/20'
                                 }`}
                         >
@@ -89,7 +89,7 @@ export default function TemplatesGallery() {
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="Search templates..."
-                        className="w-full pl-9 pr-4 py-2 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md border border-white dark:border-slate-700/60 dark:border-slate-700/40 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white/80 dark:bg-slate-900/80 transition-all placeholder:text-gray-400 dark:text-gray-500 text-gray-700 dark:text-slate-300"
+                        className="w-full pl-9 pr-4 py-2 bg-white/50 dark:bg-[#000000]/50 backdrop-blur-md border border-white dark:border-[#2f3336]/60 dark:border-[#2f3336]/40 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white/80 dark:bg-[#000000]/80 transition-all placeholder:text-gray-400 dark:text-gray-500 text-gray-700 dark:text-slate-300"
                     />
                 </div>
             </div>
@@ -99,7 +99,7 @@ export default function TemplatesGallery() {
                 {templates.map((template) => (
                     <div
                         key={template.id}
-                        className={`relative overflow-hidden bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl rounded-2xl border border-white dark:border-slate-700/60 dark:border-slate-700/40 p-6 transition-all duration-300 group flex flex-col justify-between cursor-pointer shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/60 dark:bg-slate-900/60 hover:border-indigo-200/50`}
+                        className={`relative overflow-hidden bg-white/40 dark:bg-[#000000]/40 backdrop-blur-xl rounded-2xl border border-white dark:border-[#2f3336]/60 dark:border-[#2f3336]/40 p-6 transition-all duration-300 group flex flex-col justify-between cursor-pointer shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/60 dark:bg-[#000000]/60 hover:border-indigo-200/50`}
                     >
                         {/* Shine Effect */}
                         <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/50 to-white/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none transform -translate-x-full group-hover:translate-x-full" />
@@ -113,7 +113,7 @@ export default function TemplatesGallery() {
                                             'bg-orange-100/50 text-orange-600'}`}>
                                     <template.icon className="w-5 h-5" />
                                 </div>
-                                <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 dark:bg-slate-800/50 text-gray-600 dark:text-gray-300 dark:text-gray-600 border border-gray-200 dark:border-slate-700/50">
+                                <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 dark:bg-[#16181c]/50 text-gray-600 dark:text-gray-300 dark:text-gray-600 border border-gray-200 dark:border-[#2f3336]/50">
                                     {template.category}
                                 </span>
                             </div>
@@ -127,7 +127,7 @@ export default function TemplatesGallery() {
                                 <p className="text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500 mb-2 tracking-wider">Blended Sources</p>
                                 <div className="flex -space-x-2">
                                     {template.sources.map((src, i) => (
-                                        <div key={i} className="relative w-8 h-8 rounded-full border-2 border-white dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 shadow-sm flex items-center justify-center overflow-hidden">
+                                        <div key={i} className="relative w-8 h-8 rounded-full border-2 border-white dark:border-[#2f3336] bg-white/80 dark:bg-[#000000]/80 shadow-sm flex items-center justify-center overflow-hidden">
                                             <Image src={src} alt="Source" width={16} height={16} className="object-contain" />
                                         </div>
                                     ))}
@@ -136,12 +136,12 @@ export default function TemplatesGallery() {
                         </div>
 
                         {/* Card Footer Actions */}
-                        <div className="pt-5 border-t border-gray-200 dark:border-slate-700/50 flex flex-col space-y-3">
+                        <div className="pt-5 border-t border-gray-200 dark:border-[#2f3336]/50 flex flex-col space-y-3">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 font-medium">Deploys to:</span>
                                 <div className="flex space-x-1">
                                     {template.destinations.map(dest => (
-                                        <span key={dest} className="text-xs font-semibold px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 shadow-sm">
+                                        <span key={dest} className="text-xs font-semibold px-2 py-0.5 rounded bg-white dark:bg-[#16181c] border border-gray-200 dark:border-[#2f3336] text-gray-700 dark:text-slate-300 shadow-sm">
                                             {dest}
                                         </span>
                                     ))}

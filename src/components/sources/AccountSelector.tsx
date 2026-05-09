@@ -98,7 +98,7 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
 
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
         <div className="flex items-center gap-2 text-sm text-gray-500">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
           Loading accounts...
@@ -118,11 +118,11 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+    <div className="rounded-xl border border-gray-200 bg-white dark:border-[#2f3336] dark:bg-[#000000]">
       {/* Header */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-slate-800/50"
+        className="flex w-full items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-[#16181c]/50"
       >
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-100 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400">
@@ -145,7 +145,7 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="border-t border-gray-200 p-4 dark:border-slate-700">
+        <div className="border-t border-gray-200 p-4 dark:border-[#2f3336]">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
               Select accounts to sync
@@ -173,14 +173,14 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
             </div>
           </div>
 
-          <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-slate-700 dark:bg-slate-800">
+          <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-[#2f3336] dark:bg-[#16181c]">
             {accounts.map((account) => (
               <label
                 key={account.id}
                 className={cn(
                   "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 transition-colors",
-                  "hover:bg-white dark:hover:bg-slate-700",
-                  account.selected && "bg-white dark:bg-slate-700"
+                  "hover:bg-white dark:hover:bg-[#1d1f23]",
+                  account.selected && "bg-white dark:bg-[#1d1f23]"
                 )}
               >
                 <div
@@ -188,7 +188,7 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
                     "flex h-5 w-5 items-center justify-center rounded border transition-colors",
                     account.selected
                       ? "border-cyan-500 bg-cyan-500 text-white"
-                      : "border-gray-300 bg-white dark:border-slate-600 dark:bg-slate-800"
+                      : "border-gray-300 bg-white dark:border-[#2f3336] dark:bg-[#16181c]"
                   )}
                   onClick={() => toggleAccount(account.id)}
                 >
@@ -209,7 +209,7 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
           <div className="mt-4 flex justify-end gap-2">
             <button
               onClick={() => setIsOpen(false)}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-slate-800"
+              className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-[#16181c]"
             >
               Cancel
             </button>

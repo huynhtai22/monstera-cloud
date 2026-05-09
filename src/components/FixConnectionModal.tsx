@@ -202,14 +202,14 @@ export function FixConnectionModal({
             {/* Modal */}
             <div
                 className={cn(
-                    "relative w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900",
+                    "relative w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-[#2f3336] dark:bg-[#000000]",
                     "transition-all duration-[280ms]",
                     isVisible ? "scale-100 opacity-100" : "scale-95 opacity-0"
                 )}
                 style={{ transitionTimingFunction: DIALOG_EASE }}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-slate-800">
+                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-[#2f3336]">
                     <div className="flex items-center gap-3">
                         <img src={logo} alt="" className="h-6 w-6 object-contain" />
                         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -218,7 +218,7 @@ export function FixConnectionModal({
                     </div>
                     <button
                         onClick={handleClose}
-                        className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-slate-800 dark:hover:text-gray-300"
+                        className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-[#16181c] dark:hover:text-gray-300"
                     >
                         <X className="h-5 w-5" />
                     </button>
@@ -252,7 +252,7 @@ export function FixConnectionModal({
                             </div>
 
                             {/* Connection details */}
-                            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
+                            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-[#2f3336] dark:bg-[#16181c]/50">
                                 <p className="text-xs text-gray-500 dark:text-gray-400">Connection</p>
                                 <p className="font-medium text-gray-900 dark:text-white">{connection.name}</p>
                                 {connection.lastSync && connection.lastSync !== "Never" && (

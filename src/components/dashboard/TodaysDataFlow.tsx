@@ -54,12 +54,12 @@ export function TodaysDataFlow() {
 
     if (isLoading) {
         return (
-            <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+            <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-[#2f3336] dark:bg-[#000000]">
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-slate-400">
                     <Database className="h-4 w-4" />
                     Today&apos;s data flow
                 </div>
-                <div className="mt-4 h-8 w-32 animate-pulse rounded bg-gray-100 dark:bg-slate-800" />
+                <div className="mt-4 h-8 w-32 animate-pulse rounded bg-gray-100 dark:bg-[#16181c]" />
             </div>
         );
     }
@@ -92,7 +92,7 @@ export function TodaysDataFlow() {
     // If no data today
     if (todayLogs.length === 0) {
         return (
-            <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+            <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-[#2f3336] dark:bg-[#000000]">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-slate-400">
                         <Database className="h-4 w-4" />
@@ -112,7 +112,7 @@ export function TodaysDataFlow() {
     }
 
     return (
-        <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-[#2f3336] dark:bg-[#000000]">
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-slate-400">
                     <Database className="h-4 w-4" />

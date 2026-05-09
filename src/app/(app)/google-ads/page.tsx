@@ -60,13 +60,13 @@ export default function GoogleAdsPage() {
 
   const leftColumn = (
     <div className="space-y-6">
-      <div className="p-6 rounded-2xl bg-white border border-gray-100 shadow-sm dark:bg-slate-900/50 dark:border-slate-800">
+      <div className="p-6 rounded-2xl bg-white border border-gray-100 shadow-sm dark:bg-[#000000]/50 dark:border-[#2f3336]">
         <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 uppercase tracking-wider">Report Settings</h3>
         
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Customer Account</label>
-            <select className="w-full bg-gray-50 border-none rounded-xl text-sm p-3 focus:ring-cyan-500 dark:bg-slate-800 dark:text-white">
+            <select className="w-full bg-gray-50 border-none rounded-xl text-sm p-3 focus:ring-cyan-500 dark:bg-[#16181c] dark:text-white">
               {gadsConnections.map((c: any) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -140,7 +140,7 @@ export default function GoogleAdsPage() {
           ) : reportResult ? (
             <div className="p-0 overflow-auto">
                 <table className="w-full text-left text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-100 dark:bg-slate-800 dark:border-slate-700">
+                    <thead className="bg-gray-50 border-b border-gray-100 dark:bg-[#16181c] dark:border-[#2f3336]">
                         <tr>
                             <th className="px-4 py-3 font-bold text-gray-400 uppercase text-[10px]">Campaign</th>
                             <th className="px-4 py-3 font-bold text-gray-400 uppercase text-[10px]">Status</th>
@@ -150,7 +150,7 @@ export default function GoogleAdsPage() {
                     </thead>
                     <tbody className="divide-y divide-gray-50 dark:divide-slate-800">
                         {reportResult.data?.map((row: any, i: number) => (
-                            <tr key={i} className="hover:bg-gray-50 transition-colors dark:hover:bg-slate-800/50">
+                            <tr key={i} className="hover:bg-gray-50 transition-colors dark:hover:bg-[#16181c]/50">
                                 <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{row.campaign_name}</td>
                                 <td className="px-4 py-3">
                                     <span className="px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-600 text-[10px] font-bold uppercase tracking-wider">{row.status}</span>
@@ -169,7 +169,7 @@ export default function GoogleAdsPage() {
                 <p className="text-sm opacity-80">{error}</p>
             </div>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center p-12 text-center border-2 border-dashed border-gray-100 rounded-xl m-4 dark:border-slate-800">
+            <div className="flex flex-1 flex-col items-center justify-center p-12 text-center border-2 border-dashed border-gray-100 rounded-xl m-4 dark:border-[#2f3336]">
               <LineChart className="h-12 w-12 text-gray-200 dark:text-slate-800 mb-4" />
               <h4 className="text-lg font-bold text-gray-300 dark:text-slate-700">No data loaded</h4>
               <p className="text-sm text-gray-400 dark:text-slate-600">Choose an account to fetch campaign performance.</p>

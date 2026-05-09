@@ -139,17 +139,17 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
 
     return (
         <div
-            className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-slate-50 shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:border-slate-700/90 dark:bg-slate-950 dark:shadow-[4px_0_32px_rgba(0,0,0,0.45)] lg:translate-x-0 ${collapsed ? "w-[68px]" : "w-64"} ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
+            className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-slate-50 shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:border-[#2f3336]/90 dark:bg-[#000000] dark:shadow-[4px_0_32px_rgba(0,0,0,0.7)] lg:translate-x-0 ${collapsed ? "w-[68px]" : "w-64"} ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
             style={{ transition: "width 220ms cubic-bezier(0.25,0.1,0.25,1), transform 300ms ease-in-out" }}
         >
-            <div ref={workspaceRef} className={`relative z-20 border-b border-gray-200/60 dark:border-slate-800 ${collapsed ? "px-2 py-4" : "px-4 py-5"}`}>
+            <div ref={workspaceRef} className={`relative z-20 border-b border-gray-200/60 dark:border-[#2f3336] ${collapsed ? "px-2 py-4" : "px-4 py-5"}`}>
                 <button
                     type="button"
                     onClick={() => collapsed ? toggleCollapsed() : setIsWorkspaceOpen(!isWorkspaceOpen)}
                     aria-expanded={isWorkspaceOpen}
                     aria-controls="workspace-menu"
                     aria-haspopup="menu"
-                    className={`group flex w-full items-center rounded-xl border border-gray-200 bg-white shadow-sm transition-all hover:border-cyan-500/30 hover:shadow-md dark:border-slate-700 dark:bg-slate-800 dark:hover:border-cyan-500/50 ${collapsed ? "justify-center p-2" : "justify-between px-3 py-2"}`}
+                    className={`group flex w-full items-center rounded-xl border border-gray-200 bg-white shadow-sm transition-all hover:border-cyan-500/30 hover:shadow-md dark:border-[#2f3336] dark:bg-[#16181c] dark:hover:border-cyan-500/50 ${collapsed ? "justify-center p-2" : "justify-between px-3 py-2"}`}
                     title={collapsed ? (activeWorkspace?.name || "Workspace") : undefined}
                 >
                     <div className={`flex items-center ${collapsed ? "justify-center" : ""}`}>
@@ -188,7 +188,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                 {isWorkspaceOpen && Array.isArray(workspaces) && (
                     <div
                         id="workspace-menu"
-                        className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200 dark:border-slate-700 dark:bg-slate-800"
+                        className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200 dark:border-[#2f3336] dark:bg-[#16181c]"
                     >
                         <div className="mb-1 px-2 py-1 text-xs font-bold uppercase text-gray-400 dark:text-gray-500">
                             Your Workspaces
@@ -202,7 +202,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                                     setActiveWorkspaceId(ws.id);
                                     setIsWorkspaceOpen(false);
                                 }}
-                                className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:text-white dark:hover:bg-slate-700"
+                                className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:text-white dark:hover:bg-[#1d1f23]"
                             >
                                 <div className="flex items-center">
                                     <div className="mr-2 flex h-6 w-6 items-center justify-center rounded bg-cyan-100 text-xs font-bold text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-400">
@@ -214,10 +214,10 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                             </button>
                         ))}
 
-                        <div className="my-1 h-px bg-gray-100 dark:bg-slate-700" />
+                        <div className="my-1 h-px bg-gray-100 dark:bg-[#1d1f23]" />
                         <button
                             type="button"
-                            className="flex w-full items-center rounded-lg px-2 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-slate-700"
+                            className="flex w-full items-center rounded-lg px-2 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-[#1d1f23]"
                         >
                             <div className="mr-2 flex h-6 w-6 items-center justify-center rounded border border-dashed border-gray-300 dark:border-gray-500">
                                 <span className="text-lg leading-none text-gray-400">+</span>
@@ -228,10 +228,10 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                 )}
             </div>
 
-            <div className={`border-b border-gray-200/60 dark:border-slate-800 ${collapsed ? "px-2 py-2" : "px-4 py-2"}`}>
+            <div className={`border-b border-gray-200/60 dark:border-[#2f3336] ${collapsed ? "px-2 py-2" : "px-4 py-2"}`}>
                 <Link
                     href="/"
-                    className={`flex items-center rounded-lg py-2 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-50 hover:text-cyan-700 dark:text-slate-400 dark:hover:bg-slate-800/80 dark:hover:text-cyan-300 ${collapsed ? "justify-center px-0" : "gap-2 px-3"}`}
+                    className={`flex items-center rounded-lg py-2 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-50 hover:text-cyan-700 dark:text-slate-400 dark:hover:bg-[#16181c]/80 dark:hover:text-cyan-300 ${collapsed ? "justify-center px-0" : "gap-2 px-3"}`}
                     title={collapsed ? "Website" : undefined}
                 >
                     <Globe className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
@@ -262,7 +262,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                                         title={collapsed ? item.name : undefined}
                                         className={`group flex items-center rounded-lg py-2 text-sm font-medium transition-all ${collapsed ? "justify-center px-0" : "px-3"} ${isActive
                                             ? "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/55 dark:text-cyan-100 dark:ring-1 dark:ring-cyan-700/50"
-                                            : "text-gray-600 hover:bg-gray-50/80 hover:text-gray-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                                            : "text-gray-600 hover:bg-gray-50/80 hover:text-gray-900 dark:text-slate-300 dark:hover:bg-[#16181c] dark:hover:text-white"
                                             }`}
                                     >
                                         <item.icon
@@ -278,11 +278,11 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
             </nav>
 
             {/* Collapse toggle — desktop only, integrated row */}
-            <div className={`hidden lg:block border-t border-gray-200/60 dark:border-slate-800 ${collapsed ? "px-2 py-2" : "px-4 py-2"}`}>
+            <div className={`hidden lg:block border-t border-gray-200/60 dark:border-[#2f3336] ${collapsed ? "px-2 py-2" : "px-4 py-2"}`}>
                 <button
                     type="button"
                     onClick={toggleCollapsed}
-                    className={`group flex w-full items-center rounded-lg py-2 text-xs font-medium text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300 ${collapsed ? "justify-center px-0" : "gap-2 px-3"}`}
+                    className={`group flex w-full items-center rounded-lg py-2 text-xs font-medium text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-slate-500 dark:hover:bg-[#16181c] dark:hover:text-slate-300 ${collapsed ? "justify-center px-0" : "gap-2 px-3"}`}
                     title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                 >
                     {collapsed
@@ -292,7 +292,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                 </button>
             </div>
 
-            <div className={`border-t border-gray-200/60 dark:border-slate-800 space-y-2 bg-white/50 dark:bg-slate-900 overflow-visible relative z-30 ${collapsed ? "p-2" : "p-4"}`} ref={profileRef}>
+            <div className={`border-t border-gray-200/60 dark:border-[#2f3336] space-y-2 bg-white/50 dark:bg-[#000000] overflow-visible relative z-30 ${collapsed ? "p-2" : "p-4"}`} ref={profileRef}>
                 <div className={`space-y-1 mb-4 hidden lg:block`}>
                     <a
                         href="/docs"
@@ -300,7 +300,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                         rel="noopener noreferrer"
                         aria-label="Help and documentation"
                         onClick={() => trackEvent("help_opened", { location: "sidebar" })}
-                        className={`flex items-center w-full py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white transition-colors group ${collapsed ? "justify-center px-0" : "px-3"}`}
+                        className={`flex items-center w-full py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#16181c] hover:text-gray-900 dark:hover:text-white transition-colors group ${collapsed ? "justify-center px-0" : "px-3"}`}
                         title={collapsed ? "Help & docs" : undefined}
                     >
                         <HelpCircle className={`w-[18px] h-[18px] shrink-0 text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400 ${collapsed ? "" : "mr-3"}`} />
@@ -308,7 +308,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                     </a>
                     <button
                         onClick={toggleDarkMode}
-                        className={`flex items-center w-full py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-white transition-colors group ${collapsed ? "justify-center px-0" : "px-3"}`}
+                        className={`flex items-center w-full py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#16181c] hover:text-gray-900 dark:hover:text-white transition-colors group ${collapsed ? "justify-center px-0" : "px-3"}`}
                         title={collapsed ? (isDarkMode ? "Light Mode" : "Dark Mode") : undefined}
                     >
                         {isDarkMode ? <Sun className={`w-[18px] h-[18px] shrink-0 text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400 ${collapsed ? "" : "mr-3"}`} /> : <Moon className={`w-[18px] h-[18px] shrink-0 text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400 ${collapsed ? "" : "mr-3"}`} />}
@@ -320,24 +320,24 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                     {isProfileOpen && (
                         <div
                             id="profile-menu"
-                            className="absolute bottom-[calc(100%+8px)] left-0 w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg p-2 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50"
+                            className="absolute bottom-[calc(100%+8px)] left-0 w-full bg-white dark:bg-[#16181c] border border-gray-200 dark:border-[#2f3336] rounded-xl shadow-lg p-2 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50"
                         >
-                            <Link href="/settings" onClick={() => { setIsOpen && setIsOpen(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                            <Link href="/settings" onClick={() => { setIsOpen && setIsOpen(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1d1f23] rounded-lg transition-colors">
                                 <Settings className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" /> Settings
                             </Link>
-                            <Link href="/settings" onClick={() => { setIsOpen && setIsOpen(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                            <Link href="/settings" onClick={() => { setIsOpen && setIsOpen(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1d1f23] rounded-lg transition-colors">
                                 <KeyRound className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" /> API Keys
                             </Link>
 
                             <div className="lg:hidden">
-                                <div className="h-px bg-gray-100 dark:bg-slate-700 my-1"></div>
-                                <button onClick={() => { toggleDarkMode && toggleDarkMode(); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                                <div className="h-px bg-gray-100 dark:bg-[#1d1f23] my-1"></div>
+                                <button onClick={() => { toggleDarkMode && toggleDarkMode(); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1d1f23] rounded-lg transition-colors">
                                     {isDarkMode ? <Sun className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" /> : <Moon className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" />}
                                     {isDarkMode ? 'Light Mode' : 'Dark Mode'}
                                 </button>
                             </div>
 
-                            <div className="h-px bg-gray-100 dark:bg-slate-700 my-1"></div>
+                            <div className="h-px bg-gray-100 dark:bg-[#1d1f23] my-1"></div>
                             <button
                                 type="button"
                                 onClick={() => signOut({ callbackUrl: "/login" })}
@@ -354,7 +354,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                         aria-controls="profile-menu"
                         aria-haspopup="menu"
                         title={collapsed ? (session?.user?.name || "User") : undefined}
-                        className={`flex items-center w-full bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm hover:border-gray-300 dark:hover:border-gray-600 transition-colors ${collapsed ? "justify-center p-1.5" : "justify-between p-2"}`}
+                        className={`flex items-center w-full bg-white dark:bg-[#16181c] rounded-xl border border-gray-200 dark:border-[#2f3336] shadow-sm hover:border-gray-300 dark:hover:border-gray-600 transition-colors ${collapsed ? "justify-center p-1.5" : "justify-between p-2"}`}
                     >
                         <div className={`flex items-center ${collapsed ? "justify-center" : "flex-1"}`}>
                             <div className={`${collapsed ? "w-8 h-8 text-xs" : "w-9 h-9 text-sm mr-3"} rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-400 font-bold flex items-center justify-center shadow-inner border border-indigo-200 dark:border-indigo-800`}>

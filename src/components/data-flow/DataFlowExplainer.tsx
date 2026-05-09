@@ -43,7 +43,7 @@ export function DataFlowExplainer({ variant }: { variant: Variant }) {
     }
 
     return (
-        <div className="mb-6 rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/60">
+        <div className="mb-6 rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm dark:border-[#2f3336]/60 dark:bg-[#000000]/60">
             {/* Header */}
             <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -55,7 +55,7 @@ export function DataFlowExplainer({ variant }: { variant: Variant }) {
                 <button
                     type="button"
                     onClick={dismiss}
-                    className="rounded-md p-1 text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-500 dark:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-400"
+                    className="rounded-md p-1 text-gray-300 transition-colors hover:bg-gray-100 hover:text-gray-500 dark:text-slate-600 dark:hover:bg-[#16181c] dark:hover:text-slate-400"
                     aria-label="Dismiss"
                 >
                     <X className="h-3.5 w-3.5" />
@@ -89,8 +89,8 @@ export function DataFlowExplainer({ variant }: { variant: Variant }) {
                 </div>
 
                 {/* Step 2 */}
-                <div className="flex min-w-0 flex-1 items-start gap-3 rounded-xl border border-gray-200/80 bg-gray-50/60 p-3 dark:border-slate-700/60 dark:bg-slate-800/40">
-                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-400 text-[10px] font-bold text-white dark:bg-slate-600">
+                <div className="flex min-w-0 flex-1 items-start gap-3 rounded-xl border border-gray-200/80 bg-gray-50/60 p-3 dark:border-[#2f3336]/60 dark:bg-[#16181c]/40">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-400 text-[10px] font-bold text-white dark:bg-[#2f3336]">
                         2
                     </div>
                     <div className="min-w-0">

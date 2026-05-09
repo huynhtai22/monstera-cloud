@@ -46,7 +46,7 @@ export function DemoModeBanner() {
             </div>
             <Link
                 href="/settings?tab=workspace#product-demo"
-                className="shrink-0 rounded-lg border border-violet-300/80 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-violet-900 shadow-sm transition hover:bg-violet-100 dark:border-violet-700 dark:bg-slate-900 dark:text-violet-100 dark:hover:bg-violet-950/80"
+                className="shrink-0 rounded-lg border border-violet-300/80 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-violet-900 shadow-sm transition hover:bg-violet-100 dark:border-violet-700 dark:bg-[#000000] dark:text-violet-100 dark:hover:bg-violet-950/80"
             >
                 Settings
             </Link>

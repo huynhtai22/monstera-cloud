@@ -46,7 +46,7 @@ const DEFAULT_FIELDS = [
 ];
 
 const selectClass = cn(
-  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white",
+  "w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-white",
   inputFocus
 );
 
@@ -55,7 +55,7 @@ const chip = (on: boolean) =>
     "rounded border px-2.5 py-1 text-xs font-medium transition-colors",
     on
       ? "border-primary bg-primary text-white"
-      : "border-gray-200 bg-white text-gray-600 hover:border-primary-ring/50 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-300"
+      : "border-gray-200 bg-white text-gray-600 hover:border-primary-ring/50 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-gray-300"
   );
 
 export default function MetaAdsPage() {
@@ -270,8 +270,8 @@ export default function MetaAdsPage() {
       )}
 
       {!loading && rows.length > 0 && (
-        <div className="border-t border-gray-100 dark:border-slate-700/60">
-          <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80">
+        <div className="border-t border-gray-100 dark:border-[#2f3336]/60">
+          <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-[#2f3336] dark:bg-[#16181c]/80">
             <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
               {rows.length.toLocaleString()} rows
             </span>
@@ -322,7 +322,7 @@ export default function MetaAdsPage() {
 
       {!hasConnection && (
         <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 dark:border-slate-600 dark:bg-slate-800">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c]">
             <Facebook className="h-6 w-6 text-gray-600 dark:text-gray-400" />
           </div>
           <h3 className="mb-2 text-base font-semibold text-gray-900 dark:text-white">

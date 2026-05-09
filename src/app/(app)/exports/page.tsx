@@ -42,7 +42,7 @@ export default function ExportsPage() {
         <div className="relative w-full max-w-5xl mx-auto px-6 py-8 sm:px-10 sm:py-10 animate-in fade-in duration-300">
 
             {/* Header */}
-            <div className="relative z-10 mb-8 flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-gray-200 dark:border-slate-800 pb-6">
+            <div className="relative z-10 mb-8 flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-gray-200 dark:border-[#2f3336] pb-6">
                 <div className="flex items-center gap-4">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-cyan-100 bg-cyan-50 text-cyan-600 shadow-sm dark:border-cyan-900/50 dark:bg-cyan-950/40 dark:text-cyan-400">
                         <Send className="h-6 w-6" aria-hidden />
@@ -59,10 +59,10 @@ export default function ExportsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 
                 {/* Google Sheets Card */}
-                <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-slate-700 dark:bg-slate-800/50">
+                <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-[#2f3336] dark:bg-[#16181c]/50">
                     <div className="p-6">
                         <div className="flex items-center gap-4 mb-4">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 shadow-sm dark:border-[#2f3336] dark:bg-[#16181c]">
                                 <Image src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" width={32} height={32} />
                             </div>
                             <div>
@@ -79,15 +79,15 @@ export default function ExportsPage() {
 
                         <div className="space-y-3 mb-8">
                             <div className="flex items-start gap-3">
-                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600 dark:bg-slate-700 dark:text-gray-300">1</div>
+                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600 dark:bg-[#1d1f23] dark:text-gray-300">1</div>
                                 <p className="text-sm text-gray-600 dark:text-gray-300">Install from the <a href="https://workspace.google.com/marketplace/app/monstera_cloud/placeholder" target="_blank" rel="noopener noreferrer" className="font-semibold text-cyan-600 hover:underline dark:text-cyan-400">Google Workspace Marketplace</a>.</p>
                             </div>
                             <div className="flex items-start gap-3">
-                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600 dark:bg-slate-700 dark:text-gray-300">2</div>
+                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600 dark:bg-[#1d1f23] dark:text-gray-300">2</div>
                                 <p className="text-sm text-gray-600 dark:text-gray-300">Open a spreadsheet and click <strong>Extensions → Monstera Cloud → Launch</strong>.</p>
                             </div>
                             <div className="flex items-start gap-3">
-                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600 dark:bg-slate-700 dark:text-gray-300">3</div>
+                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600 dark:bg-[#1d1f23] dark:text-gray-300">3</div>
                                 <p className="text-sm text-gray-600 dark:text-gray-300">Sign in with your Monstera Cloud account and start pulling data.</p>
                             </div>
                         </div>
@@ -104,10 +104,10 @@ export default function ExportsPage() {
                 </div>
 
                 {/* Looker Studio Card */}
-                <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-slate-700 dark:bg-slate-800/50">
+                <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-[#2f3336] dark:bg-[#16181c]/50">
                     <div className="p-6">
                         <div className="flex items-center gap-4 mb-4">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 shadow-sm dark:border-[#2f3336] dark:bg-[#16181c]">
                                 <Image src={INTEGRATION_LOGOS.looker} alt="Looker Studio" width={32} height={32} />
                             </div>
                             <div>
@@ -129,7 +129,7 @@ export default function ExportsPage() {
                             </label>
                             
                             <div className="flex items-center gap-2 mb-2">
-                                <div className="flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-slate-600 dark:bg-slate-900">
+                                <div className="flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-[#2f3336] dark:bg-[#000000]">
                                     <input
                                         type="text"
                                         readOnly
@@ -145,7 +145,7 @@ export default function ExportsPage() {
 
                             <Link
                                 href="/settings?tab=api"
-                                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 dark:hover:bg-slate-700"
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-gray-200 dark:hover:bg-[#1d1f23]"
                             >
                                 <Settings2 className="h-4 w-4" />
                                 Manage API Keys

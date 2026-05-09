@@ -31,7 +31,7 @@ export function RecentActivity({
     onSync,
 }: RecentActivityProps) {
     return (
-        <div className="flex min-h-[240px] flex-col rounded-2xl border border-white bg-white/40 p-4 shadow-sm backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/40">
+        <div className="flex min-h-[240px] flex-col rounded-2xl border border-white bg-white/40 p-4 shadow-sm backdrop-blur-xl dark:border-[#2f3336]/60 dark:bg-[#000000]/40">
                 <div className="mb-3 flex items-center justify-between gap-2">
                 <div>
                     <h2 className="text-sm font-bold text-gray-900 dark:text-white">Recent activity</h2>
@@ -66,7 +66,7 @@ export function RecentActivity({
                                         className={`h-2.5 w-2.5 rounded-full ${isError ? "bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.1)]" : "bg-cyan-500 shadow-[0_0_0_4px_rgba(6,182,212,0.15)]"}`}
                                     />
                                     {!isLast && (
-                                        <div className="absolute bottom-[-10px] left-[5px] top-4 w-px bg-gray-200 dark:bg-slate-700" />
+                                        <div className="absolute bottom-[-10px] left-[5px] top-4 w-px bg-gray-200 dark:bg-[#1d1f23]" />
                                     )}
                                 </div>
                                 <div>

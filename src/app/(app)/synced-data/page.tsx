@@ -406,7 +406,7 @@ export default function SyncedDataPage() {
       )}
 
       {/* Filters */}
-      <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
         <div className="flex items-center gap-2 mb-4 text-sm font-medium text-gray-700 dark:text-slate-300">
           <Filter className="h-4 w-4" />
           Filters
@@ -509,8 +509,8 @@ export default function SyncedDataPage() {
       </div>
 
       {/* Right sidebar (Meta/Google-like) */}
-      <aside className="mb-6 rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 lg:fixed lg:right-6 lg:top-[140px] lg:mb-0 lg:w-[340px]">
-          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-slate-700">
+      <aside className="mb-6 rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-[#2f3336] dark:bg-[#000000] lg:fixed lg:right-6 lg:top-[140px] lg:mb-0 lg:w-[340px]">
+          <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-[#2f3336]">
             <div>
               <p className="text-sm font-semibold text-gray-900 dark:text-white">Customize table</p>
               <p className="text-xs text-gray-500 dark:text-slate-400">Breakdowns &amp; metrics</p>
@@ -518,7 +518,7 @@ export default function SyncedDataPage() {
             <button
               type="button"
               onClick={() => setSidebarOpen((v) => !v)}
-              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-950/20 dark:text-slate-200"
+              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/20 dark:text-slate-200"
             >
               {sidebarOpen ? "Hide" : "Show"}
             </button>
@@ -541,7 +541,7 @@ export default function SyncedDataPage() {
                     "flex-1 rounded-lg px-3 py-2 text-xs font-semibold",
                     sidebarTab === "breakdowns"
                       ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-[#16181c] dark:text-slate-200 dark:hover:bg-[#1d1f23]",
                   )}
                 >
                   Breakdowns
@@ -553,7 +553,7 @@ export default function SyncedDataPage() {
                     "flex-1 rounded-lg px-3 py-2 text-xs font-semibold",
                     sidebarTab === "metrics"
                       ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-[#16181c] dark:text-slate-200 dark:hover:bg-[#1d1f23]",
                   )}
                 >
                   Metrics
@@ -566,7 +566,7 @@ export default function SyncedDataPage() {
                   {sidebarTab === "breakdowns" ? "Selected breakdowns" : "Selected metrics"}
                 </p>
                 <div
-                  className="rounded-xl border border-gray-200 bg-gray-50 p-2 dark:border-slate-700 dark:bg-slate-950/20"
+                  className="rounded-xl border border-gray-200 bg-gray-50 p-2 dark:border-[#2f3336] dark:bg-[#000000]/20"
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => onDropTo(sidebarTab === "breakdowns" ? "dimensions" : "metrics")}
                 >
@@ -581,7 +581,7 @@ export default function SyncedDataPage() {
                         draggingId &&
                         onReorder(sidebarTab === "breakdowns" ? "dimensions" : "metrics", draggingId, id)
                       }
-                      className="mb-1 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900"
+                      className="mb-1 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-[#2f3336] dark:bg-[#000000]"
                       title="Drag to reorder"
                     >
                       <label className="flex items-center gap-2">
@@ -617,7 +617,7 @@ export default function SyncedDataPage() {
                 <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">
                   {sidebarTab === "breakdowns" ? "Available breakdowns" : "Available metrics"}
                 </p>
-                <div className="max-h-[340px] overflow-auto rounded-xl border border-gray-200 dark:border-slate-700">
+                <div className="max-h-[340px] overflow-auto rounded-xl border border-gray-200 dark:border-[#2f3336]">
                   <div className="divide-y divide-gray-100 dark:divide-slate-800">
                   {sidebarTab === "breakdowns" ? (
                     filteredDims.map((f) => {
@@ -625,7 +625,7 @@ export default function SyncedDataPage() {
                       return (
                         <div
                           key={f.id}
-                          className="flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-slate-800/40"
+                          className="flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-[#16181c]/40"
                         >
                           <label className="flex items-center gap-2">
                             <input
@@ -650,7 +650,7 @@ export default function SyncedDataPage() {
                             draggable
                             onDragStart={() => onDragStart(f.id)}
                             onDragEnd={() => setDraggingId(null)}
-                            className="cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                            className="cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000] dark:text-slate-200"
                             title="Drag into selected list"
                           >
                             Drag
@@ -669,7 +669,7 @@ export default function SyncedDataPage() {
                           return (
                             <div
                               key={f.id}
-                              className="flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-slate-800/40"
+                              className="flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-[#16181c]/40"
                             >
                               <label className="flex items-center gap-2">
                                 <input
@@ -694,7 +694,7 @@ export default function SyncedDataPage() {
                                 draggable
                                 onDragStart={() => onDragStart(f.id)}
                                 onDragEnd={() => setDraggingId(null)}
-                                className="cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                className="cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000] dark:text-slate-200"
                                 title="Drag into selected list"
                               >
                                 Drag
@@ -712,7 +712,7 @@ export default function SyncedDataPage() {
                           return (
                             <div
                               key={f.id}
-                              className="flex items-start justify-between gap-3 px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-slate-800/40"
+                              className="flex items-start justify-between gap-3 px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-[#16181c]/40"
                             >
                               <label className="flex items-start gap-2">
                                 <input
@@ -750,7 +750,7 @@ export default function SyncedDataPage() {
                                 draggable
                                 onDragStart={() => onDragStart(f.id)}
                                 onDragEnd={() => setDraggingId(null)}
-                                className="mt-0.5 cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                className="mt-0.5 cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000] dark:text-slate-200"
                                 title="Drag into selected list"
                               >
                                 Drag
@@ -772,31 +772,31 @@ export default function SyncedDataPage() {
       <div className="lg:pr-[360px]">
       {/* Summary Cards */}
       <div className="mb-6 grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
           <p className="text-xs text-gray-500 dark:text-slate-400">Records</p>
           <p className="text-xl font-bold text-gray-900 dark:text-white">
             {metrics.length.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
           <p className="text-xs text-gray-500 dark:text-slate-400">Impressions</p>
           <p className="text-xl font-bold text-gray-900 dark:text-white">
             {(totals.impressions / 1000).toFixed(0)}k
           </p>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
           <p className="text-xs text-gray-500 dark:text-slate-400">Spend</p>
           <p className="text-xl font-bold text-gray-900 dark:text-white">
             ${totals.spend.toFixed(0)}
           </p>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
           <p className="text-xs text-gray-500 dark:text-slate-400">Conversions</p>
           <p className="text-xl font-bold text-gray-900 dark:text-white">
             {totals.conversions.toFixed(0)}
           </p>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
           <p className="text-xs text-gray-500 dark:text-slate-400">Revenue</p>
           <p className="text-xl font-bold text-gray-900 dark:text-white">
             ${totals.revenue.toFixed(0)}
@@ -806,7 +806,7 @@ export default function SyncedDataPage() {
 
       {/* Data Table */}
       {isLoading ? (
-        <div className="rounded-xl border border-gray-200 bg-white p-8 dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-8 dark:border-[#2f3336] dark:bg-[#000000]">
           <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
             <RefreshCw className="h-4 w-4 animate-spin" />
             Loading data...
@@ -818,15 +818,15 @@ export default function SyncedDataPage() {
         </div>
       ) : data?.mode === "aggregate" ? (
         aggregateRows.length === 0 ? (
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-8 text-center dark:border-slate-700 dark:bg-slate-800/50">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-8 text-center dark:border-[#2f3336] dark:bg-[#16181c]/50">
             <Database className="mx-auto h-8 w-8 text-gray-300 dark:text-gray-600 mb-3" />
             <p className="text-sm text-gray-500 dark:text-slate-400">No aggregated rows for this selection.</p>
           </div>
         ) : (
-          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
+          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden dark:border-[#2f3336] dark:bg-[#000000]">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-slate-800">
+                <thead className="bg-gray-50 dark:bg-[#16181c]">
                   <tr>
                     {aggregateColumns.map((c) => {
                       const label = c.startsWith("metric:")
@@ -849,7 +849,7 @@ export default function SyncedDataPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
                   {aggregateRows.slice(0, 200).map((r, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-slate-800/50">
+                    <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-[#16181c]/50">
                       {aggregateColumns.map((c) => {
                         const v = r[c];
                         const isMetric = c.startsWith("metric:");
@@ -878,7 +878,7 @@ export default function SyncedDataPage() {
                 </tbody>
               </table>
             </div>
-            <div className="px-4 py-3 bg-gray-50 dark:bg-slate-800 border-t border-gray-200 dark:border-slate-700">
+            <div className="px-4 py-3 bg-gray-50 dark:bg-[#16181c] border-t border-gray-200 dark:border-[#2f3336]">
               <span className="text-xs text-gray-500 dark:text-slate-400">
                 Showing {Math.min(aggregateRows.length, 200).toLocaleString()} rows (capped for UI)
               </span>
@@ -886,7 +886,7 @@ export default function SyncedDataPage() {
           </div>
         )
       ) : metrics.length === 0 ? (
-        <div className="rounded-xl border border-gray-200 bg-gray-50 p-8 text-center dark:border-slate-700 dark:bg-slate-800/50">
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-8 text-center dark:border-[#2f3336] dark:bg-[#16181c]/50">
           <Database className="mx-auto h-8 w-8 text-gray-300 dark:text-gray-600 mb-3" />
           <p className="text-sm text-gray-500 dark:text-slate-400">
             No data found for the selected date range.
@@ -964,10 +964,10 @@ export default function SyncedDataPage() {
           </div>
         </div>
       ) : (
-        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-xl border border-gray-200 bg-white overflow-hidden dark:border-[#2f3336] dark:bg-[#000000]">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-slate-800">
+              <thead className="bg-gray-50 dark:bg-[#16181c]">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400">Date</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400">Platform</th>
@@ -985,7 +985,7 @@ export default function SyncedDataPage() {
                   <>
                     <tr
                       key={m.id}
-                      className="hover:bg-gray-50 dark:hover:bg-slate-800/50 cursor-pointer"
+                      className="hover:bg-gray-50 dark:hover:bg-[#16181c]/50 cursor-pointer"
                       onClick={() => toggleRow(m.id)}
                     >
                       <td className="px-4 py-3 text-gray-900 dark:text-white">
@@ -1022,7 +1022,7 @@ export default function SyncedDataPage() {
                       </td>
                     </tr>
                     {expandedRows.has(m.id) && (
-                      <tr className="bg-gray-50 dark:bg-slate-800/30">
+                      <tr className="bg-gray-50 dark:bg-[#16181c]/30">
                         <td colSpan={9} className="px-4 py-3">
                           <div className="text-xs text-gray-500 dark:text-slate-400 space-y-1">
                             <p><strong>Ad Set:</strong> {m.adsetName || m.adsetId || "-"}</p>
@@ -1038,7 +1038,7 @@ export default function SyncedDataPage() {
             </table>
           </div>
           {/* Pagination */}
-          <div className="px-4 py-3 bg-gray-50 dark:bg-slate-800 border-t border-gray-200 dark:border-slate-700">
+          <div className="px-4 py-3 bg-gray-50 dark:bg-[#16181c] border-t border-gray-200 dark:border-[#2f3336]">
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-500 dark:text-slate-400">
                 Showing {metrics.length.toLocaleString()} 

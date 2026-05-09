@@ -78,12 +78,12 @@ export function Dropdown({
         disabled={disabled}
         className={cn(
           "flex w-full items-center justify-between gap-2 rounded-lg border transition-all duration-200",
-          "bg-white dark:bg-slate-900",
+          "bg-white dark:bg-[#000000]",
           "focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500/50",
           "disabled:opacity-50 disabled:cursor-not-allowed",
           isOpen
             ? "border-cyan-500/50 shadow-lg shadow-cyan-500/10"
-            : "border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600",
+            : "border-gray-200 dark:border-[#2f3336] hover:border-gray-300 dark:hover:border-slate-600",
           sizeClasses[size]
         )}
       >
@@ -117,8 +117,8 @@ export function Dropdown({
         <div
           className={cn(
             "absolute z-50 mt-1 w-full overflow-hidden rounded-lg border",
-            "bg-white dark:bg-slate-900",
-            "border-gray-200 dark:border-slate-700",
+            "bg-white dark:bg-[#000000]",
+            "border-gray-200 dark:border-[#2f3336]",
             "shadow-xl shadow-black/10 dark:shadow-black/30",
             "animate-in fade-in zoom-in-95 duration-100"
           )}
@@ -134,9 +134,9 @@ export function Dropdown({
                 }}
                 className={cn(
                   "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-                  "hover:bg-gray-50 dark:hover:bg-slate-800",
+                  "hover:bg-gray-50 dark:hover:bg-[#16181c]",
                   value === option.value && "bg-cyan-50 dark:bg-cyan-950/30",
-                  index !== options.length - 1 && "border-b border-gray-100 dark:border-slate-800"
+                  index !== options.length - 1 && "border-b border-gray-100 dark:border-[#2f3336]"
                 )}
               >
                 {/* Selection indicator */}
@@ -146,7 +146,7 @@ export function Dropdown({
                     "border transition-colors",
                     value === option.value
                       ? "border-cyan-500 bg-cyan-500 text-white"
-                      : "border-gray-300 dark:border-slate-600"
+                      : "border-gray-300 dark:border-[#2f3336]"
                   )}
                 >
                   {value === option.value && <Check className="h-3 w-3" />}
@@ -251,12 +251,12 @@ export function MultiDropdown({
         disabled={disabled}
         className={cn(
           "flex w-full h-10 items-center justify-between gap-2 rounded-lg border px-3 transition-all",
-          "bg-white dark:bg-slate-900",
+          "bg-white dark:bg-[#000000]",
           "focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500/50",
           "disabled:opacity-50 disabled:cursor-not-allowed",
           isOpen
             ? "border-cyan-500/50 shadow-lg shadow-cyan-500/10"
-            : "border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600"
+            : "border-gray-200 dark:border-[#2f3336] hover:border-gray-300 dark:hover:border-slate-600"
         )}
       >
         <span
@@ -276,8 +276,8 @@ export function MultiDropdown({
         <div
           className={cn(
             "absolute z-50 mt-1 w-full overflow-hidden rounded-lg border",
-            "bg-white dark:bg-slate-900",
-            "border-gray-200 dark:border-slate-700",
+            "bg-white dark:bg-[#000000]",
+            "border-gray-200 dark:border-[#2f3336]",
             "shadow-xl"
           )}
         >
@@ -291,7 +291,7 @@ export function MultiDropdown({
                   onClick={() => toggleValue(option.value)}
                   className={cn(
                     "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-                    "hover:bg-gray-50 dark:hover:bg-slate-800",
+                    "hover:bg-gray-50 dark:hover:bg-[#16181c]",
                     isSelected && "bg-cyan-50 dark:bg-cyan-950/30"
                   )}
                 >
@@ -301,7 +301,7 @@ export function MultiDropdown({
                       "border transition-colors",
                       isSelected
                         ? "border-cyan-500 bg-cyan-500 text-white"
-                        : "border-gray-300 dark:border-slate-600"
+                        : "border-gray-300 dark:border-[#2f3336]"
                     )}
                   >
                     {isSelected && <Check className="h-3 w-3" />}

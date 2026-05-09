@@ -127,11 +127,11 @@ export function ConnectedSourceList(props: {
   };
 
   return (
-    <div className="rounded-2xl border border-gray-200/80 bg-white/70 shadow-sm backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-950/40">
-      <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+    <div className="rounded-2xl border border-gray-200/80 bg-white/70 shadow-sm backdrop-blur-md dark:border-[#2f3336]/70 dark:bg-[#000000]/40">
+      <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 dark:border-[#2f3336] sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
           <span className="font-semibold text-gray-700 dark:text-slate-200">Connected sources</span>
-          <span className="rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-700 dark:bg-[#16181c] dark:text-slate-200">
             {rows.length}
           </span>
         </div>
@@ -146,7 +146,7 @@ export function ConnectedSourceList(props: {
               </SecondaryButton>
             </>
           )}
-          <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900/50">
+          <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-[#2f3336] dark:bg-[#000000]/50">
             <span className="text-gray-500 dark:text-slate-400">Sort</span>
             <select
               className="bg-transparent text-xs font-semibold text-gray-800 outline-none dark:text-slate-200"
@@ -159,7 +159,7 @@ export function ConnectedSourceList(props: {
             </select>
             <button
               type="button"
-              className="rounded-md px-1.5 py-0.5 text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800"
+              className="rounded-md px-1.5 py-0.5 text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-[#16181c]"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
               title="Toggle sort direction"
             >
@@ -171,7 +171,7 @@ export function ConnectedSourceList(props: {
 
       <div className="overflow-x-auto">
         <table className="min-w-[900px] w-full text-sm">
-          <thead className="bg-gray-50/90 dark:bg-slate-900/70">
+          <thead className="bg-gray-50/90 dark:bg-[#000000]/70">
             <tr>
               <th className="w-10 px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400">
                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
@@ -192,13 +192,13 @@ export function ConnectedSourceList(props: {
               const isError = r.status === "error";
               return (
                 <React.Fragment key={r.id}>
-                  <tr className="hover:bg-gray-50/70 dark:hover:bg-slate-900/30">
+                  <tr className="hover:bg-gray-50/70 dark:hover:bg-[#000000]/30">
                     <td className="px-4 py-3">
                       <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} />
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white dark:border-[#2f3336] dark:bg-[#000000]">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           {r.logoSrc ? <img src={r.logoSrc} alt="" width={22} height={22} /> : null}
                         </span>
@@ -220,13 +220,13 @@ export function ConnectedSourceList(props: {
                         {(r.accountTags ?? []).slice(0, 3).map((t) => (
                           <span
                             key={t}
-                            className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                            className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-[#16181c] dark:text-slate-300"
                           >
                             {t}
                           </span>
                         ))}
                         {(r.accountTags?.length ?? 0) > 3 && (
-                          <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                          <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-[#16181c] dark:text-slate-400">
                             +{(r.accountTags?.length ?? 0) - 3} more
                           </span>
                         )}
@@ -262,7 +262,7 @@ export function ConnectedSourceList(props: {
                             className={cn(
                               "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
                               syncBusy
-                                ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                                ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-500 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-400"
                                 : "border-cyan-200 bg-cyan-50 text-cyan-900 hover:bg-cyan-100 dark:border-cyan-800/40 dark:bg-cyan-950/30 dark:text-cyan-200 dark:hover:bg-cyan-950/50",
                             )}
                           >
@@ -277,7 +277,7 @@ export function ConnectedSourceList(props: {
                           className={cn(
                             "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
                             disconnectBusy
-                              ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+                              ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-500 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-400"
                               : "border-red-200 bg-red-50 text-red-800 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200 dark:hover:bg-red-950/50",
                           )}
                         >
@@ -285,7 +285,7 @@ export function ConnectedSourceList(props: {
                         </button>
                         <button
                           type="button"
-                          className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200 dark:hover:bg-slate-900"
+                          className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/40 dark:text-slate-200 dark:hover:bg-[#000000]"
                           onClick={() => setExpandedId((prev) => (prev === r.id ? null : r.id))}
                           title="Toggle details"
                         >
@@ -295,9 +295,9 @@ export function ConnectedSourceList(props: {
                     </td>
                   </tr>
                   {isExpanded && (
-                    <tr className="bg-white/60 dark:bg-slate-950/30">
+                    <tr className="bg-white/60 dark:bg-[#000000]/30">
                       <td colSpan={6} className="px-4 pb-4">
-                        <div className="mt-3 rounded-xl border border-gray-200/80 bg-white/80 p-4 text-sm dark:border-slate-700/70 dark:bg-slate-950/40">
+                        <div className="mt-3 rounded-xl border border-gray-200/80 bg-white/80 p-4 text-sm dark:border-[#2f3336]/70 dark:bg-[#000000]/40">
                           {isError && r.errorMsg ? (
                             <p className="mb-2 text-sm font-medium text-red-700 dark:text-red-300">{r.errorMsg}</p>
                           ) : null}

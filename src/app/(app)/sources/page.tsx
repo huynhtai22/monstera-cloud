@@ -689,7 +689,7 @@ export default function SourcesPage() {
                                 role="presentation"
                             >
                                 <div
-                                    className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900"
+                                    className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-[#2f3336] dark:bg-[#000000]"
                                     role="listbox"
                                     aria-label="Connect a source"
                                 >
@@ -703,7 +703,7 @@ export default function SourcesPage() {
                                     </div>
                                     <div className="max-h-[min(52vh,22rem)] overflow-y-auto overscroll-contain px-2 py-2">
                                         {headerAddOptions.length === 0 ? (
-                                            <div className="flex flex-col items-center gap-2 rounded-xl bg-slate-50/80 px-4 py-8 text-center dark:bg-slate-800/50">
+                                            <div className="flex flex-col items-center gap-2 rounded-xl bg-slate-50/80 px-4 py-8 text-center dark:bg-[#16181c]/50">
                                                 <CheckCircle2 className="h-8 w-8 text-emerald-500/90" aria-hidden />
                                                 <p className="text-sm font-medium text-slate-800 dark:text-slate-200">All set</p>
                                                 <p className="max-w-[14rem] text-xs leading-relaxed text-slate-500 dark:text-slate-400">
@@ -742,7 +742,7 @@ export default function SourcesPage() {
                                                                     "group flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left transition-all duration-150",
                                                                     disabled
                                                                         ? "cursor-not-allowed opacity-50 saturate-50"
-                                                                        : "text-slate-900 hover:bg-slate-50/95 hover:shadow-sm focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-cyan-500/35 dark:text-white dark:hover:bg-slate-800/90 dark:focus-visible:bg-slate-800/90 dark:focus-visible:ring-cyan-400/30"
+                                                                        : "text-slate-900 hover:bg-slate-50/95 hover:shadow-sm focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-cyan-500/35 dark:text-white dark:hover:bg-[#16181c]/90 dark:focus-visible:bg-slate-800/90 dark:focus-visible:ring-cyan-400/30"
                                                                 )}
                                                             >
                                                                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-white to-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ring-1 ring-slate-200/80 dark:from-slate-800 dark:to-slate-900 dark:ring-white/10">
@@ -779,7 +779,7 @@ export default function SourcesPage() {
                                             </ul>
                                         )}
                                     </div>
-                                    <div className="border-t border-slate-100 bg-slate-50/90 p-2 dark:border-white/5 dark:bg-slate-950/60">
+                                    <div className="border-t border-slate-100 bg-slate-50/90 p-2 dark:border-white/5 dark:bg-[#000000]/60">
                                         <button
                                             type="button"
                                             onClick={() => {
@@ -788,7 +788,7 @@ export default function SourcesPage() {
                                                 setIsSourceModalOpen(true);
                                                 setAddSourceMenuOpen(false);
                                             }}
-                                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:border-cyan-300/60 hover:bg-cyan-50/50 hover:text-cyan-900 dark:border-white/10 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:border-cyan-500/30 dark:hover:bg-cyan-950/40 dark:hover:text-cyan-100"
+                                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:border-cyan-300/60 hover:bg-cyan-50/50 hover:text-cyan-900 dark:border-white/10 dark:bg-[#16181c]/80 dark:text-slate-200 dark:hover:border-cyan-500/30 dark:hover:bg-cyan-950/40 dark:hover:text-cyan-100"
                                         >
                                             Full catalog — status
                                             <ChevronRight className="h-3.5 w-3.5 opacity-70" aria-hidden />
@@ -816,7 +816,7 @@ export default function SourcesPage() {
                             onChange={(e) => setSearchQuery(e.target.value)}
                             placeholder="Search integrations..."
                             aria-label="Search integrations"
-                            className="w-full rounded-xl border border-gray-200/80 bg-gray-50/80 py-2 pl-9 pr-10 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500/25 focus:bg-white dark:border-slate-700/60 dark:bg-slate-800/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800"
+                            className="w-full rounded-xl border border-gray-200/80 bg-gray-50/80 py-2 pl-9 pr-10 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500/25 focus:bg-white dark:border-[#2f3336]/60 dark:bg-[#16181c]/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800"
                         />
                     </div>
                     {!isLoading && filterStats.needsAttention > 0 && (
@@ -863,7 +863,7 @@ export default function SourcesPage() {
                                 "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors",
                                 viewMode === "cards"
                                     ? "border-cyan-300/60 bg-cyan-50 text-cyan-900 dark:border-cyan-600/40 dark:bg-cyan-950/40 dark:text-cyan-100"
-                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:bg-slate-900",
+                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/40 dark:text-slate-300 dark:hover:bg-[#000000]",
                             )}
                         >
                             Cards
@@ -875,7 +875,7 @@ export default function SourcesPage() {
                                 "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors",
                                 viewMode === "list"
                                     ? "border-cyan-300/60 bg-cyan-50 text-cyan-900 dark:border-cyan-600/40 dark:bg-cyan-950/40 dark:text-cyan-100"
-                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:bg-slate-900",
+                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/40 dark:text-slate-300 dark:hover:bg-[#000000]",
                             )}
                         >
                             List
@@ -897,7 +897,7 @@ export default function SourcesPage() {
                     ))}
                 </div>
             ) : connectedRows.length === 0 && availableCards.length === 0 ? (
-                <div className="flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 py-20 text-center dark:border-slate-600 dark:bg-slate-800/60" role="tabpanel" aria-live="polite">
+                <div className="flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 py-20 text-center dark:border-[#2f3336] dark:bg-[#16181c]/60" role="tabpanel" aria-live="polite">
                     <Database className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" />
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No integrations found</h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm mb-6">
@@ -907,7 +907,7 @@ export default function SourcesPage() {
                         <button
                             type="button"
                             onClick={() => { setSearchQuery(""); setActiveFilter("all"); }}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 dark:hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors dark:border-[#2f3336] dark:bg-[#16181c] dark:text-gray-200 dark:hover:bg-[#1d1f23] focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40"
                         >
                             <X className="h-4 w-4" />
                             Clear search

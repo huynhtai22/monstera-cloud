@@ -92,7 +92,7 @@ export function SectionOverviewCard({
                 "pillar-fade",
                 emphasis
                     ? "border-l-cyan-500 border-cyan-200 bg-gradient-to-br from-cyan-50/80 via-white/80 to-white/80 shadow-md dark:border-l-cyan-400 dark:border-cyan-500/30 dark:from-cyan-500/10 dark:via-slate-900/60 dark:to-slate-900/60 shadow-cyan-100/40 dark:shadow-cyan-950/40"
-                    : "border-l-gray-300 border-gray-200/80 bg-gradient-to-br from-white/95 to-gray-50/80 shadow-md dark:border-l-slate-600 dark:border-slate-700/60 dark:from-slate-900/70 dark:to-slate-800/50",
+                    : "border-l-gray-300 border-gray-200/80 bg-gradient-to-br from-white/95 to-gray-50/80 shadow-md dark:border-l-slate-600 dark:border-[#2f3336]/60 dark:from-slate-900/70 dark:to-slate-800/50",
                 hasError && "animate-[errorPulse_2s_ease-in-out_infinite]",
                 className
             )}
@@ -112,7 +112,7 @@ export function SectionOverviewCard({
                                 "group-hover:shadow-md group-hover:scale-110 duration-300",
                                 emphasis
                                     ? "border-cyan-200 bg-gradient-to-br from-cyan-100/80 to-cyan-50/60 text-cyan-700 dark:border-cyan-500/30 dark:from-cyan-500/20 dark:to-cyan-500/5 dark:text-cyan-300"
-                                    : "border-gray-200 bg-gradient-to-br from-gray-100 to-white text-gray-700 dark:border-slate-700 dark:from-slate-800 dark:to-slate-700/80 dark:text-slate-200",
+                                    : "border-gray-200 bg-gradient-to-br from-gray-100 to-white text-gray-700 dark:border-[#2f3336] dark:from-slate-800 dark:to-slate-700/80 dark:text-slate-200",
                                 accentClassName
                             )}
                         >
@@ -129,7 +129,7 @@ export function SectionOverviewCard({
                             <div
                                 className={cn(
                                     "shrink-0 rounded-lg border px-2.5 py-1 text-right",
-                                    "border-gray-200/80 bg-white/60 shadow-sm backdrop-blur-sm dark:border-slate-600/60 dark:bg-slate-900/50",
+                                    "border-gray-200/80 bg-white/60 shadow-sm backdrop-blur-sm dark:border-[#2f3336]/60 dark:bg-[#000000]/50",
                                 )}
                             >
                                 <div
@@ -155,7 +155,7 @@ export function SectionOverviewCard({
                         {safeItems.slice(0, 3).map((item) => (
                             <li
                                 key={item.id}
-                                className="flex items-center gap-2 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-gray-50/60 dark:hover:bg-slate-800/60"
+                                className="flex items-center gap-2 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-gray-50/60 dark:hover:bg-[#16181c]/60"
                                 title={item.sub}
                             >
                                 {/* Logo or status dot */}

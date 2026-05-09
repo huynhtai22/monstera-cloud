@@ -45,7 +45,7 @@ function RoasSnapshotCard({ snapshots }: { snapshots: Snapshot[] }) {
             : `$${Math.round(n)}`;
 
     return (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#2f3336] dark:bg-[#000000]">
             <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     Performance (last 7 days)
@@ -293,11 +293,11 @@ export function DashboardHomePage() {
         return (
             <PageShell>
                 <div className="animate-pulse space-y-6 p-2">
-                    <div className="h-10 max-w-md rounded-lg bg-slate-200/80 dark:bg-slate-700/80" />
-                    <div className="h-36 rounded-2xl bg-slate-100 dark:bg-slate-800/80" />
+                    <div className="h-10 max-w-md rounded-lg bg-slate-200/80 dark:bg-[#1d1f23]/80" />
+                    <div className="h-36 rounded-2xl bg-slate-100 dark:bg-[#16181c]/80" />
                     <div className="grid gap-4 md:grid-cols-2">
-                        <div className="h-48 rounded-xl bg-slate-100 dark:bg-slate-800/80" />
-                        <div className="h-48 rounded-xl bg-slate-100 dark:bg-slate-800/80" />
+                        <div className="h-48 rounded-xl bg-slate-100 dark:bg-[#16181c]/80" />
+                        <div className="h-48 rounded-xl bg-slate-100 dark:bg-[#16181c]/80" />
                     </div>
                 </div>
             </PageShell>
@@ -377,7 +377,7 @@ export function DashboardHomePage() {
                 title: "Custom Pipeline",
                 subtitle: "Map your own fields and build from scratch.",
                 icons: (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-400 dark:border-slate-600">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-400 dark:border-[#2f3336]">
                         <Plus className="h-3.5 w-3.5" />
                     </div>
                 ),
@@ -395,7 +395,7 @@ export function DashboardHomePage() {
                     </p>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-5 shadow-sm dark:border-slate-700/60 dark:bg-slate-800/30">
+                <div className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-5 shadow-sm dark:border-[#2f3336]/60 dark:bg-[#16181c]/30">
                     <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                         Create your pipeline — start with a template
                     </p>
@@ -407,7 +407,7 @@ export function DashboardHomePage() {
                                     key={tpl.id}
                                     type="button"
                                     disabled={templateBusy !== null}
-                                    className="stagger-item bento-hover group flex min-w-0 items-center justify-between gap-3 rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm disabled:opacity-60 dark:border-slate-700/60 dark:bg-slate-900/60"
+                                    className="stagger-item bento-hover group flex min-w-0 items-center justify-between gap-3 rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm disabled:opacity-60 dark:border-[#2f3336]/60 dark:bg-[#000000]/60"
                                     onClick={() => {
                                         if (templateBusy) return;
                                         trackEvent("pipeline_template_clicked", { template: tpl.id, from: "stage2" });
@@ -517,7 +517,7 @@ export function DashboardHomePage() {
                         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                             Status
                         </p>
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-slate-800 dark:text-slate-400">
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-[#16181c] dark:text-slate-400">
                             {connectedSourcesCount} connected sources
                         </span>
                     </div>
@@ -567,7 +567,7 @@ export function DashboardHomePage() {
             </div>
 
             {/* 5 · System Health — confirmation strip, not discovery */}
-            <section className="mt-4 border-t border-gray-100 pt-4 dark:border-slate-800">
+            <section className="mt-4 border-t border-gray-100 pt-4 dark:border-[#2f3336]">
                 <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                     Infrastructure
                 </p>

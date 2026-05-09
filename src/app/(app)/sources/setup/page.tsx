@@ -246,7 +246,7 @@ function SourceSetupPageContent() {
                 {!setupComplete ? (
                     <>
                         {/* Connection card */}
-                        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
                             <div className="flex items-center gap-3">
                                 <img
                                     src={logoPathForConnectionProvider(provider)}
@@ -267,7 +267,7 @@ function SourceSetupPageContent() {
 
                         {/* P1: Account Selection for multi-account sources */}
                         {showAccountStep && availableAccounts.length > 0 && (
-                            <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                            <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
                                 <h3 className="mb-3 font-semibold text-gray-900 dark:text-white">
                                     Select accounts to sync
                                 </h3>
@@ -280,7 +280,7 @@ function SourceSetupPageContent() {
                                     {availableAccounts.map((account) => (
                                         <label
                                             key={account.id}
-                                            className="flex items-center gap-3 rounded-lg border border-gray-100 p-3 hover:bg-gray-50 dark:border-slate-700 dark:hover:bg-slate-800 cursor-pointer"
+                                            className="flex items-center gap-3 rounded-lg border border-gray-100 p-3 hover:bg-gray-50 dark:border-[#2f3336] dark:hover:bg-[#16181c] cursor-pointer"
                                         >
                                             <input
                                                 type="checkbox"
@@ -339,7 +339,7 @@ function SourceSetupPageContent() {
                                         className={`flex w-full items-center gap-3 rounded-xl border p-4 text-left transition-colors ${
                                             selectedDestination === dest.id
                                                 ? "border-cyan-500 bg-cyan-50 dark:border-cyan-500 dark:bg-cyan-900/20"
-                                                : "border-gray-200 bg-white hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+                                                : "border-gray-200 bg-white hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000] dark:hover:bg-[#16181c]"
                                         }`}
                                     >
                                         {dest.provider ===
@@ -372,7 +372,7 @@ function SourceSetupPageContent() {
                                 ))}
                             </div>
                         ) : (
-                            <div className="mb-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center dark:border-slate-700 dark:bg-slate-900/50">
+                            <div className="mb-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center dark:border-[#2f3336] dark:bg-[#000000]/50">
                                 <Database className="mx-auto mb-2 h-8 w-8 text-gray-400" />
                                 <p className="text-gray-600 dark:text-gray-400">
                                     No destinations connected yet.
@@ -412,7 +412,7 @@ function SourceSetupPageContent() {
 
                             <button
                                 onClick={handleSkip}
-                                className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-gray-300 dark:hover:bg-slate-800"
+                                className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:text-gray-300 dark:hover:bg-[#16181c]"
                             >
                                 Skip — using add-on / Looker
                             </button>

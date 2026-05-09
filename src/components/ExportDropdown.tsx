@@ -49,7 +49,7 @@ export function ExportDropdown({ onCsv, onExcel, className = "" }: ExportDropdow
       {/* Trigger */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 px-2.5 py-1 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors select-none"
+        className="flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 bg-white dark:bg-[#16181c] border border-gray-200 dark:border-[#2f3336] px-2.5 py-1 rounded-lg hover:bg-gray-50 dark:hover:bg-[#1d1f23] transition-colors select-none"
       >
         <Download className="w-3 h-3" />
         Export
@@ -63,7 +63,7 @@ export function ExportDropdown({ onCsv, onExcel, className = "" }: ExportDropdow
       {/* Dropdown panel */}
       {shouldRenderPanel && (
         <div className={cn(
-          "absolute right-0 mt-1.5 w-44 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-lg z-50 overflow-hidden py-1",
+          "absolute right-0 mt-1.5 w-44 bg-white dark:bg-[#16181c] border border-gray-200 dark:border-[#2f3336] rounded-xl shadow-lg z-50 overflow-hidden py-1",
           "transition-all duration-150 ease-out",
           isPanelVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
         )}>
@@ -72,7 +72,7 @@ export function ExportDropdown({ onCsv, onExcel, className = "" }: ExportDropdow
               onCsv();
               setOpen(false);
             }}
-            className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+            className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1d1f23] transition-colors"
           >
             <FileText className="w-3.5 h-3.5 text-gray-400 shrink-0" />
             Export as CSV
@@ -82,7 +82,7 @@ export function ExportDropdown({ onCsv, onExcel, className = "" }: ExportDropdow
               onExcel();
               setOpen(false);
             }}
-            className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+            className="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-[#1d1f23] transition-colors"
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
             Export as Excel

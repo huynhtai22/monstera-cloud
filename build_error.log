@@ -1,0 +1,74 @@
+
+> monstera-cloud@1.0.0 build
+> prisma generate && next build --webpack
+
+Environment variables loaded from .env
+Prisma schema loaded from prisma/schema.prisma
+
+✔ Generated Prisma Client (v5.22.0) to ./node_modules/@prisma/client in 164ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Want real-time updates to your database without manual polling? Discover how with Pulse: https://pris.ly/tip-0-pulse
+
+▲ Next.js 16.2.4 (webpack)
+- Environments: .env.production, .env
+- Experiments (use with caution):
+  · clientTraceMetadata
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+Failed to compile.
+
+./src/components/ui/system/animations.module.css
+Error: Cannot find module 'postcss-nesting'
+Require stack:
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/blocks/css/index.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/index.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack-config.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack-build/impl.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack-build/index.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/index.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/cli/next-build.js
+    at Function.<anonymous> (node:internal/modules/cjs/loader:1383:15)
+    at /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/server/require-hook.js:68:36
+    at Function.resolve (node:internal/modules/helpers:157:19)
+    at loadPlugin (/Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:53:32)
+    at /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:185:56
+    at Array.map (<anonymous>)
+    at getPostCssPlugins (/Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:185:47)
+    at async /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/blocks/css/index.js:125:36
+
+Import trace for requested module:
+./src/components/ui/system/animations.module.css
+./src/components/ui/Toast.tsx
+./src/app/demo/ui/page.tsx
+
+./src/components/ui/system/tokens.module.css
+Error: Cannot find module 'postcss-nesting'
+Require stack:
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/blocks/css/index.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/index.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack-config.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack-build/impl.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack-build/index.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/index.js
+- /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/cli/next-build.js
+    at Function.<anonymous> (node:internal/modules/cjs/loader:1383:15)
+    at /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/server/require-hook.js:68:36
+    at Function.resolve (node:internal/modules/helpers:157:19)
+    at loadPlugin (/Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:53:32)
+    at /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:185:56
+    at Array.map (<anonymous>)
+    at getPostCssPlugins (/Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/blocks/css/plugins.js:185:47)
+    at async /Users/huynhtai/openclaw/1st Iteration App/monstera-cloud/node_modules/next/dist/build/webpack/config/blocks/css/index.js:125:36
+
+Import trace for requested module:
+./src/components/ui/system/tokens.module.css
+./src/components/ui/Button.tsx
+./src/app/demo/ui/page.tsx
+
+
+> Build failed because of webpack errors

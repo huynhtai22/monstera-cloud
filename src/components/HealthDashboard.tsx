@@ -189,7 +189,7 @@ export function HealthDashboard() {
 
       {/* 3. Credential Audit Banner */}
       <div className="p-1 rounded-2xl bg-gradient-to-r from-cyan-500 via-indigo-500 to-cyan-500">
-        <div className="bg-white dark:bg-slate-900 rounded-[14px] p-6 flex items-center justify-between">
+        <div className="bg-white dark:bg-[#000000] rounded-[14px] p-6 flex items-center justify-between">
             <div className="flex items-center gap-5">
                 <div className="p-3 bg-cyan-50 rounded-2xl">
                     <ShieldAlert className="h-6 w-6 text-cyan-600" />

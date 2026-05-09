@@ -88,7 +88,7 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
 
       <div className="flex items-start justify-between mb-3 relative z-10">
         <div
-          className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 bg-white/10 dark:bg-slate-900/60 overflow-hidden
+          className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 bg-white/10 dark:bg-[#000000]/60 overflow-hidden
             ${isError
               ? "border-red-400/20 dark:border-red-700/30"
               : isStale
@@ -170,13 +170,13 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
             {(integration.accountTags as string[]).slice(0, 3).map((tag: string) => (
               <span
                 key={tag}
-                className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700/80 dark:text-slate-300"
+                className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-[#1d1f23]/80 dark:text-slate-300"
               >
                 {tag}
               </span>
             ))}
             {integration.accountTags.length > 3 && (
-              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-700/80 dark:text-slate-400">
+              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-[#1d1f23]/80 dark:text-slate-400">
                 +{integration.accountTags.length - 3} more
               </span>
             )}

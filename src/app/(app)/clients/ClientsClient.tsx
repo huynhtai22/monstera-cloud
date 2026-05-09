@@ -258,7 +258,7 @@ export function ClientsClient() {
         <PageShell>
             <div className="relative z-10 mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex items-center space-x-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white bg-white/50 text-cyan-600 shadow-sm backdrop-blur-md dark:border-slate-600/80 dark:bg-slate-800/90 dark:text-cyan-400 dark:ring-1 dark:ring-white/5">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white bg-white/50 text-cyan-600 shadow-sm backdrop-blur-md dark:border-[#2f3336]/80 dark:bg-[#16181c]/90 dark:text-cyan-400 dark:ring-1 dark:ring-white/5">
                         <Users className="h-5 w-5" />
                     </div>
                     <div>
@@ -313,7 +313,7 @@ export function ClientsClient() {
                         return (
                             <div
                                 key={c.id}
-                                className="group relative flex flex-col rounded-2xl border border-gray-200/80 bg-white/70 p-5 shadow-sm backdrop-blur-sm transition-all hover:border-cyan-200 hover:shadow-md dark:border-slate-600/70 dark:bg-slate-800/90 dark:ring-1 dark:ring-white/5 dark:hover:border-cyan-700/60"
+                                className="group relative flex flex-col rounded-2xl border border-gray-200/80 bg-white/70 p-5 shadow-sm backdrop-blur-sm transition-all hover:border-cyan-200 hover:shadow-md dark:border-[#2f3336]/70 dark:bg-[#16181c]/90 dark:ring-1 dark:ring-white/5 dark:hover:border-cyan-700/60"
                             >
                                 <div className="mb-3 flex items-center gap-3">
                                     {c.logoUrl ? (
@@ -348,12 +348,12 @@ export function ClientsClient() {
                                 </div>
 
                                 <div className="mb-4 grid grid-cols-2 gap-2 text-xs">
-                                    <div className="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1.5 dark:bg-slate-900/60">
+                                    <div className="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1.5 dark:bg-[#000000]/60">
                                         <DatabaseZap className="h-3.5 w-3.5 text-gray-500 dark:text-slate-400" />
                                         <span className="font-semibold text-gray-900 dark:text-white">{connectionCount}</span>
                                         <span className="text-gray-500 dark:text-slate-400">source{connectionCount === 1 ? "" : "s"}</span>
                                     </div>
-                                    <div className="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1.5 dark:bg-slate-900/60">
+                                    <div className="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1.5 dark:bg-[#000000]/60">
                                         <LineChart className="h-3.5 w-3.5 text-gray-500 dark:text-slate-400" />
                                         <span className="font-semibold text-gray-900 dark:text-white">{pipelineCount}</span>
                                         <span className="text-gray-500 dark:text-slate-400">pipeline{pipelineCount === 1 ? "" : "s"}</span>
@@ -366,7 +366,7 @@ export function ClientsClient() {
                                             "mb-4 rounded-lg border px-3 py-2 text-xs",
                                             schedule.enabled
                                                 ? "border-emerald-200 bg-emerald-50/60 text-emerald-800 dark:border-emerald-800/40 dark:bg-emerald-950/20 dark:text-emerald-200"
-                                                : "border-gray-200 bg-gray-50 text-gray-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400"
+                                                : "border-gray-200 bg-gray-50 text-gray-600 dark:border-[#2f3336] dark:bg-[#000000]/60 dark:text-slate-400"
                                         )}
                                     >
                                         <div className="flex items-center gap-1.5 font-semibold">
@@ -380,7 +380,7 @@ export function ClientsClient() {
                                 <div className="mt-auto flex flex-wrap items-center gap-2">
                                     <Link
                                         href={`/reports?clientId=${encodeURIComponent(c.id)}`}
-                                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-700"
+                                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/70 dark:text-slate-200 dark:hover:bg-[#1d1f23]"
                                     >
                                         <LineChart className="h-3.5 w-3.5" />
                                         Reports
@@ -400,14 +400,14 @@ export function ClientsClient() {
                                                     <button
                                                         type="button"
                                                         onClick={() => pauseSchedule(schedule.id, !schedule.enabled)}
-                                                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-700"
+                                                        className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/70 dark:text-slate-200 dark:hover:bg-[#1d1f23]"
                                                     >
                                                         {schedule.enabled ? "Pause" : "Resume"}
                                                     </button>
                                                     <button
                                                         type="button"
                                                         onClick={() => deleteSchedule(schedule.id)}
-                                                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:bg-slate-900/70 dark:text-red-300 dark:hover:bg-red-950/30"
+                                                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:bg-[#000000]/70 dark:text-red-300 dark:hover:bg-red-950/30"
                                                         aria-label="Remove schedule"
                                                     >
                                                         <Trash2 className="h-3.5 w-3.5" />
@@ -418,7 +418,7 @@ export function ClientsClient() {
                                                 <button
                                                     type="button"
                                                     onClick={() => openEdit(c)}
-                                                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-700"
+                                                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/70 dark:text-slate-200 dark:hover:bg-[#1d1f23]"
                                                     aria-label="Edit client"
                                                 >
                                                     <Pencil className="h-3.5 w-3.5" />
@@ -426,7 +426,7 @@ export function ClientsClient() {
                                                 <button
                                                     type="button"
                                                     onClick={() => deleteClient(c)}
-                                                    className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:bg-slate-900/70 dark:text-red-300 dark:hover:bg-red-950/30"
+                                                    className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 dark:border-red-900/40 dark:bg-[#000000]/70 dark:text-red-300 dark:hover:bg-red-950/30"
                                                     aria-label="Delete client"
                                                 >
                                                     <Trash2 className="h-3.5 w-3.5" />
@@ -449,7 +449,7 @@ export function ClientsClient() {
                 <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center">
                     <form
                         onSubmit={saveClient}
-                        className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+                        className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-[#2f3336] dark:bg-[#000000]"
                     >
                         <div className="mb-4 flex items-center justify-between">
                             <h2 className="text-lg font-bold text-gray-900 dark:text-white">
@@ -458,7 +458,7 @@ export function ClientsClient() {
                             <button
                                 type="button"
                                 onClick={closeForm}
-                                className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                                className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-[#16181c]"
                                 aria-label="Close"
                             >
                                 <X className="h-4 w-4" />
@@ -473,7 +473,7 @@ export function ClientsClient() {
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="e.g. Aurora Retail VN"
                                 required
-                                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-100"
                             />
                         </label>
 
@@ -484,7 +484,7 @@ export function ClientsClient() {
                                 onChange={(e) => setDescription(e.target.value)}
                                 rows={2}
                                 placeholder="e.g. Fashion & lifestyle, Meta + Google Ads"
-                                className="mt-1 w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                className="mt-1 w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-100"
                             />
                         </label>
 
@@ -496,7 +496,7 @@ export function ClientsClient() {
                                     value={logoUrl}
                                     onChange={(e) => setLogoUrl(e.target.value)}
                                     placeholder="https://..."
-                                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-100"
                                 />
                             </label>
                         ) : null}
@@ -505,7 +505,7 @@ export function ClientsClient() {
                             <button
                                 type="button"
                                 onClick={closeForm}
-                                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-200 dark:hover:bg-[#1d1f23]"
                             >
                                 Cancel
                             </button>
@@ -525,14 +525,14 @@ export function ClientsClient() {
                 <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center">
                     <form
                         onSubmit={saveSchedule}
-                        className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+                        className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-[#2f3336] dark:bg-[#000000]"
                     >
                         <div className="mb-2 flex items-center justify-between">
                             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Weekly report schedule</h2>
                             <button
                                 type="button"
                                 onClick={closeSchedule}
-                                className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                                className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-[#16181c]"
                                 aria-label="Close"
                             >
                                 <X className="h-4 w-4" />
@@ -549,7 +549,7 @@ export function ClientsClient() {
                                 onChange={(e) => setScheduleRecipients(e.target.value)}
                                 rows={3}
                                 placeholder="client@brand.com, you@agency.com"
-                                className="mt-1 w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                className="mt-1 w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-100"
                             />
                         </label>
 
@@ -557,7 +557,7 @@ export function ClientsClient() {
                             <button
                                 type="button"
                                 onClick={closeSchedule}
-                                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-200 dark:hover:bg-[#1d1f23]"
                             >
                                 Cancel
                             </button>

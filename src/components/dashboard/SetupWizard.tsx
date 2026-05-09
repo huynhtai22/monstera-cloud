@@ -98,7 +98,7 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
     }
 
     return (
-        <div className="relative z-10 mb-10 rounded-2xl border border-gray-200/80 bg-white/70 p-6 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/50">
+        <div className="relative z-10 mb-10 rounded-2xl border border-gray-200/80 bg-white/70 p-6 shadow-sm dark:border-[#2f3336]/60 dark:bg-[#000000]/50">
             {/* Header + progress */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
                 <div>
@@ -121,7 +121,7 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
             </div>
 
             {/* Progress bar */}
-            <div className="mb-6 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-slate-800">
+            <div className="mb-6 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-[#16181c]">
                 <div
                     className="h-full rounded-full bg-cyan-500 transition-all duration-500"
                     style={{ width: `${(doneCount / 2) * 100}%` }}
@@ -141,10 +141,10 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
                             className={cn(
                                 "flex items-start gap-4 rounded-xl border px-5 py-4 transition-all",
                                 done
-                                    ? "border-gray-100 bg-gray-50/60 dark:border-slate-800 dark:bg-slate-800/30 opacity-70"
+                                    ? "border-gray-100 bg-gray-50/60 dark:border-[#2f3336] dark:bg-[#16181c]/30 opacity-70"
                                     : isActive
                                       ? "border-cyan-200 bg-cyan-50/70 shadow-sm dark:border-cyan-700/60 dark:bg-cyan-950/30"
-                                      : "border-gray-100 bg-white/40 dark:border-slate-800/60 dark:bg-slate-900/20 opacity-50"
+                                      : "border-gray-100 bg-white/40 dark:border-[#2f3336]/60 dark:bg-[#000000]/20 opacity-50"
                             )}
                         >
                             {/* Icon */}

@@ -22,9 +22,9 @@ export function LiveChatWidget() {
                 className="group flex flex-col items-end"
             >
                 {/* Tooltip bubble */}
-                <div className="absolute bottom-[calc(100%+12px)] right-0 bg-slate-900 dark:bg-slate-800 text-white text-xs font-semibold py-2 px-4 rounded-xl shadow-xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all origin-bottom-right whitespace-nowrap pointer-events-none">
+                <div className="absolute bottom-[calc(100%+12px)] right-0 bg-slate-900 dark:bg-[#16181c] text-white text-xs font-semibold py-2 px-4 rounded-xl shadow-xl opacity-0 scale-95 group-hover:opacity-100 group-hover:scale-100 transition-all origin-bottom-right whitespace-nowrap pointer-events-none">
                     Need help? Talk to the founders
-                    <div className="absolute -bottom-1.5 right-6 w-3 h-3 bg-slate-900 dark:bg-slate-800 rotate-45"></div>
+                    <div className="absolute -bottom-1.5 right-6 w-3 h-3 bg-slate-900 dark:bg-[#16181c] rotate-45"></div>
                 </div>
 
                 {/* Floating Button */}

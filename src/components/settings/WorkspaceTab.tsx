@@ -95,7 +95,7 @@ export function WorkspaceTab({
                 </p>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-800/40 backdrop-blur-sm p-6 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#16181c]/40 backdrop-blur-sm p-6 shadow-sm">
                 <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-4 flex items-center">
                     <MessageCircle className="w-4 h-4 mr-2 text-cyan-600 dark:text-cyan-400" />
                     Telegram Notifications
@@ -108,7 +108,7 @@ export function WorkspaceTab({
                             placeholder="-100123456789"
                             value={telegramChatDraft}
                             onChange={(e) => setTelegramChatDraft(e.target.value)}
-                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-white/10 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500 transition-all placeholder:text-slate-400"
+                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-[#000000]/60 border border-slate-200 dark:border-white/10 rounded-xl text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500 transition-all placeholder:text-slate-400"
                         />
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                             Add our bot to your group and enter the Chat ID. Starts with a minus sign for groups.
@@ -125,7 +125,7 @@ export function WorkspaceTab({
                         <button
                             onClick={handleTestTelegram}
                             disabled={telegramTesting || !activeWorkspace?.telegramChatId}
-                            className="flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-gray-200 text-sm font-medium rounded-xl transition-all disabled:opacity-50"
+                            className="flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-[#16181c] dark:hover:bg-[#1d1f23] text-gray-700 dark:text-gray-200 text-sm font-medium rounded-xl transition-all disabled:opacity-50"
                         >
                             {telegramTesting ? "Sending..." : "Test Message"}
                         </button>
@@ -133,7 +133,7 @@ export function WorkspaceTab({
                 </div>
             </div>
 
-            <div id="product-demo" className="rounded-2xl border border-violet-200 dark:border-violet-500/20 bg-white dark:bg-slate-800/40 backdrop-blur-sm p-6 shadow-sm relative overflow-hidden group">
+            <div id="product-demo" className="rounded-2xl border border-violet-200 dark:border-violet-500/20 bg-white dark:bg-[#16181c]/40 backdrop-blur-sm p-6 shadow-sm relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-32 bg-violet-400/5 dark:bg-violet-400/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
 
                 <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-4 flex items-center">

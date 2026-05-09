@@ -26,7 +26,7 @@ export const RecentSyncsSection = React.memo(function RecentSyncsSection({
         </Link>
       </div>
 
-      <div className="rounded-2xl border border-gray-200/80 bg-white/60 p-5 shadow-sm dark:border-slate-600/70 dark:bg-slate-800/90 dark:ring-1 dark:ring-white/5">
+      <div className="rounded-2xl border border-gray-200/80 bg-white/60 p-5 shadow-sm dark:border-[#2f3336]/70 dark:bg-[#16181c]/90 dark:ring-1 dark:ring-white/5">
         <div className="space-y-3">
           {logs.map((l: any) => (
             <div

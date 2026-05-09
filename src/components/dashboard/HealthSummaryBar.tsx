@@ -22,7 +22,7 @@ export function HealthSummaryBar() {
                 {[1, 2, 3].map((i) => (
                     <div
                         key={i}
-                        className="h-8 w-40 animate-pulse rounded-xl bg-gray-100 dark:bg-slate-800"
+                        className="h-8 w-40 animate-pulse rounded-xl bg-gray-100 dark:bg-[#16181c]"
                     />
                 ))}
             </div>
@@ -56,7 +56,7 @@ export function HealthSummaryBar() {
             icon: <BarChart3 className="h-3.5 w-3.5" />,
             label: `${weeklyRows.toLocaleString()} rows this week`,
             className:
-                "text-gray-700 bg-gradient-to-br from-gray-50 to-gray-50/60 border-gray-200 dark:text-gray-300 dark:from-slate-800/60 dark:to-slate-700/40 dark:border-slate-700 shadow-sm dark:shadow-slate-950/10",
+                "text-gray-700 bg-gradient-to-br from-gray-50 to-gray-50/60 border-gray-200 dark:text-gray-300 dark:from-slate-800/60 dark:to-slate-700/40 dark:border-[#2f3336] shadow-sm dark:shadow-slate-950/10",
         },
     ];
 

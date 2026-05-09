@@ -101,7 +101,7 @@ const PLATFORM_OPTIONS = [
 const PLATFORM_COLORS: Record<string, string> = {
   meta_ads: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
   tiktok_ads: "bg-gray-900 text-white dark:bg-gray-800",
-  tiktok_business: "bg-slate-800 text-white dark:bg-slate-700",
+  tiktok_business: "bg-slate-800 text-white dark:bg-[#1d1f23]",
   google_ads: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
   shopee: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200",
   lazada: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200",
@@ -310,7 +310,7 @@ function renderWarehouseTableCell(
         <span
           className={cn(
             "inline-flex rounded-lg px-2 py-0.5 text-xs font-medium",
-            PLATFORM_COLORS[m.platform] || "bg-gray-100 text-gray-700 dark:bg-slate-800",
+            PLATFORM_COLORS[m.platform] || "bg-gray-100 text-gray-700 dark:bg-[#16181c]",
           )}
         >
           {PLATFORM_LABELS[m.platform] || m.platform}
@@ -379,7 +379,7 @@ function ToggleChip({
         "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
         active
           ? "border-cyan-500 bg-cyan-600 text-white shadow-sm dark:border-cyan-400 dark:bg-cyan-600"
-          : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300",
+          : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-300",
       )}
     >
       {children}
@@ -893,7 +893,7 @@ export function WarehouseWorkbench() {
   };
 
   const metricPanelCls =
-    "rounded-2xl border border-white/60 bg-white/75 p-5 shadow-[0_24px_80px_-32px_rgba(8,145,178,0.35)] backdrop-blur-md dark:border-slate-700/80 dark:bg-slate-950/65";
+    "rounded-2xl border border-white/60 bg-white/75 p-5 shadow-[0_24px_80px_-32px_rgba(8,145,178,0.35)] backdrop-blur-md dark:border-[#2f3336]/80 dark:bg-[#000000]/65";
 
   return (
     <div className="flex flex-col gap-8">
@@ -925,7 +925,7 @@ export function WarehouseWorkbench() {
         {!activeWorkspaceId ? (
           <p className="text-sm text-amber-700 dark:text-amber-400">Pick a workspace in the sidebar.</p>
         ) : connections.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/80 p-4 text-sm dark:border-slate-600 dark:bg-slate-900/40">
+          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/80 p-4 text-sm dark:border-[#2f3336] dark:bg-[#000000]/40">
             <p className="text-gray-700 dark:text-slate-300">No ad platform sources linked yet.</p>
             <Link
               href="/sources"
@@ -939,7 +939,7 @@ export function WarehouseWorkbench() {
             {connections.map((c) => (
               <li
                 key={c.id}
-                className="rounded-xl border border-gray-200/80 bg-white/60 p-4 dark:border-slate-700 dark:bg-slate-900/40"
+                className="rounded-xl border border-gray-200/80 bg-white/60 p-4 dark:border-[#2f3336] dark:bg-[#000000]/40"
               >
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
@@ -1115,8 +1115,8 @@ export function WarehouseWorkbench() {
 
         {viewMode === "aggregate" && (
           <>
-            <aside className="mb-6 rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 lg:fixed lg:right-6 lg:top-[140px] lg:mb-0 lg:w-[340px]">
-              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-slate-700">
+            <aside className="mb-6 rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-[#2f3336] dark:bg-[#000000] lg:fixed lg:right-6 lg:top-[140px] lg:mb-0 lg:w-[340px]">
+              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-[#2f3336]">
                 <div>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">Customize table</p>
                   <p className="text-xs text-gray-500 dark:text-slate-400">Breakdowns &amp; metrics</p>
@@ -1124,7 +1124,7 @@ export function WarehouseWorkbench() {
                 <button
                   type="button"
                   onClick={() => setSidebarOpen((v) => !v)}
-                  className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-950/20 dark:text-slate-200"
+                  className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/20 dark:text-slate-200"
                 >
                   {sidebarOpen ? "Hide" : "Show"}
                 </button>
@@ -1145,7 +1145,7 @@ export function WarehouseWorkbench() {
                         "flex-1 rounded-lg px-3 py-2 text-xs font-semibold",
                         sidebarTab === "breakdowns"
                           ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-[#16181c] dark:text-slate-200 dark:hover:bg-[#1d1f23]",
                       )}
                     >
                       Breakdowns
@@ -1157,7 +1157,7 @@ export function WarehouseWorkbench() {
                         "flex-1 rounded-lg px-3 py-2 text-xs font-semibold",
                         sidebarTab === "metrics"
                           ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-[#16181c] dark:text-slate-200 dark:hover:bg-[#1d1f23]",
                       )}
                     >
                       Metrics
@@ -1169,7 +1169,7 @@ export function WarehouseWorkbench() {
                       {sidebarTab === "breakdowns" ? "Selected breakdowns" : "Selected metrics"}
                     </p>
                     <div
-                      className="rounded-xl border border-gray-200 bg-gray-50 p-2 dark:border-slate-700 dark:bg-slate-950/20"
+                      className="rounded-xl border border-gray-200 bg-gray-50 p-2 dark:border-[#2f3336] dark:bg-[#000000]/20"
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={() => onDropTo(sidebarTab === "breakdowns" ? "dimensions" : "metrics")}
                     >
@@ -1184,7 +1184,7 @@ export function WarehouseWorkbench() {
                             draggingId &&
                             onReorder(sidebarTab === "breakdowns" ? "dimensions" : "metrics", draggingId, id)
                           }
-                          className="mb-1 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900"
+                          className="mb-1 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-[#2f3336] dark:bg-[#000000]"
                           title="Drag to reorder"
                         >
                           <label className="flex items-center gap-2">
@@ -1208,7 +1208,7 @@ export function WarehouseWorkbench() {
                     <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">
                       {sidebarTab === "breakdowns" ? "Available breakdowns" : "Available metrics"}
                     </p>
-                    <div className="max-h-[340px] overflow-auto rounded-xl border border-gray-200 dark:border-slate-700">
+                    <div className="max-h-[340px] overflow-auto rounded-xl border border-gray-200 dark:border-[#2f3336]">
                       {sidebarTab === "breakdowns" ? (
                         <div className="divide-y divide-gray-100 dark:divide-slate-800">
                           {filteredDims.map((f) => {
@@ -1216,7 +1216,7 @@ export function WarehouseWorkbench() {
                             return (
                               <div
                                 key={f.id}
-                                className="flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-slate-800/40"
+                                className="flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-[#16181c]/40"
                               >
                                 <label className="flex items-center gap-2">
                                   <input
@@ -1234,7 +1234,7 @@ export function WarehouseWorkbench() {
                                   draggable
                                   onDragStart={() => onDragStart(f.id)}
                                   onDragEnd={() => setDraggingId(null)}
-                                  className="cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                  className="cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000] dark:text-slate-200"
                                 >
                                   Drag
                                 </button>
@@ -1253,7 +1253,7 @@ export function WarehouseWorkbench() {
                               return (
                                 <div
                                   key={f.id}
-                                  className="flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-slate-800/40"
+                                  className="flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-[#16181c]/40"
                                 >
                                   <label className="flex items-center gap-2">
                                     <input
@@ -1271,7 +1271,7 @@ export function WarehouseWorkbench() {
                                     draggable
                                     onDragStart={() => onDragStart(f.id)}
                                     onDragEnd={() => setDraggingId(null)}
-                                    className="cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                    className="cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000] dark:text-slate-200"
                                   >
                                     Drag
                                   </button>
@@ -1288,7 +1288,7 @@ export function WarehouseWorkbench() {
                               return (
                                 <div
                                   key={f.id}
-                                  className="flex items-start justify-between gap-3 px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-slate-800/40"
+                                  className="flex items-start justify-between gap-3 px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-[#16181c]/40"
                                 >
                                   <label className="flex items-start gap-2">
                                     <input
@@ -1319,7 +1319,7 @@ export function WarehouseWorkbench() {
                                     draggable
                                     onDragStart={() => onDragStart(f.id)}
                                     onDragEnd={() => setDraggingId(null)}
-                                    className="mt-0.5 cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                    className="mt-0.5 cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000] dark:text-slate-200"
                                   >
                                     Drag
                                   </button>
@@ -1370,7 +1370,7 @@ export function WarehouseWorkbench() {
                 <button
                   type="button"
                   onClick={() => setAccountFilterIds([])}
-                  className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:border-gray-300 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:border-slate-600"
+                  className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:border-gray-300 dark:border-[#2f3336] dark:bg-[#000000]/40 dark:text-slate-300 dark:hover:border-slate-600"
                   title="Clear ad account filters"
                 >
                   Clear account filters
@@ -1380,7 +1380,7 @@ export function WarehouseWorkbench() {
           </div>
         )}
 
-        <div className="mb-4 rounded-xl border border-gray-200/80 bg-gradient-to-br from-white/90 to-slate-50/40 p-4 dark:border-slate-700 dark:from-slate-900/60 dark:to-slate-950/40">
+        <div className="mb-4 rounded-xl border border-gray-200/80 bg-gradient-to-br from-white/90 to-slate-50/40 p-4 dark:border-[#2f3336] dark:from-slate-900/60 dark:to-slate-950/40">
           <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-500">
             <SlidersHorizontal className="h-3.5 w-3.5" />
             Result table — columns & row layout
@@ -1397,7 +1397,7 @@ export function WarehouseWorkbench() {
                   value={rowSearch}
                   onChange={(e) => setRowSearch(e.target.value)}
                   placeholder="Filter by any visible text in loaded rows…"
-                  className="h-10 border-gray-200 bg-white pl-10 dark:border-slate-600 dark:bg-slate-900"
+                  className="h-10 border-gray-200 bg-white pl-10 dark:border-[#2f3336] dark:bg-[#000000]"
                 />
               </div>
             </div>
@@ -1428,7 +1428,7 @@ export function WarehouseWorkbench() {
             </div>
           </div>
 
-          <details className="group mt-4 rounded-lg border border-gray-200/90 bg-white/70 dark:border-slate-600 dark:bg-slate-900/40">
+          <details className="group mt-4 rounded-lg border border-gray-200/90 bg-white/70 dark:border-[#2f3336] dark:bg-[#000000]/40">
             <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-medium text-gray-800 marker:hidden dark:text-slate-200 [&::-webkit-details-marker]:hidden">
               <span className="inline-flex items-center gap-2">
                 <ArrowUpDown className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
@@ -1436,7 +1436,7 @@ export function WarehouseWorkbench() {
                 <ChevronDown className="ml-1 h-4 w-4 transition-transform [.group[open]_&]:rotate-180" />
               </span>
             </summary>
-            <div className="grid gap-4 border-t border-gray-100 px-3 pb-3 pt-2 sm:grid-cols-2 dark:border-slate-800">
+            <div className="grid gap-4 border-t border-gray-100 px-3 pb-3 pt-2 sm:grid-cols-2 dark:border-[#2f3336]">
               <div>
                 <p className="mb-2 text-xs font-semibold text-gray-600 dark:text-slate-400">Dimensions</p>
                 <ul className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
@@ -1480,7 +1480,7 @@ export function WarehouseWorkbench() {
                 </ul>
               </div>
             </div>
-            <div className="border-t border-gray-100 px-3 py-2 dark:border-slate-800">
+            <div className="border-t border-gray-100 px-3 py-2 dark:border-[#2f3336]">
               <button
                 type="button"
                 onClick={resetWarehouseColumns}
@@ -1517,7 +1517,7 @@ export function WarehouseWorkbench() {
 
         {viewMode === "aggregate" ? (
           aggregateLoading ? (
-            <div className="flex justify-center rounded-xl border border-gray-200/80 py-16 dark:border-slate-700">
+            <div className="flex justify-center rounded-xl border border-gray-200/80 py-16 dark:border-[#2f3336]">
               <RefreshCw className="h-8 w-8 animate-spin text-cyan-500" />
             </div>
           ) : aggregateError ? (
@@ -1525,15 +1525,15 @@ export function WarehouseWorkbench() {
               <p className="text-sm text-red-700 dark:text-red-300">Failed to load aggregate metrics.</p>
             </div>
           ) : aggregateRows.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 py-14 text-center dark:border-slate-600 dark:bg-slate-900/30">
+            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 py-14 text-center dark:border-[#2f3336] dark:bg-[#000000]/30">
               <Database className="mx-auto mb-3 h-8 w-8 text-gray-400" />
               <p className="text-sm text-gray-600 dark:text-slate-400">No aggregated rows for this selection.</p>
             </div>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-gray-200/80 bg-white/60 dark:border-slate-700 dark:bg-slate-950/40 lg:pr-[360px]">
+            <div className="overflow-hidden rounded-xl border border-gray-200/80 bg-white/60 dark:border-[#2f3336] dark:bg-[#000000]/40 lg:pr-[360px]">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50/90 dark:bg-slate-900/70">
+                  <thead className="bg-gray-50/90 dark:bg-[#000000]/70">
                     <tr>
                       {aggregateColumns.map((c) => {
                         const label = c.startsWith("metric:")
@@ -1556,7 +1556,7 @@ export function WarehouseWorkbench() {
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
                     {aggregateRows.slice(0, 200).map((r, idx) => (
-                      <tr key={idx} className="hover:bg-cyan-50/40 dark:hover:bg-slate-800/60">
+                      <tr key={idx} className="hover:bg-cyan-50/40 dark:hover:bg-[#16181c]/60">
                         {aggregateColumns.map((c) => {
                           const v = r[c];
                           const isMetric = c.startsWith("metric:");
@@ -1581,7 +1581,7 @@ export function WarehouseWorkbench() {
                   </tbody>
                 </table>
               </div>
-              <div className="flex items-center justify-between gap-2 border-t border-gray-200 px-4 py-3 text-xs text-gray-500 dark:border-slate-800 dark:text-slate-500">
+              <div className="flex items-center justify-between gap-2 border-t border-gray-200 px-4 py-3 text-xs text-gray-500 dark:border-[#2f3336] dark:text-slate-500">
                 Showing {Math.min(aggregateRows.length, 200).toLocaleString()} rows (capped)
                 <button
                   type="button"
@@ -1594,7 +1594,7 @@ export function WarehouseWorkbench() {
             </div>
           )
         ) : isLoading ? (
-          <div className="flex justify-center rounded-xl border border-gray-200/80 py-16 dark:border-slate-700">
+          <div className="flex justify-center rounded-xl border border-gray-200/80 py-16 dark:border-[#2f3336]">
             <RefreshCw className="h-8 w-8 animate-spin text-cyan-500" />
           </div>
         ) : error ? (
@@ -1602,7 +1602,7 @@ export function WarehouseWorkbench() {
             <p className="text-sm text-red-700 dark:text-red-300">Failed to load warehouse metrics.</p>
           </div>
         ) : metrics.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 py-14 text-center dark:border-slate-600 dark:bg-slate-900/30">
+          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 py-14 text-center dark:border-[#2f3336] dark:bg-[#000000]/30">
             <Database className="mx-auto mb-3 h-8 w-8 text-gray-400" />
             <p className="text-sm text-gray-600 dark:text-slate-400">No rows for this filter.</p>
             <p className="mx-auto mt-2 max-w-md text-xs text-gray-500 dark:text-slate-500">
@@ -1626,14 +1626,14 @@ export function WarehouseWorkbench() {
             </SecondaryButton>
           </div>
         ) : visibleColumnsOrdered.length === 0 ? (
-          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-600 dark:border-[#2f3336] dark:bg-[#000000]/50 dark:text-slate-300">
             Select at least one column in <strong>Columns — dimensions &amp; metrics</strong> above.
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-gray-200/80 bg-white/60 dark:border-slate-700 dark:bg-slate-950/40">
+          <div className="overflow-hidden rounded-xl border border-gray-200/80 bg-white/60 dark:border-[#2f3336] dark:bg-[#000000]/40">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50/90 dark:bg-slate-900/70">
+                <thead className="bg-gray-50/90 dark:bg-[#000000]/70">
                   <tr>
                     {visibleColumnsOrdered.map((col) => {
                       const active = sortColumn === col.id;
@@ -1649,7 +1649,7 @@ export function WarehouseWorkbench() {
                             type="button"
                             onClick={() => onSortHeaderClick(col.id)}
                             className={cn(
-                              "inline-flex w-full items-center gap-1 rounded-md px-1 py-0.5 text-left hover:bg-gray-200/80 dark:hover:bg-slate-800/80",
+                              "inline-flex w-full items-center gap-1 rounded-md px-1 py-0.5 text-left hover:bg-gray-200/80 dark:hover:bg-[#16181c]/80",
                               col.group === "metric" ? "justify-end text-right" : "justify-start",
                             )}
                           >
@@ -1671,7 +1671,7 @@ export function WarehouseWorkbench() {
                   {tableDisplayRows.map((m) => (
                     <React.Fragment key={m.id}>
                       <tr
-                        className="cursor-pointer hover:bg-cyan-50/40 dark:hover:bg-slate-800/60"
+                        className="cursor-pointer hover:bg-cyan-50/40 dark:hover:bg-[#16181c]/60"
                         onClick={() => toggleRow(m.id)}
                       >
                         {visibleColumnsOrdered.map((col) => (
@@ -1679,7 +1679,7 @@ export function WarehouseWorkbench() {
                         ))}
                       </tr>
                       {expandedRows.has(m.id) && (
-                        <tr className="bg-gray-50/70 dark:bg-slate-900/50">
+                        <tr className="bg-gray-50/70 dark:bg-[#000000]/50">
                           <td
                             colSpan={Math.max(visibleColumnsOrdered.length, 1)}
                             className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400"
@@ -1696,7 +1696,7 @@ export function WarehouseWorkbench() {
                 </tbody>
               </table>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-4 py-3 dark:border-slate-800">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-4 py-3 dark:border-[#2f3336]">
               <span className="text-xs text-gray-500 dark:text-slate-500">
                 Showing {tableDisplayRows.length.toLocaleString()}
                 {processedRows.length > tableDisplayRows.length
