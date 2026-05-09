@@ -362,9 +362,11 @@ export function normalizeGoogleAdsRow(row: GoogleAdsRow): NormalizedGoogleAdsRow
 
     if (typeof value === 'object' && !Array.isArray(value)) {
       for (const [field, fieldVal] of Object.entries(value as Record<string, unknown>)) {
-        const key = `${section}_${field}`.replace(/\./g, '_');
+        // Convert camelCase to snake_case (e.g., costMicros -> cost_micros)
+        const snakeField = field.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+        const key = `${section}_${snakeField}`.replace(/\./g, '_');
 
-        if (field === 'cost_micros' || field.endsWith('_micros')) {
+        if (snakeField === 'cost_micros' || snakeField.endsWith('_micros')) {
           // Convert micros to real currency — dividing by 1,000,000
           out[key.replace('_micros', '')] = Number(fieldVal) / 1_000_000;
         } else if (typeof fieldVal === 'string' && /^\d+$/.test(fieldVal)) {

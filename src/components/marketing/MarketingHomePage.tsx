@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowRight, ChevronRight, Shield, Lock, Eye, Zap } from "lucide-react";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 
@@ -584,8 +585,10 @@ function FeatureTabs({ tabs, eyebrow }: { tabs: readonly TabData[]; eyebrow: str
 // ─────────────────────────────────────────────
 export default function MarketingHomePage() {
     const [lang, setLang] = useState<Lang>("en");
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
+        setMounted(true);
         if (typeof window === "undefined") return;
 
         const applyLang = (value: string | null) => {
@@ -606,6 +609,8 @@ export default function MarketingHomePage() {
             window.removeEventListener("marketing-lang-change", onCustom as EventListener);
         };
     }, []);
+
+    if (!mounted) return null;
 
     const c = COPY[lang];
 
@@ -649,7 +654,7 @@ export default function MarketingHomePage() {
                     {/* Platform logos — compact, replaces architecture diagram */}
                     <div className="flex items-center justify-center gap-5 mb-10">
                         {HERO_LOGOS.map(({ src, alt }) => (
-                            <img key={alt} src={src} alt={alt} className="h-6 w-6 object-contain opacity-50 hover:opacity-80 transition-opacity" />
+                            <Image key={alt} src={src} alt={alt} width={24} height={24} className="h-6 w-6 object-contain opacity-50 hover:opacity-80 transition-opacity" />
                         ))}
                     </div>
 
@@ -736,7 +741,7 @@ export default function MarketingHomePage() {
 
                     {/* Row 1 — scrolls left */}
                     <div className="flex animate-[ticker_35s_linear_infinite] hover:[animation-play-state:paused] w-max gap-20">
-                        {[...c.proofRow1, ...c.proofRow1, ...c.proofRow1].map(({ quote, author }, i) => (
+                        {[...c.proofRow1, ...c.proofRow1].map(({ quote, author }, i) => (
                             <p key={`r1-${i}`} className="flex-shrink-0 text-[15px] whitespace-nowrap">
                                 <em className="text-slate-500">&ldquo;{quote}&rdquo;</em>
                                 <span className="text-slate-400 ml-2 not-italic font-medium text-sm">— {author}</span>
@@ -746,7 +751,7 @@ export default function MarketingHomePage() {
 
                     {/* Row 2 — scrolls right */}
                     <div className="flex animate-[ticker-reverse_40s_linear_infinite] hover:[animation-play-state:paused] w-max gap-20">
-                        {[...c.proofRow2, ...c.proofRow2, ...c.proofRow2].map(({ quote, author }, i) => (
+                        {[...c.proofRow2, ...c.proofRow2].map(({ quote, author }, i) => (
                             <p key={`r2-${i}`} className="flex-shrink-0 text-[15px] whitespace-nowrap">
                                 <em className="text-slate-500">&ldquo;{quote}&rdquo;</em>
                                 <span className="text-slate-400 ml-2 not-italic font-medium text-sm">— {author}</span>
