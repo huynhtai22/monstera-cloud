@@ -10,13 +10,10 @@ import {
   Database,
   Download,
   Filter,
-  Facebook,
-  Globe,
   Layers,
   Plus,
   RefreshCw,
   CloudDownload,
-  ShoppingBag,
   Search,
   SlidersHorizontal,
   ArrowUpDown,
@@ -27,6 +24,7 @@ import { Input } from "@/components/ui/Input";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { downloadCsv } from "@/lib/export-utils";
+import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import {
   ADS_DIMENSIONS,
   ADS_METRICS,
@@ -73,11 +71,31 @@ export const PLATFORM_LABELS: Record<string, string> = {
 
 const PLATFORM_OPTIONS = [
   { value: "", label: "All Platforms", icon: <Layers className="h-4 w-4" /> },
-  { value: "meta_ads", label: "Meta Ads", icon: <Facebook className="h-4 w-4 text-blue-600" /> },
-  { value: "tiktok_business", label: "TikTok Ads", icon: <Globe className="h-4 w-4" /> },
-  { value: "google_ads", label: "Google Ads", icon: <Globe className="h-4 w-4 text-green-600" /> },
-  { value: "shopee", label: "Shopee", icon: <ShoppingBag className="h-4 w-4 text-orange-500" /> },
-  { value: "lazada", label: "Lazada", icon: <ShoppingBag className="h-4 w-4 text-blue-500" /> },
+  {
+    value: "meta_ads",
+    label: "Meta Ads",
+    icon: <img alt="" src={INTEGRATION_LOGOS.meta} className="h-4 w-4" />,
+  },
+  {
+    value: "tiktok_business",
+    label: "TikTok Ads",
+    icon: <img alt="" src={INTEGRATION_LOGOS.tiktok} className="h-4 w-4" />,
+  },
+  {
+    value: "google_ads",
+    label: "Google Ads",
+    icon: <img alt="" src={INTEGRATION_LOGOS.googleAds} className="h-4 w-4" />,
+  },
+  {
+    value: "shopee",
+    label: "Shopee",
+    icon: <img alt="" src={INTEGRATION_LOGOS.shopee} className="h-4 w-4" />,
+  },
+  {
+    value: "lazada",
+    label: "Lazada",
+    icon: <img alt="" src={INTEGRATION_LOGOS.lazada} className="h-4 w-4" />,
+  },
 ];
 
 const PLATFORM_COLORS: Record<string, string> = {
