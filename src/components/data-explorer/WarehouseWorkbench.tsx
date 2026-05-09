@@ -1394,12 +1394,12 @@ export function WarehouseWorkbench() {
             </div>
           </div>
 
-          <details className="mt-4 rounded-lg border border-gray-200/90 bg-white/70 dark:border-slate-600 dark:bg-slate-900/40">
+          <details className="group mt-4 rounded-lg border border-gray-200/90 bg-white/70 dark:border-slate-600 dark:bg-slate-900/40">
             <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-medium text-gray-800 marker:hidden dark:text-slate-200 [&::-webkit-details-marker]:hidden">
               <span className="inline-flex items-center gap-2">
                 <ArrowUpDown className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
                 Columns — dimensions & metrics (alphabetical)
-                <ChevronDown className="ml-1 h-4 w-4 transition-transform group-open:rotate-180 [[details[open]_&]]:rotate-180" />
+                <ChevronDown className="ml-1 h-4 w-4 transition-transform group-open:rotate-180" />
               </span>
             </summary>
             <div className="grid gap-4 border-t border-gray-100 px-3 pb-3 pt-2 sm:grid-cols-2 dark:border-slate-800">
