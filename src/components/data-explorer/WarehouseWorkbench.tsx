@@ -482,7 +482,10 @@ export function WarehouseWorkbench() {
   }, [activeWorkspaceId]);
 
   const { data: platformsData } = useSWR(platformsUrl, fetcher);
-  const { data: accountsDimensions } = useSWR(accountsFilterUrl, fetcher);
+  const {
+    data: accountsDimensions,
+    isLoading: accountsDimensionsLoading,
+  } = useSWR(accountsFilterUrl, fetcher);
 
   const dateRangeError = useMemo(() => {
     if (!startDate || !endDate) return null;
@@ -518,6 +521,7 @@ export function WarehouseWorkbench() {
     });
     if (selectedPlatform) params.set("platform", selectedPlatform);
     if (accountFilterIds.length === 1) params.set("accountId", accountFilterIds[0]);
+    else if (accountFilterIds.length > 1) params.set("accountIds", accountFilterIds.join(","));
     return `/api/metrics/query?${params.toString()}`;
   }, [activeWorkspaceId, startDate, endDate, selectedPlatform, accountFilterIds, dateRangeError, dimensions, metricsSelection]);
 
@@ -597,7 +601,26 @@ export function WarehouseWorkbench() {
     platformsData?.platforms || summary?.platforms || [];
 
   const warehousedAccounts: Array<{ accountId: string; platform: string; accountName?: string }> =
-    accountsDimensions?.accounts ?? [];
+    useMemo(() => accountsDimensions?.accounts ?? [], [accountsDimensions]);
+
+  /** When a platform is selected, only list chips for that platform so Meta + Google cannot be combined by mistake. */
+  const accountsForChipPicker = useMemo(() => {
+    if (!selectedPlatform) return warehousedAccounts;
+    return warehousedAccounts.filter((a) => a.platform === selectedPlatform);
+  }, [warehousedAccounts, selectedPlatform]);
+
+  /** Drop account IDs that do not exist for the selected platform (avoids impossible queries like Google Ads + Meta account). */
+  useEffect(() => {
+    if (!selectedPlatform) return;
+    if (accountsDimensionsLoading) return;
+    const allowed = new Set(
+      warehousedAccounts.filter((a) => a.platform === selectedPlatform).map((a) => a.accountId),
+    );
+    setAccountFilterIds((prev) => {
+      const next = prev.filter((id) => allowed.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [selectedPlatform, warehousedAccounts, accountsDimensionsLoading]);
 
   const toggleAccountFilter = (id: string) => {
     setAccountFilterIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -1321,8 +1344,14 @@ export function WarehouseWorkbench() {
             <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">
               Narrow by stored ad account <span className="font-normal">(optional)</span>
             </p>
+            {selectedPlatform ? (
+              <p className="mb-2 text-[11px] leading-relaxed text-gray-500 dark:text-slate-400">
+                Platform filter is <span className="font-semibold">{PLATFORM_LABELS[selectedPlatform] ?? selectedPlatform}</span>
+                . Only accounts with rows for that platform are listed; unrelated account chips are cleared automatically.
+              </p>
+            ) : null}
             <div className="flex flex-wrap gap-2">
-              {warehousedAccounts.map((a) => (
+              {accountsForChipPicker.map((a) => (
                 <ToggleChip
                   key={`${a.platform}-${a.accountId}`}
                   active={accountFilterIds.includes(a.accountId)}
@@ -1332,6 +1361,11 @@ export function WarehouseWorkbench() {
                   {a.accountName || a.accountId}
                 </ToggleChip>
               ))}
+              {selectedPlatform && accountsForChipPicker.length === 0 && !accountsDimensionsLoading ? (
+                <span className="text-xs text-amber-800 dark:text-amber-200">
+                  No stored accounts for this platform yet — run an import above or choose “All platforms”.
+                </span>
+              ) : null}
               {accountFilterIds.length > 0 && (
                 <button
                   type="button"
@@ -1339,7 +1373,7 @@ export function WarehouseWorkbench() {
                   className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:border-gray-300 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:border-slate-600"
                   title="Clear ad account filters"
                 >
-                  Clear
+                  Clear account filters
                 </button>
               )}
             </div>
