@@ -706,7 +706,15 @@ export function WarehouseWorkbench() {
         setBatchError(payload.error || `Import batch failed (${res.status})`);
         return;
       }
-      setBatchMessage(payload.message ?? "Import batch finished.");
+      
+      // Extract specific errors from the batch if any failed
+      const errors = payload.results?.filter((r: any) => !r.ok && r.error).map((r: any) => `${r.provider}: ${r.error}`);
+      if (errors && errors.length > 0) {
+        setBatchError(`Some imports failed:\n${errors.join("\n")}`);
+      } else {
+        setBatchMessage(payload.message ?? "Import batch finished.");
+      }
+      
       await mutate();
     } catch (e) {
       setBatchError(e instanceof Error ? e.message : "Batch import failed");
