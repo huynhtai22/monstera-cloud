@@ -162,13 +162,15 @@ export function SectionOverviewCard({
                                 <div className="relative shrink-0">
                                     {item.logoSrc ? (
                                         <>
-                                            <img
-                                                src={item.logoSrc}
-                                                alt=""
-                                                width={16}
-                                                height={16}
-                                                className="h-4 w-4 object-contain"
-                                            />
+                                            <div className="relative flex h-6 w-6 items-center justify-center rounded-md bg-white p-0.5 shadow-sm dark:bg-white">
+                                                <img
+                                                    src={item.logoSrc}
+                                                    alt=""
+                                                    width={16}
+                                                    height={16}
+                                                    className="h-4 w-4 object-contain"
+                                                />
+                                            </div>
                                             {item.accountCount && item.accountCount > 1 && (
                                                 <span className="absolute -right-1.5 -top-1 flex h-3 min-w-3 items-center justify-center rounded-full bg-cyan-500 px-0.5 text-[7px] font-bold text-white shadow-sm">
                                                     {item.accountCount}

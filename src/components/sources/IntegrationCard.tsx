@@ -84,7 +84,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
     >
       <div className="flex items-start justify-between mb-3 relative z-10">
         <div
-          className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 bg-white/10 dark:bg-[#000000]/60 overflow-hidden
+          className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 bg-white dark:bg-white overflow-hidden p-2
             ${integration.status === "error"
               ? "border-red-400/20 dark:border-red-700/30"
               : "border-white/10 dark:border-white/10"}`}

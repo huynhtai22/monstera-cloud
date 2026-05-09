@@ -68,7 +68,7 @@ export const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
             : "border-gray-200/80 hover:border-cyan-200/80 dark:border-[#2f3336]/60 dark:hover:border-cyan-700/50"
       )}
     >
-      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200/70 bg-white dark:border-[#2f3336]/60 dark:bg-[#000000]">
+      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200/70 bg-white p-1.5 dark:border-[#2f3336]/60 dark:bg-white">
         {isError && (
           <span className="absolute -right-1 -top-1 flex h-3 w-3">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>

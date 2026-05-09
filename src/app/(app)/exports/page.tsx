@@ -62,7 +62,7 @@ export default function ExportsPage() {
                 <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-[#2f3336] dark:bg-[#16181c]/50">
                     <div className="p-6">
                         <div className="flex items-center gap-4 mb-4">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 shadow-sm dark:border-[#2f3336] dark:bg-[#16181c]">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 p-2 shadow-sm dark:border-[#2f3336] dark:bg-white">
                                 <Image src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" width={32} height={32} />
                             </div>
                             <div>
@@ -107,7 +107,7 @@ export default function ExportsPage() {
                 <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-[#2f3336] dark:bg-[#16181c]/50">
                     <div className="p-6">
                         <div className="flex items-center gap-4 mb-4">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 shadow-sm dark:border-[#2f3336] dark:bg-[#16181c]">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 p-2 shadow-sm dark:border-[#2f3336] dark:bg-white">
                                 <Image src={INTEGRATION_LOGOS.looker} alt="Looker Studio" width={32} height={32} />
                             </div>
                             <div>
