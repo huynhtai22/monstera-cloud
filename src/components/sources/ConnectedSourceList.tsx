@@ -198,9 +198,9 @@ export function ConnectedSourceList(props: {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white dark:border-[#2f3336] dark:bg-[#000000]">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white p-1.5 dark:border-[#2f3336] dark:bg-white">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          {r.logoSrc ? <img src={r.logoSrc} alt="" width={22} height={22} /> : null}
+                          {r.logoSrc ? <img src={r.logoSrc} alt="" width={22} height={22} className="object-contain" /> : null}
                         </span>
                         <div className="min-w-0">
                           <Link
