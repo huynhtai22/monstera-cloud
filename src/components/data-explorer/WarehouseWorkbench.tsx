@@ -27,6 +27,13 @@ import { Input } from "@/components/ui/Input";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { downloadCsv } from "@/lib/export-utils";
+import {
+  ADS_DIMENSIONS,
+  ADS_METRICS,
+  ADS_CALCULATED_METRICS,
+  ADS_FIELDS_BY_ID,
+  getDefaultAdsExplorerSelection,
+} from "@/lib/ads-field-registry";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -365,6 +372,16 @@ function ToggleChip({
 /** Unified warehouse view: batch import + metrics explorer (replaces `/synced-data`). */
 export function WarehouseWorkbench() {
   const { activeWorkspaceId } = useWorkspaceStore();
+  const defaults = useMemo(() => getDefaultAdsExplorerSelection(), []);
+  const [viewMode, setViewMode] = useState<"raw" | "aggregate">("raw");
+
+  // Aggregate builder (right sidebar)
+  const [dimensions, setDimensions] = useState<string[]>(defaults.dimensions);
+  const [metricsSelection, setMetricsSelection] = useState<string[]>(defaults.metrics);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarTab, setSidebarTab] = useState<"breakdowns" | "metrics">("breakdowns");
+  const [fieldSearch, setFieldSearch] = useState("");
 
   const [connections, setConnections] = useState<ConnRow[]>([]);
 
@@ -471,6 +488,21 @@ export function WarehouseWorkbench() {
     return `/api/metrics/query?${params.toString()}`;
   }, [activeWorkspaceId, startDate, endDate, selectedPlatform, accountFilterIds, dateRangeError]);
 
+  const aggregateQueryUrl = useMemo(() => {
+    if (!activeWorkspaceId || !startDate || !endDate || dateRangeError) return null;
+    const params = new URLSearchParams({
+      workspaceId: activeWorkspaceId,
+      startDate,
+      endDate,
+      mode: "aggregate",
+      dimensions: dimensions.join(","),
+      metrics: metricsSelection.join(","),
+    });
+    if (selectedPlatform) params.set("platform", selectedPlatform);
+    if (accountFilterIds.length === 1) params.set("accountId", accountFilterIds[0]);
+    return `/api/metrics/query?${params.toString()}`;
+  }, [activeWorkspaceId, startDate, endDate, selectedPlatform, accountFilterIds, dateRangeError, dimensions, metricsSelection]);
+
   const { data, error, isLoading, mutate } = useSWR(queryUrl, fetcher, {
     refreshInterval: 60000,
     onSuccess: (newData) => {
@@ -480,7 +512,17 @@ export function WarehouseWorkbench() {
     },
   });
 
+  const {
+    data: aggregateData,
+    error: aggregateError,
+    isLoading: aggregateLoading,
+    mutate: mutateAggregate,
+  } = useSWR(viewMode === "aggregate" ? aggregateQueryUrl : null, fetcher, {
+    refreshInterval: 60000,
+  });
+
   const limits = data?.limits;
+  const aggLimits = aggregateData?.limits ?? limits;
 
   const loadMore = async () => {
     if (!queryUrl || !cursor || isLoadingMore) return;
@@ -504,6 +546,11 @@ export function WarehouseWorkbench() {
 
   const metrics = allMetrics;
   const summary = data?.summary;
+
+  const aggregateRows: Array<Record<string, any>> =
+    aggregateData?.mode === "aggregate" ? (aggregateData?.rows || []) : [];
+  const aggregateColumns: string[] =
+    aggregateData?.mode === "aggregate" ? (aggregateData?.columns || []) : [];
 
   const visibleColSet = useMemo(() => new Set(visibleColIds), [visibleColIds]);
   const visibleColumnsOrdered = useMemo(
@@ -665,6 +712,66 @@ export function WarehouseWorkbench() {
     }
     return byCurrency;
   }, [processedRows]);
+
+  const onDragStart = useCallback((id: string) => {
+    setDraggingId(id);
+  }, []);
+
+  const onDropTo = useCallback(
+    (target: "dimensions" | "metrics") => {
+      if (!draggingId) return;
+      const field: any = ADS_FIELDS_BY_ID[draggingId];
+      if (!field) return;
+      if (target === "dimensions") {
+        if (field.kind !== "dimension") return;
+        setDimensions((prev) => (prev.includes(draggingId) ? prev : [...prev, draggingId]));
+      } else {
+        if (field.kind !== "metric") return;
+        setMetricsSelection((prev) => (prev.includes(draggingId) ? prev : [...prev, draggingId]));
+      }
+    },
+    [draggingId],
+  );
+
+  const removeFrom = useCallback((target: "dimensions" | "metrics", id: string) => {
+    if (target === "dimensions") {
+      setDimensions((prev) => (prev.length <= 1 ? prev : prev.filter((x) => x !== id)));
+    } else {
+      setMetricsSelection((prev) => (prev.length <= 1 ? prev : prev.filter((x) => x !== id)));
+    }
+  }, []);
+
+  const onReorder = useCallback((target: "dimensions" | "metrics", id: string, overId: string) => {
+    if (id === overId) return;
+    const setter = target === "dimensions" ? setDimensions : setMetricsSelection;
+    setter((prev) => {
+      const from = prev.indexOf(id);
+      const to = prev.indexOf(overId);
+      if (from === -1 || to === -1) return prev;
+      const next = [...prev];
+      next.splice(from, 1);
+      next.splice(to, 0, id);
+      return next;
+    });
+  }, []);
+
+  const filteredDims = useMemo(() => {
+    const q = fieldSearch.trim().toLowerCase();
+    if (!q) return ADS_DIMENSIONS;
+    return ADS_DIMENSIONS.filter((f) => f.label.toLowerCase().includes(q) || f.id.toLowerCase().includes(q));
+  }, [fieldSearch]);
+
+  const filteredRawMetrics = useMemo(() => {
+    const q = fieldSearch.trim().toLowerCase();
+    if (!q) return ADS_METRICS;
+    return ADS_METRICS.filter((f) => f.label.toLowerCase().includes(q) || f.id.toLowerCase().includes(q));
+  }, [fieldSearch]);
+
+  const filteredCalculatedMetrics = useMemo(() => {
+    const q = fieldSearch.trim().toLowerCase();
+    if (!q) return ADS_CALCULATED_METRICS;
+    return ADS_CALCULATED_METRICS.filter((f) => f.label.toLowerCase().includes(q) || f.id.toLowerCase().includes(q));
+  }, [fieldSearch]);
 
   const moneyKpiNode = useCallback(
     (kind: "spend" | "revenue") => {
@@ -861,24 +968,24 @@ export function WarehouseWorkbench() {
           </div>
         </div>
 
-        {limits && (
+        {aggLimits && (
           <div className="mb-4 flex flex-wrap items-center gap-3 text-xs">
             <span
               className={cn(
                 "inline-flex items-center rounded-lg px-2.5 py-1 font-medium capitalize",
-                limits.plan === "free"
+                aggLimits.plan === "free"
                   ? "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                  : limits.plan === "starter"
+                  : aggLimits.plan === "starter"
                     ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                    : limits.plan === "professional"
+                    : aggLimits.plan === "professional"
                       ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
                       : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
               )}
             >
-              {limits.plan} plan
+              {aggLimits.plan} plan
             </span>
             <span className="text-gray-500 dark:text-slate-500">
-              {limits.maxRowsPerQuery.toLocaleString()} rows / query (rewind is unrestricted)
+              {aggLimits.maxRowsPerQuery.toLocaleString()} rows / query (rewind is unrestricted)
             </span>
           </div>
         )}
@@ -936,6 +1043,15 @@ export function WarehouseWorkbench() {
             />
           </div>
           <div className="flex items-end gap-2 md:col-span-5">
+            <Dropdown
+              value={viewMode}
+              onChange={(v) => setViewMode(v as "raw" | "aggregate")}
+              options={[
+                { value: "raw", label: "Raw rows" },
+                { value: "aggregate", label: "Aggregate (normalized)" },
+              ]}
+              className="min-w-[180px]"
+            />
             <PrimaryButton type="button" onClick={() => mutate()} disabled={isLoading} className="h-10 px-4">
               {isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               <span className="ml-2">Refresh</span>
@@ -946,6 +1062,232 @@ export function WarehouseWorkbench() {
             </SecondaryButton>
           </div>
         </div>
+
+        {viewMode === "aggregate" && (
+          <>
+            <aside className="mb-6 rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 lg:fixed lg:right-6 lg:top-[140px] lg:mb-0 lg:w-[340px]">
+              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-slate-700">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Customize table</p>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Breakdowns &amp; metrics</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSidebarOpen((v) => !v)}
+                  className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-950/20 dark:text-slate-200"
+                >
+                  {sidebarOpen ? "Hide" : "Show"}
+                </button>
+              </div>
+              {sidebarOpen && (
+                <div className="p-4">
+                  <Input
+                    value={fieldSearch}
+                    onChange={(e) => setFieldSearch(e.target.value)}
+                    placeholder="Search fields…"
+                    className="h-9"
+                  />
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSidebarTab("breakdowns")}
+                      className={cn(
+                        "flex-1 rounded-lg px-3 py-2 text-xs font-semibold",
+                        sidebarTab === "breakdowns"
+                          ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+                      )}
+                    >
+                      Breakdowns
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSidebarTab("metrics")}
+                      className={cn(
+                        "flex-1 rounded-lg px-3 py-2 text-xs font-semibold",
+                        sidebarTab === "metrics"
+                          ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
+                      )}
+                    >
+                      Metrics
+                    </button>
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">
+                      {sidebarTab === "breakdowns" ? "Selected breakdowns" : "Selected metrics"}
+                    </p>
+                    <div
+                      className="rounded-xl border border-gray-200 bg-gray-50 p-2 dark:border-slate-700 dark:bg-slate-950/20"
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => onDropTo(sidebarTab === "breakdowns" ? "dimensions" : "metrics")}
+                    >
+                      {(sidebarTab === "breakdowns" ? dimensions : metricsSelection).map((id) => (
+                        <div
+                          key={id}
+                          draggable
+                          onDragStart={() => onDragStart(id)}
+                          onDragEnd={() => setDraggingId(null)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() =>
+                            draggingId &&
+                            onReorder(sidebarTab === "breakdowns" ? "dimensions" : "metrics", draggingId, id)
+                          }
+                          className="mb-1 flex items-center justify-between rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900"
+                          title="Drag to reorder"
+                        >
+                          <label className="flex items-center gap-2">
+                            <span className="cursor-grab select-none text-gray-400">⋮⋮</span>
+                            <input
+                              type="checkbox"
+                              checked
+                              onChange={() => removeFrom(sidebarTab === "breakdowns" ? "dimensions" : "metrics", id)}
+                            />
+                            <span className="font-medium text-gray-900 dark:text-white">
+                              {(ADS_FIELDS_BY_ID as any)[id]?.label ?? id}
+                            </span>
+                          </label>
+                          <span className="text-[10px] text-gray-500">{id}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-5">
+                    <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">
+                      {sidebarTab === "breakdowns" ? "Available breakdowns" : "Available metrics"}
+                    </p>
+                    <div className="max-h-[340px] overflow-auto rounded-xl border border-gray-200 dark:border-slate-700">
+                      {sidebarTab === "breakdowns" ? (
+                        <div className="divide-y divide-gray-100 dark:divide-slate-800">
+                          {filteredDims.map((f) => {
+                            const selected = dimensions.includes(f.id);
+                            return (
+                              <div
+                                key={f.id}
+                                className="flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-slate-800/40"
+                              >
+                                <label className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={selected}
+                                    onChange={() => {
+                                      if (selected) removeFrom("dimensions", f.id);
+                                      else setDimensions((prev) => [...prev, f.id]);
+                                    }}
+                                  />
+                                  <span className="font-medium">{f.label}</span>
+                                </label>
+                                <button
+                                  type="button"
+                                  draggable
+                                  onDragStart={() => onDragStart(f.id)}
+                                  onDragEnd={() => setDraggingId(null)}
+                                  className="cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                >
+                                  Drag
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-gray-100 dark:divide-slate-800">
+                          <div>
+                            <p className="px-3 py-2 text-[11px] font-semibold text-gray-500 dark:text-slate-400">
+                              Raw metrics (aggregates safely)
+                            </p>
+                            {filteredRawMetrics.map((f) => {
+                              const selected = metricsSelection.includes(f.id);
+                              return (
+                                <div
+                                  key={f.id}
+                                  className="flex items-center justify-between px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-slate-800/40"
+                                >
+                                  <label className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={selected}
+                                      onChange={() => {
+                                        if (selected) removeFrom("metrics", f.id);
+                                        else setMetricsSelection((prev) => [...prev, f.id]);
+                                      }}
+                                    />
+                                    <span className="font-medium">{f.label}</span>
+                                  </label>
+                                  <button
+                                    type="button"
+                                    draggable
+                                    onDragStart={() => onDragStart(f.id)}
+                                    onDragEnd={() => setDraggingId(null)}
+                                    className="cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                  >
+                                    Drag
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div>
+                            <p className="px-3 py-2 text-[11px] font-semibold text-gray-500 dark:text-slate-400">
+                              Calculated metrics (computed from sums)
+                            </p>
+                            {filteredCalculatedMetrics.map((f: any) => {
+                              const selected = metricsSelection.includes(f.id);
+                              return (
+                                <div
+                                  key={f.id}
+                                  className="flex items-start justify-between gap-3 px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-slate-800/40"
+                                >
+                                  <label className="flex items-start gap-2">
+                                    <input
+                                      type="checkbox"
+                                      className="mt-0.5"
+                                      checked={selected}
+                                      onChange={() => {
+                                        if (selected) removeFrom("metrics", f.id);
+                                        else setMetricsSelection((prev) => [...prev, f.id]);
+                                      }}
+                                    />
+                                    <div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium">{f.label}</span>
+                                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                                          Calculated
+                                        </span>
+                                      </div>
+                                      {f.formula ? (
+                                        <p className="mt-0.5 font-mono text-[10px] text-gray-500 dark:text-slate-400">
+                                          {f.formula}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                  </label>
+                                  <button
+                                    type="button"
+                                    draggable
+                                    onDragStart={() => onDragStart(f.id)}
+                                    onDragEnd={() => setDraggingId(null)}
+                                    className="mt-0.5 cursor-grab rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-semibold text-gray-600 hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                                  >
+                                    Drag
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </aside>
+
+            <div className="lg:pr-[360px]" />
+          </>
+        )}
 
         {warehousedAccounts.length > 0 && (
           <div className="mb-6">
@@ -1102,7 +1444,85 @@ export function WarehouseWorkbench() {
           ))}
         </div>
 
-        {isLoading ? (
+        {viewMode === "aggregate" ? (
+          aggregateLoading ? (
+            <div className="flex justify-center rounded-xl border border-gray-200/80 py-16 dark:border-slate-700">
+              <RefreshCw className="h-8 w-8 animate-spin text-cyan-500" />
+            </div>
+          ) : aggregateError ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900">
+              <p className="text-sm text-red-700 dark:text-red-300">Failed to load aggregate metrics.</p>
+            </div>
+          ) : aggregateRows.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/60 py-14 text-center dark:border-slate-600 dark:bg-slate-900/30">
+              <Database className="mx-auto mb-3 h-8 w-8 text-gray-400" />
+              <p className="text-sm text-gray-600 dark:text-slate-400">No aggregated rows for this selection.</p>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-gray-200/80 bg-white/60 dark:border-slate-700 dark:bg-slate-950/40 lg:pr-[360px]">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50/90 dark:bg-slate-900/70">
+                    <tr>
+                      {aggregateColumns.map((c) => {
+                        const label = c.startsWith("metric:")
+                          ? (ADS_FIELDS_BY_ID as any)[c.slice("metric:".length)]?.label ?? c
+                          : (ADS_FIELDS_BY_ID as any)[c]?.label ?? c;
+                        const align = c.startsWith("metric:") ? "text-right" : "text-left";
+                        return (
+                          <th
+                            key={c}
+                            className={cn(
+                              "px-4 py-3 text-xs font-semibold text-gray-500 dark:text-slate-400 whitespace-nowrap",
+                              align,
+                            )}
+                          >
+                            {label}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
+                    {aggregateRows.slice(0, 200).map((r, idx) => (
+                      <tr key={idx} className="hover:bg-cyan-50/40 dark:hover:bg-slate-800/60">
+                        {aggregateColumns.map((c) => {
+                          const v = r[c];
+                          const isMetric = c.startsWith("metric:");
+                          const text =
+                            typeof v === "number"
+                              ? v.toLocaleString(undefined, { maximumFractionDigits: 6 })
+                              : String(v ?? "");
+                          return (
+                            <td
+                              key={c}
+                              className={cn(
+                                "px-4 py-3 whitespace-nowrap",
+                                isMetric ? "text-right tabular-nums text-gray-900 dark:text-white" : "text-gray-700 dark:text-slate-300",
+                              )}
+                            >
+                              {text}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center justify-between gap-2 border-t border-gray-200 px-4 py-3 text-xs text-gray-500 dark:border-slate-800 dark:text-slate-500">
+                Showing {Math.min(aggregateRows.length, 200).toLocaleString()} rows (capped)
+                <button
+                  type="button"
+                  onClick={() => void mutateAggregate()}
+                  className="font-medium text-cyan-700 hover:underline dark:text-cyan-300"
+                >
+                  Refresh
+                </button>
+              </div>
+            </div>
+          )
+        ) : isLoading ? (
           <div className="flex justify-center rounded-xl border border-gray-200/80 py-16 dark:border-slate-700">
             <RefreshCw className="h-8 w-8 animate-spin text-cyan-500" />
           </div>
