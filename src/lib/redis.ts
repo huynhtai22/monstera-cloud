@@ -59,7 +59,7 @@ export function getRedis() {
           return async function (...args: any[]) {
             try {
               // Upstash handles commands sequentially, binding is required
-              const result = await origMethod.apply(target, args);
+              const result = await (origMethod as any).apply(target, args);
               if (circuitState === 'HALF_OPEN') {
                 logger.info("[VercelKV] Circuit CLOSED: Connection recovered");
                 circuitState = 'CLOSED';
