@@ -2,10 +2,10 @@
 
 import React from "react";
 import Link from "next/link";
-import { Database, Plug, Send, GitMerge, ChevronRight, Plus, Loader2 } from "lucide-react";
+import { Database, Plug, Send, GitMerge, ChevronRight, Plus, Loader2, RefreshCw } from "lucide-react";
 import useSWR, { useSWRConfig } from "swr";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
-import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
+import { PrimaryButton, primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
 import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
 import { AiPerformanceSummary } from "@/components/AiPerformanceSummary";
 import { PageShell } from "@/components/ui/PageShell";
