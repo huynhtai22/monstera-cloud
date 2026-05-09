@@ -297,28 +297,62 @@ async function syncGoogleAds(opts: {
       ? `BETWEEN '${opts.since}' AND '${opts.until}'`
       : clampGoogleAdsDatePeriodForPlan(userPlan, "LAST_30_DAYS");
 
-  logger.info(`[syncGoogleAds] dateSpec="${dateSpec}" customers=${customerIds.length}`);
+  logger.info(`[syncGoogleAds] dateSpec="${dateSpec}" rootCustomers=${customerIds.length}`);
 
   const jobId = `pipeline-${Date.now()}`;
   let totalRows = 0;
   const failures: Array<{ customerId: string; error: string }> = [];
 
-  for (const customerId of customerIds) {
+  // ── Step 1: Resolve MCC hierarchy ──────────────────────────────────────────
+  // listAccessibleCustomers returns ALL accessible accounts including MCC parent
+  // accounts. Querying an MCC directly returns 0 rows because campaigns live on
+  // leaf child accounts. We must use listCustomerClients() to find the true
+  // leaf accounts and the correct login-customer-id for each.
+  type LeafAccount = { customerId: string; mccId: string; descriptiveName: string };
+  const leafAccounts: LeafAccount[] = [];
+  const seenLeafIds = new Set<string>();
+
+  for (const rootId of customerIds) {
     try {
-      logger.info(`[syncGoogleAds] Fetching customer ${customerId} mccId=${credentials.mccId ?? "none"}`);
+      logger.info(`[syncGoogleAds] Resolving MCC hierarchy for root=${rootId}`);
+      const clients = await googleAdsReportClient.listCustomerClients(accessToken, rootId);
+      logger.info(`[syncGoogleAds] root=${rootId} resolved to ${clients.length} leaf client(s)`);
+      for (const client of clients) {
+        if (!seenLeafIds.has(client.customerId)) {
+          seenLeafIds.add(client.customerId);
+          leafAccounts.push({ customerId: client.customerId, mccId: client.mccId, descriptiveName: client.descriptiveName });
+        }
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[syncGoogleAds] Could not resolve hierarchy for root=${rootId}: ${msg} — trying direct query`);
+      // Fallback: treat root as leaf with itself as login-customer-id
+      if (!seenLeafIds.has(rootId)) {
+        seenLeafIds.add(rootId);
+        leafAccounts.push({ customerId: rootId, mccId: rootId, descriptiveName: `Customer ${rootId}` });
+      }
+    }
+  }
+
+  logger.info(`[syncGoogleAds] Total leaf accounts to query: ${leafAccounts.length}`);
+
+  // ── Step 2: Query each leaf account ────────────────────────────────────────
+  for (const { customerId, mccId, descriptiveName } of leafAccounts) {
+    try {
+      logger.info(`[syncGoogleAds] Fetching campaigns for customerId=${customerId} login-customer-id=${mccId} (${descriptiveName})`);
 
       const rows = await googleAdsReportClient.getCampaignPerformance(
         accessToken,
         customerId,
         dateSpec,
-        credentials.mccId,
+        mccId,
       );
 
-      logger.info(`[syncGoogleAds] customer ${customerId} returned ${rows.length} rows`);
+      logger.info(`[syncGoogleAds] customerId=${customerId} returned ${rows.length} campaign rows`);
 
       if (rows.length === 0) continue;
 
-      // Log first row to diagnose key mapping in production
+      // Log first row to diagnose key mapping
       logger.info(`[syncGoogleAds] sample row keys: ${Object.keys(rows[0]).join(", ")}`);
       logger.info(`[syncGoogleAds] sample row: ${JSON.stringify(rows[0]).slice(0, 400)}`);
 
@@ -355,11 +389,10 @@ async function syncGoogleAds(opts: {
         };
       });
 
-      // Filter rows that have no date — those cannot be upserted
       const validRows = transformedRows.filter((r) => !!r.date);
       const skipped = transformedRows.length - validRows.length;
       if (skipped > 0) {
-        logger.warn(`[syncGoogleAds] Skipped ${skipped} rows with missing date for customer ${customerId}`);
+        logger.warn(`[syncGoogleAds] Skipped ${skipped} rows with missing date for customerId=${customerId}`);
       }
 
       if (validRows.length === 0) continue;
@@ -368,16 +401,16 @@ async function syncGoogleAds(opts: {
         workspaceId,
         connectionId,
         accountId: customerId,
-        accountName: `Google Ads ${customerId}`,
+        accountName: descriptiveName,
         syncJobId: jobId,
       });
 
-      logger.info(`[syncGoogleAds] customer ${customerId} upserted=${result.upserted} failed=${result.failed}`);
+      logger.info(`[syncGoogleAds] customerId=${customerId} upserted=${result.upserted} failed=${result.failed}`);
       totalRows += result.upserted;
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google Ads sync failed";
       failures.push({ customerId, error: msg });
-      logger.error(`[syncGoogleAds] Failed for customer ${customerId}: ${msg}`);
+      logger.error(`[syncGoogleAds] Failed for customerId=${customerId}: ${msg}`);
     }
   }
 
@@ -386,10 +419,9 @@ async function syncGoogleAds(opts: {
     data: { lastSyncAt: new Date() },
   });
 
-  logger.info(`[syncGoogleAds] Done. totalRows=${totalRows} failures=${failures.length}`);
+  logger.info(`[syncGoogleAds] Done. totalRows=${totalRows} failures=${failures.length}/${leafAccounts.length}`);
 
-  // If every customer failed, surface the error so the UI shows it
-  if (totalRows === 0 && failures.length > 0) {
+  if (totalRows === 0 && failures.length > 0 && leafAccounts.length > 0) {
     const head = failures.slice(0, 2).map((f) => `${f.customerId}: ${f.error}`).join(" | ");
     const extra = failures.length > 2 ? ` (+${failures.length - 2} more)` : "";
     return {
@@ -400,7 +432,7 @@ async function syncGoogleAds(opts: {
   }
 
   if (failures.length > 0) {
-    logger.warn(`[syncGoogleAds] Partial failures: ${failures.length}/${customerIds.length}`);
+    logger.warn(`[syncGoogleAds] Partial failures: ${failures.length}/${leafAccounts.length}`);
   }
   return { success: true, rowsIngested: totalRows };
 }

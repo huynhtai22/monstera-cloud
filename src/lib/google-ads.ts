@@ -246,8 +246,91 @@ export class GoogleAdsReportClient {
   }
 
   /**
+   * List all leaf (non-manager) customer accounts under an MCC or standalone customer.
+   * Returns array of { customerId, mccId } pairs where mccId is the login-customer-id to use.
+   *
+   * Uses the customer_client GAQL resource which returns all child accounts.
+   * For a standalone (non-MCC) account, returns just that account with itself as mccId.
+   */
+  async listCustomerClients(
+    accessToken: string,
+    rootCustomerId: string,
+  ): Promise<Array<{ customerId: string; mccId: string; isManager: boolean; descriptiveName: string }>> {
+    const devToken = developerToken();
+    if (!devToken) throw new Error('GOOGLE_ADS_DEVELOPER_TOKEN not configured');
+
+    const cleanId = rootCustomerId.replace(/-/g, '');
+
+    // Query customer_client to get all accounts accessible under this root
+    const gaql = `
+      SELECT
+        customer_client.client_customer,
+        customer_client.descriptive_name,
+        customer_client.manager,
+        customer_client.status,
+        customer_client.id
+      FROM customer_client
+      WHERE customer_client.status = 'ENABLED'
+    `;
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+      'developer-token': devToken,
+      'Content-Type': 'application/json',
+      'login-customer-id': cleanId,
+    };
+
+    const res = await fetch(
+      `${GOOGLE_ADS_BASE}/customers/${cleanId}/googleAds:searchStream`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ query: gaql }),
+      }
+    );
+
+    if (!res.ok) {
+      // Non-manager accounts return an error on customer_client — treat as leaf
+      return [{ customerId: cleanId, mccId: cleanId, isManager: false, descriptiveName: `Customer ${cleanId}` }];
+    }
+
+    const text = await res.text();
+    let batches: any[];
+    try {
+      batches = JSON.parse(text);
+      if (!Array.isArray(batches)) batches = [batches];
+    } catch {
+      return [{ customerId: cleanId, mccId: cleanId, isManager: false, descriptiveName: `Customer ${cleanId}` }];
+    }
+
+    const clients: Array<{ customerId: string; mccId: string; isManager: boolean; descriptiveName: string }> = [];
+    for (const batch of batches) {
+      for (const row of (batch.results ?? [])) {
+        const cc = row.customerClient ?? row.customer_client ?? {};
+        const clientId = String(cc.id ?? cc.client_customer?.replace('customers/', '') ?? '').replace(/-/g, '');
+        const isManager = cc.manager === true || cc.manager === 'true';
+        const name = cc.descriptiveName ?? cc.descriptive_name ?? `Customer ${clientId}`;
+        if (clientId && !isManager) {
+          // Leaf account — use root (MCC) as login-customer-id
+          clients.push({ customerId: clientId, mccId: cleanId, isManager: false, descriptiveName: name });
+        }
+      }
+    }
+
+    // If no leaf clients found (account is a standalone non-MCC), treat root as leaf
+    if (clients.length === 0) {
+      return [{ customerId: cleanId, mccId: cleanId, isManager: false, descriptiveName: `Customer ${cleanId}` }];
+    }
+
+    return clients;
+  }
+
+  /**
    * Get campaign performance summary.
    * @param dateDuringOrBetween GAQL `DURING` preset (e.g. LAST_30_DAYS) OR `BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD'`
+   * @param mccId The MCC (Manager Account) ID to use as login-customer-id header.
+   *              Must be the PARENT manager account if customerId is a sub-account.
+   *              Leave undefined only for standalone accounts.
    */
   async getCampaignPerformance(
     accessToken: string,
