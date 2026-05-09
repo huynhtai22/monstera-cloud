@@ -1038,7 +1038,16 @@ export function WarehouseWorkbench() {
             <Dropdown
               value={selectedPlatform}
               onChange={setSelectedPlatform}
-              options={PLATFORM_OPTIONS.filter((opt) => opt.value === "" || availablePlatforms.includes(opt.value))}
+              options={PLATFORM_OPTIONS.map((opt) => {
+                if (!opt.value) return opt;
+                const hasData = availablePlatforms.includes(opt.value);
+                return hasData
+                  ? opt
+                  : {
+                      ...opt,
+                      description: "No stored rows yet — run import above",
+                    };
+              })}
               placeholder="All platforms"
             />
           </div>
@@ -1305,6 +1314,16 @@ export function WarehouseWorkbench() {
                   {a.accountName || a.accountId}
                 </ToggleChip>
               ))}
+              {accountFilterIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAccountFilterIds([])}
+                  className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:border-gray-300 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300 dark:hover:border-slate-600"
+                  title="Clear ad account filters"
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </div>
         )}
