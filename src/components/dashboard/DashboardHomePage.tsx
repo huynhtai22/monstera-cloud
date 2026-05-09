@@ -446,33 +446,56 @@ export function DashboardHomePage() {
 
     return (
         <PageShell>
-            {/* ── Header strip ─────────────────────────────────── */}
-            <StatusHero
-                workspaceName={workspaceName}
-                todayLabel={todayLabel}
-                healthyCount={healthyCount}
-                totalPipelines={activePipelinesCount}
-                lastSyncLabel={lastSyncLabel}
-                lastSyncDate={lastSyncDate}
-                onSyncAll={runAllPipelines}
-                syncing={syncAllBusy}
-            />
-
-            {/* Mini ROAS snapshot — surfaced early for SEA agency workflows */}
-            {snapshots.length > 0 && (
-                <div className="mb-6">
-                    <RoasSnapshotCard snapshots={snapshots} />
+            {/* ── Compact header ────────────────────────────────────── */}
+            <div className="relative z-10 mb-6 flex flex-col gap-1 border-b border-gray-200/60 pb-5 dark:border-[#2f3336]/60 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <p className="text-xs font-medium text-gray-400 dark:text-gray-500">{workspaceName}</p>
+                    <h1 className="mt-0.5 text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+                        {todayLabel}
+                    </h1>
+                    {/* Health pill */}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                        {activePipelinesCount === 0 ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-500 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-400">
+                                No pipelines yet
+                            </span>
+                        ) : healthyCount === activePipelinesCount ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                {activePipelinesCount} pipeline{activePipelinesCount > 1 ? "s" : ""} healthy
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                                {activePipelinesCount - healthyCount} of {activePipelinesCount} need attention
+                            </span>
+                        )}
+                        {lastSyncLabel && (
+                            <span className="text-[11px] text-gray-400 dark:text-slate-500">
+                                Last sync <span className="font-medium text-gray-500 dark:text-slate-400">{lastSyncLabel}</span>
+                            </span>
+                        )}
+                    </div>
                 </div>
-            )}
-
-            {/* X1: last-refreshed indicator */}
-            <div className="mb-2 flex justify-end">
-                <RefreshedAt onRefresh={handleManualRefresh} loading={isRefreshing} />
+                {/* Actions */}
+                <div className="flex shrink-0 items-center gap-2 sm:mt-0 mt-3">
+                    <RefreshedAt onRefresh={handleManualRefresh} loading={isRefreshing} />
+                    <PrimaryButton
+                        type="button"
+                        onClick={runAllPipelines}
+                        disabled={syncAllBusy || activePipelinesCount === 0}
+                        className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2"
+                    >
+                        {syncAllBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        Sync all
+                    </PrimaryButton>
+                </div>
             </div>
 
+            {/* Sync feedback message */}
             {syncMsg ? (
                 <div className={[
-                    "mb-6 rounded-lg border px-4 py-3 text-sm",
+                    "mb-5 rounded-lg border px-4 py-3 text-sm",
                     /fail|error|could not|sorry/i.test(syncMsg)
                         ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-300"
                         : "border-cyan-100 bg-cyan-50/70 text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200"
@@ -481,11 +504,9 @@ export function DashboardHomePage() {
                 </div>
             ) : null}
 
-
-
-            {/* ── Setup Wizard (shown inline, full-width) ────── */}
+            {/* Setup wizard (shown when source connected but no successful sync yet) */}
             {!hasSuccessfulSync && hasSource ? (
-                <div className="mb-8">
+                <div className="mb-6">
                     <SetupWizard
                         hasSource={hasSource}
                         hasSuccessfulSync={hasSuccessfulSync}
@@ -494,57 +515,28 @@ export function DashboardHomePage() {
                 </div>
             ) : null}
 
-            {/* ── Data Flow Indicator ─────────────────────────── */}
-            {/* Shows today's synced records with source breakdown */}
-            <div className="mb-6">
-                <TodaysDataFlow />
-            </div>
+            {/* ── Main 2-col grid ───────────────────────────────────── */}
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
 
-            {/* ── Main Body ─────────────────────────────────────── */}
-            {/*
-                Priority reading order (matches 10AM check-in AND 2AM emergency):
-                1. Status snapshot  → PillarGrid (right col rendered FIRST on mobile via order-first)
-                2. KPI numbers      → MetricCardGrid (did the numbers look good?)
-                3. What ran/failed  → RecentActivity (specific pipeline detail)
-                4. Deeper analysis  → AiPerformanceSummary (when you have time)
-                5. Infrastructure   → HealthSummaryBar (confirmation strip, not discovery)
-            */}
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+                {/* LEFT: Activity feed (3/5) */}
+                <div className="flex flex-col gap-5 xl:col-span-3">
 
-                {/* ── RIGHT: Status snapshot (2/5) — shown FIRST on mobile via order-first */}
-                <div className="order-first xl:order-last xl:col-span-2">
-                    <div className="mb-2 flex items-center justify-between">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                            Status
-                        </p>
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-[#16181c] dark:text-slate-400">
-                            {connectedSourcesCount} connected sources
-                        </span>
-                    </div>
-                    <PillarGrid
-                        connections={connections}
-                        syncLogs={logs}
-                        healthyCount={healthyCount}
-                        totalPipelines={activePipelinesCount}
-                    />
-                </div>
+                    {/* Today's data flow — top of left col */}
+                    <TodaysDataFlow />
 
-                {/* ── LEFT: Detail (3/5) — KPIs → Activity → AI Digest */}
-                <div className="space-y-5 xl:col-span-3">
-
-                    {/* 2 · KPI metrics — morning number check */}
+                    {/* KPI performance cards — only shown when data exists */}
                     {snapshots.length > 0 && (
-                        <section>
-                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                        <div className="rounded-2xl border border-gray-200/70 bg-white/60 p-4 dark:border-[#2f3336]/60 dark:bg-[#16181c]/30">
+                            <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
                                 Performance
                             </p>
                             <MetricCardGrid snapshots={snapshots} />
-                        </section>
+                        </div>
                     )}
 
-                    {/* 3 · Recent Activity — what ran, what failed, one-click re-sync */}
-                    <section>
-                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                    {/* Recent pipeline activity */}
+                    <div>
+                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
                             Recent Activity
                         </p>
                         <RecentActivity
@@ -554,21 +546,39 @@ export function DashboardHomePage() {
                             syncingPipelineId={syncingPipelineId}
                             onSync={runPipeline}
                         />
-                    </section>
+                    </div>
 
-                    {/* 4 · AI Digest — deeper analysis, read when you have time */}
-                    <section>
-                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                    {/* AI digest — read when you have time */}
+                    <div>
+                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
                             AI Insights
                         </p>
                         <AiPerformanceSummary workspaceId={workspaceId} />
-                    </section>
+                    </div>
+                </div>
+
+                {/* RIGHT: Status pillars (2/5) */}
+                <div className="xl:col-span-2">
+                    <div className="mb-2 flex items-center justify-between">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                            Status
+                        </p>
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-[#16181c] dark:text-slate-400">
+                            {connectedSourcesCount} source{connectedSourcesCount !== 1 ? "s" : ""}
+                        </span>
+                    </div>
+                    <PillarGrid
+                        connections={connections}
+                        syncLogs={logs}
+                        healthyCount={healthyCount}
+                        totalPipelines={activePipelinesCount}
+                    />
                 </div>
             </div>
 
-            {/* 5 · System Health — confirmation strip, not discovery */}
-            <section className="mt-4 border-t border-gray-100 pt-4 dark:border-[#2f3336]">
-                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+            {/* ── Infrastructure strip ─────────────────────────────── */}
+            <section className="mt-6 border-t border-gray-100/60 pt-4 dark:border-[#2f3336]/60">
+                <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
                     Infrastructure
                 </p>
                 <HealthSummaryBar />
