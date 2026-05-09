@@ -74,7 +74,6 @@ export function PillarGrid({
     totalPipelines,
 }: PillarGridProps) {
     const sources = connections.filter((c) => c.type === "source");
-    const destinations = connections.filter((c) => c.type === "destination");
 
     const sourceItems: OverviewLineItem[] = sources.slice(0, 3).map((c) => {
         const health = healthStatus(c);
@@ -105,22 +104,7 @@ export function PillarGrid({
         };
     });
 
-    const destinationItems: OverviewLineItem[] = destinations.slice(0, 3).map((c) => {
-        const health = healthStatus(c);
-        const timeInfo = timeAgo(c.updatedAt);
-        const subText = health === "error"
-            ? "Connection error"
-            : health === "stale"
-            ? `Last used ${timeInfo.text ?? "unknown"}`
-            : c.status === "connected" ? "Connected" : c.status ?? "Pending";
-        return {
-            id: c.id,
-            label: c.name?.trim() ? c.name! : prettyProvider(c.provider),
-            sub: subText,
-            logoSrc: logoPathForConnectionProvider(c.provider),
-            status: health === "error" ? "error" : health === "healthy" ? "ok" : "pending",
-        };
-    });
+
 
     const { recentLogs, successCount, errorCount, pipelineItems } = useMemo(() => {
         const sorted = [...syncLogs].sort(
@@ -170,7 +154,7 @@ export function PillarGrid({
     const noReportsYet = syncLogs.length === 0;
 
     return (
-        <div className="relative z-10 stagger-list grid grid-cols-1 gap-4 md:grid-cols-2" style={{ gridAutoRows: "minmax(160px, auto)" }}>
+        <div className="relative z-10 stagger-list grid grid-cols-1 gap-4 md:grid-cols-3" style={{ gridAutoRows: "minmax(160px, auto)" }}>
             <div className="stagger-item min-w-0">
                 <SectionOverviewCard
                     icon={<Plug className="h-5 w-5" />}
@@ -184,18 +168,7 @@ export function PillarGrid({
                 />
             </div>
 
-            <div className="stagger-item min-w-0">
-                <SectionOverviewCard
-                    icon={<Send className="h-5 w-5" />}
-                    title="Destinations"
-                    subtitle="Where data lands"
-                    kpi={{ label: "Connected", value: String(destinations.length) }}
-                    items={destinationItems}
-                    emptyHint="No destinations yet. Pick Google Sheets or Looker Studio to deliver data."
-                    ctaLabel={destinations.length ? "Manage destinations" : "Add a destination"}
-                    ctaHref="/destinations"
-                />
-            </div>
+
 
             <div className="stagger-item min-w-0">
                 <SectionOverviewCard
@@ -209,7 +182,7 @@ export function PillarGrid({
                             : undefined
                     }
                     items={pipelineItems}
-                    emptyHint="Pipelines are created automatically when you connect a source and a destination."
+                    emptyHint="Pipelines are created automatically when you connect a source."
                     ctaLabel={totalPipelines ? "See sync history" : undefined}
                     ctaHref={totalPipelines ? "/reports" : undefined}
                 />

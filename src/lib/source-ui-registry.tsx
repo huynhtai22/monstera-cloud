@@ -77,7 +77,7 @@ export const SOURCE_UI_REGISTRY: Record<string, SourceUIConfig> = {
                 "You will sign in to Lazada Open Platform and approve Monstera Cloud to access seller data allowed by your app registration.",
             permissions: [
                 "Read orders and fulfillment data you authorize",
-                "Store encrypted tokens for scheduled sync to your destinations",
+                "Store encrypted tokens for scheduled sync to your exports",
             ],
             footnote: "Redirect URL must match your Lazada app callback exactly.",
         },

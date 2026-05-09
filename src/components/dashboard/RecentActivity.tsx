@@ -11,9 +11,8 @@ type Pipeline = {
     name: string;
     status: string;
     updatedAt: string;
-    logs?: Array<{ rowsSynced?: number }>;
+    logs?: Array<{ rowsSynced?: number; status?: string }>;
     sourceConnection?: { name?: string };
-    destinationConnection?: { name?: string };
 };
 
 type RecentActivityProps = {
@@ -74,12 +73,12 @@ export function RecentActivity({
                                     <p className="text-xs font-semibold text-gray-900 dark:text-white">
                                         {pipeline.name} {isError ? "Failed" : "Synced"}
                                     </p>
-                                    <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                                        {isError
-                                            ? `Error: ${pipeline.sourceConnection?.name} → ${pipeline.destinationConnection?.name}`
-                                            : latestLog
-                                              ? `${latestLog.rowsSynced} rows → ${pipeline.destinationConnection?.name}`
-                                              : `${pipeline.sourceConnection?.name} → ${pipeline.destinationConnection?.name}`}
+                                    <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
+                                        {latestLog?.status === "error"
+                                            ? `Error: ${pipeline.sourceConnection?.name} → Warehouse`
+                                            : latestLog?.rowsSynced && latestLog.rowsSynced > 0
+                                                ? `${latestLog.rowsSynced} rows → Warehouse`
+                                                : `${pipeline.sourceConnection?.name} → Warehouse`}
                                     </p>
                                     <div className="mt-0.5 flex items-center text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500">
                                         <Clock className="mr-1 h-3 w-3" />
@@ -106,7 +105,7 @@ export function RecentActivity({
                 ) : (
                     <div className="flex flex-1 flex-col items-center justify-center px-2 py-10 text-center">
                         <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-                            No pipeline runs yet. Connect a source and destination to see sync activity here.
+                            No pipeline runs yet. Connect a source to see sync activity here.
                         </p>
                         <Link href="/sources" className={cn(primaryButtonLinkClassName, "text-sm")}>
                             Go to Sources

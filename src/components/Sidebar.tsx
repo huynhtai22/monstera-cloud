@@ -22,6 +22,7 @@ import {
     Globe,
     Users,
     Database,
+    Download,
 } from "lucide-react";
 import useSWR from "swr";
 import { useSession, signOut } from "next-auth/react";
@@ -108,22 +109,31 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
     type NavItem = { name: string; href: string; icon: typeof LayoutGrid };
     const navGroups: { label: string; items: NavItem[] }[] = [
         {
-            label: "Data",
+            label: "Overview",
             items: [
                 { name: "Dashboard", href: "/console", icon: LayoutGrid },
-                { name: "Clients", href: "/clients", icon: Users },
-                { name: "Sources", href: "/sources", icon: DatabaseZap },
-                { name: "Destinations", href: "/destinations", icon: Send },
-                { name: "Data explorer", href: "/explorer", icon: Database },
             ],
         },
         {
-            label: "Insights",
-            items: [{ name: "Reports", href: "/reports", icon: LineChart }],
+            label: "Pipelines",
+            items: [
+                { name: "Sources", href: "/sources", icon: DatabaseZap },
+            ],
         },
         {
-            label: "Workspace",
-            items: [{ name: "Settings", href: "/settings", icon: Settings }],
+            label: "Analytics",
+            items: [
+                { name: "Data explorer", href: "/explorer", icon: Database },
+                { name: "Reports", href: "/reports", icon: LineChart },
+            ],
+        },
+        {
+            label: "Management",
+            items: [
+                { name: "Clients", href: "/clients", icon: Users },
+                { name: "Settings", href: "/settings", icon: Settings },
+                { name: "Exports & API", href: "/exports", icon: Download },
+            ],
         },
     ];
 

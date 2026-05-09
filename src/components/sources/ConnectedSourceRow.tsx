@@ -52,7 +52,7 @@ export const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
   const subLabel = (() => {
     if (isError) return integration.errorMsg ?? "Needs attention";
     if (!integration.pipelineId)
-      return "Connected · no pipeline yet — add a destination to start syncing";
+      return "Connected · no pipeline yet — create a pipeline to start syncing";
     if (integration.lastSync === "Never") return "Connected · never synced";
     return `Last sync · ${integration.lastSync}`;
   })();
@@ -141,17 +141,14 @@ export const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
             disabled={isBusy || !integration.pipelineId}
             title={
               !integration.pipelineId
-                ? "Add a destination first to enable sync"
+                ? "Create a pipeline first to enable sync"
                 : undefined
             }
             onClick={() => {
               if (!integration.pipelineId) {
                 toast.error(
                   <span>
-                    Add a destination (like Google Sheets) to start syncing.{" "}
-                    <a href="/destinations" className="underline font-medium">
-                      Open Destinations
-                    </a>
+                    No sync pipeline configured. Create a pipeline in the Dashboard.
                   </span>
                 );
                 return;

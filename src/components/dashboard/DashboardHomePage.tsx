@@ -111,7 +111,6 @@ type Pipeline = {
     updatedAt: string;
     logs?: Array<{ rowsSynced?: number }>;
     sourceConnection?: { name?: string };
-    destinationConnection?: { name?: string };
 };
 
 type SyncLog = {
@@ -200,9 +199,9 @@ export function DashboardHomePage() {
     );
     const snapshots = attributionData?.snapshots ?? [];
 
-    const { connections, connectedSourcesCount, connectedDestinationsCount, workspaceName } = React.useMemo(() => {
-        if (!Array.isArray(workspaces) || !workspaceId) {
-            return { connections: [] as Connection[], connectedSourcesCount: 0, connectedDestinationsCount: 0, workspaceName: "" };
+    const { connections, connectedSourcesCount, workspaceName } = React.useMemo(() => {
+        if (!workspaceId || !Array.isArray(workspaces)) {
+            return { connections: [] as Connection[], connectedSourcesCount: 0, workspaceName: "" };
         }
         const list = workspaces as Workspace[];
         const ws = list.find((w) => w.id === workspaceId) || list[0];
@@ -210,13 +209,11 @@ export function DashboardHomePage() {
         return {
             connections: conns,
             connectedSourcesCount: conns.filter((c) => c.type === "source").length,
-            connectedDestinationsCount: conns.filter((c) => c.type === "destination").length,
             workspaceName: ws?.name ?? "Workspace",
         };
     }, [workspaces, workspaceId]);
 
     const hasSource = connectedSourcesCount > 0;
-    const hasDestination = connectedDestinationsCount > 0;
 
     const healthyCount = pipelines
         ? pipelines.filter((p) => p.status !== "error").length
@@ -275,8 +272,9 @@ export function DashboardHomePage() {
             setSyncMsg("Sync requested for all pipelines.");
             trackEvent("wizard_step_completed", { step: "sync_all", count: pipelines.length });
             trackEvent("pipeline_manual_sync_succeeded", { count: pipelines.length, source: "dashboard_sync_all" });
-        } catch {
-            setSyncMsg("Some syncs may have failed — check Reports.");
+        } catch (e) {
+             console.error(e);
+             setSyncMsg("Some syncs may have failed — check Reports.");
         } finally {
             setSyncAllBusy(false);
         }
@@ -319,15 +317,9 @@ export function DashboardHomePage() {
     }
 
     // ── Onboarding State Machine ──────────────────────────
-    // Stage 0: no sources, no destinations
-    // Stage 1: sources > 0, but no destinations
-    // Stage 2: sources + destinations, but no pipelines
-    // Stage 3: pipelines exist → full active dashboard
-    const dashboardStage =
-        connectedSourcesCount === 0 && connectedDestinationsCount === 0 ? 0
-        : connectedSourcesCount > 0 && connectedDestinationsCount === 0 ? 1
-        : connectedSourcesCount > 0 && connectedDestinationsCount > 0 && activePipelinesCount === 0 ? 2
-        : 3;
+    // Stage 0: no sources
+    // Stage 1: sources > 0, but no pipelines
+    const dashboardStage = connectedSourcesCount === 0 ? 0 : 1;
 
     if (dashboardStage === 0) {
         if (wizardDismissed) {
@@ -336,19 +328,10 @@ export function DashboardHomePage() {
                     <EmptyState
                         icon={<Database className="h-5 w-5" />}
                         title="No sources connected"
-                        description="Connect an ad platform or marketplace source. After that, add a destination (like Google Sheets) so your first sync has somewhere to land."
+                        description="Connect an ad platform or marketplace source to get started."
                         primaryAction={
                             <Link href="/sources" className={primaryButtonLinkClassName} onClick={() => trackEvent("source_connect_clicked", { from: "dashboard_empty" })}>
                                 Connect a source
-                            </Link>
-                        }
-                        secondaryAction={
-                            <Link
-                                href="/destinations"
-                                className={secondaryButtonLinkClassName}
-                                onClick={() => trackEvent("destinations_opened", { from: "dashboard_empty_secondary" })}
-                            >
-                                Add a destination
                             </Link>
                         }
                     />
@@ -359,7 +342,6 @@ export function DashboardHomePage() {
             <PageShell>
                 <SetupWizard
                     hasSource={hasSource}
-                    hasDestination={hasDestination}
                     hasSuccessfulSync={hasSuccessfulSync}
                     onDismiss={dismissWizard}
                 />
@@ -367,53 +349,7 @@ export function DashboardHomePage() {
         );
     }
 
-    if (dashboardStage === 1) {
-        return (
-            <PageShell>
-                <div className="mb-6">
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{workspaceName}</p>
-                    <h1 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Today, {todayLabel}</h1>
-                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Source connected — now add a destination to start syncing.</p>
-                </div>
-                <div className="relative grid grid-cols-1 gap-6 sm:grid-cols-2">
-                    <div className="min-w-0 rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50/80 to-white p-5 shadow-md dark:border-cyan-500/30 dark:from-cyan-500/10 dark:to-slate-900/60">
-                        <div className="mb-3 flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-200 bg-cyan-100/80 text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/20 dark:text-cyan-300">
-                                <Plug className="h-4 w-4" />
-                            </div>
-                            <p className="text-sm font-bold text-gray-900 dark:text-white">Sources</p>
-                            <span className="ml-auto rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-bold text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-300">{connectedSourcesCount} connected</span>
-                        </div>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Your ad &amp; marketplace sources are ready to sync.</p>
-                        <Link href="/sources" className={cn(secondaryButtonLinkClassName, "mt-4 inline-flex text-xs font-semibold")}>Manage sources →</Link>
-                    </div>
-
-                    {/* Animated dashed bridge */}
-                    <div className="pointer-events-none absolute inset-x-0 top-1/2 hidden -translate-y-1/2 items-center justify-center sm:flex" aria-hidden>
-                        <svg width="48" height="24" viewBox="0 0 48 24" fill="none" className="text-cyan-400 dark:text-cyan-600">
-                            <line x1="0" y1="12" x2="48" y2="12" stroke="currentColor" strokeWidth="2" strokeDasharray="6 4"
-                                className="[stroke-dashoffset:0] animate-[dash_1.5s_linear_infinite]"
-                                style={{ animation: "dashMove 1.5s linear infinite" }}
-                            />
-                        </svg>
-                    </div>
-
-                    <div className="min-w-0 rounded-2xl border border-dashed border-gray-300 bg-gradient-to-br from-gray-50/80 to-white p-5 shadow-sm dark:border-slate-600 dark:from-slate-900/70 dark:to-slate-800/50">
-                        <div className="mb-3 flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-100 text-gray-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-500">
-                                <Send className="h-4 w-4" />
-                            </div>
-                            <p className="text-sm font-bold text-gray-400 dark:text-slate-500">Destination</p>
-                        </div>
-                        <p className="text-xs text-gray-400 dark:text-gray-500">Add Google Sheets or Looker Studio so your data has somewhere to land.</p>
-                        <Link href="/destinations" className={cn(primaryButtonLinkClassName, "mt-4 inline-flex text-xs font-semibold")} onClick={() => trackEvent("destination_cta_clicked", { from: "stage1_bridge" })}>Add a destination →</Link>
-                    </div>
-                </div>
-            </PageShell>
-        );
-    }
-
-    if (dashboardStage === 2) {
+    if (dashboardStage === 1 && activePipelinesCount === 0) {
         const stage2Templates = [
             {
                 id: "paid-media",
@@ -451,16 +387,14 @@ export function DashboardHomePage() {
 
         return (
             <PageShell>
-                {/* Context strip */}
                 <div className="mb-5">
                     <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{workspaceName}</p>
                     <h1 className="mt-1 text-xl font-bold tracking-tight text-gray-900 dark:text-white">Today, {todayLabel}</h1>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        {connectedSourcesCount}s · {connectedDestinationsCount}d connected — pick a template to create your first pipeline.
+                        {connectedSourcesCount} sources connected — pick a template to create your first pipeline.
                     </p>
                 </div>
 
-                {/* Template selection bento */}
                 <div className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-5 shadow-sm dark:border-slate-700/60 dark:bg-slate-800/30">
                     <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                         Create your pipeline — start with a template
@@ -485,8 +419,7 @@ export function DashboardHomePage() {
                                                 status: "active",
                                                 updatedAt: new Date().toISOString(),
                                                 logs: [],
-                                                sourceConnection: { name: "Source" },
-                                                destinationConnection: { name: "Destination" },
+                                                sourceConnection: { name: "Source Platform" },
                                             }]);
                                             setTemplateBusy(null);
                                         }, 600);
@@ -548,30 +481,13 @@ export function DashboardHomePage() {
                 </div>
             ) : null}
 
-            {/* D7: warn when data is flowing but nowhere to land.
-                Suppressed for connector-first users: if they already have a successful sync,
-                they're pulling data via the Add-on or Looker connector — no console destination needed. */}
-            {hasSource && !hasDestination && !hasSuccessfulSync && connectedSourcesCount > 0 && (
-                <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-950/30">
-                    <span className="mt-0.5 text-amber-500 dark:text-amber-400">⚠</span>
-                    <div className="text-sm">
-                        <span className="font-semibold text-amber-900 dark:text-amber-100">Your data has nowhere to land. </span>
-                        <span className="text-amber-800 dark:text-amber-200">
-                            Sources are syncing but no destination is connected — data is being dropped.{" "}
-                        </span>
-                        <a href="/destinations" className="font-semibold underline underline-offset-2 text-amber-900 hover:text-amber-700 dark:text-amber-100 dark:hover:text-amber-300">
-                            Add Google Sheets →
-                        </a>
-                    </div>
-                </div>
-            )}
+
 
             {/* ── Setup Wizard (shown inline, full-width) ────── */}
             {!hasSuccessfulSync && hasSource ? (
                 <div className="mb-8">
                     <SetupWizard
                         hasSource={hasSource}
-                        hasDestination={hasDestination}
                         hasSuccessfulSync={hasSuccessfulSync}
                         onDismiss={dismissWizard}
                     />
@@ -602,7 +518,7 @@ export function DashboardHomePage() {
                             Status
                         </p>
                         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-slate-800 dark:text-slate-400">
-                            {connectedSourcesCount}s · {connectedDestinationsCount}d
+                            {connectedSourcesCount} connected sources
                         </span>
                     </div>
                     <PillarGrid

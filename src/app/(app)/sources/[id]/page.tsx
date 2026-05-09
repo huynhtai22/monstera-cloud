@@ -379,7 +379,7 @@ export default function SourceDetailPage() {
             <ConfirmDialog
                 open={disconnectOpen}
                 title={`Disconnect ${connection.name}?`}
-                description="Syncs from this source will stop. Your existing data in destinations is not deleted. You can reconnect later."
+                description="Syncs from this source will stop. Your existing data in the warehouse is not deleted. You can reconnect later."
                 confirmLabel="Disconnect"
                 variant="danger"
                 onConfirm={confirmDisconnect}

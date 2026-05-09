@@ -174,7 +174,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
         )}
         {integration.status === "connected" && !integration.pipelineId ? (
           <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300/90">
-            No pipeline yet — connect a destination to enable sync.
+            No pipeline yet — create a pipeline to enable sync.
           </p>
         ) : null}
       </div>
@@ -206,10 +206,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
                 if (!integration.pipelineId) {
                   toast.error(
                     <span>
-                      Add a destination (like Google Sheets) to start syncing.{" "}
-                      <a href="/destinations" className="underline font-medium">
-                        Open Destinations
-                      </a>
+                      No sync pipeline configured. Create a pipeline in the Dashboard.
                     </span>
                   );
                   return;

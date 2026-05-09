@@ -99,11 +99,8 @@ export function ConnectedSourceList(props: {
       }
       toast.error(
         <span>
-          Add a destination (like Google Sheets) to start syncing.{" "}
-          <a href="/destinations" className="underline font-medium">
-            Open Destinations
-          </a>
-        </span>,
+          No sync pipeline configured. Create a pipeline in the Dashboard.
+        </span>
       );
     },
     [onSync, onDirectSync],

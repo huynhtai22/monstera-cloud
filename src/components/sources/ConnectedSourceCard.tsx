@@ -183,12 +183,7 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
           </div>
         )}
 
-        {!isError && !integration.pipelineId ? (
-          <p className="mt-3 text-xs font-medium text-amber-700 dark:text-amber-300/90 flex items-start gap-1">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            No pipeline yet — add a destination to enable sync.
-          </p>
-        ) : null}
+
       </div>
 
       <div className="relative z-10">
@@ -215,10 +210,7 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
                   } else {
                     toast.error(
                       <span>
-                        Add a destination (like Google Sheets) to start syncing.{" "}
-                        <a href="/destinations" className="underline font-medium">
-                          Open Destinations
-                        </a>
+                        No sync pipeline configured. Create a pipeline in the Dashboard.
                       </span>
                     );
                   }

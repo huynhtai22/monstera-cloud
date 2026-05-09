@@ -200,7 +200,7 @@ const COPY = {
             product: "Product",
             productLinks: [
                 { label: "Sources", href: "/sources" },
-                { label: "Destinations", href: "/destinations" },
+                { label: "Exports", href: "/exports" },
                 { label: "Pricing", href: "/pricing" },
             ],
             company: "Company",
@@ -297,7 +297,7 @@ const COPY = {
             product: "Sản phẩm",
             productLinks: [
                 { label: "Nguồn dữ liệu", href: "/sources" },
-                { label: "Đích đến", href: "/destinations" },
+                { label: "Xuất Dữ Liệu", href: "/exports" },
                 { label: "Bảng giá", href: "/pricing" },
             ],
             company: "Công ty",

@@ -4,12 +4,12 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowRight, Database, Send, Unplug, X, Info } from "lucide-react";
 
-type Variant = "sources" | "destinations";
+type Variant = "sources" | "exports";
 
 /**
  * Short, consistent copy so users understand:
  * - Sources use each platform's marketing login (Meta BM, Google Ads / MCC, TikTok Ads).
- * - Destinations (Sheets, Looker) often use a *different* Google account — that is OK.
+ * - Exports (Sheets, Looker) use the Monstera Cloud Add-on or Looker Studio connector to pull data.
  * Dismissible — persisted in localStorage so it only shows until the user closes it.
  */
 export function DataFlowExplainer({ variant }: { variant: Variant }) {
@@ -96,12 +96,11 @@ export function DataFlowExplainer({ variant }: { variant: Variant }) {
                     <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                             <Send className="h-3.5 w-3.5 shrink-0 text-gray-500 dark:text-slate-400" aria-hidden />
-                            <p className="text-xs font-semibold text-gray-900 dark:text-white">Destinations</p>
+                            <p className="text-xs font-semibold text-gray-900 dark:text-white">Exports</p>
                         </div>
                         <p className="mt-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
-                            <strong className="text-gray-700 dark:text-gray-200">Google Sheets</strong> and{" "}
-                            <strong className="text-gray-700 dark:text-gray-200">Looker Studio</strong> can use a{" "}
-                            <strong className="text-gray-700 dark:text-gray-200">different</strong> Google login — the pipeline links them inside this workspace.
+                            Use the <strong className="text-gray-700 dark:text-gray-200">Google Sheets Add-on</strong> or{" "}
+                            <strong className="text-gray-700 dark:text-gray-200">Looker Studio connector</strong> to pull your data on-demand. No extra destination setup required.
                         </p>
                     </div>
                 </div>
@@ -116,16 +115,16 @@ export function DataFlowExplainer({ variant }: { variant: Variant }) {
                         <Link href="/sources" className="font-semibold text-cyan-600 hover:underline dark:text-cyan-400">
                             Sources
                         </Link>{" "}
-                        page, then add Sheets or Looker here to create a pipeline.
+                        page, then use your data in Sheets or Looker.
                     </>
                 ) : (
                     <>
                         <Send className="h-3.5 w-3.5 shrink-0" aria-hidden />
                         After connecting sources, open{" "}
-                        <Link href="/destinations" className="font-semibold text-cyan-600 hover:underline dark:text-cyan-400">
-                            Destinations
+                        <Link href="/exports" className="font-semibold text-cyan-600 hover:underline dark:text-cyan-400">
+                            Exports
                         </Link>{" "}
-                        to choose where your data lands.
+                        to learn how to pull your data.
                     </>
                 )}
             </p>

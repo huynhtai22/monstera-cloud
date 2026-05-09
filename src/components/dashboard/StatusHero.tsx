@@ -38,7 +38,7 @@ export function StatusHero({
 
     const summary =
         totalPipelines === 0
-            ? "No pipelines yet. Connect a source and destination to sync."
+            ? "No pipelines yet. Connect a source to sync."
             : allHealthy
               ? `All ${totalPipelines} pipeline${totalPipelines === 1 ? "" : "s"} healthy.`
               : `${failedCount} of ${totalPipelines} pipeline${totalPipelines === 1 ? "" : "s"} need attention.`;
