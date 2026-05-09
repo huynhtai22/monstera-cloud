@@ -71,15 +71,15 @@
 }
 
 .dark {
-    --background: #0f172a; /* slate-900 */
-    --foreground: #f8fafc; /* slate-50 */
+    --background: #000000; /* Pure black (X reference) */
+    --foreground: #e7e9ea; /* X foreground text */
 
     /* UI system tokens (RGB triplets) */
-    --ui-bg-rgb: 15 23 42;
-    --ui-fg-rgb: 248 250 252;
-    --ui-border-rgb: 30 41 59; /* slate-800 */
-    --ui-muted-bg-rgb: 2 6 23; /* slate-950 */
-    --ui-muted-fg-rgb: 148 163 184; /* slate-400 */
+    --ui-bg-rgb: 0 0 0;
+    --ui-fg-rgb: 231 233 234;
+    --ui-border-rgb: 47 51 54; /* X border color #2f3336 */
+    --ui-muted-bg-rgb: 22 24 28; /* X secondary background #16181c */
+    --ui-muted-fg-rgb: 113 118 123; /* X muted text #71767b */
 }
 
 body {
@@ -293,7 +293,7 @@ html.disable-transitions *::after {
 
 .dark .glass-panel {
     border-color: rgba(255,255,255,0.08);
-    background: rgba(15, 23, 42, 0.4);
+    background: rgba(0, 0, 0, 0.4);
     box-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 
@@ -323,7 +323,7 @@ html.disable-transitions *::after {
 
 .dark .glass-card {
     border-color: rgba(255,255,255,0.08);
-    background: rgba(15, 23, 42, 0.5);
+    background: rgba(22, 24, 28, 0.5);
     box-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 
