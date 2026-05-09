@@ -261,11 +261,17 @@ async function syncGoogleAds(opts: {
 }): Promise<SyncResult> {
   const { connectionId, credentials, workspaceId, userPlan } = opts;
 
-  const accessToken = await getValidOAuthToken({
-    id: connectionId,
-    credentials: encrypt(JSON.stringify(credentials)),
-    provider: "google_ads",
-  });
+  let accessToken: string;
+  try {
+    accessToken = await getValidOAuthToken({
+      id: connectionId,
+      credentials: encrypt(JSON.stringify(credentials)),
+      provider: "google_ads",
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to get valid token";
+    return { success: false, rowsIngested: 0, error: msg };
+  }
 
   if (!accessToken) {
     return { success: false, rowsIngested: 0, error: "Failed to get valid token" };
@@ -295,6 +301,7 @@ async function syncGoogleAds(opts: {
 
   const jobId = `pipeline-${Date.now()}`;
   let totalRows = 0;
+  const failures: Array<{ customerId: string; error: string }> = [];
 
   for (const customerId of customerIds) {
     try {
@@ -334,6 +341,8 @@ async function syncGoogleAds(opts: {
         totalRows += result.upserted;
       }
     } catch (error) {
+      const msg = error instanceof Error ? error.message : "Google Ads sync failed";
+      failures.push({ customerId, error: msg });
       logger.error(`[Google Ads Sync] Failed for customer ${customerId}:`, error);
     }
   }
@@ -343,6 +352,21 @@ async function syncGoogleAds(opts: {
     data: { lastSyncAt: new Date() },
   });
 
+  // If every customer failed, surface the error so the UI shows it (instead of silent 0 rows).
+  if (totalRows === 0 && failures.length > 0) {
+    const head = failures.slice(0, 2).map((f) => `${f.customerId}: ${f.error}`).join(" | ");
+    const extra = failures.length > 2 ? ` (+${failures.length - 2} more)` : "";
+    return {
+      success: false,
+      rowsIngested: 0,
+      error: `Google Ads import failed. ${head}${extra}`,
+    };
+  }
+
+  // Partial success: return success but keep a short warning for logs.
+  if (failures.length > 0) {
+    logger.warn(`[Google Ads Sync] Partial failures: ${failures.length}/${customerIds.length}`);
+  }
   return { success: true, rowsIngested: totalRows };
 }
 
