@@ -4,6 +4,7 @@ import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
 import { logger } from "@/lib/logger";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
+import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-cache";
 
 const UPSTASH_AVAILABLE = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 const redis = UPSTASH_AVAILABLE ? Redis.fromEnv() : null;
@@ -199,6 +200,19 @@ export async function GET(req: NextRequest) {
     const cursorParam = req.nextUrl.searchParams.get("cursor");
     const includeCount = req.nextUrl.searchParams.get("includeCount") === "1";
 
+    // Check cache early
+    const cacheKey = generateCacheKey("looker", {
+      workspaceId,
+      search: req.nextUrl.search,
+    });
+    
+    // Looker Studio dashboards change infrequently and trigger many concurrent queries.
+    // Cache for 15 minutes (900 seconds).
+    const cached = await getCachedQuery(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
+
     const whereClause: any = { workspaceId };
 
     if (startDateParam || endDateParam) {
@@ -311,15 +325,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Optionally cache the page for a short TTL (only if Upstash configured)
-    if (redis) {
-      try {
-        const cacheKey = `looker:page:${workspaceId}:${req.nextUrl.search}`;
-        await redis.set(cacheKey, JSON.stringify(resObj), { ex: 60 });
-      } catch (e) {
-        // ignore cache failures
-      }
-    }
+    // Cache the Looker Studio page for 15 minutes
+    await setCachedQuery(cacheKey, resObj, 900);
 
     return NextResponse.json(resObj);
   } catch (error: unknown) {

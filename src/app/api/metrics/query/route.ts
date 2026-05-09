@@ -9,6 +9,7 @@ import {
   ADS_CALCULATED_METRICS,
   ADS_FIELDS_BY_ID,
 } from "@/lib/ads-field-registry";
+import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-cache";
 
 /**
  * GET /api/metrics/query?workspaceId=...&startDate=...&endDate=...&platform=...&cursor=...
@@ -94,7 +95,32 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  // Generate deterministic cache key
+  const cacheKey = generateCacheKey("metrics:query", {
+    workspaceId,
+    startDateStr,
+    endDateStr,
+    platform,
+    platformsParam,
+    accountId,
+    accountIdsParam,
+    campaignId,
+    cursor,
+    dimensionsParam,
+    metricsParam,
+    mode,
+  });
+
   try {
+    // Check cache (only for aggregate queries without a cursor, as cursors mean pagination)
+    const wantsAggregate = mode === "aggregate" || Boolean(dimensionsParam) || Boolean(metricsParam);
+    const canCache = wantsAggregate && !cursor;
+    if (canCache) {
+      const cached = await getCachedQuery(cacheKey);
+      if (cached) {
+        return NextResponse.json(cached);
+      }
+    }
     // Build where clause with proper typing
     const where: MetricWhereClause = { workspaceId };
 
@@ -125,9 +151,6 @@ export async function GET(req: Request) {
     if (cursor) {
       where.id = { lt: cursor };
     }
-
-    const wantsAggregate =
-      mode === "aggregate" || Boolean(dimensionsParam) || Boolean(metricsParam);
 
     if (wantsAggregate) {
       const dimIds =
@@ -288,7 +311,7 @@ export async function GET(req: Request) {
         return obj;
       });
 
-      return NextResponse.json({
+      const responseData = {
         mode: "aggregate",
         columns,
         rows: outRows,
@@ -298,7 +321,12 @@ export async function GET(req: Request) {
           maxRowsPerQuery: limits.explorerMaxRowsPerQuery,
         },
         selection: { dimensions, metrics },
-      });
+      };
+      
+      if (canCache) {
+        await setCachedQuery(cacheKey, responseData, 300); // 5 min TTL
+      }
+      return NextResponse.json(responseData);
     }
 
     // Parallel queries for efficiency
@@ -370,7 +398,7 @@ export async function GET(req: Request) {
       { impressions: 0, clicks: 0, spend: 0, conversions: 0, revenue: 0 }
     );
 
-    return NextResponse.json({
+    const responseData = {
       metrics,
       pagination: {
         hasMore,
@@ -393,7 +421,13 @@ export async function GET(req: Request) {
         platforms: platforms.map((p) => p.platform),
         queryRangeDays: Math.ceil(dateRangeDays),
       },
-    });
+    };
+    
+    if (canCache) {
+      await setCachedQuery(cacheKey, responseData, 300); // 5 min TTL
+    }
+    
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error("[metrics/query] Error:", error);
     return NextResponse.json(
