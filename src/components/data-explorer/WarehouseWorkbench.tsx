@@ -1433,7 +1433,7 @@ export function WarehouseWorkbench() {
               <span className="inline-flex items-center gap-2">
                 <ArrowUpDown className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
                 Columns — dimensions & metrics (alphabetical)
-                <ChevronDown className="ml-1 h-4 w-4 transition-transform group-open:rotate-180" />
+                <ChevronDown className="ml-1 h-4 w-4 transition-transform [.group[open]_&]:rotate-180" />
               </span>
             </summary>
             <div className="grid gap-4 border-t border-gray-100 px-3 pb-3 pt-2 sm:grid-cols-2 dark:border-slate-800">

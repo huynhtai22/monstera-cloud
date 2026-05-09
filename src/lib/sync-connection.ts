@@ -314,19 +314,19 @@ async function syncGoogleAds(opts: {
 
       if (rows.length > 0) {
         const transformedRows = rows.map((r: any) => ({
-          campaign_id: r.campaign_id || r.campaign_name,
+          campaign_id: String(r.campaign_id || r.campaign_name || ''),
           campaign_name: r.campaign_name,
           ad_group_id: r.ad_group_id,
           ad_group_name: r.ad_group_name,
-          date: r.date,
-          impressions: r.impressions,
-          clicks: r.clicks,
-          cost: r.cost,
-          cpc: r.average_cpc,
-          ctr: r.ctr,
-          conversions: r.conversions,
-          conversion_value: r.conversion_value,
-          currency: r.currency,
+          date: r.segments_date || r.date,
+          impressions: r.metrics_impressions || r.impressions,
+          clicks: r.metrics_clicks || r.clicks,
+          cost: r.metrics_cost || r.cost,
+          cpc: r.metrics_average_cpc || r.average_cpc,
+          ctr: r.metrics_ctr || r.ctr,
+          conversions: r.metrics_conversions || r.conversions,
+          conversion_value: r.metrics_conversion_value || r.conversion_value,
+          currency: r.customer_currency_code || r.currency,
           raw: r,
         }));
 

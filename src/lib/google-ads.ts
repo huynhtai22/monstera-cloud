@@ -260,9 +260,11 @@ export class GoogleAdsReportClient {
       : `segments.date DURING ${dateDuringOrBetween.trim()}`;
     const gaql = `
       SELECT
+        campaign.id,
         campaign.name,
         campaign.status,
         campaign.advertising_channel_type,
+        customer.currency_code,
         metrics.impressions,
         metrics.clicks,
         metrics.cost_micros,
