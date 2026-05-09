@@ -294,10 +294,10 @@ async function syncGoogleAds(opts: {
 
   const dateSpec =
     opts.since && opts.until
-      ? (() => {
-          return `BETWEEN '${opts.since}' AND '${opts.until}'`;
-        })()
+      ? `BETWEEN '${opts.since}' AND '${opts.until}'`
       : clampGoogleAdsDatePeriodForPlan(userPlan, "LAST_30_DAYS");
+
+  logger.info(`[syncGoogleAds] dateSpec="${dateSpec}" customers=${customerIds.length}`);
 
   const jobId = `pipeline-${Date.now()}`;
   let totalRows = 0;
@@ -305,6 +305,8 @@ async function syncGoogleAds(opts: {
 
   for (const customerId of customerIds) {
     try {
+      logger.info(`[syncGoogleAds] Fetching customer ${customerId} mccId=${credentials.mccId ?? "none"}`);
+
       const rows = await googleAdsReportClient.getCampaignPerformance(
         accessToken,
         customerId,
@@ -312,38 +314,70 @@ async function syncGoogleAds(opts: {
         credentials.mccId,
       );
 
-      if (rows.length > 0) {
-        const transformedRows = rows.map((r: any) => ({
-          campaign_id: String(r.campaign_id || r.campaign_name || ''),
-          campaign_name: r.campaign_name,
-          ad_group_id: r.ad_group_id,
-          ad_group_name: r.ad_group_name,
-          date: r.segments_date || r.date,
-          impressions: Number(r.metrics_impressions || r.impressions || 0),
-          clicks: Number(r.metrics_clicks || r.clicks || 0),
-          cost: Number(r.metrics_cost || r.cost || 0),
-          cpc: Number(r.metrics_average_cpc || r.average_cpc || 0),
-          ctr: Number(r.metrics_ctr || r.ctr || 0),
-          conversions: Number(r.metrics_conversions || r.conversions || 0),
-          conversion_value: Number(r.metrics_conversion_value || r.conversion_value || 0),
-          currency: r.customer_currency_code || r.currency,
-          raw: r,
-        }));
+      logger.info(`[syncGoogleAds] customer ${customerId} returned ${rows.length} rows`);
 
-        const result = await ingestGoogleAdsRows(transformedRows, {
-          workspaceId,
-          connectionId,
-          accountId: customerId,
-          accountName: `Customer ${customerId}`,
-          syncJobId: jobId,
-        });
+      if (rows.length === 0) continue;
 
-        totalRows += result.upserted;
+      // Log first row to diagnose key mapping in production
+      logger.info(`[syncGoogleAds] sample row keys: ${Object.keys(rows[0]).join(", ")}`);
+      logger.info(`[syncGoogleAds] sample row: ${JSON.stringify(rows[0]).slice(0, 400)}`);
+
+      const transformedRows = rows.map((r: any) => {
+        // The normalizer flattens nested objects using section_field naming:
+        //   campaign.id          → campaign_id  (Number)
+        //   campaign.name        → campaign_name
+        //   metrics.cost_micros  → metrics_cost  (divided by 1M — micros suffix stripped)
+        //   metrics.impressions  → metrics_impressions
+        //   metrics.clicks       → metrics_clicks
+        //   metrics.ctr          → metrics_ctr
+        //   metrics.average_cpc  → metrics_average_cpc
+        //   metrics.conversions  → metrics_conversions
+        //   segments.date        → segments_date
+        //   customer.currency_code → customer_currency_code
+        const campaignId = String(r.campaign_id ?? r.campaign_name ?? "unknown");
+        const date = r.segments_date ?? r.date ?? null;
+
+        return {
+          campaign_id:       campaignId,
+          campaign_name:     String(r.campaign_name ?? ""),
+          ad_group_id:       r.ad_group_id != null ? String(r.ad_group_id) : undefined,
+          ad_group_name:     r.ad_group_name != null ? String(r.ad_group_name) : undefined,
+          date,
+          impressions:       Number(r.metrics_impressions ?? r.impressions ?? 0),
+          clicks:            Number(r.metrics_clicks ?? r.clicks ?? 0),
+          cost:              Number(r.metrics_cost ?? r.cost ?? 0),
+          cpc:               Number(r.metrics_average_cpc ?? r.average_cpc ?? 0),
+          ctr:               Number(r.metrics_ctr ?? r.ctr ?? 0),
+          conversions:       Number(r.metrics_conversions ?? r.conversions ?? 0),
+          conversion_value:  Number(r.metrics_conversion_value ?? r.conversion_value ?? 0),
+          currency:          r.customer_currency_code ?? r.currency ?? undefined,
+          raw:               r,
+        };
+      });
+
+      // Filter rows that have no date — those cannot be upserted
+      const validRows = transformedRows.filter((r) => !!r.date);
+      const skipped = transformedRows.length - validRows.length;
+      if (skipped > 0) {
+        logger.warn(`[syncGoogleAds] Skipped ${skipped} rows with missing date for customer ${customerId}`);
       }
+
+      if (validRows.length === 0) continue;
+
+      const result = await ingestGoogleAdsRows(validRows, {
+        workspaceId,
+        connectionId,
+        accountId: customerId,
+        accountName: `Google Ads ${customerId}`,
+        syncJobId: jobId,
+      });
+
+      logger.info(`[syncGoogleAds] customer ${customerId} upserted=${result.upserted} failed=${result.failed}`);
+      totalRows += result.upserted;
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google Ads sync failed";
       failures.push({ customerId, error: msg });
-      logger.error(`[Google Ads Sync] Failed for customer ${customerId}:`, error);
+      logger.error(`[syncGoogleAds] Failed for customer ${customerId}: ${msg}`);
     }
   }
 
@@ -352,7 +386,9 @@ async function syncGoogleAds(opts: {
     data: { lastSyncAt: new Date() },
   });
 
-  // If every customer failed, surface the error so the UI shows it (instead of silent 0 rows).
+  logger.info(`[syncGoogleAds] Done. totalRows=${totalRows} failures=${failures.length}`);
+
+  // If every customer failed, surface the error so the UI shows it
   if (totalRows === 0 && failures.length > 0) {
     const head = failures.slice(0, 2).map((f) => `${f.customerId}: ${f.error}`).join(" | ");
     const extra = failures.length > 2 ? ` (+${failures.length - 2} more)` : "";
@@ -363,9 +399,8 @@ async function syncGoogleAds(opts: {
     };
   }
 
-  // Partial success: return success but keep a short warning for logs.
   if (failures.length > 0) {
-    logger.warn(`[Google Ads Sync] Partial failures: ${failures.length}/${customerIds.length}`);
+    logger.warn(`[syncGoogleAds] Partial failures: ${failures.length}/${customerIds.length}`);
   }
   return { success: true, rowsIngested: totalRows };
 }
