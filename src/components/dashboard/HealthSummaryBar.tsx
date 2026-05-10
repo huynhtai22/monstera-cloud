@@ -61,7 +61,7 @@ export function HealthSummaryBar() {
     ];
 
     return (
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-gray-200/85 bg-gray-50/50 px-4 py-4 ring-1 ring-black/[0.02] dark:border-slate-700/70 dark:bg-slate-900/35 dark:ring-white/[0.04] sm:px-5 sm:py-5">
             {chips.map((chip, idx) => (
                 <span
                     key={chip.label}

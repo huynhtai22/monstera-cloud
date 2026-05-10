@@ -10,7 +10,6 @@ import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
 import { AiPerformanceSummary } from "@/components/AiPerformanceSummary";
 import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { StatusHero } from "@/components/dashboard/StatusHero";
 import { MetricCardGrid } from "@/components/dashboard/MetricCardGrid";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { SetupWizard } from "@/components/dashboard/SetupWizard";
@@ -22,6 +21,21 @@ import { trackEvent, trackOnce } from "@/lib/analytics-events";
 import { cn } from "@/lib/utils";
 
 const WIZARD_DISMISS_KEY = "monstera_setup_wizard_dismissed_v1";
+
+const consoleShellClass =
+    "mx-auto w-full max-w-[min(100%,1560px)] px-5 py-10 sm:px-8 sm:py-12 lg:px-12 lg:py-14";
+
+function DashboardSectionLabel({ children, className }: { children: React.ReactNode; className?: string }) {
+    return (
+        <div className={cn("mb-4 flex items-center gap-2.5", className)}>
+            <span
+                className="h-2 w-2 shrink-0 rounded-full bg-gradient-to-br from-cyan-400 to-teal-500 shadow-[0_0_12px_rgba(34,211,238,0.45)]"
+                aria-hidden
+            />
+            <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">{children}</span>
+        </div>
+    );
+}
 
 type Snapshot = {
     date: string;
@@ -290,8 +304,8 @@ export function DashboardHomePage() {
     };
 
     if (workspacesLoading || workspaces === undefined) {
-        return (
-            <PageShell>
+    return (
+        <PageShell className={consoleShellClass}>
                 <div className="animate-pulse space-y-6 p-2">
                     <div className="h-10 max-w-md rounded-lg bg-slate-200/80 dark:bg-[#1d1f23]/80" />
                     <div className="h-36 rounded-2xl bg-slate-100 dark:bg-[#16181c]/80" />
@@ -306,7 +320,7 @@ export function DashboardHomePage() {
 
     if (!workspaceId) {
         return (
-            <PageShell>
+            <PageShell className={consoleShellClass}>
                 <EmptyState
                     icon={<Database className="h-5 w-5" />}
                     title="No workspace"
@@ -324,7 +338,7 @@ export function DashboardHomePage() {
     if (dashboardStage === 0) {
         if (wizardDismissed) {
             return (
-                <PageShell>
+                <PageShell className={consoleShellClass}>
                     <EmptyState
                         icon={<Database className="h-5 w-5" />}
                         title="No sources connected"
@@ -339,7 +353,7 @@ export function DashboardHomePage() {
             );
         }
         return (
-            <PageShell>
+            <PageShell className={consoleShellClass}>
                 <SetupWizard
                     hasSource={hasSource}
                     hasSuccessfulSync={hasSuccessfulSync}
@@ -386,20 +400,23 @@ export function DashboardHomePage() {
         ];
 
         return (
-            <PageShell>
-                <div className="mb-5">
-                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{workspaceName}</p>
-                    <h1 className="mt-1 text-xl font-bold tracking-tight text-gray-900 dark:text-white">Today, {todayLabel}</h1>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        {connectedSourcesCount} sources connected — pick a template to create your first pipeline.
-                    </p>
+            <PageShell className={consoleShellClass}>
+                <div className="relative mb-10 overflow-hidden rounded-3xl border border-gray-200/85 bg-gradient-to-br from-white via-cyan-50/40 to-white p-6 shadow-sm ring-1 ring-black/[0.03] dark:border-slate-700/70 dark:from-slate-900 dark:via-cyan-950/25 dark:to-slate-950 dark:ring-white/[0.05] sm:p-8">
+                    <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-400/15 blur-3xl dark:bg-cyan-500/10" />
+                    <div className="relative">
+                        <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-slate-500">Workspace</p>
+                        <h1 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">Today, {todayLabel}</h1>
+                        <p className="mt-2 max-w-2xl text-sm text-gray-600 dark:text-slate-400">
+                            {connectedSourcesCount} sources connected — choose a template to create your first pipeline.
+                        </p>
+                    </div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-5 shadow-sm dark:border-[#2f3336]/60 dark:bg-[#16181c]/30">
-                    <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                        Create your pipeline — start with a template
+                <div className="rounded-3xl border border-gray-200/80 bg-gray-50/70 p-6 shadow-sm ring-1 ring-black/[0.02] dark:border-slate-700/60 dark:bg-slate-900/35 dark:ring-white/[0.04] sm:p-8">
+                    <p className="mb-6 text-xs font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-slate-400">
+                        Start with a template
                     </p>
-                    <div className="stagger-list grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="stagger-list grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         {stage2Templates.map((tpl) => {
                             const isBusy = templateBusy === tpl.id;
                             return (
@@ -407,7 +424,7 @@ export function DashboardHomePage() {
                                     key={tpl.id}
                                     type="button"
                                     disabled={templateBusy !== null}
-                                    className="stagger-item bento-hover group flex min-w-0 items-center justify-between gap-3 rounded-xl border border-gray-200/80 bg-white p-4 shadow-sm disabled:opacity-60 dark:border-[#2f3336]/60 dark:bg-[#000000]/60"
+                                    className="stagger-item bento-hover group flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-gray-200/90 bg-white p-5 shadow-sm transition hover:border-cyan-200 hover:shadow-md disabled:opacity-60 dark:border-slate-600/60 dark:bg-slate-900/60 dark:hover:border-cyan-500/25"
                                     onClick={() => {
                                         if (templateBusy) return;
                                         trackEvent("pipeline_template_clicked", { template: tpl.id, from: "stage2" });
@@ -445,16 +462,18 @@ export function DashboardHomePage() {
     }
 
     return (
-        <PageShell>
-            {/* ── Compact header ────────────────────────────────────── */}
-            <div className="relative z-10 mb-6 flex flex-col gap-1 border-b border-gray-200/60 pb-5 dark:border-[#2f3336]/60 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                    <p className="text-xs font-medium text-gray-400 dark:text-gray-500">{workspaceName}</p>
-                    <h1 className="mt-0.5 text-xl font-bold tracking-tight text-gray-900 dark:text-white">
-                        {todayLabel}
-                    </h1>
-                    {/* Health pill */}
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
+        <PageShell className={consoleShellClass}>
+            {/* Hero */}
+            <div className="relative z-10 mb-10 overflow-hidden rounded-3xl border border-gray-200/85 bg-gradient-to-br from-white via-cyan-50/35 to-teal-50/25 p-6 shadow-md ring-1 ring-black/[0.04] dark:border-slate-700/70 dark:from-slate-900 dark:via-slate-900 dark:to-cyan-950/30 dark:ring-white/[0.06] sm:p-8">
+                <div className="pointer-events-none absolute -right-28 -top-28 h-80 w-80 rounded-full bg-gradient-to-br from-cyan-300/25 to-teal-400/15 blur-3xl dark:from-cyan-500/15 dark:to-teal-600/10" />
+                <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-slate-500">{workspaceName}</p>
+                        <h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-4xl">
+                            Dashboard
+                        </h1>
+                        <p className="mt-1 text-base font-medium text-gray-600 dark:text-slate-300">{todayLabel}</p>
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
                         {activePipelinesCount === 0 ? (
                             <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-500 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-400">
                                 No pipelines yet
@@ -471,31 +490,31 @@ export function DashboardHomePage() {
                             </span>
                         )}
                         {lastSyncLabel && (
-                            <span className="text-[11px] text-gray-400 dark:text-slate-500">
-                                Last sync <span className="font-medium text-gray-500 dark:text-slate-400">{lastSyncLabel}</span>
+                            <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-medium text-gray-600 ring-1 ring-gray-200/80 dark:bg-slate-800/80 dark:text-slate-300 dark:ring-slate-600/60">
+                                Last sync <span className="font-semibold text-gray-800 dark:text-white">{lastSyncLabel}</span>
                             </span>
                         )}
+                        </div>
                     </div>
-                </div>
-                {/* Actions */}
-                <div className="flex shrink-0 items-center gap-2 sm:mt-0 mt-3">
+                    <div className="flex shrink-0 flex-wrap items-center gap-3 lg:flex-col lg:items-stretch xl:flex-row">
                     <RefreshedAt onRefresh={handleManualRefresh} loading={isRefreshing} />
                     <PrimaryButton
                         type="button"
                         onClick={runAllPipelines}
                         disabled={syncAllBusy || activePipelinesCount === 0}
-                        className="inline-flex items-center gap-2 text-sm font-semibold px-4 py-2"
+                        className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold shadow-lg shadow-cyan-500/15"
                     >
                         {syncAllBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                         Sync all
                     </PrimaryButton>
+                    </div>
                 </div>
             </div>
 
             {/* Sync feedback message */}
             {syncMsg ? (
                 <div className={[
-                    "mb-5 rounded-lg border px-4 py-3 text-sm",
+                    "mb-6 rounded-2xl border px-5 py-4 text-sm",
                     /fail|error|could not|sorry/i.test(syncMsg)
                         ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-300"
                         : "border-cyan-100 bg-cyan-50/70 text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200"
@@ -506,7 +525,7 @@ export function DashboardHomePage() {
 
             {/* Setup wizard (shown when source connected but no successful sync yet) */}
             {!hasSuccessfulSync && hasSource ? (
-                <div className="mb-6">
+                <div className="mb-8">
                     <SetupWizard
                         hasSource={hasSource}
                         hasSuccessfulSync={hasSuccessfulSync}
@@ -515,30 +534,24 @@ export function DashboardHomePage() {
                 </div>
             ) : null}
 
-            {/* ── Main 2-col grid ───────────────────────────────────── */}
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
+            {/* Main: activity stream vs status */}
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-10 xl:gap-12">
 
-                {/* LEFT: Activity feed (3/5) */}
-                <div className="flex flex-col gap-5 xl:col-span-3">
+                <div className="flex min-w-0 flex-col gap-8 lg:col-span-7 xl:col-span-8">
+                    <div className="rounded-3xl border border-gray-200/75 bg-gradient-to-b from-gray-50/90 to-white p-6 ring-1 ring-black/[0.03] dark:border-slate-700/65 dark:from-slate-900/50 dark:to-slate-950/40 dark:ring-white/[0.04] sm:p-8 lg:p-9">
+                        <DashboardSectionLabel>Activity stream</DashboardSectionLabel>
 
-                    {/* Today's data flow — top of left col */}
                     <TodaysDataFlow />
 
-                    {/* KPI performance cards — only shown when data exists */}
                     {snapshots.length > 0 && (
-                        <div className="rounded-2xl border border-gray-200/70 bg-white/60 p-4 dark:border-[#2f3336]/60 dark:bg-[#16181c]/30">
-                            <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                                Performance
-                            </p>
+                        <div className="mt-8 rounded-3xl border border-gray-200/70 bg-white/90 p-5 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/50 sm:p-6">
+                            <DashboardSectionLabel>Performance</DashboardSectionLabel>
                             <MetricCardGrid snapshots={snapshots} />
                         </div>
                     )}
 
-                    {/* Recent pipeline activity */}
-                    <div>
-                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                            Recent Activity
-                        </p>
+                    <div className={snapshots.length > 0 ? "mt-8" : "mt-8"}>
+                        <DashboardSectionLabel>Pipeline activity</DashboardSectionLabel>
                         <RecentActivity
                             pipelines={pipelines}
                             isLoading={isLoading}
@@ -548,22 +561,18 @@ export function DashboardHomePage() {
                         />
                     </div>
 
-                    {/* AI digest — read when you have time */}
-                    <div>
-                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                            AI Insights
-                        </p>
+                    <div className="mt-8">
+                        <DashboardSectionLabel>AI insights</DashboardSectionLabel>
                         <AiPerformanceSummary workspaceId={workspaceId} />
+                    </div>
                     </div>
                 </div>
 
-                {/* RIGHT: Status pillars (2/5) */}
-                <div className="xl:col-span-2">
-                    <div className="mb-2 flex items-center justify-between">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                            Status
-                        </p>
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-[#16181c] dark:text-slate-400">
+                <aside className="min-w-0 lg:col-span-5 xl:col-span-4 lg:sticky lg:top-24 lg:self-start">
+                    <div className="rounded-3xl border border-gray-200/75 bg-gradient-to-b from-white to-gray-50/80 p-5 shadow-sm ring-1 ring-black/[0.03] dark:border-slate-700/65 dark:from-slate-900/55 dark:to-slate-950/40 dark:ring-white/[0.05] sm:p-6">
+                    <div className="mb-6 flex items-center justify-between gap-3 border-b border-gray-100 pb-5 dark:border-slate-700/55">
+                        <DashboardSectionLabel className="mb-0">Workspace status</DashboardSectionLabel>
+                        <span className="rounded-full bg-cyan-50 px-3 py-1 text-[11px] font-bold text-cyan-800 ring-1 ring-cyan-200/80 dark:bg-cyan-950/50 dark:text-cyan-200 dark:ring-cyan-800/50">
                             {connectedSourcesCount} source{connectedSourcesCount !== 1 ? "s" : ""}
                         </span>
                     </div>
@@ -573,14 +582,12 @@ export function DashboardHomePage() {
                         healthyCount={healthyCount}
                         totalPipelines={activePipelinesCount}
                     />
-                </div>
+                    </div>
+                </aside>
             </div>
 
-            {/* ── Infrastructure strip ─────────────────────────────── */}
-            <section className="mt-6 border-t border-gray-100/60 pt-4 dark:border-[#2f3336]/60">
-                <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                    Infrastructure
-                </p>
+            <section className="mt-12 border-t border-gray-200/70 pt-10 dark:border-slate-700/60">
+                <DashboardSectionLabel>Infrastructure health</DashboardSectionLabel>
                 <HealthSummaryBar />
             </section>
         </PageShell>

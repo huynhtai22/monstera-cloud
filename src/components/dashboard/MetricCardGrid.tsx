@@ -63,10 +63,10 @@ export function MetricCardGrid({ snapshots }: { snapshots: Snapshot[] }) {
                     key={c.label}
                     className={cn(
                         tokens.card,
-                        "group relative overflow-hidden p-4",
-                        "border-l-4 border-primary/40",
-                        "shadow-sm hover:shadow-md hover:border-primary/80",
-                        "bg-gradient-to-br from-white/95 to-gray-50/80 dark:from-slate-900/80 dark:to-slate-800/60",
+                        "group relative overflow-hidden rounded-2xl p-5",
+                        "border border-gray-200/80 dark:border-slate-600/50",
+                        "shadow-sm hover:shadow-md hover:border-cyan-300/60 dark:hover:border-cyan-500/30",
+                        "bg-gradient-to-br from-white to-gray-50/90 dark:from-slate-900/85 dark:to-slate-800/55",
                         "bento-hover",
                         "metric-card-enter"
                     )}

@@ -52,11 +52,16 @@ export function TodaysDataFlow() {
         { refreshInterval: 30000 }
     );
 
+    const shell =
+        "relative overflow-hidden rounded-3xl border border-gray-200/90 bg-white p-6 shadow-sm ring-1 ring-black/[0.03] dark:border-slate-700/70 dark:bg-slate-900/40 dark:ring-white/[0.05] sm:p-7";
+
     if (isLoading) {
         return (
-            <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-[#2f3336] dark:bg-[#000000]">
-                <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-slate-400">
-                    <Database className="h-4 w-4" />
+            <div className={shell}>
+                <div className="flex items-center gap-3 text-sm font-semibold text-gray-700 dark:text-slate-200">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500/15 to-teal-500/10 text-cyan-600 dark:from-cyan-400/20 dark:to-teal-500/5 dark:text-cyan-300">
+                        <Database className="h-5 w-5" />
+                    </span>
                     Today&apos;s data flow
                 </div>
                 <div className="mt-4 h-8 w-32 animate-pulse rounded bg-gray-100 dark:bg-[#16181c]" />
@@ -92,47 +97,63 @@ export function TodaysDataFlow() {
     // If no data today
     if (todayLogs.length === 0) {
         return (
-            <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-[#2f3336] dark:bg-[#000000]">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-slate-400">
-                        <Database className="h-4 w-4" />
-                        Today&apos;s data flow
+            <div className={shell}>
+                <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl dark:bg-cyan-500/10" />
+                <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-start gap-3">
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500/20 to-teal-500/10 text-cyan-700 shadow-inner dark:from-cyan-400/25 dark:to-teal-500/10 dark:text-cyan-200">
+                            <Database className="h-5 w-5" />
+                        </span>
+                        <div>
+                            <p className="text-base font-semibold tracking-tight text-gray-900 dark:text-white">Today&apos;s data flow</p>
+                            <p className="mt-1 max-w-md text-sm text-gray-500 dark:text-slate-400">
+                                Row volume from successful syncs today. Connect sources and run a pipeline to see numbers here.
+                            </p>
+                        </div>
                     </div>
-                    <span className="text-xs text-gray-400 dark:text-slate-500">No syncs yet today</span>
+                    <span className="shrink-0 rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-200">
+                        No syncs yet today
+                    </span>
                 </div>
                 <Link
                     href="/sources"
-                    className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 dark:hover:text-cyan-300"
+                    className="relative mt-5 inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
                 >
                     Go to Sources
-                    <ArrowRight className="h-3 w-3" />
+                    <ArrowRight className="h-4 w-4" />
                 </Link>
             </div>
         );
     }
 
     return (
-        <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-[#2f3336] dark:bg-[#000000]">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-slate-400">
-                    <Database className="h-4 w-4" />
-                    Today&apos;s data flow
+        <div className={shell}>
+            <div className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-emerald-400/10 blur-3xl dark:bg-emerald-500/10" />
+            <div className="relative flex flex-wrap items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500/20 to-teal-500/10 text-cyan-700 dark:from-cyan-400/25 dark:to-teal-500/10 dark:text-cyan-200">
+                        <Database className="h-5 w-5" />
+                    </span>
+                    <div>
+                        <p className="text-base font-semibold tracking-tight text-gray-900 dark:text-white">Today&apos;s data flow</p>
+                        <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">Synced rows in your timezone</p>
+                    </div>
                 </div>
                 {lastSyncText && (
-                    <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
-                        <CheckCircle2 className="h-3 w-3" />
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/90 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/40 dark:text-emerald-200">
+                        <CheckCircle2 className="h-3.5 w-3.5" />
                         Last sync {lastSyncText}
                     </span>
                 )}
             </div>
 
             {/* Total row count */}
-            <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-gray-900 dark:text-white">
+            <div className="relative mt-6 flex flex-wrap items-end gap-3 rounded-2xl bg-gray-50/90 px-5 py-4 dark:bg-slate-800/40">
+                <span className="text-3xl font-bold tabular-nums tracking-tight text-gray-900 dark:text-white">
                     {totalRows.toLocaleString()}
                 </span>
-                <span className="text-sm text-gray-500 dark:text-slate-400">records synced</span>
-                <TrendingUp className="ml-auto h-4 w-4 text-emerald-500" />
+                <span className="pb-1 text-sm font-medium text-gray-500 dark:text-slate-400">records synced today</span>
+                <TrendingUp className="ml-auto h-5 w-5 text-emerald-500 dark:text-emerald-400" />
             </div>
 
             {/* Source breakdown */}
@@ -154,10 +175,10 @@ export function TodaysDataFlow() {
 
             <Link
                 href="/sources"
-                className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 dark:hover:text-cyan-300"
+                className="relative mt-5 inline-flex items-center gap-2 text-sm font-semibold text-cyan-700 hover:text-cyan-800 dark:text-cyan-400 dark:hover:text-cyan-300"
             >
                 View source details
-                <ArrowRight className="h-3 w-3" />
+                <ArrowRight className="h-4 w-4" />
             </Link>
         </div>
     );
