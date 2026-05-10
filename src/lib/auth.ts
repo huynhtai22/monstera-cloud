@@ -73,7 +73,8 @@ export const authOptions: NextAuthOptions = {
             clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
             authorization: {
                 params: {
-                    scope: "openid email profile https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file",
+                    // Identity only (GCP A). Sheets/Drive belong to the add-ons OAuth client (GCP B), not console login.
+                    scope: "openid email profile",
                     prompt: "consent select_account", // Force account selection
                     access_type: "offline",
                     response_type: "code"
