@@ -85,24 +85,36 @@ export function SectionOverviewCard({
     const hasError = Array.isArray(items) && items.some((i) => i.status === "error");
 
     return (
-        <section aria-labelledby={titleId}
+        <section
+            aria-labelledby={titleId}
             className={cn(
-                "group relative flex h-full min-w-0 flex-col justify-between rounded-2xl border-l-4 border px-4 py-4 pl-3",
-                "bento-hover",
-                "pillar-fade",
+                "group relative flex h-full min-w-0 flex-col overflow-hidden rounded-3xl border shadow-sm transition-shadow duration-300 hover:shadow-lg",
+                "bento-hover pillar-fade",
                 emphasis
-                    ? "border-l-cyan-500 border-cyan-200 bg-gradient-to-br from-cyan-50/80 via-white/80 to-white/80 shadow-md dark:border-l-cyan-400 dark:border-cyan-500/30 dark:from-cyan-500/10 dark:via-slate-900/60 dark:to-slate-900/60 shadow-cyan-100/40 dark:shadow-cyan-950/40"
-                    : "border-l-gray-300 border-gray-200/80 bg-gradient-to-br from-white/95 to-gray-50/80 shadow-md dark:border-l-slate-600 dark:border-[#2f3336]/60 dark:from-slate-900/70 dark:to-slate-800/50",
+                    ? "border-cyan-200/85 bg-gradient-to-br from-cyan-50/60 via-white to-white ring-1 ring-cyan-500/15 dark:border-cyan-500/35 dark:from-cyan-950/45 dark:via-slate-900 dark:to-slate-950 dark:ring-cyan-400/10"
+                    : "border-gray-200/90 bg-white ring-black/[0.03] dark:border-slate-700/75 dark:bg-slate-900/55 dark:ring-white/[0.06]",
                 hasError && "animate-[errorPulse_2s_ease-in-out_infinite]",
-                className
+                className,
             )}
         >
-            {/* Accent glow gradient on hover (emphasis only) */}
-            {emphasis && (
-                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-cyan-400/0 to-cyan-500/0 group-hover:from-cyan-400/5 group-hover:to-cyan-500/5 transition-all duration-300" />
+            {emphasis ? (
+                <div
+                    className="h-1 w-full shrink-0 bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-500"
+                    aria-hidden
+                />
+            ) : (
+                <div
+                    className="h-px w-full shrink-0 bg-gradient-to-r from-transparent via-gray-200 to-transparent dark:via-slate-600/70"
+                    aria-hidden
+                />
             )}
 
-            <div className="relative z-10">
+            {/* Hover wash (pipelines card) */}
+            {emphasis && (
+                <div className="pointer-events-none absolute inset-0 rounded-3xl bg-gradient-to-br from-cyan-400/0 to-teal-500/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-hover:from-cyan-400/10 dark:group-hover:from-cyan-400/15" />
+            )}
+
+            <div className="relative z-10 flex flex-1 flex-col px-5 pb-5 pt-4">
                 {/* Header: icon + title on one row, KPI chip + subtitle on next row */}
                 <div className="mb-3">
                     <div className="flex items-center gap-2">
@@ -118,7 +130,9 @@ export function SectionOverviewCard({
                         >
                             {icon}
                         </div>
-                        <h3 id={titleId} className="min-w-0 flex-1 text-sm font-bold leading-tight text-gray-900 dark:text-white">{title}</h3>
+                        <h3 id={titleId} className="min-w-0 flex-1 text-base font-semibold leading-tight tracking-tight text-gray-900 dark:text-white">
+                            {title}
+                        </h3>
                     </div>
                     {/* Second row: subtitle left, KPI chip right */}
                     <div className="mt-2 flex items-center justify-between gap-2 pl-10">
@@ -155,7 +169,7 @@ export function SectionOverviewCard({
                         {safeItems.slice(0, 3).map((item) => (
                             <li
                                 key={item.id}
-                                className="flex items-center gap-2 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-gray-50/60 dark:hover:bg-[#16181c]/60"
+                                className="flex items-center gap-2 rounded-xl px-2 py-2 transition-colors hover:bg-gray-50/90 dark:hover:bg-slate-800/50"
                                 title={item.sub}
                             >
                                 {/* Logo or status dot */}
@@ -212,16 +226,17 @@ export function SectionOverviewCard({
                         {emptyHint ?? "Nothing connected yet."}
                     </p>
                 )}
-            </div>
-
-            <div className="flex items-center justify-between gap-3">
-                {ctaHref && ctaLabel ? (
-                    <Link href={ctaHref} className={"inline-flex items-center gap-1.5 text-sm font-semibold " + secondaryButtonLinkClassName}>
-                        {ctaLabel}
-                        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                    </Link>
-                ) : null}
-                {footerSlot ? <div className="shrink-0">{footerSlot}</div> : null}
+                <div className="mt-4 flex items-center justify-between gap-3 border-t border-gray-100/90 pt-4 dark:border-slate-700/60">
+                    {ctaHref && ctaLabel ? (
+                        <Link href={ctaHref} className={"inline-flex items-center gap-1.5 text-sm font-semibold " + secondaryButtonLinkClassName}>
+                            {ctaLabel}
+                            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                        </Link>
+                    ) : (
+                        <span />
+                    )}
+                    {footerSlot ? <div className="shrink-0">{footerSlot}</div> : null}
+                </div>
             </div>
         </section>
     );

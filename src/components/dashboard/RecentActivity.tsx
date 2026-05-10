@@ -31,18 +31,18 @@ export function RecentActivity({
     onSync,
 }: RecentActivityProps) {
     return (
-        <div className="flex min-h-[240px] flex-col rounded-2xl border border-white bg-white/40 p-4 shadow-sm backdrop-blur-xl dark:border-[#2f3336]/60 dark:bg-[#000000]/40">
-                <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex min-h-[280px] flex-col rounded-3xl border border-gray-200/90 bg-white p-6 shadow-sm ring-1 ring-black/[0.03] dark:border-slate-700/70 dark:bg-slate-900/45 dark:ring-white/[0.05] sm:p-7">
+            <div className="mb-5 flex flex-col gap-3 border-b border-gray-100 pb-5 dark:border-slate-700/70 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h2 className="text-sm font-bold text-gray-900 dark:text-white">Recent activity</h2>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Latest events from your pipelines.</p>
+                    <h2 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">Recent activity</h2>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">Latest pipeline sync events for this workspace.</p>
                 </div>
-                <Link href="/reports" className={"text-xs font-semibold " + secondaryButtonLinkClassName}>
+                <Link href="/reports" className={"inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold " + secondaryButtonLinkClassName}>
                     See all logs
                 </Link>
             </div>
 
-            <div className="stagger-list flex-1 space-y-3 overflow-y-auto pr-1">
+            <div className="stagger-list flex-1 space-y-4 overflow-y-auto pr-1">
                 {isLoading ? (
                     <div className="flex h-full flex-col items-center justify-center py-10 text-center">
                         <Loader2 className="mb-3 h-6 w-6 animate-spin text-cyan-500" />

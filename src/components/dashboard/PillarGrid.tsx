@@ -154,7 +154,7 @@ export function PillarGrid({
     const noReportsYet = syncLogs.length === 0;
 
     return (
-        <div className="relative z-10 stagger-list flex flex-col gap-4">
+        <div className="relative z-10 stagger-list flex flex-col gap-5">
             <div className="stagger-item min-w-0">
                 <SectionOverviewCard
                     icon={<Plug className="h-5 w-5" />}
