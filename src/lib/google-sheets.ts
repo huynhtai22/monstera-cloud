@@ -1,8 +1,7 @@
 /**
- * Google Sheets API client — uses stored OAuth tokens from the Account table.
- * Scopes already requested during Google login:
- *   - https://www.googleapis.com/auth/spreadsheets
- *   - https://www.googleapis.com/auth/drive.file
+ * Google Sheets API client — uses stored OAuth tokens from the Account table (provider `google`).
+ * Console “Sign in with Google” no longer requests Sheets/Drive scopes (GCP A vs add-ons split).
+ * Tokens with Sheets scope must come from a dedicated Sheets-connect flow or legacy rows until migrated.
  */
 
 import prisma from '@/lib/prisma';

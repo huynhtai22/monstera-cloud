@@ -78,7 +78,7 @@ export interface NormalizedGoogleAdsRow {
 export class GoogleAdsOAuthClient {
   /**
    * Build the Google OAuth consent URL.
-   * Scope: https://www.googleapis.com/auth/adwords
+   * Single scope: https://www.googleapis.com/auth/adwords — must match “Google Ads API” on the same GCP project’s OAuth consent screen.
    */
   getAuthorizeUrl(state: string, redirectUri: string): string {
     const id = clientId();
