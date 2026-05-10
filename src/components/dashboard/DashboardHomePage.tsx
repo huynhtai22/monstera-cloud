@@ -23,6 +23,10 @@ import { cn } from "@/lib/utils";
 
 const WIZARD_DISMISS_KEY = "monstera_setup_wizard_dismissed_v1";
 
+/** Readable width cap + padding so the console doesn’t feel cramped beside the nav rail */
+const consoleShellClass =
+    "mx-auto w-full max-w-[min(100%,1480px)] px-5 py-9 sm:px-8 sm:py-10 lg:px-12 lg:py-12 xl:px-14";
+
 type Snapshot = {
     date: string;
     netRoas: number;
@@ -291,7 +295,7 @@ export function DashboardHomePage() {
 
     if (workspacesLoading || workspaces === undefined) {
         return (
-            <PageShell>
+            <PageShell className={consoleShellClass}>
                 <div className="animate-pulse space-y-6 p-2">
                     <div className="h-10 max-w-md rounded-lg bg-slate-200/80 dark:bg-[#1d1f23]/80" />
                     <div className="h-36 rounded-2xl bg-slate-100 dark:bg-[#16181c]/80" />
@@ -306,7 +310,7 @@ export function DashboardHomePage() {
 
     if (!workspaceId) {
         return (
-            <PageShell>
+            <PageShell className={consoleShellClass}>
                 <EmptyState
                     icon={<Database className="h-5 w-5" />}
                     title="No workspace"
@@ -324,7 +328,7 @@ export function DashboardHomePage() {
     if (dashboardStage === 0) {
         if (wizardDismissed) {
             return (
-                <PageShell>
+                <PageShell className={consoleShellClass}>
                     <EmptyState
                         icon={<Database className="h-5 w-5" />}
                         title="No sources connected"
@@ -339,7 +343,7 @@ export function DashboardHomePage() {
             );
         }
         return (
-            <PageShell>
+            <PageShell className={consoleShellClass}>
                 <SetupWizard
                     hasSource={hasSource}
                     hasSuccessfulSync={hasSuccessfulSync}
@@ -386,20 +390,20 @@ export function DashboardHomePage() {
         ];
 
         return (
-            <PageShell>
-                <div className="mb-5">
+            <PageShell className={consoleShellClass}>
+                <div className="mb-8">
                     <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{workspaceName}</p>
-                    <h1 className="mt-1 text-xl font-bold tracking-tight text-gray-900 dark:text-white">Today, {todayLabel}</h1>
+                    <h1 className="mt-1 text-xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-2xl">Today, {todayLabel}</h1>
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         {connectedSourcesCount} sources connected — pick a template to create your first pipeline.
                     </p>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-5 shadow-sm dark:border-[#2f3336]/60 dark:bg-[#16181c]/30">
+                <div className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-6 shadow-sm dark:border-[#2f3336]/60 dark:bg-[#16181c]/30 sm:p-7">
                     <p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                         Create your pipeline — start with a template
                     </p>
-                    <div className="stagger-list grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="stagger-list grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         {stage2Templates.map((tpl) => {
                             const isBusy = templateBusy === tpl.id;
                             return (
@@ -445,12 +449,12 @@ export function DashboardHomePage() {
     }
 
     return (
-        <PageShell>
-            {/* ── Compact header ────────────────────────────────────── */}
-            <div className="relative z-10 mb-6 flex flex-col gap-1 border-b border-gray-200/60 pb-5 dark:border-[#2f3336]/60 sm:flex-row sm:items-center sm:justify-between">
-                <div>
+        <PageShell className={consoleShellClass}>
+            {/* ── Header ────────────────────────────────────── */}
+            <div className="relative z-10 mb-8 flex flex-col gap-2 border-b border-gray-200/60 pb-6 dark:border-[#2f3336]/60 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
                     <p className="text-xs font-medium text-gray-400 dark:text-gray-500">{workspaceName}</p>
-                    <h1 className="mt-0.5 text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+                    <h1 className="mt-1 text-xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-2xl">
                         {todayLabel}
                     </h1>
                     {/* Health pill */}
@@ -478,7 +482,7 @@ export function DashboardHomePage() {
                     </div>
                 </div>
                 {/* Actions */}
-                <div className="flex shrink-0 items-center gap-2 sm:mt-0 mt-3">
+                <div className="mt-4 flex shrink-0 flex-wrap items-center gap-3 sm:mt-0">
                     <RefreshedAt onRefresh={handleManualRefresh} loading={isRefreshing} />
                     <PrimaryButton
                         type="button"
@@ -506,7 +510,7 @@ export function DashboardHomePage() {
 
             {/* Setup wizard (shown when source connected but no successful sync yet) */}
             {!hasSuccessfulSync && hasSource ? (
-                <div className="mb-6">
+                <div className="mb-8">
                     <SetupWizard
                         hasSource={hasSource}
                         hasSuccessfulSync={hasSuccessfulSync}
@@ -515,19 +519,19 @@ export function DashboardHomePage() {
                 </div>
             ) : null}
 
-            {/* ── Main 2-col grid ───────────────────────────────────── */}
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-5">
+            {/* ── Main layout: primary column + status rail from lg (was xl-only) ───────────────── */}
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8 xl:gap-10">
 
-                {/* LEFT: Activity feed (3/5) */}
-                <div className="flex flex-col gap-5 xl:col-span-3">
+                {/* LEFT: Flow + activity + insights */}
+                <div className="flex min-w-0 flex-col gap-6 lg:col-span-7 lg:gap-8 xl:col-span-8">
 
                     {/* Today's data flow — top of left col */}
                     <TodaysDataFlow />
 
                     {/* KPI performance cards — only shown when data exists */}
                     {snapshots.length > 0 && (
-                        <div className="rounded-2xl border border-gray-200/70 bg-white/60 p-4 dark:border-[#2f3336]/60 dark:bg-[#16181c]/30">
-                            <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                        <div className="rounded-2xl border border-gray-200/70 bg-white/60 p-5 dark:border-[#2f3336]/60 dark:bg-[#16181c]/30 sm:p-6">
+                            <p className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
                                 Performance
                             </p>
                             <MetricCardGrid snapshots={snapshots} />
@@ -536,7 +540,7 @@ export function DashboardHomePage() {
 
                     {/* Recent pipeline activity */}
                     <div>
-                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
                             Recent Activity
                         </p>
                         <RecentActivity
@@ -550,17 +554,17 @@ export function DashboardHomePage() {
 
                     {/* AI digest — read when you have time */}
                     <div>
-                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
                             AI Insights
                         </p>
                         <AiPerformanceSummary workspaceId={workspaceId} />
                     </div>
                 </div>
 
-                {/* RIGHT: Status pillars (2/5) */}
-                <div className="xl:col-span-2">
-                    <div className="mb-2 flex items-center justify-between">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                {/* RIGHT: Status pillars — sticky on large screens while scrolling activity */}
+                <aside className="min-w-0 lg:col-span-5 xl:col-span-4 lg:sticky lg:top-24 lg:self-start">
+                    <div className="mb-3 flex items-center justify-between">
+                        <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
                             Status
                         </p>
                         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-[#16181c] dark:text-slate-400">
@@ -573,12 +577,12 @@ export function DashboardHomePage() {
                         healthyCount={healthyCount}
                         totalPipelines={activePipelinesCount}
                     />
-                </div>
+                </aside>
             </div>
 
             {/* ── Infrastructure strip ─────────────────────────────── */}
-            <section className="mt-6 border-t border-gray-100/60 pt-4 dark:border-[#2f3336]/60">
-                <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+            <section className="mt-10 border-t border-gray-100/60 pt-8 dark:border-[#2f3336]/60">
+                <p className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
                     Infrastructure
                 </p>
                 <HealthSummaryBar />
