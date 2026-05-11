@@ -11,6 +11,7 @@
  */
 
 import type { EtlProvider } from "@/etl/types";
+import { isShopeeSandboxEnabled } from "@/lib/shopee-env";
 
 export type AuthType = "oauth" | "hmac" | "api_key";
 export type PaginationType = "cursor" | "page" | "offset" | "time_range" | "none";
@@ -140,7 +141,7 @@ const CONNECTOR_REGISTRY: Record<EtlProvider, ConnectorConfig> = {
         provider: "shopee",
         name: "Shopee",
         authType: "hmac",
-        baseUrl: process.env.SHOPEE_SANDBOX === "true"
+        baseUrl: isShopeeSandboxEnabled()
             ? "https://partner.test-stable.shopeemobile.com"
             : "https://partner.shopeemobile.com",
         pagination: "time_range",

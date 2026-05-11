@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { ShopeeClient } from "@/lib/shopee";
+import { isShopeeSandboxEnabled } from "@/lib/shopee-env";
 import { encrypt, safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 
@@ -44,7 +45,7 @@ export async function GET(request: Request) {
                     
                     // refreshAccessToken throws on API error, so no need to check fields
                     // Use sandbox flag from stored credentials (fallback to env for legacy connections)
-                    const isSandbox = creds.sandbox === true || process.env.SHOPEE_SANDBOX === "true";
+                    const isSandbox = creds.sandbox === true || isShopeeSandboxEnabled();
                     const newTokenData = await shopeeClient.refreshAccessToken(creds.refresh_token, creds.shop_id, isSandbox);
 
                     await prisma.connection.update({

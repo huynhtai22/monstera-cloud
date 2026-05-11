@@ -11,9 +11,9 @@ import {
     OAuthError,
 } from "../types";
 import { shopeeClient } from "@/lib/shopee";
+import { isShopeeSandboxEnabled } from "@/lib/shopee-env";
 
-// Check if Shopee sandbox mode is enabled
-const isSandbox = () => process.env.SHOPEE_SANDBOX === "true";
+const isSandbox = () => isShopeeSandboxEnabled();
 
 export class ShopeeOAuthAdapter implements OAuthProviderAdapter {
     readonly id = "shopee";
