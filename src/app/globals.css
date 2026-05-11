@@ -87,6 +87,34 @@ body {
     background: var(--background);
 }
 
+/* ── Form controls (checkboxes + date inputs) ───────────────────────────────
+   Goal: “Cursor-like” modern controls without rewriting every page.
+   Applies to native inputs while still allowing per-component overrides. */
+@layer base {
+  input[type="checkbox"] {
+    @apply h-4 w-4 rounded-md border border-gray-300 bg-white text-cyan-600 shadow-sm;
+    @apply focus:outline-none focus:ring-2 focus:ring-cyan-500/25 focus:ring-offset-2 focus:ring-offset-white;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .dark input[type="checkbox"] {
+    @apply border-[#2f3336] bg-[#0b0d10] text-cyan-400;
+    @apply focus:ring-cyan-400/25 focus:ring-offset-2 focus:ring-offset-black;
+  }
+
+  /* Date inputs vary per browser; normalize to look like our Input component. */
+  input[type="date"] {
+    @apply h-10 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm;
+    @apply focus:outline-none focus:ring-2 focus:ring-cyan-500/25 focus:border-cyan-500;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .dark input[type="date"] {
+    @apply border-[#2f3336] bg-[#16181c] text-white;
+    @apply focus:ring-cyan-500/20 focus:border-cyan-500;
+  }
+}
+
 /* Used during theme toggle to avoid transition flash (see AppLayout) */
 html.disable-transitions *,
 html.disable-transitions *::before,
