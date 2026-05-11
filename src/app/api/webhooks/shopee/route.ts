@@ -4,6 +4,48 @@ import crypto from "crypto";
 import { logger } from "@/lib/logger";
 import { shopeePartnerKeySecretForWebhook } from "@/lib/shopee";
 
+/** Optional extra secret for Push “Verify and Save” if Shopee signs with Test Push Partner Key (see Open Platform → Push). */
+function trimEnvSecret(raw: string | undefined): string {
+    if (!raw) return "";
+    let v = raw.trim().replace(/^\uFEFF/, "");
+    if (
+        (v.startsWith('"') && v.endsWith('"') && v.length >= 2) ||
+        (v.startsWith("'") && v.endsWith("'") && v.length >= 2)
+    ) {
+        v = v.slice(1, -1).trim();
+    }
+    return v;
+}
+
+function shopeePushHmacSecrets(): string[] {
+    const keys: string[] = [];
+    try {
+        keys.push(shopeePartnerKeySecretForWebhook());
+    } catch {
+        logger.warn("[SHOPEE WEBHOOK] SHOPEE_PARTNER_KEY missing — cannot verify with primary secret");
+    }
+    const extra = trimEnvSecret(process.env.SHOPEE_PUSH_VERIFICATION_KEY);
+    if (extra && !keys.includes(extra)) {
+        keys.push(extra);
+    }
+    return keys;
+}
+
+function verifyShopeePushBody(rawBody: string, authorizationHeader: string): boolean {
+    const secrets = shopeePushHmacSecrets();
+    if (secrets.length === 0) return false;
+    for (const secret of secrets) {
+        const sig = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+        if (sig === authorizationHeader) return true;
+    }
+    return false;
+}
+
+/** Shallow health check / probes (Partner Center sometimes expects any 2xx). */
+export async function GET() {
+    return new NextResponse("ok", { status: 200 });
+}
+
 export async function POST(request: Request) {
     try {
         const authorizationHeader = request.headers.get("authorization");
@@ -17,15 +59,10 @@ export async function POST(request: Request) {
         
         // Validate Shopee Webhook Signature
         // Format: HMAC-SHA256(partner_key, request_body)
-        // Note: Shopee webhooks use body-only signing (not url|body like some other endpoints)
-        const computedSignature = crypto
-            .createHmac("sha256", shopeePartnerKeySecretForWebhook())
-            .update(rawBody)
-            .digest("hex");
-
-        if (computedSignature !== authorizationHeader) {
-            logger.warn("[SHOPEE WEBHOOK] Invalid signature", {
-                expected: computedSignature,
+        // Note: Shopee webhooks use body-only signing (not url|body like some other endpoints).
+        // Push “Verify and Save” may sign with the Test Push Partner Key from the console; use SHOPEE_PUSH_VERIFICATION_KEY if it differs from SHOPEE_PARTNER_KEY.
+        if (!verifyShopeePushBody(rawBody, authorizationHeader)) {
+            logger.warn("[SHOPEE WEBHOOK] Invalid signature (no matching secret)", {
                 received: authorizationHeader,
             });
             return new NextResponse("Invalid Signature.", { status: 403 });
