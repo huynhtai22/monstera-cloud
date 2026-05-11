@@ -31,12 +31,48 @@ function shopeePushHmacSecrets(): string[] {
     return keys;
 }
 
+function normalizeShopeeAuthSignature(header: string): string {
+    let s = header.trim();
+    for (;;) {
+        const low = s.toLowerCase();
+        if (low.startsWith("sha256 ")) {
+            s = s.slice(7).trim();
+            continue;
+        }
+        if (low.startsWith("bearer ")) {
+            s = s.slice(7).trim();
+            continue;
+        }
+        break;
+    }
+    return s.toLowerCase();
+}
+
+/** Shopee may sign the exact wire body or a compact JSON re-encoding. */
+function bodyStringsForSigning(rawBody: string): string[] {
+    const variants = new Set<string>([rawBody]);
+    try {
+        const parsed = JSON.parse(rawBody) as unknown;
+        variants.add(JSON.stringify(parsed));
+    } catch {
+        /* non-JSON body */
+    }
+    return [...variants];
+}
+
 function verifyShopeePushBody(rawBody: string, authorizationHeader: string): boolean {
+    const expectedHex = normalizeShopeeAuthSignature(authorizationHeader);
+    if (!/^[0-9a-f]{64}$/.test(expectedHex)) {
+        return false;
+    }
     const secrets = shopeePushHmacSecrets();
     if (secrets.length === 0) return false;
+    const bodies = bodyStringsForSigning(rawBody);
     for (const secret of secrets) {
-        const sig = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-        if (sig === authorizationHeader) return true;
+        for (const body of bodies) {
+            const sig = crypto.createHmac("sha256", secret).update(body).digest("hex").toLowerCase();
+            if (sig === expectedHex) return true;
+        }
     }
     return false;
 }
@@ -48,10 +84,13 @@ export async function GET() {
 
 export async function POST(request: Request) {
     try {
-        const authorizationHeader = request.headers.get("authorization");
-        
+        const authorizationHeader =
+            request.headers.get("authorization") ??
+            request.headers.get("x-shopee-signature") ??
+            "";
+
         if (!authorizationHeader) {
-            logger.warn("[SHOPEE WEBHOOK] Missing Authorization header");
+            logger.warn("[SHOPEE WEBHOOK] Missing Authorization / x-shopee-signature header");
             return new NextResponse("Missing Authorization Header.", { status: 401 });
         }
 
@@ -61,10 +100,12 @@ export async function POST(request: Request) {
         // Format: HMAC-SHA256(partner_key, request_body)
         // Note: Shopee webhooks use body-only signing (not url|body like some other endpoints).
         // Push “Verify and Save” may sign with the Test Push Partner Key from the console; use SHOPEE_PUSH_VERIFICATION_KEY if it differs from SHOPEE_PARTNER_KEY.
+        // Header may be raw hex or prefixed with `SHA256 `; body bytes may match wire JSON or compact JSON.stringify(parse).
         if (!verifyShopeePushBody(rawBody, authorizationHeader)) {
-            logger.warn("[SHOPEE WEBHOOK] Invalid signature (no matching secret)", {
-                received: authorizationHeader,
-            });
+            logger.warn(
+                "[SHOPEE WEBHOOK] Invalid signature (no matching secret). Set SHOPEE_PUSH_VERIFICATION_KEY to the Push screen “Test Push Partner Key” if it still fails.",
+                { received: authorizationHeader.slice(0, 80) }
+            );
             return new NextResponse("Invalid Signature.", { status: 403 });
         }
 
