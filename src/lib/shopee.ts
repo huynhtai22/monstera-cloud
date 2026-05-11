@@ -27,18 +27,14 @@ function partnerId(): number {
 function partnerKey(): string {
   const key = (process.env.SHOPEE_PARTNER_KEY || "").trim();
   if (!key) throw new Error("SHOPEE_PARTNER_KEY is not configured");
-  // Shopee partner keys are prefixed with "shpk" — strip the prefix.
-  return key.startsWith("shpk") ? key.slice(4) : key;
+  // Shopee expects the raw partner_key string as the HMAC secret.
+  // Do NOT strip prefixes or hex-decode; treat it as opaque bytes.
+  return key;
 }
 
-/** Returns the HMAC key as a Buffer (hex-decoded raw bytes). */
+/** Returns the HMAC key as a Buffer (raw UTF-8 bytes). */
 function partnerKeyBuffer(): Buffer {
-  const hex = partnerKey();
-  // If valid hex, decode to raw bytes. Otherwise fall back to UTF-8 string bytes.
-  if (/^[0-9a-fA-F]+$/.test(hex) && hex.length % 2 === 0) {
-    return Buffer.from(hex, "hex");
-  }
-  return Buffer.from(hex, "utf8");
+  return Buffer.from(partnerKey(), "utf8");
 }
 
 function getHost(sandbox = false): string {
