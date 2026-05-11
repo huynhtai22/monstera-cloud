@@ -18,10 +18,42 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useWorkspaceStore } from "@/store/workspace";
 import { getSourceUIConfig } from "@/lib/source-ui-registry";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { trackEvent } from "@/lib/analytics-events";
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+type ConnectionDetailPayload = {
+    connection: {
+        id: string;
+        name: string;
+        workspaceId: string;
+        provider?: string;
+        type?: string;
+        [key: string]: unknown;
+    };
+    pipelines?: unknown[];
+    recentLogs?: unknown[];
+};
+
+const jsonFetcher = async (url: string) => {
+    const r = await fetch(url);
+    const data = await r.json();
+    if (!r.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Request failed");
+    }
+    return data;
+};
+
+async function fetchConnectionDetail(url: string): Promise<ConnectionDetailPayload> {
+    const r = await fetch(url);
+    const j = (await r.json()) as { error?: string } & Partial<ConnectionDetailPayload>;
+    if (!r.ok) {
+        throw new Error(typeof j.error === "string" ? j.error : "Failed to load connection");
+    }
+    if (!j.connection) {
+        throw new Error("Invalid connection response");
+    }
+    return j as ConnectionDetailPayload;
+}
 
 /**
  * Post-OAuth Setup Page
@@ -39,7 +71,8 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 function SourceSetupPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { activeWorkspaceId } = useWorkspaceStore();
+    const { activeWorkspaceId, setActiveWorkspaceId } = useWorkspaceStore();
+    const { mutate } = useSWRConfig();
 
     const newConnectionId = searchParams.get("newConnectionId");
     const provider = searchParams.get("provider");
@@ -57,18 +90,35 @@ function SourceSetupPageContent() {
     const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
     const [showAccountStep, setShowAccountStep] = useState(false);
 
-    const { data: connection, isLoading: connectionLoading } = useSWR(
-        newConnectionId && activeWorkspaceId
-            ? `/api/connections/${newConnectionId}`
-            : null,
-        fetcher
+    const {
+        data: connectionPayload,
+        isLoading: connectionLoading,
+        error: connectionFetchError,
+    } = useSWR(
+        newConnectionId ? `/api/connections/${newConnectionId}` : null,
+        fetchConnectionDetail
     );
+    const connection = connectionPayload?.connection ?? null;
+
+    // OAuth can create the row in a different workspace than the one selected in the shell.
+    // Align the workspace store so /sources and this page's destination list stay consistent.
+    useEffect(() => {
+        if (!connection?.workspaceId) return;
+        if (activeWorkspaceId === connection.workspaceId) return;
+        setActiveWorkspaceId(connection.workspaceId);
+        void mutate("/api/workspaces");
+    }, [
+        connection?.workspaceId,
+        activeWorkspaceId,
+        setActiveWorkspaceId,
+        mutate,
+    ]);
 
     const { data: destinations, isLoading: destinationsLoading } = useSWR(
         activeWorkspaceId
             ? `/api/workspaces/${activeWorkspaceId}/connections?type=destination`
             : null,
-        fetcher
+        jsonFetcher
     );
 
     const sourceConfig = useMemo(() => {
@@ -134,6 +184,7 @@ function SourceSetupPageContent() {
             }
 
             setSetupComplete(true);
+            void mutate("/api/workspaces");
             trackEvent("pipeline_created_from_setup", {
                 provider,
                 destinationId: selectedDestination,
@@ -154,10 +205,12 @@ function SourceSetupPageContent() {
     const handleSkip = () => {
         // User is using add-on or Looker connector directly
         trackEvent("setup_skipped_add_on_path", { provider });
+        void mutate("/api/workspaces");
         router.push("/sources");
     };
 
     const handleDone = () => {
+        void mutate("/api/workspaces");
         router.push("/sources");
     };
 
@@ -191,13 +244,17 @@ function SourceSetupPageContent() {
         );
     }
 
-    if (!connection) {
+    if (connectionFetchError || !connection) {
         return (
             <PageShell>
                 <EmptyState
                     icon={<Database className="h-12 w-12" />}
                     title="Connection not found"
-                    description="The connection you're trying to set up doesn't exist or has been removed."
+                    description={
+                        connectionFetchError instanceof Error
+                            ? connectionFetchError.message
+                            : "The connection you're trying to set up doesn't exist or has been removed."
+                    }
                     primaryAction={
                         <Link
                             href="/sources"
