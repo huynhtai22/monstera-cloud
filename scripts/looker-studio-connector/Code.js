@@ -67,7 +67,7 @@ function getOAuthService() {
     .setPropertyStore(PropertiesService.getUserProperties())
     .setCallbackFunction("authCallback")
     // Minimal identity scopes. We use id_token to map email -> Monstera user/workspace.
-    .setScope("openid email profile")
+    .setScope("openid email")
     // Ensure we always get an id_token.
     .setParam("access_type", "offline")
     .setParam("prompt", "consent");
