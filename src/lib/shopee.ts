@@ -17,6 +17,7 @@ import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { encrypt, safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
+import { SHOPEE_SANDBOX_OPEN_API_HOST } from "@/lib/shopee-env";
 
 /** Trim, strip BOM, and remove a single layer of wrapping quotes (common when pasting into host env UIs). */
 function normalizePartnerEnvValue(raw: string): string {
@@ -63,9 +64,7 @@ export function shopeePartnerKeySecretForWebhook(): string {
 }
 
 function getHost(sandbox = false): string {
-  return sandbox
-    ? "https://partner.test-stable.shopeemobile.com"
-    : "https://partner.shopeemobile.com";
+  return sandbox ? SHOPEE_SANDBOX_OPEN_API_HOST : "https://partner.shopeemobile.com";
 }
 
 function nowUnix(): number {
