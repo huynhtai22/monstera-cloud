@@ -18,23 +18,48 @@ import prisma from "@/lib/prisma";
 import { encrypt, safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 
-function partnerId(): number {
-  const id = (process.env.SHOPEE_PARTNER_ID || "").trim();
+/** Trim, strip BOM, and remove a single layer of wrapping quotes (common when pasting into host env UIs). */
+function normalizePartnerEnvValue(raw: string): string {
+  let v = raw.trim().replace(/^\uFEFF/, "");
+  if (
+    (v.startsWith('"') && v.endsWith('"') && v.length >= 2) ||
+    (v.startsWith("'") && v.endsWith("'") && v.length >= 2)
+  ) {
+    v = v.slice(1, -1).trim();
+  }
+  return v;
+}
+
+/** Decimal digits only — used in the HMAC base string and in query params (avoids Number precision edge cases). */
+function partnerIdString(): string {
+  const id = normalizePartnerEnvValue(process.env.SHOPEE_PARTNER_ID || "");
   if (!id) throw new Error("SHOPEE_PARTNER_ID is not configured");
-  return Number(id);
+  if (!/^\d+$/.test(id)) {
+    throw new Error("SHOPEE_PARTNER_ID must be a decimal integer string");
+  }
+  return id;
+}
+
+function partnerId(): number {
+  const id = partnerIdString();
+  const n = Number(id);
+  if (!Number.isSafeInteger(n)) {
+    throw new Error("SHOPEE_PARTNER_ID is outside safe integer range; contact support");
+  }
+  return n;
 }
 
 function partnerKey(): string {
-  const key = (process.env.SHOPEE_PARTNER_KEY || "").trim();
+  const key = normalizePartnerEnvValue(process.env.SHOPEE_PARTNER_KEY || "");
   if (!key) throw new Error("SHOPEE_PARTNER_KEY is not configured");
   // Shopee expects the raw partner_key string as the HMAC secret.
-  // Do NOT strip prefixes or hex-decode; treat it as opaque bytes.
+  // Do NOT strip `shpk` prefixes or hex-decode; treat it as opaque bytes.
   return key;
 }
 
-/** Returns the HMAC key as a Buffer (raw UTF-8 bytes). */
-function partnerKeyBuffer(): Buffer {
-  return Buffer.from(partnerKey(), "utf8");
+/** Same UTF-8 secret as API signing; used by `POST /api/webhooks/shopee` body HMAC. */
+export function shopeePartnerKeySecretForWebhook(): string {
+  return partnerKey();
 }
 
 function getHost(sandbox = false): string {
@@ -49,8 +74,8 @@ function nowUnix(): number {
 
 /** HMAC-SHA256 hex signature for auth APIs (no access_token). */
 function signAuth(path: string, timestamp: number): string {
-  const base = `${partnerId()}${path}${timestamp}`;
-  return crypto.createHmac("sha256", partnerKeyBuffer()).update(base).digest("hex");
+  const base = `${partnerIdString()}${path}${timestamp}`;
+  return crypto.createHmac("sha256", partnerKey()).update(base).digest("hex");
 }
 
 /** HMAC-SHA256 hex signature for shop-level APIs. */
@@ -60,8 +85,8 @@ function signShop(
   accessToken: string,
   shopId: number
 ): string {
-  const base = `${partnerId()}${path}${timestamp}${accessToken}${shopId}`;
-  return crypto.createHmac("sha256", partnerKeyBuffer()).update(base).digest("hex");
+  const base = `${partnerIdString()}${path}${timestamp}${accessToken}${shopId}`;
+  return crypto.createHmac("sha256", partnerKey()).update(base).digest("hex");
 }
 
 // ── OAuth ─────────────────────────────────────────────────────────────────────
@@ -87,17 +112,16 @@ export class ShopeeClient {
     const sign = signAuth(path, ts);
     const host = getHost(sandbox);
 
-    const url = new URL(`${host}${path}`);
-    url.searchParams.set("partner_id", String(partnerId()));
-    url.searchParams.set("redirect", redirectUri);
-    url.searchParams.set("sign", sign);
-    url.searchParams.set("timestamp", String(ts));
-
+    // Parameter order matches common Shopee examples (partner_id → timestamp → sign → redirect).
+    const q = new URLSearchParams();
+    q.set("partner_id", partnerIdString());
+    q.set("timestamp", String(ts));
+    q.set("sign", sign);
+    q.set("redirect", redirectUri);
     if (state) {
-      const sep = url.search ? "&" : "?";
-      return `${url.toString()}${sep}state=${encodeURIComponent(state)}`;
+      q.set("state", state);
     }
-    return url.toString();
+    return `${host}${path}?${q.toString()}`;
   }
 
   /**
@@ -113,12 +137,12 @@ export class ShopeeClient {
     const sign = signAuth(path, ts);
     const host = getHost(sandbox);
 
-    const url = new URL(`${host}${path}`);
-    url.searchParams.set("partner_id", String(partnerId()));
-    url.searchParams.set("timestamp", String(ts));
-    url.searchParams.set("sign", sign);
+    const q = new URLSearchParams();
+    q.set("partner_id", partnerIdString());
+    q.set("timestamp", String(ts));
+    q.set("sign", sign);
 
-    const res = await fetch(url.toString(), {
+    const res = await fetch(`${host}${path}?${q.toString()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -150,12 +174,12 @@ export class ShopeeClient {
     const sign = signAuth(path, ts);
     const host = getHost(sandbox);
 
-    const url = new URL(`${host}${path}`);
-    url.searchParams.set("partner_id", String(partnerId()));
-    url.searchParams.set("timestamp", String(ts));
-    url.searchParams.set("sign", sign);
+    const q = new URLSearchParams();
+    q.set("partner_id", partnerIdString());
+    q.set("timestamp", String(ts));
+    q.set("sign", sign);
 
-    const res = await fetch(url.toString(), {
+    const res = await fetch(`${host}${path}?${q.toString()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -194,17 +218,17 @@ async function shopeeGet(
   const sign = signShop(path, ts, opts.accessToken, opts.shopId);
   const host = getHost(opts.sandbox);
 
-  const url = new URL(`${host}${path}`);
-  url.searchParams.set("partner_id", String(partnerId()));
-  url.searchParams.set("timestamp", String(ts));
-  url.searchParams.set("access_token", opts.accessToken);
-  url.searchParams.set("shop_id", String(opts.shopId));
-  url.searchParams.set("sign", sign);
+  const q = new URLSearchParams();
+  q.set("partner_id", partnerIdString());
+  q.set("timestamp", String(ts));
+  q.set("access_token", opts.accessToken);
+  q.set("shop_id", String(opts.shopId));
+  q.set("sign", sign);
   for (const [k, v] of Object.entries(params)) {
-    url.searchParams.set(k, v);
+    q.set(k, v);
   }
 
-  const res = await fetch(url.toString());
+  const res = await fetch(`${host}${path}?${q.toString()}`);
   const json = await res.json();
   if (json.error && json.error !== "") {
     throw new Error(`Shopee API ${path} error: ${json.error} — ${json.message ?? ""}`);
