@@ -12,7 +12,10 @@ import { encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { upsertSourceConnection } from "@/lib/connection-upsert";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
+    const origin = request.nextUrl.origin;
     const searchParams = request.nextUrl.searchParams;
     const providerId = searchParams.get("provider");
     const code = searchParams.get("code");
@@ -27,7 +30,7 @@ export async function GET(request: NextRequest) {
             provider: providerId || "unknown",
             message: errorDescription || error,
         });
-        return NextResponse.redirect(`/sources?${params.toString()}`);
+        return NextResponse.redirect(new URL(`/sources?${params.toString()}`, origin));
     }
     
     try {
@@ -91,7 +94,7 @@ export async function GET(request: NextRequest) {
                 reconnected: "true",
                 provider: providerId,
             });
-            return NextResponse.redirect(`/sources?${successParams.toString()}`);
+            return NextResponse.redirect(new URL(`/sources?${successParams.toString()}`, origin));
         }
         
         // Upsert connection by identity triple (workspaceId + provider + remoteAccountId)
@@ -115,7 +118,10 @@ export async function GET(request: NextRequest) {
         // Redirect to explicit setup flow (replaces auto-pipeline creation)
         // User chooses destination or skips if using add-on/Looker
         return NextResponse.redirect(
-            `/sources/setup?newConnectionId=${connection.id}&provider=${providerId}`
+            new URL(
+                `/sources/setup?newConnectionId=${encodeURIComponent(connection.id)}&provider=${encodeURIComponent(providerId)}`,
+                origin
+            )
         );
         
     } catch (error) {
@@ -133,6 +139,6 @@ export async function GET(request: NextRequest) {
             errorParams.set("message", error.message);
         }
         
-        return NextResponse.redirect(`/sources?${errorParams.toString()}`);
+        return NextResponse.redirect(new URL(`/sources?${errorParams.toString()}`, origin));
     }
 }

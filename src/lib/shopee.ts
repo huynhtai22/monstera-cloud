@@ -19,6 +19,41 @@ import { encrypt, safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { SHOPEE_SANDBOX_OPEN_API_HOST } from "@/lib/shopee-env";
 
+/**
+ * Shopee returns successful fields either at the top level or nested under `response`.
+ * Without unwrapping, `access_token` is missing and callers mis-handle the payload.
+ */
+function unwrapShopeePayload(json: unknown): Record<string, unknown> {
+  if (!json || typeof json !== "object") return {};
+  const o = json as Record<string, unknown>;
+  const inner = o.response;
+  if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+    return { ...o, ...(inner as Record<string, unknown>) };
+  }
+  return o;
+}
+
+/** True when Shopee set a non-empty `error` code (empty string means success). */
+function shopeeApiHasError(payload: Record<string, unknown>): boolean {
+  const err = payload.error;
+  if (err == null) return false;
+  if (typeof err === "string") return err.length > 0;
+  return Boolean(err);
+}
+
+function assertShopeeTokenPayload(
+  payload: Record<string, unknown>,
+  context: string
+): ShopeeTokenResponse {
+  const access = payload.access_token;
+  if (typeof access !== "string" || !access) {
+    throw new Error(
+      `${context}: missing access_token after unwrap (keys: ${Object.keys(payload).join(", ")})`
+    );
+  }
+  return payload as unknown as ShopeeTokenResponse;
+}
+
 /** Trim, strip BOM, and remove a single layer of wrapping quotes (common when pasting into host env UIs). */
 function normalizePartnerEnvValue(raw: string): string {
   let v = raw.trim().replace(/^\uFEFF/, "");
@@ -151,13 +186,14 @@ export class ShopeeClient {
       }),
     });
 
-    const json = await res.json();
-    if (json.error || json.message) {
+    const raw = await res.json();
+    const json = unwrapShopeePayload(raw);
+    if (shopeeApiHasError(json)) {
       throw new Error(
-        `Shopee token error: ${json.error ?? json.message ?? JSON.stringify(json)}`
+        `Shopee token error: ${String(json.error ?? "")} — ${String(json.message ?? "")}`
       );
     }
-    return json as ShopeeTokenResponse;
+    return assertShopeeTokenPayload(json, "Shopee token/get");
   }
 
   /**
@@ -188,13 +224,14 @@ export class ShopeeClient {
       }),
     });
 
-    const json = await res.json();
-    if (json.error || json.message) {
+    const raw = await res.json();
+    const json = unwrapShopeePayload(raw);
+    if (shopeeApiHasError(json)) {
       throw new Error(
-        `Shopee refresh error: ${json.error ?? json.message ?? JSON.stringify(json)}`
+        `Shopee refresh error: ${String(json.error ?? "")} — ${String(json.message ?? "")}`
       );
     }
-    return json as ShopeeTokenResponse;
+    return assertShopeeTokenPayload(json, "Shopee access_token/get");
   }
 }
 
@@ -228,9 +265,9 @@ async function shopeeGet(
   }
 
   const res = await fetch(`${host}${path}?${q.toString()}`);
-  const json = await res.json();
-  if (json.error && json.error !== "") {
-    throw new Error(`Shopee API ${path} error: ${json.error} — ${json.message ?? ""}`);
+  const json = unwrapShopeePayload(await res.json());
+  if (shopeeApiHasError(json)) {
+    throw new Error(`Shopee API ${path} error: ${String(json.error ?? "")} — ${String(json.message ?? "")}`);
   }
   return json;
 }
