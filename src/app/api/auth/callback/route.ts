@@ -4,9 +4,11 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
 import { parseState, buildCallbackUrl } from "@/lib/oauth-framework/session";
 import { getProvider, isProviderEnabled } from "@/lib/oauth-framework/registry";
 import { OAuthError } from "@/lib/oauth-framework/types";
+import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
@@ -41,22 +43,58 @@ export async function GET(request: NextRequest) {
         if (!code) {
             throw new OAuthError("provider_error", "Authorization code not received", providerId);
         }
-        
-        if (!state) {
-            throw new OAuthError("invalid_state", "State parameter missing", providerId);
-        }
-        
+
         if (!isProviderEnabled(providerId)) {
             throw new OAuthError("configuration_error", "Provider not enabled", providerId);
         }
-        
-        // Parse state to get workspace, user, and reconnection context
-        const stateData = parseState(state);
-        const { workspaceId, userId, reconnectConnectionId } = stateData as {
-            workspaceId: string;
-            userId: string;
-            reconnectConnectionId?: string;
-        };
+
+        let workspaceId: string;
+        let userId: string;
+        let reconnectConnectionId: string | undefined;
+
+        if (state) {
+            const stateData = parseState(state);
+            workspaceId = stateData.workspaceId;
+            userId = stateData.userId;
+            reconnectConnectionId = stateData.reconnectConnectionId;
+        } else {
+            // Shopee / Lazada sometimes omit `state` on the redirect URL even when it was sent on auth.
+            const marketplaceFallback = providerId === "shopee" || providerId === "lazada";
+            const session = await getServerSession(authOptions);
+            if (!marketplaceFallback || !session?.user?.id) {
+                throw new OAuthError(
+                    "invalid_state",
+                    marketplaceFallback
+                        ? "State parameter missing — sign in again, then connect from Sources."
+                        : "State parameter missing",
+                    providerId
+                );
+            }
+            userId = session.user.id;
+            const owned = await prisma.workspace.findFirst({
+                where: { ownerId: userId },
+                orderBy: { updatedAt: "desc" },
+                select: { id: true },
+            });
+            const workspace =
+                owned ??
+                (await prisma.workspace.findFirst({
+                    where: { members: { some: { userId } } },
+                    orderBy: { createdAt: "asc" },
+                    select: { id: true },
+                }));
+            if (!workspace) {
+                throw new OAuthError(
+                    "configuration_error",
+                    "No workspace found for this account",
+                    providerId
+                );
+            }
+            workspaceId = workspace.id;
+            logger.warn(
+                `[OAuth Callback] Missing state; using oldest workspace ${workspaceId} for ${providerId} (user=${userId})`
+            );
+        }
         
         // Get provider adapter
         const provider = getProvider(providerId);
