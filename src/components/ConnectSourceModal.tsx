@@ -518,23 +518,43 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                             <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">{step1Content.subtitle}</p>
                         </div>
 
-                        <div
-                            className={
+                        {(() => {
+                            const panelClass = cn(
+                                "rounded-2xl border p-5 space-y-3",
+                                // Light mode surface
+                                "bg-gradient-to-br from-slate-50/80 to-white border-slate-200/80",
+                                // Dark mode surface (higher contrast + consistent across sources)
+                                "dark:from-slate-900/60 dark:to-slate-950/40 dark:border-[#2f3336]/70",
+                                // Accent by source (subtle, like Cursor)
+                                id === "meta_ads" && "ring-1 ring-[#1877F2]/15 dark:ring-[#1877F2]/20",
+                                id === "google_ads" && "ring-1 ring-emerald-500/10 dark:ring-emerald-400/15",
+                                (id === "shopee" || id === "lazada") && "ring-1 ring-amber-500/10 dark:ring-amber-400/15",
+                                (id === "tiktok_shop" || id === "tiktok_business") && "ring-1 ring-fuchsia-500/10 dark:ring-fuchsia-400/15",
+                                id === "amazon" && "ring-1 ring-indigo-500/10 dark:ring-indigo-400/15",
+                                id === "shopify" && "ring-1 ring-green-500/10 dark:ring-green-400/15",
+                            );
+
+                            const iconClass =
                                 id === "meta_ads"
-                                    ? "bg-[#1877F2]/10 dark:bg-[#1877F2]/15 rounded-xl p-5 border border-[#1877F2]/25 space-y-3"
+                                    ? "text-[#1877F2]"
                                     : id === "google_ads"
-                                      ? "bg-slate-50 dark:bg-[#000000]/50 rounded-xl p-5 border border-slate-200 dark:border-[#2f3336] space-y-3"
-                                      : "bg-blue-50/50 rounded-xl p-5 border border-blue-100 dark:border-blue-900/40 space-y-3"
-                            }
-                        >
-                            <p className="font-semibold text-gray-900 dark:text-white text-sm flex items-center">
-                                <Globe
-                                    className={`w-4 h-4 mr-2 shrink-0 ${
-                                        id === "meta_ads" ? "text-[#1877F2]" : "text-blue-600"
-                                    }`}
-                                />
-                                Permissions requested
-                            </p>
+                                      ? "text-emerald-600 dark:text-emerald-300"
+                                      : id === "shopee" || id === "lazada"
+                                        ? "text-amber-600 dark:text-amber-300"
+                                        : id === "tiktok_shop" || id === "tiktok_business"
+                                          ? "text-fuchsia-600 dark:text-fuchsia-300"
+                                          : id === "amazon"
+                                            ? "text-indigo-600 dark:text-indigo-300"
+                                            : id === "shopify"
+                                              ? "text-green-700 dark:text-green-300"
+                                              : "text-cyan-700 dark:text-cyan-300";
+
+                            return (
+                                <div className={panelClass}>
+                                    <p className="font-semibold text-gray-900 dark:text-white text-sm flex items-center">
+                                        <Globe className={cn("w-4 h-4 mr-2 shrink-0", iconClass)} />
+                                        Permissions requested
+                                    </p>
                             <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300 ml-6">
                                 {step1Content.permissions.map((line) => (
                                     <li key={line} className="flex items-start">
@@ -544,7 +564,9 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                 ))}
                             </ul>
                             <p className="text-xs text-gray-400 dark:text-gray-500 mt-4 italic">{step1Content.footnote}</p>
-                        </div>
+                                </div>
+                            );
+                        })()}
 
                         {id === "shopify" && (
                             <div className="space-y-1.5">
