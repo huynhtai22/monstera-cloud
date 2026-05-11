@@ -12,7 +12,7 @@ import crypto from "crypto";
 import { getToken } from "./token-cache";
 import { withTokenRefreshLock } from "./distributed-lock";
 import { logger } from "@/lib/logger";
-import { isShopeeSandboxEnabled } from "@/lib/shopee-env";
+import { isShopeeSandboxEnabled, SHOPEE_SANDBOX_OPEN_API_HOST } from "@/lib/shopee-env";
 
 // Platform-specific signing configurations
 interface PlatformConfig {
@@ -48,7 +48,7 @@ const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   shopee: {
     name: "Shopee",
     baseUrl: isShopeeSandboxEnabled()
-      ? "https://partner.test-stable.shopeemobile.com"
+      ? SHOPEE_SANDBOX_OPEN_API_HOST
       : "https://partner.shopeemobile.com",
     authType: "hmac",
     signatureMethod: "hmac-sha256",
