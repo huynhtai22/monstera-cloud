@@ -160,6 +160,7 @@ export function PillarGrid({
                     icon={<Plug className="h-5 w-5" />}
                     title="Sources"
                     subtitle="Where data comes from"
+                    accent="emerald"
                     kpi={{ label: "Connected", value: String(sources.length) }}
                     items={sourceItems}
                     emptyHint="No sources connected. Add TikTok, Meta, or Shopee to start syncing."
@@ -176,6 +177,7 @@ export function PillarGrid({
                     title="Pipelines"
                     subtitle="Active sync jobs"
                     emphasis
+                    accent="cyan"
                     kpi={
                         totalPipelines > 0
                             ? { label: "Healthy", value: `${healthyCount}/${totalPipelines}` }
@@ -193,6 +195,7 @@ export function PillarGrid({
                     icon={<FileBarChart2 className="h-5 w-5" />}
                     title="Reports"
                     subtitle="Latest sync activity"
+                    accent="indigo"
                     kpi={{
                         label: "14d success",
                         value: `${successCount}/${successCount + errorCount}`,

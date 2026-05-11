@@ -31,6 +31,8 @@ type SectionOverviewCardProps = {
     accentClassName?: string;
     className?: string;
     emphasis?: boolean;
+    /** Optional per-card accent (helps differentiate sections in dark mode). */
+    accent?: "cyan" | "indigo" | "emerald" | "amber" | "rose" | "slate";
     footerSlot?: React.ReactNode;
 };
 
@@ -76,6 +78,7 @@ export function SectionOverviewCard({
     accentClassName,
     className,
     emphasis,
+    accent = "slate",
     footerSlot,
 }: SectionOverviewCardProps) {
     const titleId = `section-${title.replace(/\s+/g, "-").toLowerCase()}`;
@@ -83,6 +86,15 @@ export function SectionOverviewCard({
     const hasItems = Array.isArray(items) && items.length > 0;
 
     const hasError = Array.isArray(items) && items.some((i) => i.status === "error");
+
+    const accentBarClass = {
+        cyan: "from-cyan-500 via-teal-400 to-emerald-500",
+        indigo: "from-indigo-500 via-violet-500 to-fuchsia-500",
+        emerald: "from-emerald-500 via-lime-400 to-teal-400",
+        amber: "from-amber-500 via-orange-400 to-rose-400",
+        rose: "from-rose-500 via-pink-500 to-fuchsia-500",
+        slate: "from-slate-400 via-slate-300 to-slate-400 dark:from-slate-600 dark:via-slate-500 dark:to-slate-600",
+    }[accent];
 
     return (
         <section
@@ -99,7 +111,7 @@ export function SectionOverviewCard({
         >
             {emphasis ? (
                 <div
-                    className="h-1 w-full shrink-0 bg-gradient-to-r from-cyan-500 via-teal-400 to-emerald-500"
+                    className={cn("h-1 w-full shrink-0 bg-gradient-to-r", accentBarClass)}
                     aria-hidden
                 />
             ) : (
