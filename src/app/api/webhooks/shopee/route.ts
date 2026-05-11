@@ -2,24 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import crypto from "crypto";
 import { logger } from "@/lib/logger";
-
-/** Get partner key with shpk prefix stripped (same logic as shopee.ts) */
-function getPartnerKey(): string {
-    const key = (process.env.SHOPEE_PARTNER_KEY || "").trim();
-    if (!key) throw new Error("SHOPEE_PARTNER_KEY not configured");
-    // Shopee partner keys are prefixed with "shpk" — strip the prefix
-    return key.startsWith("shpk") ? key.slice(4) : key;
-}
-
-/** Returns the HMAC key as a Buffer (hex-decoded raw bytes) */
-function getPartnerKeyBuffer(): Buffer {
-    const hex = getPartnerKey();
-    // If valid hex, decode to raw bytes. Otherwise fall back to UTF-8 string bytes.
-    if (/^[0-9a-fA-F]+$/.test(hex) && hex.length % 2 === 0) {
-        return Buffer.from(hex, "hex");
-    }
-    return Buffer.from(hex, "utf8");
-}
+import { shopeePartnerKeySecretForWebhook } from "@/lib/shopee";
 
 export async function POST(request: Request) {
     try {
@@ -35,11 +18,10 @@ export async function POST(request: Request) {
         // Validate Shopee Webhook Signature
         // Format: HMAC-SHA256(partner_key, request_body)
         // Note: Shopee webhooks use body-only signing (not url|body like some other endpoints)
-        const partnerKeyBuf = getPartnerKeyBuffer();
         const computedSignature = crypto
-            .createHmac('sha256', partnerKeyBuf)
+            .createHmac("sha256", shopeePartnerKeySecretForWebhook())
             .update(rawBody)
-            .digest('hex');
+            .digest("hex");
 
         if (computedSignature !== authorizationHeader) {
             logger.warn("[SHOPEE WEBHOOK] Invalid signature", {
