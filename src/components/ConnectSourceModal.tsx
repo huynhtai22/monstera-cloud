@@ -367,7 +367,6 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     const overlay = (
         <div
             className={cn(
-<<<<<<< HEAD
                 "fixed inset-0 z-[100] flex justify-end bg-slate-950/60 backdrop-blur-sm dark:bg-slate-950/80",
                 "transition-opacity duration-200 ease-out",
                 isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
@@ -376,13 +375,6 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
             onClick={() => {
                 if (!isProcessing) handleClose();
             }}
-=======
-                "fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 p-4",
-                "transition-opacity duration-200 ease-out",
-                isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
-            )}
-            onClick={(e) => { if (e.target === e.currentTarget && !isProcessing) handleClose(); }}
->>>>>>> origin/main
         >
             {showPicker ? (
                 <div
