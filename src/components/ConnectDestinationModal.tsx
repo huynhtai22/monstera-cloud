@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { trackEvent } from "@/lib/analytics-events";
 import { PostConnectChecklist } from "@/components/destinations/PostConnectChecklist";
 import { DESTINATION_HELP_PATHS } from "@/lib/destination-help-urls";
+import { useMounted } from "@/hooks/useMounted";
 
 const PANEL_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 const PANEL_DURATION_MS = 360;
@@ -30,6 +32,7 @@ const fetcher = async (url: string) => {
 };
 
 export function ConnectDestinationModal({ isOpen, destinationId, onClose }: ConnectDestinationModalProps) {
+    const mounted = useMounted();
     const [step, setStep] = useState<1 | 2 | 3>(1);
     const [isProcessing, setIsProcessing] = useState(false);
 
@@ -88,13 +91,22 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
         trackEvent("destination_modal_sheets_success_viewed", { workspaceId: activeWorkspaceId });
     }, [isOpen, destinationId, step, activeWorkspaceId]);
 
+    useEffect(() => {
+        if (!isOpen) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.body.style.overflow = prev;
+        };
+    }, [isOpen]);
+
     const isListView = destinationId !== 'looker' && activeConnections.length > 0 && !forceSetup;
         
     const firstKey = workspace?.apiKeys?.[0] as { keyMasked?: string } | undefined;
     const apiKeyMasked = firstKey?.keyMasked ?? "";
     const hasApiKey = Boolean(firstKey);
 
-    if (!shouldRender) return null;
+    if (!shouldRender || !mounted) return null;
 
     const handleAuthenticate = () => {
         setStep(2); // Move to Configure step
@@ -159,12 +171,18 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
         }
     };
 
-    return (
-        <div className={cn(
-            "fixed inset-0 z-50 flex justify-end bg-gray-900/50 backdrop-blur-[2px] dark:bg-slate-800/60",
-            "transition-opacity duration-200 ease-out",
-            isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
-        )}>
+    const overlay = (
+        <div
+            className={cn(
+                "fixed inset-0 z-[100] flex justify-end bg-slate-950/60 backdrop-blur-sm dark:bg-slate-950/80",
+                "transition-opacity duration-200 ease-out",
+                isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
+            )}
+            role="presentation"
+            onClick={() => {
+                if (!isProcessing) handleClose();
+            }}
+        >
             <div
                 className={cn(
                     "relative flex h-full w-full max-w-md flex-col overflow-hidden rounded-l-2xl border-l border-gray-200 bg-white shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] dark:border-slate-700 dark:bg-slate-900",
@@ -172,6 +190,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                     isVisible ? "translate-x-0" : "translate-x-full"
                 )}
                 style={{ transitionTimingFunction: PANEL_EASE }}
+                onClick={(e) => e.stopPropagation()}
             >
 
                 {/* Header */}
@@ -470,4 +489,6 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
             </div>
         </div>
     );
+
+    return createPortal(overlay, document.body);
 }

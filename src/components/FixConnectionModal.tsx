@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, AlertCircle, RefreshCw, CheckCircle2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
+import { useMounted } from "@/hooks/useMounted";
 
 interface FixConnectionModalProps {
     isOpen: boolean;
@@ -33,6 +35,7 @@ export function FixConnectionModal({
     connection,
     onReconnected,
 }: FixConnectionModalProps) {
+    const mounted = useMounted();
     const [step, setStep] = useState<FixStep>("diagnose");
     const [isReconnecting, setIsReconnecting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -180,13 +183,22 @@ export function FixConnectionModal({
         }
     }, [connection, onReconnected]);
 
-    if (!shouldRender || !connection) return null;
+    useEffect(() => {
+        if (!isOpen) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.body.style.overflow = prev;
+        };
+    }, [isOpen]);
+
+    if (!shouldRender || !connection || !mounted) return null;
 
     const logo = logoPathForConnectionProvider(connection.provider);
 
-    return (
+    const overlay = (
         <div className={cn(
-            "fixed inset-0 z-50 flex items-center justify-center p-4",
+            "fixed inset-0 z-[100] flex items-center justify-center p-4",
             !isVisible && "pointer-events-none"
         )}>
             {/* Backdrop */}
@@ -338,4 +350,6 @@ export function FixConnectionModal({
             </div>
         </div>
     );
+
+    return createPortal(overlay, document.body);
 }
