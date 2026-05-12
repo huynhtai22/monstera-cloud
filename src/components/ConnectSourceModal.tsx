@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import { X, Loader2, CheckCircle2, ChevronRight, Globe, Facebook, Copy, Check } from "lucide-react";
 import useSWR from "swr";
@@ -10,6 +11,7 @@ import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { SOURCES_CATALOG, isSourceEnvReady, type SourcesCatalogItem } from "@/lib/sources-integration-catalog";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics-events";
+import { useMounted } from "@/hooks/useMounted";
 
 async function integrationsConfigFetcher(url: string) {
     const res = await fetch(url);
@@ -51,6 +53,7 @@ const PANEL_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 const PANEL_DURATION_MS = 280;
 
 export function ConnectSourceModal({ isOpen, onClose, integration, connectedCatalogIds = [] }: ConnectSourceModalProps) {
+    const mounted = useMounted();
     const [isProcessing, setIsProcessing] = useState(false);
     const [copiedWhich, setCopiedWhich] = useState<null | "production" | "session">(null);
     const [shopDomain, setShopDomain] = useState("");
@@ -180,6 +183,15 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
             setShopDomain("");
             setCopiedWhich(null);
         }
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.body.style.overflow = prev;
+        };
     }, [isOpen]);
 
     // Drive enter/exit animation
@@ -350,21 +362,33 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
 
     const oauthPrimaryDisabled = isOAuthSourceId(id) && !activeWorkspaceId;
 
-    if (!shouldRender) return null;
+    if (!shouldRender || !mounted) return null;
 
-    return (
+    const overlay = (
         <div
             className={cn(
+<<<<<<< HEAD
+                "fixed inset-0 z-[100] flex justify-end bg-slate-950/60 backdrop-blur-sm dark:bg-slate-950/80",
+                "transition-opacity duration-200 ease-out",
+                isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
+            )}
+            role="presentation"
+            onClick={() => {
+                if (!isProcessing) handleClose();
+            }}
+=======
                 "fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 p-4",
                 "transition-opacity duration-200 ease-out",
                 isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
             )}
             onClick={(e) => { if (e.target === e.currentTarget && !isProcessing) handleClose(); }}
+>>>>>>> origin/main
         >
             {showPicker ? (
                 <div
                     ref={dialogRef}
                     onKeyDown={handleKeyDown}
+                    onClick={(e) => e.stopPropagation()}
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="connect-source-picker-title"
@@ -466,6 +490,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
             <div
                 ref={dialogRef}
                 onKeyDown={handleKeyDown}
+                onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="connect-source-modal-title"
@@ -711,4 +736,6 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
             )}
         </div>
     );
+
+    return createPortal(overlay, document.body);
 }

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PrimaryButton, SecondaryButton } from "./index";
+import { useMounted } from "@/hooks/useMounted";
 
 const DIALOG_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 const DIALOG_DURATION_MS = 280;
@@ -29,6 +31,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const mounted = useMounted();
   const panelRef = useRef<HTMLDivElement>(null);
 
   const [shouldRender, setShouldRender] = useState(open);
@@ -65,12 +68,12 @@ export function ConfirmDialog({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onCancel]);
 
-  if (!shouldRender) return null;
+  if (!shouldRender || !mounted) return null;
 
-  return (
+  const overlay = (
     <div
       className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center p-4",
+        "fixed inset-0 z-[100] flex items-center justify-center p-4",
         !isVisible && "pointer-events-none"
       )}
       role="presentation"
@@ -131,4 +134,6 @@ export function ConfirmDialog({
       </div>
     </div>
   );
+
+  return createPortal(overlay, document.body);
 }

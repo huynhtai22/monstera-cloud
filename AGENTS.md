@@ -1,3 +1,18 @@
+<<<<<<< HEAD
+## Cursor Cloud specific instructions
+
+- **Node.js version**: this repo requires **Node >= 20.9** (Next.js 16). If `npm run dev` complains about Node version, upgrade Node before running anything.
+
+- **Database**: the app expects a **PostgreSQL** `DATABASE_URL`. For local/Cloud Agent verification, a simple local Postgres is sufficient, then run `npx prisma db push` (see `README.md`).
+
+- **Linting (Next.js 16)**: `next lint` is removed in Next.js 16, so lint is run via `npm run lint` (ESLint CLI). The command is scoped to `src/` to avoid linting non-app tooling directories.
+
+- **Core “hello world” for this repo** (warehouse/data explorer):
+  - Create the smoke user: `npm run create-smoke-user:pro`
+  - Seed demo warehouse rows: `npm run seed-demo-metrics`
+  - You can sanity-check warehouse rows via SQL on table `"CampaignMetric"`.
+
+=======
 # AGENTS
 
 Guidance for autonomous agents working in this repo.
@@ -18,3 +33,4 @@ Guidance for autonomous agents working in this repo.
 - **`/sources/setup`:** `GET /api/connections/[id]` returns `{ connection, pipelines, recentLogs }`. The setup client must read **`data.connection`** (not the whole JSON). After OAuth, it also **syncs `activeWorkspaceId`** to `connection.workspaceId` so the connection appears under **Your sources** for the same workspace the row was stored in.
 - **Shopee Push callback:** `POST /api/webhooks/shopee` (and `GET` returns `200 ok` for probes). Shopee signs **`Authorization`** or **`x-shopee-signature`** as **hex HMAC-SHA256(secret, request body)** (header may include a `SHA256 ` prefix; we try **wire body** and **compact `JSON.stringify(JSON.parse(body))`**). Secrets: **`SHOPEE_PARTNER_KEY`**, then optional **`SHOPEE_PUSH_VERIFICATION_KEY`** (Push screen “Test Push Partner Key” when it differs from the API key). Non-2xx fails Partner Center verification.
 - For standard dev commands (`npm run dev`, `npm run lint`, `npm run build`), see root `README.md` and `package.json`.
+>>>>>>> origin/main
