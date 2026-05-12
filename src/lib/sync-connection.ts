@@ -15,6 +15,7 @@ import {
   syncShopeeWarehouseMetrics,
   syncLazadaWarehouseMetrics,
 } from "@/lib/sync-marketplace-warehouse";
+import { syncShopeeAdsWarehouseMetrics } from "@/lib/sync-shopee-ads-warehouse";
 
 // Meta imports
 import { ingestMetaRows } from "@/lib/meta-ingest";
@@ -83,13 +84,36 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
       });
     } else if (provider === "shopee") {
       const r = defaultRollingRange(plan);
-      return await syncShopeeWarehouseMetrics({
+      const range = {
+        since: opts.since ?? r.since,
+        until: opts.until ?? r.until,
+      };
+      const orders = await syncShopeeWarehouseMetrics({
         connectionId,
         workspaceId,
         userPlan: plan,
-        since: opts.since ?? r.since,
-        until: opts.until ?? r.until,
+        ...range,
       });
+      if (!orders.success) {
+        return orders;
+      }
+
+      const ads = await syncShopeeAdsWarehouseMetrics({
+        connectionId,
+        workspaceId,
+        userPlan: plan,
+        ...range,
+      });
+      if (!ads.success) {
+        logger.warn(
+          `[syncConnectionData] Shopee Ads warehouse failed (orders still ok): ${ads.error ?? ""}`
+        );
+      }
+
+      return {
+        success: true,
+        rowsIngested: orders.rowsIngested + ads.rowsIngested,
+      };
     } else if (provider === "lazada") {
       const r = defaultRollingRange(plan);
       return await syncLazadaWarehouseMetrics({
