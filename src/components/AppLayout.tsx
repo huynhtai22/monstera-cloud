@@ -138,8 +138,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
             <div className="relative flex min-w-0 flex-1 flex-col bg-gradient-to-b from-cyan-50/40 via-[var(--background)] to-[var(--background)] text-slate-900 before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(900px_circle_at_20%_-10%,rgba(6,182,212,0.16),transparent_55%)] before:opacity-100 after:pointer-events-none after:absolute after:inset-0 after:bg-[radial-gradient(900px_circle_at_90%_20%,rgba(59,130,246,0.12),transparent_55%)] after:opacity-100 dark:bg-gradient-to-b dark:from-slate-950 dark:via-[var(--background)] dark:to-[var(--background)] dark:before:bg-[radial-gradient(900px_circle_at_20%_-10%,rgba(34,211,238,0.10),transparent_55%)] dark:after:bg-[radial-gradient(900px_circle_at_90%_20%,rgba(59,130,246,0.10),transparent_55%)] lg:pl-64">
                 <div className="h-16 shrink-0 lg:hidden" />
-                <div className="z-20 hidden items-center justify-end gap-3 border-b border-gray-200/80 bg-[var(--background)]/90 px-6 py-2 backdrop-blur-sm dark:border-slate-700/80 lg:sticky lg:top-0 lg:flex">
-                    <NotificationCenter />
+                {/* pointer-events-none: full-width sticky row must not steal clicks from content scrolling beneath (z-10 main). */}
+                <div className="pointer-events-none z-20 hidden items-center justify-end gap-3 border-b border-gray-200/80 bg-[var(--background)]/90 px-6 py-2 backdrop-blur-sm dark:border-slate-700/80 lg:sticky lg:top-0 lg:flex">
+                    <div className="pointer-events-auto">
+                        <NotificationCenter />
+                    </div>
                 </div>
                 <UpgradeNudge />
                 <main className="relative z-10 flex-1 overflow-x-hidden">
