@@ -7,6 +7,56 @@ import { MarketingTrustSecuritySection } from "@/components/marketing/MarketingT
 import { useState, useEffect } from "react";
 import { metaPixelCustom } from "@/lib/meta-pixel";
 import { getCheckoutApiPath } from "@/lib/checkout-api-path";
+import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+
+const PLAN_SOURCES = {
+    free: [
+        { src: INTEGRATION_LOGOS.tiktok, alt: "TikTok Ads" },
+        { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
+    ],
+    starter: [
+        { src: INTEGRATION_LOGOS.tiktok, alt: "TikTok Ads" },
+        { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
+        { src: INTEGRATION_LOGOS.meta, alt: "Meta Ads" },
+        { src: INTEGRATION_LOGOS.googleAds, alt: "Google Ads" },
+    ],
+    pro: [
+        { src: INTEGRATION_LOGOS.tiktok, alt: "TikTok Ads" },
+        { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
+        { src: INTEGRATION_LOGOS.meta, alt: "Meta Ads" },
+        { src: INTEGRATION_LOGOS.googleAds, alt: "Google Ads" },
+        { src: INTEGRATION_LOGOS.lazada, alt: "Lazada" },
+    ],
+};
+
+const PLAN_DESTINATIONS = [
+    { src: INTEGRATION_LOGOS.googleSheets, alt: "Google Sheets" },
+    { src: INTEGRATION_LOGOS.looker, alt: "Looker Studio" },
+];
+
+function PlatformBadges({ sources, showDestinations = true }: { sources: { src: string; alt: string }[]; showDestinations?: boolean }) {
+    return (
+        <div className="mb-5">
+            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-2">Sources</p>
+            <div className="flex items-center gap-2 mb-3">
+                {sources.map(({ src, alt }) => (
+                    <img key={alt} src={src} alt={alt} title={alt} className="w-5 h-5 object-contain opacity-70 hover:opacity-100 transition-opacity" />
+                ))}
+                {sources.length < 5 && <span className="text-[10px] text-slate-300">+ more coming</span>}
+            </div>
+            {showDestinations && (
+                <>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-2">Destinations</p>
+                    <div className="flex items-center gap-2">
+                        {PLAN_DESTINATIONS.map(({ src, alt }) => (
+                            <img key={alt} src={src} alt={alt} title={alt} className="w-5 h-5 object-contain opacity-70 hover:opacity-100 transition-opacity" />
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
 
 const checkoutBrand =
     getCheckoutApiPath() === "/api/checkout/paddle" ? "Paddle" : "Lemon Squeezy";
@@ -53,20 +103,20 @@ export default function PricingPage() {
     const priceClass = "transition-all duration-300";
 
     return (
-        <div className="min-h-screen pt-32 pb-24 bg-[#09090b] font-sans">
+        <div className="min-h-screen pt-32 pb-24 bg-white font-sans">
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
 
                 {/* Header */}
                 <div className="text-center mb-14">
-                    <div className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold text-cyan-400 border border-cyan-500/20 bg-cyan-500/10 tracking-widest uppercase mb-5">
+                    <div className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold text-cyan-600 border border-cyan-200 bg-cyan-50 tracking-widest uppercase mb-5">
                         Pricing
                     </div>
-                    <h1 className="text-white text-4xl md:text-5xl font-extrabold leading-tight tracking-tight">
+                    <h1 className="text-slate-900 text-4xl md:text-5xl font-extrabold leading-tight tracking-tight">
                         One flat price. Every platform. No permanent row caps.
                     </h1>
-                    <p className="text-gray-400 text-lg max-w-xl mx-auto mt-4">
+                    <p className="text-slate-500 text-lg max-w-xl mx-auto mt-4">
                         Most teams save $2,400/year vs Supermetrics on Pro. Cancel anytime — billing questions reviewed within 14 days (see our{" "}
-                        <Link href="/legal/refund-policy" className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2">
+                        <Link href="/legal/refund-policy" className="text-cyan-600 hover:text-cyan-700 underline underline-offset-2">
                             Refund Policy
                         </Link>
                         ).
@@ -75,11 +125,11 @@ export default function PricingPage() {
 
                 {/* Billing toggle */}
                 <div className="flex flex-col items-center gap-3 mb-4">
-                    <div className="flex p-1 bg-[#18181b] border border-white/10 rounded-lg w-[240px] text-sm font-medium">
+                    <div className="flex p-1 bg-slate-100 border border-gray-200 rounded-lg w-[240px] text-sm font-medium">
                         <button
                             onClick={() => setIsAnnual(false)}
                             className={`flex h-9 flex-1 items-center justify-center rounded-md transition-all ${
-                                !isAnnual ? "bg-white/10 text-white" : "text-gray-400 hover:text-gray-200"
+                                !isAnnual ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
                             }`}
                         >
                             Monthly
@@ -87,31 +137,31 @@ export default function PricingPage() {
                         <button
                             onClick={() => setIsAnnual(true)}
                             className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md transition-all ${
-                                isAnnual ? "bg-white/10 text-white" : "text-gray-400 hover:text-gray-200"
+                                isAnnual ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
                             }`}
                         >
                             Annual
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-600/20 text-cyan-400 font-bold border border-cyan-500/20">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-600 font-bold border border-cyan-200">
                                 −20%
                             </span>
                         </button>
                     </div>
                     {/* Auto-detected currency with subtle override */}
                     {currencyReady && (
-                        <p className="text-gray-500 text-xs flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 max-w-md text-center">
+                        <p className="text-slate-400 text-xs flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 max-w-md text-center">
                             <MapPin className="w-3 h-3 shrink-0" />
                             {regionHint ? (
                                 <>
-                                    Auto-detected for <span className="text-gray-300 font-medium">{regionHint}</span>
-                                    <span className="text-gray-600">·</span>
+                                    Auto-detected for <span className="text-slate-600 font-medium">{regionHint}</span>
+                                    <span className="text-slate-300">·</span>
                                 </>
                             ) : null}
                             Showing prices in{" "}
-                            <span className="text-gray-300 font-medium">{payCurrency === "VND" ? "VNĐ" : "USD"}</span>
+                            <span className="text-slate-600 font-medium">{payCurrency === "VND" ? "VNĐ" : "USD"}</span>
                             <button
                                 type="button"
                                 onClick={() => setPayCurrency(payCurrency === "VND" ? "USD" : "VND")}
-                                className="text-cyan-500 underline underline-offset-2 hover:text-cyan-400 transition-colors"
+                                className="text-cyan-600 underline underline-offset-2 hover:text-cyan-700 transition-colors"
                             >
                                 Switch to {payCurrency === "VND" ? "USD" : "VNĐ"}
                             </button>
@@ -123,16 +173,16 @@ export default function PricingPage() {
                 <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
 
                     {/* Free */}
-                    <div className="bg-[#18181b] border border-white/10 rounded-xl p-6 flex flex-col hover:border-white/20 transition-colors">
+                    <div className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col hover:border-gray-300 transition-colors shadow-sm">
                         <div className="mb-4">
-                            <h3 className="text-white text-lg font-bold">Free</h3>
-                            <p className="text-gray-500 text-sm mt-0.5">No card needed</p>
+                            <h3 className="text-slate-900 text-lg font-bold">Free</h3>
+                            <p className="text-slate-400 text-sm mt-0.5">No card needed</p>
                         </div>
                         <div className={`mb-5 ${priceClass}`}>
-                            <span className="text-4xl font-extrabold text-white">
+                            <span className="text-4xl font-extrabold text-slate-900">
                                 {payCurrency === "VND" ? "0đ" : "$0"}
                             </span>
-                            <p className="text-gray-500 text-xs mt-1">per user / month</p>
+                            <p className="text-slate-400 text-xs mt-1">per user / month</p>
                         </div>
                         <Link
                             href="/sources"
@@ -143,13 +193,14 @@ export default function PricingPage() {
                                     currency: payCurrency,
                                 })
                             }
-                            className="w-full py-2.5 rounded-lg bg-white text-black text-sm font-semibold text-center hover:bg-gray-100 transition-colors mb-6"
+                            className="w-full py-2.5 rounded-lg bg-slate-900 text-white text-sm font-semibold text-center hover:bg-slate-800 transition-colors mb-6"
                         >
                             Get started
                         </Link>
-                        <div className="border-t border-white/5 pt-5 flex-1">
-                            <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-widest mb-3">What&apos;s included</p>
-                            <ul className="space-y-2.5">
+                        <PlatformBadges sources={PLAN_SOURCES.free} />
+                        <div className="border-t border-gray-100 pt-4 flex-1">
+                            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest mb-3">What&apos;s included</p>
+                            <ul className="space-y-2">
                                 <FeatureItem>2 active pipelines</FeatureItem>
                                 <FeatureItem>Daily sync</FeatureItem>
                                 <FeatureItem>Up to 14 days ad report history</FeatureItem>
@@ -160,19 +211,19 @@ export default function PricingPage() {
                     </div>
 
                     {/* Starter */}
-                    <div className="bg-[#18181b] border border-white/10 rounded-xl p-6 flex flex-col hover:border-white/20 transition-colors">
+                    <div className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col hover:border-gray-300 transition-colors shadow-sm">
                         <div className="mb-4">
-                            <h3 className="text-white text-lg font-bold">Starter</h3>
-                            <p className="text-gray-500 text-sm mt-0.5">Solo sellers &amp; freelancers</p>
+                            <h3 className="text-slate-900 text-lg font-bold">Starter</h3>
+                            <p className="text-slate-400 text-sm mt-0.5">Solo sellers &amp; freelancers</p>
                         </div>
                         <div className={`mb-5 ${priceClass}`}>
-                            <span className="text-4xl font-extrabold text-white">
-                                {fmtPrice(isAnnual ? 39 : 49)}
+                            <span className="text-4xl font-extrabold text-slate-900">
+                                {fmtPrice(isAnnual ? 39 : 39)}
                             </span>
-                            <p className="text-gray-500 text-xs mt-1">
+                            <p className="text-slate-400 text-xs mt-1">
                                 per user / month
                                 {isAnnual && (
-                                    <span className="text-cyan-500 ml-1">· save {yearlySaving(49)} /yr</span>
+                                    <span className="text-cyan-600 ml-1">· save {yearlySaving(49)} /yr</span>
                                 )}
                             </p>
                         </div>
@@ -185,16 +236,17 @@ export default function PricingPage() {
                                 billing_cycle: isAnnual ? "annual" : "monthly",
                                 currency: payCurrency,
                             }}
-                            className="w-full py-2.5 rounded-lg bg-white text-black text-sm font-semibold text-center hover:bg-gray-100 transition-colors mb-2"
+                            className="w-full py-2.5 rounded-lg bg-slate-900 text-white text-sm font-semibold text-center hover:bg-slate-800 transition-colors mb-2"
                         >
-                            Get started
+                            Get Starter
                         </CheckoutButton>
-                        <p className="text-gray-500 text-[10px] text-center mb-6">
+                        <p className="text-slate-400 text-[10px] text-center mb-6">
                             Opens {checkoutBrand} secure checkout (sign in required)
                         </p>
-                        <div className="border-t border-white/5 pt-5 flex-1">
-                            <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Free and</p>
-                            <ul className="space-y-2.5">
+                        <PlatformBadges sources={PLAN_SOURCES.starter} />
+                        <div className="border-t border-gray-100 pt-4 flex-1">
+                            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Free, plus</p>
+                            <ul className="space-y-2">
                                 <FeatureItem>5 active pipelines</FeatureItem>
                                 <FeatureItem>Daily sync</FeatureItem>
                                 <FeatureItem>CSV + Excel export</FeatureItem>
@@ -203,24 +255,23 @@ export default function PricingPage() {
                         </div>
                     </div>
 
-                    {/* Pro — hero card, slightly wider + taller */}
-                    <div className="relative bg-[#0d1f18] border-2 border-cyan-500 rounded-xl p-8 flex flex-col shadow-[0_0_50px_rgba(6,182,212,0.12)] ring-1 ring-cyan-500/30">
-                        {/* Top badge */}
-                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-cyan-600 text-white text-[10px] font-bold px-4 py-1 rounded-full tracking-widest uppercase whitespace-nowrap shadow-lg">
-                            Most popular
-                        </div>
-                        <div className="mb-4 mt-2">
-                            <h3 className="text-white text-xl font-bold">Pro</h3>
-                            <p className="text-cyan-400 text-sm mt-0.5">Best value for growing teams</p>
+                    {/* Pro — hero card */}
+                    <div className="relative bg-white border-2 border-cyan-500 rounded-xl p-8 flex flex-col shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-500/20">
+                        <div className="mb-4">
+                            <div className="flex items-center gap-2.5">
+                                <h3 className="text-slate-900 text-xl font-bold">Pro</h3>
+                                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-700 border border-cyan-200 uppercase tracking-wider">Recommended</span>
+                            </div>
+                            <p className="text-cyan-600 text-sm mt-0.5">Best value for growing teams</p>
                         </div>
                         <div className={`mb-5 ${priceClass}`}>
-                            <span className="text-5xl font-extrabold text-white">
+                            <span className="text-5xl font-extrabold text-slate-900">
                                 {fmtPrice(isAnnual ? 119 : 149)}
                             </span>
-                            <p className="text-gray-400 text-xs mt-1">
+                            <p className="text-slate-500 text-xs mt-1">
                                 per user / month
                                 {isAnnual && (
-                                    <span className="text-cyan-400 ml-1">· save {yearlySaving(149)} /yr</span>
+                                    <span className="text-cyan-600 ml-1">· save {yearlySaving(149)} /yr</span>
                                 )}
                             </p>
                         </div>
@@ -233,16 +284,17 @@ export default function PricingPage() {
                                 billing_cycle: isAnnual ? "annual" : "monthly",
                                 currency: payCurrency,
                             }}
-                            className="w-full py-3 rounded-lg bg-cyan-600 text-white text-sm font-bold text-center hover:bg-cyan-500 transition-colors mb-1 shadow-lg shadow-cyan-600/30"
+                            className="w-full py-3 rounded-lg bg-cyan-600 text-white text-sm font-bold text-center hover:bg-cyan-700 transition-colors mb-1 shadow-lg shadow-cyan-600/20"
                         >
                             Continue to secure checkout
                         </CheckoutButton>
-                        <p className="text-gray-500 text-[10px] text-center mb-6">
+                        <p className="text-slate-400 text-[10px] text-center mb-6">
                             Secure payment via {checkoutBrand} · No contract · cancel anytime
                         </p>
-                        <div className="border-t border-cyan-500/20 pt-5 flex-1">
-                            <p className="text-cyan-400/70 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Starter and</p>
-                            <ul className="space-y-2.5">
+                        <PlatformBadges sources={PLAN_SOURCES.pro} />
+                        <div className="border-t border-cyan-200 pt-4 flex-1">
+                            <p className="text-cyan-600/70 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Starter, plus</p>
+                            <ul className="space-y-2">
                                 <FeatureItem accent>15 active pipelines</FeatureItem>
                                 <FeatureItem accent>Hourly sync</FeatureItem>
                                 <FeatureItem accent>Report every 10 min (3x faster)</FeatureItem>
@@ -255,7 +307,7 @@ export default function PricingPage() {
 
                 </div>
 
-                <p className="mt-10 text-center text-sm text-gray-500">
+                <p className="mt-10 text-center text-sm text-slate-500">
                     Need more than 15 pipelines, dedicated hosting, or custom connectors?{" "}
                     <Link
                         href="mailto:hello@monsteracloud.com"
@@ -265,7 +317,7 @@ export default function PricingPage() {
                                 currency: payCurrency,
                             })
                         }
-                        className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+                        className="text-cyan-600 hover:text-cyan-700 underline underline-offset-2"
                     >
                         Talk to us about Enterprise
                     </Link>
@@ -273,8 +325,8 @@ export default function PricingPage() {
 
                 {/* All plans include */}
                 <div className="mt-14 text-center">
-                    <p className="text-gray-500 text-xs uppercase tracking-widest font-semibold mb-5">All plans include</p>
-                    <div className="flex flex-wrap justify-center gap-x-8 gap-y-3 text-gray-400 text-sm">
+                    <p className="text-slate-400 text-xs uppercase tracking-widest font-semibold mb-5">All plans include</p>
+                    <div className="flex flex-wrap justify-center gap-x-8 gap-y-3 text-slate-500 text-sm">
                         {["256-bit encryption", "OAuth 2.0 auth", "VND + USD billing", "Uptime SLA", "GDPR-ready data handling"].map((item) => (
                             <span key={item} className="flex items-center gap-2">
                                 <Check className="w-3.5 h-3.5 text-cyan-500" />
@@ -285,21 +337,21 @@ export default function PricingPage() {
                 </div>
 
                 {/* Feature Comparison Table */}
-                <div className="mt-20 overflow-hidden border border-white/10 rounded-xl bg-[#18181b]">
-                    <div className="p-6 border-b border-white/5">
-                        <h3 className="text-white text-sm font-bold uppercase tracking-widest">Compare plans</h3>
+                <div className="mt-20 overflow-hidden border border-gray-200 rounded-xl bg-white">
+                    <div className="p-6 border-b border-gray-100">
+                        <h3 className="text-slate-900 text-sm font-bold uppercase tracking-widest">Compare plans</h3>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse min-w-[520px] text-sm">
-                            <thead className="bg-[#09090b]">
+                            <thead className="bg-slate-50">
                                 <tr>
-                                    <th className="py-3 px-6 text-gray-500 text-xs font-semibold uppercase tracking-widest border-r border-white/5 w-1/3">Spec</th>
-                                    <th className="py-3 px-4 text-white text-xs font-bold text-center border-r border-white/5">Free</th>
-                                    <th className="py-3 px-4 text-white text-xs font-bold text-center border-r border-white/5">Starter</th>
-                                    <th className="py-3 px-4 text-cyan-400 text-xs font-bold text-center bg-cyan-900/10">Pro ✦</th>
+                                    <th className="py-3 px-6 text-slate-400 text-xs font-semibold uppercase tracking-widest border-r border-gray-100 w-1/3">Spec</th>
+                                    <th className="py-3 px-4 text-slate-900 text-xs font-bold text-center border-r border-gray-100">Free</th>
+                                    <th className="py-3 px-4 text-slate-900 text-xs font-bold text-center border-r border-gray-100">Starter</th>
+                                    <th className="py-3 px-4 text-cyan-600 text-xs font-bold text-center bg-cyan-50/50">Pro ✦</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-white/5">
+                            <tbody className="divide-y divide-gray-100">
                                 <CompareRow label="Active Pipelines" values={["2", "5", "15"]} />
                                 <CompareRow label="Sync Frequency" values={["Daily", "Daily", "Hourly"]} />
                                 <CompareRow label="TikTok Report Cooldown" values={["60 min", "30 min", "10 min"]} />
@@ -314,47 +366,47 @@ export default function PricingPage() {
                 </div>
 
                 {/* FAQ Section */}
-                <div className="mt-28 max-w-4xl mx-auto border-t border-white/5 pt-20">
+                <div className="mt-28 max-w-4xl mx-auto border-t border-gray-100 pt-20">
                     <div className="text-center mb-12">
-                        <h2 className="text-white text-2xl md:text-3xl font-bold tracking-tight">Frequently asked questions</h2>
+                        <h2 className="text-slate-900 text-2xl md:text-3xl font-bold tracking-tight">Frequently asked questions</h2>
                     </div>
                     <div className="grid md:grid-cols-2 gap-x-12 gap-y-10">
                         <div>
-                            <h4 className="text-white font-semibold text-sm mb-2.5">What happens if I hit a row limit?</h4>
-                                <p className="text-gray-400 text-sm leading-relaxed">We don't impose permanent row caps — however, very large synchronous exports are limited to keep performance predictable. Small-to-medium requests are served live; very large exports are handled asynchronously via our job queue (you'll receive a job ID and status). We also enforce per-API-key rate limits to protect service quality (see plan comparison above). If you need higher throughput, upgrade to a higher tier or contact Sales for Enterprise options.</p>
+                            <h4 className="text-slate-900 font-semibold text-sm mb-2.5">What happens if I hit a row limit?</h4>
+                                <p className="text-slate-500 text-sm leading-relaxed">We don't impose permanent row caps — however, very large synchronous exports are limited to keep performance predictable. Small-to-medium requests are served live; very large exports are handled asynchronously via our job queue (you'll receive a job ID and status). We also enforce per-API-key rate limits to protect service quality (see plan comparison above). If you need higher throughput, upgrade to a higher tier or contact Sales for Enterprise options.</p>
                         </div>
                         <div>
-                            <h4 className="text-white font-semibold text-sm mb-2.5">Is my store and ad data secure?</h4>
-                            <p className="text-gray-400 text-sm leading-relaxed">Yes. We use OAuth 2.0 so we never see or store your passwords. All data in transit is encrypted using TLS 1.3, and we do not store your raw ad data on our servers—it streams safely to your destination.</p>
+                            <h4 className="text-slate-900 font-semibold text-sm mb-2.5">Is my store and ad data secure?</h4>
+                            <p className="text-slate-500 text-sm leading-relaxed">Yes. We use OAuth 2.0 so we never see or store your passwords. All data in transit is encrypted using TLS 1.3, and we do not store your raw ad data on our servers—it streams safely to your destination.</p>
                         </div>
                         <div>
-                            <h4 className="text-white font-semibold text-sm mb-2.5">Do you offer refunds?</h4>
-                            <p className="text-gray-400 text-sm leading-relaxed">Yes, you can cancel at any time. If you have billing issues or are unsatisfied with the product, our 14-day transparent refund policy covers you. Just contact our email support.</p>
+                            <h4 className="text-slate-900 font-semibold text-sm mb-2.5">Do you offer refunds?</h4>
+                            <p className="text-slate-500 text-sm leading-relaxed">Yes, you can cancel at any time. If you have billing issues or are unsatisfied with the product, our 14-day transparent refund policy covers you. Just contact our email support.</p>
                         </div>
                         <div>
-                            <h4 className="text-white font-semibold text-sm mb-2.5">Can I upgrade to annual billing later?</h4>
-                            <p className="text-gray-400 text-sm leading-relaxed">Absolutely. You can switch to annual billing at any point from your dashboard settings to instantly secure the 20% discount.</p>
+                            <h4 className="text-slate-900 font-semibold text-sm mb-2.5">Can I upgrade to annual billing later?</h4>
+                            <p className="text-slate-500 text-sm leading-relaxed">Absolutely. You can switch to annual billing at any point from your dashboard settings to instantly secure the 20% discount.</p>
                         </div>
                     </div>
                 </div>
 
                 {/* Trust footer */}
-                <div className="mt-24 pt-12 border-t border-white/10 text-center">
-                    <div className="flex justify-center gap-12 text-gray-400">
-                        <div className="flex flex-col items-center gap-2 opacity-50 hover:opacity-100 transition-opacity">
-                            <ShieldCheck className="w-6 h-6 text-white" />
+                <div className="mt-24 pt-12 border-t border-gray-200 text-center">
+                    <div className="flex justify-center gap-12 text-slate-400">
+                        <div className="flex flex-col items-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
+                            <ShieldCheck className="w-6 h-6 text-slate-600" />
                             <span className="text-[10px] font-mono tracking-widest uppercase">256-bit encrypted</span>
                         </div>
-                        <div className="flex flex-col items-center gap-2 opacity-50 hover:opacity-100 transition-opacity">
-                            <Shield className="w-6 h-6 text-white" />
+                        <div className="flex flex-col items-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
+                            <Shield className="w-6 h-6 text-slate-600" />
                             <span className="text-[10px] font-mono tracking-widest uppercase">OAuth 2.0</span>
                         </div>
-                        <div className="flex flex-col items-center gap-2 opacity-50 hover:opacity-100 transition-opacity">
-                            <Zap className="w-6 h-6 text-white" />
+                        <div className="flex flex-col items-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
+                            <Zap className="w-6 h-6 text-slate-600" />
                             <span className="text-[10px] font-mono tracking-widest uppercase">VND + USD billing</span>
                         </div>
                     </div>
-                    <p className="mt-10 text-[10px] text-gray-600 max-w-xl mx-auto leading-relaxed">
+                    <p className="mt-10 text-[10px] text-slate-400 max-w-xl mx-auto leading-relaxed">
                         Google Sheets™ and Google Workspace™ are trademarks of Google LLC.
                     </p>
                 </div>
@@ -367,8 +419,8 @@ export default function PricingPage() {
 
 function FeatureItem({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
     return (
-        <li className={`flex items-start gap-2.5 text-sm ${accent ? "text-gray-200" : "text-gray-400"}`}>
-            <Check className={`w-4 h-4 shrink-0 mt-0.5 ${accent ? "text-cyan-400" : "text-cyan-500"}`} />
+        <li className={`flex items-start gap-2.5 text-sm ${accent ? "text-slate-700" : "text-slate-500"}`}>
+            <Check className={`w-4 h-4 shrink-0 mt-0.5 ${accent ? "text-cyan-500" : "text-cyan-500"}`} />
             {children}
         </li>
     );
@@ -377,21 +429,21 @@ function FeatureItem({ children, accent }: { children: React.ReactNode; accent?:
 function CompareRow({ label, values }: { label: string; values: (string | boolean)[] }) {
     const proCol = values.length - 1;
     return (
-        <tr className="hover:bg-white/[0.02] transition-colors">
-            <td className="py-3.5 px-6 text-gray-300 font-medium border-r border-white/5">{label}</td>
+        <tr className="hover:bg-slate-50/50 transition-colors">
+            <td className="py-3.5 px-6 text-slate-600 font-medium border-r border-gray-100">{label}</td>
             {values.map((v, i) => (
                 <td
                     key={i}
-                    className={`py-3.5 px-4 text-center border-r border-white/5 last:border-r-0 ${i === proCol ? "bg-cyan-900/10" : ""}`}
+                    className={`py-3.5 px-4 text-center border-r border-gray-100 last:border-r-0 ${i === proCol ? "bg-cyan-50/50" : ""}`}
                 >
                     {typeof v === "boolean" ? (
                         v ? (
                             <CheckCircle2 className="inline w-4 h-4 text-cyan-500" />
                         ) : (
-                            <span className="text-gray-600">—</span>
+                            <span className="text-slate-300">—</span>
                         )
                     ) : (
-                        <span className={i === proCol ? "text-cyan-400 font-semibold" : "text-gray-400"}>{v}</span>
+                        <span className={i === proCol ? "text-cyan-600 font-semibold" : "text-slate-500"}>{v}</span>
                     )}
                 </td>
             ))}

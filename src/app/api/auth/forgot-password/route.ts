@@ -6,6 +6,14 @@ import { PRODUCT_SITE_URL } from "@/lib/site-url";
 import crypto from "crypto";
 import { logger } from "@/lib/logger";
 
+/** Reject GET so emails are never submitted via query string (CWE-598). */
+export async function GET() {
+  return NextResponse.json(
+    { error: "Method not allowed. Use POST with JSON body { email }." },
+    { status: 405 },
+  );
+}
+
 export async function POST(request: Request) {
     try {
         const { email } = await request.json();

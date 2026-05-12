@@ -129,7 +129,7 @@ export function DashboardTemplateGallery({
 
       {/* Empty State */}
       {templates.length === 0 && (
-        <div className="text-center py-12 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-xl">
+        <div className="text-center py-12 border-2 border-dashed border-gray-200 dark:border-[#2f3336] rounded-xl">
           <LayoutTemplate className="mx-auto h-12 w-12 text-gray-300" />
           <h3 className="mt-4 text-sm font-medium text-gray-900 dark:text-white">
             No templates available yet
@@ -148,7 +148,7 @@ export function DashboardTemplateGallery({
       )}
 
       {/* Manual Create Option */}
-      <div className="pt-4 border-t border-gray-200 dark:border-slate-700">
+      <div className="pt-4 border-t border-gray-200 dark:border-[#2f3336]">
         <button
           onClick={() => router.push("/console")}
           className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
@@ -188,8 +188,8 @@ function TemplateCard({
       className={cn(
         "relative text-left rounded-xl border p-4 transition-all",
         isAvailable
-          ? "border-gray-200 bg-white hover:border-cyan-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-800 dark:hover:border-cyan-600"
-          : "border-gray-100 bg-gray-50 opacity-60 dark:border-slate-800 dark:bg-slate-900",
+          ? "border-gray-200 bg-white hover:border-cyan-300 hover:shadow-md dark:border-[#2f3336] dark:bg-[#16181c] dark:hover:border-cyan-600"
+          : "border-gray-100 bg-gray-50 opacity-60 dark:border-[#2f3336] dark:bg-[#000000]",
         isSelected && "ring-2 ring-cyan-500"
       )}
     >
@@ -230,7 +230,7 @@ function TemplateCard({
                 "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
                 isConnected
                   ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
-                  : "bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-gray-400"
+                  : "bg-gray-100 text-gray-500 dark:bg-[#1d1f23] dark:text-gray-400"
               )}
             >
               {isConnected && <Check className="h-2.5 w-2.5" />}

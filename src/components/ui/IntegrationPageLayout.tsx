@@ -42,12 +42,12 @@ export function IntegrationPageLayout({
     >
       <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
         <div className="absolute right-[10%] top-0 h-[40%] w-[40%] rounded-full bg-cyan-200/15 blur-[120px] dark:bg-cyan-900/20" />
-        <div className="absolute bottom-[10%] left-0 h-[50%] w-[40%] rounded-full bg-slate-200/20 blur-[120px] dark:bg-slate-800/30" />
+        <div className="absolute bottom-[10%] left-0 h-[50%] w-[40%] rounded-full bg-slate-200/20 blur-[120px] dark:bg-[#16181c]/30" />
       </div>
 
       <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-sm dark:border-slate-600 dark:bg-slate-800">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-sm dark:border-[#2f3336] dark:bg-[#16181c]">
             {icon}
           </div>
           <div>
@@ -70,12 +70,12 @@ export function IntegrationPageLayout({
         <div className="flex min-h-[420px] flex-col lg:col-span-3">
           <div
             className={cn(
-              "flex min-h-[420px] flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900/80",
+              "flex min-h-[420px] flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-[#2f3336] dark:bg-[#000000]/80",
               resultsClassName
             )}
           >
             {resultsHeader != null && (
-              <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-slate-700/60">
+              <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-[#2f3336]/60">
                 {resultsHeader}
               </div>
             )}

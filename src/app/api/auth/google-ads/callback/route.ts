@@ -8,6 +8,7 @@ import {
   ensureDefaultPipelineAfterSourceConnect,
 } from '@/lib/oauth-pipeline';
 import { logger } from "@/lib/logger";
+import { upsertSourceConnection } from "@/lib/connection-upsert";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, '');
@@ -102,29 +103,29 @@ export async function GET(request: Request) {
 
     const mccId = process.env.GOOGLE_ADS_MCC_ID?.trim() ?? '';
 
-    const newConn = await prisma.connection.create({
-      data: {
-        workspaceId,
-        name: customerIds.length
-          ? `Google Ads (${customerIds.length} account${customerIds.length > 1 ? 's' : ''})`
-          : 'Google Ads',
-        type: 'source',
-        provider: 'google_ads',
-        status: 'connected',
-        credentials: encrypt(JSON.stringify({
-          accessToken: tokenData.access_token,
-          refreshToken: tokenData.refresh_token,
-          expiresAt: new Date(Date.now() + (tokenData.expires_in ?? 3600) * 1000).toISOString(),
-          customerIds,
-          mccId,
-          product: 'google_ads',
-        })),
+    const remoteAccountId = customerIds[0] ?? 'google_ads';
+    const connection = await upsertSourceConnection({
+      workspaceId,
+      provider: 'google_ads',
+      remoteAccountId,
+      name: customerIds.length
+        ? `Google Ads (${customerIds.length} account${customerIds.length > 1 ? 's' : ''})`
+        : 'Google Ads',
+      type: 'source',
+      credentials: {
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token,
+        expiresAt: new Date(Date.now() + (tokenData.expires_in ?? 3600) * 1000).toISOString(),
+        customerIds,
+        mccId,
+        product: 'google_ads',
       },
+      status: 'connected',
     });
 
     const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
       workspaceId,
-      sourceConnectionId: newConn.id,
+      sourceConnectionId: connection.id,
       actingUserId: userId,
     });
 

@@ -46,7 +46,7 @@ export function RefreshedAt({ onRefresh, loading = false }: RefreshedAtProps) {
             type="button"
             onClick={handleClick}
             title="Refresh page data"
-            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-slate-500 dark:hover:bg-[#16181c] dark:hover:text-slate-300"
         >
             <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
             <span className="hidden sm:inline">Refreshed</span> {label}

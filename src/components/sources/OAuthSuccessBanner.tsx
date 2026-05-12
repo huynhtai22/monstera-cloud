@@ -44,13 +44,13 @@ export function OAuthSuccessBanner({
           </>
         ) : needsDestination ? (
           <>
-            Next, connect a <span className="font-medium">destination</span>{" "}
-            (e.g. Google Sheets™) so we can route your data.{" "}
+            Next, create a <span className="font-medium">pipeline</span>{" "}
+            in the Dashboard to start syncing data.{" "}
             <Link
-              href="/destinations"
+              href="/console"
               className="font-medium text-cyan-700 underline dark:text-cyan-300"
             >
-              Open Destinations
+              Go to Dashboard
             </Link>
             .
           </>

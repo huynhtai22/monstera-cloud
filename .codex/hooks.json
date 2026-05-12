@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\": {\"hookEventName\": \"PostToolUse\", \"additionalContext\": \"PR created. Now generate a PR summary comment with exactly these 3 sections:\\n\\n### 1. What have we done\\n### 2. What we fixed\\n### 3. Next steps — what should we do\\n\\nPost it as a comment on the PR using: gh pr comment <number> --body \\\"...\\\"\" }}'",
+            "statusMessage": "Preparing PR summary..."
+          }
+        ]
+      }
+    ]
+  }
+}

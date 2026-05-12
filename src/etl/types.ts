@@ -22,6 +22,8 @@ export interface PipelineContext {
   pipelineId: string;
   pipelineName: string;
   sourceConnectionId: string;
+  /** Workspace that owns the source connection (required for ad warehouse ingestion) */
+  workspaceId: string;
 }
 
 export function safeJsonParse(value: string): any | null {

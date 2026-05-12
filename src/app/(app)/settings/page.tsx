@@ -220,49 +220,52 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="p-8 max-w-7xl mx-auto">
-            <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
-                <div className="flex items-center">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 mr-5">
-                        <Settings2 className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Settings</h1>
-                        <p className="text-gray-500 dark:text-gray-400 mt-1 font-medium">Manage your workspace, team, and billing</p>
-                    </div>
+        <div className="w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
+            {/* Compact header */}
+            <div className="mb-6 flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-md shadow-cyan-500/20">
+                    <Settings2 className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                    <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Settings</h1>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Workspace, team &amp; billing</p>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-                {/* Sidebar Navigation */}
-                <div className="lg:col-span-3">
-                    <nav className="space-y-1.5 sticky top-8">
-                        {[
-                            { id: 'workspace', label: 'Workspace', icon: Building2 },
-                            { id: 'clients', label: 'Clients', icon: Briefcase },
-                            { id: 'team', label: 'Team', icon: Users },
-                            { id: 'billing', label: 'Billing', icon: CreditCard },
-                            { id: 'api', label: 'API Keys', icon: KeyRound },
-                        ].map((tab) => (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id as any)}
-                                className={cn(
-                                    "flex items-center w-full px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200",
-                                    activeTab === tab.id
-                                        ? "bg-white dark:bg-slate-800 shadow-md border border-gray-200/50 dark:border-slate-700 text-cyan-700 dark:text-cyan-400"
-                                        : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800/50 hover:text-gray-900 dark:hover:text-white border border-transparent"
-                                )}
-                            >
-                                <tab.icon className={cn("w-4 h-4 mr-3", activeTab === tab.id ? "text-cyan-600 dark:text-cyan-400" : "text-gray-400")} />
-                                {tab.label}
-                            </button>
-                        ))}
-                    </nav>
-                </div>
+            {/* Unified bento: sidebar + content in one softened container */}
+            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-100/80 dark:bg-[#16181c]/40 shadow-lg backdrop-blur-md">
+                <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr]">
+                    {/* Sidebar */}
+                    <div className="rounded-tl-2xl rounded-bl-2xl border-b border-slate-200 dark:border-white/10 bg-white/90 dark:bg-[#000000]/60 px-3 py-4 lg:border-b-0 lg:border-r">
+                        <nav className="space-y-0.5 lg:sticky lg:top-8">
+                            {[
+                                { id: 'workspace', label: 'Workspace', icon: Building2 },
+                                { id: 'clients', label: 'Clients', icon: Briefcase },
+                                { id: 'team', label: 'Team', icon: Users },
+                                { id: 'billing', label: 'Billing', icon: CreditCard },
+                                { id: 'api', label: 'API Keys', icon: KeyRound },
+                            ].map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id as any)}
+                                    className={cn(
+                                        "flex items-center w-full px-3 py-2.5 rounded-lg text-sm transition-all",
+                                        "border-l-2",
+                                        activeTab === tab.id
+                                            ? "border-l-cyan-500 bg-cyan-500/10 font-semibold text-cyan-700 dark:text-cyan-300"
+                                            : "border-l-transparent font-medium text-slate-500 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white"
+                                    )}
+                                    style={{ transition: "all 250ms var(--spring, cubic-bezier(0.25,1,0.5,1))" }}
+                                >
+                                    <tab.icon className={cn("w-4 h-4 mr-2.5 shrink-0", activeTab === tab.id ? "text-cyan-600 dark:text-cyan-400" : "text-gray-400")} />
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </nav>
+                    </div>
 
-                {/* Content Area */}
-                <div className="lg:col-span-9">
+                    {/* Content panel */}
+                    <div className="min-w-0 px-6 py-5">
                     {activeTab === 'workspace' && (
                         <WorkspaceTab
                             activeWorkspace={activeWorkspace}
@@ -326,8 +329,9 @@ export default function SettingsPage() {
                             handleRevealKey={handleRevealKey}
                         />
                     )}
-                </div>
-            </div>
+                    </div>{/* end content panel */}
+                </div>{/* end grid */}
+            </div>{/* end bento */}
         </div>
     );
 }

@@ -74,7 +74,6 @@ export function PillarGrid({
     totalPipelines,
 }: PillarGridProps) {
     const sources = connections.filter((c) => c.type === "source");
-    const destinations = connections.filter((c) => c.type === "destination");
 
     const sourceItems: OverviewLineItem[] = sources.slice(0, 3).map((c) => {
         const health = healthStatus(c);
@@ -82,9 +81,9 @@ export function PillarGrid({
         // P1: Use timezone-aware formatting for last sync
         const timeInfo = timeAgo(c.updatedAt, { staleThresholdMins: STALE_MINUTES });
         const subText = health === "error" 
-            ? "Connection error — check settings"
+            ? "Connection error"
             : health === "stale"
-            ? `Last sync ${timeInfo.text ?? "unknown"} — may need attention`
+            ? `Last sync ${timeInfo.text ?? "unknown"}`
             : timeInfo.text ?? "Pending first sync";
         
         // P1: Extract account information from name for multi-account sources
@@ -105,22 +104,7 @@ export function PillarGrid({
         };
     });
 
-    const destinationItems: OverviewLineItem[] = destinations.slice(0, 3).map((c) => {
-        const health = healthStatus(c);
-        const timeInfo = timeAgo(c.updatedAt);
-        const subText = health === "error"
-            ? "Connection error"
-            : health === "stale"
-            ? `Last used ${timeInfo.text ?? "unknown"}`
-            : c.status === "connected" ? "Connected" : c.status ?? "Pending";
-        return {
-            id: c.id,
-            label: c.name?.trim() ? c.name! : prettyProvider(c.provider),
-            sub: subText,
-            logoSrc: logoPathForConnectionProvider(c.provider),
-            status: health === "error" ? "error" : health === "healthy" ? "ok" : "pending",
-        };
-    });
+
 
     const { recentLogs, successCount, errorCount, pipelineItems } = useMemo(() => {
         const sorted = [...syncLogs].sort(
@@ -170,12 +154,13 @@ export function PillarGrid({
     const noReportsYet = syncLogs.length === 0;
 
     return (
-        <div className="relative z-10 grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="pillar-fade" style={{ animationDelay: "0ms" }}>
+        <div className="relative z-10 stagger-list flex flex-col gap-5">
+            <div className="stagger-item min-w-0">
                 <SectionOverviewCard
                     icon={<Plug className="h-5 w-5" />}
                     title="Sources"
                     subtitle="Where data comes from"
+                    accent="emerald"
                     kpi={{ label: "Connected", value: String(sources.length) }}
                     items={sourceItems}
                     emptyHint="No sources connected. Add TikTok, Meta, or Shopee to start syncing."
@@ -184,42 +169,33 @@ export function PillarGrid({
                 />
             </div>
 
-            <div className="pillar-fade" style={{ animationDelay: "60ms" }}>
-                <SectionOverviewCard
-                    icon={<Send className="h-5 w-5" />}
-                    title="Destinations"
-                    subtitle="Where data lands"
-                    kpi={{ label: "Connected", value: String(destinations.length) }}
-                    items={destinationItems}
-                    emptyHint="No destinations yet. Pick Google Sheets or Looker Studio to deliver data."
-                    ctaLabel={destinations.length ? "Manage destinations" : "Add a destination"}
-                    ctaHref="/destinations"
-                />
-            </div>
 
-            <div className="pillar-fade md:col-span-2" style={{ animationDelay: "120ms" }}>
+
+            <div className="stagger-item min-w-0">
                 <SectionOverviewCard
                     icon={<GitMerge className="h-5 w-5" />}
                     title="Pipelines"
                     subtitle="Active sync jobs"
                     emphasis
+                    accent="cyan"
                     kpi={
                         totalPipelines > 0
                             ? { label: "Healthy", value: `${healthyCount}/${totalPipelines}` }
                             : undefined
                     }
                     items={pipelineItems}
-                    emptyHint="Pipelines are created automatically when you connect a source and a destination."
+                    emptyHint="Pipelines are created automatically when you connect a source."
                     ctaLabel={totalPipelines ? "See sync history" : undefined}
                     ctaHref={totalPipelines ? "/reports" : undefined}
                 />
             </div>
 
-            <div className="pillar-fade md:col-span-2" style={{ animationDelay: "180ms" }}>
+            <div className="stagger-item min-w-0">
                 <SectionOverviewCard
                     icon={<FileBarChart2 className="h-5 w-5" />}
                     title="Reports"
                     subtitle="Latest sync activity"
+                    accent="indigo"
                     kpi={{
                         label: "14d success",
                         value: `${successCount}/${successCount + errorCount}`,

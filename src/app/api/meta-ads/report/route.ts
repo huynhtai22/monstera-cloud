@@ -5,7 +5,6 @@ import { metaReportClient, MetaInsightsParams, META_DEFAULT_FIELDS } from '@/lib
 import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import {
   clampMetaDatePresetForPlan,
-  clampTimeRangeToPlanMaxDays,
   getPlanLimits,
 } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
@@ -93,11 +92,8 @@ export async function POST(req: Request) {
 
     let datePreset = body.datePreset ?? 'last_30d';
     datePreset = clampMetaDatePresetForPlan(plan, datePreset) ?? datePreset;
-    let timeRange = body.timeRange;
-    if (timeRange) {
-      const c = clampTimeRangeToPlanMaxDays(plan, timeRange);
-      timeRange = { since: c.since, until: c.until };
-    }
+    // \"Free rewind\": do not clamp user-provided timeRange.
+    const timeRange = body.timeRange;
 
     const params: MetaInsightsParams = {
       adAccountId,

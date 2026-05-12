@@ -17,17 +17,79 @@ import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { encrypt, safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
+import { SHOPEE_SANDBOX_OPEN_API_HOST } from "@/lib/shopee-env";
+
+/**
+ * Shopee returns successful fields either at the top level or nested under `response`.
+ * Without unwrapping, `access_token` is missing and callers mis-handle the payload.
+ */
+function unwrapShopeePayload(json: unknown): Record<string, unknown> {
+  if (!json || typeof json !== "object") return {};
+  const o = json as Record<string, unknown>;
+  const inner = o.response;
+  if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+    return { ...o, ...(inner as Record<string, unknown>) };
+  }
+  return o;
+}
+
+/** True when Shopee set a non-empty `error` code (empty string means success). */
+function shopeeApiHasError(payload: Record<string, unknown>): boolean {
+  const err = payload.error;
+  if (err == null) return false;
+  if (typeof err === "string") return err.length > 0;
+  return Boolean(err);
+}
+
+function assertShopeeTokenPayload(
+  payload: Record<string, unknown>,
+  context: string
+): ShopeeTokenResponse {
+  const access = payload.access_token;
+  if (typeof access !== "string" || !access) {
+    throw new Error(
+      `${context}: missing access_token after unwrap (keys: ${Object.keys(payload).join(", ")})`
+    );
+  }
+  return payload as unknown as ShopeeTokenResponse;
+}
+
+/** Trim, strip BOM, and remove a single layer of wrapping quotes (common when pasting into host env UIs). */
+function normalizePartnerEnvValue(raw: string): string {
+  let v = raw.trim().replace(/^\uFEFF/, "");
+  if (
+    (v.startsWith('"') && v.endsWith('"') && v.length >= 2) ||
+    (v.startsWith("'") && v.endsWith("'") && v.length >= 2)
+  ) {
+    v = v.slice(1, -1).trim();
+  }
+  return v;
+}
+
+/** Decimal digits only — used in the HMAC base string and in query params (avoids Number precision edge cases). */
+function partnerIdString(): string {
+  const id = normalizePartnerEnvValue(process.env.SHOPEE_PARTNER_ID || "");
+  if (!id) throw new Error("SHOPEE_PARTNER_ID is not configured");
+  if (!/^\d+$/.test(id)) {
+    throw new Error("SHOPEE_PARTNER_ID must be a decimal integer string");
+  }
+  return id;
+}
 
 function partnerId(): number {
-  const id = (process.env.SHOPEE_PARTNER_ID || "").trim();
-  if (!id) throw new Error("SHOPEE_PARTNER_ID is not configured");
-  return Number(id);
+  const id = partnerIdString();
+  const n = Number(id);
+  if (!Number.isSafeInteger(n)) {
+    throw new Error("SHOPEE_PARTNER_ID is outside safe integer range; contact support");
+  }
+  return n;
 }
 
 function partnerKey(): string {
-  const key = (process.env.SHOPEE_PARTNER_KEY || "").trim();
+  const key = normalizePartnerEnvValue(process.env.SHOPEE_PARTNER_KEY || "");
   if (!key) throw new Error("SHOPEE_PARTNER_KEY is not configured");
   // Shopee expects the raw partner_key string as the HMAC secret.
+<<<<<<< HEAD
   // Do NOT strip prefixes or hex-decode; treat it as opaque bytes.
   return key;
 }
@@ -35,12 +97,19 @@ function partnerKey(): string {
 /** Returns the HMAC key as a Buffer (raw UTF-8 bytes). */
 function partnerKeyBuffer(): Buffer {
   return Buffer.from(partnerKey(), "utf8");
+=======
+  // Do NOT strip `shpk` prefixes or hex-decode; treat it as opaque bytes.
+  return key;
+}
+
+/** Same UTF-8 secret as API signing; used by `POST /api/webhooks/shopee` body HMAC. */
+export function shopeePartnerKeySecretForWebhook(): string {
+  return partnerKey();
+>>>>>>> origin/main
 }
 
 function getHost(sandbox = false): string {
-  return sandbox
-    ? "https://partner.test-stable.shopeemobile.com"
-    : "https://partner.shopeemobile.com";
+  return sandbox ? SHOPEE_SANDBOX_OPEN_API_HOST : "https://partner.shopeemobile.com";
 }
 
 function nowUnix(): number {
@@ -49,8 +118,8 @@ function nowUnix(): number {
 
 /** HMAC-SHA256 hex signature for auth APIs (no access_token). */
 function signAuth(path: string, timestamp: number): string {
-  const base = `${partnerId()}${path}${timestamp}`;
-  return crypto.createHmac("sha256", partnerKeyBuffer()).update(base).digest("hex");
+  const base = `${partnerIdString()}${path}${timestamp}`;
+  return crypto.createHmac("sha256", partnerKey()).update(base).digest("hex");
 }
 
 /** HMAC-SHA256 hex signature for shop-level APIs. */
@@ -60,8 +129,8 @@ function signShop(
   accessToken: string,
   shopId: number
 ): string {
-  const base = `${partnerId()}${path}${timestamp}${accessToken}${shopId}`;
-  return crypto.createHmac("sha256", partnerKeyBuffer()).update(base).digest("hex");
+  const base = `${partnerIdString()}${path}${timestamp}${accessToken}${shopId}`;
+  return crypto.createHmac("sha256", partnerKey()).update(base).digest("hex");
 }
 
 // ── OAuth ─────────────────────────────────────────────────────────────────────
@@ -87,17 +156,16 @@ export class ShopeeClient {
     const sign = signAuth(path, ts);
     const host = getHost(sandbox);
 
-    const url = new URL(`${host}${path}`);
-    url.searchParams.set("partner_id", String(partnerId()));
-    url.searchParams.set("redirect", redirectUri);
-    url.searchParams.set("sign", sign);
-    url.searchParams.set("timestamp", String(ts));
-
+    // Parameter order matches common Shopee examples (partner_id → timestamp → sign → redirect).
+    const q = new URLSearchParams();
+    q.set("partner_id", partnerIdString());
+    q.set("timestamp", String(ts));
+    q.set("sign", sign);
+    q.set("redirect", redirectUri);
     if (state) {
-      const sep = url.search ? "&" : "?";
-      return `${url.toString()}${sep}state=${encodeURIComponent(state)}`;
+      q.set("state", state);
     }
-    return url.toString();
+    return `${host}${path}?${q.toString()}`;
   }
 
   /**
@@ -113,12 +181,12 @@ export class ShopeeClient {
     const sign = signAuth(path, ts);
     const host = getHost(sandbox);
 
-    const url = new URL(`${host}${path}`);
-    url.searchParams.set("partner_id", String(partnerId()));
-    url.searchParams.set("timestamp", String(ts));
-    url.searchParams.set("sign", sign);
+    const q = new URLSearchParams();
+    q.set("partner_id", partnerIdString());
+    q.set("timestamp", String(ts));
+    q.set("sign", sign);
 
-    const res = await fetch(url.toString(), {
+    const res = await fetch(`${host}${path}?${q.toString()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -128,13 +196,14 @@ export class ShopeeClient {
       }),
     });
 
-    const json = await res.json();
-    if (json.error || json.message) {
+    const raw = await res.json();
+    const json = unwrapShopeePayload(raw);
+    if (shopeeApiHasError(json)) {
       throw new Error(
-        `Shopee token error: ${json.error ?? json.message ?? JSON.stringify(json)}`
+        `Shopee token error: ${String(json.error ?? "")} — ${String(json.message ?? "")}`
       );
     }
-    return json as ShopeeTokenResponse;
+    return assertShopeeTokenPayload(json, "Shopee token/get");
   }
 
   /**
@@ -150,12 +219,12 @@ export class ShopeeClient {
     const sign = signAuth(path, ts);
     const host = getHost(sandbox);
 
-    const url = new URL(`${host}${path}`);
-    url.searchParams.set("partner_id", String(partnerId()));
-    url.searchParams.set("timestamp", String(ts));
-    url.searchParams.set("sign", sign);
+    const q = new URLSearchParams();
+    q.set("partner_id", partnerIdString());
+    q.set("timestamp", String(ts));
+    q.set("sign", sign);
 
-    const res = await fetch(url.toString(), {
+    const res = await fetch(`${host}${path}?${q.toString()}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -165,13 +234,14 @@ export class ShopeeClient {
       }),
     });
 
-    const json = await res.json();
-    if (json.error || json.message) {
+    const raw = await res.json();
+    const json = unwrapShopeePayload(raw);
+    if (shopeeApiHasError(json)) {
       throw new Error(
-        `Shopee refresh error: ${json.error ?? json.message ?? JSON.stringify(json)}`
+        `Shopee refresh error: ${String(json.error ?? "")} — ${String(json.message ?? "")}`
       );
     }
-    return json as ShopeeTokenResponse;
+    return assertShopeeTokenPayload(json, "Shopee access_token/get");
   }
 }
 
@@ -179,7 +249,8 @@ export const shopeeClient = new ShopeeClient();
 
 // ── Shop-level API helpers ────────────────────────────────────────────────────
 
-interface ShopeeApiOptions {
+/** Options for shop-level signed GETs (orders, ads, etc.). */
+export interface ShopeeApiOptions {
   accessToken: string;
   shopId: number;
   sandbox?: boolean;
@@ -194,22 +265,76 @@ async function shopeeGet(
   const sign = signShop(path, ts, opts.accessToken, opts.shopId);
   const host = getHost(opts.sandbox);
 
-  const url = new URL(`${host}${path}`);
-  url.searchParams.set("partner_id", String(partnerId()));
-  url.searchParams.set("timestamp", String(ts));
-  url.searchParams.set("access_token", opts.accessToken);
-  url.searchParams.set("shop_id", String(opts.shopId));
-  url.searchParams.set("sign", sign);
+  const q = new URLSearchParams();
+  q.set("partner_id", partnerIdString());
+  q.set("timestamp", String(ts));
+  q.set("access_token", opts.accessToken);
+  q.set("shop_id", String(opts.shopId));
+  q.set("sign", sign);
   for (const [k, v] of Object.entries(params)) {
-    url.searchParams.set(k, v);
+    q.set(k, v);
   }
 
-  const res = await fetch(url.toString());
-  const json = await res.json();
-  if (json.error && json.error !== "") {
-    throw new Error(`Shopee API ${path} error: ${json.error} — ${json.message ?? ""}`);
+  const res = await fetch(`${host}${path}?${q.toString()}`);
+  const rawJson = await res.json();
+  const json = unwrapShopeePayload(rawJson);
+  if (shopeeApiHasError(json)) {
+    const errCode = String(json.error ?? "");
+    const msg = String(json.message ?? "");
+    const rid =
+      json.request_id != null ? String(json.request_id) : "";
+    logShopeeShopApiFailure(path, errCode, msg, rid);
+    const ridHint = rid ? ` request_id=${rid}` : "";
+    throw new Error(
+      `Shopee API ${path} error: ${errCode} — ${msg}${ridHint}`
+    );
   }
   return json;
+}
+
+/** Extra context for Ads / sandbox support (IP allowlist, permission, Wrong sign). */
+function logShopeeShopApiFailure(
+  path: string,
+  errorCode: string,
+  message: string,
+  requestId: string
+): void {
+  const code = errorCode.toLowerCase();
+  const msg = message.toLowerCase();
+  const adsPath = path.includes("/api/v2/ads/");
+  const hintParts: string[] = [];
+  if (
+    code.includes("error_sign") ||
+    msg.includes("wrong sign") ||
+    msg.includes("error_sign")
+  ) {
+    hintParts.push(
+      "Signature/env mismatch: confirm SHOPEE_PARTNER_ID/KEY match the environment, use sandbox host with sandbox keys, and api_path in sign matches the request path."
+    );
+  }
+  if (
+    code.includes("permission") ||
+    msg.includes("permission") ||
+    code.includes("error_auth")
+  ) {
+    hintParts.push(
+      "Permission/auth: ensure the Open Platform app has Ads/Marketing API access and the shop token was issued after that permission; sellers may need to reconnect."
+    );
+  }
+  if (code.includes("rate_limit") || msg.includes("rate_limit")) {
+    hintParts.push("Rate limit: reduce sync frequency or chunk date ranges.");
+  }
+  if (adsPath && hintParts.length === 0) {
+    hintParts.push(
+      "Ads API: verify Partner Center ticket approval, app type (e.g. Marketing/Ads Service), and sandbox IP allowlist if using test environment."
+    );
+  }
+  logger.warn(`[Shopee] ${path} failed`, {
+    error: errorCode,
+    message,
+    requestId: requestId || undefined,
+    hints: hintParts,
+  });
 }
 
 // ── Data methods ──────────────────────────────────────────────────────────────
@@ -301,6 +426,128 @@ export class ShopeeDataClient {
 }
 
 export const shopeeDataClient = new ShopeeDataClient();
+
+// ── Shopee Ads (v2.ads) — read-only performance ─────────────────────────────
+// Requires Open Platform app permission for Ads/Marketing APIs.
+// Date strings for request params use DD-MM-YYYY per Shopee Ads API docs.
+
+const ADS_PATH_CPC_DAILY = "/api/v2/ads/get_all_cpc_ads_daily_performance";
+const ADS_PATH_CPC_HOURLY = "/api/v2/ads/get_all_cpc_ads_hourly_performance";
+
+/** Convert YYYY-MM-DD → DD-MM-YYYY for Shopee Ads query params. */
+export function shopeeAdsDateParam(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
+  if (!m) throw new Error(`Invalid Shopee ads date (expected YYYY-MM-DD): ${ymd}`);
+  return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
+export interface ShopeeAdsDailyPerformanceResult {
+  rows: unknown[];
+  /** How rows were loaded — useful when debugging Shopee `error_param` / param names. */
+  mode: "range" | "per_day";
+  perDayErrors?: string[];
+}
+
+export class ShopeeAdsClient {
+  /**
+   * Shop-level CPC ads — daily performance for a date range.
+   * Tries `start_date` + `end_date` (DD-MM-YYYY); falls back to per-day `performance_date` if Shopee returns error_param.
+   */
+  async getAllCpcAdsDailyPerformance(
+    opts: ShopeeApiOptions,
+    sinceYmd: string,
+    untilYmd: string
+  ): Promise<ShopeeAdsDailyPerformanceResult> {
+    const start = shopeeAdsDateParam(sinceYmd);
+    const end = shopeeAdsDateParam(untilYmd);
+    try {
+      const json = await shopeeGet(
+        ADS_PATH_CPC_DAILY,
+        { start_date: start, end_date: end },
+        opts
+      );
+      return {
+        rows: extractShopeeAdsPerformanceRows(json),
+        mode: "range",
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes("error_param")) throw e;
+      logger.info(
+        "[Shopee Ads] Daily CPC: range params rejected; retrying per-day performance_date"
+      );
+      return this.getAllCpcAdsDailyPerformanceByDay(opts, sinceYmd, untilYmd);
+    }
+  }
+
+  /** One GET per calendar day using `performance_date` (DD-MM-YYYY). */
+  async getAllCpcAdsDailyPerformanceByDay(
+    opts: ShopeeApiOptions,
+    sinceYmd: string,
+    untilYmd: string
+  ): Promise<ShopeeAdsDailyPerformanceResult> {
+    const rows: unknown[] = [];
+    const perDayErrors: string[] = [];
+    const start = parseYmdUtc(sinceYmd);
+    const end = parseYmdUtc(untilYmd);
+    for (let t = start.getTime(); t <= end.getTime(); t += 86400000) {
+      const ymd = new Date(t).toISOString().slice(0, 10);
+      const perf = shopeeAdsDateParam(ymd);
+      try {
+        const json = await shopeeGet(
+          ADS_PATH_CPC_DAILY,
+          { performance_date: perf },
+          opts
+        );
+        rows.push(...extractShopeeAdsPerformanceRows(json));
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        perDayErrors.push(`${ymd}: ${m}`);
+      }
+    }
+    return { rows, mode: "per_day", perDayErrors };
+  }
+
+  /** Shop-level CPC ads — hourly rows for a single local calendar day (DD-MM-YYYY). */
+  async getAllCpcAdsHourlyPerformance(
+    opts: ShopeeApiOptions,
+    ymd: string
+  ): Promise<unknown> {
+    return shopeeGet(
+      ADS_PATH_CPC_HOURLY,
+      { performance_date: shopeeAdsDateParam(ymd) },
+      opts
+    );
+  }
+}
+
+function parseYmdUtc(ymd: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
+  if (!m) throw new Error(`Invalid date: ${ymd}`);
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+}
+
+/** Normalize list payloads: `response` may be an array or wrapped in an object. */
+export function extractShopeeAdsPerformanceRows(payload: unknown): unknown[] {
+  if (payload == null || typeof payload !== "object") return [];
+  const o = payload as Record<string, unknown>;
+  const inner = o.response;
+  if (Array.isArray(inner)) return inner;
+  if (inner && typeof inner === "object" && !Array.isArray(inner)) {
+    const r = inner as Record<string, unknown>;
+    for (const key of ["list", "performance_list", "data", "result"]) {
+      const v = r[key];
+      if (Array.isArray(v)) return v;
+    }
+  }
+  for (const key of ["list", "performance_list", "data"]) {
+    const v = o[key];
+    if (Array.isArray(v)) return v;
+  }
+  return [];
+}
+
+export const shopeeAdsClient = new ShopeeAdsClient();
 
 // ── Lazy token refresh ────────────────────────────────────────────────────────
 

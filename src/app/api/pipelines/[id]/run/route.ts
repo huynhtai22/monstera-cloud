@@ -11,6 +11,7 @@ import { sendAgencyAlert } from "@/lib/alerts";
 import { classifyIngestionError, formatLogError } from "@/lib/ingestion/error-taxonomy";
 import { markConnectionsSyncedOk, markConnectionsSyncError } from "@/lib/ingestion/connection-sync-state";
 import { logger } from "@/lib/logger";
+import { getWorkspaceMembership, requireWorkspaceAccess, RbacError } from "@/lib/rbac";
 
 export async function POST(req: Request, context: { params: any }) {
     const syncStartTime = Date.now();
@@ -53,6 +54,27 @@ export async function POST(req: Request, context: { params: any }) {
 
         activePipeline = pipeline;
         pipelineNameForNotify = pipeline.name ?? "Pipeline";
+
+        // RBAC: Interactive users must be workspace members.
+        // Cron/system calls bypass membership check (trusted infra).
+        if (!isCron && session?.user?.id) {
+            try {
+                await requireWorkspaceAccess(
+                    session.user.id,
+                    pipeline.workspaceId,
+                    "member"
+                );
+            } catch (err) {
+                if (err instanceof RbacError) {
+                    logger.warn(`[RBAC] Pipeline run denied for user ${session.user.id} on workspace ${pipeline.workspaceId}: ${err.message}`);
+                    return NextResponse.json(
+                        { error: err.message, code: err.code },
+                        { status: err.statusCode }
+                    );
+                }
+                throw err;
+            }
+        }
 
         const userIdForLimits = session?.user?.id || pipeline.workspace.ownerId;
         const user = await prisma.user.findUnique({ where: { id: userIdForLimits }, select: { plan: true } });
@@ -137,10 +159,36 @@ export async function POST(req: Request, context: { params: any }) {
 
         const provider = pipeline.sourceConnection.provider as EtlProvider;
         const sourceCreds = JSON.parse(safeDecrypt(pipeline.sourceConnection.credentials));
-
         const requestOrigin = new URL(req.url).origin;
+
+        // For ad platforms, first sync from API to CampaignMetric
+        // This ensures Data Explorer has data and pipeline can read from DB
+        const adPlatforms = ["meta_ads", "google_ads", "tiktok_business", "shopee", "lazada"];
+        if (adPlatforms.includes(provider)) {
+            logger.info(`[Pipeline Run] Pre-syncing ad platform data for ${provider} before ETL. SourceConnectionId: ${pipeline.sourceConnectionId}, WorkspaceId: ${pipeline.workspaceId}`);
+            try {
+                // Call sync endpoint internally with service role
+                const { syncConnectionData } = await import('@/lib/sync-connection');
+                logger.info(`[Pipeline Run] Calling syncConnectionData for ${provider}`);
+                const syncResult = await syncConnectionData({
+                    connectionId: pipeline.sourceConnectionId,
+                    provider,
+                    credentials: sourceCreds,
+                    workspaceId: pipeline.workspaceId,
+                    userPlan: user?.plan ?? 'free',
+                });
+                logger.info(`[Pipeline Run] Pre-sync complete for ${provider}:`, JSON.stringify(syncResult));
+            } catch (syncErr: any) {
+                logger.error(`[Pipeline Run] Pre-sync failed for ${provider}:`, syncErr);
+                // Continue - don't block pipeline on sync error
+            }
+        } else {
+            logger.info(`[Pipeline Run] Provider ${provider} is not an ad platform, skipping pre-sync`);
+        }
+
         const etl = await runEtlPipeline({
             userId: userIdForLimits,
+            userPlan: user?.plan ?? "free",
             provider,
             pipeline,
             ctx: {
@@ -148,8 +196,10 @@ export async function POST(req: Request, context: { params: any }) {
                 pipelineId: pipeline.id,
                 pipelineName: pipeline.name,
                 sourceConnectionId: pipeline.sourceConnectionId,
+                workspaceId: pipeline.workspaceId,
             },
             sourceCreds,
+            jobId: undefined, // TODO: pass jobId when called from sync-jobs cron
         });
 
         const durationMs = Date.now() - syncStartTime;

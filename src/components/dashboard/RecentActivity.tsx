@@ -11,9 +11,8 @@ type Pipeline = {
     name: string;
     status: string;
     updatedAt: string;
-    logs?: Array<{ rowsSynced?: number }>;
+    logs?: Array<{ rowsSynced?: number; status?: string }>;
     sourceConnection?: { name?: string };
-    destinationConnection?: { name?: string };
 };
 
 type RecentActivityProps = {
@@ -32,18 +31,18 @@ export function RecentActivity({
     onSync,
 }: RecentActivityProps) {
     return (
-        <div className="flex min-h-[320px] flex-col rounded-2xl border border-white bg-white/40 p-6 shadow-sm backdrop-blur-xl dark:border-slate-700/60 dark:bg-slate-900/40 lg:min-h-[400px]">
-                <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex min-h-[280px] flex-col rounded-3xl border border-gray-200/90 bg-white p-6 shadow-sm ring-1 ring-black/[0.03] dark:border-slate-700/70 dark:bg-slate-900/45 dark:ring-white/[0.05] sm:p-7">
+            <div className="mb-5 flex flex-col gap-3 border-b border-gray-100 pb-5 dark:border-slate-700/70 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">Recent activity</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Latest events from your pipelines.</p>
+                    <h2 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">Recent activity</h2>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">Latest pipeline sync events for this workspace.</p>
                 </div>
-                <Link href="/reports" className={"text-xs font-semibold " + secondaryButtonLinkClassName}>
+                <Link href="/reports" className={"inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold " + secondaryButtonLinkClassName}>
                     See all logs
                 </Link>
             </div>
 
-            <div className="flex-1 space-y-5 overflow-y-auto pr-2">
+            <div className="stagger-list flex-1 space-y-4 overflow-y-auto pr-1">
                 {isLoading ? (
                     <div className="flex h-full flex-col items-center justify-center py-10 text-center">
                         <Loader2 className="mb-3 h-6 w-6 animate-spin text-cyan-500" />
@@ -61,27 +60,27 @@ export function RecentActivity({
                         const latestLog = pipeline.logs?.[0];
 
                         return (
-                            <div key={pipeline.id} className={`flex items-start space-x-3 ${isLast ? "opacity-80" : ""}`}>
+                            <div key={pipeline.id} className={`stagger-item flex items-start space-x-3 ${isLast ? "opacity-70" : ""}`}>
                                 <div className="relative mt-1 shrink-0">
                                     <div
                                         className={`h-2.5 w-2.5 rounded-full ${isError ? "bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.1)]" : "bg-cyan-500 shadow-[0_0_0_4px_rgba(6,182,212,0.15)]"}`}
                                     />
                                     {!isLast && (
-                                        <div className="absolute bottom-[-16px] left-[5px] top-4 w-px bg-gray-200 dark:bg-slate-700" />
+                                        <div className="absolute bottom-[-10px] left-[5px] top-4 w-px bg-gray-200 dark:bg-[#1d1f23]" />
                                     )}
                                 </div>
                                 <div>
-                                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                    <p className="text-xs font-semibold text-gray-900 dark:text-white">
                                         {pipeline.name} {isError ? "Failed" : "Synced"}
                                     </p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        {isError
-                                            ? `Error connecting ${pipeline.sourceConnection?.name} to ${pipeline.destinationConnection?.name}.`
-                                            : latestLog
-                                              ? `Successfully synced ${latestLog.rowsSynced} rows to ${pipeline.destinationConnection?.name}.`
-                                              : `Pipeline established: ${pipeline.sourceConnection?.name} → ${pipeline.destinationConnection?.name}`}
+                                    <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
+                                        {latestLog?.status === "error"
+                                            ? `Error: ${pipeline.sourceConnection?.name} → Warehouse`
+                                            : latestLog?.rowsSynced && latestLog.rowsSynced > 0
+                                                ? `${latestLog.rowsSynced} rows → Warehouse`
+                                                : `${pipeline.sourceConnection?.name} → Warehouse`}
                                     </p>
-                                    <div className="mt-1 flex items-center text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500">
+                                    <div className="mt-0.5 flex items-center text-[10px] font-bold uppercase text-gray-400 dark:text-gray-500">
                                         <Clock className="mr-1 h-3 w-3" />
                                         {new Date(pipeline.updatedAt).toLocaleTimeString([], {
                                             hour: "2-digit",
@@ -106,7 +105,7 @@ export function RecentActivity({
                 ) : (
                     <div className="flex flex-1 flex-col items-center justify-center px-2 py-10 text-center">
                         <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-                            No pipeline runs yet. Connect a source and destination to see sync activity here.
+                            No pipeline runs yet. Connect a source to see sync activity here.
                         </p>
                         <Link href="/sources" className={cn(primaryButtonLinkClassName, "text-sm")}>
                             Go to Sources

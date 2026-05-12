@@ -22,6 +22,7 @@ import { ConnectedSourceCard } from "@/components/sources/ConnectedSourceCard";
 import { IntegrationCard, IntegrationCardSkeleton } from "@/components/sources/IntegrationCard";
 import { RecentSyncsSection } from "@/components/sources/RecentSyncsSection";
 import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
+import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin" });
@@ -77,6 +78,22 @@ export default function SourcesPage() {
     const [activeFilter, setActiveFilter] = useState('all');
     const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
     const addSourceMenuRef = useRef<HTMLDivElement>(null);
+
+    type ViewMode = "cards" | "list";
+    const [viewMode, setViewMode] = useState<ViewMode>("cards");
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        try {
+            const raw = window.localStorage.getItem("mc_sources_view_mode");
+            if (raw === "list" || raw === "cards") setViewMode(raw);
+        } catch { /* ignore */ }
+    }, []);
+    const setViewModePersisted = (m: ViewMode) => {
+        setViewMode(m);
+        try {
+            window.localStorage.setItem("mc_sources_view_mode", m);
+        } catch { /* ignore */ }
+    };
     
     // P1: Fix It flow state
     const [fixConnectionTarget, setFixConnectionTarget] = useState<{
@@ -154,6 +171,77 @@ export default function SourcesPage() {
         } finally {
             removeBusy(key);
             /* #3 — Refresh sync logs after manual sync */
+            if (activeWorkspaceId) {
+                void mutate(`/api/sync-logs?workspaceId=${activeWorkspaceId}`);
+            }
+        }
+    }, [addBusy, removeBusy, activeWorkspaceId, mutate]);
+
+    /* Direct sync for ad platforms - no pipeline needed, syncs to CampaignMetric for Data Explorer */
+    const handleDirectSync = useCallback(async (connectionId: string, provider: string, force: boolean = false) => {
+        const key = `direct-sync:${connectionId}`;
+        addBusy(key);
+        try {
+            const url = force 
+                ? `/api/connections/${connectionId}/sync?force=true` 
+                : `/api/connections/${connectionId}/sync`;
+            const res = await fetch(url, { method: 'POST' });
+            const data = await res.json();
+            
+            // DEBUG: Always show response for now
+            console.log('[DirectSync] Response:', { status: res.status, ok: res.ok, data });
+            
+            if (res.ok) {
+                toast.success(
+                    <span>
+                        Synced {data.rowsIngested || 0} rows to Data Explorer.
+                        <a href="/explorer" className="ml-2 font-medium underline">
+                            View Data
+                        </a>
+                    </span>
+                );
+            } else if (data.code === 'SYNC_ACTIVE' || data.error?.includes('already queued') || data.error?.includes('running')) {
+                // Show option to force unlock
+                toast.error(
+                    <div className="max-w-md">
+                        <p className="font-semibold mb-2">Sync Blocked</p>
+                        <p className="text-sm mb-3">{data.error || "A sync is already running"}</p>
+                        <button
+                            onClick={() => {
+                                toast.dismiss('sync-blocked');
+                                handleDirectSync(connectionId, provider, true);
+                            }}
+                            className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded"
+                        >
+                            Force Unlock & Retry
+                        </button>
+                    </div>,
+                    { duration: 30000, id: 'sync-blocked' }
+                );
+            } else {
+                // DEBUG: Show full error details since Vercel logs are unavailable
+                const errorDetails = JSON.stringify(data, null, 2);
+                toast.error(
+                    <div className="max-w-md">
+                        <p className="font-semibold mb-2">Sync Failed:</p>
+                        <p className="text-sm mb-2">{data.error || "Unknown error"}</p>
+                        <details className="text-xs">
+                            <summary className="cursor-pointer text-red-300 hover:text-red-200">Show Debug Info</summary>
+                            <pre className="mt-2 p-2 bg-red-950/50 rounded text-left overflow-auto max-h-40">{errorDetails}</pre>
+                        </details>
+                    </div>,
+                    { duration: 10000 }
+                );
+            }
+        } catch (e: any) {
+            toast.error(
+                <div>
+                    <p className="font-semibold">Network Error</p>
+                    <p className="text-xs mt-1">{e.message}</p>
+                </div>
+            );
+        } finally {
+            removeBusy(key);
             if (activeWorkspaceId) {
                 void mutate(`/api/sync-logs?workspaceId=${activeWorkspaceId}`);
             }
@@ -356,7 +444,18 @@ export default function SourcesPage() {
         if (!Array.isArray(workspaces) || !activeWorkspaceId) return catalogIntegrations;
 
         const workspace = workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0];
-        const sourceConnections = (workspace?.connections || []).filter((c: any) => c.type === 'source');
+        const rawSourceConnections = (workspace?.connections || []).filter((c: any) => c.type === 'source');
+
+        // Identity Deduplication: keep only the most recent connection per provider
+        const sourceConnections = Object.values(
+            rawSourceConnections.reduce((acc: Record<string, any>, conn: any) => {
+                const existing = acc[conn.provider];
+                if (!existing || new Date(conn.updatedAt) > new Date(existing.updatedAt)) {
+                    acc[conn.provider] = conn;
+                }
+                return acc;
+            }, {})
+        );
 
         const connectedCatalogIds = new Set(
             sourceConnections.map((c: any) => integrationCatalogId(c.provider))
@@ -394,6 +493,7 @@ export default function SourcesPage() {
 
                 return {
                     id: conn.id,
+                    provider: conn.provider,
                     catalogId,
                     name: conn.name,
                     description: desc,
@@ -429,12 +529,9 @@ export default function SourcesPage() {
     }, [searchQuery, activeFilter, workspaces, activeWorkspaceId, catalogIntegrations]);
 
     const { connectedRows, availableCards } = useMemo(() => {
-        const connected = (filteredIntegrations as Array<{ status: string }>).filter(
-            (i) => i.status !== "available",
-        );
-        const available = (filteredIntegrations as Array<{ status: string }>).filter(
-            (i) => i.status === "available",
-        );
+        // Keep typing wide enough for both card and list render paths.
+        const connected = (filteredIntegrations as any[]).filter((i) => i.status !== "available");
+        const available = (filteredIntegrations as any[]).filter((i) => i.status === "available");
         return { connectedRows: connected, availableCards: available };
     }, [filteredIntegrations]);
 
@@ -514,14 +611,6 @@ export default function SourcesPage() {
             className="w-full"
             withBackdrop
         >
-            <div
-                className="absolute inset-0 overflow-hidden pointer-events-none -z-10 motion-reduce:hidden max-lg:hidden"
-                aria-hidden
-            >
-                <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-cyan-200/20 dark:bg-cyan-900/20 blur-[120px]" />
-                <div className="absolute top-[20%] right-[-10%] w-[40%] h-[60%] rounded-full bg-blue-200/20 dark:bg-blue-900/20 blur-[120px]" />
-                <div className="absolute bottom-[-20%] left-[10%] w-[60%] h-[50%] rounded-full bg-cyan-100/30 dark:bg-cyan-900/30 blur-[140px]" />
-            </div>
 
             {oauthBanner && (
                 <OAuthSuccessBanner
@@ -536,7 +625,7 @@ export default function SourcesPage() {
                 <div>
                     {isLoading ? (
                         <>
-                            <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Sources</h1>
+                            <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Sources</h1>
                             {activeWorkspace ? (
                                 <p className="mb-1 text-sm font-medium text-gray-600 dark:text-slate-400">
                                     {activeWorkspace.name} · Sources
@@ -548,7 +637,7 @@ export default function SourcesPage() {
                         </>
                     ) : connectedSourceCount === 0 ? (
                         <>
-                            <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Sources</h1>
+                            <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Sources</h1>
                             {activeWorkspace ? (
                                 <p className="mb-1 text-sm font-medium text-gray-600 dark:text-slate-400">
                                     {activeWorkspace.name} · Sources
@@ -561,7 +650,7 @@ export default function SourcesPage() {
                         </>
                     ) : (
                         <>
-                            <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Sources</h1>
+                            <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Sources</h1>
                             {activeWorkspace ? (
                                 <p className="mb-1 text-sm font-medium text-gray-600 dark:text-slate-400">
                                     {activeWorkspace.name} · Sources
@@ -584,7 +673,7 @@ export default function SourcesPage() {
                             aria-expanded={addSourceMenuOpen}
                             aria-haspopup="listbox"
                             onClick={() => setAddSourceMenuOpen((o) => !o)}
-                            className="inline-flex h-10 min-h-[2.5rem] items-center gap-2 rounded-xl border border-cyan-500/35 bg-gradient-to-b from-cyan-500 to-cyan-600 px-3.5 text-sm font-semibold text-white shadow-md shadow-cyan-900/25 transition-all hover:from-cyan-400 hover:to-cyan-500 hover:shadow-lg hover:shadow-cyan-900/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 active:scale-[0.98] dark:border-cyan-400/30 dark:from-cyan-600 dark:to-cyan-700 dark:shadow-black/50 dark:focus-visible:ring-offset-slate-900 sm:px-4"
+                            className="inline-flex h-10 min-h-[2.5rem] items-center gap-2 rounded-lg bg-cyan-600 px-3.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-cyan-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 focus-visible:ring-offset-2 active:bg-cyan-800 dark:bg-cyan-600 dark:hover:bg-cyan-500 sm:px-4"
                         >
                             <Plus className="h-4 w-4 shrink-0" aria-hidden />
                             <span className="hidden sm:inline">Add data source</span>
@@ -600,7 +689,7 @@ export default function SourcesPage() {
                                 role="presentation"
                             >
                                 <div
-                                    className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-[0_22px_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[0_28px_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06]"
+                                    className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-[#2f3336] dark:bg-[#000000]"
                                     role="listbox"
                                     aria-label="Connect a source"
                                 >
@@ -614,7 +703,7 @@ export default function SourcesPage() {
                                     </div>
                                     <div className="max-h-[min(52vh,22rem)] overflow-y-auto overscroll-contain px-2 py-2">
                                         {headerAddOptions.length === 0 ? (
-                                            <div className="flex flex-col items-center gap-2 rounded-xl bg-slate-50/80 px-4 py-8 text-center dark:bg-slate-800/50">
+                                            <div className="flex flex-col items-center gap-2 rounded-xl bg-slate-50/80 px-4 py-8 text-center dark:bg-[#16181c]/50">
                                                 <CheckCircle2 className="h-8 w-8 text-emerald-500/90" aria-hidden />
                                                 <p className="text-sm font-medium text-slate-800 dark:text-slate-200">All set</p>
                                                 <p className="max-w-[14rem] text-xs leading-relaxed text-slate-500 dark:text-slate-400">
@@ -653,7 +742,7 @@ export default function SourcesPage() {
                                                                     "group flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left transition-all duration-150",
                                                                     disabled
                                                                         ? "cursor-not-allowed opacity-50 saturate-50"
-                                                                        : "text-slate-900 hover:bg-slate-50/95 hover:shadow-sm focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-cyan-500/35 dark:text-white dark:hover:bg-slate-800/90 dark:focus-visible:bg-slate-800/90 dark:focus-visible:ring-cyan-400/30"
+                                                                        : "text-slate-900 hover:bg-slate-50/95 hover:shadow-sm focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-cyan-500/35 dark:text-white dark:hover:bg-[#16181c]/90 dark:focus-visible:bg-slate-800/90 dark:focus-visible:ring-cyan-400/30"
                                                                 )}
                                                             >
                                                                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-white to-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ring-1 ring-slate-200/80 dark:from-slate-800 dark:to-slate-900 dark:ring-white/10">
@@ -690,7 +779,7 @@ export default function SourcesPage() {
                                             </ul>
                                         )}
                                     </div>
-                                    <div className="border-t border-slate-100 bg-slate-50/90 p-2 dark:border-white/5 dark:bg-slate-950/60">
+                                    <div className="border-t border-slate-100 bg-slate-50/90 p-2 dark:border-white/5 dark:bg-[#000000]/60">
                                         <button
                                             type="button"
                                             onClick={() => {
@@ -699,7 +788,7 @@ export default function SourcesPage() {
                                                 setIsSourceModalOpen(true);
                                                 setAddSourceMenuOpen(false);
                                             }}
-                                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:border-cyan-300/60 hover:bg-cyan-50/50 hover:text-cyan-900 dark:border-white/10 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:border-cyan-500/30 dark:hover:bg-cyan-950/40 dark:hover:text-cyan-100"
+                                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:border-cyan-300/60 hover:bg-cyan-50/50 hover:text-cyan-900 dark:border-white/10 dark:bg-[#16181c]/80 dark:text-slate-200 dark:hover:border-cyan-500/30 dark:hover:bg-cyan-950/40 dark:hover:text-cyan-100"
                                         >
                                             Full catalog — status
                                             <ChevronRight className="h-3.5 w-3.5 opacity-70" aria-hidden />
@@ -712,75 +801,91 @@ export default function SourcesPage() {
                 </div>
             </div>
 
-            {!isLoading ? <DataFlowExplainer variant="sources" /> : null}
+            {/* DataFlowExplainer — only shown to first-time users (no connections yet); returning users see the compact pill */}
+            {!isLoading && connectedSourceCount === 0 ? <DataFlowExplainer variant="sources" /> : null}
 
-            {!isLoading && activeWorkspace && filteredIntegrations.length > 0 ? (
-                <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-gray-200/90 bg-gray-50/90 px-4 py-3 text-sm dark:border-slate-600/70 dark:bg-slate-800/60">
-                    <span className="text-gray-600 dark:text-slate-300">
-                        In view:{" "}
-                        <strong className="font-semibold text-gray-900 dark:text-white">{filterStats.connected}</strong> connected
-                    </span>
-                    <span className="text-slate-300 dark:text-slate-600">·</span>
-                    <span className="text-gray-600 dark:text-slate-300">
-                        <strong
-                            className={
-                                filterStats.needsAttention > 0
-                                    ? "font-semibold text-red-600 dark:text-red-300"
-                                    : "font-semibold text-gray-900 dark:text-white"
-                            }
+            {/* Search + Filter tabs — visually separated card */}
+            <div className="glass-panel mb-8 overflow-hidden">
+                {/* Search row */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 pt-4 pb-3">
+                    <div className="relative flex-1 max-w-md group">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-cyan-500 dark:text-slate-500" aria-hidden="true" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search integrations..."
+                            aria-label="Search integrations"
+                            className="w-full rounded-xl border border-gray-200/80 bg-gray-50/80 py-2 pl-9 pr-10 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500/25 focus:bg-white dark:border-[#2f3336]/60 dark:bg-[#16181c]/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800"
+                        />
+                    </div>
+                    {!isLoading && filterStats.needsAttention > 0 && (
+                        <span className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-red-200/80 bg-red-50/80 px-2.5 py-1.5 text-xs font-semibold text-red-700 dark:border-red-800/50 dark:bg-red-950/40 dark:text-red-300">
+                            <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                            {filterStats.needsAttention} need attention
+                        </span>
+                    )}
+                </div>
+                {/* Filter tabs row */}
+                <div className="flex items-center justify-between border-t border-gray-100 dark:border-white/5 px-4">
+                    <div className="flex space-x-6" role="tablist" aria-label="Filter integrations">
+                        <button
+                            role="tab"
+                            aria-selected={activeFilter === 'all'}
+                            onClick={() => setActiveFilter('all')}
+                            className={`py-3 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'all' ? 'border-b-2 border-cyan-500 text-gray-900 dark:text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
                         >
-                            {filterStats.needsAttention}
-                        </strong>{" "}
-                        need attention
-                    </span>
-                    <span className="text-slate-300 dark:text-slate-600">·</span>
-                    <span className="text-gray-600 dark:text-slate-300">
-                        <strong className="font-semibold text-gray-900 dark:text-white">{filterStats.available}</strong> available to
-                        connect
-                    </span>
-                </div>
-            ) : null}
-
-            {/* Search and Filter — #9: ARIA tab pattern */}
-            <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-8 mb-8">
-                <div className="relative flex-1 max-w-md group">
-                    <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-cyan-500 dark:text-slate-500" aria-hidden="true" />
-                    {/* #9 — added aria-label to search input */}
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search integrations..."
-                        aria-label="Search integrations"
-                        className="w-full rounded-xl border border-gray-200/80 bg-white/90 py-2.5 pl-10 pr-12 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-cyan-500/25 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100 dark:placeholder:text-slate-500"
-                    />
-                </div>
-                {/* #9 — ARIA tab pattern for filter tabs */}
-                <div className="flex space-x-6 border-b border-gray-200 dark:border-slate-600/80" role="tablist" aria-label="Filter integrations">
-                    <button
-                        role="tab"
-                        aria-selected={activeFilter === 'all'}
-                        onClick={() => setActiveFilter('all')}
-                        className={`pb-3 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'all' ? 'border-b-2 border-cyan-500 text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
-                    >
-                        All Sources
-                    </button>
-                    <button
-                        role="tab"
-                        aria-selected={activeFilter === 'connected'}
-                        onClick={() => setActiveFilter('connected')}
-                        className={`pb-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'connected' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
-                    >
-                        Connected ({isLoading ? '…' : connectedSourceCount})
-                    </button>
-                    <button
-                        role="tab"
-                        aria-selected={activeFilter === 'available'}
-                        onClick={() => setActiveFilter('available')}
-                        className={`pb-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'available' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
-                    >
-                        Available
-                    </button>
+                            All Sources
+                        </button>
+                        <button
+                            role="tab"
+                            aria-selected={activeFilter === 'connected'}
+                            onClick={() => setActiveFilter('connected')}
+                            className={`py-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'connected' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
+                        >
+                            Connected ({isLoading ? '…' : connectedSourceCount})
+                        </button>
+                        <button
+                            role="tab"
+                            aria-selected={activeFilter === 'available'}
+                            onClick={() => setActiveFilter('available')}
+                            className={`py-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40 focus-visible:ring-offset-1 rounded-sm ${activeFilter === 'available' ? 'border-b-2 border-cyan-500 font-semibold text-gray-900 dark:text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200'}`}
+                        >
+                            Available
+                        </button>
+                    </div>
+                    {/* View mode toggle — cards for onboarding, list for inventory/bulk */}
+                    <div className="hidden sm:flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setViewModePersisted("cards")}
+                            className={cn(
+                                "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors",
+                                viewMode === "cards"
+                                    ? "border-cyan-300/60 bg-cyan-50 text-cyan-900 dark:border-cyan-600/40 dark:bg-cyan-950/40 dark:text-cyan-100"
+                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/40 dark:text-slate-300 dark:hover:bg-[#000000]",
+                            )}
+                        >
+                            Cards
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewModePersisted("list")}
+                            className={cn(
+                                "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors",
+                                viewMode === "list"
+                                    ? "border-cyan-300/60 bg-cyan-50 text-cyan-900 dark:border-cyan-600/40 dark:bg-cyan-950/40 dark:text-cyan-100"
+                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/40 dark:text-slate-300 dark:hover:bg-[#000000]",
+                            )}
+                        >
+                            List
+                        </button>
+                    </div>
+                    {!isLoading && connectedSourceCount > 0 && (
+                        <span className="text-xs text-gray-400 dark:text-slate-500">
+                            {filterStats.connected} connected · {filterStats.available} to connect
+                        </span>
+                    )}
                 </div>
             </div>
 
@@ -792,7 +897,7 @@ export default function SourcesPage() {
                     ))}
                 </div>
             ) : connectedRows.length === 0 && availableCards.length === 0 ? (
-                <div className="flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 py-20 text-center dark:border-slate-600 dark:bg-slate-800/60" role="tabpanel" aria-live="polite">
+                <div className="flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 py-20 text-center dark:border-[#2f3336] dark:bg-[#16181c]/60" role="tabpanel" aria-live="polite">
                     <Database className="w-12 h-12 text-gray-300 dark:text-gray-600 mb-4" />
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">No integrations found</h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm mb-6">
@@ -802,7 +907,7 @@ export default function SourcesPage() {
                         <button
                             type="button"
                             onClick={() => { setSearchQuery(""); setActiveFilter("all"); }}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 dark:hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors dark:border-[#2f3336] dark:bg-[#16181c] dark:text-gray-200 dark:hover:bg-[#1d1f23] focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40"
                         >
                             <X className="h-4 w-4" />
                             Clear search
@@ -824,18 +929,31 @@ export default function SourcesPage() {
                                     {connectedRows.length} connected
                                 </span>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 auto-rows-fr [&>*]:h-full">
-                                {connectedRows.map((integration: any) => (
-                                    <ConnectedSourceCard
-                                        key={integration.id}
-                                        integration={integration}
-                                        busyActions={busyActions}
-                                        onSync={handleSync}
-                                        onDisconnect={disconnectSource}
-                                        onFixConnection={handleFixConnection}
-                                    />
-                                ))}
-                            </div>
+                            {viewMode === "list" && activeFilter !== "available" ? (
+                                <ConnectedSourceList
+                                    rows={connectedRows}
+                                    busyActions={busyActions}
+                                    onSync={handleSync}
+                                    onDirectSync={(id, provider) => handleDirectSync(id, provider)}
+                                    onDisconnect={disconnectSource}
+                                    onFixConnection={handleFixConnection}
+                                />
+                            ) : (
+                                <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ gridAutoRows: "minmax(0,auto)", isolation: "isolate" }}>
+                                    {connectedRows.map((integration: any) => (
+                                        <div key={integration.id} className="stagger-item min-w-0">
+                                        <ConnectedSourceCard
+                                            integration={integration}
+                                            busyActions={busyActions}
+                                            onSync={handleSync}
+                                            onDirectSync={handleDirectSync}
+                                            onDisconnect={disconnectSource}
+                                            onFixConnection={handleFixConnection}
+                                        />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </section>
                     ) : null}
                     {availableCards.length > 0 ? (
@@ -851,10 +969,10 @@ export default function SourcesPage() {
                                     {availableCards.length} to connect
                                 </span>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 auto-rows-fr [&>*]:h-full">
+                            <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" style={{ gridAutoRows: "minmax(0,auto)", isolation: "isolate" }}>
                                 {availableCards.map((integration: any) => (
+                                    <div key={integration.id} className="stagger-item min-w-0">
                                     <IntegrationCard
-                                        key={integration.id}
                                         integration={integration}
                                         busyActions={busyActions}
                                         onSync={handleSync}
@@ -862,6 +980,7 @@ export default function SourcesPage() {
                                         onFixConnection={handleFixConnection}
                                         onConnect={handleConnect}
                                     />
+                                    </div>
                                 ))}
                             </div>
                         </section>
@@ -877,7 +996,7 @@ export default function SourcesPage() {
             <ConfirmDialog
                 open={disconnectTarget !== null}
                 title={disconnectTarget ? `Disconnect ${disconnectTarget.name}?` : "Disconnect?"}
-                description="Syncs from this source will stop. Your existing data in destinations is not deleted. You can reconnect later."
+                description="Syncs from this source will stop. Your existing data in the warehouse is not deleted. You can reconnect later."
                 confirmLabel="Disconnect"
                 cancelLabel="Cancel"
                 variant="danger"

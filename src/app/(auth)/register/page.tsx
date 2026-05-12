@@ -36,7 +36,12 @@ export default function RegisterPage() {
       }
 
       metaPixelCustom("MC_SignUp_Email_AccountCreated", { method: "email" });
-      router.push(`/verify?email=${encodeURIComponent(email)}`);
+      try {
+        sessionStorage.setItem("monstera_pending_verify_email", email.trim());
+      } catch {
+        /* storage blocked — verify page may prompt for email */
+      }
+      router.push("/verify");
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred. Please try again.");
     } finally {
@@ -100,7 +105,7 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        <form className="space-y-6" onSubmit={handleSubmit}>
+        <form className="space-y-6" method="post" action="#" onSubmit={handleSubmit}>
           {error && (
             <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center">
               {error}

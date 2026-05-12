@@ -15,7 +15,7 @@ export function IntegrationSectionCard({
   return (
     <div
       className={cn(
-        "border border-gray-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900/50 rounded-xl",
+        "border border-gray-200 bg-white p-6 shadow-sm dark:border-[#2f3336] dark:bg-[#000000]/50 rounded-xl",
         className
       )}
     >

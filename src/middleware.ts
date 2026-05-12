@@ -3,6 +3,11 @@ import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { apiRatelimit } from "@/lib/ratelimit";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
+import {
+  pathnameNeedsAgencyRewrite,
+  resolveAgencySlugFromHost,
+  stripAgencyPath,
+} from "@/lib/agency-host";
 
 /** Logged-in app surfaces (must match routes under `src/app/(app)/`). */
 const APP_AUTH_SEGMENTS = [
@@ -11,9 +16,18 @@ const APP_AUTH_SEGMENTS = [
   "settings",
   "reports",
   "explorer",
-  "destinations",
+  "synced-data",
+  "clients",
+  "exports",
   "transformations",
   "internal-templates",
+  "overview",
+  "quickstart",
+  "ops",
+  "meta-ads",
+  "shopee",
+  "google-ads",
+  "tiktok-ads",
 ] as const;
 
 function pathnameNeedsAppAuth(pathname: string): boolean {
@@ -23,6 +37,21 @@ function pathnameNeedsAppAuth(pathname: string): boolean {
 }
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  const host = request.headers.get("host") ?? "";
+
+  const agencySlug =
+    !pathname.startsWith("/agencies/")
+      ? resolveAgencySlugFromHost(host)
+      : null;
+  const shouldAgencyRewrite = Boolean(
+    agencySlug && pathnameNeedsAgencyRewrite(pathname),
+  );
+
+  const authCheckPath = pathname.startsWith("/agencies/")
+    ? stripAgencyPath(pathname)
+    : pathname;
+
   // Global rate limit for all /api/* routes (excluding add-on endpoints)
   // Uses Upstash if configured; otherwise no-op.
   if (
@@ -62,29 +91,43 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Add CORS headers for /api/v1/sheets/* routes (called by Google Apps Script)
+  // Add CORS headers for /api/v1/sheets/* routes (called by Google Apps Script add-on)
+  // OWASP Fix: Use specific origin instead of wildcard (*) for security compliance
+  const ALLOWED_ORIGINS = [
+    'https://monsteracloud.com',
+    'https://www.monsteracloud.com',
+    // Google Apps Script origins - required for Sheets add-on functionality
+    'https://script.google.com',
+    'https://script.googleusercontent.com',
+  ];
+  
   if (request.nextUrl.pathname.startsWith('/api/v1/sheets')) {
+    const origin = request.headers.get('origin') || 'https://monsteracloud.com';
+    const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : 'https://monsteracloud.com';
+    
     if (request.method === 'OPTIONS') {
       return new NextResponse(null, {
         status: 200,
         headers: {
-          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Origin': allowedOrigin,
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Max-Age': '86400',
+          'Vary': 'Origin',
         },
       });
     }
 
     const response = NextResponse.next();
-    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
     response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    response.headers.set('Vary', 'Origin');
     return response;
   }
 
   // Require a session JWT for in-app pages (otherwise /api/workspaces returns 401 and the UI looks "broken").
-  if (pathnameNeedsAppAuth(request.nextUrl.pathname)) {
+  if (pathnameNeedsAppAuth(authCheckPath)) {
     const token = await getToken({
       req: request,
       secret: process.env.NEXTAUTH_SECRET,
@@ -92,7 +135,7 @@ export async function middleware(request: NextRequest) {
     if (!token) {
       const login = new URL("/login", request.url);
       const nextPath =
-        request.nextUrl.pathname +
+        authCheckPath +
         (request.nextUrl.search || "");
       login.searchParams.set(
         "callbackUrl",
@@ -100,6 +143,15 @@ export async function middleware(request: NextRequest) {
       );
       return NextResponse.redirect(login);
     }
+  }
+
+  if (shouldAgencyRewrite && agencySlug) {
+    const url = request.nextUrl.clone();
+    const suffix = pathname === "/" ? "/console" : pathname;
+    url.pathname = `/agencies/${agencySlug}${suffix}`;
+    const res = NextResponse.rewrite(url);
+    res.headers.set("x-monstera-agency-slug", agencySlug);
+    return res;
   }
 
   return NextResponse.next();
@@ -120,13 +172,33 @@ export const config = {
     "/reports/:path*",
     "/explorer",
     "/explorer/:path*",
-    "/destinations",
-    "/destinations/:path*",
+    "/synced-data",
+    "/synced-data/:path*",
+    "/clients",
+    "/clients/:path*",
+    "/exports",
+    "/exports/:path*",
     "/transformations",
     "/transformations/:path*",
     "/internal-templates",
     "/internal-templates/:path*",
     "/console",
     "/console/:path*",
+    "/agencies",
+    "/agencies/:path*",
+    "/overview",
+    "/overview/:path*",
+    "/quickstart",
+    "/quickstart/:path*",
+    "/ops",
+    "/ops/:path*",
+    "/meta-ads",
+    "/meta-ads/:path*",
+    "/shopee",
+    "/shopee/:path*",
+    "/google-ads",
+    "/google-ads/:path*",
+    "/tiktok-ads",
+    "/tiktok-ads/:path*",
   ],
 };

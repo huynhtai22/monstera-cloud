@@ -20,8 +20,56 @@ const nextConfig = {
       { source: "/meta-ads", destination: "/reports?source=meta_ads", permanent: true },
       { source: "/google-ads", destination: "/reports?source=google_ads", permanent: true },
       { source: "/shopee", destination: "/reports?source=shopee", permanent: true },
+      // Legacy: merged into Data Explorer (warehouse + column picker + batch import)
+      { source: "/synced-data", destination: "/explorer", permanent: true },
+      { source: "/synced-data/:path*", destination: "/explorer", permanent: true },
       // Short URL for payment gateways and app store listings
       { source: "/refund", destination: "/legal/refund-policy", permanent: true },
+    ];
+  },
+  // OWASP Security Headers
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "X-Frame-Options",
+            value: "SAMEORIGIN",
+          },
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "base-uri 'self'",
+              "frame-ancestors 'self'",
+              "frame-src 'self' https://www.googletagmanager.com https://www.google.com",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://www.googletagmanager.com https://connect.facebook.net",
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data: https: blob:",
+              "font-src 'self' data:",
+              "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com https://stats.g.doubleclick.net https://connect.facebook.net https://www.facebook.com https://graph.facebook.com https://*.facebook.com https://accounts.google.com https://oauth2.googleapis.com https://*.googleapis.com https://*.tiktok.com https://*.tiktokglobalshop.com https://partner.shopeemobile.com https://open.shopee.com https://api.lazada.sg https://*.lazada.com https://auth.lazada.com https://googleads.googleapis.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://vitals.vercel-insights.com https://*.vercel-insights.com",
+              "upgrade-insecure-requests",
+            ].join("; "),
+          },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=31536000; includeSubDomains; preload",
+          },
+          {
+            key: "X-XSS-Protection",
+            value: "1; mode=block",
+          },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+        ],
+      },
     ];
   },
 };

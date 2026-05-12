@@ -15,12 +15,12 @@ export async function register() {
         const { OTLPTraceExporter } = await import(
           "@opentelemetry/exporter-trace-otlp-http"
         );
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { Resource } = (await import("@opentelemetry/resources")) as any;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { SimpleSpanProcessor } = (await import(
+        const { resourceFromAttributes } = await import(
+          "@opentelemetry/resources"
+        );
+        const { SimpleSpanProcessor } = await import(
           "@opentelemetry/sdk-trace-base"
-        )) as any;
+        );
 
         const exporter = new OTLPTraceExporter({
           // New Relic OTLP ingest endpoint (US datacenter)
@@ -32,7 +32,7 @@ export async function register() {
         });
 
         const sdk = new NodeSDK({
-          resource: new Resource({
+          resource: resourceFromAttributes({
             "service.name": process.env.NEW_RELIC_APP_NAME ?? "monstera-cloud",
             "deployment.environment":
               process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "production",

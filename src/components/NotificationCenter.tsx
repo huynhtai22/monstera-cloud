@@ -86,7 +86,7 @@ export function NotificationCenter() {
             <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-colors hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-800 dark:text-gray-300 dark:hover:bg-slate-700"
+                className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-colors hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-gray-300 dark:hover:bg-[#1d1f23]"
                 aria-expanded={open}
                 aria-label={count ? `Notifications, ${count} issues` : "Notifications"}
             >
@@ -100,13 +100,13 @@ export function NotificationCenter() {
 
             {shouldRenderPanel ? (
                 <div className={cn(
-                    "absolute right-0 top-[calc(100%+8px)] z-50 w-[min(100vw-2rem,22rem)] rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900",
+                    "absolute right-0 top-[calc(100%+8px)] z-50 w-[min(100vw-2rem,22rem)] rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-[#2f3336] dark:bg-[#000000]",
                     "transition-all duration-150 ease-out",
                     isPanelVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
                 )}>
-                    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-slate-800">
+                    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-[#2f3336]">
                         <span className="text-sm font-bold text-gray-900 dark:text-white">Notifications</span>
-                        <button type="button" onClick={() => setOpen(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800" aria-label="Close">
+                        <button type="button" onClick={() => setOpen(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-[#16181c]" aria-label="Close">
                             <X className="h-4 w-4" />
                         </button>
                     </div>
@@ -122,7 +122,7 @@ export function NotificationCenter() {
                                                 href={it.href}
                                                 onClick={() => setOpen(false)}
                                                 className={cn(
-                                                    "flex gap-2 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-gray-50 dark:hover:bg-slate-800",
+                                                    "flex gap-2 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-gray-50 dark:hover:bg-[#16181c]",
                                                     it.tone === "error" && "hover:bg-red-50/80 dark:hover:bg-red-950/30"
                                                 )}
                                             >
@@ -143,7 +143,7 @@ export function NotificationCenter() {
                             </ul>
                         )}
                     </div>
-                    <div className="border-t border-gray-100 px-3 py-2 dark:border-slate-800">
+                    <div className="border-t border-gray-100 px-3 py-2 dark:border-[#2f3336]">
                         <Link href="/reports" onClick={() => setOpen(false)} className="block text-center text-xs font-semibold text-cyan-700 hover:underline dark:text-cyan-300">
                             Open Reports & logs
                         </Link>

@@ -44,12 +44,18 @@ export async function PATCH(req: Request, context: { params: any }) {
             );
         }
 
-        const connection = await prisma.connection.update({
-            where: { id },
-            data: { clientId: clientId || null }
+        const connection = await prisma.connection.updateMany({
+            where: { id, workspaceId },
+            data: { clientId: clientId || null },
         });
 
-        return NextResponse.json(connection);
+        if (connection.count === 0) {
+            return NextResponse.json({ error: 'Connection not found in workspace' }, { status: 404 });
+        }
+
+        const updated = await prisma.connection.findFirst({ where: { id, workspaceId } });
+
+        return NextResponse.json(updated);
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }

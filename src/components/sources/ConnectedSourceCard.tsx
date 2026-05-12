@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -12,10 +12,31 @@ import {
 } from "lucide-react";
 import { PrimaryButton } from "@/components/ui";
 
+const SYNC_PHRASES = [
+  "Fetching campaigns…",
+  "Reading impressions…",
+  "Pulling spend data…",
+  "Loading ROAS metrics…",
+  "Writing rows…",
+  "Syncing ad accounts…",
+  "Processing metrics…",
+];
+
+function useSyncPhrase(active: boolean) {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (!active) { setIdx(0); return; }
+    const t = setInterval(() => setIdx((i) => (i + 1) % SYNC_PHRASES.length), 1800);
+    return () => clearInterval(t);
+  }, [active]);
+  return SYNC_PHRASES[idx];
+}
+
 export interface ConnectedSourceCardProps {
   integration: any;
   busyActions: Set<string>;
   onSync: (pipelineId: string, integrationId: string) => void;
+  onDirectSync?: (connectionId: string, provider: string) => void; // NEW: Sync without pipeline
   onDisconnect: (connectionId: string, displayName: string) => void;
   onFixConnection: (integration: any) => void;
 }
@@ -24,13 +45,15 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
   integration,
   busyActions,
   onSync,
+  onDirectSync,
   onDisconnect,
   onFixConnection,
 }: ConnectedSourceCardProps) {
-  const isSyncing = busyActions.has(`sync:${integration.pipelineId}`);
+  const isSyncing = busyActions.has(`sync:${integration.pipelineId}`) || busyActions.has(`direct-sync:${integration.id}`);
   const isDisconnecting = busyActions.has(integration.id);
   const isBusy = busyActions.size > 0;
   const isError = integration.status === "error";
+  const syncPhrase = useSyncPhrase(isSyncing);
 
   // Detect token/auth expiry to show better CTA
   const isAuthError =
@@ -53,24 +76,24 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border p-5 transition-all duration-200 group flex flex-col justify-between bg-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/80 dark:bg-slate-800/90 dark:shadow-[0_12px_40px_rgba(0,0,0,0.35)] dark:hover:bg-slate-800 dark:ring-1 dark:ring-white/5
+      className={`glass-card bento-hover relative overflow-hidden rounded-2xl p-5 group flex flex-col justify-between
         ${isError
-          ? "border-red-200/80 hover:border-red-300 dark:border-red-800/70 dark:hover:border-red-700"
+          ? "!border !border-red-200/70 hover:!border-red-300/80 dark:!border-red-700/40 dark:hover:!border-red-600/60"
           : isStale
-            ? "border-amber-200/80 hover:border-amber-300 dark:border-amber-800/70 dark:hover:border-amber-700"
-            : "border-cyan-200/80 hover:border-cyan-300 dark:border-cyan-700/50 dark:hover:border-cyan-600"}`}
+            ? "!border !border-amber-200/70 hover:!border-amber-300/80 dark:!border-amber-700/40 dark:hover:!border-amber-600/60"
+            : ""}`}
     >
       {/* Background accent on hover */}
       <div className="absolute inset-0 bg-gradient-to-br from-cyan-400/0 to-cyan-500/0 group-hover:from-cyan-400/5 group-hover:to-cyan-500/5 transition-all duration-300 pointer-events-none" />
 
       <div className="flex items-start justify-between mb-3 relative z-10">
         <div
-          className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 transition-colors bg-white/70 dark:bg-slate-900/80 overflow-hidden
+          className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 bg-white/10 dark:bg-[#000000]/60 overflow-hidden
             ${isError
-              ? "border-red-100/50 dark:border-red-800/50"
+              ? "border-red-400/20 dark:border-red-700/30"
               : isStale
-                ? "border-amber-100/50 dark:border-amber-800/50"
-                : "border-cyan-100/50 dark:border-cyan-700/40"}`}
+                ? "border-amber-400/20 dark:border-amber-700/30"
+                : "border-white/10 dark:border-white/10"}`}
         >
           <img
             src={integration.logoSrc}
@@ -93,8 +116,8 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
               Stale
             </div>
           ) : (
-            <div className="flex items-center rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 dark:ring-1 dark:ring-emerald-800/50">
-              <CheckCircle2 className="mr-1 h-3.5 w-3.5 dark:text-emerald-400" />
+            <div className="flex items-center rounded-md bg-cyan-950/60 px-2 py-1 text-xs font-semibold text-cyan-300 ring-1 ring-cyan-500/30 shadow-[0_0_10px_rgba(34,211,238,0.4)] dark:bg-cyan-950/60 dark:text-cyan-300 dark:ring-cyan-500/30">
+              <CheckCircle2 className="mr-1 h-3.5 w-3.5 text-cyan-400" />
               Connected
             </div>
           )}
@@ -111,7 +134,7 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
             <span className="truncate">{integration.name}</span>
           </Link>
         </div>
-        <p className="text-sm leading-relaxed text-gray-600 line-clamp-2 dark:text-slate-300">
+        <p className="text-sm leading-relaxed text-gray-500 line-clamp-2 dark:text-slate-300">
           {integration.description}
         </p>
 
@@ -127,13 +150,13 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
 
         {!isError && (
           <>
-            <p className="mt-2 text-xs font-medium text-gray-500 dark:text-slate-400">
+            <p className="mt-2 text-xs font-medium text-gray-500 dark:text-slate-300">
               Last synced:{" "}
               <span
                 className={
                   isStale
-                    ? "text-amber-600 dark:text-amber-400 font-semibold"
-                    : "text-gray-600 dark:text-slate-300"
+                    ? "text-amber-500 dark:text-amber-400 font-semibold"
+                    : "text-gray-600 dark:text-slate-200"
                 }
               >
                 {integration.lastSync}
@@ -147,25 +170,20 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
             {(integration.accountTags as string[]).slice(0, 3).map((tag: string) => (
               <span
                 key={tag}
-                className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700/80 dark:text-slate-300"
+                className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-[#1d1f23]/80 dark:text-slate-300"
               >
                 {tag}
               </span>
             ))}
             {integration.accountTags.length > 3 && (
-              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-700/80 dark:text-slate-400">
+              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-[#1d1f23]/80 dark:text-slate-400">
                 +{integration.accountTags.length - 3} more
               </span>
             )}
           </div>
         )}
 
-        {!isError && !integration.pipelineId ? (
-          <p className="mt-3 text-xs font-medium text-amber-700 dark:text-amber-300/90 flex items-start gap-1">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            No pipeline yet — add a destination to enable sync.
-          </p>
-        ) : null}
+
       </div>
 
       <div className="relative z-10">
@@ -186,14 +204,16 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
               onClick={(e) => {
                 e.stopPropagation();
                 if (!integration.pipelineId) {
-                  toast.error(
-                    <span>
-                      Add a destination (like Google Sheets) to start syncing.{" "}
-                      <a href="/destinations" className="underline font-medium">
-                        Open Destinations
-                      </a>
-                    </span>
-                  );
+                  // No pipeline - use direct connection sync for Data Explorer
+                  if (onDirectSync && ["meta_ads", "google_ads", "tiktok_business"].includes(integration.provider)) {
+                    onDirectSync(integration.id, integration.provider);
+                  } else {
+                    toast.error(
+                      <span>
+                        No sync pipeline configured. Create a pipeline in the Dashboard.
+                      </span>
+                    );
+                  }
                   return;
                 }
                 onSync(integration.pipelineId, integration.id);
@@ -202,7 +222,7 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
               disabled={isSyncing || isBusy}
               loading={isSyncing}
             >
-              {isSyncing ? "Syncing…" : "Sync Now"}
+              {isSyncing ? syncPhrase : "Sync Now"}
             </PrimaryButton>
             <button
               type="button"

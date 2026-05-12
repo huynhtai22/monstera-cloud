@@ -52,7 +52,7 @@ export const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
   const subLabel = (() => {
     if (isError) return integration.errorMsg ?? "Needs attention";
     if (!integration.pipelineId)
-      return "Connected · no pipeline yet — add a destination to start syncing";
+      return "Connected · no pipeline yet — create a pipeline to start syncing";
     if (integration.lastSync === "Never") return "Connected · never synced";
     return `Last sync · ${integration.lastSync}`;
   })();
@@ -60,15 +60,15 @@ export const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
   return (
     <div
       className={cn(
-        "group flex items-center gap-3 rounded-xl border bg-white/80 px-3 py-2.5 shadow-sm transition-colors dark:bg-slate-900/70",
+        "group flex items-center gap-3 rounded-xl border bg-white/80 px-3 py-2.5 shadow-sm transition-colors dark:bg-[#000000]/70",
         isError
           ? "border-red-100 dark:border-red-900/40"
           : isStale
             ? "border-amber-100 dark:border-amber-900/40"
-            : "border-gray-200/80 hover:border-cyan-200/80 dark:border-slate-700/60 dark:hover:border-cyan-700/50"
+            : "border-gray-200/80 hover:border-cyan-200/80 dark:border-[#2f3336]/60 dark:hover:border-cyan-700/50"
       )}
     >
-      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200/70 bg-white dark:border-slate-700/60 dark:bg-slate-900">
+      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200/70 bg-white p-1.5 dark:border-[#2f3336]/60 dark:bg-white">
         {isError && (
           <span className="absolute -right-1 -top-1 flex h-3 w-3">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
@@ -141,17 +141,14 @@ export const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
             disabled={isBusy || !integration.pipelineId}
             title={
               !integration.pipelineId
-                ? "Add a destination first to enable sync"
+                ? "Create a pipeline first to enable sync"
                 : undefined
             }
             onClick={() => {
               if (!integration.pipelineId) {
                 toast.error(
                   <span>
-                    Add a destination (like Google Sheets) to start syncing.{" "}
-                    <a href="/destinations" className="underline font-medium">
-                      Open Destinations
-                    </a>
+                    No sync pipeline configured. Create a pipeline in the Dashboard.
                   </span>
                 );
                 return;
@@ -174,7 +171,7 @@ export const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
           type="button"
           disabled={isBusy}
           onClick={() => onDisconnect(integration.id, integration.name)}
-          className="rounded-md px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-red-700 disabled:pointer-events-none disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-red-300"
+          className="rounded-md px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-red-700 disabled:pointer-events-none disabled:opacity-50 dark:text-slate-400 dark:hover:bg-[#16181c] dark:hover:text-red-300"
         >
           {isDisconnecting ? "Disconnecting…" : "Disconnect"}
         </button>

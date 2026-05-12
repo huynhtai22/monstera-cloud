@@ -9,6 +9,7 @@ import {
   ensureDefaultPipelineAfterSourceConnect,
 } from "@/lib/oauth-pipeline";
 import { logger } from "@/lib/logger";
+import { upsertSourceConnection } from "@/lib/connection-upsert";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, "");
@@ -81,28 +82,28 @@ export async function GET(request: Request) {
   try {
     const tokenData = await tiktokClient.getAccessToken(code);
 
-    const newConn = await prisma.connection.create({
-      data: {
-        workspaceId,
-        name: `TikTok Shop (${tokenData.seller_name})`,
-        type: "source",
-        provider: "tiktok_shop",
-        status: "connected",
-        credentials: encrypt(JSON.stringify({
-          accessToken: tokenData.access_token,
-          refreshToken: tokenData.refresh_token,
-          openId: tokenData.open_id,
-          sellerId: tokenData.seller_id,
-          expiresAt: new Date(Date.now() + tokenData.access_token_expire_in * 1000),
-          refreshExpiresAt: new Date(Date.now() + tokenData.refresh_token_expire_in * 1000),
-          product: "tiktok_shop",
-        })),
+    const remoteAccountId = tokenData.seller_id?.toString() ?? tokenData.open_id ?? "tiktok_shop";
+    const connection = await upsertSourceConnection({
+      workspaceId,
+      provider: "tiktok_shop",
+      remoteAccountId,
+      name: `TikTok Shop (${tokenData.seller_name})`,
+      type: "source",
+      credentials: {
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token,
+        openId: tokenData.open_id,
+        sellerId: tokenData.seller_id,
+        expiresAt: new Date(Date.now() + tokenData.access_token_expire_in * 1000),
+        refreshExpiresAt: new Date(Date.now() + tokenData.refresh_token_expire_in * 1000),
+        product: "tiktok_shop",
       },
+      status: "connected",
     });
 
     const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
       workspaceId,
-      sourceConnectionId: newConn.id,
+      sourceConnectionId: connection.id,
       actingUserId: userId,
     });
 

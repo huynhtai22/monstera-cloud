@@ -9,6 +9,7 @@ import {
   ensureDefaultPipelineAfterSourceConnect,
 } from '@/lib/oauth-pipeline';
 import { logger } from "@/lib/logger";
+import { upsertSourceConnection } from "@/lib/connection-upsert";
 
 function publicBaseUrl(request: Request): string {
   const explicit = process.env.NEXTAUTH_URL?.replace(/\/$/, '');
@@ -83,32 +84,32 @@ export async function GET(request: Request) {
     const tokenData = await tiktokBusinessClient.exchangeCode(authCode);
     const advertiserIds: string[] = tokenData.advertiser_ids ?? [];
 
-    const newConn = await prisma.connection.create({
-      data: {
-        workspaceId,
-        name: `TikTok Ads (${advertiserIds[0] ?? 'account'})`,
-        type: 'source',
-        provider: 'tiktok_business',
-        status: 'connected',
-        credentials: encrypt(JSON.stringify({
-          accessToken: tokenData.access_token,
-          refreshToken: tokenData.refresh_token,
-          advertiserIds,
-          scope: tokenData.scope,
-          expiresAt: new Date(
-            Date.now() + (tokenData.expires_in ?? 86400) * 1000
-          ).toISOString(),
-          refreshExpiresAt: new Date(
-            Date.now() + (tokenData.refresh_token_expires_in ?? 2592000) * 1000
-          ).toISOString(),
-          product: 'tiktok_business',
-        })),
+    const remoteAccountId = advertiserIds[0] ?? 'tiktok_business';
+    const connection = await upsertSourceConnection({
+      workspaceId,
+      provider: 'tiktok_business',
+      remoteAccountId,
+      name: `TikTok Ads (${advertiserIds[0] ?? 'account'})`,
+      type: 'source',
+      credentials: {
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token,
+        advertiserIds,
+        scope: tokenData.scope,
+        expiresAt: new Date(
+          Date.now() + (tokenData.expires_in ?? 86400) * 1000
+        ).toISOString(),
+        refreshExpiresAt: new Date(
+          Date.now() + (tokenData.refresh_token_expires_in ?? 2592000) * 1000
+        ).toISOString(),
+        product: 'tiktok_business',
       },
+      status: 'connected',
     });
 
     const pipelineResult = await ensureDefaultPipelineAfterSourceConnect({
       workspaceId,
-      sourceConnectionId: newConn.id,
+      sourceConnectionId: connection.id,
       actingUserId: userId,
     });
 

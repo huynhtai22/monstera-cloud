@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
+/** Reject GET — new passwords must only appear in POST bodies (CWE-598). */
+export async function GET() {
+  return NextResponse.json(
+    { error: "Method not allowed. Use POST with JSON body { token, password }." },
+    { status: 405 },
+  );
+}
+
 export async function POST(request: Request) {
     try {
         const { token, password } = await request.json();

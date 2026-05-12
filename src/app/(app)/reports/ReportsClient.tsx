@@ -169,7 +169,7 @@ export function ReportsClient() {
         <PageShell>
             <div className="relative z-10 mb-8">
                 <div className="mb-2 flex items-center space-x-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white bg-white/50 text-indigo-600 shadow-sm backdrop-blur-md dark:border-slate-600/80 dark:bg-slate-800/90 dark:text-indigo-400 dark:ring-1 dark:ring-white/5">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white bg-white/50 text-indigo-600 shadow-sm backdrop-blur-md dark:border-[#2f3336]/80 dark:bg-[#16181c]/90 dark:text-indigo-400 dark:ring-1 dark:ring-white/5">
                         <FileText className="h-5 w-5" />
                     </div>
                     <div>
@@ -194,7 +194,7 @@ export function ReportsClient() {
                                 "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
                                 clientFilter === ""
                                     ? "border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-800/50 dark:bg-indigo-950/50 dark:text-indigo-200"
-                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-200 dark:hover:bg-slate-700"
+                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c]/90 dark:text-slate-200 dark:hover:bg-[#1d1f23]"
                             )}
                         >
                             All clients
@@ -208,7 +208,7 @@ export function ReportsClient() {
                                     "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
                                     clientFilter === c.id
                                         ? "border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-800/50 dark:bg-indigo-950/50 dark:text-indigo-200"
-                                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-200 dark:hover:bg-slate-700"
+                                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c]/90 dark:text-slate-200 dark:hover:bg-[#1d1f23]"
                                 )}
                             >
                                 {c.name}
@@ -227,7 +227,7 @@ export function ReportsClient() {
                                     "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
                                     sourceFilter === c.id
                                         ? "border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-800/50 dark:bg-cyan-950/50 dark:text-cyan-200"
-                                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-200 dark:hover:bg-slate-700"
+                                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c]/90 dark:text-slate-200 dark:hover:bg-[#1d1f23]"
                                 )}
                             >
                                 {c.label}
@@ -241,7 +241,7 @@ export function ReportsClient() {
                                 type="date"
                                 value={dateFrom}
                                 onChange={(e) => setDateFrom(e.target.value)}
-                                className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-100"
                             />
                         </label>
                         <label className="flex items-center gap-1 text-xs font-medium text-gray-600 dark:text-slate-400">
@@ -250,7 +250,7 @@ export function ReportsClient() {
                                 type="date"
                                 value={dateTo}
                                 onChange={(e) => setDateTo(e.target.value)}
-                                className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-100"
                             />
                         </label>
                         <button
@@ -265,7 +265,7 @@ export function ReportsClient() {
                 </div>
             </div>
 
-            <div className="relative z-10 rounded-3xl border border-gray-200/80 bg-white/60 p-6 shadow-sm backdrop-blur-xl dark:border-slate-600/70 dark:bg-slate-800/90 dark:ring-1 dark:ring-white/5">
+            <div className="relative z-10 rounded-3xl border border-gray-200/80 bg-white/60 p-6 shadow-sm backdrop-blur-xl dark:border-[#2f3336]/70 dark:bg-[#16181c]/90 dark:ring-1 dark:ring-white/5">
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h2 className="text-lg font-bold text-gray-900 dark:text-white">Sync Logs</h2>
@@ -281,7 +281,7 @@ export function ReportsClient() {
                                     "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
                                     statusFilter === v
                                         ? "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-800/50 dark:bg-cyan-950/50 dark:text-cyan-200"
-                                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900/70 dark:text-slate-200 dark:hover:bg-slate-700"
+                                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/70 dark:text-slate-200 dark:hover:bg-[#1d1f23]"
                                 )}
                             >
                                 {v === "all" ? "All" : v === "success" ? "Success" : "Error"}
@@ -291,7 +291,7 @@ export function ReportsClient() {
                 </div>
 
                 {summary ? (
-                    <div className="mb-4 flex flex-wrap gap-3 rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-xs dark:border-slate-600/60 dark:bg-slate-900/50">
+                    <div className="mb-4 flex flex-wrap gap-3 rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-xs dark:border-[#2f3336]/60 dark:bg-[#000000]/50">
                         <span className="font-semibold text-gray-700 dark:text-slate-200">
                             Shown: <span className="text-gray-900 dark:text-white">{summary.shown}</span> syncs
                         </span>
@@ -355,7 +355,7 @@ export function ReportsClient() {
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm">
                             <thead>
-                                <tr className="border-b border-gray-200 text-xs font-bold uppercase tracking-wide text-gray-500 dark:border-slate-600 dark:text-slate-400">
+                                <tr className="border-b border-gray-200 text-xs font-bold uppercase tracking-wide text-gray-500 dark:border-[#2f3336] dark:text-slate-400">
                                     <th className="py-3 pr-4">Pipeline</th>
                                     <th className="py-3 pr-4">Status</th>
                                     <th className="py-3 pr-4">Rows</th>
@@ -380,7 +380,7 @@ export function ReportsClient() {
                                             <span className="font-semibold text-gray-900 dark:text-white">{name}</span>
                                         );
                                     return (
-                                        <tr key={l.id} className="border-b border-gray-100 dark:border-slate-700/80">
+                                        <tr key={l.id} className="border-b border-gray-100 dark:border-[#2f3336]/80">
                                             <td className="py-3 pr-4">{pipelineCell}</td>
                                             <td className="py-3 pr-4">
                                                 {l.status === "success" ? (

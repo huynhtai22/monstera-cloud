@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
@@ -13,22 +13,42 @@ import {
 } from "lucide-react";
 import { PrimaryButton } from "@/components/ui";
 
+const SYNC_PHRASES = [
+  "Fetching campaigns…",
+  "Reading impressions…",
+  "Pulling spend data…",
+  "Loading ROAS metrics…",
+  "Writing rows…",
+  "Syncing ad accounts…",
+  "Processing metrics…",
+];
+
+function useSyncPhrase(active: boolean) {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (!active) { setIdx(0); return; }
+    const t = setInterval(() => setIdx((i) => (i + 1) % SYNC_PHRASES.length), 1800);
+    return () => clearInterval(t);
+  }, [active]);
+  return SYNC_PHRASES[idx];
+}
+
 export function IntegrationCardSkeleton() {
   return (
     <div
-      className="relative overflow-hidden rounded-2xl border border-white/80 dark:border-slate-600/50 bg-white/40 dark:bg-slate-800/60 p-5 animate-pulse"
+      className="relative overflow-hidden rounded-2xl border border-white/10 dark:border-white/10 bg-white/5 dark:bg-[#000000]/20 backdrop-blur-md p-5 animate-pulse"
       aria-hidden
     >
       <div className="flex items-start justify-between mb-4">
-        <div className="h-12 w-12 rounded-xl bg-gray-200/90 dark:bg-slate-700/90" />
-        <div className="h-6 w-24 rounded-md bg-gray-200/80 dark:bg-slate-700/80" />
+        <div className="h-12 w-12 rounded-xl bg-gray-200/90 dark:bg-[#1d1f23]/90" />
+        <div className="h-6 w-24 rounded-md bg-gray-200/80 dark:bg-[#1d1f23]/80" />
       </div>
       <div className="mb-6 space-y-2">
-        <div className="h-4 max-w-[10rem] rounded bg-gray-200/90 dark:bg-slate-700/90" />
-        <div className="h-3 w-full rounded bg-gray-100 dark:bg-slate-800/90" />
-        <div className="h-3 max-w-[14rem] w-[92%] rounded bg-gray-100 dark:bg-slate-800/90" />
+        <div className="h-4 max-w-[10rem] rounded bg-gray-200/90 dark:bg-[#1d1f23]/90" />
+        <div className="h-3 w-full rounded bg-gray-100 dark:bg-[#16181c]/90" />
+        <div className="h-3 max-w-[14rem] w-[92%] rounded bg-gray-100 dark:bg-[#16181c]/90" />
       </div>
-      <div className="h-9 w-full rounded-lg bg-gray-200/80 dark:bg-slate-700/80" />
+      <div className="h-9 w-full rounded-lg bg-gray-200/80 dark:bg-[#1d1f23]/80" />
     </div>
   );
 }
@@ -53,23 +73,21 @@ export const IntegrationCard = React.memo(function IntegrationCard({
   const isSyncing = busyActions.has(`sync:${integration.pipelineId}`);
   const isDisconnecting = busyActions.has(integration.id);
   const isBusy = busyActions.size > 0;
+  const syncPhrase = useSyncPhrase(isSyncing);
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border p-5 transition-all duration-200 group flex flex-col justify-between bg-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 hover:bg-white/80 dark:bg-slate-800/90 dark:shadow-[0_12px_40px_rgba(0,0,0,0.35)] dark:hover:bg-slate-800 dark:ring-1 dark:ring-white/5
+      className={`glass-card bento-hover relative overflow-hidden rounded-2xl p-5 group flex flex-col justify-between
         ${integration.status === "error"
-          ? "border-red-200/80 hover:border-red-300 dark:border-red-800/70 dark:hover:border-red-700"
-          : integration.status === "available"
-            ? "border-cyan-200/80 bg-cyan-50/30 dark:border-cyan-700/50 dark:bg-cyan-950/20 hover:border-cyan-300 dark:hover:border-cyan-600"
-            : "border-gray-200/80 dark:border-slate-600/80 hover:border-cyan-200/80 dark:hover:border-cyan-600/50"}`}
+          ? "!border !border-red-200/70 hover:!border-red-300/80 dark:!border-red-700/40 dark:hover:!border-red-600/60"
+          : ""}`}
     >
       <div className="flex items-start justify-between mb-3 relative z-10">
         <div
-          className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 transition-colors bg-white/70 dark:bg-slate-900/80 overflow-hidden
-            ${integration.status === "connected" ? "border-cyan-100/50 dark:border-cyan-700/40" :
-              integration.status === "syncing" ? "border-blue-100/50 dark:border-blue-700/40" :
-                integration.status === "error" ? "border-red-100/50 dark:border-red-800/50" :
-                  "border-cyan-100/50 dark:border-cyan-700/40"}`}
+          className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 bg-white dark:bg-white overflow-hidden p-2
+            ${integration.status === "error"
+              ? "border-red-400/20 dark:border-red-700/30"
+              : "border-white/10 dark:border-white/10"}`}
         >
           <img
             src={integration.logoSrc}
@@ -82,8 +100,8 @@ export const IntegrationCard = React.memo(function IntegrationCard({
 
         <div className="flex items-center">
           {integration.status === "connected" && (
-            <div className="flex items-center rounded-md bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-800 dark:bg-emerald-950/70 dark:text-emerald-300 dark:ring-1 dark:ring-emerald-800/50">
-              <CheckCircle2 className="mr-1 h-3.5 w-3.5 dark:text-emerald-400" />
+            <div className="flex items-center rounded-md bg-cyan-950/60 px-2 py-1 text-xs font-semibold text-cyan-300 ring-1 ring-cyan-500/30 shadow-[0_0_10px_rgba(34,211,238,0.4)] dark:bg-cyan-950/60 dark:text-cyan-300 dark:ring-cyan-500/30">
+              <CheckCircle2 className="mr-1 h-3.5 w-3.5 text-cyan-400" />
               Connected
             </div>
           )}
@@ -118,7 +136,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
             </h3>
           )}
         </div>
-        <p className="text-sm leading-relaxed text-gray-600 line-clamp-2 dark:text-slate-300">
+        <p className="text-sm leading-relaxed text-gray-500 line-clamp-2 dark:text-slate-300">
           {integration.description}
         </p>
 
@@ -133,7 +151,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
         )}
         {integration.status !== "available" &&
           integration.status !== "error" && (
-            <p className="mt-2 text-xs font-medium text-gray-500 dark:text-slate-400">
+            <p className="mt-2 text-xs font-medium text-gray-500 dark:text-slate-300">
               Last synced: {integration.lastSync}
             </p>
           )}
@@ -142,13 +160,13 @@ export const IntegrationCard = React.memo(function IntegrationCard({
             {(integration.accountTags as string[]).slice(0, 3).map((tag: string) => (
               <span
                 key={tag}
-                className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-700/80 dark:text-slate-300"
+                className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-[#1d1f23]/80 dark:text-slate-300"
               >
                 {tag}
               </span>
             ))}
             {integration.accountTags.length > 3 && (
-              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-slate-700/80 dark:text-slate-400">
+              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-[#1d1f23]/80 dark:text-slate-400">
                 +{integration.accountTags.length - 3} more
               </span>
             )}
@@ -156,7 +174,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
         )}
         {integration.status === "connected" && !integration.pipelineId ? (
           <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300/90">
-            No pipeline yet — connect a destination to enable sync.
+            No pipeline yet — create a pipeline to enable sync.
           </p>
         ) : null}
       </div>
@@ -176,9 +194,9 @@ export const IntegrationCard = React.memo(function IntegrationCard({
         ) : integration.status === "syncing" ? (
           <button
             disabled
-            className="flex w-full cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 py-2 text-sm font-semibold text-slate-500 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-400"
+            className="flex w-full cursor-not-allowed items-center justify-center rounded-lg border border-slate-200 bg-slate-100 py-2 text-sm font-semibold text-slate-500 dark:border-[#2f3336] dark:bg-[#16181c]/80 dark:text-slate-400"
           >
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Syncing...
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" /> {syncPhrase}
           </button>
         ) : integration.status === "connected" ? (
           <div className="flex flex-col gap-2">
@@ -188,10 +206,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
                 if (!integration.pipelineId) {
                   toast.error(
                     <span>
-                      Add a destination (like Google Sheets) to start syncing.{" "}
-                      <a href="/destinations" className="underline font-medium">
-                        Open Destinations
-                      </a>
+                      No sync pipeline configured. Create a pipeline in the Dashboard.
                     </span>
                   );
                   return;
@@ -201,7 +216,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
               className="w-full"
               loading={isSyncing}
             >
-              {isSyncing ? "Syncing…" : "Sync Now"}
+              {isSyncing ? syncPhrase : "Sync Now"}
             </PrimaryButton>
             <button
               type="button"
@@ -231,7 +246,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
             <button
               type="button"
               disabled
-              className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 py-2 text-sm font-semibold text-slate-500 dark:border-slate-600 dark:bg-slate-800/80 dark:text-slate-400"
+              className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-100 py-2 text-sm font-semibold text-slate-500 dark:border-[#2f3336] dark:bg-[#16181c]/80 dark:text-slate-400"
             >
               Connect unavailable
             </button>

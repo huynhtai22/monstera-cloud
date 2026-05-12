@@ -22,7 +22,7 @@ export function HealthSummaryBar() {
                 {[1, 2, 3].map((i) => (
                     <div
                         key={i}
-                        className="h-8 w-40 animate-pulse rounded-xl bg-gray-100 dark:bg-slate-800"
+                        className="h-8 w-40 animate-pulse rounded-xl bg-gray-100 dark:bg-[#16181c]"
                     />
                 ))}
             </div>
@@ -56,12 +56,12 @@ export function HealthSummaryBar() {
             icon: <BarChart3 className="h-3.5 w-3.5" />,
             label: `${weeklyRows.toLocaleString()} rows this week`,
             className:
-                "text-gray-700 bg-gradient-to-br from-gray-50 to-gray-50/60 border-gray-200 dark:text-gray-300 dark:from-slate-800/60 dark:to-slate-700/40 dark:border-slate-700 shadow-sm dark:shadow-slate-950/10",
+                "text-gray-700 bg-gradient-to-br from-gray-50 to-gray-50/60 border-gray-200 dark:text-gray-300 dark:from-slate-800/60 dark:to-slate-700/40 dark:border-[#2f3336] shadow-sm dark:shadow-slate-950/10",
         },
     ];
 
     return (
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-gray-200/85 bg-gray-50/50 px-4 py-4 ring-1 ring-black/[0.02] dark:border-slate-700/70 dark:bg-slate-900/35 dark:ring-white/[0.04] sm:px-5 sm:py-5">
             {chips.map((chip, idx) => (
                 <span
                     key={chip.label}

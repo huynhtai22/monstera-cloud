@@ -137,6 +137,7 @@ model Connection {
   type                 String
   provider             String
   credentials          String
+  remoteAccountId      String           @default("") // Identity key for deduplication (e.g. adAccountId, shop domain)
   status               String           @default("connected")
   lastError            String?          // UX: Actionable Error Tracking
   lastSyncAt           DateTime?        // UX: Freshness Tracking
@@ -148,6 +149,8 @@ model Connection {
   sourcePipelines      Pipeline[]       @relation("SourceConnection")
   campaignMetrics      CampaignMetric[]
   orders              RetailOrder[]
+
+  @@unique([workspaceId, provider, remoteAccountId])
 }
 
 model Pipeline {
@@ -184,15 +187,39 @@ model SyncLog {
   pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 }
 
+model SyncCheckpoint {
+  id            String   @id @default(cuid())
+  pipelineId    String
+  jobId         String?
+  entityType    String   @default("campaign")
+  cursor        String
+  rowsProcessed Int      @default(0)
+  rowsInserted  Int      @default(0)
+  rowsFailed    Int      @default(0)
+  status        String   @default("active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([pipelineId, status])
+  @@index([jobId])
+}
+
 model TransformationRule {
-  id         String   @id @default(cuid())
-  pipelineId String
-  type       String
-  config     String
-  orderIndex Int      @default(0)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  pipeline   Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  pipelineId  String
+  type        String
+  config      String
+  orderIndex  Int      @default(0)
+
+  // In-flight normalization: custom field calculations
+  formula     String?  // e.g. "spend * 1.2"
+  targetField String?  // output field name
+  dependsOn   String[] // input field names
+  condition   String?  // filter expression
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 }
 
 model ApiKey {
@@ -235,37 +262,49 @@ model SyncJob {
 }
 
 model CampaignMetric {
-  id           String     @id @default(cuid())
-  workspaceId  String
-  connectionId String
-  platform     String
-  accountId    String
-  accountName  String?
-  campaignId   String
-  campaignName String
-  adsetId      String?
-  adsetName    String?
-  date         DateTime
-  impressions  Int        @default(0)
-  clicks       Int        @default(0)
-  spend        Float      @default(0)
-  reach        Int?
-  cpc          Float?
-  ctr          Float?
-  conversions  Float?
-  revenue      Float?
-  roas         Float?
-  currency     String     @default("USD")
-  rawData      String?
-  pulledAt     DateTime   @default(now())
-  createdAt    DateTime   @default(now())
-  workspace    Workspace  @relation(fields: [workspaceId], references: [id])
-  connection   Connection @relation(fields: [connectionId], references: [id])
+  id            String     @id @default(cuid())
+  workspaceId   String
+  connectionId  String
+  platform      String
+  accountId     String
+  accountName   String?
 
-  @@unique([connectionId, campaignId, date])
+  level         String     @default("campaign")  // account | campaign | adset | ad
+  entityId      String     @default("")           // campaign_id | adset_id | ad_id depending on level
+  campaignId    String     @default("")
+  campaignName  String     @default("")
+  adsetId       String?    @default("")
+  adsetName     String?
+  adId          String?    @default("")
+
+  date          DateTime
+  breakdownHash String     @default("none")       // SHA-1 of sorted breakdown k=v pairs; "none" = no breakdown
+
+  impressions   Int        @default(0)
+  clicks        Int        @default(0)
+  spend         Float      @default(0)
+  reach         Int        @default(0)
+  cpc           Float      @default(0)
+  ctr           Float      @default(0)
+  conversions   Float      @default(0)
+  revenue       Float      @default(0)
+  roas          Float      @default(0)
+  currency      String?
+  rawData       String?
+
+  syncJobId     String?    // which SyncJob wrote this row
+  lockScope     String?    // SyncLock.scope at write time
+  fencingToken  BigInt?    // SyncLock.fencingToken at write time — stale writes are rejected
+
+  pulledAt      DateTime   @default(now())
+  createdAt     DateTime   @default(now())
+  workspace     Workspace  @relation(fields: [workspaceId], references: [id])
+  connection    Connection @relation(fields: [connectionId], references: [id])
+
+  // DB-level idempotency key: one row per (connection, account, level, entity, date, breakdown)
+  @@unique([connectionId, accountId, level, entityId, date, breakdownHash])
   @@index([workspaceId, platform, date])
   @@index([connectionId, date])
-  // Added composite indexes to improve filtering by account and combined platform/account/date scans
   @@index([workspaceId, accountId, date])
   @@index([workspaceId, platform, accountId, date])
 }
@@ -559,4 +598,30 @@ model LookerJob {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, status])
+}
+
+/// PostgreSQL advisory-lock-backed sync ownership table.
+/// Prevents two concurrent workers from syncing the same Meta ad account.
+/// Scope key: meta_ads:{workspaceId}:{connectionId}:{adAccountId}
+model SyncLock {
+  scope          String   @id                 // deterministic scope string
+  provider       String
+  workspaceId    String
+  connectionId   String
+  accountId      String
+
+  jobId          String?
+  leaseId        String                        // random UUID per claim
+  fencingToken   BigInt                        // monotonically increments on every claim
+
+  status         String   @default("running") // running | released | failed
+  heartbeatAt    DateTime
+  leaseExpiresAt DateTime
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([provider, workspaceId, accountId])
+  @@index([leaseExpiresAt])
+  @@index([jobId])
 }

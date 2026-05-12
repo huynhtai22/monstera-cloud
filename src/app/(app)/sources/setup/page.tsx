@@ -18,10 +18,42 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useWorkspaceStore } from "@/store/workspace";
 import { getSourceUIConfig } from "@/lib/source-ui-registry";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import { trackEvent } from "@/lib/analytics-events";
 
-const fetcher = (url: string) => fetch(url).then((r) => r.json());
+type ConnectionDetailPayload = {
+    connection: {
+        id: string;
+        name: string;
+        workspaceId: string;
+        provider?: string;
+        type?: string;
+        [key: string]: unknown;
+    };
+    pipelines?: unknown[];
+    recentLogs?: unknown[];
+};
+
+const jsonFetcher = async (url: string) => {
+    const r = await fetch(url);
+    const data = await r.json();
+    if (!r.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Request failed");
+    }
+    return data;
+};
+
+async function fetchConnectionDetail(url: string): Promise<ConnectionDetailPayload> {
+    const r = await fetch(url);
+    const j = (await r.json()) as { error?: string } & Partial<ConnectionDetailPayload>;
+    if (!r.ok) {
+        throw new Error(typeof j.error === "string" ? j.error : "Failed to load connection");
+    }
+    if (!j.connection) {
+        throw new Error("Invalid connection response");
+    }
+    return j as ConnectionDetailPayload;
+}
 
 /**
  * Post-OAuth Setup Page
@@ -39,7 +71,8 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
 function SourceSetupPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { activeWorkspaceId } = useWorkspaceStore();
+    const { activeWorkspaceId, setActiveWorkspaceId } = useWorkspaceStore();
+    const { mutate } = useSWRConfig();
 
     const newConnectionId = searchParams.get("newConnectionId");
     const provider = searchParams.get("provider");
@@ -57,18 +90,35 @@ function SourceSetupPageContent() {
     const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
     const [showAccountStep, setShowAccountStep] = useState(false);
 
-    const { data: connection, isLoading: connectionLoading } = useSWR(
-        newConnectionId && activeWorkspaceId
-            ? `/api/connections/${newConnectionId}`
-            : null,
-        fetcher
+    const {
+        data: connectionPayload,
+        isLoading: connectionLoading,
+        error: connectionFetchError,
+    } = useSWR(
+        newConnectionId ? `/api/connections/${newConnectionId}` : null,
+        fetchConnectionDetail
     );
+    const connection = connectionPayload?.connection ?? null;
+
+    // OAuth can create the row in a different workspace than the one selected in the shell.
+    // Align the workspace store so /sources and this page's destination list stay consistent.
+    useEffect(() => {
+        if (!connection?.workspaceId) return;
+        if (activeWorkspaceId === connection.workspaceId) return;
+        setActiveWorkspaceId(connection.workspaceId);
+        void mutate("/api/workspaces");
+    }, [
+        connection?.workspaceId,
+        activeWorkspaceId,
+        setActiveWorkspaceId,
+        mutate,
+    ]);
 
     const { data: destinations, isLoading: destinationsLoading } = useSWR(
         activeWorkspaceId
             ? `/api/workspaces/${activeWorkspaceId}/connections?type=destination`
             : null,
-        fetcher
+        jsonFetcher
     );
 
     const sourceConfig = useMemo(() => {
@@ -134,6 +184,7 @@ function SourceSetupPageContent() {
             }
 
             setSetupComplete(true);
+            void mutate("/api/workspaces");
             trackEvent("pipeline_created_from_setup", {
                 provider,
                 destinationId: selectedDestination,
@@ -154,10 +205,12 @@ function SourceSetupPageContent() {
     const handleSkip = () => {
         // User is using add-on or Looker connector directly
         trackEvent("setup_skipped_add_on_path", { provider });
+        void mutate("/api/workspaces");
         router.push("/sources");
     };
 
     const handleDone = () => {
+        void mutate("/api/workspaces");
         router.push("/sources");
     };
 
@@ -191,13 +244,17 @@ function SourceSetupPageContent() {
         );
     }
 
-    if (!connection) {
+    if (connectionFetchError || !connection) {
         return (
             <PageShell>
                 <EmptyState
                     icon={<Database className="h-12 w-12" />}
                     title="Connection not found"
-                    description="The connection you're trying to set up doesn't exist or has been removed."
+                    description={
+                        connectionFetchError instanceof Error
+                            ? connectionFetchError.message
+                            : "The connection you're trying to set up doesn't exist or has been removed."
+                    }
                     primaryAction={
                         <Link
                             href="/sources"
@@ -246,7 +303,7 @@ function SourceSetupPageContent() {
                 {!setupComplete ? (
                     <>
                         {/* Connection card */}
-                        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
                             <div className="flex items-center gap-3">
                                 <img
                                     src={logoPathForConnectionProvider(provider)}
@@ -267,7 +324,7 @@ function SourceSetupPageContent() {
 
                         {/* P1: Account Selection for multi-account sources */}
                         {showAccountStep && availableAccounts.length > 0 && (
-                            <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                            <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
                                 <h3 className="mb-3 font-semibold text-gray-900 dark:text-white">
                                     Select accounts to sync
                                 </h3>
@@ -280,7 +337,7 @@ function SourceSetupPageContent() {
                                     {availableAccounts.map((account) => (
                                         <label
                                             key={account.id}
-                                            className="flex items-center gap-3 rounded-lg border border-gray-100 p-3 hover:bg-gray-50 dark:border-slate-700 dark:hover:bg-slate-800 cursor-pointer"
+                                            className="flex items-center gap-3 rounded-lg border border-gray-100 p-3 hover:bg-gray-50 dark:border-[#2f3336] dark:hover:bg-[#16181c] cursor-pointer"
                                         >
                                             <input
                                                 type="checkbox"
@@ -339,7 +396,7 @@ function SourceSetupPageContent() {
                                         className={`flex w-full items-center gap-3 rounded-xl border p-4 text-left transition-colors ${
                                             selectedDestination === dest.id
                                                 ? "border-cyan-500 bg-cyan-50 dark:border-cyan-500 dark:bg-cyan-900/20"
-                                                : "border-gray-200 bg-white hover:bg-gray-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800"
+                                                : "border-gray-200 bg-white hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000] dark:hover:bg-[#16181c]"
                                         }`}
                                     >
                                         {dest.provider ===
@@ -372,7 +429,7 @@ function SourceSetupPageContent() {
                                 ))}
                             </div>
                         ) : (
-                            <div className="mb-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center dark:border-slate-700 dark:bg-slate-900/50">
+                            <div className="mb-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center dark:border-[#2f3336] dark:bg-[#000000]/50">
                                 <Database className="mx-auto mb-2 h-8 w-8 text-gray-400" />
                                 <p className="text-gray-600 dark:text-gray-400">
                                     No destinations connected yet.
@@ -412,7 +469,7 @@ function SourceSetupPageContent() {
 
                             <button
                                 onClick={handleSkip}
-                                className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:text-gray-300 dark:hover:bg-slate-800"
+                                className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:text-gray-300 dark:hover:bg-[#16181c]"
                             >
                                 Skip — using add-on / Looker
                             </button>

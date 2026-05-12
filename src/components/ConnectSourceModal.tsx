@@ -50,7 +50,7 @@ function isOAuthSourceId(sourceId: string): boolean {
 
 // Expo-out easing — starts fast, decelerates naturally; same curve used by Linear & Figma
 const PANEL_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
-const PANEL_DURATION_MS = 360;
+const PANEL_DURATION_MS = 280;
 
 export function ConnectSourceModal({ isOpen, onClose, integration, connectedCatalogIds = [] }: ConnectSourceModalProps) {
     const mounted = useMounted();
@@ -367,6 +367,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     const overlay = (
         <div
             className={cn(
+<<<<<<< HEAD
                 "fixed inset-0 z-[100] flex justify-end bg-slate-950/60 backdrop-blur-sm dark:bg-slate-950/80",
                 "transition-opacity duration-200 ease-out",
                 isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
@@ -375,6 +376,13 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
             onClick={() => {
                 if (!isProcessing) handleClose();
             }}
+=======
+                "fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 p-4",
+                "transition-opacity duration-200 ease-out",
+                isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
+            )}
+            onClick={(e) => { if (e.target === e.currentTarget && !isProcessing) handleClose(); }}
+>>>>>>> origin/main
         >
             {showPicker ? (
                 <div
@@ -386,9 +394,9 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     aria-labelledby="connect-source-picker-title"
                     tabIndex={-1}
                     className={cn(
-                        "relative w-full max-w-md h-full overflow-hidden rounded-l-2xl border-l border-slate-200/90 bg-white/95 shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[-28px_0_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06] flex flex-col",
-                        "transition-transform duration-[360ms]",
-                        isVisible ? "translate-x-0" : "translate-x-full"
+                        "relative w-full max-w-md max-h-[85vh] overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xl ring-1 ring-slate-900/[0.04] outline-none dark:border-white/10 dark:bg-[#000000]/95 dark:ring-white/[0.06] flex flex-col",
+                        "transition-all duration-[280ms]",
+                        isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
                     )}
                     style={{ transitionTimingFunction: PANEL_EASE }}
                 >
@@ -432,7 +440,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                             "group flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left transition-all duration-150",
                                             disabled
                                                 ? "cursor-not-allowed opacity-50 saturate-50"
-                                                : "text-slate-900 hover:bg-slate-50/95 hover:shadow-sm focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-cyan-500/35 dark:text-white dark:hover:bg-slate-800/90 dark:focus-visible:bg-slate-800/90 dark:focus-visible:ring-cyan-400/30"
+                                                : "text-slate-900 hover:bg-slate-50/95 hover:shadow-sm focus:outline-none focus-visible:bg-slate-50 focus-visible:ring-2 focus-visible:ring-cyan-500/35 dark:text-white dark:hover:bg-[#16181c]/90 dark:focus-visible:bg-slate-800/90 dark:focus-visible:ring-cyan-400/30"
                                         )}
                                     >
                                         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-white to-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ring-1 ring-slate-200/80 dark:from-slate-800 dark:to-slate-900 dark:ring-white/10">
@@ -468,11 +476,11 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                             );
                         })}
                     </ul>
-                    <div className="border-t border-slate-100 bg-slate-50/90 p-2 dark:border-white/5 dark:bg-slate-950/60">
+                    <div className="border-t border-slate-100 bg-slate-50/90 p-2 dark:border-white/5 dark:bg-[#000000]/60">
                         <button
                             type="button"
                             onClick={handleClose}
-                            className="flex w-full items-center justify-center rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-slate-800"
+                            className="flex w-full items-center justify-center rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#16181c]/80 dark:text-slate-200 dark:hover:bg-[#16181c]"
                         >
                             Cancel
                         </button>
@@ -488,9 +496,9 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                 aria-labelledby="connect-source-modal-title"
                 tabIndex={-1}
                 className={cn(
-                    "relative w-full max-w-md h-full overflow-hidden rounded-l-2xl border-l border-slate-200/90 bg-white/95 shadow-[-22px_0_56px_-14px_rgba(15,23,42,0.28)] ring-1 ring-slate-900/[0.04] backdrop-blur-xl outline-none dark:border-white/10 dark:bg-slate-900/95 dark:shadow-[-28px_0_64px_-16px_rgba(0,0,0,0.72)] dark:ring-white/[0.06] flex flex-col",
-                    "transition-transform duration-[360ms]",
-                    isVisible ? "translate-x-0" : "translate-x-full"
+                    "relative w-full max-w-lg max-h-[85vh] overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xl ring-1 ring-slate-900/[0.04] outline-none dark:border-white/10 dark:bg-[#000000]/95 dark:ring-white/[0.06] flex flex-col",
+                    "transition-all duration-[280ms]",
+                    isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
                 )}
                 style={{ transitionTimingFunction: PANEL_EASE }}
             >
@@ -510,7 +518,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                             type="button"
                             onClick={() => setDraftPick(null)}
                             disabled={isProcessing}
-                            className="shrink-0 rounded-lg border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-semibold text-cyan-700 shadow-sm transition-colors hover:bg-cyan-50 disabled:opacity-50 dark:border-white/10 dark:bg-slate-800 dark:text-cyan-300 dark:hover:bg-cyan-950/40"
+                            className="shrink-0 rounded-lg border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-semibold text-cyan-700 shadow-sm transition-colors hover:bg-cyan-50 disabled:opacity-50 dark:border-white/10 dark:bg-[#16181c] dark:text-cyan-300 dark:hover:bg-cyan-950/40"
                         >
                             Change
                         </button>
@@ -540,7 +548,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                 id === "meta_ads"
                                     ? "bg-[#1877F2]/10 dark:bg-[#1877F2]/15 rounded-xl p-5 border border-[#1877F2]/25 space-y-3"
                                     : id === "google_ads"
-                                      ? "bg-slate-50 dark:bg-slate-900/50 rounded-xl p-5 border border-slate-200 dark:border-slate-600 space-y-3"
+                                      ? "bg-slate-50 dark:bg-[#000000]/50 rounded-xl p-5 border border-slate-200 dark:border-[#2f3336] space-y-3"
                                       : "bg-blue-50/50 rounded-xl p-5 border border-blue-100 dark:border-blue-900/40 space-y-3"
                             }
                         >
@@ -575,13 +583,13 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                     value={shopDomain}
                                     onChange={(e) => setShopDomain(e.target.value)}
                                     disabled={isProcessing}
-                                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"
+                                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-[#2f3336] bg-white dark:bg-[#000000] text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"
                                 />
                             </div>
                         )}
 
                         {(id === "meta_ads" || id === "google_ads" || id === "amazon" || id === "lazada") && (
-                            <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50/90 dark:bg-slate-900/50 p-4 space-y-3">
+                            <div className="rounded-xl border border-dashed border-slate-300 dark:border-[#2f3336] bg-slate-50/90 dark:bg-[#000000]/50 p-4 space-y-3">
                                 <div>
                                     <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">
                                         {id === "meta_ads"
@@ -601,13 +609,13 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                 </div>
                                 {productionOauthUrl ? (
                                     <div className="flex gap-2 items-start">
-                                        <code className="text-[11px] leading-relaxed break-all flex-1 text-gray-900 dark:text-slate-100 bg-white dark:bg-slate-800 px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-600">
+                                        <code className="text-[11px] leading-relaxed break-all flex-1 text-gray-900 dark:text-slate-100 bg-white dark:bg-[#16181c] px-2.5 py-2 rounded-lg border border-slate-200 dark:border-[#2f3336]">
                                             {productionOauthUrl}
                                         </code>
                                         <button
                                             type="button"
                                             onClick={() => copyOAuthCallback(productionOauthUrl, "production")}
-                                            className="shrink-0 p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                                            className="shrink-0 p-2 rounded-lg border border-slate-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] text-gray-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#1d1f23] transition-colors"
                                             title="Copy production URL"
                                         >
                                             {copiedWhich === "production" ? (
@@ -625,18 +633,18 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                     <p className="text-[11px] text-gray-400 dark:text-gray-500 animate-pulse">Loading…</p>
                                 )}
                                 {sessionDiffersFromProduction && oauthCallbackUrl && (
-                                    <div className="pt-2 border-t border-slate-200 dark:border-slate-600 space-y-1.5">
+                                    <div className="pt-2 border-t border-slate-200 dark:border-[#2f3336] space-y-1.5">
                                         <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
                                             This session (local / preview)
                                         </p>
                                         <div className="flex gap-2 items-start">
-                                            <code className="text-[11px] leading-relaxed break-all flex-1 text-gray-600 dark:text-slate-400 bg-white/70 dark:bg-slate-800/80 px-2 py-1.5 rounded border border-slate-200 dark:border-slate-600">
+                                            <code className="text-[11px] leading-relaxed break-all flex-1 text-gray-600 dark:text-slate-400 bg-white/70 dark:bg-[#16181c]/80 px-2 py-1.5 rounded border border-slate-200 dark:border-[#2f3336]">
                                                 {oauthCallbackUrl}
                                             </code>
                                             <button
                                                 type="button"
                                                 onClick={() => copyOAuthCallback(oauthCallbackUrl, "session")}
-                                                className="shrink-0 p-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-500 hover:bg-slate-50 dark:hover:bg-slate-700 text-[10px] px-2"
+                                                className="shrink-0 p-2 rounded-lg border border-slate-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] text-gray-500 hover:bg-slate-50 dark:hover:bg-[#1d1f23] text-[10px] px-2"
                                             >
                                                 {copiedWhich === "session" ? "Copied" : "Copy"}
                                             </button>
@@ -648,7 +656,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     </div>
                 </div>
 
-                <div className="px-6 py-4 border-t border-gray-100 dark:border-slate-700 flex justify-end gap-3">
+                <div className="px-6 py-4 border-t border-gray-100 dark:border-[#2f3336] flex justify-end gap-3">
                     <button
                         onClick={handleClose}
                         disabled={isProcessing}
@@ -683,7 +691,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                             type="button"
                             onClick={handleAuthenticate}
                             disabled={isProcessing || oauthPrimaryDisabled}
-                            className="px-5 py-2.5 text-sm font-semibold text-gray-800 dark:text-gray-100 bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-700 transition-all disabled:opacity-70 flex items-center justify-center gap-2 shadow-sm min-w-[200px]"
+                            className="px-5 py-2.5 text-sm font-semibold text-gray-800 dark:text-gray-100 bg-white dark:bg-[#16181c] border border-gray-300 dark:border-[#2f3336] rounded-xl hover:bg-gray-50 dark:hover:bg-[#1d1f23] transition-all disabled:opacity-70 flex items-center justify-center gap-2 shadow-sm min-w-[200px]"
                         >
                             {isProcessing ? (
                                 <>

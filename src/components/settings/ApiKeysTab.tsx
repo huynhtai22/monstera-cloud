@@ -52,7 +52,7 @@ export function ApiKeysTab({
                 </p>
             </div>
 
-            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#16181c]/40 backdrop-blur-sm p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-6">
                     <h4 className="text-sm font-medium text-gray-900 dark:text-white">Active API Keys</h4>
                     <button
@@ -75,7 +75,7 @@ export function ApiKeysTab({
                             </div>
                         </div>
                         <div className="flex gap-2">
-                            <code className="flex-1 px-3 py-2 bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/50 rounded-xl text-xs font-mono text-emerald-700 dark:text-emerald-400 break-all select-all">
+                            <code className="flex-1 px-3 py-2 bg-white dark:bg-[#000000] border border-emerald-200 dark:border-emerald-900/50 rounded-xl text-xs font-mono text-emerald-700 dark:text-emerald-400 break-all select-all">
                                 {newlyGeneratedKey}
                             </code>
                             <button
@@ -90,20 +90,20 @@ export function ApiKeysTab({
 
                 <div className="space-y-3">
                     {apiKeys.length === 0 ? (
-                        <div className="text-center py-8 bg-gray-50/50 dark:bg-slate-800/20 rounded-2xl border border-dashed border-gray-200 dark:border-slate-800">
+                        <div className="text-center py-8 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[#000000]/30">
                             <KeyRound className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                             <p className="text-sm text-gray-500">No API keys found.</p>
                         </div>
                     ) : apiKeys.map(key => (
-                        <div key={key.id} className="p-4 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-800/10 flex items-center justify-between">
+                        <div key={key.id} className="p-4 rounded-xl border border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-[#000000]/40 flex items-center justify-between" style={{ transition: 'all 250ms cubic-bezier(0.25,1,0.5,1)' }}>
                             <div className="flex items-center">
-                                <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-slate-800 flex items-center justify-center mr-3">
+                                <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-[#1d1f23]/60 flex items-center justify-center mr-3">
                                     <Database className="w-4 h-4 text-gray-500" />
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <p className="text-sm font-medium text-gray-900 dark:text-white">{key.name || 'Default Key'}</p>
-                                        <code className="text-[10px] px-1.5 py-0.5 bg-gray-200 dark:bg-slate-800 text-gray-600 dark:text-gray-400 rounded">
+                                        <code className="text-[10px] px-1.5 py-0.5 bg-gray-200 dark:bg-[#16181c] text-gray-600 dark:text-gray-400 rounded">
                                             {key.keyPrefix}...
                                         </code>
                                     </div>
@@ -116,7 +116,7 @@ export function ApiKeysTab({
                                     <div className="flex flex-col items-end gap-2 animate-in fade-in slide-in-from-right-2">
                                         {revealedKey ? (
                                             <div className="flex gap-2">
-                                                <code className="px-2 py-1 bg-white dark:bg-slate-900 border border-gray-200 rounded text-[10px] font-mono">{revealedKey}</code>
+                                                <code className="px-2 py-1 bg-white dark:bg-[#000000] border border-gray-200 rounded text-[10px] font-mono">{revealedKey}</code>
                                                 <button onClick={() => setRevealKeyId(null)} className="text-[10px] text-gray-500 font-bold">Hide</button>
                                             </div>
                                         ) : (
@@ -125,7 +125,7 @@ export function ApiKeysTab({
                                                     <input
                                                         type="password"
                                                         placeholder="Confirm password"
-                                                        className="px-2 py-1 text-[10px] border rounded outline-none w-32"
+                                                        className="px-2 py-1 text-[10px] bg-slate-50 dark:bg-[#000000]/60 border border-slate-200 dark:border-white/10 rounded outline-none w-32 text-gray-900 dark:text-white placeholder:text-slate-400 focus:ring-1 focus:ring-cyan-500/40"
                                                         value={revealPassword}
                                                         onChange={e => setRevealPassword(e.target.value)}
                                                     />
@@ -164,7 +164,7 @@ export function ApiKeysTab({
             </div>
 
             {/* API Documentation Preview */}
-            <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800 shadow-xl relative overflow-hidden group">
+            <div className="rounded-2xl p-6 border border-slate-200 dark:border-white/10 bg-slate-900 dark:bg-[#000000]/60 shadow-xl relative overflow-hidden group">
                 <div className="absolute top-0 right-0 p-32 bg-cyan-500/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none" />
                 <h4 className="text-sm font-medium text-white mb-4 flex items-center">
                     <Sparkles className="w-4 h-4 mr-2 text-cyan-400" />

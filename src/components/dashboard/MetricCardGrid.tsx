@@ -57,17 +57,17 @@ export function MetricCardGrid({ snapshots }: { snapshots: Snapshot[] }) {
     ];
 
     return (
-        <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {cards.map((c, idx) => (
                 <div
                     key={c.label}
                     className={cn(
                         tokens.card,
-                        "group relative overflow-hidden p-5",
-                        "border-l-4 border-primary/40",
-                        "shadow-md hover:shadow-lg hover:border-primary/80",
-                        "bg-gradient-to-br from-white/95 to-gray-50/80 dark:from-slate-900/80 dark:to-slate-800/60",
-                        "transition-all duration-300 ease-out hover:-translate-y-1",
+                        "group relative overflow-hidden rounded-2xl p-5",
+                        "border border-gray-200/80 dark:border-slate-600/50",
+                        "shadow-sm hover:shadow-md hover:border-cyan-300/60 dark:hover:border-cyan-500/30",
+                        "bg-gradient-to-br from-white to-gray-50/90 dark:from-slate-900/85 dark:to-slate-800/55",
+                        "bento-hover",
                         "metric-card-enter"
                     )}
                     style={{ animationDelay: `${idx * 80}ms` }}
@@ -79,8 +79,8 @@ export function MetricCardGrid({ snapshots }: { snapshots: Snapshot[] }) {
                         <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                             {c.label}
                         </div>
-                        <div className="mt-3 flex items-end justify-between gap-2">
-                            <div className="text-2xl font-extrabold tracking-tight text-gray-900 dark:text-white">
+                        <div className="mt-2 flex items-end justify-between gap-2">
+                            <div className="text-xl font-bold tabular-nums tracking-tight text-gray-900 dark:text-white">
                                 {c.value}
                             </div>
                             {c.delta ? (

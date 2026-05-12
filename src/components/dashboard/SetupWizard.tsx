@@ -9,7 +9,6 @@ import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
 
 type SetupWizardProps = {
     hasSource: boolean;
-    hasDestination: boolean;
     hasSuccessfulSync: boolean;
     onDismiss?: () => void;
 };
@@ -23,14 +22,7 @@ const steps = [
         href: "/sources",
         eventKey: "source_connect_clicked",
     },
-    {
-        key: "destination" as const,
-        label: "Connect a destination",
-        description: "Google Sheets™ or Looker Studio™ — where your reports will land. Skip this if you're using our Google Sheets Add-on or Looker Studio Connector directly.",
-        cta: "Go to Destinations",
-        href: "/destinations",
-        eventKey: "destination_connect_clicked",
-    },
+
     {
         key: "sync" as const,
         label: "Run your first sync",
@@ -42,13 +34,13 @@ const steps = [
     },
 ];
 
-export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDismiss }: SetupWizardProps) {
+export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWizardProps) {
     const { data: session } = useSession();
     const firstName = session?.user?.name?.split(/\s+/)[0] ?? "there";
 
-    const completed = [hasSource, hasDestination, hasSuccessfulSync];
+    const completed = [hasSource, hasSuccessfulSync];
     const doneCount = completed.filter(Boolean).length;
-    const allDone = doneCount === 3;
+    const allDone = doneCount === 2;
     const activeIndex = completed.findIndex((done) => !done);
 
     if (allDone) {
@@ -106,7 +98,7 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
     }
 
     return (
-        <div className="relative z-10 mb-10 rounded-2xl border border-gray-200/80 bg-white/70 p-6 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/50">
+        <div className="relative z-10 mb-10 rounded-2xl border border-gray-200/80 bg-white/70 p-6 shadow-sm dark:border-[#2f3336]/60 dark:bg-[#000000]/50">
             {/* Header + progress */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
                 <div>
@@ -114,7 +106,7 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
                         Hi {firstName}, let&apos;s get your data flowing.
                     </h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {doneCount} of 3 core steps complete — most users finish in under 5 minutes.
+                        {doneCount} of 2 core steps complete — most users finish in under 5 minutes.
                     </p>
                 </div>
                 {onDismiss && (
@@ -129,10 +121,10 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
             </div>
 
             {/* Progress bar */}
-            <div className="mb-6 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-slate-800">
+            <div className="mb-6 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-[#16181c]">
                 <div
                     className="h-full rounded-full bg-cyan-500 transition-all duration-500"
-                    style={{ width: `${(doneCount / 3) * 100}%` }}
+                    style={{ width: `${(doneCount / 2) * 100}%` }}
                 />
             </div>
 
@@ -149,10 +141,10 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
                             className={cn(
                                 "flex items-start gap-4 rounded-xl border px-5 py-4 transition-all",
                                 done
-                                    ? "border-gray-100 bg-gray-50/60 dark:border-slate-800 dark:bg-slate-800/30 opacity-70"
+                                    ? "border-gray-100 bg-gray-50/60 dark:border-[#2f3336] dark:bg-[#16181c]/30 opacity-70"
                                     : isActive
                                       ? "border-cyan-200 bg-cyan-50/70 shadow-sm dark:border-cyan-700/60 dark:bg-cyan-950/30"
-                                      : "border-gray-100 bg-white/40 dark:border-slate-800/60 dark:bg-slate-900/20 opacity-50"
+                                      : "border-gray-100 bg-white/40 dark:border-[#2f3336]/60 dark:bg-[#000000]/20 opacity-50"
                             )}
                         >
                             {/* Icon */}
@@ -198,19 +190,7 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
                                     >
                                         {step.cta} <ArrowRight className="h-3 w-3" />
                                     </Link>
-                                    {/* Skip path for connector-first users on the destination step */}
-                                    {step.key === "destination" && onDismiss && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                trackEvent("wizard_addon_skip", { step: "destination" });
-                                                onDismiss();
-                                            }}
-                                            className="text-[11px] font-medium text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 whitespace-nowrap"
-                                        >
-                                            Using the Add-on? Skip this →
-                                        </button>
-                                    )}
+
                                 </div>
                             )}
 
@@ -244,11 +224,11 @@ export function SetupWizard({ hasSource, hasDestination, hasSuccessfulSync, onDi
                         Looker Studio guide
                     </Link>
                     <Link
-                        href="/destinations"
+                        href="/exports"
                         className="text-cyan-800 underline hover:no-underline dark:text-cyan-300"
-                        onClick={() => trackEvent("wizard_help_link_click", { href: "/destinations", step: "sheets_looker_hint" })}
+                        onClick={() => trackEvent("wizard_help_link_click", { href: "/exports", step: "sheets_looker_hint" })}
                     >
-                        Destinations
+                        Exports & API
                     </Link>
                 </div>
             </div>

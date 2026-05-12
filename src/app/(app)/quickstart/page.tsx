@@ -63,7 +63,7 @@ export default function QuickStartPage() {
     return (
         <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-white to-white dark:from-slate-950 dark:via-slate-900 dark:to-slate-900">
             {/* Header */}
-            <header className="border-b border-gray-200 bg-white/80 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/80">
+            <header className="border-b border-gray-200 bg-white/80 backdrop-blur-sm dark:border-[#2f3336] dark:bg-[#000000]/80">
                 <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
                     <h1 className="text-xl font-bold text-gray-900 dark:text-white">
                         Quick Start
@@ -95,7 +95,7 @@ export default function QuickStartPage() {
                                                 ? "border-cyan-600 bg-cyan-600 text-white"
                                                 : isPast
                                                     ? "border-cyan-600 bg-cyan-50 text-cyan-600 dark:bg-cyan-950/30"
-                                                    : "border-gray-300 bg-white text-gray-400 dark:border-slate-700 dark:bg-slate-800"
+                                                    : "border-gray-300 bg-white text-gray-400 dark:border-[#2f3336] dark:bg-[#16181c]"
                                         )}
                                     >
                                         {isPast ? (
@@ -117,7 +117,7 @@ export default function QuickStartPage() {
                                         {s.label}
                                     </span>
                                     {i < steps.length - 1 && (
-                                        <div className="mx-4 h-px w-12 bg-gray-200 dark:bg-slate-700" />
+                                        <div className="mx-4 h-px w-12 bg-gray-200 dark:bg-[#1d1f23]" />
                                     )}
                                 </div>
                             );
@@ -152,7 +152,7 @@ export default function QuickStartPage() {
                                         onClick={() => handleSourceSelect(source.id)}
                                         className={cn(
                                             "flex flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all hover:border-cyan-300 hover:shadow-md",
-                                            "border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-800",
+                                            "border-gray-200 bg-white dark:border-[#2f3336] dark:bg-[#16181c]",
                                             "hover:bg-cyan-50/50 dark:hover:bg-cyan-950/20"
                                         )}
                                     >
@@ -206,7 +206,7 @@ export default function QuickStartPage() {
                                         onClick={() => handleDestinationSelect(dest.id)}
                                         className={cn(
                                             "flex w-full items-center gap-4 rounded-xl border-2 p-4 text-left transition-all",
-                                            "border-gray-200 bg-white hover:border-cyan-300 dark:border-slate-700 dark:bg-slate-800",
+                                            "border-gray-200 bg-white hover:border-cyan-300 dark:border-[#2f3336] dark:bg-[#16181c]",
                                             dest.recommended && "border-cyan-200 bg-cyan-50/30 dark:border-cyan-800/50 dark:bg-cyan-950/20"
                                         )}
                                     >
@@ -255,7 +255,7 @@ export default function QuickStartPage() {
                                 </p>
                             </div>
 
-                            <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-800">
+                            <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-[#2f3336] dark:bg-[#16181c]">
                                 <div className="flex items-center justify-center gap-4">
                                     {selectedSource && (
                                         <div className="flex flex-col items-center gap-2">
@@ -271,9 +271,9 @@ export default function QuickStartPage() {
                                     )}
                                     
                                     <div className="flex items-center gap-1">
-                                        <div className="h-px w-8 bg-gray-300 dark:bg-slate-600" />
+                                        <div className="h-px w-8 bg-gray-300 dark:bg-[#2f3336]" />
                                         <ArrowRight className="h-4 w-4 text-gray-400" />
-                                        <div className="h-px w-8 bg-gray-300 dark:bg-slate-600" />
+                                        <div className="h-px w-8 bg-gray-300 dark:bg-[#2f3336]" />
                                     </div>
                                     
                                     {selectedDestination && (
@@ -290,7 +290,7 @@ export default function QuickStartPage() {
                                     )}
                                 </div>
 
-                                <div className="mt-6 space-y-3 rounded-lg bg-gray-50 p-4 dark:bg-slate-700/50">
+                                <div className="mt-6 space-y-3 rounded-lg bg-gray-50 p-4 dark:bg-[#1d1f23]/50">
                                     <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                         <CheckCircle2 className="h-4 w-4 text-cyan-600" />
                                         <span>Syncs run automatically every 6 hours</span>

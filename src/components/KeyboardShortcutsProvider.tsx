@@ -84,34 +84,34 @@ export function KeyboardShortcutsProvider({ children }: { children: React.ReactN
             {helpOpen ? (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="kbd-shortcuts-title">
                     <button type="button" className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-label="Close" onClick={() => setHelpOpen(false)} />
-                    <div className="relative z-10 w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                    <div className="relative z-10 w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-[#2f3336] dark:bg-[#000000]">
                         <div className="mb-4 flex items-start justify-between gap-2">
                             <h2 id="kbd-shortcuts-title" className="text-lg font-bold text-gray-900 dark:text-white">
                                 Keyboard shortcuts
                             </h2>
-                            <button type="button" onClick={() => setHelpOpen(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800" aria-label="Close">
+                            <button type="button" onClick={() => setHelpOpen(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-[#16181c]" aria-label="Close">
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
                         <ul className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                             <li className="flex justify-between gap-4">
                                 <span>Go to Sources</span>
-                                <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-slate-600 dark:bg-slate-800">g</kbd>{" "}
-                                then <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-slate-600 dark:bg-slate-800">s</kbd>
+                                <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-[#2f3336] dark:bg-[#16181c]">g</kbd>{" "}
+                                then <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-[#2f3336] dark:bg-[#16181c]">s</kbd>
                             </li>
                             <li className="flex justify-between gap-4">
                                 <span>Go to Dashboard</span>
-                                <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-slate-600 dark:bg-slate-800">g</kbd>{" "}
-                                then <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-slate-600 dark:bg-slate-800">d</kbd>
+                                <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-[#2f3336] dark:bg-[#16181c]">g</kbd>{" "}
+                                then <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-[#2f3336] dark:bg-[#16181c]">d</kbd>
                             </li>
                             <li className="flex justify-between gap-4">
                                 <span>Go to Reports</span>
-                                <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-slate-600 dark:bg-slate-800">g</kbd>{" "}
-                                then <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-slate-600 dark:bg-slate-800">r</kbd>
+                                <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-[#2f3336] dark:bg-[#16181c]">g</kbd>{" "}
+                                then <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-[#2f3336] dark:bg-[#16181c]">r</kbd>
                             </li>
                             <li className="flex justify-between gap-4">
                                 <span>Open this help</span>
-                                <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-slate-600 dark:bg-slate-800">?</kbd>
+                                <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-xs dark:border-[#2f3336] dark:bg-[#16181c]">?</kbd>
                             </li>
                         </ul>
                     </div>

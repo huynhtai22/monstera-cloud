@@ -66,26 +66,53 @@
     --anim-medium: 320ms;
     --anim-ease: cubic-bezier(.2,.9,.2,1);
     --anim-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    /* Premium spring easing — momentum-based, non-robotic */
+    --spring: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 .dark {
-    /* Slightly lifted from slate-950 so surfaces/cards can separate clearly */
-    --background: #0f172a;
-    /* slate-900 */
-    --foreground: #f1f5f9;
-    /* slate-100 — slightly softer than pure white on black */
+    --background: #000000; /* Pure black (X reference) */
+    --foreground: #e7e9ea; /* X foreground text */
 
     /* UI system tokens (RGB triplets) */
-    --ui-bg-rgb: 15 23 42;
-    --ui-fg-rgb: 241 245 249;
-    --ui-border-rgb: 51 65 85; /* slate-700 */
-    --ui-muted-bg-rgb: 30 41 59; /* slate-800 */
-    --ui-muted-fg-rgb: 148 163 184; /* slate-400 */
+    --ui-bg-rgb: 0 0 0;
+    --ui-fg-rgb: 231 233 234;
+    --ui-border-rgb: 47 51 54; /* X border color #2f3336 */
+    --ui-muted-bg-rgb: 22 24 28; /* X secondary background #16181c */
+    --ui-muted-fg-rgb: 113 118 123; /* X muted text #71767b */
 }
 
 body {
     color: var(--foreground);
     background: var(--background);
+}
+
+/* ── Form controls (checkboxes + date inputs) ───────────────────────────────
+   Goal: “Cursor-like” modern controls without rewriting every page.
+   Applies to native inputs while still allowing per-component overrides. */
+@layer base {
+  input[type="checkbox"] {
+    @apply h-4 w-4 rounded-md border border-gray-300 bg-white text-cyan-600 shadow-sm;
+    @apply focus:outline-none focus:ring-2 focus:ring-cyan-500/25 focus:ring-offset-2 focus:ring-offset-white;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .dark input[type="checkbox"] {
+    @apply border-[#2f3336] bg-[#0b0d10] text-cyan-400;
+    @apply focus:ring-cyan-400/25 focus:ring-offset-2 focus:ring-offset-black;
+  }
+
+  /* Date inputs vary per browser; normalize to look like our Input component. */
+  input[type="date"] {
+    @apply h-10 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm;
+    @apply focus:outline-none focus:ring-2 focus:ring-cyan-500/25 focus:border-cyan-500;
+    @apply disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .dark input[type="date"] {
+    @apply border-[#2f3336] bg-[#16181c] text-white;
+    @apply focus:ring-cyan-500/20 focus:border-cyan-500;
+  }
 }
 
 /* Used during theme toggle to avoid transition flash (see AppLayout) */
@@ -171,12 +198,280 @@ html.disable-transitions *::after {
     animation: gentleDrift 4s ease-in-out infinite;
 }
 
+/* Error state pulse — soft red shadow on bento cards with connection errors */
+@keyframes errorPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    }
+    50% {
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.12);
+    }
+}
+
+/* Animated dashed bridge connector (Stage 1 onboarding) */
+@keyframes dashMove {
+    to {
+        stroke-dashoffset: -20;
+    }
+}
+
+/* ── Staggered list-item entrance ────────────────────────────────────────── */
+@keyframes fadeSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.stagger-item {
+    animation: fadeSlideUp 380ms var(--spring, cubic-bezier(0.25, 1, 0.5, 1)) both;
+}
+
+/* Apply via index: nth-child selectors for up to 12 items */
+.stagger-list > *:nth-child(1)  { animation-delay:  0ms; }
+.stagger-list > *:nth-child(2)  { animation-delay: 50ms; }
+.stagger-list > *:nth-child(3)  { animation-delay: 100ms; }
+.stagger-list > *:nth-child(4)  { animation-delay: 150ms; }
+.stagger-list > *:nth-child(5)  { animation-delay: 200ms; }
+.stagger-list > *:nth-child(6)  { animation-delay: 250ms; }
+.stagger-list > *:nth-child(7)  { animation-delay: 300ms; }
+.stagger-list > *:nth-child(8)  { animation-delay: 350ms; }
+.stagger-list > *:nth-child(9)  { animation-delay: 400ms; }
+.stagger-list > *:nth-child(10) { animation-delay: 450ms; }
+.stagger-list > *:nth-child(11) { animation-delay: 500ms; }
+.stagger-list > *:nth-child(12) { animation-delay: 550ms; }
+
+/* ── Status dot pulse variants ───────────────────────────────────────────── */
+
+/* Healthy / connected — slow, calming green pulse */
+@keyframes pulseHealthy {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
+    50%       { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0); }
+}
+.pulse-healthy {
+    animation: pulseHealthy 2.8s ease-in-out infinite;
+}
+
+/* Stale / warning — faster amber pulse */
+@keyframes pulseStale {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5); }
+    50%       { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0); }
+}
+.pulse-stale {
+    animation: pulseStale 1.8s ease-in-out infinite;
+}
+
+/* Error — red heartbeat shadow */
+@keyframes pulseError {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+    50%       { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+}
+.pulse-error {
+    animation: pulseError 1.4s ease-in-out infinite;
+}
+
+/* ── Bento spring hover — reusable utility ───────────────────────────────── */
+.bento-hover {
+    transition: transform 300ms var(--spring, cubic-bezier(0.25,1,0.5,1)),
+                box-shadow 300ms var(--spring, cubic-bezier(0.25,1,0.5,1));
+}
+.bento-hover:hover {
+    transform: scale(1.02) translateY(-1px);
+    box-shadow: 0 12px 32px rgba(2,6,23,0.10);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .pillar-fade,
     .metric-card-enter,
     .gauge-animate,
     .accent-pulse,
-    .drift-float {
+    .drift-float,
+    .stagger-item,
+    .pulse-healthy,
+    .pulse-stale,
+    .pulse-error,
+    .bento-hover,
+    .sync-shimmer::after {
         animation: none;
+        transition: none;
+    }
+}
+
+/* ── Liquid Glass utilities ──────────────────────────────────────────────── */
+
+/*
+  .glass-panel — refractive card surface
+  Technique: two-layer background-clip to paint a gradient border
+  without a real border element. The "surface" layer goes on top
+  (padding-box), the gradient layer sits behind it (border-box).
+  An ::after pseudo provides the inner specular rim highlight.
+*/
+.glass-panel {
+    position: relative;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.dark .glass-panel {
+    border-color: rgba(255,255,255,0.08);
+    background: rgba(0, 0, 0, 0.4);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.dark .glass-panel:hover {
+    border-color: rgba(255,255,255,0.12);
+}
+
+/*
+  .glass-card — lighter variant for connector/destination cards
+  Slightly less blur so inner content stays crisp.
+*/
+.glass-card {
+    position: relative;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(0,0,0,0.08);
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    will-change: transform, box-shadow;
+}
+
+.glass-card:hover {
+    border-color: rgba(0,0,0,0.12);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transform: translateY(-2px);
+}
+
+.dark .glass-card {
+    border-color: rgba(255,255,255,0.08);
+    background: rgba(22, 24, 28, 0.5);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+.dark .glass-card:hover {
+    border-color: rgba(255,255,255,0.14);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    transform: translateY(-2px);
+}
+
+/* Hero section only — kept for marketing pages */
+.glass-hero {
+    backdrop-filter: blur(28px) saturate(2);
+    -webkit-backdrop-filter: blur(28px) saturate(2);
+}
+
+/* Social proof ticker — continuous horizontal scroll */
+@keyframes ticker {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+@keyframes ticker-reverse {
+    0%   { transform: translateX(-50%); }
+    100% { transform: translateX(0); }
+}
+
+/* Tab progress bar — linear fill for auto-advancing tabs */
+@keyframes progress {
+    from { width: 0; }
+    to   { width: 100%; }
+}
+
+/* Hero word rotator — vertical slide-fade cycle */
+@keyframes wordSlideUp {
+    0%       { transform: translateY(0);    opacity: 1; }
+    18%      { transform: translateY(0);    opacity: 1; }
+    22%      { transform: translateY(-100%); opacity: 0; }
+    23%      { transform: translateY(100%);  opacity: 0; }
+    27%      { transform: translateY(0);    opacity: 1; }
+    100%     { transform: translateY(0);    opacity: 1; }
+}
+
+/* Shimmer sweep — used on sync-success indicators */
+@keyframes shimmerSweep {
+    0%   { transform: translateX(-100%) skewX(-15deg); }
+    100% { transform: translateX(250%) skewX(-15deg); }
+}
+
+.sync-shimmer {
+    position: relative;
+    overflow: hidden;
+}
+
+.sync-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 40%;
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255,255,255,0.45) 50%,
+        transparent 100%
+    );
+    animation: shimmerSweep 1.2s var(--spring, cubic-bezier(0.25,1,0.5,1)) forwards;
+}
+
+/* ── Accessibility: forced-colors / reduced-transparency ────────────────── */
+
+/* High-contrast mode: replace blurs with opaque solid fills */
+@media (forced-colors: active) {
+    .glass-panel {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        background: Canvas;
+        border: 1px solid ButtonText;
+    }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    /* Custom glass utilities */
+    .glass-panel,
+    .glass-card,
+    .glass-hero {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        background: var(--background) !important;
+        background-image: none !important;
+        border: 1px solid rgba(var(--ui-border-rgb), 1) !important;
+        box-shadow: none !important;
+    }
+
+    /* Tailwind backdrop-blur utilities used on connector/destination cards */
+    .backdrop-blur-sm,
+    .backdrop-blur,
+    .backdrop-blur-md,
+    .backdrop-blur-lg,
+    .backdrop-blur-xl {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+
+    /* Compensate: raise surface opacity so cards don't disappear into background */
+    .dark .bg-slate-950\/20 {
+        background-color: rgb(2 6 23 / 0.75) !important;
+    }
+    .dark .bg-slate-800\/90 {
+        background-color: rgb(30 41 59 / 0.98) !important;
+    }
+    .bg-white\/5 {
+        background-color: rgb(255 255 255 / 0.15) !important;
+    }
+    .bg-white\/10 {
+        background-color: rgb(255 255 255 / 0.2) !important;
+    }
+
+    /* Strengthen borders so card edges remain visible without blur-glow */
+    .border-white\/10 {
+        border-color: rgb(255 255 255 / 0.25) !important;
+    }
+    .dark .border-white\/10 {
+        border-color: rgb(255 255 255 / 0.25) !important;
     }
 }

@@ -38,18 +38,18 @@ export function StatusHero({
 
     const summary =
         totalPipelines === 0
-            ? "No pipelines yet. Connect a source and destination to sync."
+            ? "No pipelines yet. Connect a source to sync."
             : allHealthy
               ? `All ${totalPipelines} pipeline${totalPipelines === 1 ? "" : "s"} healthy.`
               : `${failedCount} of ${totalPipelines} pipeline${totalPipelines === 1 ? "" : "s"} need attention.`;
 
     return (
-        <div className="relative z-10 mb-8 flex flex-col gap-6 border-b border-gray-200/80 pb-8 dark:border-slate-700/80">
+        <div className="relative z-10 mb-8 flex flex-col gap-6 border-b border-gray-200/80 pb-8 dark:border-[#2f3336]/80">
             {/* Top row: Left content + Right gauge */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{workspaceName}</p>
-                    <h1 className="mt-1 text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white">
+                    <h1 className="mt-1 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
                         Today, {todayLabel}
                     </h1>
 
@@ -60,12 +60,12 @@ export function StatusHero({
                     {/* Health pills row */}
                     <div className="mt-4 flex flex-wrap items-center gap-2">
                         {totalPipelines === 0 ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-500 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-400">
                                 <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
                                 No pipelines yet
                             </span>
                         ) : allHealthy ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+                            <span className="sync-shimmer inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300">
                                 <CheckCircle2 className="h-3 w-3" />
                                 {summary}
                             </span>

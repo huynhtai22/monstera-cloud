@@ -24,6 +24,7 @@ import { integrationCatalogId } from "@/lib/sources-integration-catalog";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { cn } from "@/lib/utils";
 import { AccountScopePanel } from "@/components/sources/AccountScopePanel";
+import { AccountSelector } from "@/components/sources/AccountSelector";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin" });
@@ -188,7 +189,7 @@ export default function SourceDetailPage() {
                 </Link>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex gap-4">
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#2f3336] dark:bg-[#000000]">
                             <img src={logo} alt="" width={36} height={36} className="object-contain" />
                         </div>
                         <div>
@@ -218,12 +219,21 @@ export default function SourceDetailPage() {
             </div>
 
             {isSource && ["meta_ads", "google_ads", "tiktok_business"].includes(connection.provider) ? (
-                <AccountScopePanel provider={connection.provider} credentialsJson={connection.credentials} />
+                <>
+                    <AccountScopePanel provider={connection.provider} credentialsJson={connection.credentials} />
+                    <div className="mb-10">
+                        <h2 className="mb-3 text-lg font-bold text-gray-900 dark:text-white">Account Selection</h2>
+                        <p className="mb-3 text-sm text-gray-600 dark:text-gray-400">
+                            Choose which accounts to include in syncs. Only selected accounts will have data pulled into the workspace.
+                        </p>
+                        <AccountSelector connectionId={connection.id} provider={connection.provider} />
+                    </div>
+                </>
             ) : null}
 
             {/* Health */}
             <div className="mb-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="rounded-2xl border border-gray-200/80 bg-white/70 p-5 dark:border-slate-700/60 dark:bg-slate-900/50">
+                <div className="rounded-2xl border border-gray-200/80 bg-white/70 p-5 dark:border-[#2f3336]/60 dark:bg-[#000000]/50">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                         <Activity className="h-4 w-4" />
                         Status
@@ -245,7 +255,7 @@ export default function SourceDetailPage() {
                         <p className="mt-2 text-xs text-red-600 dark:text-red-400">{connection.lastError}</p>
                     ) : null}
                 </div>
-                <div className="rounded-2xl border border-gray-200/80 bg-white/70 p-5 dark:border-slate-700/60 dark:bg-slate-900/50">
+                <div className="rounded-2xl border border-gray-200/80 bg-white/70 p-5 dark:border-[#2f3336]/60 dark:bg-[#000000]/50">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                         <Clock className="h-4 w-4" />
                         Last sync (connection)
@@ -254,7 +264,7 @@ export default function SourceDetailPage() {
                         {connection.lastSyncAt ? new Date(connection.lastSyncAt).toLocaleString() : "—"}
                     </p>
                 </div>
-                <div className="rounded-2xl border border-gray-200/80 bg-white/70 p-5 dark:border-slate-700/60 dark:bg-slate-900/50">
+                <div className="rounded-2xl border border-gray-200/80 bg-white/70 p-5 dark:border-[#2f3336]/60 dark:bg-[#000000]/50">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                         <Calendar className="h-4 w-4" />
                         Pipelines
@@ -276,10 +286,10 @@ export default function SourceDetailPage() {
                 {pipelines.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">No pipelines use this connection yet.</p>
                 ) : (
-                    <div className="overflow-x-auto rounded-2xl border border-gray-200/80 dark:border-slate-700/60">
+                    <div className="overflow-x-auto rounded-2xl border border-gray-200/80 dark:border-[#2f3336]/60">
                         <table className="w-full text-left text-sm">
                             <thead>
-                                <tr className="border-b border-gray-100 text-xs font-bold uppercase text-gray-400 dark:border-slate-800 dark:text-gray-500">
+                                <tr className="border-b border-gray-100 text-xs font-bold uppercase text-gray-400 dark:border-[#2f3336] dark:text-gray-500">
                                     <th className="py-3 pl-4 pr-4">Name</th>
                                     <th className="py-3 pr-4">Route</th>
                                     <th className="py-3 pr-4">Schedule</th>
@@ -290,7 +300,7 @@ export default function SourceDetailPage() {
                             </thead>
                             <tbody>
                                 {pipelines.map((p) => (
-                                    <tr key={p.id} className="border-b border-gray-50 dark:border-slate-800">
+                                    <tr key={p.id} className="border-b border-gray-50 dark:border-[#2f3336]">
                                         <td className="py-3 pl-4 pr-4 font-semibold text-gray-900 dark:text-white">{p.name}</td>
                                         <td className="py-3 pr-4 text-gray-600 dark:text-gray-300">
                                             {p.sourceConnection?.name ?? "?"} → {p.destinationConnection?.name ?? "?"}
@@ -316,7 +326,7 @@ export default function SourceDetailPage() {
                                                 type="button"
                                                 onClick={() => runSync(p.id)}
                                                 disabled={busy !== null}
-                                                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                                                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-200"
                                             >
                                                 {busy === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                                                 Sync
@@ -369,7 +379,7 @@ export default function SourceDetailPage() {
             <ConfirmDialog
                 open={disconnectOpen}
                 title={`Disconnect ${connection.name}?`}
-                description="Syncs from this source will stop. Your existing data in destinations is not deleted. You can reconnect later."
+                description="Syncs from this source will stop. Your existing data in the warehouse is not deleted. You can reconnect later."
                 confirmLabel="Disconnect"
                 variant="danger"
                 onConfirm={confirmDisconnect}

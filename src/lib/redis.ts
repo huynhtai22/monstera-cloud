@@ -54,12 +54,18 @@ export function getRedis() {
     // Create proxy to intercept failures
     proxyClient = new Proxy(kvClient, {
       get(target, prop) {
-        const origMethod = target[prop as keyof typeof target];
+        // The KV client surface is a large union of function overloads.
+        // Treat it as `any` here; we preserve runtime safety via try/catch + fallback.
+        const origMethod = (target as any)[prop as any];
         if (typeof origMethod === 'function') {
           return async function (...args: any[]) {
             try {
               // Upstash handles commands sequentially, binding is required
+<<<<<<< HEAD
               const result = await (origMethod as any).apply(target, args);
+=======
+              const result = await (origMethod as (...a: any[]) => Promise<any>).apply(target, args);
+>>>>>>> origin/main
               if (circuitState === 'HALF_OPEN') {
                 logger.info("[VercelKV] Circuit CLOSED: Connection recovered");
                 circuitState = 'CLOSED';
@@ -82,9 +88,9 @@ export function getRedis() {
               
               // Fallback for this immediate call so the app doesn't crash on this request
               if (!mockKvClient) mockKvClient = createMockKV();
-              if (typeof mockKvClient[prop] === 'function') {
+              if (typeof (mockKvClient as any)[prop as any] === 'function') {
                 logger.info(`[VercelKV] Executing fallback for method: ${prop.toString()}`);
-                return mockKvClient[prop](...args);
+                return (mockKvClient as any)[prop as any](...args);
               }
               throw err; 
             }

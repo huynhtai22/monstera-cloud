@@ -95,7 +95,7 @@ export function ConfirmDialog({
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-desc"
         className={cn(
-          "relative z-10 w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900",
+          "relative z-10 w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-[#2f3336] dark:bg-[#000000]",
           "transition-all duration-[280ms]",
           isVisible ? "scale-100 opacity-100" : "scale-95 opacity-0"
         )}
@@ -108,7 +108,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-slate-800 dark:hover:text-white"
+            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-[#16181c] dark:hover:text-white"
             aria-label={cancelLabel}
           >
             <X className="h-5 w-5" />
