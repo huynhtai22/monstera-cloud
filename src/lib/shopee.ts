@@ -18,6 +18,12 @@ import prisma from "@/lib/prisma";
 import { encrypt, safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { SHOPEE_SANDBOX_OPEN_API_HOST } from "@/lib/shopee-env";
+import {
+  accessTokenNeedsRefresh,
+  normalizeStoredShopeeCreds,
+  serializeShopeeStoredCreds,
+  SHOPEE_DEFAULT_EXPIRE_IN_SEC,
+} from "@/lib/shopee-credential-utils";
 
 /**
  * Shopee returns successful fields either at the top level or nested under `response`.
@@ -568,45 +574,41 @@ export async function getValidShopeeCreds(connectionId: string): Promise<ShopeeC
   const conn = await prisma.connection.findUnique({ where: { id: connectionId } });
   if (!conn) throw new Error(`Shopee connection ${connectionId} not found`);
 
-  const raw = JSON.parse(safeDecrypt(conn.credentials)) as Record<string, any>;
+  const raw = JSON.parse(safeDecrypt(conn.credentials)) as Record<string, unknown>;
+  const creds = normalizeStoredShopeeCreds(raw);
 
-  // Normalise: support both camelCase (legacy) and snake_case
-  const creds: ShopeeCreds = {
-    access_token:  raw.access_token  ?? raw.accessToken,
-    refresh_token: raw.refresh_token ?? raw.refreshToken,
-    expire_in:     raw.expire_in     ?? raw.expireIn ?? 14400,
-    shop_id:       raw.shop_id       ?? raw.shopId,
-    sandbox:       raw.sandbox === true,
-  };
+  if (!creds.access_token || !creds.refresh_token || !creds.shop_id) {
+    throw new Error(`Shopee connection ${connectionId} has incomplete credentials`);
+  }
 
-  const tokenCreatedMs = new Date(conn.updatedAt).getTime();
-  const expiresAtMs    = tokenCreatedMs + creds.expire_in * 1000;
-  const thirtyMinMs    = 30 * 60 * 1000;
-  const needsRefresh   = expiresAtMs - Date.now() < thirtyMinMs;
+  if (!accessTokenNeedsRefresh(creds, conn.updatedAt)) {
+    return creds;
+  }
 
-  if (!needsRefresh) return creds;
-
-  // ── Token is about to expire — refresh it now ──────────────────────────────
   logger.info(`[Shopee] Access token for connection ${connectionId} expiring soon — refreshing`);
 
   const client = new ShopeeClient();
-  const fresh  = await client.refreshAccessToken(
+  const fresh = await client.refreshAccessToken(
     creds.refresh_token,
     creds.shop_id,
-    creds.sandbox
+    creds.sandbox === true
   );
 
   const updated: ShopeeCreds = {
-    access_token:  fresh.access_token,
+    access_token: fresh.access_token,
     refresh_token: fresh.refresh_token,
-    expire_in:     fresh.expire_in ?? 14400,
-    shop_id:       creds.shop_id,
-    sandbox:       creds.sandbox,
+    expire_in: fresh.expire_in ?? SHOPEE_DEFAULT_EXPIRE_IN_SEC,
+    shop_id: creds.shop_id,
+    sandbox: creds.sandbox,
   };
 
   await prisma.connection.update({
     where: { id: connectionId },
-    data:  { credentials: encrypt(JSON.stringify(updated)) },
+    data: {
+      credentials: encrypt(
+        JSON.stringify(serializeShopeeStoredCreds(updated, { markTokenFresh: true }))
+      ),
+    },
   });
 
   logger.info(`[Shopee] Token refreshed and saved for connection ${connectionId}`);

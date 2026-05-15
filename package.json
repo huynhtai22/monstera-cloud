@@ -7,6 +7,7 @@
     "build": "prisma generate && next build --webpack",
     "start": "next start",
     "lint": "eslint src",
+    "test:shopee-ads": "tsx --test src/lib/shopee-ads-mapper.test.ts",
     "postinstall": "prisma generate",
     "deploy:prod": "npx vercel deploy --prod --yes",
     "create-smoke-user": "tsx scripts/create-smoke-test-account.ts",
