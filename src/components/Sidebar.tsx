@@ -23,6 +23,7 @@ import {
     Users,
     Database,
     Download,
+    Compass,
 } from "lucide-react";
 import useSWR from "swr";
 import { useSession, signOut } from "next-auth/react";
@@ -123,7 +124,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
         {
             label: "Analytics",
             items: [
-                { name: "Data explorer", href: "/explorer", icon: Database },
+                { name: "Data explorer", href: "/explorer", icon: Compass },
                 { name: "Reports", href: "/reports", icon: LineChart },
             ],
         },

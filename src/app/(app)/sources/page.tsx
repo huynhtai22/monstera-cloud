@@ -435,9 +435,8 @@ export default function SourcesPage() {
     }, [workspaces, activeWorkspaceId]);
 
     const headerAddOptions = useMemo(() => {
-        const connected = new Set(connectedCatalogIdList);
-        return catalogIntegrations.filter((i) => !connected.has(i.id));
-    }, [catalogIntegrations, connectedCatalogIdList]);
+        return catalogIntegrations;
+    }, [catalogIntegrations]);
 
     // Filter logic
     const filteredIntegrations = useMemo(() => {
@@ -513,7 +512,7 @@ export default function SourcesPage() {
                 return connectedSourceSortRank(a.catalogId) - connectedSourceSortRank(b.catalogId);
             });
 
-        const filteredAvailable = catalogIntegrations.filter((a) => !connectedCatalogIds.has(a.id));
+        const filteredAvailable = catalogIntegrations;
         const combined = [...connectedSources, ...filteredAvailable];
 
         return combined.filter((integration: any) => {

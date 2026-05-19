@@ -215,12 +215,8 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
             toast.error("This connector is not enabled on this deployment (missing OAuth env).");
             return;
         }
-        if (connectedSet.has(item.id)) {
-            toast.message("Already connected", { description: `${item.name} is already linked to this workspace.` });
-            return;
-        }
         setDraftPick(item);
-    }, [intConfig, connectedSet]);
+    }, [intConfig]);
 
     const showPicker = Boolean(isOpen && !integration && !draftPick);
 
@@ -367,22 +363,12 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     const overlay = (
         <div
             className={cn(
-<<<<<<< HEAD
-                "fixed inset-0 z-[100] flex justify-end bg-slate-950/60 backdrop-blur-sm dark:bg-slate-950/80",
+                "fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/60 backdrop-blur-sm dark:bg-slate-950/80",
                 "transition-opacity duration-200 ease-out",
                 isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
             )}
             role="presentation"
-            onClick={() => {
-                if (!isProcessing) handleClose();
-            }}
-=======
-                "fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 p-4",
-                "transition-opacity duration-200 ease-out",
-                isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
-            )}
             onClick={(e) => { if (e.target === e.currentTarget && !isProcessing) handleClose(); }}
->>>>>>> origin/main
         >
             {showPicker ? (
                 <div
@@ -427,7 +413,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                         {SOURCES_CATALOG.map((item) => {
                             const connected = connectedSet.has(item.id);
                             const ready = isSourceEnvReady(item.id, intConfig);
-                            const disabled = connected || !ready;
+                            const disabled = !ready;
                             return (
                                 <li key={item.id}>
                                     <button
