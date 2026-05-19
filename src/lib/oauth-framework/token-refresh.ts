@@ -2,6 +2,11 @@ import prisma from '@/lib/prisma';
 import { getProvider } from './registry';
 import { encrypt, safeDecrypt } from '@/lib/encryption';
 import { logger } from '@/lib/logger';
+import {
+    normalizeStoredShopeeCreds,
+    serializeShopeeStoredCreds,
+    SHOPEE_DEFAULT_EXPIRE_IN_SEC,
+} from '@/lib/shopee-credential-utils';
 
 /**
  * Validates an OAuth connection's access token and refreshes it if necessary.
@@ -30,6 +35,8 @@ export async function getValidOAuthToken(conn: {
     let refreshWindowMs = 5 * 60 * 1000; // default 5 minutes
     if (conn.provider === 'meta_ads') {
         refreshWindowMs = 7 * 24 * 60 * 60 * 1000; // 7 days for Meta
+    } else if (conn.provider === 'shopee') {
+        refreshWindowMs = 30 * 60 * 1000; // align with getValidShopeeCreds (~4h access token)
     }
 
     const needsRefresh =
@@ -47,16 +54,36 @@ export async function getValidOAuthToken(conn: {
     try {
         const refreshed = await adapter.refreshCredentials(creds);
 
-        const updatedCreds = {
-            ...creds,
-            accessToken: refreshed.accessToken,
-            refreshToken: refreshed.refreshToken ?? creds.refreshToken,
-            expiresAt: refreshed.expiresAt?.toISOString() ?? creds.expiresAt,
-        };
+        let stored: Record<string, unknown>;
+        if (conn.provider === 'shopee') {
+            const normalized = normalizeStoredShopeeCreds({
+                ...creds,
+                access_token: refreshed.accessToken,
+                refresh_token: refreshed.refreshToken ?? creds.refreshToken,
+                expire_in: refreshed.expiresAt
+                    ? Math.max(
+                          60,
+                          Math.round(
+                              (refreshed.expiresAt.getTime() - Date.now()) / 1000
+                          )
+                      )
+                    : SHOPEE_DEFAULT_EXPIRE_IN_SEC,
+                shop_id: (refreshed as { shopId?: number }).shopId ?? creds.shopId,
+                sandbox: creds.sandbox,
+            });
+            stored = serializeShopeeStoredCreds(normalized, { markTokenFresh: true });
+        } else {
+            stored = {
+                ...creds,
+                accessToken: refreshed.accessToken,
+                refreshToken: refreshed.refreshToken ?? creds.refreshToken,
+                expiresAt: refreshed.expiresAt?.toISOString() ?? creds.expiresAt,
+            };
+        }
 
         await (prisma as any).connection.update({
             where: { id: conn.id },
-            data: { credentials: encrypt(JSON.stringify(updatedCreds)) },
+            data: { credentials: encrypt(JSON.stringify(stored)) },
         });
 
         return refreshed.accessToken;

@@ -145,13 +145,16 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
             <div className={`relative flex min-w-0 flex-1 flex-col bg-gray-50 text-slate-900 dark:bg-[#000000] dark:text-slate-100 ${sidebarCollapsed ? "lg:pl-[68px]" : "lg:pl-64"}`} style={{ transition: "padding-left 220ms cubic-bezier(0.25,0.1,0.25,1)" }}>
                 <div className="h-16 shrink-0 lg:hidden" />
-                <div className="z-20 hidden items-center justify-between gap-3 border-b border-gray-200/80 bg-gray-50 px-6 py-2.5 dark:border-[#2f3336]/80 dark:bg-[#000000] lg:sticky lg:top-0 lg:flex">
-                    <nav className="flex items-center gap-1 text-sm" aria-label="Breadcrumb">
+                {/* pointer-events-none: sticky bar spans full width above main (z-10); without this, flex “gaps” steal clicks from content scrolling underneath. */}
+                <div className="pointer-events-none z-20 hidden items-center justify-between gap-3 border-b border-gray-200/80 bg-gray-50 px-6 py-2.5 dark:border-[#2f3336]/80 dark:bg-[#000000] lg:sticky lg:top-0 lg:flex">
+                    <nav className="pointer-events-auto flex items-center gap-1 text-sm" aria-label="Breadcrumb">
                         <span className="font-medium text-gray-400 dark:text-slate-500">Monstera</span>
                         <ChevronRight className="h-3.5 w-3.5 text-gray-300 dark:text-slate-600" aria-hidden />
                         <span className="font-medium text-gray-700 dark:text-slate-200">{mobileTitle}</span>
                     </nav>
-                    <NotificationCenter />
+                    <div className="pointer-events-auto">
+                        <NotificationCenter />
+                    </div>
                 </div>
                 <UpgradeNudge />
                 <main className="relative z-10 flex-1 overflow-x-hidden">

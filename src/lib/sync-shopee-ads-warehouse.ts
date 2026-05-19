@@ -1,30 +1,19 @@
 /**
- * Shopee Ads (v2.ads) — shop-level CPC daily performance → CampaignMetric.
+ * Shopee Ads (v2.ads) — granular CPC daily performance → CampaignMetric.
  * Best-effort: if the Open Platform app lacks Ads API permission, sync returns
  * success with 0 rows so order-based Shopee warehouse sync still completes.
- *
- * Revenue uses broad_gmv when present (shop-attributed ad GMV; aligns with
- * Seller Center “Conversions” style). See Shopee Ads API guide.
  */
 
-import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getValidShopeeCreds, shopeeAdsClient } from "@/lib/shopee";
 import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";
+import {
+  mapShopeeRowToCampaignMetricPayload,
+  parseShopeeAdsRowDate,
+} from "@/lib/shopee-ads-mapper";
 import type { MarketplaceSyncResult } from "@/lib/sync-marketplace-warehouse";
 
-function parseYmd(d: string): Date {
-  return new Date(`${d}T00:00:00.000Z`);
-}
-
-function num(v: unknown): number {
-  if (typeof v === "number" && !Number.isNaN(v)) return v;
-  if (typeof v === "string") {
-    const n = Number(v);
-    return Number.isNaN(n) ? 0 : n;
-  }
-  return 0;
-}
+const UPSERT_CHUNK_SIZE = 25;
 
 function isShopeeAdsSyncDisabled(): boolean {
   const v = (process.env.SHOPEE_ADS_SYNC ?? "").trim().toLowerCase();
@@ -45,69 +34,22 @@ function isBenignAdsFailure(message: string): boolean {
   );
 }
 
-/** Parse Shopee date field: usually DD-MM-YYYY on Ads performance rows. */
-function parseShopeeAdsRowDate(
-  row: Record<string, unknown>,
-  fallbackYmd?: string
-): Date | null {
-  const raw =
-    (typeof row.date === "string" && row.date) ||
-    (typeof row.report_date === "string" && row.report_date) ||
-    fallbackYmd;
-  if (!raw) return null;
-  const s = raw.trim();
-  const dmy = /^(\d{2})-(\d{2})-(\d{4})$/.exec(s);
-  if (dmy) {
-    const d = Number(dmy[1]);
-    const mo = Number(dmy[2]);
-    const y = Number(dmy[3]);
-    return new Date(Date.UTC(y, mo - 1, d));
+async function upsertPayloadsInChunks(
+  payloads: Awaited<ReturnType<typeof mapShopeeRowToCampaignMetricPayload>>[]
+): Promise<number> {
+  const valid = payloads.filter((p): p is NonNullable<typeof p> => p != null);
+  let upserted = 0;
+  for (let i = 0; i < valid.length; i += UPSERT_CHUNK_SIZE) {
+    const chunk = valid.slice(i, i + UPSERT_CHUNK_SIZE);
+    await Promise.all(chunk.map((payload) => upsertCampaignMetric(payload)));
+    upserted += chunk.length;
   }
-  const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (ymd) {
-    return parseYmd(s);
-  }
-  return null;
-}
-
-function aggregateRowInto(
-  acc: {
-    impressions: number;
-    clicks: number;
-    spend: number;
-    revenue: number;
-    conversions: number;
-    ctr: number;
-    roas: number;
-    currency?: string;
-  },
-  row: Record<string, unknown>
-): void {
-  const impressions = Math.round(num(row.impression ?? row.impressions));
-  const clicks = Math.round(num(row.clicks));
-  const spend = num(row.expense ?? row.ad_expense);
-  const revenue = num(row.broad_gmv ?? row.direct_gmv);
-  const conversions = num(row.broad_order ?? row.direct_order);
-  const ctr = num(row.ctr);
-  const roas = num(row.broad_roas ?? row.direct_roas ?? row.roas);
-  const currency =
-    typeof row.currency === "string" && row.currency
-      ? row.currency
-      : acc.currency;
-
-  acc.impressions += impressions;
-  acc.clicks += clicks;
-  acc.spend += spend;
-  acc.revenue += revenue;
-  acc.conversions += conversions;
-  if (ctr > 0) acc.ctr = ctr;
-  if (roas > 0) acc.roas = roas;
-  if (currency) acc.currency = currency;
+  return upserted;
 }
 
 /**
- * Pull shop-level CPC ads daily performance and upsert CampaignMetric rows
- * (separate entity from order rollups).
+ * Pull CPC ads daily performance and upsert one CampaignMetric row per API row
+ * (campaign or ad grain).
  */
 export async function syncShopeeAdsWarehouseMetrics(opts: {
   connectionId: string;
@@ -168,104 +110,57 @@ export async function syncShopeeAdsWarehouseMetrics(opts: {
       return { success: true, rowsIngested: 0 };
     }
 
-    const byDay = new Map<
-      string,
-      {
-        impressions: number;
-        clicks: number;
-        spend: number;
-        revenue: number;
-        conversions: number;
-        ctr: number;
-        roas: number;
-        currency?: string;
-      }
-    >();
+    const accountId = String(creds.shop_id);
+    const accountName = `Shopee shop ${accountId}`;
+    const jobId = `shopee-ads-warehouse-${Date.now()}`;
+
+    const payloads = [];
+    let skippedDate = 0;
+    let skippedMap = 0;
 
     for (const raw of rows) {
       if (!raw || typeof raw !== "object") continue;
       const row = raw as Record<string, unknown>;
       const d = parseShopeeAdsRowDate(row);
-      if (!d) continue;
-      const key = d.toISOString().slice(0, 10);
-      if (key < since || key > until) continue;
-
-      let acc = byDay.get(key);
-      if (!acc) {
-        acc = {
-          impressions: 0,
-          clicks: 0,
-          spend: 0,
-          revenue: 0,
-          conversions: 0,
-          ctr: 0,
-          roas: 0,
-        };
-        byDay.set(key, acc);
+      if (!d) {
+        skippedDate += 1;
+        continue;
       }
-      aggregateRowInto(acc, row);
+      const dayKey = d.toISOString().slice(0, 10);
+      if (dayKey < since || dayKey > until) continue;
+
+      const payload = mapShopeeRowToCampaignMetricPayload({
+        workspaceId,
+        connectionId,
+        accountId,
+        accountName,
+        row,
+        syncJobId: jobId,
+        apiMode: mode,
+      });
+      if (!payload) {
+        skippedMap += 1;
+        continue;
+      }
+      payloads.push(payload);
     }
 
-    if (byDay.size === 0) {
-      logger.warn(
-        "[syncShopeeAdsWarehouse] Could not parse dates from Ads rows; check API response shape",
-        { connectionId, mode, sample: rows[0] }
-      );
+    if (payloads.length === 0) {
+      logger.warn("[syncShopeeAdsWarehouse] No mappable rows after transform", {
+        connectionId,
+        mode,
+        skippedDate,
+        skippedMap,
+        sample: rows[0],
+      });
       return { success: true, rowsIngested: 0 };
     }
 
-    const accountId = String(creds.shop_id);
-    const jobId = `shopee-ads-warehouse-${Date.now()}`;
-    let upserted = 0;
-
-    for (const [dayStr, agg] of byDay) {
-      const d = parseYmd(dayStr);
-      const cpc = agg.clicks > 0 ? agg.spend / agg.clicks : 0;
-      const ctr = agg.ctr;
-      const roas =
-        agg.roas > 0
-          ? agg.roas
-          : agg.spend > 0
-            ? agg.revenue / agg.spend
-            : 0;
-
-      await upsertCampaignMetric({
-        workspaceId,
-        connectionId,
-        platform: "shopee",
-        accountId,
-        accountName: `Shopee shop ${accountId}`,
-        level: "campaign",
-        entityId: "shopee-ads-cpc-daily",
-        campaignId: "shopee-ads-cpc-daily",
-        campaignName: "Shopee Ads — CPC (shop daily)",
-        adsetId: "",
-        adsetName: undefined,
-        date: d,
-        breakdownHash: "shopee_ads_cpc_shop_daily",
-        impressions: agg.impressions,
-        clicks: agg.clicks,
-        spend: agg.spend,
-        reach: 0,
-        cpc,
-        ctr,
-        conversions: agg.conversions,
-        revenue: agg.revenue,
-        roas,
-        currency: agg.currency,
-        rawData: {
-          source: "shopee_ads_v2",
-          metric: "get_all_cpc_ads_daily_performance",
-          mode,
-          revenue_basis: "broad_gmv_preferred",
-        },
-        syncJobId: jobId,
-      });
-      upserted += 1;
-    }
+    const upserted = await upsertPayloadsInChunks(payloads);
 
     logger.info(
-      `[syncShopeeAdsWarehouse] ${upserted} day rows (CPC ads) for ${connectionId}`
+      `[syncShopeeAdsWarehouse] ${upserted} granular rows for ${connectionId}`,
+      { mode, skippedDate, skippedMap }
     );
     return { success: true, rowsIngested: upserted };
   } catch (e: unknown) {
