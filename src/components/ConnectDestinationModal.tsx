@@ -11,7 +11,7 @@ import { signIn } from "next-auth/react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { trackEvent } from "@/lib/analytics-events";
-import { PostConnectChecklist } from "@/components/destinations/PostConnectChecklist";
+
 import { DESTINATION_HELP_PATHS } from "@/lib/destination-help-urls";
 import { useMounted } from "@/hooks/useMounted";
 
@@ -277,7 +277,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                 </div>
                             </div>
                         </div>
-                        <PostConnectChecklist variant="looker" />
+
                         <div className="text-center">
                             <Link
                                 href={DESTINATION_HELP_PATHS.lookerStudio}
