@@ -89,23 +89,18 @@ function partnerKey(): string {
   const key = normalizePartnerEnvValue(process.env.SHOPEE_PARTNER_KEY || "");
   if (!key) throw new Error("SHOPEE_PARTNER_KEY is not configured");
   // Shopee expects the raw partner_key string as the HMAC secret.
-<<<<<<< HEAD
-  // Do NOT strip prefixes or hex-decode; treat it as opaque bytes.
+  // Do NOT strip `shpk` prefixes or hex-decode; treat it as opaque bytes.
   return key;
 }
 
 /** Returns the HMAC key as a Buffer (raw UTF-8 bytes). */
 function partnerKeyBuffer(): Buffer {
   return Buffer.from(partnerKey(), "utf8");
-=======
-  // Do NOT strip `shpk` prefixes or hex-decode; treat it as opaque bytes.
-  return key;
 }
 
 /** Same UTF-8 secret as API signing; used by `POST /api/webhooks/shopee` body HMAC. */
 export function shopeePartnerKeySecretForWebhook(): string {
   return partnerKey();
->>>>>>> origin/main
 }
 
 function getHost(sandbox = false): string {
