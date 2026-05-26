@@ -363,13 +363,20 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
     const overlay = (
         <div
             className={cn(
-                "fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/60 backdrop-blur-sm dark:bg-slate-950/80",
-                "transition-opacity duration-200 ease-out",
-                isVisible ? "opacity-100" : "opacity-0 pointer-events-none"
+                "fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6",
+                !isVisible && "pointer-events-none"
             )}
-            role="presentation"
-            onClick={(e) => { if (e.target === e.currentTarget && !isProcessing) handleClose(); }}
         >
+            {/* Backdrop */}
+            <div
+                className={cn(
+                    "absolute inset-0 bg-slate-950/60 backdrop-blur-sm dark:bg-slate-950/80",
+                    "transition-opacity duration-200 ease-out",
+                    isVisible ? "opacity-100" : "opacity-0"
+                )}
+                onClick={() => { if (!isProcessing) handleClose(); }}
+            />
+
             {showPicker ? (
                 <div
                     ref={dialogRef}
@@ -473,252 +480,252 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     </div>
                 </div>
             ) : (
-            <div
-                ref={dialogRef}
-                onKeyDown={handleKeyDown}
-                onClick={(e) => e.stopPropagation()}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="connect-source-modal-title"
-                tabIndex={-1}
-                className={cn(
-                    "relative w-full max-w-lg max-h-[85vh] overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xl ring-1 ring-slate-900/[0.04] outline-none dark:border-white/10 dark:bg-[#000000]/95 dark:ring-white/[0.06] flex flex-col",
-                    "transition-all duration-[280ms]",
-                    isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
-                )}
-                style={{ transitionTimingFunction: PANEL_EASE }}
-            >
-                <div className="flex items-center gap-3 border-b border-slate-100/90 bg-gradient-to-br from-slate-50/90 to-white px-5 py-4 dark:border-white/5 dark:from-slate-800/80 dark:to-slate-900/80">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-white to-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ring-1 ring-slate-200/80 dark:from-slate-800 dark:to-slate-900 dark:ring-white/10">
-                        <Image src={logoSrc} alt={name} width={22} height={22} className="object-contain" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">OAuth</p>
-                        <h3 id="connect-source-modal-title" className="text-base font-bold tracking-tight text-slate-900 dark:text-white">
-                            {name}
-                        </h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Sign in on the next step — read-only access.</p>
-                    </div>
-                    {!integration && draftPick ? (
+                <div
+                    ref={dialogRef}
+                    onKeyDown={handleKeyDown}
+                    onClick={(e) => e.stopPropagation()}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="connect-source-modal-title"
+                    tabIndex={-1}
+                    className={cn(
+                        "relative w-full max-w-lg max-h-[85vh] overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xl ring-1 ring-slate-900/[0.04] outline-none dark:border-white/10 dark:bg-[#000000]/95 dark:ring-white/[0.06] flex flex-col",
+                        "transition-all duration-[280ms]",
+                        isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
+                    )}
+                    style={{ transitionTimingFunction: PANEL_EASE }}
+                >
+                    <div className="flex items-center gap-3 border-b border-slate-100/90 bg-gradient-to-br from-slate-50/90 to-white px-5 py-4 dark:border-white/5 dark:from-slate-800/80 dark:to-slate-900/80">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-white to-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] ring-1 ring-slate-200/80 dark:from-slate-800 dark:to-slate-900 dark:ring-white/10">
+                            <Image src={logoSrc} alt={name} width={22} height={22} className="object-contain" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">OAuth</p>
+                            <h3 id="connect-source-modal-title" className="text-base font-bold tracking-tight text-slate-900 dark:text-white">
+                                {name}
+                            </h3>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">Sign in on the next step — read-only access.</p>
+                        </div>
+                        {!integration && draftPick ? (
+                            <button
+                                type="button"
+                                onClick={() => setDraftPick(null)}
+                                disabled={isProcessing}
+                                className="shrink-0 rounded-lg border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-semibold text-cyan-700 shadow-sm transition-colors hover:bg-cyan-50 disabled:opacity-50 dark:border-white/10 dark:bg-[#16181c] dark:text-cyan-300 dark:hover:bg-cyan-950/40"
+                            >
+                                Change
+                            </button>
+                        ) : null}
                         <button
-                            type="button"
-                            onClick={() => setDraftPick(null)}
+                            onClick={handleClose}
                             disabled={isProcessing}
-                            className="shrink-0 rounded-lg border border-slate-200/90 bg-white px-2.5 py-1.5 text-xs font-semibold text-cyan-700 shadow-sm transition-colors hover:bg-cyan-50 disabled:opacity-50 dark:border-white/10 dark:bg-[#16181c] dark:text-cyan-300 dark:hover:bg-cyan-950/40"
+                            aria-label="Close dialog"
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-200/80 hover:text-slate-800 disabled:opacity-50 dark:hover:bg-white/10 dark:hover:text-white"
                         >
-                            Change
+                            <X className="w-4 h-4" />
                         </button>
-                    ) : null}
-                    <button
-                        onClick={handleClose}
-                        disabled={isProcessing}
-                        aria-label="Close dialog"
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-200/80 hover:text-slate-800 disabled:opacity-50 dark:hover:bg-white/10 dark:hover:text-white"
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
-                </div>
+                    </div>
 
-                <div className="flex-1 overflow-y-auto px-6 py-6">
-                    <div
-                        className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-[240ms]"
-                        style={{ animationTimingFunction: PANEL_EASE }}
-                    >
-                        <div className="mb-5">
-                            <h4 className="text-base font-bold text-gray-900 dark:text-white mb-1">{step1Content.title}</h4>
-                            <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">{step1Content.subtitle}</p>
-                        </div>
-
+                    <div className="flex-1 overflow-y-auto px-6 py-6">
                         <div
-                            className={
-                                id === "meta_ads"
-                                    ? "bg-[#1877F2]/10 dark:bg-[#1877F2]/15 rounded-xl p-5 border border-[#1877F2]/25 space-y-3"
-                                    : id === "google_ads"
-                                      ? "bg-slate-50 dark:bg-[#000000]/50 rounded-xl p-5 border border-slate-200 dark:border-[#2f3336] space-y-3"
-                                      : "bg-blue-50/50 rounded-xl p-5 border border-blue-100 dark:border-blue-900/40 space-y-3"
-                            }
+                            className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-[240ms]"
+                            style={{ animationTimingFunction: PANEL_EASE }}
                         >
-                            <p className="font-semibold text-gray-900 dark:text-white text-sm flex items-center">
-                                <Globe
-                                    className={`w-4 h-4 mr-2 shrink-0 ${
-                                        id === "meta_ads" ? "text-[#1877F2]" : "text-blue-600"
-                                    }`}
-                                />
-                                Permissions requested
-                            </p>
-                            <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300 ml-6">
-                                {step1Content.permissions.map((line) => (
-                                    <li key={line} className="flex items-start">
-                                        <CheckCircle2 className="w-4 h-4 text-cyan-500 mr-2 shrink-0 mt-0.5" />
-                                        {line}
-                                    </li>
-                                ))}
-                            </ul>
-                            <p className="text-xs text-gray-400 dark:text-gray-500 mt-4 italic">{step1Content.footnote}</p>
-                        </div>
-
-                        {id === "shopify" && (
-                            <div className="space-y-1.5">
-                                <label htmlFor="shopify-domain" className="text-xs font-semibold text-gray-700 dark:text-slate-300">
-                                    Your Shopify store domain
-                                </label>
-                                <input
-                                    id="shopify-domain"
-                                    type="text"
-                                    placeholder="mystore.myshopify.com"
-                                    value={shopDomain}
-                                    onChange={(e) => setShopDomain(e.target.value)}
-                                    disabled={isProcessing}
-                                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-[#2f3336] bg-white dark:bg-[#000000] text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"
-                                />
+                            <div className="mb-5">
+                                <h4 className="text-base font-bold text-gray-900 dark:text-white mb-1">{step1Content.title}</h4>
+                                <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">{step1Content.subtitle}</p>
                             </div>
-                        )}
 
-                        {(id === "meta_ads" || id === "google_ads" || id === "amazon" || id === "lazada") && (
-                            <div className="rounded-xl border border-dashed border-slate-300 dark:border-[#2f3336] bg-slate-50/90 dark:bg-[#000000]/50 p-4 space-y-3">
-                                <div>
-                                    <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">
-                                        {id === "meta_ads"
-                                            ? "Meta — Valid OAuth Redirect URI"
-                                            : id === "google_ads"
-                                              ? "Google Cloud — Authorized redirect URI"
-                                              : id === "amazon"
-                                                ? "Amazon — Allowed OAuth redirect URI"
-                                                : "Lazada — Callback URL (OAuth redirect)"}
-                                    </p>
-                                    <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mt-1">
-                                        Production domain{" "}
-                                        <span className="font-medium text-gray-700 dark:text-slate-300">monsteracloud.com</span> —
-                                        paste this full URL into your developer console (exact match, including{" "}
-                                        <code className="text-gray-700 dark:text-slate-300">https</code>).
-                                    </p>
+                            <div
+                                className={
+                                    id === "meta_ads"
+                                        ? "bg-[#1877F2]/10 dark:bg-[#1877F2]/15 rounded-xl p-5 border border-[#1877F2]/25 space-y-3"
+                                        : id === "google_ads"
+                                          ? "bg-slate-50 dark:bg-[#000000]/50 rounded-xl p-5 border border-slate-200 dark:border-[#2f3336] space-y-3"
+                                          : "bg-blue-50/50 rounded-xl p-5 border border-blue-100 dark:border-blue-900/40 space-y-3"
+                                }
+                            >
+                                <p className="font-semibold text-gray-900 dark:text-white text-sm flex items-center">
+                                    <Globe
+                                        className={`w-4 h-4 mr-2 shrink-0 ${
+                                            id === "meta_ads" ? "text-[#1877F2]" : "text-blue-600"
+                                        }`}
+                                    />
+                                    Permissions requested
+                                </p>
+                                <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300 ml-6">
+                                    {step1Content.permissions.map((line) => (
+                                        <li key={line} className="flex items-start">
+                                            <CheckCircle2 className="w-4 h-4 text-cyan-500 mr-2 shrink-0 mt-0.5" />
+                                            {line}
+                                        </li>
+                                    ))}
+                                </ul>
+                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-4 italic">{step1Content.footnote}</p>
+                            </div>
+
+                            {id === "shopify" && (
+                                <div className="space-y-1.5">
+                                    <label htmlFor="shopify-domain" className="text-xs font-semibold text-gray-700 dark:text-slate-300">
+                                        Your Shopify store domain
+                                    </label>
+                                    <input
+                                        id="shopify-domain"
+                                        type="text"
+                                        placeholder="mystore.myshopify.com"
+                                        value={shopDomain}
+                                        onChange={(e) => setShopDomain(e.target.value)}
+                                        disabled={isProcessing}
+                                        className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-[#2f3336] bg-white dark:bg-[#000000] text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:opacity-50"
+                                    />
                                 </div>
-                                {productionOauthUrl ? (
-                                    <div className="flex gap-2 items-start">
-                                        <code className="text-[11px] leading-relaxed break-all flex-1 text-gray-900 dark:text-slate-100 bg-white dark:bg-[#16181c] px-2.5 py-2 rounded-lg border border-slate-200 dark:border-[#2f3336]">
-                                            {productionOauthUrl}
-                                        </code>
-                                        <button
-                                            type="button"
-                                            onClick={() => copyOAuthCallback(productionOauthUrl, "production")}
-                                            className="shrink-0 p-2 rounded-lg border border-slate-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] text-gray-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#1d1f23] transition-colors"
-                                            title="Copy production URL"
-                                        >
-                                            {copiedWhich === "production" ? (
-                                                <Check className="w-4 h-4 text-cyan-600" aria-hidden />
-                                            ) : (
-                                                <Copy className="w-4 h-4" aria-hidden />
-                                            )}
-                                        </button>
-                                    </div>
-                                ) : intConfig ? (
-                                    <p className="text-[11px] text-amber-600 dark:text-amber-500">
-                                        Could not load production callback URL.
-                                    </p>
-                                ) : (
-                                    <p className="text-[11px] text-gray-400 dark:text-gray-500 animate-pulse">Loading…</p>
-                                )}
-                                {sessionDiffersFromProduction && oauthCallbackUrl && (
-                                    <div className="pt-2 border-t border-slate-200 dark:border-[#2f3336] space-y-1.5">
-                                        <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                                            This session (local / preview)
+                            )}
+
+                            {(id === "meta_ads" || id === "google_ads" || id === "amazon" || id === "lazada") && (
+                                <div className="rounded-xl border border-dashed border-slate-300 dark:border-[#2f3336] bg-slate-50/90 dark:bg-[#000000]/50 p-4 space-y-3">
+                                    <div>
+                                        <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">
+                                            {id === "meta_ads"
+                                                ? "Meta — Valid OAuth Redirect URI"
+                                                : id === "google_ads"
+                                                  ? "Google Cloud — Authorized redirect URI"
+                                                  : id === "amazon"
+                                                    ? "Amazon — Allowed OAuth redirect URI"
+                                                    : "Lazada — Callback URL (OAuth redirect)"}
                                         </p>
+                                        <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug mt-1">
+                                            Production domain{" "}
+                                            <span className="font-medium text-gray-700 dark:text-slate-300">monsteracloud.com</span> —
+                                            paste this full URL into your developer console (exact match, including{" "}
+                                            <code className="text-gray-700 dark:text-slate-300">https</code>).
+                                        </p>
+                                    </div>
+                                    {productionOauthUrl ? (
                                         <div className="flex gap-2 items-start">
-                                            <code className="text-[11px] leading-relaxed break-all flex-1 text-gray-600 dark:text-slate-400 bg-white/70 dark:bg-[#16181c]/80 px-2 py-1.5 rounded border border-slate-200 dark:border-[#2f3336]">
-                                                {oauthCallbackUrl}
+                                            <code className="text-[11px] leading-relaxed break-all flex-1 text-gray-900 dark:text-slate-100 bg-white dark:bg-[#16181c] px-2.5 py-2 rounded-lg border border-slate-200 dark:border-[#2f3336]">
+                                                {productionOauthUrl}
                                             </code>
                                             <button
                                                 type="button"
-                                                onClick={() => copyOAuthCallback(oauthCallbackUrl, "session")}
-                                                className="shrink-0 p-2 rounded-lg border border-slate-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] text-gray-500 hover:bg-slate-50 dark:hover:bg-[#1d1f23] text-[10px] px-2"
+                                                onClick={() => copyOAuthCallback(productionOauthUrl, "production")}
+                                                className="shrink-0 p-2 rounded-lg border border-slate-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] text-gray-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#1d1f23] transition-colors"
+                                                title="Copy production URL"
                                             >
-                                                {copiedWhich === "session" ? "Copied" : "Copy"}
+                                                {copiedWhich === "production" ? (
+                                                    <Check className="w-4 h-4 text-cyan-600" aria-hidden />
+                                                ) : (
+                                                    <Copy className="w-4 h-4" aria-hidden />
+                                                )}
                                             </button>
                                         </div>
-                                    </div>
+                                    ) : intConfig ? (
+                                        <p className="text-[11px] text-amber-600 dark:text-amber-500">
+                                            Could not load production callback URL.
+                                        </p>
+                                    ) : (
+                                        <p className="text-[11px] text-gray-400 dark:text-gray-500 animate-pulse">Loading…</p>
+                                    )}
+                                    {sessionDiffersFromProduction && oauthCallbackUrl && (
+                                        <div className="pt-2 border-t border-slate-200 dark:border-[#2f3336] space-y-1.5">
+                                            <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                                This session (local / preview)
+                                            </p>
+                                            <div className="flex gap-2 items-start">
+                                                <code className="text-[11px] leading-relaxed break-all flex-1 text-gray-600 dark:text-slate-400 bg-white/70 dark:bg-[#16181c]/80 px-2 py-1.5 rounded border border-slate-200 dark:border-[#2f3336]">
+                                                    {oauthCallbackUrl}
+                                                </code>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => copyOAuthCallback(oauthCallbackUrl, "session")}
+                                                    className="shrink-0 p-2 rounded-lg border border-slate-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] text-gray-500 hover:bg-slate-50 dark:hover:bg-[#1d1f23] text-[10px] px-2"
+                                                >
+                                                    {copiedWhich === "session" ? "Copied" : "Copy"}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="px-6 py-4 border-t border-gray-100 dark:border-[#2f3336] flex justify-end gap-3">
+                        <button
+                            onClick={handleClose}
+                            disabled={isProcessing}
+                            className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
+                        >
+                            Cancel
+                        </button>
+
+                        {id === "meta_ads" && (
+                            <button
+                                type="button"
+                                onClick={handleAuthenticate}
+                                disabled={isProcessing || oauthPrimaryDisabled}
+                                className="px-5 py-2.5 text-sm font-semibold text-white bg-[#1877F2] rounded-xl hover:bg-[#166FE5] transition-all disabled:opacity-70 flex items-center justify-center gap-2 shadow-sm min-w-[200px]"
+                            >
+                                {isProcessing ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                                        Connecting…
+                                    </>
+                                ) : (
+                                    <>
+                                        <Facebook className="w-5 h-5 shrink-0" strokeWidth={2} aria-hidden />
+                                        Continue with Facebook
+                                    </>
                                 )}
-                            </div>
+                            </button>
+                        )}
+
+                        {id === "google_ads" && (
+                            <button
+                                type="button"
+                                onClick={handleAuthenticate}
+                                disabled={isProcessing || oauthPrimaryDisabled}
+                                className="px-5 py-2.5 text-sm font-semibold text-gray-800 dark:text-gray-100 bg-white dark:bg-[#16181c] border border-gray-300 dark:border-[#2f3336] rounded-xl hover:bg-gray-50 dark:hover:bg-[#1d1f23] transition-all disabled:opacity-70 flex items-center justify-center gap-2 shadow-sm min-w-[200px]"
+                            >
+                                {isProcessing ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                                        Connecting…
+                                    </>
+                                ) : (
+                                    <>
+                                        <Image
+                                            src={INTEGRATION_LOGOS.googleAds}
+                                            alt=""
+                                            width={20}
+                                            height={20}
+                                            className="object-contain shrink-0"
+                                        />
+                                        Continue with Google
+                                    </>
+                                )}
+                            </button>
+                        )}
+
+                        {id !== "meta_ads" && id !== "google_ads" && (
+                            <button
+                                type="button"
+                                onClick={handleAuthenticate}
+                                disabled={isProcessing || oauthPrimaryDisabled}
+                                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-cyan-600 rounded-xl hover:bg-cyan-700 transition-all disabled:opacity-70 shadow-sm min-w-[180px]"
+                            >
+                                {isProcessing ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 animate-spin shrink-0" /> Connecting…
+                                    </>
+                                ) : (
+                                    <>
+                                        Continue to {name} <ChevronRight className="w-4 h-4 shrink-0" />
+                                    </>
+                                )}
+                            </button>
                         )}
                     </div>
                 </div>
-
-                <div className="px-6 py-4 border-t border-gray-100 dark:border-[#2f3336] flex justify-end gap-3">
-                    <button
-                        onClick={handleClose}
-                        disabled={isProcessing}
-                        className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
-                    >
-                        Cancel
-                    </button>
-
-                    {id === "meta_ads" && (
-                        <button
-                            type="button"
-                            onClick={handleAuthenticate}
-                            disabled={isProcessing || oauthPrimaryDisabled}
-                            className="px-5 py-2.5 text-sm font-semibold text-white bg-[#1877F2] rounded-xl hover:bg-[#166FE5] transition-all disabled:opacity-70 flex items-center justify-center gap-2 shadow-sm min-w-[200px]"
-                        >
-                            {isProcessing ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                                    Connecting…
-                                </>
-                            ) : (
-                                <>
-                                    <Facebook className="w-5 h-5 shrink-0" strokeWidth={2} aria-hidden />
-                                    Continue with Facebook
-                                </>
-                            )}
-                        </button>
-                    )}
-
-                    {id === "google_ads" && (
-                        <button
-                            type="button"
-                            onClick={handleAuthenticate}
-                            disabled={isProcessing || oauthPrimaryDisabled}
-                            className="px-5 py-2.5 text-sm font-semibold text-gray-800 dark:text-gray-100 bg-white dark:bg-[#16181c] border border-gray-300 dark:border-[#2f3336] rounded-xl hover:bg-gray-50 dark:hover:bg-[#1d1f23] transition-all disabled:opacity-70 flex items-center justify-center gap-2 shadow-sm min-w-[200px]"
-                        >
-                            {isProcessing ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                                    Connecting…
-                                </>
-                            ) : (
-                                <>
-                                    <Image
-                                        src={INTEGRATION_LOGOS.googleAds}
-                                        alt=""
-                                        width={20}
-                                        height={20}
-                                        className="object-contain shrink-0"
-                                    />
-                                    Continue with Google
-                                </>
-                            )}
-                        </button>
-                    )}
-
-                    {id !== "meta_ads" && id !== "google_ads" && (
-                        <button
-                            type="button"
-                            onClick={handleAuthenticate}
-                            disabled={isProcessing || oauthPrimaryDisabled}
-                            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-cyan-600 rounded-xl hover:bg-cyan-700 transition-all disabled:opacity-70 shadow-sm min-w-[180px]"
-                        >
-                            {isProcessing ? (
-                                <>
-                                    <Loader2 className="w-4 h-4 animate-spin shrink-0" /> Connecting…
-                                </>
-                            ) : (
-                                <>
-                                    Continue to {name} <ChevronRight className="w-4 h-4 shrink-0" />
-                                </>
-                            )}
-                        </button>
-                    )}
-                </div>
-            </div>
             )}
         </div>
     );
