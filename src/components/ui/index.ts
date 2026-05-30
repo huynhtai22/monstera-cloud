@@ -9,6 +9,7 @@ export { ConfirmDialog } from "./ConfirmDialog";
 export { EmptyState } from "./EmptyState";
 export { PageShell } from "./PageShell";
 export { RefreshedAt } from "./RefreshedAt";
+export { SyncLogDiagnosticsDrawer } from "./SyncLogDiagnosticsDrawer";
 
 // Re-export types
 export type { InputProps } from "./Input";
@@ -17,3 +18,4 @@ export type { SelectProps } from "./Select";
 export type { TextareaProps } from "./Textarea";
 export type { PrimaryButtonProps } from "./PrimaryButton";
 export type { SecondaryButtonProps } from "./SecondaryButton";
+export type { SyncLogWithPipeline } from "./SyncLogDiagnosticsDrawer";

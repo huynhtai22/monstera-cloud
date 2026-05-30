@@ -28,6 +28,29 @@ export async function GET(req: Request) {
 
   const now = new Date();
 
+  // Evaluate pipeline health: mark active pipelines that haven't synced in 26 hours as "stale"
+  try {
+    const staleThreshold = new Date(now.getTime() - 26 * 60 * 60 * 1000);
+    const staleCount = await prisma.pipeline.updateMany({
+      where: {
+        status: "active",
+        healthStatus: "healthy",
+        OR: [
+          { lastSyncedAt: { lt: staleThreshold } },
+          { lastSyncedAt: null, createdAt: { lt: staleThreshold } },
+        ],
+      },
+      data: {
+        healthStatus: "stale",
+      },
+    });
+    if (staleCount.count > 0) {
+      logger.info(`[SYNC_JOBS_CRON] Marked ${staleCount.count} stale pipelines`);
+    }
+  } catch (err) {
+    logger.error("[SYNC_JOBS_CRON] Failed to update stale pipelines:", err);
+  }
+
   // Recover jobs whose worker lease expired (worker crashed/aborted).
   const recovered = await (prisma.syncJob as any).updateMany({
     where: {

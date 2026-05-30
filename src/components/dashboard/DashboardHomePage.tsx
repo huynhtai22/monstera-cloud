@@ -230,7 +230,7 @@ export function DashboardHomePage() {
     const hasSource = connectedSourcesCount > 0;
 
     const healthyCount = pipelines
-        ? pipelines.filter((p) => p.status !== "error").length
+        ? pipelines.filter((p) => p.healthStatus !== "error").length
         : 0;
 
     const lastSyncLabel = React.useMemo(() => {

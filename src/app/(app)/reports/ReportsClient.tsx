@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { FileText, AlertCircle, CheckCircle2, Clock, Database, Bookmark } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
-import { PageShell } from "@/components/ui/PageShell";
+import { PageShell, SyncLogDiagnosticsDrawer, type SyncLogWithPipeline } from "@/components/ui";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { REPORTS_SOURCE_CHIPS, pipelineMatchesSourceFilter } from "@/lib/reports-source-filters";
 
@@ -32,6 +32,8 @@ export function ReportsClient() {
     const [statusFilter, setStatusFilter] = React.useState<"all" | "success" | "error">("all");
     const [dateFrom, setDateFrom] = React.useState("");
     const [dateTo, setDateTo] = React.useState("");
+    const [selectedLog, setSelectedLog] = React.useState<SyncLogWithPipeline | null>(null);
+    const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
 
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const { data: clientsPayload } = useSWR(
@@ -78,10 +80,30 @@ export function ReportsClient() {
 
     const statusQuery = statusFilter === "all" ? "" : `&status=${statusFilter}`;
     const clientQuery = clientFilter ? `&clientId=${encodeURIComponent(clientFilter)}` : "";
-    const { data, error, isLoading } = useSWR(
+    const { data, error, isLoading, mutate: mutateLogs } = useSWR(
         activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}${statusQuery}${clientQuery}` : null,
         fetcher
     );
+
+    const runPipeline = React.useCallback(async (pipelineId: string) => {
+        try {
+            const res = await fetch(`/api/pipelines/${pipelineId}/run`, { method: "POST" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(typeof data.error === "string" ? data.error : "Sync failed");
+            }
+            toast.success(data.message || "Sync started.");
+            mutateLogs();
+        } catch (e: any) {
+            toast.error(e.message || "Sync failed");
+            throw e;
+        }
+    }, [mutateLogs]);
+
+    const handleOpenDrawer = React.useCallback((log: SyncLogWithPipeline) => {
+        setSelectedLog(log);
+        setIsDrawerOpen(true);
+    }, []);
 
     const rawLogs = (data?.logs ?? []) as Array<{
         id: string;
@@ -361,7 +383,8 @@ export function ReportsClient() {
                                     <th className="py-3 pr-4">Rows</th>
                                     <th className="py-3 pr-4">Duration</th>
                                     <th className="py-3 pr-4">When</th>
-                                    <th className="py-3">Error</th>
+                                    <th className="py-3 pr-4">Error</th>
+                                    <th className="py-3 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -372,6 +395,7 @@ export function ReportsClient() {
                                         srcId ? (
                                             <Link
                                                 href={`/sources/${srcId}`}
+                                                onClick={(e) => e.stopPropagation()}
                                                 className="font-semibold text-cyan-700 underline decoration-cyan-700/30 underline-offset-2 hover:text-cyan-600 dark:text-cyan-300 dark:decoration-cyan-500/40 dark:hover:text-cyan-200"
                                             >
                                                 {name}
@@ -380,7 +404,11 @@ export function ReportsClient() {
                                             <span className="font-semibold text-gray-900 dark:text-white">{name}</span>
                                         );
                                     return (
-                                        <tr key={l.id} className="border-b border-gray-100 dark:border-[#2f3336]/80">
+                                        <tr 
+                                            key={l.id} 
+                                            onClick={() => handleOpenDrawer(l as any)}
+                                            className="border-b border-gray-100 dark:border-[#2f3336]/80 cursor-pointer hover:bg-gray-50/40 dark:hover:bg-slate-900/10 transition-colors"
+                                        >
                                             <td className="py-3 pr-4">{pipelineCell}</td>
                                             <td className="py-3 pr-4">
                                                 {l.status === "success" ? (
@@ -403,7 +431,21 @@ export function ReportsClient() {
                                                     {new Date(l.createdAt).toLocaleString()}
                                                 </span>
                                             </td>
-                                            <td className="py-3 text-gray-500 dark:text-slate-400">{l.errorMsg ?? ""}</td>
+                                            <td className="py-3 pr-4 text-gray-500 dark:text-slate-400 max-w-[200px] truncate" title={l.errorMsg ?? ""}>
+                                                {l.errorMsg ?? ""}
+                                            </td>
+                                            <td className="py-3 text-right">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenDrawer(l as any);
+                                                    }}
+                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-200 dark:hover:bg-slate-800 transition"
+                                                >
+                                                    Inspect
+                                                </button>
+                                            </td>
                                         </tr>
                                     );
                                 })}
@@ -412,6 +454,15 @@ export function ReportsClient() {
                     </div>
                 )}
             </div>
+
+            <SyncLogDiagnosticsDrawer
+                isOpen={isDrawerOpen}
+                onClose={() => setIsDrawerOpen(false)}
+                log={selectedLog}
+                workspaceId={activeWorkspaceId ?? ""}
+                workspaceName={activeWorkspace?.name ?? undefined}
+                onRetry={runPipeline}
+            />
         </PageShell>
     );
 }

@@ -56,7 +56,7 @@ export function RecentActivity({
                 ) : Array.isArray(pipelines) && pipelines.length > 0 ? (
                     pipelines.map((pipeline, index) => {
                         const isLast = index === pipelines.length - 1;
-                        const isError = pipeline.status === "error";
+                        const isError = pipeline.healthStatus === "error";
                         const latestLog = pipeline.logs?.[0];
 
                         return (

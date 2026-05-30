@@ -16,9 +16,7 @@ import {
     Activity,
 } from "lucide-react";
 import { toast } from "sonner";
-import { PageShell } from "@/components/ui/PageShell";
-import { PrimaryButton } from "@/components/ui/PrimaryButton";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { PageShell, PrimaryButton, ConfirmDialog, SyncLogDiagnosticsDrawer, type SyncLogWithPipeline } from "@/components/ui";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
 import { integrationCatalogId } from "@/lib/sources-integration-catalog";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
@@ -53,6 +51,39 @@ export default function SourceDetailPage() {
     const [disconnectOpen, setDisconnectOpen] = useState(false);
     const [modalOpen, setModalOpen] = useState(false);
     const [modalIntegration, setModalIntegration] = useState<any>(null);
+    const [selectedLog, setSelectedLog] = useState<SyncLogWithPipeline | null>(null);
+    const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+    const handleOpenDrawer = useCallback((log: any) => {
+        if (!data?.connection) return;
+
+        const conn = data.connection;
+        // Enrich the log with pipeline details
+        const pipelineInfo = pipelines.find((p) => p.name === log.pipeline?.name) || {
+            id: log.pipelineId || "",
+            name: log.pipeline?.name || "Pipeline",
+            sourceConnectionId: conn.id,
+        };
+
+        const enrichedLog: SyncLogWithPipeline = {
+            id: log.id,
+            status: log.status,
+            rowsSynced: log.rowsSynced,
+            durationMs: log.durationMs,
+            errorMsg: log.errorMsg,
+            createdAt: log.createdAt,
+            pipeline: {
+                id: pipelineInfo.id,
+                name: pipelineInfo.name,
+                sourceConnectionId: pipelineInfo.sourceConnectionId || conn.id,
+                destinationConnectionId: (pipelineInfo as any).destinationConnectionId,
+                clientId: (pipelineInfo as any).clientId,
+            }
+        };
+
+        setSelectedLog(enrichedLog);
+        setIsDrawerOpen(true);
+    }, [data, pipelines]);
 
     const { data, error, isLoading } = useSWR(id ? `/api/connections/${id}` : null, fetcher);
 
@@ -351,11 +382,12 @@ export default function SourceDetailPage() {
                         {recentLogs.map((log) => (
                             <li
                                 key={log.id}
+                                onClick={() => handleOpenDrawer(log)}
                                 className={cn(
-                                    "flex flex-col gap-1 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between",
+                                    "flex flex-col gap-1 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between cursor-pointer transition hover:shadow-sm",
                                     log.status === "success"
-                                        ? "border-cyan-100 bg-cyan-50/40 dark:border-cyan-900/30 dark:bg-cyan-950/20"
-                                        : "border-red-100 bg-red-50/40 dark:border-red-900/30 dark:bg-red-950/20"
+                                        ? "border-cyan-100 bg-cyan-50/40 hover:bg-cyan-50/70 dark:border-cyan-900/30 dark:bg-cyan-950/20 dark:hover:bg-cyan-950/30"
+                                        : "border-red-100 bg-red-50/40 hover:bg-red-50/70 dark:border-red-900/30 dark:bg-red-950/20 dark:hover:bg-red-950/30"
                                 )}
                             >
                                 <div>
@@ -366,7 +398,7 @@ export default function SourceDetailPage() {
                                             : log.errorMsg ?? "Failed"}
                                     </div>
                                 </div>
-                                <div className="text-xs text-gray-400">{new Date(log.createdAt).toLocaleString()}</div>
+                                <div className="text-xs text-gray-450 dark:text-slate-400 font-medium">{new Date(log.createdAt).toLocaleString()}</div>
                             </li>
                         ))}
                     </ul>
@@ -387,6 +419,15 @@ export default function SourceDetailPage() {
             />
 
             <ConnectSourceModal isOpen={modalOpen} onClose={() => setModalOpen(false)} integration={modalIntegration} />
+
+            <SyncLogDiagnosticsDrawer
+                isOpen={isDrawerOpen}
+                onClose={() => setIsDrawerOpen(false)}
+                log={selectedLog}
+                workspaceId={connection.workspaceId}
+                workspaceName={connection.workspace?.name ?? undefined}
+                onRetry={runSync}
+            />
         </PageShell>
     );
 }
