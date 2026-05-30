@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import crypto from "crypto";
 import { logger } from "@/lib/logger";
 import { shopeePartnerKeySecretForWebhook } from "@/lib/shopee";
+import { getRedis } from "@/lib/redis";
 
 /** Optional extra secret for Push “Verify and Save” if Shopee signs with Test Push Partner Key (see Open Platform → Push). */
 function trimEnvSecret(raw: string | undefined): string {
@@ -110,6 +111,19 @@ export async function POST(request: Request) {
         }
 
         const payload = JSON.parse(rawBody);
+        
+        // Webhook Idempotency Check (Redis Cache)
+        const eventId = payload.event_id || payload.id || crypto.createHash("md5").update(rawBody).digest("hex");
+        const idempotencyKey = `webhook:shopee:${eventId}`;
+        const redis = getRedis();
+        const isUnique = await redis.set(idempotencyKey, "processing", { nx: true, ex: 172800 }); // 48-hour TTL
+        if (!isUnique) {
+            logger.info(`[SHOPEE WEBHOOK] Duplicate webhook event ${eventId} dropped.`);
+            return new NextResponse(JSON.stringify({ message: "Webhook duplicate dropped" }), { 
+                status: 200, 
+                headers: { 'Content-Type': 'application/json' } 
+            });
+        }
         
         // Shopee sends code: 3 for shop deauthorization (authorization cancel)
         // or code: 4 for app deauthorization
