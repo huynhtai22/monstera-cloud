@@ -54,6 +54,35 @@ export default function SourceDetailPage() {
     const [selectedLog, setSelectedLog] = useState<SyncLogWithPipeline | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
+    const { data, error, isLoading } = useSWR(id ? `/api/connections/${id}` : null, fetcher);
+
+    const connection = data?.connection as
+        | {
+              id: string;
+              name: string;
+              type: string;
+              provider: string;
+              status: string;
+              lastError: string | null;
+              lastSyncAt: string | null;
+              workspaceId: string;
+              credentials?: string;
+          }
+        | undefined;
+
+    const pipelines = (data?.pipelines ?? []) as Array<{
+        id: string;
+        name: string;
+        scheduleCron: string;
+        status: string;
+        healthStatus: string;
+        lastSyncedAt: string | null;
+        sourceConnectionId: string;
+        destinationConnectionId: string;
+        sourceConnection: { name: string; provider: string };
+        destinationConnection: { name: string; provider: string };
+    }>;
+
     const handleOpenDrawer = useCallback((log: any) => {
         if (!data?.connection) return;
 
@@ -84,35 +113,6 @@ export default function SourceDetailPage() {
         setSelectedLog(enrichedLog);
         setIsDrawerOpen(true);
     }, [data, pipelines]);
-
-    const { data, error, isLoading } = useSWR(id ? `/api/connections/${id}` : null, fetcher);
-
-    const connection = data?.connection as
-        | {
-              id: string;
-              name: string;
-              type: string;
-              provider: string;
-              status: string;
-              lastError: string | null;
-              lastSyncAt: string | null;
-              workspaceId: string;
-              credentials?: string;
-          }
-        | undefined;
-
-    const pipelines = (data?.pipelines ?? []) as Array<{
-        id: string;
-        name: string;
-        scheduleCron: string;
-        status: string;
-        healthStatus: string;
-        lastSyncedAt: string | null;
-        sourceConnectionId: string;
-        destinationConnectionId: string;
-        sourceConnection: { name: string; provider: string };
-        destinationConnection: { name: string; provider: string };
-    }>;
 
     const recentLogs = (data?.recentLogs ?? []) as Array<{
         id: string;
