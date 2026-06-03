@@ -122,6 +122,7 @@ type Pipeline = {
     id: string;
     name: string;
     status: string;
+    healthStatus?: string;
     updatedAt: string;
     logs?: Array<{ rowsSynced?: number }>;
     sourceConnection?: { name?: string };

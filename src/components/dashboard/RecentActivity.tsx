@@ -10,6 +10,7 @@ type Pipeline = {
     id: string;
     name: string;
     status: string;
+    healthStatus?: string;
     updatedAt: string;
     logs?: Array<{ rowsSynced?: number; status?: string }>;
     sourceConnection?: { name?: string };
