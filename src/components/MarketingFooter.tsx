@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
+import { LegalEntityNotice } from "./LegalEntityNotice";
 import { Logo } from "./Logo";
 
 export function MarketingFooter() {
@@ -44,11 +45,12 @@ export function MarketingFooter() {
                         </ul>
                     </div>
                 </div>
+                <LegalEntityNotice className="text-xs text-slate-500 leading-relaxed max-w-3xl mb-8" />
                 <div className="border-t border-gray-200 pt-8 flex flex-col md:flex-row justify-between items-center">
                     <div className="flex items-center gap-2 mb-4 md:mb-0">
                         <Logo className="w-6 h-6 opacity-80" textClassName="text-sm font-semibold opacity-80" />
                         <p className="text-sm text-slate-400">
-                            © {new Date().getFullYear()} Monstera Cloud Inc. All rights reserved.
+                            © {new Date().getFullYear()} Monstera Cloud. All rights reserved.
                         </p>
                     </div>
                     <div className="flex space-x-6 mt-4 md:mt-0 items-center">

@@ -1,5 +1,7 @@
+import { LegalEntityNotice } from "@/components/LegalEntityNotice";
 import { MarketingNavbar } from "@/components/MarketingNavbar";
 import { MarketingFooter } from "@/components/MarketingFooter";
+import { LEGAL_ENTITY } from "@/lib/legal-entity";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -33,6 +35,13 @@ export default function AboutPage() {
                     <p>
                         We strip away the enterprise bloat. No confusing seat-based pricing. No row tier penalties. Just your data, automatically streaming into your Google Sheets and Looker Studio dashboards so you can make profitable decisions while you sleep.
                     </p>
+                    <div className="mt-12 pt-8 border-t border-white/10">
+                        <p className="text-white font-bold mb-2">Legal entity</p>
+                        <LegalEntityNotice className="text-gray-400 mb-4" />
+                        <p className="text-gray-500 text-sm">
+                            Registered address: TM 01D-05 KDLST Bãi Dài, Tổ 7, ấp Gành Dầu, xã Gành Dầu, Phú Quốc, Kiên Giang, 92500, {LEGAL_ENTITY.country}.
+                        </p>
+                    </div>
                     <div className="mt-12 pt-8 border-t border-white/10">
                         <p className="text-white font-bold mb-2">Our Core Values</p>
                         <ul className="list-disc pl-5 space-y-2 text-gray-400">

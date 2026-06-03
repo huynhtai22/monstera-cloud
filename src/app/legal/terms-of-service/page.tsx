@@ -1,3 +1,6 @@
+import { LegalEntityNotice } from "@/components/LegalEntityNotice";
+import { LEGAL_ENTITY } from "@/lib/legal-entity";
+
 export default function TermsOfServicePage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-16 sm:py-24">
@@ -11,9 +14,17 @@ export default function TermsOfServicePage() {
         </p>
 
         <section className="mb-10">
+          <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">Company information</h2>
+          <LegalEntityNotice className="mb-4 text-slate-600 dark:text-slate-400" />
+          <p className="text-slate-600 dark:text-slate-400">
+            Monstera Cloud (&quot;Company&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;) is the commercial brand and product operated by {LEGAL_ENTITY.legalName}. Registered address: TM 01D-05 KDLST Bãi Dài, Tổ 7, ấp Gành Dầu, xã Gành Dầu, Phú Quốc, Kiên Giang, 92500, {LEGAL_ENTITY.country}.
+          </p>
+        </section>
+
+        <section className="mb-10">
           <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">1. Agreement to Terms</h2>
           <p className="mb-4 text-slate-600 dark:text-slate-400">
-            These Terms of Service constitute a legally binding agreement made between you, whether personally or on behalf of an entity ("you") and Monstera Cloud ("Company", "we", "us", or "our"), concerning your access to and use of the website as well as any other media form, media channel, mobile website or mobile application related, linked, or otherwise connected thereto (collectively, the "Site").
+            These Terms of Service constitute a legally binding agreement made between you, whether personally or on behalf of an entity (&quot;you&quot;) and Monstera Cloud, operated by {LEGAL_ENTITY.legalName} (&quot;Company&quot;, &quot;we&quot;, &quot;us&quot;, or &quot;our&quot;), concerning your access to and use of the website as well as any other media form, media channel, mobile website or mobile application related, linked, or otherwise connected thereto (collectively, the &quot;Site&quot;).
           </p>
           <p className="text-slate-600 dark:text-slate-400">
             You agree that by accessing the Site, you have read, understood, and agreed to be bound by all of these Terms of Service. IF YOU DO NOT AGREE WITH ALL OF THESE TERMS OF SERVICE, THEN YOU ARE EXPRESSLY PROHIBITED FROM USING THE SITE AND YOU MUST DISCONTINUE USE IMMEDIATELY.

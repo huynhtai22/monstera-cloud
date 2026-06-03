@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, ChevronRight, Shield, Lock, Eye, Zap } from "lucide-react";
+import { LegalEntityNotice } from "@/components/LegalEntityNotice";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 
 const MARKETING_LANG_KEY = "marketing_lang";
@@ -846,6 +847,7 @@ export default function MarketingHomePage() {
                         </div>
                     </div>
 
+                    <LegalEntityNotice className="text-[10px] text-slate-500 leading-relaxed max-w-2xl mb-6" />
                     <div className="border-t border-gray-100 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
                         <p className="text-[10px] text-slate-400">{c.footer.copy}</p>
                         <p className="text-[10px] text-slate-400 italic">{c.cta.legal}</p>
