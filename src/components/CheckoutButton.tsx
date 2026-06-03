@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 import { metaPixelCustom } from '@/lib/meta-pixel';
 import { getCheckoutApiPath } from '@/lib/checkout-api-path';
+import { getPaddleClientToken, getPaddleJsEnvironment } from '@/lib/paddle-client';
 import { initializePaddle, Paddle } from '@paddle/paddle-js';
 
 let paddleInstance: Paddle | undefined;
@@ -63,23 +64,43 @@ export function CheckoutButton({
       }
 
       if (getCheckoutApiPath() === '/api/checkout/paddle') {
-        if (!data.transactionId) {
-          throw new Error('No transaction ID returned from Paddle.');
+        if (!data.transactionId && !data.url) {
+          throw new Error('No checkout session returned from Paddle.');
         }
 
-        if (!paddleInstance) {
-          paddleInstance = await initializePaddle({
-            token: process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN || '',
-          });
+        const clientToken = getPaddleClientToken();
+        if (!clientToken) {
+          if (data.url) {
+            window.location.href = data.url as string;
+            return;
+          }
+          throw new Error('Paddle checkout is not configured (missing client token).');
         }
-        
-        if (paddleInstance) {
-          paddleInstance.Checkout.open({
-            transactionId: data.transactionId,
-          });
-        } else {
-          throw new Error('Failed to initialize Paddle client.');
+
+        try {
+          if (!paddleInstance) {
+            paddleInstance = await initializePaddle({
+              environment: getPaddleJsEnvironment(),
+              token: clientToken,
+            });
+          }
+
+          if (paddleInstance && data.transactionId) {
+            paddleInstance.Checkout.open({
+              transactionId: data.transactionId,
+            });
+            return;
+          }
+        } catch (paddleError) {
+          console.error('Paddle overlay checkout failed:', paddleError);
         }
+
+        if (data.url) {
+          window.location.href = data.url as string;
+          return;
+        }
+
+        throw new Error('Failed to open Paddle checkout.');
       } else {
         // LemonSqueezy fallback
         if (data.url) {
