@@ -12,3 +12,11 @@ export function getPaddleJsEnvironment(): PaddleJsEnvironment {
 export function getPaddleClientToken(): string {
   return (process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN || "").trim();
 }
+
+export function paddleClientTokenMatchesEnvironment(
+  token: string,
+  environment: PaddleJsEnvironment
+): boolean {
+  if (environment === "production") return token.startsWith("live_");
+  return token.startsWith("test_");
+}

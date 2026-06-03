@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { createPaddleCheckoutUrl, isPaddleConfigured } from "@/lib/paddle";
+import { createPaddleCheckoutUrl, isPaddleConfigured, paddleEnvironmentName } from "@/lib/paddle";
 import { logger } from "@/lib/logger";
 
 /**
@@ -41,7 +41,11 @@ export async function POST(req: Request) {
 
   try {
     const { url, transactionId } = await createPaddleCheckoutUrl(plan, billingCycle, session.user.id);
-    return NextResponse.json({ url, transactionId });
+    return NextResponse.json({
+      url,
+      transactionId,
+      paddleEnvironment: paddleEnvironmentName(),
+    });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to create Paddle checkout";
     logger.error("[PADDLE_CHECKOUT]", err);

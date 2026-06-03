@@ -47,6 +47,10 @@ export function getPaddleClient(): Paddle {
   return new Paddle(key, { environment: paddleEnvironment() });
 }
 
+export function paddleEnvironmentName(): "sandbox" | "production" {
+  return paddleEnvironment() === Environment.production ? "production" : "sandbox";
+}
+
 /** Map internal plan + billing cycle → Paddle catalog `pri_` price ID (set in Paddle dashboard). */
 export function priceIdForPlan(
   plan: PaddlePlan,

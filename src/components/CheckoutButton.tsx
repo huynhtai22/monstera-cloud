@@ -5,10 +5,16 @@ import { cn } from '@/lib/utils';
 import { Loader2 } from 'lucide-react';
 import { metaPixelCustom } from '@/lib/meta-pixel';
 import { getCheckoutApiPath } from '@/lib/checkout-api-path';
-import { getPaddleClientToken, getPaddleJsEnvironment } from '@/lib/paddle-client';
+import {
+  getPaddleClientToken,
+  getPaddleJsEnvironment,
+  paddleClientTokenMatchesEnvironment,
+  type PaddleJsEnvironment,
+} from '@/lib/paddle-client';
 import { initializePaddle, Paddle } from '@paddle/paddle-js';
 
 let paddleInstance: Paddle | undefined;
+let paddleInstanceEnv: PaddleJsEnvironment | undefined;
 
 interface CheckoutButtonProps {
   plan: 'starter' | 'professional';
@@ -64,25 +70,39 @@ export function CheckoutButton({
       }
 
       if (getCheckoutApiPath() === '/api/checkout/paddle') {
-        if (!data.transactionId && !data.url) {
+        if (!data.url && !data.transactionId) {
           throw new Error('No checkout session returned from Paddle.');
+        }
+
+        // Hosted checkout is more reliable than the overlay (domain + token must match exactly).
+        if (data.url) {
+          window.location.href = data.url as string;
+          return;
         }
 
         const clientToken = getPaddleClientToken();
         if (!clientToken) {
-          if (data.url) {
-            window.location.href = data.url as string;
-            return;
-          }
           throw new Error('Paddle checkout is not configured (missing client token).');
         }
 
+        const paddleEnvironment =
+          data.paddleEnvironment === 'sandbox' || data.paddleEnvironment === 'production'
+            ? data.paddleEnvironment
+            : getPaddleJsEnvironment();
+
+        if (!paddleClientTokenMatchesEnvironment(clientToken, paddleEnvironment)) {
+          throw new Error(
+            `Paddle checkout misconfigured: ${paddleEnvironment} transaction requires a matching ${paddleEnvironment === 'production' ? 'live_' : 'test_'} client token in Vercel.`
+          );
+        }
+
         try {
-          if (!paddleInstance) {
+          if (!paddleInstance || paddleInstanceEnv !== paddleEnvironment) {
             paddleInstance = await initializePaddle({
-              environment: getPaddleJsEnvironment(),
+              environment: paddleEnvironment,
               token: clientToken,
             });
+            paddleInstanceEnv = paddleEnvironment;
           }
 
           if (paddleInstance && data.transactionId) {
@@ -93,11 +113,6 @@ export function CheckoutButton({
           }
         } catch (paddleError) {
           console.error('Paddle overlay checkout failed:', paddleError);
-        }
-
-        if (data.url) {
-          window.location.href = data.url as string;
-          return;
         }
 
         throw new Error('Failed to open Paddle checkout.');
