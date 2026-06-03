@@ -66,6 +66,7 @@ export default function SourceDetailPage() {
               lastError: string | null;
               lastSyncAt: string | null;
               workspaceId: string;
+              workspace?: { name: string };
               credentials?: string;
           }
         | undefined;
