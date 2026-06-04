@@ -540,18 +540,18 @@ export function DashboardHomePage() {
 
                 <div className="flex min-w-0 flex-col gap-8 lg:col-span-7 xl:col-span-8">
                     <div className="rounded-3xl border border-gray-200/75 bg-gradient-to-b from-gray-50/90 to-white p-6 ring-1 ring-black/[0.03] dark:border-slate-700/65 dark:from-slate-900/50 dark:to-slate-950/40 dark:ring-white/[0.04] sm:p-8 lg:p-9">
-                        <DashboardSectionLabel>Activity stream</DashboardSectionLabel>
-
-                    <TodaysDataFlow />
-
                     {snapshots.length > 0 && (
-                        <div className="mt-8 rounded-3xl border border-gray-200/70 bg-white/90 p-5 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/50 sm:p-6">
+                        <div className="mb-8 rounded-3xl border border-gray-200/70 bg-white/90 p-5 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/50 sm:p-6">
                             <DashboardSectionLabel>Performance</DashboardSectionLabel>
                             <MetricCardGrid snapshots={snapshots} />
                         </div>
                     )}
 
-                    <div className={snapshots.length > 0 ? "mt-8" : "mt-8"}>
+                        <DashboardSectionLabel>Activity stream</DashboardSectionLabel>
+
+                    <TodaysDataFlow />
+
+                    <div className="mt-8">
                         <DashboardSectionLabel>Pipeline activity</DashboardSectionLabel>
                         <RecentActivity
                             pipelines={pipelines}
