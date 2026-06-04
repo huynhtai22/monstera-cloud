@@ -5,6 +5,7 @@
 
 import crypto from "crypto";
 import { Environment, Paddle } from "@paddle/paddle-node-sdk";
+import prisma from "@/lib/prisma";
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
 
 export type PaddlePlan = "starter" | "professional";
@@ -160,12 +161,78 @@ export function verifyPaddleWebhookSignature(
   }
 }
 
-/** Read `user_id` from Paddle `custom_data` (object or JSON-like). */
+/** Read `user_id` from Paddle `custom_data` (object, JSON string, or SDK CustomData). */
 export function userIdFromPaddleCustomData(customData: unknown): string | undefined {
   if (customData == null) return undefined;
-  if (typeof customData === "object" && "user_id" in customData) {
-    const v = (customData as Record<string, unknown>).user_id;
+
+  let parsed: unknown = customData;
+  if (typeof customData === "string") {
+    try {
+      parsed = JSON.parse(customData) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (typeof parsed === "object" && parsed !== null && "user_id" in parsed) {
+    const v = (parsed as Record<string, unknown>).user_id;
     return typeof v === "string" ? v : undefined;
   }
   return undefined;
+}
+
+export function priceIdFromTransactionItems(items: unknown): string | undefined {
+  if (!Array.isArray(items) || items.length === 0) return undefined;
+  const first = items[0] as Record<string, unknown>;
+  if (typeof first.price_id === "string") return first.price_id;
+  const price = first.price as Record<string, unknown> | undefined;
+  if (price && typeof price.id === "string") return price.id;
+  return undefined;
+}
+
+const PAID_TRANSACTION_STATUSES = new Set(["completed", "paid", "billed"]);
+
+/** Apply catalog price → internal plan after verified Paddle payment. */
+export async function applyPaddlePlanToUser(
+  userId: string,
+  priceId: string | undefined,
+  subscriptionId?: string | null
+): Promise<PaddlePlan | null> {
+  const plan = planForPriceId(priceId);
+  if (!plan) return null;
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      plan,
+      subscriptionId: subscriptionId ?? undefined,
+    },
+  });
+  return plan;
+}
+
+/**
+ * Fallback when webhooks are delayed or misconfigured: verify transaction in Paddle
+ * and upgrade the logged-in user when payment is complete.
+ */
+export async function confirmPaddleTransactionForUser(
+  transactionId: string,
+  expectedUserId: string
+): Promise<{ plan: PaddlePlan | null; status: string }> {
+  const paddle = getPaddleClient();
+  const tx = await paddle.transactions.get(transactionId);
+  const status = String(tx.status ?? "");
+
+  if (!PAID_TRANSACTION_STATUSES.has(status)) {
+    return { plan: null, status };
+  }
+
+  const userId = userIdFromPaddleCustomData(tx.customData);
+  if (!userId || userId !== expectedUserId) {
+    throw new Error("Transaction does not belong to this account.");
+  }
+
+  const priceId = tx.items?.[0]?.price?.id ?? priceIdFromTransactionItems(tx.items);
+  const plan = await applyPaddlePlanToUser(userId, priceId, tx.subscriptionId);
+  return { plan, status };
 }

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import {
+  applyPaddlePlanToUser,
   planForPriceId,
+  priceIdFromTransactionItems,
   userIdFromPaddleCustomData,
   verifyPaddleWebhookSignature,
 } from "@/lib/paddle";
@@ -78,22 +80,11 @@ export async function POST(req: Request) {
 }
 
 function firstPriceIdFromTransactionData(data: Record<string, unknown>): string | undefined {
-  const items = data.items;
-  if (!Array.isArray(items) || items.length === 0) return undefined;
-  const first = items[0] as Record<string, unknown>;
-  if (typeof first.price_id === "string") return first.price_id;
-  const price = first.price as Record<string, unknown> | undefined;
-  if (price && typeof price.id === "string") return price.id;
-  return undefined;
+  return priceIdFromTransactionItems(data.items);
 }
 
 function firstPriceIdFromSubscriptionData(data: Record<string, unknown>): string | undefined {
-  const items = data.items;
-  if (!Array.isArray(items) || items.length === 0) return undefined;
-  const first = items[0] as Record<string, unknown>;
-  const price = first.price as Record<string, unknown> | undefined;
-  if (price && typeof price.id === "string") return price.id;
-  return undefined;
+  return priceIdFromTransactionItems(data.items);
 }
 
 async function handleTransactionLike(data: Record<string, unknown>) {
@@ -111,13 +102,7 @@ async function handleTransactionLike(data: Record<string, unknown>) {
     return;
   }
 
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      plan,
-      subscriptionId: subscriptionId ?? undefined,
-    },
-  });
+  await applyPaddlePlanToUser(userId, priceId, subscriptionId);
   logger.info(`[PADDLE_WEBHOOK] User ${userId} → ${plan} (transaction)`);
 }
 
@@ -133,13 +118,7 @@ async function handleSubscriptionUpsert(data: Record<string, unknown>) {
   }
 
   if (userId) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        plan,
-        subscriptionId: subscriptionId ?? undefined,
-      },
-    });
+    await applyPaddlePlanToUser(userId, priceId, subscriptionId);
     logger.info(`[PADDLE_WEBHOOK] User ${userId} → ${plan} (subscription)`);
     return;
   }

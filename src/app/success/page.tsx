@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 const POLL_INTERVAL_MS = 2500;
 const POLL_TIMEOUT_MS = 40_000;
@@ -14,8 +14,9 @@ const PLAN_LABELS: Record<string, string> = {
 
 type State = "polling" | "success" | "timeout";
 
-export default function SuccessPage() {
-  const router = useRouter();
+function SuccessContent() {
+  const searchParams = useSearchParams();
+  const transactionId = searchParams.get("_ptxn")?.trim() ?? "";
   const [state, setState] = useState<State>("polling");
   const [planLabel, setPlanLabel] = useState("");
 
@@ -23,19 +24,51 @@ export default function SuccessPage() {
     let stopped = false;
     const deadline = Date.now() + POLL_TIMEOUT_MS;
 
+    async function activateFromPlan(plan: string) {
+      if (plan && plan !== "free") {
+        setPlanLabel(PLAN_LABELS[plan] ?? plan);
+        setState("success");
+        return true;
+      }
+      return false;
+    }
+
+    async function pollPlan() {
+      const res = await fetch("/api/user/plan");
+      if (res.status === 401) {
+        const callbackUrl = `${window.location.pathname}${window.location.search}`;
+        window.location.href = `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+        return true;
+      }
+      if (res.ok) {
+        const json = await res.json();
+        return activateFromPlan(json.plan ?? "");
+      }
+      return false;
+    }
+
+    async function confirmTransaction() {
+      if (!transactionId) return false;
+      const res = await fetch(
+        `/api/checkout/paddle/confirm?transactionId=${encodeURIComponent(transactionId)}`
+      );
+      if (res.status === 401) {
+        const callbackUrl = `${window.location.pathname}${window.location.search}`;
+        window.location.href = `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+        return true;
+      }
+      if (res.ok) {
+        const json = await res.json();
+        return activateFromPlan(json.plan ?? "");
+      }
+      return false;
+    }
+
     async function poll() {
       while (!stopped && Date.now() < deadline) {
         try {
-          const res = await fetch("/api/user/plan");
-          if (res.ok) {
-            const json = await res.json();
-            const plan: string = json.plan ?? "";
-            if (plan && plan !== "free") {
-              setPlanLabel(PLAN_LABELS[plan] ?? plan);
-              setState("success");
-              return;
-            }
-          }
+          if (await confirmTransaction()) return;
+          if (await pollPlan()) return;
         } catch {
           // network hiccup — keep polling
         }
@@ -48,7 +81,7 @@ export default function SuccessPage() {
     return () => {
       stopped = true;
     };
-  }, []);
+  }, [transactionId]);
 
   if (state === "polling") {
     return (
@@ -124,7 +157,6 @@ export default function SuccessPage() {
     );
   }
 
-  // success
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 flex flex-col items-center justify-center font-sans px-4">
       <div className="bg-white dark:bg-slate-900 rounded-3xl p-10 max-w-lg w-full shadow-xl border border-emerald-100 dark:border-emerald-900 text-center relative overflow-hidden">
@@ -158,5 +190,19 @@ export default function SuccessPage() {
         </a>
       </div>
     </div>
+  );
+}
+
+export default function SuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-950 flex items-center justify-center">
+          <p className="text-sm text-gray-500">Loading…</p>
+        </div>
+      }
+    >
+      <SuccessContent />
+    </Suspense>
   );
 }
