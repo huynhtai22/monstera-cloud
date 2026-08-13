@@ -1,17 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
-async function validateRuntimeSecrets() {
-  if (process.env.NODE_ENV !== "production") return;
-  // Only secrets required by every server route are startup-fatal. Optional
-  // integrations validate their own secrets and fail closed at the endpoint.
-  const required = ["DATABASE_URL", "NEXTAUTH_SECRET"] as const;
-  const missing = required.filter((name) => !process.env[name]?.trim());
-  if (missing.length) throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
-  if ((process.env.NEXTAUTH_SECRET?.length ?? 0) < 32) throw new Error("NEXTAUTH_SECRET must be at least 32 characters");
-}
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    await validateRuntimeSecrets();
     // ── New Relic via OpenTelemetry OTLP ──────────────────────────────────────
     // Only initialises when NEW_RELIC_LICENSE_KEY is present (safe to deploy
     // without it during local dev).
