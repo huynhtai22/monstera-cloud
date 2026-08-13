@@ -14,14 +14,26 @@ ALTER TABLE "User"
   ADD COLUMN IF NOT EXISTS "platformRole" "PlatformRole" NOT NULL DEFAULT 'USER';
 
 ALTER TABLE "WorkspaceMember" ALTER COLUMN "role" DROP DEFAULT;
-ALTER TABLE "WorkspaceMember"
-  ALTER COLUMN "role" TYPE "WorkspaceRole"
-  USING CASE
-    WHEN "role"::text = 'owner' THEN 'owner'::"WorkspaceRole"
-    WHEN "role"::text = 'admin' THEN 'admin'::"WorkspaceRole"
-    WHEN "role"::text = 'member' THEN 'member'::"WorkspaceRole"
-    ELSE 'viewer'::"WorkspaceRole"
-  END;
+DO $$
+DECLARE role_type TEXT;
+BEGIN
+  SELECT udt_name INTO role_type
+  FROM information_schema.columns
+  WHERE table_schema = 'public'
+    AND table_name = 'WorkspaceMember'
+    AND column_name = 'role';
+
+  IF role_type IS DISTINCT FROM 'WorkspaceRole' THEN
+    ALTER TABLE "WorkspaceMember"
+      ALTER COLUMN "role" TYPE "WorkspaceRole"
+      USING CASE
+        WHEN "role"::text = 'owner' THEN 'owner'::"WorkspaceRole"
+        WHEN "role"::text = 'admin' THEN 'admin'::"WorkspaceRole"
+        WHEN "role"::text = 'member' THEN 'member'::"WorkspaceRole"
+        ELSE 'viewer'::"WorkspaceRole"
+      END;
+  END IF;
+END $$;
 ALTER TABLE "WorkspaceMember" ALTER COLUMN "role" SET DEFAULT 'member';
 
 ALTER TABLE "Workspace"
