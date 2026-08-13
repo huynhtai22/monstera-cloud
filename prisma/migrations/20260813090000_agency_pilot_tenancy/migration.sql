@@ -15,11 +15,16 @@ ALTER TABLE "WorkspaceMember" ALTER COLUMN "role" DROP DEFAULT;
 DO $$
 DECLARE role_type TEXT;
 BEGIN
-  SELECT udt_name INTO role_type
-  FROM information_schema.columns
-  WHERE table_schema = 'public'
-    AND table_name = 'WorkspaceMember'
-    AND column_name = 'role';
+  SELECT column_type.typname INTO role_type
+  FROM pg_attribute AS attribute
+  JOIN pg_class AS relation ON relation.oid = attribute.attrelid
+  JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+  JOIN pg_type AS column_type ON column_type.oid = attribute.atttypid
+  WHERE namespace.nspname = 'public'
+    AND relation.relname = 'WorkspaceMember'
+    AND attribute.attname = 'role'
+    AND attribute.attnum > 0
+    AND NOT attribute.attisdropped;
 
   IF role_type IS DISTINCT FROM 'WorkspaceRole' THEN
     ALTER TABLE "WorkspaceMember"
