@@ -55,7 +55,7 @@ npx prisma migrate deploy
 npx prisma migrate status
 ```
 
-The deployment workflow performs baseline adoption only when the existing database contains the complete set of required baseline tables. It refuses partial schemas rather than marking them as valid.
+The deployment workflow performs baseline adoption only when the existing database contains the required core tables. It refuses partial schemas rather than marking them as valid. The pilot migration explicitly reconciles the optional legacy `LookerJob` table before using it.
 
 Do not mark the pilot tenancy migration as applied: it backfills workspace entitlements, provider access, OTP controls, OAuth attempts, invitations, audit events, and hashed API keys.
 

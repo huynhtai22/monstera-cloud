@@ -9,7 +9,6 @@ const REQUIRED_BASELINE_TABLES = [
   "Connection",
   "Pipeline",
   "CampaignMetric",
-  "LookerJob",
 ];
 
 function runPrisma(args) {

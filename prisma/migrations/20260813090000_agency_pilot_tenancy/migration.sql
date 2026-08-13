@@ -35,6 +35,32 @@ WHERE owner_user.id = workspace."ownerId";
 
 CREATE UNIQUE INDEX IF NOT EXISTS "Workspace_subscriptionId_key" ON "Workspace"("subscriptionId");
 
+-- Some legacy production databases predate the asynchronous Looker job table.
+-- Reconcile it here before the baseline is adopted; the pilot keeps job creation disabled,
+-- but retaining the table makes the schema complete and polling safe.
+CREATE TABLE IF NOT EXISTS "LookerJob" (
+  "id" TEXT NOT NULL,
+  "workspaceId" TEXT NOT NULL,
+  "apiKeyId" TEXT,
+  "params" JSONB NOT NULL,
+  "status" TEXT NOT NULL DEFAULT 'queued',
+  "resultKey" TEXT,
+  "resultUrl" TEXT,
+  "rowCount" INTEGER,
+  "errorMsg" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "startedAt" TIMESTAMP(3),
+  "finishedAt" TIMESTAMP(3),
+  CONSTRAINT "LookerJob_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX IF NOT EXISTS "LookerJob_workspaceId_status_idx"
+  ON "LookerJob"("workspaceId", "status");
+DO $$ BEGIN
+  ALTER TABLE "LookerJob" ADD CONSTRAINT "LookerJob_workspaceId_fkey"
+    FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 CREATE TABLE IF NOT EXISTS "WorkspaceProviderAccess" (
   "id" TEXT NOT NULL,
   "workspaceId" TEXT NOT NULL,
