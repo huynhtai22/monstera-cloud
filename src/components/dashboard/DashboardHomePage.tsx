@@ -2,33 +2,87 @@
 
 import React from "react";
 import Link from "next/link";
-import { Database, Loader2, RefreshCw } from "lucide-react";
+import { Database } from "lucide-react";
 import useSWR, { useSWRConfig } from "swr";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
-import { PrimaryButton, primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
+import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
+import { AiPerformanceSummary } from "@/components/AiPerformanceSummary";
 import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { StatusHero } from "@/components/dashboard/StatusHero";
+import { MetricCardGrid } from "@/components/dashboard/MetricCardGrid";
+import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { SetupWizard } from "@/components/dashboard/SetupWizard";
 import { PillarGrid } from "@/components/dashboard/PillarGrid";
 import { HealthSummaryBar } from "@/components/dashboard/HealthSummaryBar";
-import { TodaysDataFlow } from "@/components/dashboard/TodaysDataFlow";
 import { RefreshedAt } from "@/components/ui/RefreshedAt";
 import { trackEvent, trackOnce } from "@/lib/analytics-events";
 import { cn } from "@/lib/utils";
 
 const WIZARD_DISMISS_KEY = "monstera_setup_wizard_dismissed_v1";
 
-const consoleShellClass =
-    "mx-auto w-full max-w-[min(100%,1560px)] px-5 py-10 sm:px-8 sm:py-12 lg:px-12 lg:py-14";
+type Snapshot = {
+    date: string;
+    netRoas: number;
+    adSpend: number;
+    attributedRevenue: number;
+};
 
-function DashboardSectionLabel({ children, className }: { children: React.ReactNode; className?: string }) {
+function RoasSnapshotCard({ snapshots }: { snapshots: Snapshot[] }) {
+    // Aggregate last 7 days
+    const recent = snapshots.slice(0, 7);
+    const totalRevenue = recent.reduce((s, r) => s + (r.attributedRevenue || 0), 0);
+    const totalSpend = recent.reduce((s, r) => s + (r.adSpend || 0), 0);
+    const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+
+    const fmtCurrency = (n: number) =>
+        n >= 1000000
+            ? `$${(n / 1000000).toFixed(1)}M`
+            : n >= 1000
+            ? `$${(n / 1000).toFixed(1)}k`
+            : `$${Math.round(n)}`;
+
     return (
-        <div className={cn("mb-4 flex items-center gap-2.5", className)}>
-            <span
-                className="h-2 w-2 shrink-0 rounded-full bg-gradient-to-br from-cyan-400 to-teal-500 shadow-[0_0_12px_rgba(34,211,238,0.45)]"
-                aria-hidden
-            />
-            <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400">{children}</span>
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="mb-3 flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    Performance (last 7 days)
+                </p>
+                <Link
+                    href="/reports"
+                    className="text-xs font-medium text-cyan-600 hover:text-cyan-700 dark:text-cyan-400"
+                >
+                    View details →
+                </Link>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+                <div>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">Attributed Revenue</p>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">{fmtCurrency(totalRevenue)}</p>
+                </div>
+                <div>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">Ad Spend</p>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">{fmtCurrency(totalSpend)}</p>
+                </div>
+                <div>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400">Blended ROAS</p>
+                    <p
+                        className={cn(
+                            "text-lg font-bold",
+                            roas >= 3
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : roas >= 2
+                                ? "text-amber-600 dark:text-amber-400"
+                                : "text-red-600 dark:text-red-400"
+                        )}
+                    >
+                        {roas.toFixed(2)}×
+                    </p>
+                </div>
+            </div>
+            <p className="mt-2 text-[10px] text-gray-400 dark:text-gray-500">
+                Combines marketplace revenue and ad spend where attribution is configured.
+            </p>
         </div>
     );
 }
@@ -40,13 +94,36 @@ type Connection = {
     status?: string | null;
     name?: string | null;
     updatedAt?: string | null;
-    lastSyncAt?: string | null;
 };
 
 type Workspace = {
     id: string;
     name?: string | null;
     connections?: Connection[];
+};
+
+type Pipeline = {
+    id: string;
+    name: string;
+    status: string;
+    updatedAt: string;
+    logs?: Array<{ rowsSynced?: number }>;
+    sourceConnection?: { name?: string };
+    destinationConnection?: { name?: string };
+};
+
+type SyncLog = {
+    id: string;
+    status: string;
+    createdAt: string;
+    pipeline?: { id: string; name: string } | null;
+};
+
+type AttributionSnapshot = {
+    date: string;
+    netRoas: number;
+    adSpend: number;
+    attributedRevenue: number;
 };
 
 const fetcher = async (url: string) => {
@@ -61,6 +138,7 @@ const fetcher = async (url: string) => {
 export function DashboardHomePage() {
     const { workspaceId, workspaces, isLoading: workspacesLoading } = useResolvedWorkspaceId();
     const { mutate } = useSWRConfig();
+    const [syncingPipelineId, setSyncingPipelineId] = React.useState<string | null>(null);
     const [syncAllBusy, setSyncAllBusy] = React.useState(false);
     const [syncMsg, setSyncMsg] = React.useState<string>("");
     const [wizardDismissed, setWizardDismissed] = React.useState(false);
@@ -98,41 +176,66 @@ export function DashboardHomePage() {
         trackEvent("dashboard_viewed", { path: "/" });
     }, []);
 
-    const { data: connectionsData = [] } = useSWR<Connection[]>(
-        workspaceId ? `/api/workspaces/${workspaceId}/connections` : null,
+    type DashboardSummary = {
+        pipelines: Pipeline[];
+        syncLogs: SyncLog[];
+        snapshots: AttributionSnapshot[];
+    };
+
+    const {
+        data: summary,
+        error,
+        isLoading,
+    } = useSWR<DashboardSummary, Error>(
+        workspaceId ? `/api/dashboard/summary?workspaceId=${workspaceId}&days=14` : null,
         fetcher,
+        { refreshInterval: 5000 }
     );
 
-    const { connections, connectedSourcesCount, workspaceName } = React.useMemo(() => {
-        if (!workspaceId || !Array.isArray(workspaces)) {
-            return { connections: [] as Connection[], connectedSourcesCount: 0, workspaceName: "" };
+    const pipelines = summary?.pipelines ?? [];
+    const activePipelinesCount = pipelines.length;
+    const logs = summary?.syncLogs ?? [];
+    const hasSuccessfulSync = logs.some((l) => l.status === "success");
+    const snapshots = summary?.snapshots ?? [];
+
+    const { connections, connectedSourcesCount, connectedDestinationsCount, workspaceName } = React.useMemo(() => {
+        if (!Array.isArray(workspaces) || !workspaceId) {
+            return { connections: [] as Connection[], connectedSourcesCount: 0, connectedDestinationsCount: 0, workspaceName: "" };
         }
         const list = workspaces as Workspace[];
         const ws = list.find((w) => w.id === workspaceId) || list[0];
-        const conns = Array.isArray(connectionsData) ? connectionsData : [];
+        const conns = ws?.connections ?? [];
         return {
             connections: conns,
             connectedSourcesCount: conns.filter((c) => c.type === "source").length,
+            connectedDestinationsCount: conns.filter((c) => c.type === "destination").length,
             workspaceName: ws?.name ?? "Workspace",
         };
-    }, [workspaces, workspaceId, connectionsData]);
+    }, [workspaces, workspaceId]);
 
     const hasSource = connectedSourcesCount > 0;
-    const sourceConnections = React.useMemo(() => connections.filter((connection) => connection.type === "source"), [connections]);
-    const hasSuccessfulSync = sourceConnections.some((connection) => Boolean(connection.lastSyncAt));
-    const freshCutoff = Date.now() - 26 * 60 * 60 * 1000;
-    const healthyCount = sourceConnections.filter((connection) =>
-        connection.status === "connected" && connection.lastSyncAt && new Date(connection.lastSyncAt).getTime() >= freshCutoff
-    ).length;
+    const hasDestination = connectedDestinationsCount > 0;
+
+    const healthyCount = pipelines
+        ? pipelines.filter((p) => p.status !== "error").length
+        : 0;
 
     const lastSyncLabel = React.useMemo(() => {
-        const synced = sourceConnections.filter((connection) => connection.lastSyncAt);
-        if (!synced.length) return null;
-        const latest = synced.reduce((acc, connection) =>
-            new Date(connection.lastSyncAt!).getTime() > new Date(acc.lastSyncAt!).getTime() ? connection : acc
+        if (!logs.length) return null;
+        const latest = logs.reduce((acc, l) =>
+            new Date(l.createdAt).getTime() > new Date(acc.createdAt).getTime() ? l : acc
         );
-        return latest.lastSyncAt ? new Date(latest.lastSyncAt).toLocaleString() : null;
-    }, [sourceConnections]);
+        if (!latest?.createdAt) return null;
+        return new Date(latest.createdAt).toLocaleString();
+    }, [logs]);
+
+    const lastSyncDate = React.useMemo(() => {
+        if (!logs.length) return null;
+        const latest = logs.reduce((acc, l) =>
+            new Date(l.createdAt).getTime() > new Date(acc.createdAt).getTime() ? l : acc
+        );
+        return latest?.createdAt ? new Date(latest.createdAt) : null;
+    }, [logs]);
 
     const todayLabel = new Date().toLocaleDateString(undefined, {
         weekday: "long",
@@ -140,28 +243,53 @@ export function DashboardHomePage() {
         day: "numeric",
     });
 
+    const runPipeline = async (pipelineId: string) => {
+        setSyncMsg("");
+        setSyncingPipelineId(pipelineId);
+        try {
+            const res = await fetch(`/api/pipelines/${pipelineId}/run`, { method: "POST" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(typeof data.error === "string" ? data.error : "Sync failed");
+            }
+            const msg = data.queued
+                ? `Pipeline sync queued. It will run shortly.`
+                : typeof data.message === "string"
+                ? data.message
+                : "Sync started.";
+            setSyncMsg(msg);
+            trackEvent("wizard_step_completed", { step: "sync_manual", pipelineId });
+            trackEvent("pipeline_manual_sync_succeeded", { pipelineId, source: "dashboard" });
+        } catch (e: unknown) {
+            setSyncMsg(e instanceof Error ? e.message : "Sync failed");
+        } finally {
+            setSyncingPipelineId(null);
+        }
+    };
+
     const runAllPipelines = async () => {
-        if (!workspaceId || sourceConnections.length === 0) return;
+        if (!pipelines || pipelines.length === 0) return;
         setSyncAllBusy(true);
         setSyncMsg("");
         try {
-            const response = await fetch("/api/data-explorer/warehouse/import-batch", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    workspaceId,
-                    since: new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10),
-                    until: new Date().toISOString().slice(0, 10),
-                    items: sourceConnections.map((connection) => ({ connectionId: connection.id })),
-                }),
-            });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok || !payload.success) throw new Error(payload.error || payload.message || "Refresh failed");
-            setSyncMsg(`${payload.okCount}/${payload.totalJobs} sources refreshed; ${Number(payload.approximateRows || 0).toLocaleString()} rows processed.`);
-            await handleManualRefresh();
-            trackEvent("warehouse_manual_refresh_completed", { count: sourceConnections.length });
-        } catch (refreshError: unknown) {
-             setSyncMsg(refreshError instanceof Error ? refreshError.message : "Some imports failed — check Sync activity.");
+            const CONCURRENCY = 3;
+            const allIds: string[] = [];
+            for (let i = 0; i < pipelines.length; i += CONCURRENCY) {
+                const batch = pipelines.slice(i, i + CONCURRENCY);
+                const results = await Promise.allSettled(
+                    batch.map((p) => fetch(`/api/pipelines/${p.id}/run`, { method: "POST" }))
+                );
+                results.forEach((r, idx) => {
+                    if (r.status === "fulfilled" && r.value.ok) {
+                        allIds.push(batch[idx].id);
+                    }
+                });
+            }
+            setSyncMsg(`Sync requested for ${allIds.length} of ${pipelines.length} pipelines.`);
+            trackEvent("wizard_step_completed", { step: "sync_all", count: allIds.length });
+            trackEvent("pipeline_manual_sync_succeeded", { count: allIds.length, source: "dashboard_sync_all" });
+        } catch {
+            setSyncMsg("Some syncs may have failed — check Reports.");
         } finally {
             setSyncAllBusy(false);
         }
@@ -177,14 +305,14 @@ export function DashboardHomePage() {
     };
 
     if (workspacesLoading || workspaces === undefined) {
-    return (
-        <PageShell className={consoleShellClass}>
+        return (
+            <PageShell>
                 <div className="animate-pulse space-y-6 p-2">
-                    <div className="h-10 max-w-md rounded-lg bg-slate-200/80 dark:bg-[#1d1f23]/80" />
-                    <div className="h-36 rounded-2xl bg-slate-100 dark:bg-[#16181c]/80" />
+                    <div className="h-10 max-w-md rounded-lg bg-slate-200/80 dark:bg-slate-700/80" />
+                    <div className="h-36 rounded-2xl bg-slate-100 dark:bg-slate-800/80" />
                     <div className="grid gap-4 md:grid-cols-2">
-                        <div className="h-48 rounded-xl bg-slate-100 dark:bg-[#16181c]/80" />
-                        <div className="h-48 rounded-xl bg-slate-100 dark:bg-[#16181c]/80" />
+                        <div className="h-48 rounded-xl bg-slate-100 dark:bg-slate-800/80" />
+                        <div className="h-48 rounded-xl bg-slate-100 dark:bg-slate-800/80" />
                     </div>
                 </div>
             </PageShell>
@@ -193,9 +321,9 @@ export function DashboardHomePage() {
 
     if (!workspaceId) {
         return (
-            <PageShell className={consoleShellClass}>
+            <PageShell>
                 <EmptyState
-                    icon={<Database className="h-5 w-5" />}
+                    icon={<Database className="h-12 w-12" />}
                     title="No workspace"
                     description="We couldn't load a workspace for your account. Try refreshing or contact support."
                 />
@@ -203,19 +331,14 @@ export function DashboardHomePage() {
         );
     }
 
-    // ── Onboarding State Machine ──────────────────────────
-    // Stage 0: no sources
-    // Stage 1: sources > 0, but no pipelines
-    const dashboardStage = connectedSourcesCount === 0 ? 0 : 1;
-
-    if (dashboardStage === 0) {
+    if (connectedSourcesCount === 0) {
         if (wizardDismissed) {
             return (
-                <PageShell className={consoleShellClass}>
+                <PageShell>
                     <EmptyState
-                        icon={<Database className="h-5 w-5" />}
+                        icon={<Database className="h-12 w-12" />}
                         title="No sources connected"
-                        description="Connect an ad platform or marketplace source to get started."
+                        description="Connect TikTok, Meta, Google Ads, or Shopee to start syncing data into your workspace."
                         primaryAction={
                             <Link href="/sources" className={primaryButtonLinkClassName} onClick={() => trackEvent("source_connect_clicked", { from: "dashboard_empty" })}>
                                 Connect a source
@@ -226,9 +349,10 @@ export function DashboardHomePage() {
             );
         }
         return (
-            <PageShell className={consoleShellClass}>
+            <PageShell>
                 <SetupWizard
                     hasSource={hasSource}
+                    hasDestination={hasDestination}
                     hasSuccessfulSync={hasSuccessfulSync}
                     onDismiss={dismissWizard}
                 />
@@ -237,59 +361,34 @@ export function DashboardHomePage() {
     }
 
     return (
-        <PageShell className={consoleShellClass}>
-            {/* Hero */}
-            <div className="relative z-10 mb-10 overflow-hidden rounded-3xl border border-gray-200/85 bg-gradient-to-br from-white via-cyan-50/35 to-teal-50/25 p-6 shadow-md ring-1 ring-black/[0.04] dark:border-slate-700/70 dark:from-slate-900 dark:via-slate-900 dark:to-cyan-950/30 dark:ring-white/[0.06] sm:p-8">
-                <div className="pointer-events-none absolute -right-28 -top-28 h-80 w-80 rounded-full bg-gradient-to-br from-cyan-300/25 to-teal-400/15 blur-3xl dark:from-cyan-500/15 dark:to-teal-600/10" />
-                <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="min-w-0">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400 dark:text-slate-500">{workspaceName}</p>
-                        <h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-4xl">
-                            Dashboard
-                        </h1>
-                        <p className="mt-1 text-base font-medium text-gray-600 dark:text-slate-300">{todayLabel}</p>
-                        <div className="mt-4 flex flex-wrap items-center gap-2">
-                        {connectedSourcesCount === 0 ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-500 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-400">
-                                No sources yet
-                            </span>
-                        ) : healthyCount === connectedSourcesCount ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300">
-                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                {connectedSourcesCount} source{connectedSourcesCount > 1 ? "s" : ""} fresh
-                            </span>
-                        ) : (
-                            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
-                                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                                {connectedSourcesCount - healthyCount} of {connectedSourcesCount} need refresh
-                            </span>
-                        )}
-                        {lastSyncLabel && (
-                            <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-medium text-gray-600 ring-1 ring-gray-200/80 dark:bg-slate-800/80 dark:text-slate-300 dark:ring-slate-600/60">
-                                Last sync <span className="font-semibold text-gray-800 dark:text-white">{lastSyncLabel}</span>
-                            </span>
-                        )}
-                        </div>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap items-center gap-3 lg:flex-col lg:items-stretch xl:flex-row">
-                    <RefreshedAt onRefresh={handleManualRefresh} loading={isRefreshing} />
-                    <PrimaryButton
-                        type="button"
-                        onClick={runAllPipelines}
-                        disabled={syncAllBusy || connectedSourcesCount === 0}
-                        className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold shadow-lg shadow-cyan-500/15"
-                    >
-                        {syncAllBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                        Refresh all sources
-                    </PrimaryButton>
-                    </div>
+        <PageShell>
+            {/* ── Header strip ─────────────────────────────────── */}
+            <StatusHero
+                workspaceName={workspaceName}
+                todayLabel={todayLabel}
+                healthyCount={healthyCount}
+                totalPipelines={activePipelinesCount}
+                lastSyncLabel={lastSyncLabel}
+                lastSyncDate={lastSyncDate}
+                onSyncAll={runAllPipelines}
+                syncing={syncAllBusy}
+            />
+
+            {/* Mini ROAS snapshot — surfaced early for SEA agency workflows */}
+            {snapshots.length > 0 && (
+                <div className="mb-6">
+                    <RoasSnapshotCard snapshots={snapshots} />
                 </div>
+            )}
+
+            {/* X1: last-refreshed indicator */}
+            <div className="mb-2 flex justify-end">
+                <RefreshedAt onRefresh={handleManualRefresh} loading={isRefreshing} />
             </div>
 
-            {/* Sync feedback message */}
             {syncMsg ? (
                 <div className={[
-                    "mb-6 rounded-2xl border px-5 py-4 text-sm",
+                    "mb-6 rounded-lg border px-4 py-3 text-sm",
                     /fail|error|could not|sorry/i.test(syncMsg)
                         ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-300"
                         : "border-cyan-100 bg-cyan-50/70 text-cyan-700 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-200"
@@ -298,52 +397,107 @@ export function DashboardHomePage() {
                 </div>
             ) : null}
 
-            {/* Setup wizard (shown when source connected but no successful sync yet) */}
+            {/* D7: warn when data is flowing but nowhere to land.
+                Suppressed for connector-first users: if they already have a successful sync,
+                they're pulling data via the Add-on or Looker connector — no console destination needed. */}
+            {hasSource && !hasDestination && !hasSuccessfulSync && connectedSourcesCount > 0 && (
+                <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-200/90 bg-amber-50/90 px-4 py-3 dark:border-amber-800/50 dark:bg-amber-950/30">
+                    <span className="mt-0.5 text-amber-500 dark:text-amber-400">⚠</span>
+                    <div className="text-sm">
+                        <span className="font-semibold text-amber-900 dark:text-amber-100">Your data has nowhere to land. </span>
+                        <span className="text-amber-800 dark:text-amber-200">
+                            Sources are syncing but no destination is connected — data is being dropped.{" "}
+                        </span>
+                        <a href="/destinations" className="font-semibold underline underline-offset-2 text-amber-900 hover:text-amber-700 dark:text-amber-100 dark:hover:text-amber-300">
+                            Add Google Sheets →
+                        </a>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Setup Wizard (shown inline, full-width) ────── */}
             {!hasSuccessfulSync && hasSource ? (
                 <div className="mb-8">
                     <SetupWizard
                         hasSource={hasSource}
+                        hasDestination={hasDestination}
                         hasSuccessfulSync={hasSuccessfulSync}
                         onDismiss={dismissWizard}
                     />
                 </div>
             ) : null}
 
-            {/* Main: activity stream vs status */}
-            <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-10 xl:gap-12">
+            {/* ── Main Body ─────────────────────────────────────── */}
+            {/*
+                Priority reading order (matches 10AM check-in AND 2AM emergency):
+                1. Status snapshot  → PillarGrid (right col rendered FIRST on mobile via order-first)
+                2. KPI numbers      → MetricCardGrid (did the numbers look good?)
+                3. What ran/failed  → RecentActivity (specific pipeline detail)
+                4. Deeper analysis  → AiPerformanceSummary (when you have time)
+                5. Infrastructure   → HealthSummaryBar (confirmation strip, not discovery)
+            */}
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
 
-                <div className="flex min-w-0 flex-col gap-8 lg:col-span-7 xl:col-span-8">
-                    <div className="rounded-3xl border border-gray-200/75 bg-gradient-to-b from-gray-50/90 to-white p-6 ring-1 ring-black/[0.03] dark:border-slate-700/65 dark:from-slate-900/50 dark:to-slate-950/40 dark:ring-white/[0.04] sm:p-8 lg:p-9">
-                        <DashboardSectionLabel>Activity stream</DashboardSectionLabel>
-
-                    <TodaysDataFlow />
-
-                    <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900/50">
-                        <h2 className="font-semibold text-gray-900 dark:text-white">Verify the warehouse</h2>
-                        <p className="mt-1 text-sm text-gray-600 dark:text-slate-300">Review rows, account coverage, and the latest warehouse timestamp before using Sheets, Looker Studio, or an API key.</p>
-                        <Link href="/explorer?tab=warehouse" className="mt-4 inline-flex text-sm font-semibold text-cyan-700 hover:text-cyan-800 dark:text-cyan-300">Open Data Explorer →</Link>
-                    </div>
-                    </div>
-                </div>
-
-                <aside className="min-w-0 lg:col-span-5 xl:col-span-4 lg:sticky lg:top-24 lg:self-start">
-                    <div className="rounded-3xl border border-gray-200/75 bg-gradient-to-b from-white to-gray-50/80 p-5 shadow-sm ring-1 ring-black/[0.03] dark:border-slate-700/65 dark:from-slate-900/55 dark:to-slate-950/40 dark:ring-white/[0.05] sm:p-6">
-                    <div className="mb-6 flex items-center justify-between gap-3 border-b border-gray-100 pb-5 dark:border-slate-700/55">
-                        <DashboardSectionLabel className="mb-0">Workspace status</DashboardSectionLabel>
-                        <span className="rounded-full bg-cyan-50 px-3 py-1 text-[11px] font-bold text-cyan-800 ring-1 ring-cyan-200/80 dark:bg-cyan-950/50 dark:text-cyan-200 dark:ring-cyan-800/50">
-                            {connectedSourcesCount} source{connectedSourcesCount !== 1 ? "s" : ""}
+                {/* ── RIGHT: Status snapshot (2/5) — shown FIRST on mobile via order-first */}
+                <div className="order-first xl:order-last xl:col-span-2">
+                    <div className="mb-3 flex items-center justify-between">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                            Status
+                        </p>
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-slate-800 dark:text-slate-400">
+                            {connectedSourcesCount}s · {connectedDestinationsCount}d
                         </span>
                     </div>
                     <PillarGrid
                         connections={connections}
+                        syncLogs={logs}
                         healthyCount={healthyCount}
+                        totalPipelines={activePipelinesCount}
                     />
-                    </div>
-                </aside>
+                </div>
+
+                {/* ── LEFT: Detail (3/5) — KPIs → Activity → AI Digest */}
+                <div className="space-y-8 xl:col-span-3">
+
+                    {/* 2 · KPI metrics — morning number check */}
+                    {snapshots.length > 0 && (
+                        <section>
+                            <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                                Performance
+                            </p>
+                            <MetricCardGrid snapshots={snapshots} />
+                        </section>
+                    )}
+
+                    {/* 3 · Recent Activity — what ran, what failed, one-click re-sync */}
+                    <section>
+                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                            Recent Activity
+                        </p>
+                        <RecentActivity
+                            pipelines={pipelines}
+                            isLoading={isLoading}
+                            error={error}
+                            syncingPipelineId={syncingPipelineId}
+                            onSync={runPipeline}
+                        />
+                    </section>
+
+                    {/* 4 · AI Digest — deeper analysis, read when you have time */}
+                    <section>
+                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                            AI Insights
+                        </p>
+                        <AiPerformanceSummary workspaceId={workspaceId} />
+                    </section>
+                </div>
             </div>
 
-            <section className="mt-12 border-t border-gray-200/70 pt-10 dark:border-slate-700/60">
-                <DashboardSectionLabel>Infrastructure health</DashboardSectionLabel>
+            {/* 5 · System Health — confirmation strip, not discovery */}
+            <section className="mt-8 border-t border-gray-100 pt-6 dark:border-slate-800">
+                <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                    Infrastructure
+                </p>
                 <HealthSummaryBar />
             </section>
         </PageShell>
