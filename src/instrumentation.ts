@@ -3,13 +3,10 @@ async function validateRuntimeSecrets() {
   if (process.env.NODE_ENV !== "production") return;
   // Only secrets required by every server route are startup-fatal. Optional
   // integrations validate their own secrets and fail closed at the endpoint.
-  const required = ["DATABASE_URL", "NEXTAUTH_SECRET", "ENCRYPTION_KEY"] as const;
+  const required = ["DATABASE_URL", "NEXTAUTH_SECRET"] as const;
   const missing = required.filter((name) => !process.env[name]?.trim());
   if (missing.length) throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
   if ((process.env.NEXTAUTH_SECRET?.length ?? 0) < 32) throw new Error("NEXTAUTH_SECRET must be at least 32 characters");
-  if (!/^[0-9a-f]{64}$/i.test(process.env.ENCRYPTION_KEY ?? "")) {
-    throw new Error("ENCRYPTION_KEY must be exactly 64 hexadecimal characters (32 bytes)");
-  }
 }
 
 export async function register() {

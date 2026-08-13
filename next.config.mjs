@@ -8,6 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   env: {
     BUILD_TIME: process.env.BUILD_TIME || new Date().toISOString(),
+    GIT_COMMIT_SHA: process.env.GIT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || "development",
   },
   // Pin workspace root explicitly so Next.js/Turbopack doesn't get confused
   // by a stale package-lock.json sitting in a parent directory.
