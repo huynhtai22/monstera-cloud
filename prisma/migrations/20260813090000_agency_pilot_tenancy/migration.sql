@@ -24,12 +24,7 @@ BEGIN
   IF role_type IS DISTINCT FROM 'WorkspaceRole' THEN
     ALTER TABLE "WorkspaceMember"
       ALTER COLUMN "role" TYPE "WorkspaceRole"
-      USING CASE
-        WHEN "role"::text = 'owner' THEN 'owner'::"WorkspaceRole"
-        WHEN "role"::text = 'admin' THEN 'admin'::"WorkspaceRole"
-        WHEN "role"::text = 'member' THEN 'member'::"WorkspaceRole"
-        ELSE 'viewer'::"WorkspaceRole"
-      END;
+      USING lower("role"::text)::"WorkspaceRole";
   END IF;
 END $$;
 ALTER TABLE "WorkspaceMember" ALTER COLUMN "role" SET DEFAULT 'member';
