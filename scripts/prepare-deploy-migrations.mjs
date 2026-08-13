@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
 
 const BASELINE = "20260401000000_baseline";
+const PILOT_MIGRATION = "20260813090000_agency_pilot_tenancy";
 const REQUIRED_BASELINE_TABLES = [
   "User",
   "Workspace",
@@ -27,6 +28,7 @@ if (!process.env.DATABASE_URL?.trim()) {
 const prisma = new PrismaClient();
 let existingTables;
 let baselineApplied = false;
+let failedPilotMigration = false;
 
 try {
   existingTables = await prisma.$queryRawUnsafe(`
@@ -45,6 +47,15 @@ try {
       BASELINE,
     );
     baselineApplied = rows[0]?.applied === true;
+
+    const failedRows = await prisma.$queryRawUnsafe(
+      `SELECT EXISTS(
+        SELECT 1 FROM "_prisma_migrations"
+        WHERE migration_name = $1 AND finished_at IS NULL AND rolled_back_at IS NULL
+      ) AS "failed"`,
+      PILOT_MIGRATION,
+    );
+    failedPilotMigration = failedRows[0]?.failed === true;
   }
 
   if (tableNames.has("Workspace") && !baselineApplied) {
@@ -63,6 +74,11 @@ const tableNames = new Set(existingTables.map((row) => row.tableName));
 if (tableNames.has("Workspace") && !baselineApplied) {
   console.log(`Existing schema detected; marking ${BASELINE} as applied.`);
   runPrisma(["migrate", "resolve", "--applied", BASELINE]);
+}
+
+if (failedPilotMigration) {
+  console.log(`Recovering the interrupted ${PILOT_MIGRATION} migration.`);
+  runPrisma(["migrate", "resolve", "--rolled-back", PILOT_MIGRATION]);
 }
 
 runPrisma(["migrate", "deploy"]);
