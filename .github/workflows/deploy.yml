@@ -34,11 +34,13 @@ jobs:
           vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Apply database migrations
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          test -n "$DATABASE_URL"
           npm ci
-          npx prisma migrate deploy
+          npm run db:migrate:prepare
 
       - name: Build project
         run: |

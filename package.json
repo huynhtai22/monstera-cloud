@@ -15,6 +15,7 @@
     "test": "tsx --test src/**/*.test.ts",
     "test:e2e": "playwright test",
     "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:prepare": "node scripts/prepare-deploy-migrations.mjs",
     "test:shopee-ads": "tsx --test src/lib/shopee-ads-mapper.test.ts",
     "postinstall": "prisma generate",
     "deploy:prod": "npx vercel deploy --prod --yes",

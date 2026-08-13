@@ -41,7 +41,7 @@ jobs:
       - name: Validate and apply migrations
         run: |
           npx prisma validate
-          npx prisma migrate deploy
+          npm run db:migrate:prepare
           npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
       - run: npm run typecheck
       - run: npm run lint:ci
