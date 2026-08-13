@@ -436,7 +436,6 @@ export function DashboardHomePage() {
             <PageShell>
                 <SetupWizard
                     hasSource={hasSource}
-                    hasDestination={hasDestination}
                     hasSuccessfulSync={hasSuccessfulSync}
                     onDismiss={dismissWizard}
                 />
