@@ -2,8 +2,6 @@
 -- Safe for existing installations: new workspace entitlements are backfilled from owners,
 -- and existing plaintext API keys are hashed before the application stops reading them.
 
-BEGIN;
-
 DO $$ BEGIN CREATE TYPE "WorkspaceRole" AS ENUM ('owner', 'admin', 'member', 'viewer'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "PlatformRole" AS ENUM ('USER', 'OPERATOR'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE "WorkspaceStatus" AS ENUM ('PILOT', 'ACTIVE', 'SUSPENDED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
@@ -170,5 +168,3 @@ WHERE "key" IS NOT NULL;
 ALTER TABLE "ApiKey" ALTER COLUMN "key" DROP NOT NULL;
 UPDATE "ApiKey" SET "key" = NULL WHERE "keyHash" IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS "ApiKey_keyHash_key" ON "ApiKey"("keyHash");
-
-COMMIT;
