@@ -44,7 +44,7 @@ const capabilities = [
     {
         icon: Clock,
         title: "Scheduled syncs",
-        body: "Run pipelines on a cron schedule — from daily to hourly on Pro plans. Monstera handles retries and rate-limit back-off automatically.",
+        body: "Refresh on demand or use the nightly warehouse run. Monstera handles retries and rate-limit back-off automatically.",
     },
     {
         icon: ShieldCheck,

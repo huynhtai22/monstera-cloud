@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 /**
  * POST /api/workspaces/[id]/test-telegram
@@ -19,14 +20,12 @@ export async function POST(
         }
 
         const { id: workspaceId } = await params;
-        const membership = await (prisma.workspaceMember as any).findUnique({
-            where: {
-                workspaceId_userId: { workspaceId, userId: session.user.id },
-            },
+        await requireWorkspaceAccess({
+            userId: session.user.id,
+            workspaceId,
+            minimumRole: "admin",
+            operation: "test_workspace_notification",
         });
-        if (!membership) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
 
         const ws = await prisma.workspace.findUnique({
             where: { id: workspaceId },
@@ -78,6 +77,8 @@ export async function POST(
 
         return NextResponse.json({ ok: true });
     } catch (e: unknown) {
+        const rbac = toRbacResponse(e);
+        if (rbac) return rbac;
         logger.error("[test-telegram]", e);
         return NextResponse.json(
             { error: e instanceof Error ? e.message : "Failed" },

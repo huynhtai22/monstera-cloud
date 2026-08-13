@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import { buildPerformanceContext } from "@/lib/ai/build-performance-context";
 import { generatePerformanceSummary } from "@/lib/ai/openai-summary";
 import { logger } from "@/lib/logger";
+import { productionRouteDisabled } from "@/lib/request-auth";
 
 /**
  * POST /api/ai/performance-summary
@@ -12,6 +13,7 @@ import { logger } from "@/lib/logger";
  * Returns LLM summary of last-7-day workspace metrics (requires OPENAI_API_KEY).
  */
 export async function POST(req: Request) {
+    if (productionRouteDisabled("ENABLE_AI_SUMMARIES")) return NextResponse.json({ error: "Not found" }, { status: 404 });
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user?.id) {

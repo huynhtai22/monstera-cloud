@@ -1,52 +1,59 @@
-import React from 'react';
-import { Users } from "lucide-react";
-import { MOCK_TEAM } from "@/lib/mock-console-data";
+"use client";
 
-export function TeamTab() {
-    return (
-        <div className="space-y-6 max-w-4xl animate-in fade-in slide-in-from-bottom-2 duration-500">
-            <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
-                    <Users className="w-5 h-5 mr-2 text-cyan-600 dark:text-cyan-400" />
-                    Team Management
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    Manage who has access to this workspace.
-                </p>
-            </div>
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Copy, Loader2, Users } from "lucide-react";
+import { toast } from "sonner";
 
-            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#16181c]/40 backdrop-blur-sm p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-6">
-                    <h4 className="text-sm font-medium text-gray-900 dark:text-white">Active Members</h4>
-                    <button className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium rounded-xl transition-all shadow-sm shadow-cyan-500/20" style={{ transition: 'all 250ms cubic-bezier(0.25,1,0.5,1)' }}>
-                        Invite Member
-                    </button>
-                </div>
+type Member = { id: string; userId: string; role: string; user: { name: string | null; email: string | null } };
 
-                <div className="space-y-4">
-                    {MOCK_TEAM.map(member => (
-                        <div key={member.id} className="flex items-center justify-between p-4 rounded-xl border border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-[#000000]/40">
-                            <div className="flex items-center space-x-4">
-                                <div className="w-10 h-10 rounded-full bg-cyan-500/10 flex items-center justify-center text-cyan-600 dark:text-cyan-400 font-medium">
-                                    {member.name.charAt(0)}
-                                </div>
-                                <div>
-                                    <p className="text-sm font-medium text-gray-900 dark:text-white">{member.name}</p>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">{member.email}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center space-x-4">
-                                <span className="text-xs font-medium px-2.5 py-1 rounded-md bg-slate-100 dark:bg-[#1d1f23]/60 text-slate-600 dark:text-slate-300">
-                                    {member.role}
-                                </span>
-                                {member.role !== 'Admin' && (
-                                    <button className="text-sm text-red-600 hover:text-red-700 font-medium">Remove</button>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
+export function TeamTab({ workspaceId, currentRole }: { workspaceId: string | null; currentRole?: string }) {
+  const [members, setMembers] = useState<Member[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [invitationUrl, setInvitationUrl] = useState("");
+  const canManage = currentRole === "owner" || currentRole === "admin";
+
+  const load = useCallback(async () => {
+    if (!workspaceId || !canManage) return;
+    const response = await fetch(`/api/workspaces/${workspaceId}/members`);
+    if (response.ok) setMembers((await response.json()).members);
+  }, [workspaceId, canManage]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function invite(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!workspaceId) return;
+    setBusy(true);
+    setInvitationUrl("");
+    const form = new FormData(event.currentTarget);
+    const response = await fetch(`/api/workspaces/${workspaceId}/invitations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: form.get("email"), role: form.get("role") }),
+    });
+    const body = await response.json();
+    setBusy(false);
+    if (!response.ok) return toast.error(body.error || "Could not create invitation");
+    setInvitationUrl(body.invitationUrl);
+    event.currentTarget.reset();
+    toast.success("Invitation created");
+  }
+
+  if (!canManage) return <p className="text-sm text-slate-600">Owner or admin access is required to view workspace members.</p>;
+
+  return (
+    <div className="max-w-4xl space-y-6">
+      <div><h3 className="flex items-center text-lg font-semibold"><Users className="mr-2 h-5 w-5 text-cyan-600" />Team</h3><p className="mt-1 text-sm text-slate-500">Invite agency staff. Clients remain records and cannot sign in.</p></div>
+      <form onSubmit={invite} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-[1fr_150px_auto] dark:border-slate-800 dark:bg-slate-900">
+        <input name="email" required type="email" aria-label="Staff email" placeholder="staff@agency.com" className="rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm" />
+        <select name="role" aria-label="Workspace role" className="rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm"><option value="member">Member</option><option value="viewer">Viewer</option>{currentRole === "owner" ? <option value="admin">Admin</option> : null}</select>
+        <button disabled={busy} className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Invite"}</button>
+      </form>
+      {invitationUrl ? <div className="flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900"><input readOnly className="min-w-0 flex-1 bg-transparent" value={invitationUrl} /><button onClick={() => navigator.clipboard.writeText(invitationUrl)} aria-label="Copy invitation"><Copy className="h-4 w-4" /></button></div> : null}
+      <div className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+        {members.map((member) => <div key={member.id} className="flex items-center justify-between p-4"><div><p className="text-sm font-medium">{member.user.name || member.user.email}</p><p className="text-xs text-slate-500">{member.user.email}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs capitalize dark:bg-slate-800">{member.role}</span></div>)}
+        {!members.length ? <p className="p-4 text-sm text-slate-500">No members found.</p> : null}
+      </div>
+    </div>
+  );
 }

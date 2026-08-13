@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { verifyWebhookSignature, planForVariantId } from "@/lib/lemonsqueezy";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { productionRouteDisabled } from "@/lib/request-auth";
 
 /**
  * POST /api/webhooks/lemonsqueezy
@@ -18,6 +19,9 @@ import { logger } from "@/lib/logger";
  *   order_created → one-time purchase fallback
  */
 export async function POST(req: Request) {
+  if (productionRouteDisabled()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const rawBody = await req.text();
   const signature = req.headers.get("x-signature") ?? "";
 

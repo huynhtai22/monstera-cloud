@@ -26,26 +26,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const workspace = await prisma.workspace.findFirst({
+    const workspaces = await prisma.workspace.findMany({
       where: {
         OR: [
           { ownerId: user.id },
           { members: { some: { userId: user.id } } },
         ],
       },
-      select: { id: true, name: true },
+      select: { id: true, name: true, plan: true },
+      orderBy: { name: 'asc' },
     });
 
-    if (!workspace) {
+    if (workspaces.length === 0) {
       return NextResponse.json({ error: 'No workspace found', code: 'NO_WORKSPACE' }, { status: 404 });
     }
 
     return NextResponse.json({
       email: user.email,
       name: user.name,
-      plan: user.plan ?? 'free',
-      workspaceId: workspace.id,
-      workspaceName: workspace.name,
+      workspaces: workspaces.map((workspace) => ({
+        id: workspace.id,
+        name: workspace.name,
+        plan: workspace.plan,
+      })),
     });
   } catch (error) {
     logger.error('[ADDON_AUTH]', error);

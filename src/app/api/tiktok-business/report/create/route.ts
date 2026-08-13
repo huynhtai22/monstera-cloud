@@ -68,14 +68,13 @@ export async function POST(req: Request) {
         status: 'connected',
         workspace: { members: { some: { userId: session.user.id } } },
       },
+      include: { workspace: { select: { plan: true } } },
     });
     if (!conn) {
       return NextResponse.json({ error: 'TikTok Business connection not found' }, { status: 404 });
     }
 
-    // Fetch user plan for cooldown enforcement
-    const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { plan: true } });
-    const plan = user?.plan ?? 'free';
+    const plan = conn.workspace.plan ?? 'pilot';
     const limits = getPlanLimits(plan);
 
     // \"Free rewind\": do not clamp user-provided date range.

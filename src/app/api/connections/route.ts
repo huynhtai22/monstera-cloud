@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { upsertSourceConnection } from "@/lib/connection-upsert";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { isPilotMode } from "@/lib/pilot-mode";
 
 export async function POST(request: Request) {
     try {
@@ -12,6 +13,13 @@ export async function POST(request: Request) {
 
         if (!session || !session.user || !session.user.id) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        if (isPilotMode()) {
+            return NextResponse.json(
+                { error: "Connections must be created through an enabled OAuth source during the pilot" },
+                { status: 410 },
+            );
         }
 
         const body = await request.json();
@@ -22,17 +30,20 @@ export async function POST(request: Request) {
         }
 
         // Verify the user has access to this workspace
-        const membership = await prisma.workspaceMember.findUnique({
-            where: {
-                workspaceId_userId: {
-                    workspaceId: workspaceId,
-                    userId: session.user.id
-                }
-            }
-        });
-
-        if (!membership) {
-            return NextResponse.json({ error: "Unauthorized for this workspace" }, { status: 403 });
+        await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member", operation: "create_connection" });
+        if (type !== "source" && type !== "destination") {
+            return NextResponse.json({ error: "Invalid connection type" }, { status: 400 });
+        }
+        const access = type === "source"
+            ? await prisma.workspaceProviderAccess.findUnique({
+                where: { workspaceId_provider: { workspaceId, provider } },
+                select: { enabled: true },
+            })
+            : { enabled: provider === "google_sheets" };
+        if (!access?.enabled) return NextResponse.json({ error: "Provider is not enabled for this workspace" }, { status: 403 });
+        if (clientId) {
+            const client = await prisma.client.findFirst({ where: { id: clientId, workspaceId }, select: { id: true } });
+            if (!client) return NextResponse.json({ error: "Client not found in workspace" }, { status: 400 });
         }
 
         // Upsert connection by identity triple (workspaceId + provider + remoteAccountId)
@@ -45,48 +56,17 @@ export async function POST(request: Request) {
             remoteAccountId,
             name,
             type,
-            credentials: credentials || "{}",
+            credentials: typeof credentials === "string"
+                ? JSON.parse(credentials || "{}")
+                : (credentials || {}),
             status: body.status || "connected",
             clientId: clientId || undefined,
         });
 
-        // ---------------------------------------------------------------------
-        // MVP AUTO-MAPPING LOGIC
-        // If they just connected a Source, find a Destination and link them.
-        // If they just connected a Destination, find a Source and link them.
-        // ---------------------------------------------------------------------
-        try {
-            const oppositeType = type === 'source' ? 'destination' : 'source';
-            const counterpart = await prisma.connection.findFirst({
-                where: { workspaceId, type: oppositeType }
-            });
-
-            if (counterpart) {
-                // Check if a pipeline already exists between these two
-                const sourceId = type === 'source' ? connection.id : counterpart.id;
-                const destId = type === 'destination' ? connection.id : counterpart.id;
-
-                const existingPipeline = await prisma.pipeline.findFirst({
-                    where: { sourceConnectionId: sourceId, destinationConnectionId: destId }
-                });
-
-                if (!existingPipeline) {
-                    await prisma.pipeline.create({
-                        data: {
-                            workspaceId,
-                            name: `Sync: ${type === 'source' ? connection.name : counterpart.name} to ${type === 'destination' ? connection.name : counterpart.name}`,
-                            sourceConnectionId: sourceId,
-                            destinationConnectionId: destId
-                        }
-                    });
-                }
-            }
-        } catch (autoMapError) {
-            logger.error("Auto mapping error (ignoring for MVP):", autoMapError);
-        }
-
         return NextResponse.json(connection, { status: 201 });
     } catch (error) {
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
         logger.error("Error creating connection:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

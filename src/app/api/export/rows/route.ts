@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { shopeeDataClient } from "@/lib/shopee";
 import { safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
+import { resolveApiKey } from "@/lib/api-key-security";
 
 /**
  * GET /api/export/rows
@@ -25,10 +26,7 @@ export async function GET(request: Request) {
         const apiKeyString = authHeader.split(" ")[1];
 
         // 1. Authenticate API Key
-        const apiKey = await prisma.apiKey.findUnique({
-            where: { key: apiKeyString },
-            include: { workspace: true }
-        });
+        const apiKey = await resolveApiKey(apiKeyString);
 
         if (!apiKey) {
             return NextResponse.json({ error: "Invalid API Key" }, { status: 401 });
@@ -105,30 +103,6 @@ export async function GET(request: Request) {
                 }
             }
 
-            // Fallback to Mock Data if actual pull yielded nothing (useful for trial testing)
-            if (rows.length === 1) {
-                logger.info("[EXPORT API] Using Mock Data Fallback.");
-                const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
-                const host = request.headers.get("host") || "localhost:3000";
-
-                const shopeeRes = await fetch(`${protocol}://${host}/api/mock/shopee/orders?page=1&limit=50`);
-
-                if (shopeeRes.ok) {
-                    const shopeeData = await shopeeRes.json();
-                    const orders = shopeeData.data || [];
-                    orders.forEach((o: any) => {
-                        rows.push([
-                            o.order_id,
-                            o.customer_name,
-                            o.status,
-                            o.total_amount,
-                            o.currency,
-                            o.items_count,
-                            o.created_at
-                        ]);
-                    });
-                }
-            }
         } else if (provider === "meta_ads" || provider === "google_ads" || provider === "tiktok_business") {
             const headers = ["Date", "Campaign", "Impressions", "Clicks", "Spend", "CPC", "CTR", "Conversions", "ROAS"];
             rows.push(headers);

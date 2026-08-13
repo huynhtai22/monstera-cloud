@@ -26,12 +26,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'No account found', code: 'NO_ACCOUNT' }, { status: 404 });
     }
 
+    const workspaceId = req.nextUrl.searchParams.get('workspaceId')?.trim();
+    if (!workspaceId) return NextResponse.json({ error: 'workspaceId is required' }, { status: 400 });
     const workspace = await prisma.workspace.findFirst({
       where: {
-        OR: [
-          { ownerId: user.id },
-          { members: { some: { userId: user.id } } },
-        ],
+        id: workspaceId,
+        members: { some: { userId: user.id } },
       },
       select: { id: true },
     });

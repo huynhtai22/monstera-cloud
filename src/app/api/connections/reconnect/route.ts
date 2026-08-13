@@ -8,8 +8,9 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { getProviderRegistry } from "@/lib/oauth-framework/registry";
-import { buildCallbackUrl } from "@/lib/oauth-framework/session";
 import { logger } from "@/lib/logger";
+import { createOAuthAttempt, oauthAttemptCookieName } from "@/lib/oauth-attempt";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 export async function POST(request: Request) {
     try {
@@ -51,6 +52,28 @@ export async function POST(request: Request) {
                 { status: 404 }
             );
         }
+        await requireWorkspaceAccess({
+            userId: session.user.id,
+            workspaceId: connection.workspaceId,
+            minimumRole: "member",
+            operation: "reconnect_source",
+        });
+        if (connection.provider !== providerId) {
+            return NextResponse.json({ error: "Provider does not match connection" }, { status: 400 });
+        }
+
+        const providerAccess = await prisma.workspaceProviderAccess.findUnique({
+            where: {
+                workspaceId_provider: {
+                    workspaceId: connection.workspaceId,
+                    provider: providerId,
+                },
+            },
+            select: { enabled: true },
+        });
+        if (!providerAccess?.enabled) {
+            return NextResponse.json({ error: "Provider is not enabled for this workspace" }, { status: 403 });
+        }
 
         // Get provider adapter
         const registry = getProviderRegistry();
@@ -65,27 +88,36 @@ export async function POST(request: Request) {
 
         // Build state with reconnection context
         const callbackUrl = `${process.env.NEXTAUTH_URL?.replace(/\/$/, "") || "https://" + process.env.VERCEL_URL}/api/auth/callback?provider=${providerId}`;
-        const reconnectState = {
+        const reconnectState = await createOAuthAttempt({
             userId: session.user.id,
             workspaceId: connection.workspaceId,
-            providerId,
-            reconnectConnectionId: connectionId, // P1: Key flag for reconnection flow
-            preservePipelines: true,
-        };
+            provider: providerId,
+            reconnectConnectionId: connectionId,
+        });
 
         // Generate authorization URL
         const authUrl = adapter.buildAuthorizeUrl({
             redirectUri: callbackUrl,
-            state: Buffer.from(JSON.stringify(reconnectState)).toString("base64url"),
+            state: reconnectState,
             workspaceId: connection.workspaceId,
         });
 
-        return NextResponse.json({
+        const response = NextResponse.json({
             authUrl,
             connectionId,
             provider: providerId,
         });
+        response.cookies.set(oauthAttemptCookieName(providerId), reconnectState, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 10 * 60,
+            path: "/api/auth/callback",
+        });
+        return response;
     } catch (error) {
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
         logger.error("[POST /api/connections/reconnect]", error);
         return NextResponse.json(
             { error: "Internal server error" },

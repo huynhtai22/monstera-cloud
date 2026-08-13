@@ -1,7 +1,19 @@
 import * as Sentry from "@sentry/nextjs";
+async function validateRuntimeSecrets() {
+  if (process.env.NODE_ENV !== "production") return;
+  const required = ["DATABASE_URL", "NEXTAUTH_SECRET", "CRON_SECRET", "GOOGLE_ID_TOKEN_AUDIENCES"] as const;
+  const missing = required.filter((name) => !process.env[name]?.trim());
+  if (missing.length) throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
+  if ((process.env.NEXTAUTH_SECRET?.length ?? 0) < 32) throw new Error("NEXTAUTH_SECRET must be at least 32 characters");
+  if ((process.env.CRON_SECRET?.length ?? 0) < 32) throw new Error("CRON_SECRET must be at least 32 characters");
+  if (!/^[0-9a-f]{64}$/i.test(process.env.ENCRYPTION_KEY ?? "")) {
+    throw new Error("ENCRYPTION_KEY must be exactly 64 hexadecimal characters (32 bytes)");
+  }
+}
 
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    await validateRuntimeSecrets();
     // ── New Relic via OpenTelemetry OTLP ──────────────────────────────────────
     // Only initialises when NEW_RELIC_LICENSE_KEY is present (safe to deploy
     // without it during local dev).

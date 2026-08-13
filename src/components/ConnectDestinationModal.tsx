@@ -40,18 +40,21 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
     const { mutate } = useSWRConfig();
     const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
     
-    const { data: workspaces } = useSWR('/api/workspaces', fetcher);
-    
-    const workspace = Array.isArray(workspaces) 
-        ? (workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0]) 
+    const connectionsKey = activeWorkspaceId
+        ? `/api/workspaces/${activeWorkspaceId}/connections?type=destination`
         : null;
+    const { data: destinationConnections = [] } = useSWR(connectionsKey, fetcher);
+    const { data: apiKeys = [] } = useSWR(
+        activeWorkspaceId ? `/api/settings/api-keys?workspaceId=${activeWorkspaceId}` : null,
+        fetcher,
+    );
 
     const activeConnections = React.useMemo(() => {
-        if (!workspace?.connections) return [];
+        if (!Array.isArray(destinationConnections)) return [];
         let providerId = destinationId;
         if (destinationId === 'gsheets') providerId = 'google_sheets';
-        return workspace.connections.filter((c: any) => c.type === 'destination' && c.provider === providerId);
-    }, [workspace, destinationId]);
+        return destinationConnections.filter((c: any) => c.provider === providerId);
+    }, [destinationConnections, destinationId]);
 
     const [forceSetup, setForceSetup] = useState(false);
     const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
@@ -102,7 +105,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
 
     const isListView = destinationId !== 'looker' && activeConnections.length > 0 && !forceSetup;
         
-    const firstKey = workspace?.apiKeys?.[0] as { keyMasked?: string } | undefined;
+    const firstKey = Array.isArray(apiKeys) ? apiKeys[0] as { keyMasked?: string } | undefined : undefined;
     const apiKeyMasked = firstKey?.keyMasked ?? "";
     const hasApiKey = Boolean(firstKey);
 
@@ -119,7 +122,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
         try {
             const res = await fetch(`/api/connections/${connectionId}`, { method: "DELETE" });
             if (res.ok) {
-                await mutate('/api/workspaces');
+                if (connectionsKey) await mutate(connectionsKey);
             }
         } catch (error) {
             console.error("Disconnect error", error);
@@ -146,7 +149,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
 
             if (res.ok) {
                 // Invalidate cache first just in case
-                await mutate('/api/workspaces');
+                if (connectionsKey) await mutate(connectionsKey);
                 // Initiate real Google OAuth flow to grant permissions
                 signIn('google', { callbackUrl: '/destinations?connected=true' }, { prompt: 'consent select_account' });
             } else {
@@ -416,9 +419,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                             Complete Setup & Close
                                         </button>
                                         <a
-                                            href="https://workspace.google.com/marketplace/app/monstera_cloud/placeholder"
-                                            target="_blank"
-                                            rel="noopener noreferrer"
+                                            href={DESTINATION_HELP_PATHS.docs}
                                             className="text-center text-xs font-medium text-slate-500 underline underline-offset-2 transition-colors hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
                                         >
                                             Looking for the Google Sheets Add-on?

@@ -18,7 +18,7 @@ export default function TemplatesPage() {
                         <span className="text-purple-500">Business Intelligence.</span>
                     </h1>
                     <p className="text-gray-400 text-lg md:text-xl font-normal max-w-2xl mx-auto mt-4">
-                        Patterns that pair with what Monstera already ships: OAuth sources, pipelines into Google Sheets™ and Looker Studio™, and scheduled syncs — not a separate warehouse product.
+                        Preview patterns for future work. Pilot users access normalized warehouse data through Data Explorer, Google Sheets™, Looker Studio™, and API.
                     </p>
                 </div>
 
@@ -78,7 +78,7 @@ export default function TemplatesPage() {
                         <BarChart3 className="w-10 h-10 text-purple-400 mb-6 mt-4 relative z-10" />
                         <h3 className="text-white text-xl font-bold tracking-tight mb-3 relative z-10">11.11 Mega-Campaign Tracker</h3>
                         <p className="text-sm text-gray-400 mb-6 flex-1 relative z-10">
-                            Real-time GMV surge tracking designed for extreme flash-sale spikes. Monitor hourly run-rates, out-of-stock risks, and webhook ingestion latency.
+                            Concept preview for GMV surge tracking. This template is not enabled in the private pilot.
                         </p>
                         <div className="pt-6 border-t border-white/10 mt-auto relative z-10">
                             <div className="flex items-center justify-between text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">

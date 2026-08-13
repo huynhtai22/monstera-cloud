@@ -9,6 +9,24 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum WorkspaceRole {
+  owner
+  admin
+  member
+  viewer
+}
+
+enum PlatformRole {
+  USER
+  OPERATOR
+}
+
+enum WorkspaceStatus {
+  PILOT
+  ACTIVE
+  SUSPENDED
+}
+
 model Account {
   id                       String  @id @default(cuid())
   userId                   String
@@ -61,57 +79,68 @@ model User {
   image          String?
   otp            String?
   otpExpires     DateTime?
+  otpAttempts    Int               @default(0)
+  otpLockedUntil DateTime?
   plan           String            @default("free")
   subscriptionId String?           @unique
+  platformRole   PlatformRole      @default(USER)
   accounts       Account[]
   sessions       Session[]
   workspaces     WorkspaceMember[]
 }
 
 model Workspace {
-  id              String            @id @default(cuid())
-  name            String
-  slug            String            @unique
-  ownerId         String
+  id                   String                @id @default(cuid())
+  name                 String
+  slug                 String                @unique
+  ownerId              String
+  plan                 String                @default("pilot")
+  status               WorkspaceStatus       @default(PILOT)
+  subscriptionProvider String?
+  subscriptionId       String?               @unique
   /// Optional Telegram chat ID for this workspace (sync failure alerts). Falls back to TELEGRAM_CHAT_ID env.
-  telegramChatId  String?
+  telegramChatId       String?
   /// Product demo: overlay synthetic console data for screenshots / feature trials.
-  demoMockMode       Boolean @default(false)
-  demoMockMeta       Boolean @default(false)
-  demoMockShopee     Boolean @default(false)
-  demoMockGoogleAds  Boolean @default(false)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  clients         Client[]
-  connections     Connection[]
-  pipelines       Pipeline[]
-  members         WorkspaceMember[]
-  apiKeys         ApiKey[]
-  campaignMetrics CampaignMetric[]
-  orders          RetailOrder[]
-  utmRules        UtmMappingRule[]
+  demoMockMode         Boolean               @default(false)
+  demoMockMeta         Boolean               @default(false)
+  demoMockShopee       Boolean               @default(false)
+  demoMockGoogleAds    Boolean               @default(false)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  clients              Client[]
+  connections          Connection[]
+  pipelines            Pipeline[]
+  members              WorkspaceMember[]
+  apiKeys              ApiKey[]
+  campaignMetrics      CampaignMetric[]
+  orders               RetailOrder[]
+  utmRules             UtmMappingRule[]
   attributionSnapshots AttributionSnapshot[]
-  
+
   // OBSERVABILITY: Data quality rules and violations
-  dataQualityRules   DataQualityRule[]
+  dataQualityRules      DataQualityRule[]
   dataQualityViolations DataQualityViolation[]
-  
+
   // TEMPLATES: User dashboards
-  userDashboards    UserDashboard[]
-  
+  userDashboards UserDashboard[]
+
   // Looker Studio integration jobs
-  lookerJobs        LookerJob[]
+  lookerJobs     LookerJob[]
+  providerAccess WorkspaceProviderAccess[]
+  invitations    WorkspaceInvitation[]
+  oauthAttempts  OAuthAttempt[]
+  auditEvents    AuditEvent[]
 }
 
 model Client {
-  id          String     @id @default(cuid())
+  id          String       @id @default(cuid())
   workspaceId String
   name        String
   description String?
   logoUrl     String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   pipelines   Pipeline[]
   connections Connection[]
 
@@ -119,28 +148,93 @@ model Client {
 }
 
 model WorkspaceMember {
-  id          String    @id @default(cuid())
+  id          String        @id @default(cuid())
   workspaceId String
   userId      String
-  role        String    @default("member")
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  role        WorkspaceRole @default(member)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
+}
+
+model WorkspaceProviderAccess {
+  id          String    @id @default(cuid())
+  workspaceId String
+  provider    String
+  enabled     Boolean   @default(true)
+  enabledAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, provider])
+  @@index([workspaceId, enabled])
+}
+
+model WorkspaceInvitation {
+  id               String        @id @default(cuid())
+  tokenHash        String        @unique
+  email            String
+  role             WorkspaceRole @default(member)
+  workspaceId      String?
+  agencyName       String?
+  agencySlug       String?
+  plan             String?
+  enabledProviders String[]
+  invitedByUserId  String
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  acceptedByUserId String?
+  createdAt        DateTime      @default(now())
+  workspace        Workspace?    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([email, expiresAt])
+  @@index([workspaceId, acceptedAt])
+}
+
+model OAuthAttempt {
+  id                    String    @id @default(cuid())
+  tokenHash             String    @unique
+  userId                String
+  workspaceId           String
+  provider              String
+  reconnectConnectionId String?
+  expiresAt             DateTime
+  consumedAt            DateTime?
+  createdAt             DateTime  @default(now())
+  workspace             Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId, provider, expiresAt])
+  @@index([workspaceId, consumedAt])
+}
+
+model AuditEvent {
+  id          String    @id @default(cuid())
+  workspaceId String
+  actorUserId String?
+  action      String
+  resource    String
+  resourceId  String?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model Connection {
   id                   String           @id @default(cuid())
   workspaceId          String
-  clientId             String?          // Agency UX: Group by Client
+  clientId             String? // Agency UX: Group by Client
   name                 String
   type                 String
   provider             String
   credentials          String
   remoteAccountId      String           @default("") // Identity key for deduplication (e.g. adAccountId, shop domain)
   status               String           @default("connected")
-  lastError            String?          // UX: Actionable Error Tracking
-  lastSyncAt           DateTime?        // UX: Freshness Tracking
+  lastError            String? // UX: Actionable Error Tracking
+  lastSyncAt           DateTime? // UX: Freshness Tracking
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -148,7 +242,7 @@ model Connection {
   destinationPipelines Pipeline[]       @relation("DestinationConnection")
   sourcePipelines      Pipeline[]       @relation("SourceConnection")
   campaignMetrics      CampaignMetric[]
-  orders              RetailOrder[]
+  orders               RetailOrder[]
 
   @@unique([workspaceId, provider, remoteAccountId])
 }
@@ -156,7 +250,7 @@ model Connection {
 model Pipeline {
   id                      String               @id @default(cuid())
   workspaceId             String
-  clientId                String?              // Agency UX: Group by Client
+  clientId                String? // Agency UX: Group by Client
   name                    String
   sourceConnectionId      String
   destinationConnectionId String
@@ -205,30 +299,34 @@ model SyncCheckpoint {
 }
 
 model TransformationRule {
-  id          String   @id @default(cuid())
-  pipelineId  String
-  type        String
-  config      String
-  orderIndex  Int      @default(0)
+  id         String @id @default(cuid())
+  pipelineId String
+  type       String
+  config     String
+  orderIndex Int    @default(0)
 
   // In-flight normalization: custom field calculations
-  formula     String?  // e.g. "spend * 1.2"
-  targetField String?  // output field name
+  formula     String? // e.g. "spend * 1.2"
+  targetField String? // output field name
   dependsOn   String[] // input field names
-  condition   String?  // filter expression
+  condition   String? // filter expression
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  pipeline    Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  pipeline  Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 }
 
 model ApiKey {
   id          String    @id @default(cuid())
-  key         String    @unique
+  legacyKey   String?   @unique @map("key")
+  keyHash     String?   @unique
+  keyPrefix   String?
+  keyLastFour String?
   name        String    @default("Default Key")
   workspaceId String
   createdAt   DateTime  @default(now())
   lastUsedAt  DateTime?
+  revokedAt   DateTime?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
@@ -237,23 +335,23 @@ model ApiKey {
 // Processed by /api/cron/sync-jobs every minute.
 // Priority: enterprise=4, professional=3, starter=2, free=1
 model SyncJob {
-  id          String    @id @default(cuid())
-  pipelineId  String
-  activeKey   String?   @unique
-  userId      String
-  plan        String    @default("free")
-  status      String    @default("queued")  // queued | running | done | failed
-  priority    Int       @default(1)
-  retryCount  Int       @default(0)
-  maxRetries  Int       @default(3)
-  scheduledAt DateTime
-  startedAt   DateTime?
-  finishedAt  DateTime?
-  leaseId     String?
+  id             String    @id @default(cuid())
+  pipelineId     String
+  activeKey      String?   @unique
+  userId         String
+  plan           String    @default("free")
+  status         String    @default("queued") // queued | running | done | failed
+  priority       Int       @default(1)
+  retryCount     Int       @default(0)
+  maxRetries     Int       @default(3)
+  scheduledAt    DateTime
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  leaseId        String?
   leaseExpiresAt DateTime?
-  heartbeatAt DateTime?
-  errorMsg    String?
-  createdAt   DateTime  @default(now())
+  heartbeatAt    DateTime?
+  errorMsg       String?
+  createdAt      DateTime  @default(now())
 
   pipeline Pipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 
@@ -262,44 +360,44 @@ model SyncJob {
 }
 
 model CampaignMetric {
-  id            String     @id @default(cuid())
-  workspaceId   String
-  connectionId  String
-  platform      String
-  accountId     String
-  accountName   String?
+  id           String  @id @default(cuid())
+  workspaceId  String
+  connectionId String
+  platform     String
+  accountId    String
+  accountName  String?
 
-  level         String     @default("campaign")  // account | campaign | adset | ad
-  entityId      String     @default("")           // campaign_id | adset_id | ad_id depending on level
-  campaignId    String     @default("")
-  campaignName  String     @default("")
-  adsetId       String?    @default("")
-  adsetName     String?
-  adId          String?    @default("")
+  level        String  @default("campaign") // account | campaign | adset | ad
+  entityId     String  @default("") // campaign_id | adset_id | ad_id depending on level
+  campaignId   String  @default("")
+  campaignName String  @default("")
+  adsetId      String? @default("")
+  adsetName    String?
+  adId         String? @default("")
 
   date          DateTime
-  breakdownHash String     @default("none")       // SHA-1 of sorted breakdown k=v pairs; "none" = no breakdown
+  breakdownHash String   @default("none") // SHA-1 of sorted breakdown k=v pairs; "none" = no breakdown
 
-  impressions   Int        @default(0)
-  clicks        Int        @default(0)
-  spend         Float      @default(0)
-  reach         Int        @default(0)
-  cpc           Float      @default(0)
-  ctr           Float      @default(0)
-  conversions   Float      @default(0)
-  revenue       Float      @default(0)
-  roas          Float      @default(0)
-  currency      String?
-  rawData       String?
+  impressions Int     @default(0)
+  clicks      Int     @default(0)
+  spend       Float   @default(0)
+  reach       Int     @default(0)
+  cpc         Float   @default(0)
+  ctr         Float   @default(0)
+  conversions Float   @default(0)
+  revenue     Float   @default(0)
+  roas        Float   @default(0)
+  currency    String?
+  rawData     String?
 
-  syncJobId     String?    // which SyncJob wrote this row
-  lockScope     String?    // SyncLock.scope at write time
-  fencingToken  BigInt?    // SyncLock.fencingToken at write time — stale writes are rejected
+  syncJobId    String? // which SyncJob wrote this row
+  lockScope    String? // SyncLock.scope at write time
+  fencingToken BigInt? // SyncLock.fencingToken at write time — stale writes are rejected
 
-  pulledAt      DateTime   @default(now())
-  createdAt     DateTime   @default(now())
-  workspace     Workspace  @relation(fields: [workspaceId], references: [id])
-  connection    Connection @relation(fields: [connectionId], references: [id])
+  pulledAt   DateTime   @default(now())
+  createdAt  DateTime   @default(now())
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id])
+  connection Connection @relation(fields: [connectionId], references: [id])
 
   // DB-level idempotency key: one row per (connection, account, level, entity, date, breakdown)
   @@unique([connectionId, accountId, level, entityId, date, breakdownHash])
@@ -310,23 +408,23 @@ model CampaignMetric {
 }
 
 model RetailOrder {
-  id            String    @id @default(cuid())
-  workspaceId   String
-  connectionId  String
-  platform      String
-  orderId       String
-  createdAtIso  String
-  currency      String
-  grossRevenue  Float
-  netRevenue    Float?
-  utmSource     String?
-  utmMedium     String?
-  utmCampaign   String?
-  utmContent    String?
-  utmTerm       String?
-  rawData       String?
-  pulledAt      DateTime  @default(now())
-  createdAt     DateTime  @default(now())
+  id           String   @id @default(cuid())
+  workspaceId  String
+  connectionId String
+  platform     String
+  orderId      String
+  createdAtIso String
+  currency     String
+  grossRevenue Float
+  netRevenue   Float?
+  utmSource    String?
+  utmMedium    String?
+  utmCampaign  String?
+  utmContent   String?
+  utmTerm      String?
+  rawData      String?
+  pulledAt     DateTime @default(now())
+  createdAt    DateTime @default(now())
 
   workspace  Workspace  @relation(fields: [workspaceId], references: [id])
   connection Connection @relation(fields: [connectionId], references: [id])
@@ -336,16 +434,16 @@ model RetailOrder {
 }
 
 model UtmMappingRule {
-  id          String   @id @default(cuid())
-  workspaceId String
-  type        String   // exact | regex
-  pattern     String
-  platform    String?  // optional constraint
-  campaignId  String?  // optional mapping target
+  id           String   @id @default(cuid())
+  workspaceId  String
+  type         String // exact | regex
+  pattern      String
+  platform     String? // optional constraint
+  campaignId   String? // optional mapping target
   campaignName String? // optional mapping target
-  weight      Float    @default(1.0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  weight       Float    @default(1.0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -374,7 +472,7 @@ model ReportSchedule {
   workspaceId String
   clientId    String?
   cron        String    @default("0 9 * * 1")
-  recipients  String    // comma-separated email list
+  recipients  String // comma-separated email list
   enabled     Boolean   @default(true)
   lastSentAt  DateTime?
   createdAt   DateTime  @default(now())
@@ -403,66 +501,66 @@ model AttributionSnapshot {
 
 // OBSERVABILITY: Data Quality Rules - Anomaly detection configuration
 model DataQualityRule {
-  id            String   @id @default(cuid())
-  workspaceId   String
-  name          String   // e.g., "Revenue Drop Alert"
-  description   String?
-  
+  id          String  @id @default(cuid())
+  workspaceId String
+  name        String // e.g., "Revenue Drop Alert"
+  description String?
+
   // Rule configuration
-  ruleType      String   // threshold | comparison | schema_check
-  metric        String   // revenue | orders | roas | row_count
-  operator      String   // gt | lt | eq | drop_pct | increase_pct
-  threshold     Float?   // Absolute threshold
-  pctThreshold  Float?   // Percentage threshold (e.g., 0.5 for 50%)
-  
+  ruleType     String // threshold | comparison | schema_check
+  metric       String // revenue | orders | roas | row_count
+  operator     String // gt | lt | eq | drop_pct | increase_pct
+  threshold    Float? // Absolute threshold
+  pctThreshold Float? // Percentage threshold (e.g., 0.5 for 50%)
+
   // Rule scope
-  pipelineId    String?  // Apply to specific pipeline or all
-  connectionId  String?  // Apply to specific connection
-  
+  pipelineId   String? // Apply to specific pipeline or all
+  connectionId String? // Apply to specific connection
+
   // Alerting
-  severity      String   @default("warning") // warning | critical
-  enabled       Boolean  @default(true)
-  notifyEmail   Boolean  @default(false)
+  severity       String  @default("warning") // warning | critical
+  enabled        Boolean @default(true)
+  notifyEmail    Boolean @default(false)
   notifyTelegram Boolean @default(true)
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  violations    DataQualityViolation[]
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace  Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  violations DataQualityViolation[]
+
   @@index([workspaceId, enabled])
   @@index([pipelineId, enabled])
 }
 
 // OBSERVABILITY: Data Quality Violations - Recorded anomalies
 model DataQualityViolation {
-  id              String   @id @default(cuid())
-  ruleId          String
-  workspaceId     String
-  pipelineId      String?
-  connectionId    String?
-  
+  id           String  @id @default(cuid())
+  ruleId       String
+  workspaceId  String
+  pipelineId   String?
+  connectionId String?
+
   // Violation details
-  expectedValue   Float?   // Expected metric value
-  actualValue     Float    // Actual metric value
-  pctChange       Float?   // Percentage change from expected
-  
+  expectedValue Float? // Expected metric value
+  actualValue   Float // Actual metric value
+  pctChange     Float? // Percentage change from expected
+
   // Context
-  syncLogId       String?  // Related sync job
-  sampleData      String?  // JSON sample of problematic rows
-  
+  syncLogId  String? // Related sync job
+  sampleData String? // JSON sample of problematic rows
+
   // Status
-  status          String   @default("open") // open | acknowledged | resolved | false_positive
-  acknowledgedBy  String?
-  acknowledgedAt  DateTime?
-  notes           String?
-  
-  createdAt       DateTime @default(now())
-  
-  rule            DataQualityRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  
+  status         String    @default("open") // open | acknowledged | resolved | false_positive
+  acknowledgedBy String?
+  acknowledgedAt DateTime?
+  notes          String?
+
+  createdAt DateTime @default(now())
+
+  rule      DataQualityRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
   @@index([workspaceId, status])
   @@index([ruleId, createdAt])
   @@index([createdAt])
@@ -470,128 +568,128 @@ model DataQualityViolation {
 
 // OBSERVABILITY: Enhanced Sync Log with row-level details
 model SyncLogDetail {
-  id              String   @id @default(cuid())
-  syncLogId       String
-  
+  id        String @id @default(cuid())
+  syncLogId String
+
   // Granular sync information
-  stage           String   // extract | transform | load
-  status          String   // success | warning | error
-  
+  stage  String // extract | transform | load
+  status String // success | warning | error
+
   // Metrics
-  rowsProcessed   Int      @default(0)
-  rowsInserted    Int      @default(0)
-  rowsUpdated     Int      @default(0)
-  rowsFailed      Int      @default(0)
-  
+  rowsProcessed Int @default(0)
+  rowsInserted  Int @default(0)
+  rowsUpdated   Int @default(0)
+  rowsFailed    Int @default(0)
+
   // Performance
-  durationMs      Int      @default(0)
-  apiCalls        Int      @default(0)
-  bytesTransferred Int     @default(0)
-  
+  durationMs       Int @default(0)
+  apiCalls         Int @default(0)
+  bytesTransferred Int @default(0)
+
   // Error tracking
-  errorCode       String?
-  errorMessage    String?
-  errorDetails    String?  // JSON stack/error details
-  
+  errorCode    String?
+  errorMessage String?
+  errorDetails String? // JSON stack/error details
+
   // Schema tracking
-  schemaVersion   String?  // API schema version at time of sync
-  
-  createdAt       DateTime @default(now())
-  
+  schemaVersion String? // API schema version at time of sync
+
+  createdAt DateTime @default(now())
+
   @@index([syncLogId, stage])
   @@index([createdAt])
 }
 
 // OBSERVABILITY: Schema Version Tracking
 model SchemaVersion {
-  id              String   @id @default(cuid())
-  connectionId    String
-  provider        String   // meta_ads | google_ads | etc.
-  
+  id           String @id @default(cuid())
+  connectionId String
+  provider     String // meta_ads | google_ads | etc.
+
   // Schema identification
-  version         String   // e.g., "v12.0" for Meta Marketing API
-  schemaHash      String   // Hash of discovered schema
-  
+  version    String // e.g., "v12.0" for Meta Marketing API
+  schemaHash String // Hash of discovered schema
+
   // Schema content (snapshot)
-  fields          String   // JSON array of {name, type, nullable}
-  primaryKeys     String?  // JSON array of primary key fields
-  
+  fields      String // JSON array of {name, type, nullable}
+  primaryKeys String? // JSON array of primary key fields
+
   // Change detection
   discoveredAt    DateTime @default(now())
   breakingChanges Int      @default(0) // Count of breaking changes from previous
-  
+
   // Status
-  isActive        Boolean  @default(true)
-  deprecatedAt    DateTime?
-  
+  isActive     Boolean   @default(true)
+  deprecatedAt DateTime?
+
   @@unique([connectionId, version])
   @@index([provider, discoveredAt])
 }
 
 // TEMPLATES: Pre-built Dashboard Templates
 model DashboardTemplate {
-  id              String   @id @default(cuid())
-  slug            String   @unique // meta-ads-roas | shopee-sales | etc.
-  
-  name            String
-  description     String
-  category        String   // ads | marketplace | analytics
-  
+  id   String @id @default(cuid())
+  slug String @unique // meta-ads-roas | shopee-sales | etc.
+
+  name        String
+  description String
+  category    String // ads | marketplace | analytics
+
   // Template configuration
-  config          String   // JSON: { sources: [], widgets: [], filters: [] }
-  
+  config String // JSON: { sources: [], widgets: [], filters: [] }
+
   // Requirements
   requiredSources String[] // e.g., ["meta_ads", "google_ads"]
   requiredMetrics String[] // e.g., ["spend", "revenue", "roas"]
-  
+
   // Display
-  previewImage    String?
-  isFeatured      Boolean  @default(false)
-  sortOrder       Int      @default(0)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  previewImage String?
+  isFeatured   Boolean @default(false)
+  sortOrder    Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // TEMPLATES: User Dashboard Instances
 model UserDashboard {
-  id              String   @id @default(cuid())
-  workspaceId     String
-  templateId      String?
-  
-  name            String
-  description     String?
-  
+  id          String  @id @default(cuid())
+  workspaceId String
+  templateId  String?
+
+  name        String
+  description String?
+
   // Configuration (overrides template)
-  config          String   // JSON: user customizations
-  
+  config String // JSON: user customizations
+
   // Filters
-  dateRange       String   @default("last_30_days") // today | last_7 | last_30 | last_90 | custom
-  filters         String?  // JSON: { platforms: [], campaigns: [], etc }
-  
-  isDefault       Boolean  @default(false)
-  isShared        Boolean  @default(false)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  
+  dateRange String  @default("last_30_days") // today | last_7 | last_30 | last_90 | custom
+  filters   String? // JSON: { platforms: [], campaigns: [], etc }
+
+  isDefault Boolean @default(false)
+  isShared  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
   @@index([workspaceId, isDefault])
 }
 
 // Persisted metadata for Looker Studio export jobs
 model LookerJob {
-  id          String   @id
+  id          String    @id
   workspaceId String
   apiKeyId    String?
   params      Json
-  status      String   @default("queued") // queued | running | done | failed
-  resultKey   String?  // S3 object key
+  status      String    @default("queued") // queued | running | done | failed
+  resultKey   String? // S3 object key
   resultUrl   String?
-  rowCount    Int?     
+  rowCount    Int?
   errorMsg    String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   startedAt   DateTime?
   finishedAt  DateTime?
 
@@ -604,22 +702,22 @@ model LookerJob {
 /// Prevents two concurrent workers from syncing the same Meta ad account.
 /// Scope key: meta_ads:{workspaceId}:{connectionId}:{adAccountId}
 model SyncLock {
-  scope          String   @id                 // deterministic scope string
-  provider       String
-  workspaceId    String
-  connectionId   String
-  accountId      String
+  scope        String @id // deterministic scope string
+  provider     String
+  workspaceId  String
+  connectionId String
+  accountId    String
 
-  jobId          String?
-  leaseId        String                        // random UUID per claim
-  fencingToken   BigInt                        // monotonically increments on every claim
+  jobId        String?
+  leaseId      String // random UUID per claim
+  fencingToken BigInt // monotonically increments on every claim
 
   status         String   @default("running") // running | released | failed
   heartbeatAt    DateTime
   leaseExpiresAt DateTime
 
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([provider, workspaceId, accountId])
   @@index([leaseExpiresAt])

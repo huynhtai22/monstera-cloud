@@ -41,12 +41,14 @@ export async function GET(req: Request, context: { params: any }) {
                 demoMockGoogleAds: true,
             },
         });
-        const demoFlags = {
-            demoMockMode: workspace?.demoMockMode ?? false,
-            demoMockMeta: workspace?.demoMockMeta ?? false,
-            demoMockShopee: workspace?.demoMockShopee ?? false,
-            demoMockGoogleAds: workspace?.demoMockGoogleAds ?? false,
-        };
+        const demoFlags = process.env.NODE_ENV === "production"
+            ? { demoMockMode: false, demoMockMeta: false, demoMockShopee: false, demoMockGoogleAds: false }
+            : {
+                demoMockMode: workspace?.demoMockMode ?? false,
+                demoMockMeta: workspace?.demoMockMeta ?? false,
+                demoMockShopee: workspace?.demoMockShopee ?? false,
+                demoMockGoogleAds: workspace?.demoMockGoogleAds ?? false,
+            };
 
         const sevenDaysAgo = new Date();
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);

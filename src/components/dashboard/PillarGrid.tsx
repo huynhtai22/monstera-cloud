@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
-import { GitMerge, Plug, Send, FileBarChart2 } from "lucide-react";
+import { Database, KeyRound, Plug } from "lucide-react";
 import { SectionOverviewCard, type OverviewLineItem } from "@/components/dashboard/SectionOverviewCard";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { timeAgo } from "@/lib/time-format";
@@ -13,20 +12,12 @@ type Connection = {
     status?: string | null;
     name?: string | null;
     updatedAt?: string | null;
-};
-
-type SyncLog = {
-    id: string;
-    status: string;
-    createdAt: string;
-    pipeline?: { id: string; name: string } | null;
+    lastSyncAt?: string | null;
 };
 
 type PillarGridProps = {
     connections: Connection[];
-    syncLogs: SyncLog[];
     healthyCount: number;
-    totalPipelines: number;
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -43,22 +34,18 @@ const PROVIDER_LABELS: Record<string, string> = {
     slack: "Slack",
 };
 
-const STALE_MINUTES = 6 * 60; // 6 hours = stale for marketplace sources
+const STALE_MINUTES = 26 * 60;
 
-function isStale(updatedAt?: string | null, provider?: string): boolean {
-    if (!updatedAt) return true;
-    const mins = Math.max(0, Math.round((Date.now() - new Date(updatedAt).getTime()) / 60000));
-    // Ad platforms (frequent updates) vs marketplaces (batch syncs)
-    const threshold = provider?.includes("shop") || provider === "shopee" || provider === "lazada" 
-        ? STALE_MINUTES 
-        : 60; // 1 hour for ads
-    return mins > threshold;
+function isStale(lastSyncAt?: string | null): boolean {
+    if (!lastSyncAt) return true;
+    const mins = Math.max(0, Math.round((Date.now() - new Date(lastSyncAt).getTime()) / 60000));
+    return mins > STALE_MINUTES;
 }
 
 function healthStatus(c: Connection): "healthy" | "stale" | "error" | "unknown" {
     if (c.status === "error") return "error";
     if (c.status !== "connected") return "unknown";
-    return isStale(c.updatedAt, c.provider) ? "stale" : "healthy";
+    return isStale(c.lastSyncAt) ? "stale" : "healthy";
 }
 
 function prettyProvider(provider: string) {
@@ -69,9 +56,7 @@ function prettyProvider(provider: string) {
 
 export function PillarGrid({
     connections,
-    syncLogs,
     healthyCount,
-    totalPipelines,
 }: PillarGridProps) {
     const sources = connections.filter((c) => c.type === "source");
 
@@ -79,7 +64,7 @@ export function PillarGrid({
         const health = healthStatus(c);
         
         // P1: Use timezone-aware formatting for last sync
-        const timeInfo = timeAgo(c.updatedAt, { staleThresholdMins: STALE_MINUTES });
+        const timeInfo = timeAgo(c.lastSyncAt, { staleThresholdMins: STALE_MINUTES });
         const subText = health === "error" 
             ? "Connection error"
             : health === "stale"
@@ -106,53 +91,6 @@ export function PillarGrid({
 
 
 
-    const { recentLogs, successCount, errorCount, pipelineItems } = useMemo(() => {
-        const sorted = [...syncLogs].sort(
-            (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        let successes = 0;
-        let errors = 0;
-        for (const l of syncLogs) {
-            if (l.status === "success") successes++;
-            else if (l.status === "error") errors++;
-        }
-        // Deduplicate by pipeline — show each pipeline once with its latest run status
-        const seen = new Set<string>();
-        const pItems: OverviewLineItem[] = [];
-        for (const l of sorted) {
-            const key = l.pipeline?.id ?? l.id;
-            if (!seen.has(key)) {
-                seen.add(key);
-                const timeInfo = timeAgo(l.createdAt);
-                pItems.push({
-                    id: l.id,
-                    label: l.pipeline?.name ?? "Pipeline sync",
-                    sub: timeInfo.text,
-                    status: l.status === "success" ? "ok" : l.status === "error" ? "error" : "pending",
-                });
-            }
-            if (pItems.length >= 3) break;
-        }
-        return {
-            recentLogs: sorted.slice(0, 3),
-            successCount: successes,
-            errorCount: errors,
-            pipelineItems: pItems,
-        };
-    }, [syncLogs]);
-
-    const reportItems: OverviewLineItem[] = recentLogs.map((l) => {
-        const timeInfo = timeAgo(l.createdAt);
-        return {
-            id: l.id,
-            label: l.pipeline?.name ?? "Pipeline sync",
-            sub: timeInfo.text,
-            status: l.status === "success" ? "ok" : l.status === "error" ? "error" : "pending",
-        };
-    });
-
-    const noReportsYet = syncLogs.length === 0;
-
     return (
         <div className="relative z-10 stagger-list flex flex-col gap-5">
             <div className="stagger-item min-w-0">
@@ -173,37 +111,33 @@ export function PillarGrid({
 
             <div className="stagger-item min-w-0">
                 <SectionOverviewCard
-                    icon={<GitMerge className="h-5 w-5" />}
-                    title="Pipelines"
-                    subtitle="Active sync jobs"
+                    icon={<Database className="h-5 w-5" />}
+                    title="Warehouse"
+                    subtitle="Imported source freshness"
                     emphasis
                     accent="cyan"
                     kpi={
-                        totalPipelines > 0
-                            ? { label: "Healthy", value: `${healthyCount}/${totalPipelines}` }
+                        sources.length > 0
+                            ? { label: "Fresh", value: `${healthyCount}/${sources.length}` }
                             : undefined
                     }
-                    items={pipelineItems}
-                    emptyHint="Pipelines are created automatically when you connect a source."
-                    ctaLabel={totalPipelines ? "See sync history" : undefined}
-                    ctaHref={totalPipelines ? "/reports" : undefined}
+                    items={sourceItems}
+                    emptyHint="Run the first source import to populate the warehouse."
+                    ctaLabel="Open Data Explorer"
+                    ctaHref="/explorer?tab=warehouse"
                 />
             </div>
 
             <div className="stagger-item min-w-0">
                 <SectionOverviewCard
-                    icon={<FileBarChart2 className="h-5 w-5" />}
-                    title="Reports"
-                    subtitle="Latest sync activity"
+                    icon={<KeyRound className="h-5 w-5" />}
+                    title="Exports & API"
+                    subtitle="Sheets, Looker Studio, and API access"
                     accent="indigo"
-                    kpi={{
-                        label: "14d success",
-                        value: `${successCount}/${successCount + errorCount}`,
-                    }}
-                    items={reportItems}
-                    emptyHint="No sync logs yet. Reports will appear after your first run."
-                    ctaLabel="Open reports"
-                    ctaHref="/reports"
+                    items={[]}
+                    emptyHint="Choose this workspace explicitly in Sheets or Looker Studio, or issue a workspace API key."
+                    ctaLabel="Configure access"
+                    ctaHref="/settings?tab=api"
                 />
             </div>
         </div>

@@ -2,26 +2,53 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: monstera_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/monstera_ci
+      NEXTAUTH_SECRET: ci-nextauth-secret-at-least-32-characters
+      NEXTAUTH_URL: http://localhost:3000
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      CRON_SECRET: ci-cron-secret-at-least-32-characters
+      GOOGLE_ID_TOKEN_AUDIENCES: ci-google-client-id.apps.googleusercontent.com
+      PILOT_MODE: "1"
     steps:
       - uses: actions/checkout@v4
-      - name: Use Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
-      - name: Install dependencies
-        run: npm ci
-      - name: Type check
-        run: npx tsc --noEmit
-      - name: Lint
-        # Next.js 16 `next lint` is currently failing in CI with:
-        #   "Invalid project directory provided .../lint"
-        # This blocks deploy previews; skip until upstream/Next config is fixed.
-        run: npm run lint --if-present || true
+          node-version: 20.9
+          cache: npm
+      - run: npm ci
+      - name: Validate and apply migrations
+        run: |
+          npx prisma validate
+          npx prisma migrate deploy
+          npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+      - run: npm run typecheck
+      - run: npm run lint:ci
+      - run: npm test
+      - run: npm run build
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: Critical browser journeys
+        run: npm run test:e2e
+      - run: npm audit --omit=dev --audit-level=high

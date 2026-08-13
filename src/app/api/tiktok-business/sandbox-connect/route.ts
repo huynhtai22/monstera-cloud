@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { encrypt } from '@/lib/encryption';
+import { productionRouteDisabled } from '@/lib/request-auth';
 
 /**
  * POST /api/tiktok-business/sandbox-connect
@@ -10,6 +11,9 @@ import { encrypt } from '@/lib/encryption';
  * Body: { workspaceId, accessToken, advertiserId, accountName? }
  */
 export async function POST(req: Request) {
+  if (productionRouteDisabled("ENABLE_PRODUCTION_SANDBOX_ROUTES")) {
+    return NextResponse.json({ error: "Not available" }, { status: 404 });
+  }
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json(

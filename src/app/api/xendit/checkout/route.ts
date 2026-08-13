@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { XenditClient } from '@/lib/xendit';
 import { logger } from "@/lib/logger";
+import { productionRouteDisabled } from "@/lib/request-auth";
 
 /** Supported invoice currencies. VND + USD first; IDR only if you set it explicitly. */
 const ALLOWED_CURRENCIES = ['VND', 'USD', 'IDR'] as const;
@@ -20,6 +21,9 @@ function resolveCurrency(bodyCurrency: unknown, envDefault: string | undefined):
 }
 
 export async function POST(req: Request) {
+  if (productionRouteDisabled("ENABLE_XENDIT")) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   try {
     const session = await getServerSession(authOptions);
 

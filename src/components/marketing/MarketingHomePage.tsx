@@ -138,7 +138,7 @@ const COPY = {
             eyebrow: "How it works",
             tabs: [
                 { id: "connect", label: "Connect", icon: "plug", title: "Connect your platforms", body: "Sign in with TikTok Ads, Meta, Shopee, or Google Ads via OAuth. One click to authorize — no passwords shared.", detail: "6 platforms supported · OAuth 2.0 only" },
-                { id: "sync", label: "Sync", icon: "refresh", title: "Automatic data sync", body: "Your campaigns, spend, ROAS, and orders flow in on a schedule you choose — hourly, daily, or on-demand.", detail: "Hourly refresh on Pro · Rate-limit aware" },
+                { id: "sync", label: "Sync", icon: "refresh", title: "Reliable warehouse refresh", body: "Your campaigns, spend, ROAS, and orders refresh on demand and in one nightly run during the agency pilot.", detail: "Manual + nightly · Rate-limit aware" },
                 { id: "report", label: "Report", icon: "sheet", title: "Delivered to your sheets", body: "Data lands in Google Sheets™ or Looker Studio automatically. Clean rows, correct columns, zero copy-paste.", detail: "Google Sheets™ add-on · Looker Studio connector" },
                 { id: "optimize", label: "Optimize", icon: "zap", title: "Focus on decisions", body: "With data flowing automatically, your team spends time optimizing campaigns — not wrestling spreadsheets.", detail: "Save 3+ hours per week on reporting" },
             ],

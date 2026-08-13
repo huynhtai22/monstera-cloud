@@ -6,6 +6,8 @@ import { encode as jwtEncode, decode as jwtDecode } from "next-auth/jwt"
 import prisma from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { logger } from "@/lib/logger";
+import { isPilotMode } from "@/lib/pilot-mode";
+import { allowAuthAttempt } from "@/lib/auth-rate-limit";
 
 /** Long session when “Keep me signed in” is enabled (or OAuth). */
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
@@ -20,6 +22,7 @@ const isProduction = process.env.NODE_ENV === "production"
  * Must be called OUTSIDE of an auth transaction to avoid deadlocks.
  */
 async function ensureWorkspace(userId: string): Promise<void> {
+    if (isPilotMode()) return;
     const existing = await prisma.workspaceMember.findFirst({
         where: { userId },
         select: { id: true },
@@ -95,8 +98,14 @@ export const authOptions: NextAuthOptions = {
                     return null;
                 }
 
-                const email = credentials.email.trim();
-                logger.info("[LOGIN_ATTEMPT] Email:", email);
+                const email = credentials.email.trim().toLowerCase();
+                if (!(await allowAuthAttempt({
+                    request: req as unknown as Request,
+                    action: "login",
+                    identity: email,
+                    limit: 10,
+                    windowSeconds: 15 * 60,
+                }))) return null;
 
                 // Case-insensitive match (Postgres) — avoids login failures when casing differs from DB
                 const dbUser = (await prisma.user.findFirst({
@@ -104,17 +113,14 @@ export const authOptions: NextAuthOptions = {
                 })) as any;
 
                 if (!dbUser) {
-                    logger.info("[LOGIN_FAILED] User not found for email:", email);
                     return null;
                 }
 
                 if (!dbUser.hashedPassword) {
-                    logger.info("[LOGIN_FAILED] No hashed password for user:", email);
                     return null;
                 }
 
                 if (!dbUser.emailVerified) {
-                    logger.info("[LOGIN_FAILED] Email not verified for user:", email);
                     return null;
                 }
 
@@ -122,15 +128,12 @@ export const authOptions: NextAuthOptions = {
                     const isPasswordValid = await bcrypt.compare(credentials.password, dbUser.hashedPassword);
 
                     if (!isPasswordValid) {
-                        logger.info("[LOGIN_FAILED] Password compare failed for user:", email);
                         return null;
                     }
                 } catch (err: any) {
                     logger.error("[LOGIN_CRASH] bcrypt failed:", err);
                     return null;
                 }
-
-                logger.info("[LOGIN_SUCCESS] User logged in:", email);
 
                 const rememberMe = credentials.rememberMe !== "false";
 
@@ -150,7 +153,7 @@ export const authOptions: NextAuthOptions = {
     },
     jwt: {
         maxAge: SESSION_MAX_AGE_SECONDS,
-        encode: async ({ token, secret, maxAge, salt }) => {
+        encode: async ({ token, secret, salt }) => {
             const rememberMe = token?.rememberMe as boolean | undefined
             const effectiveMaxAge =
                 rememberMe === false ? SESSION_SHORT_AGE_SECONDS : SESSION_MAX_AGE_SECONDS
@@ -188,7 +191,7 @@ export const authOptions: NextAuthOptions = {
 
             if (!existingUser) {
                 // Truly new user — PrismaAdapter will create the row normally
-                return true;
+                return !isPilotMode();
             }
 
             // Email already belongs to a credentials (or other provider) account.
@@ -255,12 +258,12 @@ export const authOptions: NextAuthOptions = {
             if (!userId && session.user.email) {
                 const byEmail = await prisma.user.findFirst({
                     where: { email: { equals: session.user.email, mode: "insensitive" } },
-                    select: { id: true, plan: true, hashedPassword: true },
+                    select: { id: true, hashedPassword: true, workspaces: { select: { workspace: { select: { plan: true } } } } },
                 })
                 if (byEmail) {
                     userId = byEmail.id
                     session.user.id = byEmail.id
-                    session.user.plan = byEmail.plan ?? "free"
+                    session.user.plan = byEmail.workspaces[0]?.workspace.plan ?? "free"
                     session.user.hasPassword = Boolean(byEmail.hashedPassword)
                     return session
                 }
@@ -270,9 +273,9 @@ export const authOptions: NextAuthOptions = {
                 session.user.id = userId
                 const row = await prisma.user.findUnique({
                     where: { id: userId },
-                    select: { plan: true, hashedPassword: true },
+                    select: { hashedPassword: true, workspaces: { select: { workspace: { select: { plan: true } } } } },
                 })
-                session.user.plan = row?.plan ?? "free"
+                session.user.plan = row?.workspaces[0]?.workspace.plan ?? "free"
                 session.user.hasPassword = Boolean(row?.hashedPassword)
             }
             return session

@@ -67,8 +67,8 @@ const DATA: Record<string, IntegrationEntry> = {
         keywords: ["Meta Ads Google Sheets", "Facebook ads reporting automation", "agency Meta reporting"],
         faqs: [
             {
-                q: "Will scheduled refreshes replace manual weekly exports?",
-                a: "Yes—set hourly or daily refresh so account managers spend time on strategy, not CSV cleanup.",
+                q: "How is pilot data refreshed?",
+                a: "Agency staff can refresh on demand, and Monstera runs one nightly warehouse refresh.",
             },
         ],
     },
@@ -119,7 +119,7 @@ const DATA: Record<string, IntegrationEntry> = {
         source: "Meta Ads",
         dest: "Looker Studio™",
         headline: "Connect Meta Ads to Looker Studio",
-        sub: "Report Meta and Instagram spend in Looker Studio with scheduled refresh—useful when you already blend marketplace revenue in the same report.",
+        sub: "Report Meta and Instagram spend from the normalized warehouse in Looker Studio, with manual and nightly source refresh.",
         keywords: ["Meta Ads Looker Studio", "Facebook ads Looker", "GDS Meta connector alternative"],
         faqs: [
             {
@@ -273,7 +273,7 @@ export default async function IntegrationPage({ params }: { params: Promise<{ sl
                             <CheckCircle2 className="w-6 h-6 text-cyan-500 mb-4" />
                             <h3 className="font-semibold text-white mb-2">Scheduled refresh</h3>
                             <p className="text-sm text-gray-400 leading-relaxed">
-                                Run hourly or daily syncs so account managers spend less time on CSV cleanup during flash sales and mega campaigns.
+                                Run on-demand or nightly warehouse refreshes so account managers spend less time on CSV cleanup.
                             </p>
                         </div>
                         <div className="p-6 bg-white/[0.02] border border-white/5 rounded-2xl">

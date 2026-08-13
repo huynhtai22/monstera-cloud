@@ -71,6 +71,7 @@ export function isPrimaryMarketingHost(host: string): boolean {
  * Returns workspace slug for agency routing, or null if this host should use normal routes.
  */
 export function resolveAgencySlugFromHost(host: string): string | null {
+  if (process.env.AGENCY_HOST_ROUTING_ENABLED !== "1") return null;
   const h = normalizeHost(host);
   if (!h) return null;
 

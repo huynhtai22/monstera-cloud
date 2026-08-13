@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import crypto from "crypto";
+import { allowAuthAttempt } from "@/lib/auth-rate-limit";
+import { normalizeEmail } from "@/lib/invitation-security";
 
 export async function GET() {
   return NextResponse.json(
@@ -11,10 +14,14 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const { email } = await req.json();
+    const { email: rawEmail } = await req.json();
 
-    if (!email) {
+    if (!rawEmail) {
       return NextResponse.json({ message: "Email is required" }, { status: 400 });
+    }
+    const email = normalizeEmail(String(rawEmail));
+    if (!(await allowAuthAttempt({ request: req, action: "resend_otp", identity: email, limit: 3, windowSeconds: 15 * 60 }))) {
+      return NextResponse.json({ message: "If the account is eligible, a code will be sent shortly." });
     }
 
     const user = await prisma.user.findUnique({
@@ -22,11 +29,15 @@ export async function POST(req: Request) {
     });
 
     if (!user) {
-      return NextResponse.json({ message: "User not found" }, { status: 404 });
+      return NextResponse.json({ message: "If the account is eligible, a code will be sent shortly." });
+    }
+
+    if (user.otpExpires && user.otpExpires.getTime() > Date.now() + 9 * 60 * 1000) {
+      return NextResponse.json({ message: "If the account is eligible, a code will be sent shortly." });
     }
 
     // Generate a new 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = crypto.randomInt(100000, 1000000).toString();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     await prisma.user.update({
@@ -34,10 +45,10 @@ export async function POST(req: Request) {
       data: {
         otp,
         otpExpires,
+        otpAttempts: 0,
+        otpLockedUntil: null,
       },
     });
-
-    logger.info(`[AUTH] Resent OTP for ${email}: ${otp}`); // Log for safety
 
     // Send Real Email via Resend
     try {
@@ -47,8 +58,9 @@ export async function POST(req: Request) {
       logger.error("[AUTH] Resend OTP Mail Failed:", mailError);
     }
 
-    return NextResponse.json({ message: "OTP resent successfully" }, { status: 200 });
-  } catch (error: any) {
-    return NextResponse.json({ message: error.message }, { status: 500 });
+    return NextResponse.json({ message: "If the account is eligible, a code will be sent shortly." }, { status: 200 });
+  } catch (error: unknown) {
+    logger.error("[AUTH] Resend OTP failed:", error);
+    return NextResponse.json({ message: "If the account is eligible, a code will be sent shortly." });
   }
 }

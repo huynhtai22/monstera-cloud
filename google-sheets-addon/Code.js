@@ -89,11 +89,13 @@ function checkAuth() {
  * Returns ad accounts for the authenticated user, optionally filtered by platform.
  * Called from Sidebar when platform changes to populate the account selector.
  */
-function getAccounts(platform) {
+function getAccounts(platform, workspaceId) {
   var token = getIdentityToken();
   if (!token) return { ok: false, error: 'Could not authenticate.' };
+  if (!workspaceId) return { ok: false, error: 'Select an agency workspace first.' };
 
-  var url = ACCOUNTS_ENDPOINT + (platform ? '?platform=' + encodeURIComponent(platform) : '');
+  var url = ACCOUNTS_ENDPOINT + '?workspaceId=' + encodeURIComponent(workspaceId)
+    + (platform ? '&platform=' + encodeURIComponent(platform) : '');
   try {
     var response = UrlFetchApp.fetch(url, {
       method: 'get',
@@ -176,8 +178,11 @@ function pullData(params) {
   var reportLevel = params.reportLevel || 'adset';
   var accountIds  = params.accountIds  || [];
   var targetCell  = params.targetCell  || 'A1';
+  var workspaceId = params.workspaceId || '';
+  if (!workspaceId) throw new Error('Select an agency workspace first.');
 
   var qp = [
+    'workspaceId=' + encodeURIComponent(workspaceId),
     'startDate='   + encodeURIComponent(startDate),
     'endDate='     + encodeURIComponent(endDate),
     'reportLevel=' + encodeURIComponent(reportLevel),
@@ -188,7 +193,7 @@ function pullData(params) {
   var url = API_ENDPOINT + '?' + qp.join('&');
 
   var cache = CacheService.getUserCache();
-  var cacheKey = 'sheets_' + startDate + '_' + endDate + '_' + (platform || 'all') + '_' + reportLevel;
+  var cacheKey = 'sheets_' + workspaceId + '_' + startDate + '_' + endDate + '_' + (platform || 'all') + '_' + reportLevel;
   var responseData = null;
 
   var cached = cache.get(cacheKey);
@@ -257,7 +262,7 @@ function pullData(params) {
 
   PropertiesService.getDocumentProperties().setProperty(
     'monstera_query_' + sheet.getSheetId(),
-    JSON.stringify({ platform: platform, reportLevel: reportLevel, accountIds: accountIds, targetCell: targetCell })
+    JSON.stringify({ workspaceId: workspaceId, platform: platform, reportLevel: reportLevel, accountIds: accountIds, targetCell: targetCell })
   );
 
   return 'Done! ' + data.length + ' rows written to ' + sheet.getName() + '.';
@@ -317,8 +322,11 @@ function pullDataToSheet(sheet, params, token) {
   var reportLevel = params.reportLevel || 'adset';
   var accountIds  = params.accountIds  || [];
   var targetCell  = params.targetCell  || 'A1';
+  var workspaceId = params.workspaceId || '';
+  if (!workspaceId) return;
 
   var qp = [
+    'workspaceId=' + encodeURIComponent(workspaceId),
     'startDate='   + encodeURIComponent(startDate),
     'endDate='     + encodeURIComponent(endDate),
     'reportLevel=' + encodeURIComponent(reportLevel),
@@ -370,11 +378,7 @@ function setupRefreshTrigger(intervalHours) {
   ScriptApp.getProjectTriggers().forEach(function(trigger) {
     if (trigger.getHandlerFunction() === 'refreshAllSheets') ScriptApp.deleteTrigger(trigger);
   });
-  if (intervalHours > 0) {
-    ScriptApp.newTrigger('refreshAllSheets').timeBased().everyHours(intervalHours).create();
-    return { success: true, message: 'Auto-refresh set to every ' + intervalHours + ' hour(s).' };
-  }
-  return { success: true, message: 'Auto-refresh disabled.' };
+  return { success: true, message: 'Scheduled sheet refresh is unavailable during the private pilot.' };
 }
 
 function getRefreshSchedule() {

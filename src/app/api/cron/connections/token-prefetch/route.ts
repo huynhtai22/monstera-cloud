@@ -2,17 +2,12 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getToken } from "@/lib/token-cache";
 import { logger } from "@/lib/logger";
+import { requireCronSecret } from "@/lib/request-auth";
 
 export async function GET(request: Request) {
   try {
-    const authHeader = request.headers.get("authorization");
-
-    if (
-      process.env.NODE_ENV === "production" &&
-      authHeader !== `Bearer ${process.env.CRON_SECRET}`
-    ) {
-      return new NextResponse("Unauthorized Cron Request", { status: 401 });
-    }
+    const denied = requireCronSecret(request);
+    if (denied) return denied;
 
     logger.info("[CRON: TOKEN PRE-FETCH] Warming up token cache...");
 

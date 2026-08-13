@@ -5,9 +5,10 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { logger } from "@/lib/logger";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
 import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-cache";
+import { hashApiKey, resolveApiKey } from "@/lib/api-key-security";
+import { queryWarehouse } from "@/lib/warehouse-query";
 
 const UPSTASH_AVAILABLE = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
-const redis = UPSTASH_AVAILABLE ? Redis.fromEnv() : null;
 
 type RateLimitResult = {
   success: boolean;
@@ -22,6 +23,7 @@ async function checkPerKeyRateLimit(key: string, plan: string | null): Promise<R
   // Map plan -> requests per minute
   const planMap: Record<string, number> = {
     free: 60,
+    pilot: 1000,
     starter: 300,
     professional: 1000,
     pro: 1000,
@@ -81,10 +83,10 @@ export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
 
-    let apiKey =
+    const apiKey =
       authHeader && authHeader.startsWith("Bearer ")
         ? authHeader.substring(7).trim()
-        : req.nextUrl.searchParams.get("apiKey")?.trim() ?? null;
+        : null;
 
     if (!apiKey) {
       return NextResponse.json(
@@ -94,6 +96,7 @@ export async function GET(req: NextRequest) {
     }
 
     let workspaceId: string;
+    let workspacePlan: string;
 
     if (isGoogleJwt(apiKey)) {
       // Google Sheets add-on: identity token auth
@@ -108,29 +111,29 @@ export async function GET(req: NextRequest) {
       if (!user) {
         return NextResponse.json({ error: "No Monstera account found", code: "NO_ACCOUNT" }, { status: 404 });
       }
+      const requestedWorkspaceId = req.nextUrl.searchParams.get("workspaceId")?.trim();
+      if (!requestedWorkspaceId) {
+        return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
+      }
       const workspace = await prisma.workspace.findFirst({
         where: {
-          OR: [
-            { ownerId: user.id },
-            { members: { some: { userId: user.id } } },
-          ],
+          id: requestedWorkspaceId,
+          members: { some: { userId: user.id } },
         },
-        select: { id: true, ownerId: true },
+        select: { id: true, plan: true },
       });
       if (!workspace) {
         return NextResponse.json({ error: "No workspace found" }, { status: 404 });
       }
       workspaceId = workspace.id;
+      workspacePlan = workspace.plan;
 
       const ping = req.nextUrl.searchParams.get("ping");
       if (ping === "1") return NextResponse.json({ ok: true });
     }
     else {
       // Looker Studio connector: API key auth
-      const keyRecord = await prisma.apiKey.findUnique({
-        where: { key: apiKey },
-        include: { workspace: true },
-      });
+      const keyRecord = await resolveApiKey(apiKey);
       if (!keyRecord) {
         return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
       }
@@ -143,30 +146,14 @@ export async function GET(req: NextRequest) {
         data: { lastUsedAt: new Date() },
       });
       workspaceId = keyRecord.workspaceId;
-      // fetch owner plan for this workspace
-      const owner = await prisma.user.findUnique({ where: { id: keyRecord.workspace.ownerId } });
-      (req as any)._ownerPlan = owner ? owner.plan : null;
+      workspacePlan = keyRecord.workspace.plan;
     }
 
     // Apply per-API-key rate limiting. For Google JWT we key by workspace id; for API keys we key by the key string.
     try {
-      // Determine plan: prefer owner plan attached earlier for API keys, otherwise derive for Google JWT
-      let plan: string | null = null;
-      if ((req as any)._ownerPlan) plan = (req as any)._ownerPlan;
-      if (!plan && isGoogleJwt(apiKey)) {
-        try {
-          // fetch workspace owner plan if available
-          const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { ownerId: true } });
-          if (ws && ws.ownerId) {
-            const owner = await prisma.user.findUnique({ where: { id: ws.ownerId } });
-            plan = owner ? owner.plan : null;
-          }
-        } catch (ignore) {}
-      }
+      const rateKey = isGoogleJwt(apiKey) ? `workspace:${workspaceId}` : `apikey:${hashApiKey(apiKey)}`;
 
-      const rateKey = isGoogleJwt(apiKey) ? `workspace:${workspaceId}` : `apikey:${apiKey}`;
-
-      const rlRes = await checkPerKeyRateLimit(rateKey, plan);
+      const rlRes = await checkPerKeyRateLimit(rateKey, workspacePlan);
       if (!rlRes.success) {
         const reset = rlRes.reset ? Math.floor(rlRes.reset / 1000) : undefined;
         const headers: Record<string, string> = {};
@@ -213,10 +200,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(cached);
     }
 
-    const whereClause: any = { workspaceId };
-
+    let startDate: Date | undefined;
+    let endDate: Date | undefined;
     if (startDateParam || endDateParam) {
-      whereClause.date = {};
       if (startDateParam) {
         const d = parseDateFilter(startDateParam);
         if (!d) {
@@ -225,7 +211,7 @@ export async function GET(req: NextRequest) {
             { status: 400 }
           );
         }
-        whereClause.date.gte = d;
+        startDate = d;
       }
       if (endDateParam) {
         const d = parseDateFilter(endDateParam);
@@ -235,58 +221,22 @@ export async function GET(req: NextRequest) {
             { status: 400 }
           );
         }
-        whereClause.date.lte = endOfUtcDayInclusive(d);
+        endDate = endOfUtcDayInclusive(d);
       }
     }
 
-    if (platform && platform !== "all") {
-      whereClause.platform = platform;
-    }
-
-    // Filter by specific accounts if provided
-    if (accountIdParams.length > 0) {
-      whereClause.accountId = { in: accountIdParams };
-    }
-
-    // Apply cursor-based pagination if provided. Cursor format: encoded "YYYY-MM-DD|<id>" or raw.
-    if (cursorParam) {
-      try {
-        const decoded = decodeURIComponent(cursorParam);
-        const parts = decoded.split("|");
-        if (parts.length === 2) {
-          const lastDate = new Date(parts[0] + "T00:00:00Z");
-          const lastId = parts[1];
-          whereClause.AND = [
-            whereClause,
-            {
-              OR: [
-                { date: { lt: lastDate } },
-                { AND: [{ date: lastDate }, { id: { lt: lastId } }] },
-              ],
-            },
-          ];
-        }
-      } catch (e) {
-        // ignore malformed cursor — fall back to start
-      }
-    }
-
-    const take = Math.min(limit || 10000, MAX_ROWS_PER_REQUEST);
-
-    const metrics = await prisma.campaignMetric.findMany({
-      where: whereClause,
-      orderBy: [{ date: "desc" }, { id: "desc" }],
-      take: take + 1, // fetch one extra to detect nextCursor
+    const result = await queryWarehouse({
+      workspaceId,
+      startDate,
+      endDate,
+      platforms: platform && platform !== "all" ? [platform] : undefined,
+      accountIds: accountIdParams.length ? accountIdParams : undefined,
+      cursor: cursorParam,
+      limit,
+      includeTotalCount: includeCount,
     });
 
-    let nextCursor: string | null = null;
-    if (metrics.length > take) {
-      const last = metrics[metrics.length - 1];
-      nextCursor = encodeURIComponent(last.date.toISOString().split("T")[0] + "|" + last.id);
-      metrics.pop();
-    }
-
-    const formattedData = metrics.map((m) => ({
+    const formattedData = result.rows.map((m) => ({
       date: m.date.toISOString().split("T")[0].replace(/-/g, ""),
       platform: m.platform,
       accountId: m.accountId,
@@ -310,20 +260,13 @@ export async function GET(req: NextRequest) {
       currency: m.currency,
     }));
 
-    const resObj: any = { data: formattedData };
-    if (nextCursor) resObj.nextCursor = nextCursor;
-
-    if (includeCount) {
-      try {
-        const countWhere = { ...whereClause };
-        // remove pagination AND when counting
-        if (countWhere.AND) delete countWhere.AND;
-        const totalRows = await prisma.campaignMetric.count({ where: countWhere });
-        resObj.totalRows = totalRows;
-      } catch (e) {
-        // counting failed — omit totalRows
-      }
-    }
+    const resObj: Record<string, unknown> = {
+      data: formattedData,
+      asOf: result.asOf,
+      freshness: result.freshness,
+    };
+    if (result.pagination.nextCursor) resObj.nextCursor = result.pagination.nextCursor;
+    if (typeof result.totalCount === "number") resObj.totalRows = result.totalCount;
 
     // Cache the Looker Studio page for 15 minutes
     await setCachedQuery(cacheKey, resObj, 900);

@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { clientsApiPayload, isMockClientId } from "@/lib/mock-console-data";
+import { isMockClientId } from "@/lib/mock-console-data";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 /**
  * GET /api/clients
@@ -23,34 +24,7 @@ export async function GET(req: Request) {
         }
 
         // Verify membership
-        const membership = await (prisma.workspaceMember as any).findUnique({
-            where: {
-                workspaceId_userId: {
-                    workspaceId,
-                    userId: session.user.id
-                }
-            }
-        });
-
-        if (!membership) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
-
-        const ws = await prisma.workspace.findUnique({
-            where: { id: workspaceId },
-            select: {
-                demoMockMode: true,
-                demoMockMeta: true,
-                demoMockShopee: true,
-                demoMockGoogleAds: true,
-            },
-        });
-        const demoFlags = {
-            demoMockMode: ws?.demoMockMode ?? false,
-            demoMockMeta: ws?.demoMockMeta ?? false,
-            demoMockShopee: ws?.demoMockShopee ?? false,
-            demoMockGoogleAds: ws?.demoMockGoogleAds ?? false,
-        };
+        await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer" });
 
         const clients = await prisma.client.findMany({
             where: { workspaceId },
@@ -62,10 +36,11 @@ export async function GET(req: Request) {
             }
         });
 
-        const mockRows = clientsApiPayload(workspaceId, demoFlags);
-        return NextResponse.json([...mockRows, ...clients]);
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json(clients);
+    } catch (error: unknown) {
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
+        return NextResponse.json({ error: error instanceof Error ? error.message : "Failed" }, { status: 500 });
     }
 }
 
@@ -88,18 +63,7 @@ export async function POST(req: Request) {
         }
 
         // Verify membership
-        const membership = await (prisma.workspaceMember as any).findUnique({
-            where: {
-                workspaceId_userId: {
-                    workspaceId,
-                    userId: session.user.id
-                }
-            }
-        });
-
-        if (!membership) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
+        await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member", operation: "create_client" });
 
         const client = await prisma.client.create({
             data: {
@@ -111,8 +75,10 @@ export async function POST(req: Request) {
         });
 
         return NextResponse.json(client, { status: 201 });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
+        return NextResponse.json({ error: error instanceof Error ? error.message : "Failed" }, { status: 500 });
     }
 }
 
@@ -136,18 +102,7 @@ export async function DELETE(req: Request) {
         }
 
         // Verify membership
-        const membership = await (prisma.workspaceMember as any).findUnique({
-            where: {
-                workspaceId_userId: {
-                    workspaceId,
-                    userId: session.user.id
-                }
-            }
-        });
-
-        if (!membership) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
+        await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "admin", operation: "delete_client" });
 
         if (isMockClientId(id)) {
             return NextResponse.json(
@@ -156,13 +111,14 @@ export async function DELETE(req: Request) {
             );
         }
 
-        await prisma.client.delete({
-            where: { id }
-        });
+        const deleted = await prisma.client.deleteMany({ where: { id, workspaceId } });
+        if (deleted.count !== 1) return NextResponse.json({ error: "Client not found" }, { status: 404 });
 
         return NextResponse.json({ success: true });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
+        return NextResponse.json({ error: error instanceof Error ? error.message : "Failed" }, { status: 500 });
     }
 }
 
@@ -187,18 +143,7 @@ export async function PATCH(req: Request) {
             );
         }
 
-        const membership = await (prisma.workspaceMember as any).findUnique({
-            where: {
-                workspaceId_userId: {
-                    workspaceId,
-                    userId: session.user.id,
-                },
-            },
-        });
-
-        if (!membership) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
+        await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member", operation: "update_client" });
 
         if (isMockClientId(id)) {
             return NextResponse.json(
@@ -225,13 +170,17 @@ export async function PATCH(req: Request) {
             );
         }
 
+        const existing = await prisma.client.findFirst({ where: { id, workspaceId }, select: { id: true } });
+        if (!existing) return NextResponse.json({ error: "Client not found" }, { status: 404 });
         const updated = await prisma.client.update({
-            where: { id },
+            where: { id: existing.id },
             data,
         });
 
         return NextResponse.json(updated);
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
+        return NextResponse.json({ error: error instanceof Error ? error.message : "Failed" }, { status: 500 });
     }
 }

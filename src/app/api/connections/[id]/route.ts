@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { sanitizeConnectionCredentials } from "@/lib/sanitize-connection-credentials";
 import { logger } from "@/lib/logger";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 /**
  * GET — connection detail, related pipelines, and last 30 sync logs (for /sources/[id]).
@@ -34,18 +35,7 @@ export async function GET(
             return NextResponse.json({ error: "Connection not found" }, { status: 404 });
         }
 
-        const membership = await prisma.workspaceMember.findUnique({
-            where: {
-                workspaceId_userId: {
-                    workspaceId: connection.workspaceId,
-                    userId: session.user.id,
-                },
-            },
-        });
-
-        if (!membership) {
-            return NextResponse.json({ error: "Unauthorized for this workspace" }, { status: 403 });
-        }
+        await requireWorkspaceAccess({ userId: session.user.id, workspaceId: connection.workspaceId, minimumRole: "viewer" });
 
         const pipelines = await prisma.pipeline.findMany({
             where: {
@@ -82,6 +72,8 @@ export async function GET(
             recentLogs,
         });
     } catch (error) {
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
         logger.error("GET /api/connections/[id]:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
@@ -118,18 +110,12 @@ export async function DELETE(
             return NextResponse.json({ error: "Connection not found" }, { status: 404 });
         }
 
-        const membership = await prisma.workspaceMember.findUnique({
-            where: {
-                workspaceId_userId: {
-                    workspaceId: connection.workspaceId,
-                    userId: session.user.id,
-                },
-            },
+        await requireWorkspaceAccess({
+            userId: session.user.id,
+            workspaceId: connection.workspaceId,
+            minimumRole: "admin",
+            operation: "delete_connection",
         });
-
-        if (!membership) {
-            return NextResponse.json({ error: "Unauthorized for this workspace" }, { status: 403 });
-        }
 
         await prisma.$transaction(async (tx) => {
             await tx.pipeline.deleteMany({
@@ -153,6 +139,8 @@ export async function DELETE(
             message: `Disconnected ${connection.name}. You can reconnect this ${connection.type} anytime.`,
         });
     } catch (error) {
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
         logger.error("DELETE /api/connections/[id]:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

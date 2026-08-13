@@ -6,6 +6,7 @@ import { syncMetaInsightsIntoWarehouse } from "@/lib/ingestion/meta-campaign-met
 import { syncGoogleAdsIntoWarehouse, syncTikTokIntoWarehouse } from "@/lib/ingestion/ad-platform-warehouse";
 import { logger } from "@/lib/logger";
 import { decrypt } from "@/lib/encryption";
+import { requireWorkspaceAccess } from "@/lib/rbac";
 
 const WAREHOUSE_COLUMN_LIST = [
   "date",
@@ -65,20 +66,12 @@ export async function POST(req: Request) {
     );
   }
 
-  const member = await prisma.workspaceMember.findUnique({
-    where: {
-      workspaceId_userId: { workspaceId, userId: session.user.id },
-    },
-  });
-  if (!member) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
+  await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member", operation: "import_warehouse" });
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
     select: { plan: true },
   });
-  const plan = user?.plan ?? "free";
+  const plan = workspace?.plan ?? "pilot";
 
   try {
     const conn = await prisma.connection.findFirst({

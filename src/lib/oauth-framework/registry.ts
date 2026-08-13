@@ -68,11 +68,11 @@ export function isProviderConfigured(id: string): boolean {
     const configChecks: Record<string, () => boolean> = {
         shopee: () => !!(process.env.SHOPEE_PARTNER_ID && process.env.SHOPEE_PARTNER_KEY),
         lazada: () => !!(process.env.LAZADA_APP_KEY && process.env.LAZADA_APP_SECRET),
-        meta_ads: () => !!(process.env.META_APP_ID && process.env.META_APP_SECRET),
+        meta_ads: () => !!((process.env.META_ADS_APP_ID || process.env.META_APP_ID) && (process.env.META_ADS_APP_SECRET || process.env.META_APP_SECRET)),
         google_ads: () => !!(process.env.GOOGLE_ADS_CLIENT_ID && process.env.GOOGLE_ADS_CLIENT_SECRET),
-        tiktok_shop: () => !!(process.env.TIKTOK_APP_ID && process.env.TIKTOK_APP_SECRET),
+        tiktok_shop: () => !!((process.env.TIKTOK_SHOP_APP_KEY || process.env.TIKTOK_APP_ID) && (process.env.TIKTOK_SHOP_APP_SECRET || process.env.TIKTOK_APP_SECRET)),
         tiktok_business: () => !!(process.env.TIKTOK_BUSINESS_APP_ID && process.env.TIKTOK_BUSINESS_APP_SECRET),
-        shopify: () => !!process.env.SHOPIFY_CLIENT_ID,
+        shopify: () => !!(process.env.SHOPIFY_CLIENT_ID && process.env.SHOPIFY_CLIENT_SECRET),
         amazon: () => !!(process.env.AMAZON_CLIENT_ID && process.env.AMAZON_CLIENT_SECRET),
     };
     

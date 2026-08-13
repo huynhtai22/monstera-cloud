@@ -2,140 +2,42 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { requireWorkspaceAccess } from "@/lib/rbac";
+import { queryWarehouse } from "@/lib/warehouse-query";
 
-const WAREHOUSE_COLUMNS = [
-  "date",
-  "platform",
-  "accountId",
-  "accountName",
-  "campaignId",
-  "campaignName",
-  "impressions",
-  "clicks",
-  "spend",
-  "cpc",
-  "ctr",
-  "conversions",
-  "roas",
-  "currency",
-];
+const WAREHOUSE_COLUMNS = ["date", "platform", "accountId", "accountName", "campaignId", "campaignName", "impressions", "clicks", "spend", "cpc", "ctr", "conversions", "roas", "currency"];
 
-/**
- * GET /api/data-explorer/warehouse/query
- * Paginated read from CampaignMetric (warehouse) for the Data Explorer grid.
- *
- * Query: workspaceId, connectionId, startDate, endDate, startRow, endRow
- */
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const query = new URL(request.url).searchParams;
+  const workspaceId = query.get("workspaceId") ?? "";
+  const connectionId = query.get("connectionId") ?? "";
+  const startDate = query.get("startDate") ?? "";
+  const endDate = query.get("endDate") ?? "";
+  const startRow = Number.parseInt(query.get("startRow") ?? "0", 10);
+  const endRow = Number.parseInt(query.get("endRow") ?? "100", 10);
+  if (!workspaceId || !connectionId || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    return NextResponse.json({ error: "workspaceId, connectionId and valid dates are required" }, { status: 400 });
   }
-
-  const { searchParams } = new URL(request.url);
-  const workspaceId = searchParams.get("workspaceId");
-  const connectionId = searchParams.get("connectionId");
-  const startDate = searchParams.get("startDate");
-  const endDate = searchParams.get("endDate");
-  const startRow = parseInt(searchParams.get("startRow") ?? "0", 10);
-  const endRow = parseInt(searchParams.get("endRow") ?? "100", 10);
-
-  if (!workspaceId || !connectionId || !startDate || !endDate) {
-    return NextResponse.json(
-      { error: "workspaceId, connectionId, startDate, endDate are required" },
-      { status: 400 },
-    );
+  if (!Number.isFinite(startRow) || !Number.isFinite(endRow) || startRow < 0 || endRow <= startRow || endRow - startRow > 500) {
+    return NextResponse.json({ error: "Invalid startRow/endRow (max 500 rows)" }, { status: 400 });
   }
+  await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer", operation: "query_warehouse" });
+  const connection = await prisma.connection.findFirst({ where: { id: connectionId, workspaceId }, select: { id: true } });
+  if (!connection) return NextResponse.json({ error: "Connection not found in workspace" }, { status: 404 });
 
-  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-  if (!dateRe.test(startDate) || !dateRe.test(endDate)) {
-    return NextResponse.json(
-      { error: "startDate and endDate must be YYYY-MM-DD" },
-      { status: 400 },
-    );
-  }
-
-  if (
-    !Number.isFinite(startRow) ||
-    !Number.isFinite(endRow) ||
-    endRow <= startRow ||
-    endRow - startRow > 500
-  ) {
-    return NextResponse.json(
-      { error: "Invalid startRow/endRow (max 500 rows per request)" },
-      { status: 400 },
-    );
-  }
-
-  const member = await prisma.workspaceMember.findUnique({
-    where: {
-      workspaceId_userId: { workspaceId, userId: session.user.id },
-    },
+  const result = await queryWarehouse({
+    workspaceId,
+    connectionId,
+    startDate: new Date(`${startDate}T00:00:00.000Z`),
+    endDate: new Date(`${endDate}T23:59:59.999Z`),
+    offset: startRow,
+    limit: endRow - startRow,
+    includeTotalCount: true,
   });
-  if (!member) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const conn = await prisma.connection.findFirst({
-    where: { id: connectionId, workspaceId },
-  });
-  if (!conn) {
-    return NextResponse.json({ error: "Connection not found in workspace" }, { status: 404 });
-  }
-
-  const dayStart = new Date(`${startDate}T00:00:00.000Z`);
-  const dayEnd = new Date(`${endDate}T23:59:59.999Z`);
-
-  const take = endRow - startRow;
-
-  const [rows, total] = await Promise.all([
-    prisma.campaignMetric.findMany({
-      where: {
-        workspaceId,
-        connectionId,
-        date: { gte: dayStart, lte: dayEnd },
-      },
-      orderBy: [{ date: "asc" }, { campaignName: "asc" }],
-      skip: startRow,
-      take,
-    }),
-    prisma.campaignMetric.count({
-      where: {
-        workspaceId,
-        connectionId,
-        date: { gte: dayStart, lte: dayEnd },
-      },
-    }),
-  ]);
-
-  const out = rows.map((m) => ({
-    date: m.date.toISOString().slice(0, 10),
-    platform: m.platform,
-    accountId: m.accountId,
-    accountName: m.accountName ?? "",
-    campaignId: m.campaignId,
-    campaignName: m.campaignName,
-    impressions: m.impressions,
-    clicks: m.clicks,
-    spend: m.spend,
-    cpc: m.cpc ?? "",
-    ctr: m.ctr ?? "",
-    conversions: m.conversions ?? "",
-    roas: m.roas ?? "",
-    currency: m.currency,
-  }));
-
-  const lastRow =
-    total === 0
-      ? 0
-      : startRow + out.length >= total
-        ? total - 1
-        : -1;
-
-  return NextResponse.json({
-    rows: out,
-    columns: WAREHOUSE_COLUMNS,
-    lastRow,
-    total,
-  });
+  const rows = result.rows.map((row) => ({ ...row, date: row.date.toISOString().slice(0, 10) }));
+  const total = result.totalCount ?? rows.length;
+  const lastRow = total === 0 ? 0 : startRow + rows.length >= total ? total - 1 : -1;
+  return NextResponse.json({ rows, columns: WAREHOUSE_COLUMNS, lastRow, total, asOf: result.asOf, freshness: result.freshness });
 }

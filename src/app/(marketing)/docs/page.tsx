@@ -19,19 +19,19 @@ export default function DocsPage() {
                 Monstera Cloud connects your ad platforms — Meta Ads, Google Ads, and TikTok for Business — into a single workspace,
                 then lets you visualize that data in{" "}
                 <strong className="text-slate-900">Google Sheets™</strong> or <strong className="text-slate-900">Looker Studio™</strong>.
-                Sign up, connect your ad accounts via OAuth, create a workspace API key, and start building reports.
+                Accept an agency invitation, connect your ad accounts via OAuth, verify the warehouse import, and start building reports.
             </p>
 
             <div className="grid sm:grid-cols-2 gap-6 mb-16">
                 <div className="bg-cyan-50 border border-cyan-200 rounded-xl p-6">
                     <CheckCircle2 className="w-6 h-6 text-cyan-500 mb-4" />
-                    <h3 className="text-slate-900 font-bold mb-2">Automated Syncs</h3>
-                    <p className="text-sm text-slate-500">Sync jobs run on a schedule, respect platform rate limits, and retry on failure — data lands in your Sheets or Looker reports automatically.</p>
+                    <h3 className="text-slate-900 font-bold mb-2">Warehouse refresh</h3>
+                    <p className="text-sm text-slate-500">Run a manual refresh whenever needed. Pilot workspaces also receive one nightly warehouse refresh.</p>
                 </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-6">
                     <ShieldAlert className="w-6 h-6 text-amber-500 mb-4" />
-                    <h3 className="text-slate-900 font-bold mb-2">Sync Logs</h3>
-                    <p className="text-sm text-slate-500">Every pipeline run is logged — success, failure, and row counts. Replay or re-sync any pipeline directly from the console.</p>
+                    <h3 className="text-slate-900 font-bold mb-2">Sync activity</h3>
+                    <p className="text-sm text-slate-500">Import status, row counts, freshness, errors, and recovery actions remain visible to agency staff.</p>
                 </div>
             </div>
 
@@ -48,7 +48,7 @@ export default function DocsPage() {
             <ol className="space-y-4 mb-16 text-slate-600 text-sm leading-relaxed">
                 <li className="flex items-start gap-3">
                     <span className="shrink-0 w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-600 text-xs font-bold flex items-center justify-center mt-0.5">1</span>
-                    <span><strong className="text-slate-900">Create a workspace</strong> — sign up at <span className="font-mono text-slate-600">monsteracloud.com/register</span>.</span>
+                    <span><strong className="text-slate-900">Accept an invitation</strong> — your pilot operator or agency owner sends an email-bound invitation.</span>
                 </li>
                 <li className="flex items-start gap-3">
                     <span className="shrink-0 w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-600 text-xs font-bold flex items-center justify-center mt-0.5">2</span>
@@ -71,8 +71,8 @@ export default function DocsPage() {
                 <Cpu className="w-7 h-7 mr-3 text-cyan-500" /> Architecture
             </h2>
             <p className="text-slate-500 leading-relaxed mb-6">
-                Each workspace keeps its own source connections, API keys, and sync history. Pipelines pull normalized metrics
-                from your connected ad platforms and serve them to Looker Studio or Google Sheets via the workspace API.
+                Each workspace keeps its own source connections, API keys, normalized warehouse metrics, and sync history. Warehouse queries
+                serve those stored metrics to Data Explorer, Looker Studio, and Google Sheets through workspace-scoped authorization.
                 Credentials are encrypted at rest and scoped per workspace.
             </p>
             <ul className="space-y-4 mb-16 text-slate-600">
@@ -82,7 +82,7 @@ export default function DocsPage() {
                 </li>
                 <li className="flex items-start">
                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 mt-2 mr-3 shrink-0"></div>
-                    <p><strong className="text-slate-900">Sync logs:</strong> Manual and scheduled runs record success, failure, and row counts in the console so you can trace any delivery issue.</p>
+                    <p><strong className="text-slate-900">Sync activity:</strong> Manual and nightly warehouse runs record success, failure, and row counts so agency staff can trace import issues.</p>
                 </li>
                 <li className="flex items-start">
                     <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 mt-2 mr-3 shrink-0"></div>
@@ -112,7 +112,7 @@ export default function DocsPage() {
                 <Database className="w-7 h-7 mr-3 text-blue-500" /> Destinations
             </h2>
             <p className="text-slate-500 leading-relaxed mb-6">
-                After connecting your ad accounts, send your data to:
+                After importing your ad accounts, query the workspace warehouse from:
             </p>
             <p className="text-slate-900 font-mono text-sm bg-slate-50 p-4 rounded-lg border border-gray-200 mb-16 inline-block">
                 Google Sheets™ · Looker Studio™ (via workspace API key)

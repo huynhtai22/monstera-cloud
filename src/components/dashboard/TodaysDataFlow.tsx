@@ -107,7 +107,7 @@ export function TodaysDataFlow() {
                         <div>
                             <p className="text-base font-semibold tracking-tight text-gray-900 dark:text-white">Today&apos;s data flow</p>
                             <p className="mt-1 max-w-md text-sm text-gray-500 dark:text-slate-400">
-                                Row volume from successful syncs today. Connect sources and run a pipeline to see numbers here.
+                                Row volume from successful refreshes today. Connect a source and choose Sync now to see numbers here.
                             </p>
                         </div>
                     </div>

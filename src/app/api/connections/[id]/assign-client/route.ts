@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { isMockClientId } from "@/lib/mock-console-data";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 /**
  * PATCH /api/connections/[id]/assign-client
@@ -24,24 +25,17 @@ export async function PATCH(req: Request, context: { params: any }) {
         }
 
         // Verify membership
-        const membership = await prisma.workspaceMember.findUnique({
-            where: {
-                workspaceId_userId: {
-                    workspaceId,
-                    userId: session.user.id
-                }
-            }
-        });
-
-        if (!membership) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
+        await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member", operation: "assign_connection_client" });
 
         if (clientId && isMockClientId(String(clientId))) {
             return NextResponse.json(
                 { error: "Demo clients are for display only. Create a real client to assign connections." },
                 { status: 400 }
             );
+        }
+        if (clientId) {
+            const client = await prisma.client.findFirst({ where: { id: String(clientId), workspaceId }, select: { id: true } });
+            if (!client) return NextResponse.json({ error: "Client not found in workspace" }, { status: 400 });
         }
 
         const connection = await prisma.connection.updateMany({
@@ -56,7 +50,9 @@ export async function PATCH(req: Request, context: { params: any }) {
         const updated = await prisma.connection.findFirst({ where: { id, workspaceId } });
 
         return NextResponse.json(updated);
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
+        return NextResponse.json({ error: error instanceof Error ? error.message : "Failed" }, { status: 500 });
     }
 }

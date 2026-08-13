@@ -7,6 +7,7 @@ import {
   buildMockAttributionSnapshots,
   type WorkspaceDemoFlags,
 } from '@/lib/mock-console-data';
+import { productionRouteDisabled } from '@/lib/request-auth';
 
 function dateKey(d: Date | string): string {
   const x = d instanceof Date ? d : new Date(d);
@@ -46,6 +47,7 @@ function mergeAttributionRows(
  * Computes (best-effort) and returns attribution snapshots for a workspace.
  */
 export async function GET(req: Request) {
+  if (productionRouteDisabled("ENABLE_ADVANCED_ATTRIBUTION")) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -114,4 +116,3 @@ export async function GET(req: Request) {
     demoMockMode: demoFlags.demoMockMode,
   });
 }
-

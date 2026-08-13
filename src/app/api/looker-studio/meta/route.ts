@@ -2,22 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Redis } from "@upstash/redis";
 import { logger } from "@/lib/logger";
+import { resolveApiKey } from "@/lib/api-key-security";
 
 const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN ? Redis.fromEnv() : null;
 
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
-    let apiKey =
+    const apiKey =
       authHeader && authHeader.startsWith("Bearer ")
         ? authHeader.substring(7).trim()
-        : req.nextUrl.searchParams.get("apiKey")?.trim() ?? null;
+        : null;
 
     if (!apiKey) {
       return NextResponse.json({ error: "Unauthorized. Missing API key." }, { status: 401 });
     }
 
-    const keyRecord = await prisma.apiKey.findUnique({ where: { key: apiKey } });
+    const keyRecord = await resolveApiKey(apiKey);
     if (!keyRecord) return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
 
     const workspaceId = keyRecord.workspaceId;

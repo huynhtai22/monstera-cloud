@@ -7,13 +7,13 @@ import { syncConnectionData } from "@/lib/sync-connection";
 import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { logger } from "@/lib/logger";
+import { requireWorkspaceAccess } from "@/lib/rbac";
 
 const AD_PROVIDERS = new Set([
   "meta_ads",
   "google_ads",
   "tiktok_business",
   "shopee",
-  "lazada",
 ]);
 
 /** One import job — Meta may repeat per ad account id */
@@ -58,18 +58,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "since and until must be YYYY-MM-DD" }, { status: 400 });
   }
 
-  const member = await prisma.workspaceMember.findUnique({
-    where: { workspaceId_userId: { workspaceId, userId: session.user.id } },
-  });
-  if (!member) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
+  await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member", operation: "batch_import_warehouse" });
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
     select: { plan: true },
   });
-  const plan = user?.plan ?? "free";
+  const plan = workspace?.plan ?? "pilot";
 
   const results: Array<{
     connectionId: string;
@@ -128,8 +122,8 @@ export async function POST(req: Request) {
         processedNonMetaConnections.add(conn.id);
         const raw = safeDecrypt(
           (
-            await prisma.connection.findUniqueOrThrow({
-              where: { id: conn.id },
+            await prisma.connection.findFirstOrThrow({
+              where: { id: conn.id, workspaceId },
               select: { credentials: true },
             })
           ).credentials,

@@ -125,6 +125,11 @@
   <div id="appError"   class="error-box"   style="display:none"></div>
   <div id="appSuccess" class="success-box" style="display:none"></div>
 
+  <label for="workspace">Agency workspace</label>
+  <select id="workspace" onchange="handleWorkspaceChange()">
+    <option value="">Select a workspace…</option>
+  </select>
+
   <label>Platform</label>
   <select id="platform" onchange="handlePlatformChange()">
     <option value="">All Platforms</option>
@@ -167,21 +172,7 @@
     ▶ &nbsp;Get Data
   </button>
 
-  <div class="divider"></div>
-
-  <label>Auto-refresh</label>
-  <div class="refresh-row">
-    <select id="refreshInterval">
-      <option value="0">Manual only</option>
-      <option value="1">Every hour</option>
-      <option value="3">Every 3 hours</option>
-      <option value="6">Every 6 hours</option>
-      <option value="12">Every 12 hours</option>
-      <option value="24">Daily</option>
-    </select>
-    <button class="btn-set" onclick="handleSetRefresh()">Set</button>
-  </div>
-  <p id="schedulePill" class="schedule-pill" style="display:none"></p>
+  <p class="tip-box">Warehouse data refreshes nightly or when an agency member uses Refresh now. Sheet pulls are manual during the private pilot.</p>
 </div>
 
 <div class="footer">
@@ -195,6 +186,7 @@
     'google_ads':     { label: 'Google Ads',    cols: 'date, accountName, campaignName, adsetName, spend, impressions, clicks, ctr, cpc, conversions, revenue, roas, currency' },
     'tiktok_business':{ label: 'TikTok Ads',   cols: 'date, accountName, campaignName, adsetName, spend, impressions, reach, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' }
   };
+  var WORKSPACES = [];
 
   // ── Init — auto-auth via Google identity ──────────────────────────────────
   (function init() {
@@ -227,15 +219,23 @@
     document.getElementById('noAccountScreen').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     document.getElementById('badgeEmail').textContent = user.email || 'Connected';
-    document.getElementById('badgePlan').textContent  = (user.plan || 'free') + ' plan';
+    document.getElementById('badgePlan').textContent = 'Choose an agency workspace';
+    WORKSPACES = Array.isArray(user.workspaces) ? user.workspaces : [];
+    var select = document.getElementById('workspace');
+    WORKSPACES.forEach(function(workspace) {
+      var option = document.createElement('option');
+      option.value = workspace.id;
+      option.textContent = workspace.name;
+      select.appendChild(option);
+    });
+    document.getElementById('runBtn').disabled = true;
+  }
 
-    google.script.run
-      .withSuccessHandler(function(schedule) {
-        if (schedule && schedule.active) showSchedulePill('Auto-refresh is active');
-      })
-      .getRefreshSchedule();
-
-    // Init platform state
+  function handleWorkspaceChange() {
+    var workspaceId = document.getElementById('workspace').value;
+    var selected = WORKSPACES.filter(function(workspace) { return workspace.id === workspaceId; })[0];
+    document.getElementById('badgePlan').textContent = selected ? selected.plan + ' workspace' : 'Choose an agency workspace';
+    document.getElementById('runBtn').disabled = !workspaceId;
     handlePlatformChange();
   }
 
@@ -247,6 +247,7 @@
   // ── Platform change — update column hint and load account list ────────────
   function handlePlatformChange() {
     var val = document.getElementById('platform').value;
+    var workspaceId = document.getElementById('workspace').value;
     var tip = document.getElementById('platformTip');
     var colHint = document.getElementById('platformColumns');
     var info = PLATFORM_COLUMNS[val] || PLATFORM_COLUMNS[''];
@@ -255,7 +256,7 @@
     colHint.textContent = val ? 'Columns: ' + info.cols : '';
 
     var section = document.getElementById('accountSection');
-    if (!val) {
+    if (!workspaceId || !val) {
       section.style.display = 'none';
       return;
     }
@@ -271,7 +272,7 @@
       .withFailureHandler(function() {
         renderAccounts([]);
       })
-      .getAccounts(val);
+      .getAccounts(val, workspaceId);
   }
 
   function renderAccounts(accounts) {
@@ -307,6 +308,7 @@
     hideAppMessages();
     var selectedAccounts = getSelectedAccountIds();
     var params = {
+      workspaceId: document.getElementById('workspace').value,
       platform:    document.getElementById('platform').value    || null,
       reportLevel: document.getElementById('reportLevel').value || 'adset',
       startDate:   document.getElementById('startDate').value,
@@ -314,6 +316,10 @@
       targetCell:  document.getElementById('targetCell').value  || 'A1',
       accountIds:  selectedAccounts
     };
+    if (!params.workspaceId) {
+      showAppError('Select an agency workspace.');
+      return;
+    }
     if (!params.startDate || !params.endDate) {
       showAppError('Please select start and end dates.');
       return;
@@ -336,22 +342,6 @@
       .pullData(params);
   }
 
-  // ── Auto-refresh ────────────────────────────────────────────────────────────
-  function handleSetRefresh() {
-    var hours = parseInt(document.getElementById('refreshInterval').value, 10);
-    google.script.run
-      .withSuccessHandler(function(result) {
-        if (result && result.success) {
-          showSchedulePill(hours > 0 ? 'Auto-refresh set — every ' + hours + 'h' : 'Auto-refresh disabled');
-          if (hours === 0) setTimeout(function() { document.getElementById('schedulePill').style.display = 'none'; }, 3000);
-        }
-      })
-      .withFailureHandler(function(err) {
-        showAppError('Could not set schedule: ' + (err.message || 'unknown error'));
-      })
-      .setupRefreshTrigger(hours);
-  }
-
   // ── Helpers ─────────────────────────────────────────────────────────────────
   function showAppError(msg) {
     var b = document.getElementById('appError');
@@ -366,10 +356,6 @@
   function hideAppMessages() {
     document.getElementById('appError').style.display = 'none';
     document.getElementById('appSuccess').style.display = 'none';
-  }
-  function showSchedulePill(msg) {
-    var p = document.getElementById('schedulePill');
-    p.textContent = '⏱ ' + msg; p.style.display = 'block';
   }
   function escapeHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

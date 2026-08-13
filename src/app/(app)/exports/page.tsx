@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState } from 'react';
+import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Send, CheckCircle2, ChevronRight, Copy, FileSpreadsheet, Lock, Settings2 } from "lucide-react";
+import { Send, ChevronRight, Lock, Settings2, FlaskConical } from "lucide-react";
 import useSWR from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
@@ -19,24 +19,14 @@ const fetcher = async (url: string) => {
 
 export default function ExportsPage() {
     const { activeWorkspaceId } = useWorkspaceStore();
-    const { data: workspaces, isLoading } = useSWR("/api/workspaces", fetcher);
-    
-    const [copied, setCopied] = useState(false);
+    const { data: apiKeys = [] } = useSWR(
+        activeWorkspaceId ? `/api/settings/api-keys?workspaceId=${activeWorkspaceId}` : null,
+        fetcher,
+    );
 
-    const workspace = Array.isArray(workspaces) 
-        ? (workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0]) 
-        : null;
-
-    const firstKey = workspace?.apiKeys?.[0] as { keyMasked?: string } | undefined;
+    const firstKey = Array.isArray(apiKeys) ? apiKeys[0] as { keyMasked?: string } | undefined : undefined;
     const apiKeyMasked = firstKey?.keyMasked ?? "";
     const hasApiKey = Boolean(firstKey);
-
-    const handleCopy = () => {
-        // Can't actually copy the masked key for use, it's just a visual placeholder.
-        // Direct users to Settings to get a real key.
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
 
     return (
         <div className="relative w-full max-w-5xl mx-auto px-6 py-8 sm:px-10 sm:py-10 animate-in fade-in duration-300">
@@ -48,7 +38,7 @@ export default function ExportsPage() {
                         <Send className="h-6 w-6" aria-hidden />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Exports & Integrations</h1>
+                        <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Exports & API</h1>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                             Pull data from your Monstera Cloud warehouse directly into your favorite tools.
                         </p>
@@ -68,7 +58,7 @@ export default function ExportsPage() {
                             <div>
                                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">Google Sheets Add-on</h2>
                                 <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center">
-                                    <CheckCircle2 className="w-4 h-4 mr-1" /> Verified Integration
+                                    <FlaskConical className="w-4 h-4 mr-1" /> Private beta
                                 </p>
                             </div>
                         </div>
@@ -80,7 +70,7 @@ export default function ExportsPage() {
                         <div className="space-y-3 mb-8">
                             <div className="flex items-start gap-3">
                                 <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600 dark:bg-[#1d1f23] dark:text-gray-300">1</div>
-                                <p className="text-sm text-gray-600 dark:text-gray-300">Install from the <a href="https://workspace.google.com/marketplace/app/monstera_cloud/placeholder" target="_blank" rel="noopener noreferrer" className="font-semibold text-cyan-600 hover:underline dark:text-cyan-400">Google Workspace Marketplace</a>.</p>
+                                <p className="text-sm text-gray-600 dark:text-gray-300">Ask your pilot operator for the private add-on installation link.</p>
                             </div>
                             <div className="flex items-start gap-3">
                                 <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-600 dark:bg-[#1d1f23] dark:text-gray-300">2</div>
@@ -92,14 +82,12 @@ export default function ExportsPage() {
                             </div>
                         </div>
 
-                        <a 
-                            href="https://workspace.google.com/marketplace/app/monstera_cloud/placeholder"
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        <Link
+                            href={DESTINATION_HELP_PATHS.docs}
                             className="inline-flex w-full items-center justify-center rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-100"
                         >
-                            Install Google Sheets Add-on <ChevronRight className="ml-2 h-4 w-4" />
-                        </a>
+                            View pilot setup guide <ChevronRight className="ml-2 h-4 w-4" />
+                        </Link>
                     </div>
                 </div>
 
@@ -113,7 +101,7 @@ export default function ExportsPage() {
                             <div>
                                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">Looker Studio Connector</h2>
                                 <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center">
-                                    <CheckCircle2 className="w-4 h-4 mr-1" /> Native Bridge
+                                    <FlaskConical className="w-4 h-4 mr-1" /> Private beta
                                 </p>
                             </div>
                         </div>

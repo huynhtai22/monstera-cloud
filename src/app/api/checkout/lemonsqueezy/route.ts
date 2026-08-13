@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createCheckoutUrl } from "@/lib/lemonsqueezy";
 import { logger } from "@/lib/logger";
+import { productionRouteDisabled } from "@/lib/request-auth";
 
 /**
  * POST /api/checkout/lemonsqueezy
@@ -10,6 +11,9 @@ import { logger } from "@/lib/logger";
  * Returns: { url } — the hosted LemonSqueezy checkout page URL
  */
 export async function POST(req: Request) {
+  if (productionRouteDisabled()) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const session = await getServerSession(authOptions);
   if (!session?.user?.id || !session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

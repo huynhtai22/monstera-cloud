@@ -81,13 +81,13 @@ export async function POST(req: Request) {
         status: 'connected',
         workspace: { members: { some: { userId: session.user.id } } },
       },
+      include: { workspace: { select: { plan: true } } },
     });
     if (!conn) {
       return NextResponse.json({ error: 'Meta Ads connection not found' }, { status: 404 });
     }
 
-    const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { plan: true } });
-    const plan = user?.plan ?? 'free';
+    const plan = conn.workspace.plan ?? 'pilot';
     const limits = getPlanLimits(plan);
 
     let datePreset = body.datePreset ?? 'last_30d';

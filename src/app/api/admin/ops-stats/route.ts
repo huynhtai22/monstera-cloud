@@ -3,13 +3,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
-/** Only the ADMIN_EMAIL env var holder can access this endpoint. */
-function isAdmin(email: string | null | undefined): boolean {
-    const adminEmail = process.env.ADMIN_EMAIL;
-    if (!adminEmail) return false;
-    return email === adminEmail;
-}
-
 /** Classify a sync error message into a broad bucket. */
 function classifyError(msg: string | null): "timeout" | "oauth" | "rateLimit" | "schema" | "other" {
     if (!msg) return "other";
@@ -23,7 +16,7 @@ function classifyError(msg: string | null): "timeout" | "oauth" | "rateLimit" | 
 
 export async function GET() {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.email || !isAdmin(session.user.email)) {
+    if (!session?.user?.id || !(await prisma.user.findFirst({ where: { id: session.user.id, platformRole: "OPERATOR" }, select: { id: true } }))) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

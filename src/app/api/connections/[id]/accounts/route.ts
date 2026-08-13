@@ -9,6 +9,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { decrypt, encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 export async function GET(
     _request: Request,
@@ -42,6 +43,13 @@ export async function GET(
                 { status: 404 }
             );
         }
+
+        await requireWorkspaceAccess({
+            userId: session.user.id,
+            workspaceId: connection.workspaceId,
+            minimumRole: "viewer",
+            operation: "list_connection_accounts",
+        });
 
         // Only certain providers support account listing
         const supportedProviders = ["meta_ads", "google_ads", "tiktok_business"];
@@ -111,6 +119,8 @@ export async function GET(
             selected: accounts.filter(a => a.selected).length,
         });
     } catch (error) {
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
         logger.error("[GET /api/connections/[id]/accounts]", error);
         return NextResponse.json(
             { error: "Internal server error" },
@@ -165,6 +175,13 @@ export async function POST(
             );
         }
 
+        await requireWorkspaceAccess({
+            userId: session.user.id,
+            workspaceId: connection.workspaceId,
+            minimumRole: "member",
+            operation: "select_connection_accounts",
+        });
+
         // Only for ad platforms
         const supportedProviders = ["meta_ads", "google_ads", "tiktok_business"];
         if (!supportedProviders.includes(connection.provider)) {
@@ -187,12 +204,15 @@ export async function POST(
         }
 
         // Save updated credentials
-        await prisma.connection.update({
-            where: { id },
+        const updated = await prisma.connection.updateMany({
+            where: { id, workspaceId: connection.workspaceId },
             data: {
                 credentials: encrypt(JSON.stringify(credentials)),
             },
         });
+        if (updated.count !== 1) {
+            return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+        }
 
         return NextResponse.json({
             success: true,
@@ -200,6 +220,8 @@ export async function POST(
             selectedIds,
         });
     } catch (error) {
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
         logger.error("[POST /api/connections/[id]/accounts]", error);
         return NextResponse.json(
             { error: "Internal server error" },

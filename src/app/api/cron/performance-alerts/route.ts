@@ -2,16 +2,15 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { computeAttributionSnapshots } from '@/etl/attribution/engine';
 import { sendDataFreshnessAlertEmail, sendPerformanceAlertEmail } from '@/lib/mail';
+import { requireCronSecret } from '@/lib/request-auth';
 
 /**
  * GET /api/cron/performance-alerts
  * Daily alerting for data freshness and Net ROAS anomalies.
  */
 export async function GET(req: Request) {
-  const authHeader = req.headers.get('authorization');
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const denied = requireCronSecret(req);
+  if (denied) return denied;
 
   const workspaces = await prisma.workspace.findMany({
     select: { id: true, name: true, ownerId: true },
@@ -19,7 +18,7 @@ export async function GET(req: Request) {
   });
 
   const now = Date.now();
-  const eightHoursMs = 8 * 60 * 60 * 1000;
+  const freshnessWindowMs = 26 * 60 * 60 * 1000;
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const start = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
   const end = new Date();
@@ -41,8 +40,8 @@ export async function GET(req: Request) {
     });
     const lastTs = lastSuccess?.createdAt?.getTime() ?? 0;
     const hoursStale = Math.floor((now - lastTs) / (60 * 60 * 1000));
-    if (!lastSuccess || now - lastTs > eightHoursMs) {
-      await sendDataFreshnessAlertEmail(owner.email, ws.name, Math.max(8, hoursStale)).catch(() => {});
+    if (!lastSuccess || now - lastTs > freshnessWindowMs) {
+      await sendDataFreshnessAlertEmail(owner.email, ws.name, Math.max(26, hoursStale)).catch(() => {});
       results.push({ workspaceId: ws.id, alert: 'freshness', hoursStale });
     }
 
@@ -62,4 +61,3 @@ export async function GET(req: Request) {
 
   return NextResponse.json({ ok: true, results });
 }
-

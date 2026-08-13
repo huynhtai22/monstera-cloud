@@ -2,6 +2,7 @@
 
 import React, { useCallback, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import useSWR, { useSWRConfig } from "swr";
 import {
@@ -30,16 +31,6 @@ const fetcher = async (url: string) => {
     if (!res.ok) throw new Error(data.error || "Failed to load");
     return data;
 };
-
-function cronHumanize(cron: string): string {
-    const c = cron.trim();
-    if (c === "0 * * * *") return "Every hour";
-    if (c === "0 */4 * * *") return "Every 4 hours";
-    if (c === "0 */6 * * *") return "Every 6 hours";
-    if (c === "0 0 * * *") return "Daily (midnight UTC)";
-    if (c.startsWith("0 ") && c.includes("* * *")) return `Scheduled: ${cron}`;
-    return cron;
-}
 
 export default function SourceDetailPage() {
     const params = useParams();
@@ -71,7 +62,7 @@ export default function SourceDetailPage() {
           }
         | undefined;
 
-    const pipelines = (data?.pipelines ?? []) as Array<{
+    const pipelines = React.useMemo(() => (data?.pipelines ?? []) as Array<{
         id: string;
         name: string;
         scheduleCron: string;
@@ -82,7 +73,7 @@ export default function SourceDetailPage() {
         destinationConnectionId: string;
         sourceConnection: { name: string; provider: string };
         destinationConnection: { name: string; provider: string };
-    }>;
+    }>, [data?.pipelines]);
 
     const handleOpenDrawer = useCallback((log: any) => {
         if (!data?.connection) return;
@@ -125,23 +116,33 @@ export default function SourceDetailPage() {
         pipeline: { name: string };
     }>;
 
-    const runSync = useCallback(
-        async (pipelineId: string) => {
-            setBusy(pipelineId);
+    const refreshWarehouse = useCallback(
+        async () => {
+            if (!connection) return;
+            setBusy("warehouse-refresh");
             try {
-                const res = await fetch(`/api/pipelines/${pipelineId}/run`, { method: "POST" });
+                const res = await fetch("/api/data-explorer/warehouse/import-batch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        workspaceId: connection.workspaceId,
+                        since: new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10),
+                        until: new Date().toISOString().slice(0, 10),
+                        items: [{ connectionId: connection.id }],
+                    }),
+                });
                 const j = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(typeof j.error === "string" ? j.error : "Sync failed");
-                toast.success(j.message || "Sync started.");
+                if (!res.ok || !j.success) throw new Error(typeof j.error === "string" ? j.error : j.results?.[0]?.error || "Refresh failed");
+                toast.success("Warehouse refreshed", { description: `${Number(j.approximateRows || 0).toLocaleString()} rows processed.` });
                 await mutate(`/api/connections/${id}`);
-                mutate("/api/workspaces");
+                await mutate("/api/workspaces");
             } catch (e: unknown) {
-                toast.error(e instanceof Error ? e.message : "Sync failed");
+                toast.error(e instanceof Error ? e.message : "Refresh failed");
             } finally {
                 setBusy(null);
             }
         },
-        [id, mutate]
+        [connection, id, mutate]
     );
 
     const confirmDisconnect = async () => {
@@ -222,7 +223,7 @@ export default function SourceDetailPage() {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex gap-4">
                         <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#2f3336] dark:bg-[#000000]">
-                            <img src={logo} alt="" width={36} height={36} className="object-contain" />
+                            <Image src={logo} alt="" width={36} height={36} className="object-contain" />
                         </div>
                         <div>
                             <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">{connection.name}</h1>
@@ -232,6 +233,12 @@ export default function SourceDetailPage() {
                         </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                        {isSource && connection.status === "connected" ? (
+                            <PrimaryButton type="button" onClick={refreshWarehouse} disabled={busy !== null}>
+                                {busy === "warehouse-refresh" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                Refresh now
+                            </PrimaryButton>
+                        ) : null}
                         {isSource && connection.status === "error" ? (
                             <PrimaryButton type="button" onClick={openFixModal}>
                                 Fix connection
@@ -299,86 +306,16 @@ export default function SourceDetailPage() {
                 <div className="rounded-2xl border border-gray-200/80 bg-white/70 p-5 dark:border-[#2f3336]/60 dark:bg-[#000000]/50">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                         <Calendar className="h-4 w-4" />
-                        Pipelines
+                        Refresh cadence
                     </div>
-                    <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white">{pipelines.length} linked</p>
+                    <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white">Manual + nightly</p>
                 </div>
             </div>
 
-            {/* Pipelines */}
-            <div className="mb-10">
-                <h2 className="mb-3 text-lg font-bold text-gray-900 dark:text-white">Pipelines</h2>
-                {isSource && pipelines.length > 0 ? (
-                    <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
-                        Each row is a <strong>binding</strong> inside this workspace: data from this source is written to the
-                        destination you connected (for example Google Sheets may use a <strong>different</strong> Google login than
-                        Meta or Google Ads — that is expected).
-                    </p>
-                ) : null}
-                {pipelines.length === 0 ? (
-                    <p className="text-sm text-gray-500 dark:text-gray-400">No pipelines use this connection yet.</p>
-                ) : (
-                    <div className="overflow-x-auto rounded-2xl border border-gray-200/80 dark:border-[#2f3336]/60">
-                        <table className="w-full text-left text-sm">
-                            <thead>
-                                <tr className="border-b border-gray-100 text-xs font-bold uppercase text-gray-400 dark:border-[#2f3336] dark:text-gray-500">
-                                    <th className="py-3 pl-4 pr-4">Name</th>
-                                    <th className="py-3 pr-4">Route</th>
-                                    <th className="py-3 pr-4">Schedule</th>
-                                    <th className="py-3 pr-4">Health</th>
-                                    <th className="py-3 pr-4">Last synced</th>
-                                    <th className="py-3 pr-4" />
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {pipelines.map((p) => (
-                                    <tr key={p.id} className="border-b border-gray-50 dark:border-[#2f3336]">
-                                        <td className="py-3 pl-4 pr-4 font-semibold text-gray-900 dark:text-white">{p.name}</td>
-                                        <td className="py-3 pr-4 text-gray-600 dark:text-gray-300">
-                                            {p.sourceConnection?.name ?? "?"} → {p.destinationConnection?.name ?? "?"}
-                                        </td>
-                                        <td className="py-3 pr-4 text-gray-600 dark:text-gray-300">{cronHumanize(p.scheduleCron)}</td>
-                                        <td className="py-3 pr-4">
-                                            <span
-                                                className={cn(
-                                                    "rounded-full px-2 py-0.5 text-xs font-bold",
-                                                    p.healthStatus === "healthy"
-                                                        ? "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-200"
-                                                        : "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
-                                                )}
-                                            >
-                                                {p.healthStatus}
-                                            </span>
-                                        </td>
-                                        <td className="py-3 pr-4 text-gray-500 dark:text-gray-400">
-                                            {p.lastSyncedAt ? new Date(p.lastSyncedAt).toLocaleString() : "—"}
-                                        </td>
-                                        <td className="py-3 pr-4">
-                                            <button
-                                                type="button"
-                                                onClick={() => runSync(p.id)}
-                                                disabled={busy !== null}
-                                                className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-200"
-                                            >
-                                                {busy === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                                                Sync
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
-
             {/* Recent syncs */}
-            <div>
-                <h2 className="mb-3 text-lg font-bold text-gray-900 dark:text-white">Recent sync activity</h2>
-                <p className="mb-4 text-xs text-gray-500 dark:text-gray-400">Last 30 runs across pipelines involving this connection.</p>
-                {recentLogs.length === 0 ? (
-                    <p className="text-sm text-gray-500">No sync logs yet.</p>
-                ) : (
+            {recentLogs.length > 0 ? <div>
+                <h2 className="mb-3 text-lg font-bold text-gray-900 dark:text-white">Historical destination activity</h2>
+                <p className="mb-4 text-xs text-gray-500 dark:text-gray-400">Legacy pipeline history is read-only during the agency pilot.</p>
                     <ul className="space-y-2">
                         {recentLogs.map((log) => (
                             <li
@@ -403,11 +340,10 @@ export default function SourceDetailPage() {
                             </li>
                         ))}
                     </ul>
-                )}
                 <Link href="/reports" className="mt-4 inline-block text-sm font-semibold text-cyan-700 hover:underline dark:text-cyan-300">
                     View all logs →
                 </Link>
-            </div>
+            </div> : null}
 
             <ConfirmDialog
                 open={disconnectOpen}
@@ -427,7 +363,6 @@ export default function SourceDetailPage() {
                 log={selectedLog}
                 workspaceId={connection.workspaceId}
                 workspaceName={connection.workspace?.name ?? undefined}
-                onRetry={runSync}
             />
         </PageShell>
     );

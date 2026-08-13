@@ -54,17 +54,14 @@ export function NotificationCenter() {
         const out: NotifItem[] = [];
         if (!Array.isArray(workspaces) || !activeWorkspaceId) return out;
         const ws = workspaces.find((w: { id: string }) => w.id === activeWorkspaceId);
-        const conns = (ws?.connections ?? []) as Array<{ id: string; name: string; status: string; lastError?: string | null }>;
-        for (const c of conns) {
-            if (c.status === "error" || c.lastError) {
-                out.push({
-                    id: `conn-${c.id}`,
-                    title: `${c.name} needs attention`,
-                    detail: c.lastError || "Connection error",
-                    href: `/sources/${c.id}`,
-                    tone: "error",
-                });
-            }
+        if (ws?.health?.failingConnections > 0) {
+            out.push({
+                id: `workspace-${ws.id}`,
+                title: `${ws.health.failingConnections} source${ws.health.failingConnections === 1 ? "" : "s"} need attention`,
+                detail: "Open Sources for diagnostics and reconnection.",
+                href: "/sources",
+                tone: "error",
+            });
         }
         const logs = (errLogs?.logs ?? []) as Array<{ id: string; errorMsg?: string; pipeline?: { name: string }; createdAt: string }>;
         for (const l of logs.slice(0, 8)) {

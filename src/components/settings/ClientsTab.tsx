@@ -1,5 +1,5 @@
 import React from 'react';
-import { Briefcase, Search, Plus, Trash2, Activity, User, ExternalLink } from "lucide-react";
+import { Briefcase, Search, Plus, Trash2, Activity } from "lucide-react";
 
 interface ClientsTabProps {
     clients: any[];

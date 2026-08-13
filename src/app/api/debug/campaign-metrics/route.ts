@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { productionRouteDisabled } from "@/lib/request-auth";
 
 /**
  * GET /api/debug/campaign-metrics?workspaceId=...
@@ -11,6 +12,9 @@ import prisma from "@/lib/prisma";
  */
 
 export async function GET(req: Request) {
+  if (productionRouteDisabled("ENABLE_PRODUCTION_DEBUG_ROUTES")) {
+    return NextResponse.json({ error: "Not available" }, { status: 404 });
+  }
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

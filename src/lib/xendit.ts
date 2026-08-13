@@ -6,6 +6,7 @@
 import Xendit, { XenditSdkError } from 'xendit-node';
 import type { CreateInvoiceRequest } from 'xendit-node/invoice/models';
 import { logger } from "@/lib/logger";
+import crypto from "crypto";
 
 export const XENDIT_WEBHOOK_TOKEN = process.env.XENDIT_WEBHOOK_TOKEN || '';
 
@@ -137,7 +138,9 @@ export class XenditClient {
    */
   static verifyWebhookToken(token: string | null): boolean {
     const webhookToken = (process.env.XENDIT_WEBHOOK_TOKEN || '').trim();
-    if (!webhookToken) return true; // Bypass if not set (for initial dev)
-    return token === webhookToken;
+    if (!webhookToken || !token) return false;
+    const actual = Buffer.from(token);
+    const expected = Buffer.from(webhookToken);
+    return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
   }
 }

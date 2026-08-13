@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import {
-  applyPaddlePlanToUser,
+  applyPaddlePlanToWorkspace,
+  initiatingUserIdFromPaddleCustomData,
   planForPriceId,
   priceIdFromTransactionItems,
-  userIdFromPaddleCustomData,
+  workspaceIdFromPaddleCustomData,
   verifyPaddleWebhookSignature,
 } from "@/lib/paddle";
 import { sendPaymentPastDueEmail } from "@/lib/mail";
 import { logger } from "@/lib/logger";
+import { productionRouteDisabled } from "@/lib/request-auth";
 
 export const runtime = "nodejs";
 
@@ -24,6 +26,9 @@ export const runtime = "nodejs";
  * @see https://developer.paddle.com/webhooks/overview
  */
 export async function POST(req: Request) {
+  if (productionRouteDisabled("ENABLE_PADDLE_BILLING")) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const rawBody = await req.text();
   const signature =
     req.headers.get("paddle-signature") ?? req.headers.get("Paddle-Signature") ?? "";
@@ -88,26 +93,26 @@ function firstPriceIdFromSubscriptionData(data: Record<string, unknown>): string
 }
 
 async function handleTransactionLike(data: Record<string, unknown>) {
-  const userId = userIdFromPaddleCustomData(data.custom_data);
+  const workspaceId = workspaceIdFromPaddleCustomData(data.custom_data);
   const priceId = firstPriceIdFromTransactionData(data);
   const plan = planForPriceId(priceId);
   const subscriptionId =
     typeof data.subscription_id === "string" ? data.subscription_id : null;
 
-  if (!userId || !plan) {
-    logger.warn("[PADDLE_WEBHOOK] transaction event missing user_id or unknown price", {
-      userId,
+  if (!workspaceId || !plan) {
+    logger.warn("[PADDLE_WEBHOOK] transaction event missing workspace_id or unknown price", {
+      workspaceId,
       priceId,
     });
     return;
   }
 
-  await applyPaddlePlanToUser(userId, priceId, subscriptionId);
-  logger.info(`[PADDLE_WEBHOOK] User ${userId} → ${plan} (transaction)`);
+  await applyPaddlePlanToWorkspace(workspaceId, priceId, subscriptionId);
+  logger.info(`[PADDLE_WEBHOOK] Workspace ${workspaceId} → ${plan} (transaction)`);
 }
 
 async function handleSubscriptionUpsert(data: Record<string, unknown>) {
-  const userId = userIdFromPaddleCustomData(data.custom_data);
+  const workspaceId = workspaceIdFromPaddleCustomData(data.custom_data);
   const priceId = firstPriceIdFromSubscriptionData(data);
   const plan = planForPriceId(priceId);
   const subscriptionId = typeof data.id === "string" ? data.id : null;
@@ -117,67 +122,78 @@ async function handleSubscriptionUpsert(data: Record<string, unknown>) {
     return;
   }
 
-  if (userId) {
-    await applyPaddlePlanToUser(userId, priceId, subscriptionId);
-    logger.info(`[PADDLE_WEBHOOK] User ${userId} → ${plan} (subscription)`);
+  if (workspaceId) {
+    await applyPaddlePlanToWorkspace(workspaceId, priceId, subscriptionId);
+    logger.info(`[PADDLE_WEBHOOK] Workspace ${workspaceId} → ${plan} (subscription)`);
     return;
   }
 
   if (subscriptionId) {
-    await prisma.user.updateMany({
+    await prisma.workspace.updateMany({
       where: { subscriptionId },
       data: {
         plan,
+        subscriptionProvider: "paddle",
       },
     });
-    logger.info(`[PADDLE_WEBHOOK] subscription ${subscriptionId} → ${plan} (by subscription id)`);
+    logger.info(`[PADDLE_WEBHOOK] subscription ${subscriptionId} → ${plan} (workspace by subscription id)`);
   }
 }
 
 async function handleSubscriptionCanceled(data: Record<string, unknown>) {
   const subscriptionId = typeof data.id === "string" ? data.id : "";
-  const userId = userIdFromPaddleCustomData(data.custom_data);
+  const workspaceId = workspaceIdFromPaddleCustomData(data.custom_data);
 
-  if (userId) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { plan: "free", subscriptionId: null },
+  if (workspaceId) {
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { plan: "free", subscriptionId: null, subscriptionProvider: null },
     });
-    logger.info(`[PADDLE_WEBHOOK] User ${userId} downgraded (subscription canceled)`);
+    logger.info(`[PADDLE_WEBHOOK] Workspace ${workspaceId} downgraded (subscription canceled)`);
     return;
   }
 
   if (subscriptionId) {
-    await prisma.user.updateMany({
+    await prisma.workspace.updateMany({
       where: { subscriptionId },
-      data: { plan: "free", subscriptionId: null },
+      data: { plan: "free", subscriptionId: null, subscriptionProvider: null },
     });
-    logger.info(`[PADDLE_WEBHOOK] subscription ${subscriptionId} canceled — users downgraded`);
+    logger.info(`[PADDLE_WEBHOOK] subscription ${subscriptionId} canceled — workspaces downgraded`);
   }
 }
 
 async function handleSubscriptionPastDue(data: Record<string, unknown>) {
   const subscriptionId = typeof data.id === "string" ? data.id : "";
-  const userId = userIdFromPaddleCustomData(data.custom_data);
+  const workspaceId = workspaceIdFromPaddleCustomData(data.custom_data);
+  const initiatingUserId = initiatingUserIdFromPaddleCustomData(data.custom_data);
 
   let user: { email: string | null; name: string | null } | null = null;
 
-  if (userId) {
-    user = await prisma.user.findUnique({
-      where: { id: userId },
+  if (workspaceId) {
+    user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: initiatingUserId },
+          { workspaces: { some: { workspaceId, role: "owner" } } },
+        ],
+      },
       select: { email: true, name: true },
     });
   } else if (subscriptionId) {
-    user = await prisma.user.findFirst({
+    const workspace = await prisma.workspace.findUnique({
       where: { subscriptionId },
-      select: { email: true, name: true },
+      select: { ownerId: true },
     });
+    user = workspace ? await prisma.user.findUnique({
+      where: { id: workspace.ownerId },
+      select: { email: true, name: true },
+    }) : null;
   }
 
   if (!user || !user.email) {
     logger.warn("[PADDLE_WEBHOOK] subscription.past_due — could not find user", {
       subscriptionId,
-      userId,
+      workspaceId,
     });
     return;
   }

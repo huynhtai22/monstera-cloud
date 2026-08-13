@@ -13,17 +13,14 @@ const fetcher = (url: string) => fetch(url).then((r) => r.json());
  */
 export function UpgradeNudge() {
     const { activeWorkspaceId } = useWorkspaceStore();
-    const { data: planData } = useSWR("/api/user/plan", fetcher);
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
-
-    const plan = (planData?.plan as string) ?? "free";
-    const limits = getPlanLimits(plan);
-    if (limits.maxPipelines === Infinity) return null;
 
     const ws = Array.isArray(workspaces)
         ? workspaces.find((w: { id: string }) => w.id === activeWorkspaceId)
         : null;
-    const pipelineCount = Array.isArray(ws?.pipelines) ? ws.pipelines.length : 0;
+    const limits = getPlanLimits(ws?.plan ?? "pilot");
+    if (limits.maxPipelines === Infinity) return null;
+    const pipelineCount = ws?.counts?.pipelines ?? 0;
 
     if (pipelineCount < limits.maxPipelines) return null;
 
@@ -47,15 +44,15 @@ export function UpgradeNudge() {
                                 {pipelineCount}/{limits.maxPipelines}
                             </span>{" "}
                             pipelines — the maximum for your current plan. Upgrade to add more pipelines and unlock higher
-                            sync cadence.
+                            workspace capacity.
                         </p>
                     </div>
                 </div>
                 <Link
-                    href="/pricing"
+                    href="/support"
                     className="inline-flex shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-cyan-500 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-cyan-900/20 ring-1 ring-cyan-400/30 transition hover:from-cyan-400 hover:to-cyan-500 hover:shadow-lg dark:shadow-black/40"
                 >
-                    View plans
+                    Contact pilot support
                 </Link>
             </div>
         </div>

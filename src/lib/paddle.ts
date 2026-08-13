@@ -86,11 +86,12 @@ export function planForPriceId(priceId: string | undefined | null): PaddlePlan |
 
 /**
  * Create a draft transaction and return Paddle Checkout URL (`checkout.url`).
- * Embeds `user_id` in `custom_data` for webhook provisioning.
+ * Embeds both tenant and initiating user in `custom_data` for webhook provisioning.
  */
 export async function createPaddleCheckoutUrl(
   plan: PaddlePlan,
   billingCycle: PaddleBillingCycle,
+  workspaceId: string,
   userId: string
 ): Promise<{ url: string; transactionId: string }> {
   const priceId = priceIdForPlan(plan, billingCycle);
@@ -104,7 +105,7 @@ export async function createPaddleCheckoutUrl(
   const tx = await paddle.transactions.create({
     items: [{ priceId, quantity: 1 }],
     collectionMode: "automatic",
-    customData: { user_id: userId },
+    customData: { workspace_id: workspaceId, initiated_by_user_id: userId },
     checkout: {
       url: `${PRODUCT_SITE_URL}/success`,
     },
@@ -161,8 +162,7 @@ export function verifyPaddleWebhookSignature(
   }
 }
 
-/** Read `user_id` from Paddle `custom_data` (object, JSON string, or SDK CustomData). */
-export function userIdFromPaddleCustomData(customData: unknown): string | undefined {
+function paddleCustomData(customData: unknown): Record<string, unknown> | undefined {
   if (customData == null) return undefined;
 
   let parsed: unknown = customData;
@@ -174,11 +174,19 @@ export function userIdFromPaddleCustomData(customData: unknown): string | undefi
     }
   }
 
-  if (typeof parsed === "object" && parsed !== null && "user_id" in parsed) {
-    const v = (parsed as Record<string, unknown>).user_id;
-    return typeof v === "string" ? v : undefined;
-  }
-  return undefined;
+  return typeof parsed === "object" && parsed !== null
+    ? parsed as Record<string, unknown>
+    : undefined;
+}
+
+export function workspaceIdFromPaddleCustomData(customData: unknown): string | undefined {
+  const value = paddleCustomData(customData)?.workspace_id;
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+export function initiatingUserIdFromPaddleCustomData(customData: unknown): string | undefined {
+  const value = paddleCustomData(customData)?.initiated_by_user_id;
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 export function priceIdFromTransactionItems(items: unknown): string | undefined {
@@ -193,18 +201,19 @@ export function priceIdFromTransactionItems(items: unknown): string | undefined 
 const PAID_TRANSACTION_STATUSES = new Set(["completed", "paid", "billed"]);
 
 /** Apply catalog price → internal plan after verified Paddle payment. */
-export async function applyPaddlePlanToUser(
-  userId: string,
+export async function applyPaddlePlanToWorkspace(
+  workspaceId: string,
   priceId: string | undefined,
   subscriptionId?: string | null
 ): Promise<PaddlePlan | null> {
   const plan = planForPriceId(priceId);
   if (!plan) return null;
 
-  await prisma.user.update({
-    where: { id: userId },
+  await prisma.workspace.update({
+    where: { id: workspaceId },
     data: {
       plan,
+      subscriptionProvider: "paddle",
       subscriptionId: subscriptionId ?? undefined,
     },
   });
@@ -213,10 +222,11 @@ export async function applyPaddlePlanToUser(
 
 /**
  * Fallback when webhooks are delayed or misconfigured: verify transaction in Paddle
- * and upgrade the logged-in user when payment is complete.
+ * and upgrade the explicitly selected workspace when payment is complete.
  */
-export async function confirmPaddleTransactionForUser(
+export async function confirmPaddleTransactionForWorkspace(
   transactionId: string,
+  expectedWorkspaceId: string,
   expectedUserId: string
 ): Promise<{ plan: PaddlePlan | null; status: string }> {
   const paddle = getPaddleClient();
@@ -227,12 +237,13 @@ export async function confirmPaddleTransactionForUser(
     return { plan: null, status };
   }
 
-  const userId = userIdFromPaddleCustomData(tx.customData);
-  if (!userId || userId !== expectedUserId) {
-    throw new Error("Transaction does not belong to this account.");
+  const workspaceId = workspaceIdFromPaddleCustomData(tx.customData);
+  const userId = initiatingUserIdFromPaddleCustomData(tx.customData);
+  if (workspaceId !== expectedWorkspaceId || userId !== expectedUserId) {
+    throw new Error("Transaction does not belong to this workspace and account.");
   }
 
   const priceId = tx.items?.[0]?.price?.id ?? priceIdFromTransactionItems(tx.items);
-  const plan = await applyPaddlePlanToUser(userId, priceId, tx.subscriptionId);
+  const plan = await applyPaddlePlanToWorkspace(workspaceId, priceId, tx.subscriptionId);
   return { plan, status };
 }

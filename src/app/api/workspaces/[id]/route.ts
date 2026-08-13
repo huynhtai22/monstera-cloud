@@ -3,12 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-
-async function requireMembership(workspaceId: string, userId: string) {
-    return (prisma.workspaceMember as any).findUnique({
-        where: { workspaceId_userId: { workspaceId, userId } },
-    });
-}
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 /**
  * PATCH /api/workspaces/[id]
@@ -25,12 +20,17 @@ export async function PATCH(
         }
 
         const { id: workspaceId } = await params;
-        const membership = await requireMembership(workspaceId, session.user.id);
-        if (!membership) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-        }
+        await requireWorkspaceAccess({
+            userId: session.user.id,
+            workspaceId,
+            minimumRole: "admin",
+            operation: "update_workspace",
+        });
 
         const body = await req.json().catch(() => ({}));
+        if (process.env.NODE_ENV === "production" && ["demoMockMode", "demoMockMeta", "demoMockShopee", "demoMockGoogleAds"].some((key) => key in body)) {
+            return NextResponse.json({ error: "Demo settings are unavailable" }, { status: 404 });
+        }
         const {
             telegramChatId,
             demoMockMode,
@@ -87,6 +87,8 @@ export async function PATCH(
 
         return NextResponse.json(updated);
     } catch (e: unknown) {
+        const rbac = toRbacResponse(e);
+        if (rbac) return rbac;
         logger.error("[PATCH /api/workspaces/[id]]", e);
         return NextResponse.json(
             { error: e instanceof Error ? e.message : "Update failed" },

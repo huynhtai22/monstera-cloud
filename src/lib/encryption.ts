@@ -9,15 +9,22 @@ import crypto from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
-const AUTH_TAG_LENGTH = 16;
 
-function getKey(): Buffer {
+export function validateEncryptionKey(): void {
   const key = process.env.ENCRYPTION_KEY;
   if (!key) {
     throw new Error(
       "ENCRYPTION_KEY environment variable is not set. Generate one with: openssl rand -hex 32"
     );
   }
+  if (!/^[0-9a-f]{64}$/i.test(key)) {
+    throw new Error("ENCRYPTION_KEY must be exactly 64 hexadecimal characters (32 bytes)");
+  }
+}
+
+function getKey(): Buffer {
+  validateEncryptionKey();
+  const key = process.env.ENCRYPTION_KEY!;
   return Buffer.from(key, "hex");
 }
 
@@ -75,17 +82,11 @@ export function isEncrypted(value: string): boolean {
 }
 
 /**
- * Safely decrypts credentials — if the value is not encrypted (e.g., legacy plain JSON),
- * returns it as-is. This allows gradual migration.
+ * Decrypts credentials and rejects legacy plaintext. Run the credential migration before deploy.
  */
 export function safeDecrypt(value: string): string {
   if (!isEncrypted(value)) {
-    return value; // Legacy plain-text — return as-is
+    throw new Error("Credential payload is not encrypted. Run encrypt-connection-credentials before deployment.");
   }
-  try {
-    return decrypt(value);
-  } catch {
-    // If decryption fails, assume it's plain text
-    return value;
-  }
+  return decrypt(value);
 }

@@ -235,41 +235,11 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
             return;
         }
 
-        if (id === "shopee") {
+        if (["shopee", "tiktok_business", "meta_ads", "google_ads", "lazada"].includes(id)) {
             trackEvent("oauth_started", { provider: id });
-            // Unified oauth-framework route — replaces /api/auth/shopee/authorize
-            window.location.href = `/api/auth/connect?provider=shopee&workspaceId=${encodeURIComponent(activeWorkspaceId)}`;
-            return;
-        }
-        if (id === "tiktok_shop") {
-            trackEvent("oauth_started", { provider: id });
-            window.location.href = `/api/auth/tiktok/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
-            return;
-        }
-        if (id === "tiktok_business") {
-            trackEvent("oauth_started", { provider: id });
-            window.location.href = `/api/auth/tiktok-business/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
-            return;
-        }
-        if (id === "meta_ads") {
-            trackEvent("oauth_started", { provider: id });
-            window.location.href = `/api/auth/meta-ads/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
-            return;
-        }
-        if (id === "google_ads") {
-            trackEvent("oauth_started", { provider: id });
-            window.location.href = `/api/auth/google-ads/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
-            return;
-        }
-        if (id === "amazon") {
-            trackEvent("oauth_started", { provider: id });
-            window.location.href = `/api/auth/amazon/authorize?state=${encodeURIComponent(activeWorkspaceId)}`;
-            return;
-        }
-        if (id === "lazada") {
-            trackEvent("oauth_started", { provider: id });
-            // Unified oauth-framework route — replaces /api/auth/lazada/authorize
-            window.location.href = `/api/auth/connect?provider=lazada&workspaceId=${encodeURIComponent(activeWorkspaceId)}`;
+            // A full navigation is required because this API route redirects to the provider origin.
+            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+            window.location.href = `/api/auth/connect?provider=${encodeURIComponent(id)}&workspaceId=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }
         if (id === "shopify") {
@@ -426,6 +396,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                     <button
                                         type="button"
                                         role="option"
+                                        aria-selected="false"
                                         aria-disabled={disabled}
                                         disabled={disabled}
                                         onClick={() => pickConnector(item)}

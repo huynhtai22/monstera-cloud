@@ -1,102 +1,72 @@
-# 🌿 Monstera Cloud - Headless Data Ingestion Fabric
+# Monstera Cloud agency pilot
 
-Monstera Cloud is a Next.js app for APAC sellers and agencies: OAuth connections to marketplaces and ad platforms (e.g. Shopee, TikTok, Meta, Google Ads), workspace-scoped pipelines, and delivery into **Google Sheets™** and **Looker Studio™** (plus Slack-style alerts where enabled) — shipped in the console today.
+Monstera Cloud is an invitation-only, multi-tenant data warehouse for agencies. Agency staff connect certified advertising and marketplace sources, import normalized metrics, inspect freshness in Data Explorer, and query the same warehouse through Google Sheets, Looker Studio, or a workspace API key. Clients are organizational records; they are not login identities or security tenants.
 
-## 🛠 Tech Stack
+## Pilot scope
 
-*   **Framework:** Next.js 14 App Router (React)
-*   **Database ORM:** Prisma
-*   **Authentication:** NextAuth.js
-*   **Styling:** Tailwind CSS (Enterprise Dark / Zinc-950 aesthetic)
-*   **Icons:** Lucide React
+- Shared Monstera domain; agency-host routing is disabled unless explicitly enabled outside the pilot.
+- Certified providers: Meta Ads, Google Ads, TikTok Ads, and Shopee. Lazada and other catalog sources remain unavailable.
+- Manual refresh and one nightly warehouse refresh. Scheduled destination pushes and public checkout are deferred.
+- Workspace-owned plans and provider allowlists are assigned by a platform operator.
+- Credentials are AES-256-GCM encrypted. Normalized campaign metrics and selected raw payload fields are stored in PostgreSQL.
 
----
+## Local setup
 
-## 🚀 Getting Started
-
-Follow these instructions to set up and run the Monstera Cloud platform locally.
-
-### 1. Prerequisites
-Ensure you have the following installed on your machine:
-*   Node.js (v18+)
-*   npm (v9+)
-*   A running PostgreSQL database (or compatible SQL provider)
-
-### 2. Installation
-Clone the repository and install the required dependencies:
+Requirements: Node.js 20.9 or newer, npm, and PostgreSQL 16.
 
 ```bash
-git clone https://github.com/huynhtai22/monstera-cloud.git
-cd monstera-cloud
-npm install
-```
-
-### 3. Environment Variables
-Create a `.env` file in the root directory and configure the necessary environment variables. You can use `.env.example` as a reference if available.
-
-```env
-# Database
-DATABASE_URL="postgresql://user:password@localhost:5432/monstera?schema=public"
-
-# Authentication (NextAuth)
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="your-generated-secret-key"
-
-# Integrations (Example)
-NEXT_PUBLIC_SHOPEE_APP_ID="your-shopee-app-id"
-SHOPEE_APP_SECRET="your-shopee-app-secret"
-
-# Cron / background sync
-CRON_SECRET="your-shared-cron-secret"
-
-# Data Explorer storage backend
-# Required in production. Local tmp/datalake is development-only fallback.
-DATA_LAKE_BUCKET="your-s3-bucket"
-DATA_LAKE_PREFIX="datasets/"
-AWS_REGION="ap-southeast-1"
-```
-*(Note: Generate a random `NEXTAUTH_SECRET` using `openssl rand -base64 32`)*
-
-### Data Explorer Storage Backend
-- Default behavior uses local disk under `tmp/datalake` (development fallback).
-- Production uploads require `DATA_LAKE_BUCKET`; requests return `503` if not configured.
-- When `DATA_LAKE_BUCKET` is set, dataset uploads/reads use object storage (S3-compatible via AWS SDK).
-- Dataset IDs are owner-scoped (`<userId>_<uuid>`) and query access is enforced to that owner.
-
-### Pipeline Run Execution Model
-- Interactive `POST /api/pipelines/[id]/run` calls now enqueue a `SyncJob` and return `202 Accepted`.
-- Actual ETL execution is handled by cron worker processing (`/api/cron/sync-jobs`).
-- This keeps heavy ETL work out of user-facing request latency paths.
-
-### 4. Database Setup
-Run Prisma to sync your database schema and generate the strongly-typed client:
-
-```bash
-npx prisma generate
-npx prisma db push
-```
-*(Use `npx prisma migrate dev` if you are tracking migration history).*
-
-### 5. Running the Application
-Start the Next.js development server:
-
-```bash
+npm ci
+cp .env.example .env
+npx prisma migrate deploy
 npm run dev
 ```
 
-The application will be available at [http://localhost:3000](http://localhost:3000).
+Required production secrets include `DATABASE_URL`, a 32+ character `NEXTAUTH_SECRET`, a 64-hex-character `ENCRYPTION_KEY`, a 32+ character `CRON_SECRET`, and `GOOGLE_ID_TOKEN_AUDIENCES`. Provider credentials are documented in `.env.example`.
 
----
+For local smoke data:
 
-## 📁 Project Structure
+```bash
+npm run create-smoke-user:pro
+npm run seed-demo-metrics
+```
 
-*   **/src/app:** Next.js App Router endpoints, pages, and layouts.
-    *   `/(marketing)`: The public-facing landing page, pricing, and documentation hub.
-    *   `/(auth)`: Custom login and registration flows.
-    *   `/console`: The protected application core for managing pipelines and workspaces.
-    *   `/api`: REST endpoints and webhook listeners.
-*   **/src/components:** Reusable React UI components (Navbar, Footer, SVGs).
-*   **/prisma:** Database schema and migration files.
+Production disables demo seeding, mock/debug/sandbox routes, legacy OAuth entry points, Stripe, LemonSqueezy, and Xendit. Paddle code is retained for later but requires `ENABLE_PADDLE_BILLING=1` and is not part of pilot acceptance.
 
-## 🔒 Security
-All API routes are protected via NextAuth. Ensure your testing environment has a valid user registered before attempting to access `/console` or trigger `/api/pipelines`.
+## Provisioning
+
+1. Set an internal user’s `platformRole` to `OPERATOR` using a controlled database operation.
+2. Sign in and open `/pilot-admin`.
+3. Enter agency name, unique slug, owner email, plan, and enabled providers.
+4. Send the seven-day invitation URL to the owner through an approved channel.
+5. The workspace and owner membership are created atomically when the owner accepts.
+6. Owners/admins invite additional agency staff from Settings → Team.
+
+## Database deployment
+
+Fresh databases apply the full migration history with `npx prisma migrate deploy`.
+
+The repository now contains a baseline because the earlier migration history assumed tables already existed. For an existing production database, rehearse on a snapshot, verify that it already matches the pre-pilot Prisma schema, and mark only the baseline as applied before deploying:
+
+```bash
+npx prisma migrate resolve --applied 20260401000000_baseline
+npm run encrypt-connection-credentials:dry-run
+npm run encrypt-connection-credentials
+npx prisma migrate deploy
+npx prisma migrate status
+```
+
+Do not mark the pilot tenancy migration as applied: it backfills workspace entitlements, provider access, OTP controls, OAuth attempts, invitations, audit events, and hashed API keys.
+
+## Release gates
+
+```bash
+npm run typecheck
+npm run lint:ci
+npm test
+npm run build
+npm audit --omit=dev --audit-level=critical
+```
+
+CI also applies and checks migrations against PostgreSQL. Playwright covers the critical public/protected shell and is run after the production build. After deployment, `/api/version` must show the intended commit SHA and schema version.
+
+See [pilot operations](docs/PILOT_OPERATIONS.md), [privacy and data handling](docs/PILOT_DATA_HANDLING.md), and [smoke script](docs/smoke-script.md).

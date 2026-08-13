@@ -80,32 +80,17 @@ export function ReportsClient() {
 
     const statusQuery = statusFilter === "all" ? "" : `&status=${statusFilter}`;
     const clientQuery = clientFilter ? `&clientId=${encodeURIComponent(clientFilter)}` : "";
-    const { data, error, isLoading, mutate: mutateLogs } = useSWR(
+    const { data, error, isLoading } = useSWR(
         activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}${statusQuery}${clientQuery}` : null,
         fetcher
     );
-
-    const runPipeline = React.useCallback(async (pipelineId: string) => {
-        try {
-            const res = await fetch(`/api/pipelines/${pipelineId}/run`, { method: "POST" });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                throw new Error(typeof data.error === "string" ? data.error : "Sync failed");
-            }
-            toast.success(data.message || "Sync started.");
-            mutateLogs();
-        } catch (e: any) {
-            toast.error(e.message || "Sync failed");
-            throw e;
-        }
-    }, [mutateLogs]);
 
     const handleOpenDrawer = React.useCallback((log: SyncLogWithPipeline) => {
         setSelectedLog(log);
         setIsDrawerOpen(true);
     }, []);
 
-    const rawLogs = (data?.logs ?? []) as Array<{
+    const rawLogs = React.useMemo(() => (data?.logs ?? []) as Array<{
         id: string;
         status: string;
         rowsSynced: number;
@@ -113,7 +98,7 @@ export function ReportsClient() {
         errorMsg?: string | null;
         createdAt: string;
         pipeline: { id: string; name: string; sourceConnectionId: string; clientId?: string | null };
-    }>;
+    }>, [data?.logs]);
 
     const sourceFiltered = React.useMemo(
         () => rawLogs.filter((l) => pipelineMatchesSourceFilter(l.pipeline?.name ?? "", sourceFilter)),
@@ -195,10 +180,10 @@ export function ReportsClient() {
                         <FileText className="h-5 w-5" />
                     </div>
                     <div>
-                        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Reports & Logs</h1>
+                        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Sync activity</h1>
                         {activeWorkspace ? (
                             <p className="mt-0.5 text-sm font-medium text-gray-600 dark:text-slate-400">
-                                {activeWorkspace.name} · Reports & Logs
+                                {activeWorkspace.name} · Sync activity
                             </p>
                         ) : null}
                     </div>
@@ -461,7 +446,6 @@ export function ReportsClient() {
                 log={selectedLog}
                 workspaceId={activeWorkspaceId ?? ""}
                 workspaceName={activeWorkspace?.name ?? undefined}
-                onRetry={runPipeline}
             />
         </PageShell>
     );

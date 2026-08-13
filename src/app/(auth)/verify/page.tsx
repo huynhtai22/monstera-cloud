@@ -101,7 +101,14 @@ function VerifyContent() {
       } catch {
         /* ignore */
       }
-      router.push("/login?registered=true");
+      let inviteToken = "";
+      try {
+        inviteToken = sessionStorage.getItem("monstera_pending_invitation") || "";
+      } catch {
+        /* ignore */
+      }
+      const callbackUrl = inviteToken ? `/invite/${inviteToken}` : "/console";
+      router.push(`/login?registered=true&callbackUrl=${encodeURIComponent(callbackUrl)}`);
     } catch (err: any) {
       setError(err.message || "An error occurred.");
     } finally {

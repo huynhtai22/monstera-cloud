@@ -6,12 +6,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { 
     requireSession, 
-    buildCallbackUrl, 
-    generateState 
+    buildCallbackUrl,
 } from "@/lib/oauth-framework/session";
-import { getProvider, isProviderEnabled } from "@/lib/oauth-framework/registry";
+import { getProvider, isProviderConfigured, isProviderEnabled } from "@/lib/oauth-framework/registry";
 import { OAuthError } from "@/lib/oauth-framework/types";
 import { logger } from "@/lib/logger";
+import { createOAuthAttempt, oauthAttemptCookieName } from "@/lib/oauth-attempt";
+import { requireWorkspaceAccess } from "@/lib/rbac";
+import prisma from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
     try {
@@ -38,11 +40,25 @@ export async function GET(request: NextRequest) {
         }
         
         // Check provider is enabled
-        if (!isProviderEnabled(providerId)) {
+        if (!isProviderEnabled(providerId) || !isProviderConfigured(providerId)) {
             return NextResponse.json(
                 { error: `Provider "${providerId}" is not enabled` },
                 { status: 404 }
             );
+        }
+
+        await requireWorkspaceAccess({
+            userId: session.userId,
+            workspaceId,
+            minimumRole: "member",
+            operation: "connect_source",
+        });
+        const providerAccess = await prisma.workspaceProviderAccess.findUnique({
+            where: { workspaceId_provider: { workspaceId, provider: providerId } },
+            select: { enabled: true },
+        });
+        if (!providerAccess?.enabled) {
+            return NextResponse.json({ error: "Provider is not enabled for this workspace" }, { status: 403 });
         }
         
         // Get provider adapter
@@ -52,9 +68,10 @@ export async function GET(request: NextRequest) {
         const callbackUrl = buildCallbackUrl(request, providerId);
         
         // Generate secure state
-        const state = generateState({
+        const state = await createOAuthAttempt({
             workspaceId,
             userId: session.userId,
+            provider: providerId,
         });
         
         // Build authorization URL
@@ -65,7 +82,15 @@ export async function GET(request: NextRequest) {
         });
         
         // Redirect to provider
-        return NextResponse.redirect(authorizeUrl);
+        const response = NextResponse.redirect(authorizeUrl);
+        response.cookies.set(oauthAttemptCookieName(providerId), state, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 10 * 60,
+            path: "/api/auth/callback",
+        });
+        return response;
         
     } catch (error) {
         logger.error("[OAuth Connect] Error:", error);

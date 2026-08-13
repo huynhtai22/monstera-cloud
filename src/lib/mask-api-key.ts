@@ -21,13 +21,19 @@ export function toPublicApiKeyRow(k: {
   name: string;
   createdAt: Date;
   lastUsedAt: Date | null;
-  key: string;
+  keyPrefix?: string | null;
+  keyLastFour?: string | null;
+  legacyKey?: string | null;
 }): PublicApiKeyRow {
   return {
     id: k.id,
     name: k.name,
     createdAt: k.createdAt,
     lastUsedAt: k.lastUsedAt,
-    keyMasked: maskApiKey(k.key),
+    keyMasked: k.keyPrefix && k.keyLastFour
+      ? `${k.keyPrefix}••••••••${k.keyLastFour}`
+      : k.legacyKey
+        ? maskApiKey(k.legacyKey)
+        : "legacy key — rotate required",
   };
 }

@@ -29,6 +29,7 @@ export default function PrivacyPolicyPage() {
             <li><strong>Personal Information:</strong> Includes your name, email address, passwords, and similar contact data.</li>
             <li><strong>Payment Data:</strong> We may collect data necessary to process your payment if you make purchases, such as your payment instrument number (such as a credit card number), and the security code associated with your payment instrument. All payment data is stored by our payment processor, Paddle (Paddle.com Market Limited), who acts as Merchant of Record. We do not store card details on our servers.</li>
             <li><strong>Social Media Login Data:</strong> We may provide you with the option to register or sign in using your Google account.</li>
+            <li><strong>Connected-source data:</strong> We store normalized daily campaign, account, order-count, revenue, and performance metrics in the workspace warehouse. We may also retain selected raw provider payload fields needed for normalization, troubleshooting, idempotency, and freshness tracking.</li>
           </ul>
         </section>
 
@@ -59,7 +60,7 @@ export default function PrivacyPolicyPage() {
           <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-3">4.2 How we use Google user data</h3>
           <ul className="list-disc pl-6 mb-4 text-slate-600 dark:text-slate-400 space-y-2">
             <li>Your email address is sent to our server to look up your account and check your subscription status. This is a transient lookup — we do not create a copy or log of your Google identity token.</li>
-            <li>Advertising data (e.g., from TikTok Ads) that you request is passed through our server and written directly to your spreadsheet. We do not permanently store this advertising data.</li>
+            <li>Advertising data requested by the Add-on is read from the normalized metrics already stored in the explicitly selected Monstera workspace, then written to your spreadsheet.</li>
             <li>Query configurations (which dimensions, metrics, and date range you selected) are saved locally within your Google Sheets™ spreadsheet properties so that you can refresh the query later. This data never leaves your spreadsheet.</li>
           </ul>
           <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-3">4.3 What we do NOT do</h3>
@@ -100,6 +101,7 @@ export default function PrivacyPolicyPage() {
           <ul className="list-disc pl-6 mb-4 text-slate-600 dark:text-slate-400 space-y-2">
             <li><strong>Account data</strong> (name, email, subscription status) is retained for the lifetime of your account. You may request deletion at any time by contacting us.</li>
             <li><strong>Third-party connection tokens</strong> (e.g., TikTok access tokens) are stored encrypted and are deleted when you disconnect the integration or delete your account.</li>
+            <li><strong>Normalized warehouse metrics and selected raw payload fields</strong> are retained while the workspace is active so reports remain queryable. Agency owners may request workspace deletion by contacting us.</li>
             <li><strong>Google user data</strong> is not permanently stored. Google OAuth tokens are used transiently for request verification only.</li>
           </ul>
         </section>

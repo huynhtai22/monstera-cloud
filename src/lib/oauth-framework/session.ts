@@ -38,26 +38,3 @@ export function buildCallbackUrl(request: Request, providerId: string): string {
     const base = getPublicBaseUrl(request);
     return `${base}/api/auth/callback?provider=${providerId}`;
 }
-
-/** Generate secure state parameter with embedded metadata */
-export function generateState(metadata: { workspaceId: string; userId: string; reconnectConnectionId?: string }): string {
-    // Simple base64 encoding - in production, consider signing this
-    return Buffer.from(JSON.stringify(metadata)).toString("base64url");
-}
-
-/** Parse and validate state parameter */
-export function parseState(state: string): { workspaceId: string; userId: string; reconnectConnectionId?: string } {
-    try {
-        const decoded = Buffer.from(state, "base64url").toString("utf-8");
-        const parsed = JSON.parse(decoded);
-        
-        if (!parsed.workspaceId || !parsed.userId) {
-            throw new OAuthErrorClass("invalid_state", "State missing required fields");
-        }
-        
-        return parsed;
-    } catch (e) {
-        if (e instanceof OAuthErrorClass) throw e;
-        throw new OAuthErrorClass("invalid_state", "Invalid state parameter");
-    }
-}

@@ -30,7 +30,7 @@ const PLATFORMS = [
         cardGlow: "shadow-pink-500/10",
         cardBg: "bg-white",
         badgeClass: "bg-pink-50 border-pink-200 text-pink-600",
-        description: "Your TikTok Ads campaigns — spend, impressions, CTR, and conversions. Updated hourly.",
+        description: "Your TikTok Ads campaigns — spend, impressions, CTR, and conversions. Refreshed manually or nightly.",
         filename: "TikTok_Ads_Report.xlsx",
         headers: ["Campaign", "Spend", "Impressions", "Conv."],
         rows: [
@@ -127,7 +127,7 @@ const PAIN_POINTS = [
 const FEATURES = [
     { icon: TrendingUp,    color: "cyan", title: "TikTok & Meta Ads in one place",  desc: "See spend, impressions, clicks, and conversions from all your ad accounts side by side. No switching tabs." },
     { icon: ShoppingBag,   color: "orange",  title: "Shopee order data",               desc: "Pull orders, revenue, and product performance from your Shopee seller account. Filter by date and status." },
-    { icon: FileSpreadsheet,color:"blue",    title: "Auto-updates Google Sheets™",     desc: "Install our add-on once. Your spreadsheet refreshes automatically — hourly or daily — with zero manual work." },
+    { icon: FileSpreadsheet,color:"blue",    title: "Query from Google Sheets™",     desc: "Use the private add-on to choose an agency workspace and pull its current warehouse data into a sheet." },
     { icon: BarChart3,     color: "purple",  title: "Looker Studio dashboards",        desc: "Connect to Looker Studio for beautiful charts. Share live reports with your team or your boss." },
     { icon: RefreshCw,     color: "cyan", title: "Scheduled auto-sync",             desc: "Set it and forget it. Monstera syncs your data on a schedule so your numbers are always up to date." },
     { icon: Zap,           color: "yellow",  title: "No engineers needed",             desc: "Built for business owners, not developers. Connect your accounts in minutes with just a few clicks." },
@@ -168,7 +168,7 @@ export default function SMEsSolutionPage() {
                     </h1>
 
                     <p className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto mb-10 leading-relaxed">
-                        Monstera connects your TikTok Ads, Meta Ads, Shopee, and Google Ads — and automatically delivers your numbers into Google Sheets™ or a live dashboard. No code. No manual work.
+                        Monstera connects TikTok Ads, Meta Ads, Shopee, and Google Ads in one normalized warehouse for Data Explorer, Google Sheets™, Looker Studio™, and API access.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full mb-12">
@@ -234,7 +234,7 @@ export default function SMEsSolutionPage() {
                             See exactly what you get.
                         </h2>
                         <p className="text-slate-500 text-lg max-w-xl mx-auto">
-                            Pick a platform and see how your data looks in Google Sheets™ — auto-synced every hour.
+                            Pick a platform and see how normalized warehouse data can be queried in Google Sheets™ after a manual or nightly refresh.
                         </p>
                     </div>
 
@@ -279,7 +279,7 @@ export default function SMEsSolutionPage() {
                             <div className="w-3 h-3 rounded-full bg-green-400" />
                             <div className="flex items-center gap-2 ml-3">
                                 <img src={activePlatform.logo} alt={activePlatform.label} className="h-3.5 w-3.5 object-contain" />
-                                <span className="text-xs text-slate-400 font-mono">{activePlatform.filename} — auto-synced</span>
+                                <span className="text-xs text-slate-400 font-mono">{activePlatform.filename} — warehouse export preview</span>
                             </div>
                         </div>
 
@@ -344,7 +344,7 @@ export default function SMEsSolutionPage() {
                         <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight mb-4">
                             Everything your business needs.
                         </h2>
-                        <p className="text-slate-500 max-w-xl mx-auto">One tool. All your platforms. Zero manual work.</p>
+                        <p className="text-slate-500 max-w-xl mx-auto">One workspace for connected sources, freshness checks, and exports.</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {FEATURES.map((f) => {
@@ -376,7 +376,7 @@ export default function SMEsSolutionPage() {
                         {[
                             { step: "01", color: "cyan", title: "Connect your platforms", desc: "Sign in with TikTok Ads, Meta Ads, Shopee, or Google Ads. Takes 2 minutes. We handle the OAuth — you just click Authorize." },
                             { step: "02", color: "blue",    title: "Choose your destination", desc: "Send data to Google Sheets™ with our add-on, or build a live Looker Studio dashboard with our connector." },
-                            { step: "03", color: "purple",  title: "Set your schedule", desc: "Pick hourly or daily sync. Monstera runs in the background — your data is always fresh when you open your sheet." },
+                            { step: "03", color: "purple",  title: "Verify freshness", desc: "Run the first import, inspect rows in Data Explorer, then rely on manual and nightly warehouse refresh." },
                         ].map((item) => (
                             <div key={item.step} className="flex flex-col items-start">
                                 <div className={`text-5xl font-black mb-4 ${item.color === "cyan" ? "text-cyan-200" : item.color === "blue" ? "text-blue-200" : "text-purple-200"}`}>
@@ -422,7 +422,7 @@ export default function SMEsSolutionPage() {
                         {[
                             { label: "Hours saved per week",  value: "8–10h",  color: "cyan", sub: "On manual reporting" },
                             { label: "Platforms connected",   value: "4+",     color: "blue",    sub: "TikTok, Meta, Shopee, Google" },
-                            { label: "Sync frequency",        value: "Hourly", color: "purple",  sub: "Pro plan" },
+                            { label: "Pilot refresh",         value: "Nightly", color: "purple", sub: "+ manual refresh" },
                             { label: "Setup time",            value: "< 2min", color: "orange",  sub: "No engineers needed" },
                         ].map((stat) => (
                             <div key={stat.label} className="p-6 rounded-2xl bg-white border border-gray-200 flex flex-col gap-1 shadow-sm">

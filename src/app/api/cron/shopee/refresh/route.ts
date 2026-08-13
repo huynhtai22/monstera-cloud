@@ -11,17 +11,12 @@ import {
 } from "@/lib/shopee-credential-utils";
 import { encrypt, safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
+import { requireCronSecret } from "@/lib/request-auth";
 
 export async function GET(request: Request) {
   try {
-    const authHeader = request.headers.get("authorization");
-
-    if (
-      process.env.NODE_ENV === "production" &&
-      authHeader !== `Bearer ${process.env.CRON_SECRET}`
-    ) {
-      return new NextResponse("Unauthorized Cron Request", { status: 401 });
-    }
+    const denied = requireCronSecret(request);
+    if (denied) return denied;
 
     logger.info("[CRON: SHOPEE REFRESH] Fleet token refresh starting…");
 

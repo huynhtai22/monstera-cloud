@@ -97,6 +97,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         rememberAppPath(pathname);
     }, [pathname, status]);
 
+    if (pathname?.startsWith("/invite/")) return <>{children}</>;
+
     return (
         <KeyboardShortcutsProvider>
         <WorkspaceSessionSync />

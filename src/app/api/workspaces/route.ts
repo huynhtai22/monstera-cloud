@@ -1,121 +1,89 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { sanitizeConnectionCredentials } from "@/lib/sanitize-connection-credentials";
-import { isSeededDemoSourceConnection } from "@/lib/demo-connection";
-import { toPublicApiKeyRow } from "@/lib/mask-api-key";
+import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
+/** Tenant-safe workspace index. Detailed resources have their own scoped endpoints. */
 export async function GET() {
-    try {
-        const session = await getServerSession(authOptions);
-
-        if (!session?.user?.id) {
-            return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
-                status: 401,
-            });
-        }
-
-        let workspaces = await prisma.workspace.findMany({
-            where: {
-                OR: [
-                    { ownerId: session.user.id },
-                    { members: { some: { userId: session.user.id } } },
-                ],
-            },
-            include: {
-                members: true,
-                connections: true,
-                pipelines: true,
-                apiKeys: true
-            }
-        });
-
-        // Fail-safe: If no workspaces exist for the user, provision a default one.
-        // Wrapped in try/catch for P2002 — concurrent requests may both find empty
-        // and race to create; the loser safely re-fetches the winner's workspace.
-        if (workspaces.length === 0) {
-            try {
-                const newWorkspace = await prisma.$transaction(async (tx) => {
-                    const ws = await tx.workspace.create({
-                        data: {
-                            name: "Personal Workspace",
-                            slug: `personal-${session.user.id.slice(0, 8)}`,
-                            ownerId: session.user.id,
-                            members: {
-                                create: {
-                                    userId: session.user.id,
-                                    role: "owner",
-                                },
-                            },
-                        },
-                        include: {
-                            members: true,
-                            connections: true,
-                            pipelines: true,
-                            apiKeys: true,
-                        },
-                    });
-                    return ws;
-                });
-                workspaces = [newWorkspace];
-            } catch (err: any) {
-                if (err?.code === "P2002") {
-                    // Race condition: another request created the workspace; re-fetch
-                    workspaces = await prisma.workspace.findMany({
-                        where: {
-                            OR: [
-                                { ownerId: session.user.id },
-                                { members: { some: { userId: session.user.id } } },
-                            ],
-                        },
-                        include: {
-                            members: true,
-                            connections: true,
-                            pipelines: true,
-                            apiKeys: true,
-                        },
-                    });
-                } else {
-                    throw err;
-                }
-            }
-        }
-
-        const safeWorkspaces = workspaces.map((w: any) => {
-            const demoMode = w.demoMockMode === true;
-            const connections = (w.connections ?? []).filter((c: any) => {
-                if (demoMode) return true;
-                return !isSeededDemoSourceConnection({
-                    type: c.type,
-                    name: c.name,
-                    provider: c.provider,
-                    credentials: c.credentials,
-                });
-            });
-            return {
-                ...w,
-                connections: connections.map((c: any) => ({
-                    ...c,
-                    credentials: sanitizeConnectionCredentials(c.credentials),
-                })),
-                apiKeys: (w.apiKeys ?? []).map((k: { id: string; name: string; createdAt: Date; lastUsedAt: Date | null; key: string }) =>
-                    toPublicApiKeyRow(k)
-                ),
-            };
-        });
-
-        return NextResponse.json(safeWorkspaces);
-    } catch (error) {
-        logger.error("Error fetching workspaces:", error);
-        const body =
-            process.env.NODE_ENV === "production"
-                ? { error: "Failed to fetch workspaces" }
-                : {
-                      error: "Failed to fetch workspaces",
-                      details: error instanceof Error ? error.message : String(error),
-                  };
-        return NextResponse.json(body, { status: 500 });
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const memberships = await prisma.workspaceMember.findMany({
+      where: { userId: session.user.id },
+      orderBy: { workspace: { createdAt: "asc" } },
+      select: {
+        role: true,
+        workspace: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            plan: true,
+            status: true,
+            createdAt: true,
+            providerAccess: {
+              where: { enabled: true },
+              select: { provider: true },
+              orderBy: { provider: "asc" },
+            },
+            _count: {
+              select: { members: true, clients: true, connections: true, pipelines: true, apiKeys: true },
+            },
+            connections: {
+              where: { type: "source" },
+              select: { status: true, lastSyncAt: true, lastError: true },
+              orderBy: { lastSyncAt: "desc" },
+            },
+            pipelines: {
+              select: {
+                syncJobs: {
+                  orderBy: { createdAt: "desc" },
+                  take: 1,
+                  select: { status: true, finishedAt: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return NextResponse.json(memberships.map(({ role, workspace }) => {
+      const latestSyncAt = workspace.connections.find((connection) => connection.lastSyncAt)?.lastSyncAt ?? null;
+      const failing = workspace.connections.filter((connection) => connection.status === "error" || connection.lastError);
+      const latestJobs = workspace.pipelines.flatMap((pipeline) => pipeline.syncJobs).sort((a, b) => (b.finishedAt?.getTime() ?? 0) - (a.finishedAt?.getTime() ?? 0));
+      const latestJob = latestJobs[0] ?? null;
+      return {
+        id: workspace.id,
+        name: workspace.name,
+        slug: workspace.slug,
+        role,
+        plan: workspace.plan,
+        status: workspace.status,
+        createdAt: workspace.createdAt,
+        enabledProviders: workspace.providerAccess.map((item) => item.provider),
+        counts: {
+          members: workspace._count.members,
+          clients: workspace._count.clients,
+          connections: workspace._count.connections,
+          pipelines: workspace._count.pipelines,
+          apiKeys: workspace._count.apiKeys,
+        },
+        health: {
+          status: failing.length > 0 ? "error" : latestSyncAt ? "healthy" : "not_synced",
+          latestSyncAt,
+          latestJobStatus: latestJob?.status ?? null,
+          latestJobFinishedAt: latestJob?.finishedAt ?? null,
+          failingConnections: failing.length,
+        },
+      };
+    }));
+  } catch (error) {
+    logger.error("Error fetching workspaces", error);
+    return NextResponse.json({ error: "Failed to fetch workspaces" }, { status: 500 });
+  }
 }

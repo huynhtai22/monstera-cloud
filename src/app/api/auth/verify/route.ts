@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { allowAuthAttempt } from "@/lib/auth-rate-limit";
+import { normalizeEmail } from "@/lib/invitation-security";
 
 /** Reject GET so OTPs are never sent in URL query parameters (CWE-598). */
 export async function GET() {
@@ -11,10 +13,14 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const { email, otp } = await req.json();
+    const { email: rawEmail, otp } = await req.json();
 
-    if (!email || !otp) {
+    if (!rawEmail || !otp) {
       return NextResponse.json({ message: "Email and OTP are required" }, { status: 400 });
+    }
+    const email = normalizeEmail(String(rawEmail));
+    if (!(await allowAuthAttempt({ request: req, action: "verify_otp", identity: email, limit: 10, windowSeconds: 15 * 60 }))) {
+      return NextResponse.json({ message: "Too many attempts. Try again later." }, { status: 429 });
     }
 
     const user = await prisma.user.findUnique({
@@ -22,15 +28,22 @@ export async function POST(req: Request) {
     });
 
     if (!user) {
-      return NextResponse.json({ message: "User not found" }, { status: 404 });
+      return NextResponse.json({ message: "Invalid or expired verification code" }, { status: 400 });
     }
 
-    if (user.otp !== otp) {
-      return NextResponse.json({ message: "Invalid OTP" }, { status: 400 });
+    if (user.otpLockedUntil && user.otpLockedUntil > new Date()) {
+      return NextResponse.json({ message: "Too many attempts. Try again later." }, { status: 429 });
     }
 
-    if (user.otpExpires && user.otpExpires < new Date()) {
-      return NextResponse.json({ message: "OTP has expired" }, { status: 400 });
+    if (!user.otp || user.otp !== String(otp) || !user.otpExpires || user.otpExpires < new Date()) {
+      const attempts = user.otpAttempts + 1;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: attempts >= 5
+          ? { otpAttempts: 0, otpLockedUntil: new Date(Date.now() + 15 * 60 * 1000) }
+          : { otpAttempts: attempts },
+      });
+      return NextResponse.json({ message: "Invalid or expired verification code" }, { status: 400 });
     }
 
     // Success: Verify email and clear OTP
@@ -40,11 +53,13 @@ export async function POST(req: Request) {
         emailVerified: new Date(),
         otp: null,
         otpExpires: null,
+        otpAttempts: 0,
+        otpLockedUntil: null,
       },
     });
 
     return NextResponse.json({ message: "Email verified successfully" }, { status: 200 });
-  } catch (error: any) {
-    return NextResponse.json({ message: error.message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ message: "Verification failed" }, { status: 500 });
   }
 }

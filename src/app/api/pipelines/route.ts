@@ -4,6 +4,8 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { getPlanLimits, userSyncCron } from "@/lib/plan-config";
 import { logger } from "@/lib/logger";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { isPilotMode } from "@/lib/pilot-mode";
 
 /**
  * POST /api/pipelines
@@ -11,6 +13,9 @@ import { logger } from "@/lib/logger";
  * Assigns a staggered cron offset per user to prevent burst load.
  */
 export async function POST(request: Request) {
+    if (isPilotMode()) {
+        return NextResponse.json({ error: "Destination pipelines are deferred during the agency pilot." }, { status: 410 });
+    }
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -27,23 +32,34 @@ export async function POST(request: Request) {
     }
 
     // Verify the user is a member of this workspace
-    const membership = await (prisma.workspaceMember as any).findFirst({
-        where: { workspaceId, userId: session.user.id },
+    try {
+        await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member", operation: "create_pipeline" });
+    } catch (error) {
+        return toRbacResponse(error) ?? NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const connections = await prisma.connection.findMany({
+        where: { workspaceId, id: { in: [sourceConnectionId, destinationConnectionId] } },
+        select: { id: true, type: true },
     });
-    if (!membership) {
-        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    if (
+        connections.length !== 2 ||
+        !connections.some((connection) => connection.id === sourceConnectionId && connection.type === "source") ||
+        !connections.some((connection) => connection.id === destinationConnectionId && connection.type === "destination")
+    ) {
+        return NextResponse.json({ error: "Source and destination must belong to this workspace" }, { status: 400 });
     }
 
     // Fetch user plan and enforce pipeline count cap
-    const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { plan: true } });
-    const limits = getPlanLimits(user?.plan ?? "free");
+    const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { plan: true } });
+    const limits = getPlanLimits(workspace?.plan ?? "pilot");
 
     if (limits.maxPipelines !== Infinity) {
         const existingCount = await prisma.pipeline.count({ where: { workspaceId } });
         if (existingCount >= limits.maxPipelines) {
             return NextResponse.json(
                 {
-                    error: `Your ${user?.plan ?? "free"} plan allows a maximum of ${limits.maxPipelines} pipeline${limits.maxPipelines === 1 ? "" : "s"}. Upgrade to add more.`,
+                    error: `This workspace plan allows a maximum of ${limits.maxPipelines} pipeline${limits.maxPipelines === 1 ? "" : "s"}.`,
                     code: "PIPELINE_LIMIT_REACHED",
                     limit: limits.maxPipelines,
                     current: existingCount,
@@ -95,8 +111,8 @@ export async function GET(request: Request) {
                 }
             },
             include: {
-                sourceConnection: true,
-                destinationConnection: true,
+                sourceConnection: { select: { id: true, name: true, provider: true, type: true, status: true, lastSyncAt: true } },
+                destinationConnection: { select: { id: true, name: true, provider: true, type: true, status: true, lastSyncAt: true } },
                 logs: {
                     orderBy: { createdAt: 'desc' },
                     take: 1

@@ -9,9 +9,10 @@
  */
 
 import prisma from "@/lib/prisma";
+import type { WorkspaceRole as PrismaWorkspaceRole } from "@prisma/client";
 import { logger } from "@/lib/logger";
 
-export type WorkspaceRole = "owner" | "admin" | "member" | "viewer";
+export type WorkspaceRole = PrismaWorkspaceRole;
 
 const ROLE_HIERARCHY: Record<WorkspaceRole, number> = {
     owner: 4,
@@ -146,23 +147,59 @@ export async function authorizeWorkspaceAction(
  * and the user has a valid membership.
  */
 export async function requireWorkspaceAccess(
-    userId: string,
-    workspaceId: string,
-    requiredRole: WorkspaceRole = "member"
+    userIdOrInput: string | {
+        userId: string;
+        workspaceId: string;
+        minimumRole?: WorkspaceRole;
+        operation?: string;
+    },
+    legacyWorkspaceId?: string,
+    legacyRequiredRole: WorkspaceRole = "member"
 ): Promise<{ workspace: { id: string; ownerId: string }; membership: WorkspaceMembership }> {
+    const input = typeof userIdOrInput === "string"
+        ? {
+            userId: userIdOrInput,
+            workspaceId: legacyWorkspaceId ?? "",
+            minimumRole: legacyRequiredRole,
+            operation: "workspace_access",
+        }
+        : {
+            ...userIdOrInput,
+            minimumRole: userIdOrInput.minimumRole ?? "member",
+            operation: userIdOrInput.operation ?? "workspace_access",
+        };
+
     const [workspace, membership] = await Promise.all([
         prisma.workspace.findUnique({
-            where: { id: workspaceId },
+            where: { id: input.workspaceId },
             select: { id: true, ownerId: true },
         }),
-        getWorkspaceMembership(userId, workspaceId),
+        getWorkspaceMembership(input.userId, input.workspaceId),
     ]);
 
     if (!workspace) {
         throw new RbacError("Workspace not found", "NOT_FOUND", 404);
     }
 
-    requireRole(membership, requiredRole, "workspace_access");
+    if (!membership || !hasRole(membership, input.minimumRole)) {
+        logger.warn("[TENANT_AUTHORIZATION_DENIED]", {
+            actorUserId: input.userId,
+            workspaceId: input.workspaceId,
+            operation: input.operation,
+            currentRole: membership?.role ?? null,
+            requiredRole: input.minimumRole,
+        });
+    }
+
+    requireRole(membership, input.minimumRole, input.operation);
 
     return { workspace, membership: membership! };
+}
+
+export function toRbacResponse(error: unknown): Response | null {
+    if (!(error instanceof RbacError)) return null;
+    return Response.json(
+        { error: error.message, code: error.code },
+        { status: error.statusCode },
+    );
 }

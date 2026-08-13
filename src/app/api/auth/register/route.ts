@@ -3,6 +3,10 @@ import bcrypt from "bcryptjs";
 import prisma from "@/lib/prisma";
 import { sendOtpEmail } from "@/lib/mail";
 import { logger } from "@/lib/logger";
+import crypto from "crypto";
+import { allowAuthAttempt } from "@/lib/auth-rate-limit";
+import { hashInvitationToken, normalizeEmail } from "@/lib/invitation-security";
+import { isPilotMode } from "@/lib/pilot-mode";
 
 /**
  * GET handler - Explicitly reject GET requests to prevent sensitive data
@@ -17,7 +21,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const { name, email: rawEmail, password } = await req.json();
+    const { name, email: rawEmail, password, inviteToken } = await req.json();
 
     if (!name || !rawEmail || !password) {
       return NextResponse.json(
@@ -27,13 +31,37 @@ export async function POST(req: Request) {
     }
 
     // Normalize email: trim whitespace and lowercase to enforce single identity
-    const email = rawEmail.trim().toLowerCase();
+    const email = normalizeEmail(rawEmail);
+
+    if (!(await allowAuthAttempt({ request: req, action: "register", identity: email, limit: 5, windowSeconds: 15 * 60 }))) {
+      return NextResponse.json({ message: "Too many attempts. Try again later." }, { status: 429 });
+    }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json(
         { message: "Invalid email address." },
         { status: 400 }
       );
+    }
+
+    if (typeof password !== "string" || password.length < 8 || !/[a-z]/.test(password) || !/\d/.test(password)) {
+      return NextResponse.json(
+        { message: "Password must be at least 8 characters with a lowercase letter and number." },
+        { status: 400 },
+      );
+    }
+
+    if (isPilotMode()) {
+      const token = typeof inviteToken === "string" ? inviteToken.trim() : "";
+      const invitation = token
+        ? await prisma.workspaceInvitation.findUnique({ where: { tokenHash: hashInvitationToken(token) } })
+        : null;
+      if (!invitation || invitation.acceptedAt || invitation.expiresAt <= new Date() || normalizeEmail(invitation.email) !== email) {
+        return NextResponse.json(
+          { message: "A valid pilot invitation for this email is required." },
+          { status: 403 },
+        );
+      }
     }
 
     // Case-insensitive duplicate check — catches "Tai@gmail.com" vs "tai@gmail.com"
@@ -44,7 +72,7 @@ export async function POST(req: Request) {
 
     if (existingUser) {
       return NextResponse.json(
-        { message: "An account with this email already exists." },
+        { message: "Unable to complete registration with those details." },
         { status: 400 }
       );
     }
@@ -53,7 +81,7 @@ export async function POST(req: Request) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Generate a 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = crypto.randomInt(100000, 1000000).toString();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Atomic transaction: user + workspace + membership — all or nothing
@@ -68,22 +96,17 @@ export async function POST(req: Request) {
         },
       });
 
-      await tx.workspace.create({
-        data: {
-          name: "Personal Workspace",
-          slug: `personal-${user.id.slice(0, 8)}`,
-          ownerId: user.id,
-          members: {
-            create: {
-              userId: user.id,
-              role: "owner",
-            },
+      if (!isPilotMode()) {
+        await tx.workspace.create({
+          data: {
+            name: "Personal Workspace",
+            slug: `personal-${user.id.slice(0, 8)}`,
+            ownerId: user.id,
+            members: { create: { userId: user.id, role: "owner" } },
           },
-        },
-      });
+        });
+      }
     });
-
-    logger.info(`[AUTH] OTP for ${email}: ${otp}`);
 
     // Send verification email — non-fatal: user can request resend
     try {
@@ -101,7 +124,7 @@ export async function POST(req: Request) {
     // rather than raw 500s (e.g. race condition on concurrent registrations)
     if (error?.code === "P2002") {
       return NextResponse.json(
-        { message: "An account with this email already exists." },
+        { message: "Unable to complete registration with those details." },
         { status: 400 }
       );
     }

@@ -6,6 +6,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  env: {
+    BUILD_TIME: process.env.BUILD_TIME || new Date().toISOString(),
+  },
   // Pin workspace root explicitly so Next.js/Turbopack doesn't get confused
   // by a stale package-lock.json sitting in a parent directory.
   turbopack: {
@@ -23,6 +26,9 @@ const nextConfig = {
       // Legacy: merged into Data Explorer (warehouse + column picker + batch import)
       { source: "/synced-data", destination: "/explorer", permanent: true },
       { source: "/synced-data/:path*", destination: "/explorer", permanent: true },
+      { source: "/transformations", destination: "/explorer", permanent: false },
+      { source: "/internal-templates", destination: "/console", permanent: false },
+      { source: "/ops", destination: "/console", permanent: false },
       // Short URL for payment gateways and app store listings
       { source: "/refund", destination: "/legal/refund-policy", permanent: true },
     ];
@@ -85,8 +91,11 @@ export default withSentryConfig(nextConfig, {
   // Hides source maps from the client bundle (security)
   hideSourceMaps: true,
 
-  // Disables verbose Sentry logger in production bundle
-  disableLogger: true,
+  webpack: {
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
 
   // Widens file upload glob to include pages/ and app/ routes
   widenClientFileUpload: true,

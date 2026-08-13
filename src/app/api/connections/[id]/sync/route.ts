@@ -26,6 +26,7 @@ import {
   acquireMetaSyncLock,
   releaseMetaSyncLock,
 } from "@/lib/meta-sync-lock";
+import { requireWorkspaceAccess } from "@/lib/rbac";
 
 export async function POST(
   request: Request,
@@ -46,27 +47,21 @@ export async function POST(
       return NextResponse.json({ error: "Missing connection id" }, { status: 400 });
     }
 
-    const connection = await prisma.connection.findUnique({
-      where: { id: connectionId },
-      include: { workspace: { select: { id: true, ownerId: true } } },
+    const connection = await prisma.connection.findFirst({
+      where: { id: connectionId, workspace: { members: { some: { userId: session.user.id } } } },
+      include: { workspace: { select: { id: true, ownerId: true, plan: true } } },
     });
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
-    // RBAC check
-    const membership = await prisma.workspaceMember.findUnique({
-      where: {
-        workspaceId_userId: {
-          workspaceId: connection.workspaceId,
-          userId: session.user.id,
-        },
-      },
+    await requireWorkspaceAccess({
+      userId: session.user.id,
+      workspaceId: connection.workspaceId,
+      minimumRole: force ? "admin" : "member",
+      operation: force ? "force_unlock_connection" : "manual_sync",
     });
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-    }
 
     // Only for ad platforms that use CampaignMetric
     if (!["meta_ads", "google_ads", "tiktok_business"].includes(connection.provider)) {
@@ -76,11 +71,7 @@ export async function POST(
       );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { plan: true },
-    });
-    const limits = getPlanLimits(user?.plan ?? "free");
+    const limits = getPlanLimits(connection.workspace.plan);
 
     // Check sync cooldown
     if (connection.lastSyncAt) {
@@ -113,11 +104,6 @@ export async function POST(
         return NextResponse.json({ error: "Failed to get valid token" }, { status: 401 });
       }
 
-      // DEBUG: Log credentials structure
-      logger.info(`[Meta Sync] DEBUG credentials keys:`, Object.keys(credentials));
-      logger.info(`[Meta Sync] DEBUG extraFields keys:`, Object.keys(credentials.extraFields || {}));
-      logger.info(`[Meta Sync] DEBUG extraFields.adAccounts:`, JSON.stringify(credentials.extraFields?.adAccounts));
-
       // Get ad accounts from extraFields (where OAuth adapter stores them)
       const extraFields = credentials.extraFields || {};
       let adAccounts = extraFields.adAccounts || 
@@ -133,15 +119,7 @@ export async function POST(
       logger.info(`[Meta Sync] Will sync ${adAccounts.length} ad accounts`);
 
       if (!adAccounts?.length) {
-        return NextResponse.json({ 
-          error: "No ad accounts configured", 
-          debug: {
-            credentialKeys: Object.keys(credentials),
-            extraFieldsKeys: Object.keys(extraFields),
-            hasAdAccounts: !!extraFields.adAccounts,
-            adAccountsCount: extraFields.adAccounts?.length || 0,
-          }
-        }, { status: 400 });
+        return NextResponse.json({ error: "No ad accounts configured" }, { status: 400 });
       }
 
       const jobId = `manual-${Date.now()}`;
@@ -236,11 +214,7 @@ export async function POST(
         success: true,
         rowsIngested: totalRows,
         message: `Synced ${totalRows} rows from Meta Ads`,
-        debug: {
-          accountsProcessed: adAccounts.length,
-          jobId,
-          timestamp: new Date().toISOString(),
-        }
+        jobId,
       });
     }
 

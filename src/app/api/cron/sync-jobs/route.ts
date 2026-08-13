@@ -3,6 +3,8 @@ import { randomUUID } from "crypto";
 import prisma from "@/lib/prisma";
 import { getPlanLimits } from "@/lib/plan-config";
 import { logger } from "@/lib/logger";
+import { requireCronSecret } from "@/lib/request-auth";
+import { isPilotMode } from "@/lib/pilot-mode";
 
 /**
  * GET /api/cron/sync-jobs
@@ -16,14 +18,15 @@ import { logger } from "@/lib/logger";
  */
 
 const BATCH_SIZE = 10;
-const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+const NIGHTLY_CADENCE_MS = 24 * 60 * 60 * 1000;
 const LEASE_MS = 5 * 60 * 1000;
 
 export async function GET(req: Request) {
   // Verify this was called by Vercel Cron and not a public caller
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const denied = requireCronSecret(req);
+  if (denied) return denied;
+  if (isPilotMode()) {
+    return NextResponse.json({ error: "Scheduled destination pipelines are disabled during the agency pilot." }, { status: 410 });
   }
 
   const now = new Date();
@@ -78,24 +81,9 @@ export async function GET(req: Request) {
     select: {
       id: true,
       lastSyncedAt: true,
-      workspace: { select: { ownerId: true } },
+      workspace: { select: { ownerId: true, plan: true } },
     },
   });
-
-  const ownerIds = Array.from(new Set(
-    pipelines
-      .map((p) => p.workspace?.ownerId)
-      .filter((id): id is string => Boolean(id))
-  ));
-
-  const owners = ownerIds.length > 0
-    ? await prisma.user.findMany({
-      where: { id: { in: ownerIds } },
-      select: { id: true, plan: true },
-    })
-    : [];
-
-  const ownerPlanMap = new Map(owners.map((u) => [u.id, u.plan] as const));
 
   const pipelineIds = pipelines.map((p) => p.id);
   const pipelinesWithPendingJobs = pipelineIds.length > 0
@@ -118,12 +106,11 @@ export async function GET(req: Request) {
     const ownerId = p.workspace?.ownerId;
     if (!ownerId) continue;
 
-    const ownerPlan = ownerPlanMap.get(ownerId) ?? "free";
-    const limits = getPlanLimits(ownerPlan);
-    const cadenceMs = Math.max(FOUR_HOURS_MS, limits.syncIntervalMs);
+    const workspacePlan = p.workspace?.plan ?? "pilot";
+    const limits = getPlanLimits(workspacePlan);
 
     const last = p.lastSyncedAt?.getTime() ?? 0;
-    if (Date.now() - last < cadenceMs) continue;
+    if (Date.now() - last < NIGHTLY_CADENCE_MS) continue;
 
     if (pendingPipelineIds.has(p.id)) continue;
 
@@ -131,7 +118,7 @@ export async function GET(req: Request) {
       pipelineId: p.id,
       activeKey: p.id,
       userId: ownerId,
-      plan: ownerPlan,
+      plan: workspacePlan,
       status: "queued",
       priority: limits.priority,
       scheduledAt: now,
@@ -203,8 +190,8 @@ export async function GET(req: Request) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // Internal cron calls are authenticated via CRON_SECRET
-          "x-cron-secret": process.env.CRON_SECRET ?? "",
+          "Authorization": `Bearer ${process.env.CRON_SECRET}`,
+          "x-sync-job-id": job.id,
         },
       });
 

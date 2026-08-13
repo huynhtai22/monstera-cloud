@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { shopeeDataClient } from "@/lib/shopee";
+import { getValidShopeeCreds, shopeeDataClient } from "@/lib/shopee";
 import prisma from "@/lib/prisma";
-import { safeDecrypt } from "@/lib/encryption";
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -18,18 +17,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "connectionId is required" }, { status: 400 });
   }
 
-  const connection = await (prisma.connection as any).findUnique({
-    where: { id: connectionId },
+  const connection = await prisma.connection.findFirst({
+    where: {
+      id: connectionId,
+      provider: "shopee",
+      workspace: { members: { some: { userId: session.user.id } } },
+    },
+    select: { id: true },
   });
   if (!connection) {
     return NextResponse.json({ error: "Connection not found" }, { status: 404 });
   }
 
   try {
-    const creds = JSON.parse(safeDecrypt(connection.credentials));
+    const creds = await getValidShopeeCreds(connection.id);
     const opts = {
-      accessToken: creds.accessToken,
-      shopId: creds.shopId,
+      accessToken: creds.access_token,
+      shopId: creds.shop_id,
       sandbox: creds.sandbox === true,
     };
 

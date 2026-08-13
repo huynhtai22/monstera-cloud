@@ -11,7 +11,9 @@ import { sendAgencyAlert } from "@/lib/alerts";
 import { classifyIngestionError, formatLogError } from "@/lib/ingestion/error-taxonomy";
 import { markConnectionsSyncedOk, markConnectionsSyncError } from "@/lib/ingestion/connection-sync-state";
 import { logger } from "@/lib/logger";
-import { getWorkspaceMembership, requireWorkspaceAccess, RbacError } from "@/lib/rbac";
+import { requireWorkspaceAccess, RbacError } from "@/lib/rbac";
+import { hasBearerSecret } from "@/lib/request-auth";
+import { isPilotMode } from "@/lib/pilot-mode";
 
 export async function POST(req: Request, context: { params: any }) {
     const syncStartTime = Date.now();
@@ -23,11 +25,13 @@ export async function POST(req: Request, context: { params: any }) {
     try {
         // 0. Auth Check: Allow either Session OR Cron Secret
         const session = await getServerSession(authOptions);
-        const authHeader = req.headers.get("x-cron-secret") || req.headers.get("Authorization")?.replace("Bearer ", "");
-        const isCron = authHeader && authHeader === process.env.CRON_SECRET;
+        const isCron = hasBearerSecret(req, process.env.CRON_SECRET);
 
         if (!session?.user && !isCron) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+        if (isPilotMode() && !isCron) {
+            return NextResponse.json({ error: "Destination pipelines are deferred during the agency pilot." }, { status: 410 });
         }
 
         notifyEmail = (session?.user as any)?.email;
@@ -77,8 +81,8 @@ export async function POST(req: Request, context: { params: any }) {
         }
 
         const userIdForLimits = session?.user?.id || pipeline.workspace.ownerId;
-        const user = await prisma.user.findUnique({ where: { id: userIdForLimits }, select: { plan: true } });
-        const limits = getPlanLimits(user?.plan ?? "free");
+        const workspacePlan = pipeline.workspace.plan ?? "pilot";
+        const limits = getPlanLimits(workspacePlan);
 
         // Interactive runs are queued and executed by the cron worker.
         // This keeps heavy ETL work outside the end-user request lifecycle.
@@ -91,7 +95,7 @@ export async function POST(req: Request, context: { params: any }) {
                         pipelineId: pipeline.id,
                         activeKey: pipeline.id,
                         userId: userIdForLimits,
-                        plan: user?.plan ?? "free",
+                        plan: workspacePlan,
                         status: "queued",
                         priority: limits.priority,
                         scheduledAt: new Date(),
@@ -148,7 +152,7 @@ export async function POST(req: Request, context: { params: any }) {
                 const waitMin = Math.ceil(waitSec / 60);
                 return NextResponse.json(
                     {
-                        error: `Your ${user?.plan ?? "free"} plan syncs ${limits.syncLabel.toLowerCase()}. Please wait ${waitMin} more minute${waitMin === 1 ? "" : "s"} before re-running.`,
+                        error: `This workspace refreshes ${limits.syncLabel.toLowerCase()}. Please wait ${waitMin} more minute${waitMin === 1 ? "" : "s"} before re-running.`,
                         code: "SYNC_COOLDOWN",
                         retry_after_seconds: waitSec,
                     },
@@ -175,12 +179,12 @@ export async function POST(req: Request, context: { params: any }) {
                     provider,
                     credentials: sourceCreds,
                     workspaceId: pipeline.workspaceId,
-                    userPlan: user?.plan ?? 'free',
+                    userPlan: workspacePlan,
                 });
                 logger.info(`[Pipeline Run] Pre-sync complete for ${provider}:`, JSON.stringify(syncResult));
-            } catch (syncErr: any) {
+            } catch (syncErr: unknown) {
                 logger.error(`[Pipeline Run] Pre-sync failed for ${provider}:`, syncErr);
-                // Continue - don't block pipeline on sync error
+                throw syncErr;
             }
         } else {
             logger.info(`[Pipeline Run] Provider ${provider} is not an ad platform, skipping pre-sync`);
@@ -188,7 +192,7 @@ export async function POST(req: Request, context: { params: any }) {
 
         const etl = await runEtlPipeline({
             userId: userIdForLimits,
-            userPlan: user?.plan ?? "free",
+            userPlan: workspacePlan,
             provider,
             pipeline,
             ctx: {
@@ -199,7 +203,7 @@ export async function POST(req: Request, context: { params: any }) {
                 workspaceId: pipeline.workspaceId,
             },
             sourceCreds,
-            jobId: undefined, // TODO: pass jobId when called from sync-jobs cron
+            jobId: req.headers.get("x-sync-job-id") || undefined,
         });
 
         const durationMs = Date.now() - syncStartTime;

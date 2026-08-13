@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
-import { effectiveSheetsPlan } from '@/lib/sheets-reviewer';
-import { PRODUCT_SITE_URL } from '@/lib/site-url';
 import { logger } from "@/lib/logger";
+import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
 
 /**
  * POST /api/v1/sheets/auth
@@ -19,39 +18,52 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing Google token' }, { status: 400 });
     }
 
-    // Verify token with Google and get user info
-    const googleRes = await fetch(
-      `https://www.googleapis.com/oauth2/v3/userinfo`,
-      { headers: { Authorization: `Bearer ${googleToken}` } },
-    );
-
-    if (!googleRes.ok) {
+    const verification = await verifyGoogleIdToken(googleToken, {
+      audiences: getGoogleIdTokenAudienceAllowlist(),
+    });
+    if (!verification) {
       return NextResponse.json(
         { error: 'invalid_token', message: 'Google token is invalid or expired. Please reopen the add-on.' },
         { status: 401 },
       );
     }
 
-    const googleUser = (await googleRes.json()) as { email?: string; name?: string; picture?: string };
-    if (!googleUser.email) {
-      return NextResponse.json({ error: 'Could not read email from Google token' }, { status: 401 });
-    }
-
     // Find user in our DB
     const user = await (prisma.user as any).findUnique({
-      where: { email: googleUser.email },
-      select: { id: true, name: true, email: true, plan: true, image: true },
+      where: { email: verification.email },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        image: true,
+        memberships: {
+          select: {
+            role: true,
+            workspace: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                plan: true,
+                status: true,
+                providerAccess: {
+                  where: { enabled: true },
+                  select: { provider: true },
+                },
+              },
+            },
+          },
+          orderBy: { workspace: { name: 'asc' } },
+        },
+      },
     });
 
     if (!user) {
       return NextResponse.json({
         error: 'no_account',
-        message: `No Monstera Cloud account found for ${googleUser.email}. Sign up at ${PRODUCT_SITE_URL.replace('https://', '')} first.`,
+        message: `No Monstera Cloud account found for ${verification.email}. Ask your agency owner for an invitation.`,
       }, { status: 404 });
     }
-
-    const plan = effectiveSheetsPlan(user.plan, googleUser.email);
-    const isPaid = plan === 'starter' || plan === 'professional';
 
     return NextResponse.json({
       authenticated: true,
@@ -60,14 +72,23 @@ export async function POST(req: Request) {
         name: user.name,
         email: user.email,
         image: user.image,
-        plan,
       },
+      workspaces: user.memberships.map(({ role, workspace }: any) => ({
+        id: workspace.id,
+        name: workspace.name,
+        slug: workspace.slug,
+        role,
+        plan: workspace.plan,
+        status: workspace.status,
+        enabledProviders: workspace.providerAccess.map((access: any) => access.provider),
+      })),
+      requiresWorkspaceSelection: true,
       features: {
-        canQuery: isPaid,
-        maxRows: plan === 'professional' ? 100_000 : plan === 'starter' ? 10_000 : 0,
-        refreshIntervals: isPaid ? ['manual', '1h', '3h', '6h', '12h', 'daily'] : [],
+        canQuery: user.memberships.length > 0,
+        maxRows: 100_000,
+        refreshIntervals: ['manual', 'daily'],
       },
-      upgradeUrl: isPaid ? null : `${PRODUCT_SITE_URL}/pricing`,
+      upgradeUrl: null,
     });
   } catch (err: any) {
     logger.error('[SHEETS_AUTH]', err);

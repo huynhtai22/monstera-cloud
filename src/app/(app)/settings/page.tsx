@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Settings2, Building2, Users, CreditCard, KeyRound, Briefcase } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
-import useSWR, { useSWRConfig } from "swr";
-import { useSession } from "next-auth/react";
+import useSWR from "swr";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -24,37 +23,19 @@ const fetcher = async (url: string) => {
 export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState<'workspace' | 'clients' | 'team' | 'billing' | 'api'>('workspace');
     const { activeWorkspaceId } = useWorkspaceStore();
-    const { mutate: globalMutate } = useSWRConfig();
-    const { data: session } = useSession();
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const activeWorkspace = Array.isArray(workspaces) ? workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0] : null;
-    const userPlan = (session?.user as any)?.plan || 'free';
+    const workspacePlan = activeWorkspace?.plan || 'pilot';
+    const canManage = activeWorkspace?.role === 'owner' || activeWorkspace?.role === 'admin';
 
     // Shared UI State
-    const [telegramChatDraft, setTelegramChatDraft] = useState("");
-    const [telegramSaving, setTelegramSaving] = useState(false);
-    const [telegramTesting, setTelegramTesting] = useState(false);
     const [unassignedSearch, setUnassignedSearch] = useState("");
     const [editingClientId, setEditingClientId] = useState<string | null>(null);
     const [editClientNameValue, setEditClientNameValue] = useState("");
 
-    const [demoMaster, setDemoMaster] = useState(false);
-    const [demoMeta, setDemoMeta] = useState(false);
-    const [demoShopee, setDemoShopee] = useState(false);
-    const [demoGoogleAds, setDemoGoogleAds] = useState(false);
-    const [demoSaving, setDemoSaving] = useState(false);
-
     const [apiKeys, setApiKeys] = useState<any[]>([]);
     const [newlyGeneratedKey, setNewlyGeneratedKey] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [revealKeyId, setRevealKeyId] = useState<string | null>(null);
-    const [revealPassword, setRevealPassword] = useState("");
-    const [revealBusy, setRevealBusy] = useState(false);
-    const [revealError, setRevealError] = useState<string | null>(null);
-    const [revealedKey, setRevealedKey] = useState<string | null>(null);
-
-    const hasPassword = Boolean((session?.user as any)?.hasPassword);
-
     // Client Management State
     const [clients, setClients] = useState<any[]>([]);
     const [unassignedConns, setUnassignedConns] = useState<any[]>([]);
@@ -71,63 +52,50 @@ export default function SettingsPage() {
         }
     }, []);
 
-    // Sync state with active workspace
-    useEffect(() => {
-        if (!activeWorkspace) return;
-        setTelegramChatDraft(activeWorkspace.telegramChatId ?? "");
-        setDemoMaster(!!activeWorkspace.demoMockMode);
-        setDemoMeta(!!activeWorkspace.demoMockMeta);
-        setDemoShopee(!!activeWorkspace.demoMockShopee);
-        setDemoGoogleAds(!!activeWorkspace.demoMockGoogleAds);
-    }, [activeWorkspace]);
-
-    // Fetch data for active tab
-    useEffect(() => {
-        if (activeTab === 'api' && activeWorkspaceId) {
-            fetchApiKeys();
-        }
-        if (activeTab === 'clients' && activeWorkspaceId) {
-            fetchClients();
-            fetchUnassigned();
-        }
-    }, [activeTab, activeWorkspaceId]);
-
     // --- API Handlers ---
 
-    const fetchApiKeys = async () => {
+    const fetchApiKeys = useCallback(async () => {
         try {
-            const res = await fetch("/api/settings/api-keys");
+            const res = await fetch(`/api/settings/api-keys?workspaceId=${encodeURIComponent(activeWorkspaceId!)}`);
             if (res.ok) setApiKeys(await res.json());
-        } catch (e) {
+        } catch {
             toast.error("Failed to fetch API keys");
         }
-    };
+    }, [activeWorkspaceId]);
 
-    const fetchClients = async () => {
+    const fetchClients = useCallback(async () => {
         try {
-            const res = await fetch(`/api/workspaces/${activeWorkspaceId}/clients`);
+            const res = await fetch(`/api/clients?workspaceId=${encodeURIComponent(activeWorkspaceId!)}`);
             if (res.ok) setClients(await res.json());
-        } catch (e) {
+        } catch {
             toast.error("Failed to fetch clients");
         }
-    };
+    }, [activeWorkspaceId]);
 
-    const fetchUnassigned = async () => {
+    const fetchUnassigned = useCallback(async () => {
         try {
             const res = await fetch(`/api/workspaces/${activeWorkspaceId}/connections?unassigned=true`);
             if (res.ok) setUnassignedConns(await res.json());
-        } catch (e) {
+        } catch {
             console.error("Failed to fetch unassigned connections");
         }
-    };
+    }, [activeWorkspaceId]);
+
+    useEffect(() => {
+        if (activeTab === 'api' && activeWorkspaceId) void fetchApiKeys();
+        if (activeTab === 'clients' && activeWorkspaceId) {
+            void fetchClients();
+            void fetchUnassigned();
+        }
+    }, [activeTab, activeWorkspaceId, fetchApiKeys, fetchClients, fetchUnassigned]);
 
     const handleAddClient = async () => {
         if (!newClientName.trim()) return;
         try {
-            const res = await fetch(`/api/workspaces/${activeWorkspaceId}/clients`, {
+            const res = await fetch(`/api/clients`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: newClientName }),
+                body: JSON.stringify({ workspaceId: activeWorkspaceId, name: newClientName }),
             });
             if (res.ok) {
                 setNewClientName('');
@@ -135,58 +103,58 @@ export default function SettingsPage() {
                 fetchClients();
                 toast.success("Client added");
             }
-        } catch (e) { toast.error("Failed to add client"); }
+        } catch { toast.error("Failed to add client"); }
     };
 
     const handleUpdateClient = async (id: string) => {
         try {
-            const res = await fetch(`/api/workspaces/${activeWorkspaceId}/clients/${id}`, {
+            const res = await fetch(`/api/clients`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: editClientNameValue }),
+                body: JSON.stringify({ id, workspaceId: activeWorkspaceId, name: editClientNameValue }),
             });
             if (res.ok) {
                 setEditingClientId(null);
                 fetchClients();
                 toast.success("Client updated");
             }
-        } catch (e) { toast.error("Failed to update client"); }
+        } catch { toast.error("Failed to update client"); }
     };
 
     const handleDeleteClient = async (id: string) => {
         if (!confirm("Are you sure? This will unassign all connections.")) return;
         try {
-            const res = await fetch(`/api/workspaces/${activeWorkspaceId}/clients/${id}`, { method: "DELETE" });
+            const res = await fetch(`/api/clients?id=${encodeURIComponent(id)}&workspaceId=${encodeURIComponent(activeWorkspaceId!)}`, { method: "DELETE" });
             if (res.ok) { fetchClients(); fetchUnassigned(); toast.success("Client deleted"); }
-        } catch (e) { toast.error("Failed to delete client"); }
+        } catch { toast.error("Failed to delete client"); }
     };
 
     const handleAssignClient = async (connId: string, clientId: string) => {
         try {
-            const res = await fetch(`/api/workspaces/${activeWorkspaceId}/connections/${connId}`, {
+            const res = await fetch(`/api/connections/${connId}/assign-client`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ clientId }),
+                body: JSON.stringify({ clientId, workspaceId: activeWorkspaceId }),
             });
             if (res.ok) { fetchClients(); fetchUnassigned(); toast.success("Assigned successfully"); }
-        } catch (e) { toast.error("Assignment failed"); }
+        } catch { toast.error("Assignment failed"); }
     };
 
     const handleUnassignClient = async (connId: string) => {
         try {
-            const res = await fetch(`/api/workspaces/${activeWorkspaceId}/connections/${connId}`, {
+            const res = await fetch(`/api/connections/${connId}/assign-client`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ clientId: null }),
+                body: JSON.stringify({ clientId: null, workspaceId: activeWorkspaceId }),
             });
             if (res.ok) { fetchClients(); fetchUnassigned(); toast.success("Unassigned"); }
-        } catch (e) { toast.error("Failed to unassign"); }
+        } catch { toast.error("Failed to unassign"); }
     };
 
     const handleGenerateKey = async () => {
         setIsGenerating(true);
         try {
-            const res = await fetch("/api/settings/api-keys", { method: "POST" });
+            const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Pilot API key" }) });
             if (res.ok) {
                 const data = await res.json();
                 setNewlyGeneratedKey(data.key);
@@ -199,24 +167,9 @@ export default function SettingsPage() {
     const handleDeleteKey = async (id: string) => {
         if (!confirm("Delete this API key? Apps using it will fail.")) return;
         try {
-            const res = await fetch(`/api/settings/api-keys/${id}`, { method: "DELETE" });
+            const res = await fetch(`/api/settings/api-keys?id=${encodeURIComponent(id)}&workspaceId=${encodeURIComponent(activeWorkspaceId!)}`, { method: "DELETE" });
             if (res.ok) { fetchApiKeys(); toast.success("API Key deleted"); }
-        } catch (e) { toast.error("Failed to delete key"); }
-    };
-
-    const handleRevealKey = async (id: string) => {
-        setRevealBusy(true);
-        setRevealError(null);
-        try {
-            const res = await fetch(`/api/settings/api-keys/${id}/reveal`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ password: revealPassword }),
-            });
-            const data = await res.json();
-            if (res.ok) setRevealedKey(data.key);
-            else setRevealError(data.error || "Failed to reveal");
-        } finally { setRevealBusy(false); }
+        } catch { toast.error("Failed to delete key"); }
     };
 
     return (
@@ -267,26 +220,7 @@ export default function SettingsPage() {
                     {/* Content panel */}
                     <div className="min-w-0 px-6 py-5">
                     {activeTab === 'workspace' && (
-                        <WorkspaceTab
-                            activeWorkspace={activeWorkspace}
-                            activeWorkspaceId={activeWorkspaceId}
-                            telegramChatDraft={telegramChatDraft}
-                            setTelegramChatDraft={setTelegramChatDraft}
-                            telegramSaving={telegramSaving}
-                            setTelegramSaving={setTelegramSaving}
-                            telegramTesting={telegramTesting}
-                            setTelegramTesting={setTelegramTesting}
-                            demoMaster={demoMaster}
-                            setDemoMaster={setDemoMaster}
-                            demoMeta={demoMeta}
-                            setDemoMeta={setDemoMeta}
-                            demoShopee={demoShopee}
-                            setDemoShopee={setDemoShopee}
-                            demoGoogleAds={demoGoogleAds}
-                            setDemoGoogleAds={setDemoGoogleAds}
-                            demoSaving={demoSaving}
-                            setDemoSaving={setDemoSaving}
-                        />
+                        <WorkspaceTab activeWorkspace={activeWorkspace} />
                     )}
                     {activeTab === 'clients' && (
                         <ClientsTab
@@ -309,24 +243,16 @@ export default function SettingsPage() {
                             handleUnassignClient={handleUnassignClient}
                         />
                     )}
-                    {activeTab === 'team' && <TeamTab />}
-                    {activeTab === 'billing' && <BillingTab userPlan={userPlan} />}
+                    {activeTab === 'team' && <TeamTab workspaceId={activeWorkspaceId} currentRole={activeWorkspace?.role} />}
+                    {activeTab === 'billing' && <BillingTab workspacePlan={workspacePlan} />}
                     {activeTab === 'api' && (
                         <ApiKeysTab
                             apiKeys={apiKeys}
                             newlyGeneratedKey={newlyGeneratedKey}
                             isGenerating={isGenerating}
-                            revealKeyId={revealKeyId}
-                            setRevealKeyId={setRevealKeyId}
-                            revealPassword={revealPassword}
-                            setRevealPassword={setRevealPassword}
-                            revealBusy={revealBusy}
-                            revealError={revealError}
-                            revealedKey={revealedKey}
-                            hasPassword={hasPassword}
+                            canManage={canManage}
                             handleGenerateKey={handleGenerateKey}
                             handleDeleteKey={handleDeleteKey}
-                            handleRevealKey={handleRevealKey}
                         />
                     )}
                     </div>{/* end content panel */}

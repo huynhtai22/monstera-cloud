@@ -7,7 +7,6 @@ import { useState, useRef, useEffect } from "react";
 import {
     LayoutGrid,
     DatabaseZap,
-    Send,
     LineChart,
     Settings,
     HelpCircle,
@@ -21,7 +20,6 @@ import {
     Moon,
     Globe,
     Users,
-    Database,
     Download,
     Compass,
 } from "lucide-react";
@@ -125,7 +123,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
             label: "Analytics",
             items: [
                 { name: "Data explorer", href: "/explorer", icon: Compass },
-                { name: "Reports", href: "/reports", icon: LineChart },
+                { name: "Sync activity", href: "/reports", icon: LineChart },
             ],
         },
         {
@@ -216,15 +214,7 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                         ))}
 
                         <div className="my-1 h-px bg-gray-100 dark:bg-[#1d1f23]" />
-                        <button
-                            type="button"
-                            className="flex w-full items-center rounded-lg px-2 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-[#1d1f23]"
-                        >
-                            <div className="mr-2 flex h-6 w-6 items-center justify-center rounded border border-dashed border-gray-300 dark:border-gray-500">
-                                <span className="text-lg leading-none text-gray-400">+</span>
-                            </div>
-                            Create New Workspace
-                        </button>
+                        <p className="px-2 py-2 text-xs text-gray-500 dark:text-gray-400">Pilot workspaces are created by a Monstera operator.</p>
                     </div>
                 )}
             </div>
@@ -323,16 +313,16 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                             id="profile-menu"
                             className="absolute bottom-[calc(100%+8px)] left-0 w-full bg-white dark:bg-[#16181c] border border-gray-200 dark:border-[#2f3336] rounded-xl shadow-lg p-2 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50"
                         >
-                            <Link href="/settings" onClick={() => { setIsOpen && setIsOpen(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1d1f23] rounded-lg transition-colors">
+                            <Link href="/settings" onClick={() => { setIsOpen?.(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1d1f23] rounded-lg transition-colors">
                                 <Settings className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" /> Settings
                             </Link>
-                            <Link href="/settings" onClick={() => { setIsOpen && setIsOpen(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1d1f23] rounded-lg transition-colors">
+                            <Link href="/settings" onClick={() => { setIsOpen?.(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1d1f23] rounded-lg transition-colors">
                                 <KeyRound className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" /> API Keys
                             </Link>
 
                             <div className="lg:hidden">
                                 <div className="h-px bg-gray-100 dark:bg-[#1d1f23] my-1"></div>
-                                <button onClick={() => { toggleDarkMode && toggleDarkMode(); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1d1f23] rounded-lg transition-colors">
+                                <button onClick={() => { toggleDarkMode?.(); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1d1f23] rounded-lg transition-colors">
                                     {isDarkMode ? <Sun className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" /> : <Moon className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" />}
                                     {isDarkMode ? 'Light Mode' : 'Dark Mode'}
                                 </button>

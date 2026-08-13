@@ -6,7 +6,6 @@ import { CheckoutButton } from "@/components/CheckoutButton";
 import { MarketingTrustSecuritySection } from "@/components/marketing/MarketingTrustSecuritySection";
 import { useState, useEffect } from "react";
 import { metaPixelCustom } from "@/lib/meta-pixel";
-import { getCheckoutApiPath } from "@/lib/checkout-api-path";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 
 const PLAN_SOURCES = {
@@ -25,7 +24,6 @@ const PLAN_SOURCES = {
         { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
         { src: INTEGRATION_LOGOS.meta, alt: "Meta Ads" },
         { src: INTEGRATION_LOGOS.googleAds, alt: "Google Ads" },
-        { src: INTEGRATION_LOGOS.lazada, alt: "Lazada" },
     ],
 };
 
@@ -57,9 +55,6 @@ function PlatformBadges({ sources, showDestinations = true }: { sources: { src: 
         </div>
     );
 }
-
-const checkoutBrand =
-    getCheckoutApiPath() === "/api/checkout/paddle" ? "Paddle" : "Lemon Squeezy";
 
 export default function PricingPage() {
     const [isAnnual, setIsAnnual] = useState(true);
@@ -241,14 +236,14 @@ export default function PricingPage() {
                             Get Starter
                         </CheckoutButton>
                         <p className="text-slate-400 text-[10px] text-center mb-6">
-                            Opens {checkoutBrand} secure checkout (sign in required)
+                            Invitation-only pilot · plan assigned by an operator
                         </p>
                         <PlatformBadges sources={PLAN_SOURCES.starter} />
                         <div className="border-t border-gray-100 pt-4 flex-1">
                             <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Free, plus</p>
                             <ul className="space-y-2">
-                                <FeatureItem>5 active pipelines</FeatureItem>
-                                <FeatureItem>Daily sync</FeatureItem>
+                                <FeatureItem>Workspace-scoped exports</FeatureItem>
+                                <FeatureItem>Manual + nightly refresh</FeatureItem>
                                 <FeatureItem>CSV + Excel export</FeatureItem>
                                 <FeatureItem>Email support</FeatureItem>
                             </ul>
@@ -289,16 +284,16 @@ export default function PricingPage() {
                             Continue to secure checkout
                         </CheckoutButton>
                         <p className="text-slate-400 text-[10px] text-center mb-6">
-                            Secure payment via {checkoutBrand} · No contract · cancel anytime
+                            Public checkout is not available during the pilot
                         </p>
                         <PlatformBadges sources={PLAN_SOURCES.pro} />
                         <div className="border-t border-cyan-200 pt-4 flex-1">
                             <p className="text-cyan-600/70 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Starter, plus</p>
                             <ul className="space-y-2">
-                                <FeatureItem accent>15 active pipelines</FeatureItem>
-                                <FeatureItem accent>Hourly sync</FeatureItem>
-                                <FeatureItem accent>Report every 10 min (3x faster)</FeatureItem>
-                                <FeatureItem accent>Priority job queue</FeatureItem>
+                                <FeatureItem accent>Multi-staff agency workspace</FeatureItem>
+                                <FeatureItem accent>Manual + nightly refresh</FeatureItem>
+                                <FeatureItem accent>Workspace API keys</FeatureItem>
+                                <FeatureItem accent>Freshness and sync activity</FeatureItem>
                                 <FeatureItem accent>Higher API rate limits &amp; priority exports</FeatureItem>
                                 <FeatureItem accent>Priority email support</FeatureItem>
                             </ul>
@@ -327,7 +322,7 @@ export default function PricingPage() {
                 <div className="mt-14 text-center">
                     <p className="text-slate-400 text-xs uppercase tracking-widest font-semibold mb-5">All plans include</p>
                     <div className="flex flex-wrap justify-center gap-x-8 gap-y-3 text-slate-500 text-sm">
-                        {["256-bit encryption", "OAuth 2.0 auth", "VND + USD billing", "Uptime SLA", "GDPR-ready data handling"].map((item) => (
+                        {["AES-256-GCM credential encryption", "OAuth 2.0 authentication", "Invitation-only access", "Workspace-scoped roles", "Manual + nightly refresh"].map((item) => (
                             <span key={item} className="flex items-center gap-2">
                                 <Check className="w-3.5 h-3.5 text-cyan-500" />
                                 {item}
@@ -352,10 +347,10 @@ export default function PricingPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                <CompareRow label="Active Pipelines" values={["2", "5", "15"]} />
-                                <CompareRow label="Sync Frequency" values={["Daily", "Daily", "Hourly"]} />
-                                <CompareRow label="TikTok Report Cooldown" values={["60 min", "30 min", "10 min"]} />
-                                <CompareRow label="Job Queue Priority" values={["Low", "Normal", "High"]} />
+                                <CompareRow label="Workspace access" values={["Invite", "Invite", "Invite"]} />
+                                <CompareRow label="Refresh" values={["Manual + nightly", "Manual + nightly", "Manual + nightly"]} />
+                                <CompareRow label="Data Explorer" values={[true, true, true]} />
+                                <CompareRow label="Sync activity" values={[true, true, true]} />
                                 <CompareRow label="CSV / Excel Export" values={[false, true, true]} />
                                 <CompareRow label="Google Sheets™ Add-on" values={[true, true, true]} />
                                 <CompareRow label="API requests (per min)" values={["60", "300", "1000+"]} />

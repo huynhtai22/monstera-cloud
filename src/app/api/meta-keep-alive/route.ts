@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireCronSecret } from "@/lib/request-auth";
 
 /**
  * META KEEP-ALIVE CRON
@@ -9,10 +10,8 @@ import { NextResponse } from "next/server";
  * Schedule: every day at 10:00 UTC (configured in vercel.json)
  */
 export async function GET(req: Request) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const denied = requireCronSecret(req);
+    if (denied) return denied;
 
     const accessToken = process.env.META_ACCESS_TOKEN;
     if (!accessToken) {

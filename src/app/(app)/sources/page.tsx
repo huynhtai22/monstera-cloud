@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Link from "next/link";
 import { toast } from "sonner";
-import { Database, Search, Plus, RefreshCw, AlertCircle, CheckCircle2, Loader2, ChevronRight, ChevronDown, X } from "lucide-react";
+import { Database, Search, Plus, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, X } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
 import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -59,10 +59,6 @@ const SOURCE_BLURB_BY_PROVIDER: Record<string, string> = {
     shopify: "Shopify — store orders for this workspace.",
     amazon: "Amazon Selling Partner — SP-API OAuth for this workspace.",
 };
-
-function catalogIntegrationFromId(catalogId: string) {
-    return SOURCES_CATALOG.find((a) => a.id === catalogId) ?? null;
-}
 
 // See src/components/sources/ for extracted sub-components.
 
@@ -135,7 +131,10 @@ export default function SourcesPage() {
             if (!res.ok) {
                 throw new Error(typeof data.error === "string" ? data.error : "Disconnect failed");
             }
-            await mutate("/api/workspaces");
+            await Promise.all([
+                mutate("/api/workspaces"),
+                activeWorkspaceId ? mutate(`/api/workspaces/${activeWorkspaceId}/connections?type=source`) : Promise.resolve(),
+            ]);
             trackEvent("source_disconnected", { sourceName: displayName });
             if (data.message) {
                 toast.success(data.message);
@@ -151,7 +150,7 @@ export default function SourcesPage() {
     }
 
     /* #1 continued — Sync handler extracted for IntegrationCard callback */
-    const handleSync = useCallback(async (pipelineId: string, _integrationId: string) => {
+    const handleSync = useCallback(async (pipelineId: string) => {
         const key = `sync:${pipelineId}`;
         addBusy(key);
         try {
@@ -281,29 +280,34 @@ export default function SourcesPage() {
     }, []);
 
     // Fetch Data
-    const { data: workspaces, error, isLoading } = useSWR("/api/workspaces", fetcher, {
+    const { data: workspaces, error, isLoading: workspacesLoading } = useSWR("/api/workspaces", fetcher, {
         shouldRetryOnError: (err) => !String(err?.message).includes("Unauthorized"),
     });
+    const { data: sourceConnections = [], error: connectionsError, isLoading: connectionsLoading } = useSWR(
+        activeWorkspaceId ? `/api/workspaces/${activeWorkspaceId}/connections?type=source` : null,
+        fetcher,
+    );
+    const { data: pipelines = [] } = useSWR(
+        activeWorkspaceId ? `/api/pipelines?workspaceId=${activeWorkspaceId}` : null,
+        fetcher,
+    );
+    const isLoading = workspacesLoading || connectionsLoading;
     const { data: intConfig } = useSWR("/api/integrations/config", fetcher);
 
     const connectedSourceCount = useMemo(() => {
-        if (!Array.isArray(workspaces) || !activeWorkspaceId) return 0;
-        const ws = workspaces.find((w: { id: string }) => w.id === activeWorkspaceId);
-        return (ws?.connections ?? []).filter((c: { type: string }) => c.type === 'source').length;
-    }, [workspaces, activeWorkspaceId]);
+        return Array.isArray(sourceConnections) ? sourceConnections.length : 0;
+    }, [sourceConnections]);
 
     const lastSyncSummary = useMemo(() => {
-        if (!Array.isArray(workspaces) || !activeWorkspaceId) return null;
-        const ws = workspaces.find((w: { id: string }) => w.id === activeWorkspaceId);
-        const sources = (ws?.connections ?? []).filter((c: { type: string }) => c.type === "source");
+        if (!Array.isArray(sourceConnections)) return null;
         let latest: Date | null = null;
-        for (const c of sources) {
+        for (const c of sourceConnections) {
             const raw = (c as { lastSyncAt?: string | null }).lastSyncAt;
             const t = raw ? new Date(raw) : null;
             if (t && !Number.isNaN(t.getTime()) && (!latest || t > latest)) latest = t;
         }
         return latest ? latest.toLocaleString() : null;
-    }, [workspaces, activeWorkspaceId]);
+    }, [sourceConnections]);
 
     useEffect(() => {
         trackOnce("mc_sources_session", "sources_visit", { path: "/sources" });
@@ -369,7 +373,7 @@ export default function SourcesPage() {
             trackEvent("pipeline_created", { provider, auto_linked: true });
         }
         window.history.replaceState({}, "", "/sources");
-    }, []);
+    }, [mutate]);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -420,19 +424,21 @@ export default function SourcesPage() {
 
     /** Full catalog always listed so App Review sees real connectors; `envConnectReady` gates the Connect action. */
     const catalogIntegrations = useMemo(() => {
-        return SOURCES_CATALOG.map((item) => ({
+        const active = Array.isArray(workspaces)
+            ? workspaces.find((workspace: { id: string }) => workspace.id === activeWorkspaceId)
+            : null;
+        const enabled = new Set<string>(active?.enabledProviders ?? []);
+        return SOURCES_CATALOG.filter((item) => enabled.has(item.id)).map((item) => ({
             ...item,
             status: "available" as const,
             envConnectReady: isSourceEnvReady(item.id, intConfig),
         }));
-    }, [intConfig]);
+    }, [intConfig, workspaces, activeWorkspaceId]);
 
     const connectedCatalogIdList = useMemo(() => {
-        if (!Array.isArray(workspaces) || !activeWorkspaceId) return [] as string[];
-        const workspace = workspaces.find((w: { id: string }) => w.id === activeWorkspaceId);
-        const sourceConnections = (workspace?.connections ?? []).filter((c: { type: string }) => c.type === "source");
+        if (!Array.isArray(sourceConnections)) return [] as string[];
         return sourceConnections.map((c: { provider: string }) => integrationCatalogId(c.provider));
-    }, [workspaces, activeWorkspaceId]);
+    }, [sourceConnections]);
 
     const headerAddOptions = useMemo(() => {
         return catalogIntegrations;
@@ -440,13 +446,11 @@ export default function SourcesPage() {
 
     // Filter logic
     const filteredIntegrations = useMemo(() => {
-        if (!Array.isArray(workspaces) || !activeWorkspaceId) return catalogIntegrations;
-
-        const workspace = workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0];
-        const rawSourceConnections = (workspace?.connections || []).filter((c: any) => c.type === 'source');
+        if (!activeWorkspaceId) return catalogIntegrations;
+        const rawSourceConnections = Array.isArray(sourceConnections) ? sourceConnections : [];
 
         // Identity Deduplication: keep only the most recent connection per provider
-        const sourceConnections = Object.values(
+        const dedupedSourceConnections = Object.values(
             rawSourceConnections.reduce((acc: Record<string, any>, conn: any) => {
                 const existing = acc[conn.provider];
                 if (!existing || new Date(conn.updatedAt) > new Date(existing.updatedAt)) {
@@ -456,11 +460,7 @@ export default function SourcesPage() {
             }, {})
         );
 
-        const connectedCatalogIds = new Set(
-            sourceConnections.map((c: any) => integrationCatalogId(c.provider))
-        );
-
-        const connectedSources = sourceConnections
+        const connectedSources = dedupedSourceConnections
             .map((conn: any) => {
                 const logo = logoPathForConnectionProvider(conn.provider);
                 const catalogId = integrationCatalogId(conn.provider);
@@ -468,7 +468,9 @@ export default function SourcesPage() {
                 const accountLabel = accountMatch?.[1] ?? null;
                 const baseBlurb = SOURCE_BLURB_BY_PROVIDER[conn.provider] ?? `${conn.provider} — data for this workspace.`;
                 const desc = accountLabel ? `${accountLabel} · ${baseBlurb}` : baseBlurb;
-                const relatedPipeline = workspace?.pipelines?.find((p: any) => p.sourceConnectionId === conn.id);
+                const relatedPipeline = Array.isArray(pipelines)
+                    ? pipelines.find((p: any) => p.sourceConnectionId === conn.id)
+                    : null;
 
                 // Extract ad account tags from sanitized credentials for display
                 let accountTags: string[] = [];
@@ -525,7 +527,7 @@ export default function SourcesPage() {
             if (activeFilter === 'available') return integration.status === 'available';
             return true;
         });
-    }, [searchQuery, activeFilter, workspaces, activeWorkspaceId, catalogIntegrations]);
+    }, [searchQuery, activeFilter, sourceConnections, pipelines, activeWorkspaceId, catalogIntegrations]);
 
     const { connectedRows, availableCards } = useMemo(() => {
         // Keep typing wide enough for both card and list render paths.
@@ -552,8 +554,9 @@ export default function SourcesPage() {
     }, [filteredIntegrations]);
 
     // Error State (e.g. 500, expired session edge case, rate limit)
-    if (error) {
-        const detail = error instanceof Error ? error.message : "Failed to fetch data";
+    if (error || connectionsError) {
+        const failure = error || connectionsError;
+        const detail = failure instanceof Error ? failure.message : "Failed to fetch data";
         const isAuth =
             detail === "Unauthorized" || detail.toLowerCase().includes("unauthorized");
         return (
@@ -718,6 +721,7 @@ export default function SourcesPage() {
                                                             <button
                                                                 type="button"
                                                                 role="option"
+                                                                aria-selected="false"
                                                                 disabled={disabled}
                                                                 onClick={() => {
                                                                     if (disabled) {

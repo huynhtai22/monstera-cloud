@@ -3,8 +3,12 @@ import { NextResponse } from 'next/server';
 import { XenditClient } from '@/lib/xendit';
 import prisma from '@/lib/prisma';
 import { logger } from "@/lib/logger";
+import { productionRouteDisabled } from "@/lib/request-auth";
 
 export async function POST(req: Request) {
+  if (productionRouteDisabled("ENABLE_XENDIT")) {
+    return NextResponse.json({ error: "Not available" }, { status: 404 });
+  }
   try {
     const headersList = await headers();
     const callbackToken = headersList.get('x-callback-token');

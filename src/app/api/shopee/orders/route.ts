@@ -6,7 +6,7 @@ import prisma from "@/lib/prisma";
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -17,8 +17,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "connectionId is required" }, { status: 400 });
   }
 
-  const connection = await (prisma.connection as any).findUnique({
-    where: { id: connectionId },
+  const connection = await prisma.connection.findFirst({
+    where: {
+      id: connectionId,
+      provider: "shopee",
+      workspace: { members: { some: { userId: session.user.id } } },
+    },
+    select: { id: true },
   });
   if (!connection) {
     return NextResponse.json({ error: "Connection not found" }, { status: 404 });
@@ -27,7 +32,7 @@ export async function POST(request: Request) {
   try {
     // getValidShopeeCreds refreshes the token inline if it's within 30 min of
     // expiry — so we never hit a 4h-TTL wall mid-session.
-    const creds = await getValidShopeeCreds(connectionId);
+    const creds = await getValidShopeeCreds(connection.id);
     const opts = {
       accessToken: creds.access_token,
       shopId:      creds.shop_id,

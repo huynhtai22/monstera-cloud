@@ -12,6 +12,7 @@ type Props = {
  * tenant-scoped app routes under `/agencies/[agencySlug]/…`.
  */
 export default async function AgencySlugLayout({ children, params }: Props) {
+  if (process.env.AGENCY_HOST_ROUTING_ENABLED !== "1") notFound();
   const { agencySlug } = await params;
   const workspace = await prisma.workspace.findFirst({
     where: { slug: agencySlug },

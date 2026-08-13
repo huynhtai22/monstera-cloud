@@ -1,21 +1,25 @@
 name: Deploy to Vercel
 
 on:
-  push:
-    branches:
-      - main                  # production deploy
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   # Preview deploys are handled by Vercel's GitHub Integration.
   # This workflow intentionally only runs the Vercel CLI deploy on `main` to avoid
   # free-tier upload rate limits (`api-upload-free`) when many PR updates happen.
 
 jobs:
   deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
@@ -23,6 +27,13 @@ jobs:
       - name: Pull Vercel environment
         run: |
           vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Apply database migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          npm ci
+          npx prisma migrate deploy
 
       - name: Build project
         run: |
@@ -33,3 +44,10 @@ jobs:
         run: |
           URL=$(vercel deploy --prebuilt --prod --archive=tgz --token=${{ secrets.VERCEL_TOKEN }})
           echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Verify deployed version
+        env:
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          VERSION_JSON=$(curl --fail --silent --show-error "${{ steps.deploy.outputs.url }}/api/version")
+          node -e 'const v=JSON.parse(process.argv[1]); if (v.commitSha !== process.env.EXPECTED_SHA) { console.error(`Expected ${process.env.EXPECTED_SHA}, got ${v.commitSha}`); process.exit(1) } if (!v.buildTime) { console.error("Missing build time"); process.exit(1) } if (v.schemaVersion !== "20260813090000_agency_pilot_tenancy") process.exit(1)' "$VERSION_JSON"

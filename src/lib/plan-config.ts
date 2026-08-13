@@ -4,7 +4,7 @@
  * Import this file from any API route that needs plan-aware enforcement.
  */
 
-export type PlanName = 'free' | 'starter' | 'professional' | 'enterprise';
+export type PlanName = 'free' | 'pilot' | 'starter' | 'professional' | 'enterprise';
 
 /**
  * True when the user has an active paid tier (anything other than free).
@@ -15,6 +15,7 @@ export function isPaidSubscriptionPlan(plan: string | undefined | null): boolean
   const p = plan.toLowerCase().trim();
   if (p === "free") return false;
   return (
+    p === "pilot" ||
     p === "starter" ||
     p === "professional" ||
     p === "enterprise" ||
@@ -59,6 +60,17 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     explorerMaxDateRangeDays: 30,                 // 30 days max per query
     explorerMaxRowsPerQuery: 500,                 // 500 rows per query
   },
+  pilot: {
+    maxPipelines: 25,
+    syncIntervalMs: 24 * 60 * 60 * 1000,
+    tiktokReportCooldownMs: 30 * 60 * 1000,
+    metaReportCooldownMs: 30 * 60 * 1000,
+    googleReportCooldownMs: 30 * 60 * 1000,
+    priority: 3,
+    syncLabel: 'Nightly + manual',
+    explorerMaxDateRangeDays: 730,
+    explorerMaxRowsPerQuery: 10_000,
+  },
   starter: {
     maxPipelines: 5,
     syncIntervalMs: 24 * 60 * 60 * 1000,         // 1 day
@@ -77,7 +89,7 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     metaReportCooldownMs: 10 * 60 * 1000,        // 10 min cooldown
     googleReportCooldownMs: 10 * 60 * 1000,      // 10 min cooldown
     priority: 3,
-    syncLabel: 'Hourly',
+    syncLabel: 'Nightly + manual',
     explorerMaxDateRangeDays: 365,                // 1 year max per query
     explorerMaxRowsPerQuery: 5000,               // 5000 rows per query
   },
@@ -88,7 +100,7 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     metaReportCooldownMs: 5 * 60 * 1000,         // 5 min cooldown
     googleReportCooldownMs: 5 * 60 * 1000,       // 5 min cooldown
     priority: 4,
-    syncLabel: 'Real-time',
+    syncLabel: 'Nightly + manual',
     explorerMaxDateRangeDays: 730,                // 2 years max per query
     explorerMaxRowsPerQuery: 10000,              // 10000 rows per query
   },

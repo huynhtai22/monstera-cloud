@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -16,6 +16,13 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [inviteToken, setInviteToken] = useState("");
+
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("invite")?.trim() || "";
+    setInviteToken(token);
+    if (token) sessionStorage.setItem("monstera_pending_invitation", token);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +33,7 @@ export default function RegisterPage() {
       const registerRes = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ name, email, password, inviteToken }),
       });
 
       const registerData = await registerRes.json();
@@ -70,8 +77,12 @@ export default function RegisterPage() {
           </h2>
         </div>
 
-        {/* Google sign-in (only social provider) */}
-        <div className="mb-6">
+        {inviteToken ? (
+          <p className="mb-6 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900">Create the account matching your agency invitation.</p>
+        ) : null}
+
+        {/* Google account creation is deferred in invite-only pilot onboarding. */}
+        {!inviteToken ? <div className="mb-6">
           <button
             onClick={signInWithGoogle}
             disabled={isLoading || isGoogleLoading}
@@ -91,10 +102,10 @@ export default function RegisterPage() {
               </>
             )}
           </button>
-        </div>
+        </div> : null}
 
         {/* OR Divider */}
-          <div className="relative mb-6">
+          {!inviteToken ? <div className="relative mb-6">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-gray-200 dark:border-slate-800" />
           </div>
@@ -103,7 +114,7 @@ export default function RegisterPage() {
               OR
             </span>
           </div>
-        </div>
+        </div> : null}
 
         <form className="space-y-6" method="post" action="#" onSubmit={handleSubmit}>
           {error && (

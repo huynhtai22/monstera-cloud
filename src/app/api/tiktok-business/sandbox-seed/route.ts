@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
+import { productionRouteDisabled } from '@/lib/request-auth';
 
 const SANDBOX_BASE = 'https://sandbox-ads.tiktok.com/open_api/v1.3';
 
@@ -32,6 +33,9 @@ async function tiktokGet(path: string, token: string, params: Record<string, str
  * Returns: { advertiser, campaign_id, adgroup_id, ad_id }
  */
 export async function POST(req: Request) {
+  if (productionRouteDisabled("ENABLE_PRODUCTION_SANDBOX_ROUTES")) {
+    return NextResponse.json({ error: "Not available" }, { status: 404 });
+  }
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: 'Session expired — please log in again.' }, { status: 401 });

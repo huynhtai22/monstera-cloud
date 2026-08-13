@@ -2,16 +2,12 @@
 
 import React from "react";
 import Link from "next/link";
-import { Database, Plug, Send, GitMerge, ChevronRight, Plus, Loader2, RefreshCw } from "lucide-react";
+import { Database, Loader2, RefreshCw } from "lucide-react";
 import useSWR, { useSWRConfig } from "swr";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
 import { PrimaryButton, primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
-import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
-import { AiPerformanceSummary } from "@/components/AiPerformanceSummary";
 import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { MetricCardGrid } from "@/components/dashboard/MetricCardGrid";
-import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { SetupWizard } from "@/components/dashboard/SetupWizard";
 import { PillarGrid } from "@/components/dashboard/PillarGrid";
 import { HealthSummaryBar } from "@/components/dashboard/HealthSummaryBar";
@@ -37,72 +33,6 @@ function DashboardSectionLabel({ children, className }: { children: React.ReactN
     );
 }
 
-type Snapshot = {
-    date: string;
-    netRoas: number;
-    adSpend: number;
-    attributedRevenue: number;
-};
-
-function RoasSnapshotCard({ snapshots }: { snapshots: Snapshot[] }) {
-    // Aggregate last 7 days
-    const recent = snapshots.slice(0, 7);
-    const totalRevenue = recent.reduce((s, r) => s + (r.attributedRevenue || 0), 0);
-    const totalSpend = recent.reduce((s, r) => s + (r.adSpend || 0), 0);
-    const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-
-    const fmtCurrency = (n: number) =>
-        n >= 1000000
-            ? `$${(n / 1000000).toFixed(1)}M`
-            : n >= 1000
-            ? `$${(n / 1000).toFixed(1)}k`
-            : `$${Math.round(n)}`;
-
-    return (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#2f3336] dark:bg-[#000000]">
-            <div className="mb-3 flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    Performance (last 7 days)
-                </p>
-                <Link
-                    href="/reports"
-                    className="text-xs font-medium text-cyan-600 hover:text-cyan-700 dark:text-cyan-400"
-                >
-                    View details →
-                </Link>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-                <div>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400">Attributed Revenue</p>
-                    <p className="text-lg font-bold text-gray-900 dark:text-white">{fmtCurrency(totalRevenue)}</p>
-                </div>
-                <div>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400">Ad Spend</p>
-                    <p className="text-lg font-bold text-gray-900 dark:text-white">{fmtCurrency(totalSpend)}</p>
-                </div>
-                <div>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400">Blended ROAS</p>
-                    <p
-                        className={cn(
-                            "text-lg font-bold",
-                            roas >= 3
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : roas >= 2
-                                ? "text-amber-600 dark:text-amber-400"
-                                : "text-red-600 dark:text-red-400"
-                        )}
-                    >
-                        {roas.toFixed(2)}×
-                    </p>
-                </div>
-            </div>
-            <p className="mt-2 text-[10px] text-gray-400 dark:text-gray-500">
-                Combines marketplace revenue and ad spend where attribution is configured.
-            </p>
-        </div>
-    );
-}
-
 type Connection = {
     id: string;
     type: string;
@@ -110,36 +40,13 @@ type Connection = {
     status?: string | null;
     name?: string | null;
     updatedAt?: string | null;
+    lastSyncAt?: string | null;
 };
 
 type Workspace = {
     id: string;
     name?: string | null;
     connections?: Connection[];
-};
-
-type Pipeline = {
-    id: string;
-    name: string;
-    status: string;
-    healthStatus?: string;
-    updatedAt: string;
-    logs?: Array<{ rowsSynced?: number }>;
-    sourceConnection?: { name?: string };
-};
-
-type SyncLog = {
-    id: string;
-    status: string;
-    createdAt: string;
-    pipeline?: { id: string; name: string } | null;
-};
-
-type AttributionSnapshot = {
-    date: string;
-    netRoas: number;
-    adSpend: number;
-    attributedRevenue: number;
 };
 
 const fetcher = async (url: string) => {
@@ -154,13 +61,10 @@ const fetcher = async (url: string) => {
 export function DashboardHomePage() {
     const { workspaceId, workspaces, isLoading: workspacesLoading } = useResolvedWorkspaceId();
     const { mutate } = useSWRConfig();
-    const [syncingPipelineId, setSyncingPipelineId] = React.useState<string | null>(null);
     const [syncAllBusy, setSyncAllBusy] = React.useState(false);
     const [syncMsg, setSyncMsg] = React.useState<string>("");
     const [wizardDismissed, setWizardDismissed] = React.useState(false);
     const [isRefreshing, setIsRefreshing] = React.useState(false);
-    const [mockPipelines, setMockPipelines] = React.useState<Pipeline[] | null>(null);
-    const [templateBusy, setTemplateBusy] = React.useState<string | null>(null);
 
     const handleManualRefresh = React.useCallback(async () => {
         setIsRefreshing(true);
@@ -194,25 +98,10 @@ export function DashboardHomePage() {
         trackEvent("dashboard_viewed", { path: "/" });
     }, []);
 
-    const { data: pipelines, error, isLoading } = useSWR<Pipeline[], Error>(
-        workspaceId ? `/api/pipelines?workspaceId=${workspaceId}` : null,
-        fetcher
+    const { data: connectionsData = [] } = useSWR<Connection[]>(
+        workspaceId ? `/api/workspaces/${workspaceId}/connections` : null,
+        fetcher,
     );
-
-    const activePipelinesCount = mockPipelines ? mockPipelines.length : (pipelines?.length ?? 0);
-
-    const { data: syncLogsData } = useSWR<{ logs: SyncLog[] }>(
-        workspaceId ? `/api/sync-logs?workspaceId=${workspaceId}` : null,
-        fetcher
-    );
-    const logs = syncLogsData?.logs ?? [];
-    const hasSuccessfulSync = logs.some((l) => l.status === "success");
-
-    const { data: attributionData } = useSWR<{ snapshots: AttributionSnapshot[] }>(
-        workspaceId ? `/api/attribution/snapshots?workspaceId=${workspaceId}&days=14` : null,
-        fetcher
-    );
-    const snapshots = attributionData?.snapshots ?? [];
 
     const { connections, connectedSourcesCount, workspaceName } = React.useMemo(() => {
         if (!workspaceId || !Array.isArray(workspaces)) {
@@ -220,36 +109,30 @@ export function DashboardHomePage() {
         }
         const list = workspaces as Workspace[];
         const ws = list.find((w) => w.id === workspaceId) || list[0];
-        const conns = ws?.connections ?? [];
+        const conns = Array.isArray(connectionsData) ? connectionsData : [];
         return {
             connections: conns,
             connectedSourcesCount: conns.filter((c) => c.type === "source").length,
             workspaceName: ws?.name ?? "Workspace",
         };
-    }, [workspaces, workspaceId]);
+    }, [workspaces, workspaceId, connectionsData]);
 
     const hasSource = connectedSourcesCount > 0;
-
-    const healthyCount = pipelines
-        ? pipelines.filter((p) => p.healthStatus !== "error").length
-        : 0;
+    const sourceConnections = React.useMemo(() => connections.filter((connection) => connection.type === "source"), [connections]);
+    const hasSuccessfulSync = sourceConnections.some((connection) => Boolean(connection.lastSyncAt));
+    const freshCutoff = Date.now() - 26 * 60 * 60 * 1000;
+    const healthyCount = sourceConnections.filter((connection) =>
+        connection.status === "connected" && connection.lastSyncAt && new Date(connection.lastSyncAt).getTime() >= freshCutoff
+    ).length;
 
     const lastSyncLabel = React.useMemo(() => {
-        if (!logs.length) return null;
-        const latest = logs.reduce((acc, l) =>
-            new Date(l.createdAt).getTime() > new Date(acc.createdAt).getTime() ? l : acc
+        const synced = sourceConnections.filter((connection) => connection.lastSyncAt);
+        if (!synced.length) return null;
+        const latest = synced.reduce((acc, connection) =>
+            new Date(connection.lastSyncAt!).getTime() > new Date(acc.lastSyncAt!).getTime() ? connection : acc
         );
-        if (!latest?.createdAt) return null;
-        return new Date(latest.createdAt).toLocaleString();
-    }, [logs]);
-
-    const lastSyncDate = React.useMemo(() => {
-        if (!logs.length) return null;
-        const latest = logs.reduce((acc, l) =>
-            new Date(l.createdAt).getTime() > new Date(acc.createdAt).getTime() ? l : acc
-        );
-        return latest?.createdAt ? new Date(latest.createdAt) : null;
-    }, [logs]);
+        return latest.lastSyncAt ? new Date(latest.lastSyncAt).toLocaleString() : null;
+    }, [sourceConnections]);
 
     const todayLabel = new Date().toLocaleDateString(undefined, {
         weekday: "long",
@@ -257,39 +140,28 @@ export function DashboardHomePage() {
         day: "numeric",
     });
 
-    const runPipeline = async (pipelineId: string) => {
-        setSyncMsg("");
-        setSyncingPipelineId(pipelineId);
-        try {
-            const res = await fetch(`/api/pipelines/${pipelineId}/run`, { method: "POST" });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                throw new Error(typeof data.error === "string" ? data.error : "Sync failed");
-            }
-            setSyncMsg(typeof data.message === "string" ? data.message : "Sync started.");
-            trackEvent("wizard_step_completed", { step: "sync_manual", pipelineId });
-            trackEvent("pipeline_manual_sync_succeeded", { pipelineId, source: "dashboard" });
-        } catch (e: unknown) {
-            setSyncMsg(e instanceof Error ? e.message : "Sync failed");
-        } finally {
-            setSyncingPipelineId(null);
-        }
-    };
-
     const runAllPipelines = async () => {
-        if (!pipelines || pipelines.length === 0) return;
+        if (!workspaceId || sourceConnections.length === 0) return;
         setSyncAllBusy(true);
         setSyncMsg("");
         try {
-            for (const p of pipelines) {
-                await fetch(`/api/pipelines/${p.id}/run`, { method: "POST" });
-            }
-            setSyncMsg("Sync requested for all pipelines.");
-            trackEvent("wizard_step_completed", { step: "sync_all", count: pipelines.length });
-            trackEvent("pipeline_manual_sync_succeeded", { count: pipelines.length, source: "dashboard_sync_all" });
-        } catch (e) {
-             console.error(e);
-             setSyncMsg("Some syncs may have failed — check Reports.");
+            const response = await fetch("/api/data-explorer/warehouse/import-batch", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    workspaceId,
+                    since: new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10),
+                    until: new Date().toISOString().slice(0, 10),
+                    items: sourceConnections.map((connection) => ({ connectionId: connection.id })),
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || !payload.success) throw new Error(payload.error || payload.message || "Refresh failed");
+            setSyncMsg(`${payload.okCount}/${payload.totalJobs} sources refreshed; ${Number(payload.approximateRows || 0).toLocaleString()} rows processed.`);
+            await handleManualRefresh();
+            trackEvent("warehouse_manual_refresh_completed", { count: sourceConnections.length });
+        } catch (refreshError: unknown) {
+             setSyncMsg(refreshError instanceof Error ? refreshError.message : "Some imports failed — check Sync activity.");
         } finally {
             setSyncAllBusy(false);
         }
@@ -364,104 +236,6 @@ export function DashboardHomePage() {
         );
     }
 
-    if (dashboardStage === 1 && activePipelinesCount === 0) {
-        const stage2Templates = [
-            {
-                id: "paid-media",
-                title: "Paid Media Performance",
-                subtitle: "Compare ad spend and ROI across Meta and Google Ads.",
-                icons: (
-                    <div className="flex items-center gap-1.5">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-600 text-[10px] font-black text-white">f</div>
-                        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-red-500 text-[9px] font-black text-white">G</div>
-                    </div>
-                ),
-                href: "/pipelines/new?template=paid-media",
-            },
-            {
-                id: "facebook-insights",
-                title: "Facebook Insights",
-                subtitle: "Deep dive into campaign and ad-set level metrics.",
-                icons: (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-600 text-[10px] font-black text-white">f</div>
-                ),
-                href: "/pipelines/new?template=facebook-insights",
-            },
-            {
-                id: "custom",
-                title: "Custom Pipeline",
-                subtitle: "Map your own fields and build from scratch.",
-                icons: (
-                    <div className="flex h-6 w-6 items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-400 dark:border-[#2f3336]">
-                        <Plus className="h-3.5 w-3.5" />
-                    </div>
-                ),
-                href: "/pipelines/new",
-            },
-        ];
-
-        return (
-            <PageShell className={consoleShellClass}>
-                <div className="relative mb-10 overflow-hidden rounded-3xl border border-gray-200/85 bg-gradient-to-br from-white via-cyan-50/40 to-white p-6 shadow-sm ring-1 ring-black/[0.03] dark:border-slate-700/70 dark:from-slate-900 dark:via-cyan-950/25 dark:to-slate-950 dark:ring-white/[0.05] sm:p-8">
-                    <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-400/15 blur-3xl dark:bg-cyan-500/10" />
-                    <div className="relative">
-                        <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-slate-500">Workspace</p>
-                        <h1 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">Today, {todayLabel}</h1>
-                        <p className="mt-2 max-w-2xl text-sm text-gray-600 dark:text-slate-400">
-                            {connectedSourcesCount} sources connected — choose a template to create your first pipeline.
-                        </p>
-                    </div>
-                </div>
-
-                <div className="rounded-3xl border border-gray-200/80 bg-gray-50/70 p-6 shadow-sm ring-1 ring-black/[0.02] dark:border-slate-700/60 dark:bg-slate-900/35 dark:ring-white/[0.04] sm:p-8">
-                    <p className="mb-6 text-xs font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-slate-400">
-                        Start with a template
-                    </p>
-                    <div className="stagger-list grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        {stage2Templates.map((tpl) => {
-                            const isBusy = templateBusy === tpl.id;
-                            return (
-                                <button
-                                    key={tpl.id}
-                                    type="button"
-                                    disabled={templateBusy !== null}
-                                    className="stagger-item bento-hover group flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-gray-200/90 bg-white p-5 shadow-sm transition hover:border-cyan-200 hover:shadow-md disabled:opacity-60 dark:border-slate-600/60 dark:bg-slate-900/60 dark:hover:border-cyan-500/25"
-                                    onClick={() => {
-                                        if (templateBusy) return;
-                                        trackEvent("pipeline_template_clicked", { template: tpl.id, from: "stage2" });
-                                        setTemplateBusy(tpl.id);
-                                        setTimeout(() => {
-                                            setMockPipelines([{
-                                                id: `mock-${tpl.id}`,
-                                                name: tpl.title,
-                                                status: "active",
-                                                updatedAt: new Date().toISOString(),
-                                                logs: [],
-                                                sourceConnection: { name: "Source Platform" },
-                                            }]);
-                                            setTemplateBusy(null);
-                                        }, 600);
-                                    }}
-                                >
-                                    <div className="flex min-w-0 items-center gap-3">
-                                        <div className="shrink-0">{tpl.icons}</div>
-                                        <div className="min-w-0">
-                                            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{tpl.title}</p>
-                                            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{tpl.subtitle}</p>
-                                        </div>
-                                    </div>
-                                    {isBusy
-                                        ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-cyan-500" />
-                                        : <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 transition-colors group-hover:text-cyan-500 dark:text-slate-600 dark:group-hover:text-cyan-400" />}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-            </PageShell>
-        );
-    }
-
     return (
         <PageShell className={consoleShellClass}>
             {/* Hero */}
@@ -475,19 +249,19 @@ export function DashboardHomePage() {
                         </h1>
                         <p className="mt-1 text-base font-medium text-gray-600 dark:text-slate-300">{todayLabel}</p>
                         <div className="mt-4 flex flex-wrap items-center gap-2">
-                        {activePipelinesCount === 0 ? (
+                        {connectedSourcesCount === 0 ? (
                             <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-500 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-400">
-                                No pipelines yet
+                                No sources yet
                             </span>
-                        ) : healthyCount === activePipelinesCount ? (
+                        ) : healthyCount === connectedSourcesCount ? (
                             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-300">
                                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                {activePipelinesCount} pipeline{activePipelinesCount > 1 ? "s" : ""} healthy
+                                {connectedSourcesCount} source{connectedSourcesCount > 1 ? "s" : ""} fresh
                             </span>
                         ) : (
                             <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300">
                                 <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                                {activePipelinesCount - healthyCount} of {activePipelinesCount} need attention
+                                {connectedSourcesCount - healthyCount} of {connectedSourcesCount} need refresh
                             </span>
                         )}
                         {lastSyncLabel && (
@@ -502,11 +276,11 @@ export function DashboardHomePage() {
                     <PrimaryButton
                         type="button"
                         onClick={runAllPipelines}
-                        disabled={syncAllBusy || activePipelinesCount === 0}
+                        disabled={syncAllBusy || connectedSourcesCount === 0}
                         className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold shadow-lg shadow-cyan-500/15"
                     >
                         {syncAllBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                        Sync all
+                        Refresh all sources
                     </PrimaryButton>
                     </div>
                 </div>
@@ -540,31 +314,14 @@ export function DashboardHomePage() {
 
                 <div className="flex min-w-0 flex-col gap-8 lg:col-span-7 xl:col-span-8">
                     <div className="rounded-3xl border border-gray-200/75 bg-gradient-to-b from-gray-50/90 to-white p-6 ring-1 ring-black/[0.03] dark:border-slate-700/65 dark:from-slate-900/50 dark:to-slate-950/40 dark:ring-white/[0.04] sm:p-8 lg:p-9">
-                    {snapshots.length > 0 && (
-                        <div className="mb-8 rounded-3xl border border-gray-200/70 bg-white/90 p-5 shadow-sm dark:border-slate-700/60 dark:bg-slate-900/50 sm:p-6">
-                            <DashboardSectionLabel>Performance</DashboardSectionLabel>
-                            <MetricCardGrid snapshots={snapshots} />
-                        </div>
-                    )}
-
                         <DashboardSectionLabel>Activity stream</DashboardSectionLabel>
 
                     <TodaysDataFlow />
 
-                    <div className="mt-8">
-                        <DashboardSectionLabel>Pipeline activity</DashboardSectionLabel>
-                        <RecentActivity
-                            pipelines={pipelines}
-                            isLoading={isLoading}
-                            error={error}
-                            syncingPipelineId={syncingPipelineId}
-                            onSync={runPipeline}
-                        />
-                    </div>
-
-                    <div className="mt-8">
-                        <DashboardSectionLabel>AI insights</DashboardSectionLabel>
-                        <AiPerformanceSummary workspaceId={workspaceId} />
+                    <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900/50">
+                        <h2 className="font-semibold text-gray-900 dark:text-white">Verify the warehouse</h2>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-slate-300">Review rows, account coverage, and the latest warehouse timestamp before using Sheets, Looker Studio, or an API key.</p>
+                        <Link href="/explorer?tab=warehouse" className="mt-4 inline-flex text-sm font-semibold text-cyan-700 hover:text-cyan-800 dark:text-cyan-300">Open Data Explorer →</Link>
                     </div>
                     </div>
                 </div>
@@ -579,9 +336,7 @@ export function DashboardHomePage() {
                     </div>
                     <PillarGrid
                         connections={connections}
-                        syncLogs={logs}
                         healthyCount={healthyCount}
-                        totalPipelines={activePipelinesCount}
                     />
                     </div>
                 </aside>

@@ -23,15 +23,15 @@ export default function ChangelogPage() {
                     <div className="relative pl-8 border-l border-white/10">
                         <div className="absolute top-0 left-[-5px] w-2.5 h-2.5 rounded-full bg-cyan-500 ring-4 ring-[#09090b]"></div>
                         <p className="text-cyan-400 text-xs font-mono tracking-widest uppercase mb-2">April 2026</p>
-                        <h2 className="text-2xl font-bold text-white mb-4">Introducing Hourly Sync & Priority Queues</h2>
+                        <h2 className="text-2xl font-bold text-white mb-4">Agency pilot reliability release</h2>
                         <ul className="space-y-3">
                             <li className="flex items-start gap-3">
                                 <Zap className="w-5 h-5 text-yellow-500 shrink-0 mt-0.5" />
-                                <span className="text-gray-300"><strong>Hourly Sync for Pro Users:</strong> You can now decrease the sync interval to fully hourly updates for hyper-fast operational reporting.</span>
+                                <span className="text-gray-300"><strong>Agency pilot refresh:</strong> Certified connectors now use manual refresh plus a nightly warehouse run.</span>
                             </li>
                             <li className="flex items-start gap-3">
                                 <PlusCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
-                                <span className="text-gray-300"><strong>Google Ads Connector:</strong> First-class support for Google Ads Search and PMax campaign reporting, directly into your Google Sheets.</span>
+                                <span className="text-gray-300"><strong>Connector-first workflow:</strong> Import normalized warehouse metrics, verify freshness in Data Explorer, then query them from Sheets, Looker Studio, or the API.</span>
                             </li>
                         </ul>
                     </div>

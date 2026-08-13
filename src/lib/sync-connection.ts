@@ -150,12 +150,6 @@ async function syncMetaAds(opts: {
 }): Promise<SyncResult> {
   const { connectionId, credentials, workspaceId } = opts;
   
-  // DEBUG: Log full credentials structure
-  logger.info(`[syncMetaAds] DEBUG Full credentials keys:`, Object.keys(credentials));
-  logger.info(`[syncMetaAds] DEBUG extraFields keys:`, Object.keys(credentials.extraFields || {}));
-  logger.info(`[syncMetaAds] DEBUG extraFields.adAccounts:`, JSON.stringify(credentials.extraFields?.adAccounts));
-  logger.info(`[syncMetaAds] DEBUG extraFields.adAccountIds:`, credentials.extraFields?.adAccountIds);
-  
   logger.info(`[syncMetaAds] Starting. adAccounts:`, credentials.adAccounts?.length || 0, 
     'adAccountIds:', credentials.adAccountIds?.length || 0);
 
@@ -183,7 +177,6 @@ async function syncMetaAds(opts: {
   let adAccounts = extraFields.adAccounts || 
     (extraFields.adAccountIds || credentials.adAccountIds || []).map((id: string) => ({ id, name: id }));
   logger.info(`[syncMetaAds] Total ad accounts from extraFields:`, adAccounts.length);
-  logger.info(`[syncMetaAds] DEBUG adAccounts array:`, JSON.stringify(adAccounts));
 
   // Filter to selected if specified
   const selectedIds = extraFields.selectedAdAccountIds || credentials.selectedAdAccountIds;
@@ -469,7 +462,7 @@ async function syncTikTok(opts: {
   until?: string;
   userPlan: string;
 }): Promise<SyncResult> {
-  const { connectionId, credentials, workspaceId, userPlan } = opts;
+  const { connectionId, credentials, workspaceId } = opts;
 
   const accessToken = await getValidOAuthToken({
     id: connectionId,

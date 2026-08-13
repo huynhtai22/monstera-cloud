@@ -10,6 +10,8 @@ import {
   ADS_FIELDS_BY_ID,
 } from "@/lib/ads-field-registry";
 import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-cache";
+import { requireWorkspaceAccess } from "@/lib/rbac";
+import { queryWarehouse } from "@/lib/warehouse-query";
 
 /**
  * GET /api/metrics/query?workspaceId=...&startDate=...&endDate=...&platform=...&cursor=...
@@ -56,12 +58,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
   }
 
-  // Fetch user plan and get tiered limits
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
+  await requireWorkspaceAccess({
+    userId: session.user.id,
+    workspaceId,
+    minimumRole: "viewer",
+    operation: "query_metrics",
+  });
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
     select: { plan: true },
   });
-  const plan = user?.plan ?? 'free';
+  const plan = workspace?.plan ?? 'free';
   const limits = getPlanLimits(plan);
 
   // Validate and parse dates
@@ -84,15 +91,6 @@ export async function GET(req: Request) {
       { error: "startDate must be before endDate" },
       { status: 400 }
     );
-  }
-
-  // Verify user has access to workspace
-  const membership = await prisma.workspaceMember.findFirst({
-    where: { workspaceId, userId: session.user.id },
-  });
-
-  if (!membership) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   // Generate deterministic cache key
@@ -329,43 +327,20 @@ export async function GET(req: Request) {
       return NextResponse.json(responseData);
     }
 
-    // Parallel queries for efficiency
-    const [metrics, countResult, dateRangeAgg, platforms] = await Promise.all([
-      // Main data query with plan-based limit
-      prisma.campaignMetric.findMany({
-        where,
-        orderBy: [{ date: "desc" }, { id: "desc" }], // Stable ordering for pagination
-        take: limits.explorerMaxRowsPerQuery,
-        select: {
-          id: true,
-          platform: true,
-          accountId: true,
-          accountName: true,
-          campaignId: true,
-          campaignName: true,
-          adsetId: true,
-          adsetName: true,
-          date: true,
-          impressions: true,
-          clicks: true,
-          spend: true,
-          reach: true,
-          cpc: true,
-          ctr: true,
-          conversions: true,
-          revenue: true,
-          roas: true,
-          currency: true,
-          pulledAt: true,
-        },
+    const platformList = typeof where.platform === "string" ? [where.platform] : where.platform?.in;
+    const accountList = typeof where.accountId === "string" ? [where.accountId] : where.accountId?.in;
+    const [warehouseResult, dateRangeAgg, platforms] = await Promise.all([
+      queryWarehouse({
+        workspaceId,
+        startDate: startDate ?? undefined,
+        endDate: endDate ?? undefined,
+        platforms: platformList,
+        accountIds: accountList,
+        campaignId: where.campaignId,
+        cursor,
+        limit: limits.explorerMaxRowsPerQuery,
+        includeTotalCount: true,
       }),
-
-      // Total count for this filter (approximate, capped)
-      prisma.campaignMetric.count({
-        where,
-        take: 100000, // Cap count query to prevent timeouts
-      }).catch(() => -1), // Graceful fallback if count times out
-
       // Date range bounds for the workspace
       prisma.campaignMetric.aggregate({
         where: { workspaceId },
@@ -382,9 +357,9 @@ export async function GET(req: Request) {
       }),
     ]);
 
-    // Determine if there are more pages
-    const hasMore = metrics.length === limits.explorerMaxRowsPerQuery;
-    const nextCursor = hasMore ? metrics[metrics.length - 1]?.id : null;
+    const metrics = warehouseResult.rows;
+    const hasMore = warehouseResult.pagination.hasMore;
+    const nextCursor = warehouseResult.pagination.nextCursor;
 
     // Aggregation for the current page only (fast)
     const pageTotals = metrics.reduce(
@@ -404,7 +379,7 @@ export async function GET(req: Request) {
         hasMore,
         nextCursor,
         returned: metrics.length,
-        totalApprox: countResult >= 0 ? countResult : undefined,
+        totalApprox: warehouseResult.totalCount,
         maxPerPage: limits.explorerMaxRowsPerQuery,
       },
       limits: {
@@ -421,6 +396,8 @@ export async function GET(req: Request) {
         platforms: platforms.map((p) => p.platform),
         queryRangeDays: Math.ceil(dateRangeDays),
       },
+      asOf: warehouseResult.asOf,
+      freshness: warehouseResult.freshness,
     };
     
     if (canCache) {

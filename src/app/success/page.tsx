@@ -34,7 +34,9 @@ function SuccessContent() {
     }
 
     async function pollPlan() {
-      const res = await fetch("/api/user/plan");
+      const workspaceId = window.localStorage.getItem("activeWorkspaceId")?.trim();
+      if (!workspaceId) return false;
+      const res = await fetch(`/api/user/plan?workspaceId=${encodeURIComponent(workspaceId)}`);
       if (res.status === 401) {
         const callbackUrl = `${window.location.pathname}${window.location.search}`;
         window.location.href = `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`;
@@ -49,8 +51,10 @@ function SuccessContent() {
 
     async function confirmTransaction() {
       if (!transactionId) return false;
+      const workspaceId = window.localStorage.getItem("activeWorkspaceId")?.trim();
+      if (!workspaceId) return false;
       const res = await fetch(
-        `/api/checkout/paddle/confirm?transactionId=${encodeURIComponent(transactionId)}`
+        `/api/checkout/paddle/confirm?transactionId=${encodeURIComponent(transactionId)}&workspaceId=${encodeURIComponent(workspaceId)}`
       );
       if (res.status === 401) {
         const callbackUrl = `${window.location.pathname}${window.location.search}`;

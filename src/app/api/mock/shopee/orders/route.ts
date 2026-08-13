@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
+import { productionRouteDisabled } from '@/lib/request-auth';
 
 export async function GET(request: Request) {
+    if (productionRouteDisabled("ENABLE_PRODUCTION_DEMO_TOOLS")) {
+        return NextResponse.json({ error: "Not available" }, { status: 404 });
+    }
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '50', 10);

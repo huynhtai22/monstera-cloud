@@ -28,6 +28,7 @@ const APP_AUTH_SEGMENTS = [
   "shopee",
   "google-ads",
   "tiktok-ads",
+  "pilot-admin",
 ] as const;
 
 function pathnameNeedsAppAuth(pathname: string): boolean {
@@ -36,7 +37,7 @@ function pathnameNeedsAppAuth(pathname: string): boolean {
   );
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const host = request.headers.get("host") ?? "";
 
@@ -200,5 +201,7 @@ export const config = {
     "/google-ads/:path*",
     "/tiktok-ads",
     "/tiktok-ads/:path*",
+    "/pilot-admin",
+    "/pilot-admin/:path*",
   ],
 };

@@ -62,12 +62,11 @@ export default function TermsOfServicePage() {
         <section className="mb-10">
           <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">5. Subscription Plans and Billing</h2>
           <p className="mb-4 text-slate-600 dark:text-slate-400">
-            Certain features of the Service, including but not limited to the Google Sheets™ Add-on data connector, are available only to users with a paid subscription plan (Starter or Professional). By subscribing, you agree to pay the applicable fees as described on our pricing page.
+            The agency pilot is invitation-only. Workspace plans, enabled providers, and any pilot fees are assigned by a Monstera operator and confirmed directly with the participating agency. Public self-service checkout is not available during the pilot.
           </p>
           <ul className="list-disc pl-6 mb-4 text-slate-600 dark:text-slate-400 space-y-2">
-            <li>Subscriptions are billed monthly or annually as selected at checkout.</li>
-            <li>You may cancel your subscription at any time. Cancellation takes effect at the end of the current billing period.</li>
-            <li>We reserve the right to change subscription pricing with 30 days advance notice.</li>
+            <li>Any pilot billing period and cancellation terms will be stated in the agency&apos;s written pilot agreement.</li>
+            <li>Published future-plan prices are indicative until public checkout is launched.</li>
             <li>
               Subscription fees are generally non-refundable. See our{" "}
               <a href="/legal/refund-policy" className="text-emerald-600 hover:underline">
@@ -86,8 +85,8 @@ export default function TermsOfServicePage() {
           <ul className="list-disc pl-6 mb-4 text-slate-600 dark:text-slate-400 space-y-2">
             <li>The Add-on accesses your Google Sheets™ spreadsheets solely to write data you explicitly request via the sidebar interface. It does not read, modify, or delete existing spreadsheet content outside the target range you specify.</li>
             <li>The Add-on uses your Google identity (email address) only to verify your Monstera Cloud account and subscription status. Your Google credentials are never stored on our servers.</li>
-            <li>Data retrieved from third-party advertising platforms is written directly to your spreadsheet. We do not permanently store copies of your advertising data on our servers beyond what is needed to process the request.</li>
-            <li>Auto-refresh triggers you set run within Google Apps Script infrastructure. You may disable or remove them at any time from the Add-on sidebar or via Extensions → Apps Script → Triggers.</li>
+            <li>Data retrieved from third-party platforms is normalized and stored in the selected Monstera workspace warehouse before the Add-on queries it.</li>
+            <li>Pilot refresh is manual plus nightly. Scheduled spreadsheet destination pushes and Add-on refresh triggers are not offered in this milestone.</li>
             <li>The Add-on complies with the <a href="https://developers.google.com/terms/api-services-user-data-policy" className="text-emerald-600 hover:underline" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>, including the Limited Use requirements.</li>
           </ul>
         </section>
@@ -95,7 +94,7 @@ export default function TermsOfServicePage() {
         <section className="mb-10">
           <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">7. Third-Party Services</h2>
           <p className="mb-4 text-slate-600 dark:text-slate-400">
-            Monstera Cloud integrates with third-party services including but not limited to TikTok for Business, Google Workspace™, and Xendit. Your use of these services is governed by their respective terms of service and privacy policies. We are not responsible for the practices of these third-party services.
+            Monstera Cloud integrates with third-party services including Meta, Google, TikTok, Shopee, Google Workspace™, and infrastructure providers. Your use of these services is governed by their respective terms and privacy policies. We are not responsible for their practices or availability.
           </p>
         </section>
 
@@ -107,7 +106,14 @@ export default function TermsOfServicePage() {
         </section>
 
         <section className="mb-10">
-          <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">9. Contact Us</h2>
+          <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">9. Pilot availability</h2>
+          <p className="text-slate-600 dark:text-slate-400">
+            Pilot features are beta services and may change or be interrupted. Unless a separate written agreement states otherwise, no uptime, refresh-frequency, recovery-time, or service-level guarantee applies.
+          </p>
+        </section>
+
+        <section className="mb-10">
+          <h2 className="text-2xl font-semibold text-slate-900 dark:text-white mb-4">10. Contact Us</h2>
           <p className="text-slate-600 dark:text-slate-400">
             In order to resolve a complaint regarding the Site or to receive further information regarding use of the Site, please contact us at terms@monsteracloud.com.
           </p>

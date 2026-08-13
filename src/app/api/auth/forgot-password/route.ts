@@ -5,6 +5,8 @@ import { sendPasswordResetEmail } from "@/lib/mail";
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
 import crypto from "crypto";
 import { logger } from "@/lib/logger";
+import { allowAuthAttempt } from "@/lib/auth-rate-limit";
+import { normalizeEmail } from "@/lib/invitation-security";
 
 /** Reject GET so emails are never submitted via query string (CWE-598). */
 export async function GET() {
@@ -16,10 +18,14 @@ export async function GET() {
 
 export async function POST(request: Request) {
     try {
-        const { email } = await request.json();
+        const { email: rawEmail } = await request.json();
 
-        if (!email) {
+        if (!rawEmail) {
             return NextResponse.json({ error: "Email is required." }, { status: 400 });
+        }
+        const email = normalizeEmail(String(rawEmail));
+        if (!(await allowAuthAttempt({ request, action: "forgot_password", identity: email, limit: 3, windowSeconds: 15 * 60 }))) {
+            return NextResponse.json({ success: true });
         }
 
         // Always return success to prevent email enumeration attacks
@@ -33,11 +39,12 @@ export async function POST(request: Request) {
         await prisma.passwordResetToken.deleteMany({ where: { email } });
 
         // Generate a secure random token
-        const token = crypto.randomBytes(32).toString("hex");
+        const token = crypto.randomBytes(32).toString("base64url");
+        const tokenHash = crypto.createHash("sha256").update(token, "utf8").digest("hex");
         const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
         await prisma.passwordResetToken.create({
-            data: { email, token, expires }
+            data: { email, token: tokenHash, expires }
         });
 
         const baseUrl = process.env.NEXTAUTH_URL || PRODUCT_SITE_URL;

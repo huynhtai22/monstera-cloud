@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import crypto from "crypto";
 import { encrypt } from "@/lib/encryption";
+import { productionRouteDisabled } from "@/lib/request-auth";
+import { generateApiKey } from "@/lib/api-key-security";
 
 function randBetween(min: number, max: number) {
   return Math.random() * (max - min) + min;
@@ -20,6 +21,9 @@ function ymd(d: Date) {
  * Body: { workspaceId: string, days?: number }
  */
 export async function POST(request: Request) {
+  if (productionRouteDisabled("ENABLE_PRODUCTION_DEMO_TOOLS")) {
+    return NextResponse.json({ error: "Not available" }, { status: 404 });
+  }
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -72,15 +76,18 @@ export async function POST(request: Request) {
     where: { workspaceId },
     orderBy: { createdAt: "desc" },
   });
-  const apiKey =
-    existingKey ??
-    (await prisma.apiKey.create({
+  const generatedKey = existingKey ? null : generateApiKey();
+  if (!existingKey) {
+    await prisma.apiKey.create({
       data: {
-        key: `mc_${crypto.randomBytes(32).toString("hex")}`,
+        keyHash: generatedKey!.keyHash,
+        keyPrefix: generatedKey!.keyPrefix,
+        keyLastFour: generatedKey!.keyLastFour,
         name: "Demo Looker Studio Key",
         workspaceId,
       },
-    }));
+    });
+  }
 
   const today = new Date();
   const rows: any[] = [];
@@ -139,11 +146,12 @@ export async function POST(request: Request) {
     days,
     rowsAttempted: rows.length,
     rowsInserted: created.count,
-    apiKey: apiKey.key,
+    apiKey: generatedKey?.secret ?? null,
     next: {
-      lookerStudio: "Paste apiKey into connector Key field",
-      endpointExample: `https://monsteracloud.com/api/looker-studio?apiKey=${encodeURIComponent(apiKey.key)}&platform=meta_ads&startDate=20260101&endDate=20261231`,
+      lookerStudio: generatedKey
+        ? "Copy this key now; it cannot be revealed again."
+        : "An existing key is present. Rotate it from Settings if the secret was lost.",
+      endpointExample: "Send the key in the Authorization: Bearer header.",
     },
   });
 }
-

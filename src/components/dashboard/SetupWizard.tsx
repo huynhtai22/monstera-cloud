@@ -17,7 +17,7 @@ const steps = [
     {
         key: "source" as const,
         label: "Connect a data source",
-        description: "TikTok Ads, Meta Ads, Google Ads, Shopee, Lazada, or Shopify.",
+        description: "Connect an enabled Meta Ads, Google Ads, TikTok Ads, or Shopee account.",
         cta: "Go to Sources",
         href: "/sources",
         eventKey: "source_connect_clicked",
@@ -27,7 +27,7 @@ const steps = [
         key: "sync" as const,
         label: "Run your first sync",
         description:
-            "From Sources, open a source and use Sync now (or run a pipeline from Transformations). Then use Google Sheets with the Monstera add-on, or Looker Studio with the connector + your workspace API key.",
+            "From Sources, open a connection and choose Sync now. Verify the imported rows in Data Explorer, then use Sheets, Looker, or the API.",
         cta: "Run a sync",
         href: "/sources",
         eventKey: "first_sync_clicked",
@@ -71,7 +71,7 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
                             >
                                 Sheets add-on docs
                             </Link>{" "}
-                            to use data outside the console. Check Reports for logs.
+                            to use data outside the console. Check Sync activity for logs.
                         </p>
                     </div>
                     <div className="ml-auto flex items-center gap-3">
@@ -80,7 +80,7 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
                             className={primaryButtonLinkClassName + " inline-flex items-center gap-2"}
                             onClick={() => trackEvent("wizard_step_completed", { step: "view_reports" })}
                         >
-                            View Reports <ArrowRight className="h-3.5 w-3.5" />
+                            View sync activity <ArrowRight className="h-3.5 w-3.5" />
                         </Link>
                         {onDismiss && (
                             <button
@@ -133,8 +133,6 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
                 {steps.map((step, i) => {
                     const done = completed[i];
                     const isActive = i === activeIndex;
-                    const isLocked = !done && i > activeIndex;
-
                     return (
                         <li
                             key={step.key}
@@ -206,7 +204,7 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
             <div className="mt-6 rounded-xl border border-dashed border-cyan-200/90 bg-cyan-50/50 p-4 dark:border-cyan-800/50 dark:bg-cyan-950/25">
                 <p className="text-xs font-bold uppercase tracking-wide text-cyan-800 dark:text-cyan-200">Use data in Sheets or Looker</p>
                 <p className="mt-2 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
-                    After you sync, install the Monstera Google Sheets add-on (Workspace Marketplace) or connect Looker Studio with your API key from Settings.
+                    After you sync, use the private pilot Sheets installation or connect Looker Studio with a workspace API key from Settings.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold">
                     <Link

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
+import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from '@/lib/google-id-token';
 
 /**
  * POST /api/v1/sheets/connections
@@ -10,24 +11,23 @@ import { safeDecrypt } from '@/lib/encryption';
  */
 export async function POST(req: Request) {
   try {
-    const { googleToken } = await req.json();
+    const { googleToken, workspaceId } = await req.json();
     if (!googleToken) {
       return NextResponse.json({ error: 'Missing Google token' }, { status: 400 });
     }
-
-    const googleRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${googleToken}` },
-    });
-    if (!googleRes.ok) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    if (!workspaceId || typeof workspaceId !== 'string') {
+      return NextResponse.json({ error: 'workspaceId is required' }, { status: 400 });
     }
-    const googleUser = (await googleRes.json()) as { email?: string };
-    if (!googleUser.email) {
-      return NextResponse.json({ error: 'No email' }, { status: 401 });
+
+    const verification = await verifyGoogleIdToken(googleToken, {
+      audiences: getGoogleIdTokenAudienceAllowlist(),
+    });
+    if (!verification) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
     const user = await (prisma.user as any).findUnique({
-      where: { email: googleUser.email },
+      where: { email: verification.email },
       select: { id: true },
     });
     if (!user) {
@@ -36,11 +36,12 @@ export async function POST(req: Request) {
 
     const connections = await (prisma.connection as any).findMany({
       where: {
-        provider: 'tiktok_business',
+        workspaceId,
+        provider: { in: ['meta_ads', 'google_ads', 'tiktok_business', 'shopee'] },
         status: 'connected',
         workspace: { members: { some: { userId: user.id } } },
       },
-      select: { id: true, name: true, credentials: true },
+      select: { id: true, name: true, provider: true, credentials: true },
     });
 
     const result = connections.map((c: any) => {
@@ -51,7 +52,7 @@ export async function POST(req: Request) {
         advertiserIds = creds.advertiserIds ?? [];
         sandbox = creds.sandbox === true;
       } catch {}
-      return { id: c.id, name: c.name, advertiserIds, sandbox };
+      return { id: c.id, name: c.name, provider: c.provider, advertiserIds, sandbox };
     });
 
     return NextResponse.json({ connections: result });
