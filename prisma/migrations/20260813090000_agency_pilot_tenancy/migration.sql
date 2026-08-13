@@ -28,8 +28,13 @@ BEGIN
 
   IF role_type IS DISTINCT FROM 'WorkspaceRole' THEN
     ALTER TABLE "WorkspaceMember"
-      ALTER COLUMN "role" TYPE "WorkspaceRole"
-      USING lower("role"::text)::"WorkspaceRole";
+      ADD COLUMN IF NOT EXISTS "role_pilot" "WorkspaceRole";
+    UPDATE "WorkspaceMember"
+      SET "role_pilot" = lower("role"::text)::"WorkspaceRole";
+    ALTER TABLE "WorkspaceMember"
+      ALTER COLUMN "role_pilot" SET NOT NULL,
+      DROP COLUMN "role";
+    ALTER TABLE "WorkspaceMember" RENAME COLUMN "role_pilot" TO "role";
   END IF;
 END $$;
 ALTER TABLE "WorkspaceMember" ALTER COLUMN "role" SET DEFAULT 'member';
