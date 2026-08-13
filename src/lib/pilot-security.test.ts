@@ -38,6 +38,12 @@ describe("pilot security primitives", () => {
     delete process.env.CRON_SECRET;
     const response = requireCronSecret(new Request("https://example.test"));
     assert.equal(response?.status, 503);
+
+    process.env.CRON_SECRET = "too-short";
+    const weakSecretResponse = requireCronSecret(new Request("https://example.test", {
+      headers: { authorization: "Bearer too-short" },
+    }));
+    assert.equal(weakSecretResponse?.status, 503);
   });
 
   it("rejects plaintext credential payloads and detects ciphertext tampering", () => {

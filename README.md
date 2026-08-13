@@ -12,7 +12,7 @@ Monstera Cloud is an invitation-only, multi-tenant data warehouse for agencies. 
 
 ## Local setup
 
-Requirements: Node.js 20.9 or newer, npm, and PostgreSQL 16.
+Requirements: Node.js 22 or newer, npm, and PostgreSQL 16. Node 22 is required because the PostCSS nesting toolchain is ESM-only.
 
 ```bash
 npm ci

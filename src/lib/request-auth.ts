@@ -13,7 +13,7 @@ export function hasBearerSecret(request: Request, secret: string | undefined): b
 }
 
 export function requireCronSecret(request: Request): Response | null {
-  if (!process.env.CRON_SECRET?.trim()) {
+  if ((process.env.CRON_SECRET?.trim().length ?? 0) < 32) {
     return Response.json({ error: "Cron is not configured" }, { status: 503 });
   }
   if (!hasBearerSecret(request, process.env.CRON_SECRET)) {
