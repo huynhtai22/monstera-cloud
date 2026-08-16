@@ -21,6 +21,7 @@ function mobileSectionTitle(pathname: string | null): string {
     if (!pathname) return "Home";
     if (pathname === "/console" || pathname.startsWith("/console/")) return "Dashboard";
     if (pathname.startsWith("/sources/") && pathname !== "/sources") return "Source";
+    if (pathname === "/admin/signal" || pathname.startsWith("/admin/signal")) return "Signal Desk";
     const first = pathname.split("/").filter(Boolean)[0] ?? "";
     const map: Record<string, string> = {
         sources: "Sources",
@@ -35,6 +36,8 @@ function mobileSectionTitle(pathname: string | null): string {
         "meta-ads": "Meta Ads",
         "tiktok-ads": "TikTok Ads",
         shopee: "Shopee",
+        ops: "Operations",
+        admin: "Admin",
     };
     if (map[first]) return map[first];
     return first ? first.charAt(0).toUpperCase() + first.slice(1).replace(/-/g, " ") : "Home";

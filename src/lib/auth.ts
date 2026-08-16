@@ -254,6 +254,13 @@ export const authOptions: NextAuthOptions = {
         async session({ session, token }: any) {
             if (!session.user) return session
 
+            const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+            session.user.isAdmin = Boolean(
+                session.user.email &&
+                adminEmail &&
+                session.user.email.trim().toLowerCase() === adminEmail
+            );
+
             let userId = token.id as string | undefined
             if (!userId && session.user.email) {
                 const byEmail = await prisma.user.findFirst({

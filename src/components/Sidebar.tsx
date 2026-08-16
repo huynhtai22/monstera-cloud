@@ -22,6 +22,7 @@ import {
     Users,
     Download,
     Compass,
+    Radio,
 } from "lucide-react";
 import useSWR from "swr";
 import { useSession, signOut } from "next-auth/react";
@@ -51,6 +52,7 @@ interface SidebarProps {
 function navIsActive(pathname: string, href: string): boolean {
     if (href === "/console") return pathname === "/console" || pathname.startsWith("/console/");
     if (href === "/settings") return pathname === "/settings" || pathname.startsWith("/settings/");
+    if (href === "/admin/signal") return pathname === "/admin/signal" || pathname.startsWith("/admin/signal");
     return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -105,6 +107,8 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    const isAdmin = Boolean((session?.user as any)?.isAdmin);
+
     type NavItem = { name: string; href: string; icon: typeof LayoutGrid };
     const navGroups: { label: string; items: NavItem[] }[] = [
         {
@@ -134,6 +138,16 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                 { name: "Exports & API", href: "/exports", icon: Download },
             ],
         },
+        ...(isAdmin
+            ? [
+                  {
+                      label: "Intelligence",
+                      items: [
+                          { name: "Signal Desk", href: "/admin/signal", icon: Radio },
+                      ],
+                  },
+              ]
+            : []),
     ];
 
     return (

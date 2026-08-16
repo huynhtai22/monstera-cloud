@@ -15,6 +15,8 @@ declare module "next-auth" {
             plan?: string;
             /** True when the account has a credentials password (step-up for reveal-key, etc.) */
             hasPassword?: boolean;
+            /** True when the user is authorized as the platform admin */
+            isAdmin?: boolean;
         };
     }
 }
