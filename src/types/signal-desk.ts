@@ -207,6 +207,14 @@ export type MorningBriefOpportunity = {
   promotional_risk: number;
   trend_confidence: number;
   content_opportunity_score: number;
+  curator_value_score?: number;
+  surprising_part?: string;
+  smart_reader_might_not_know?: string;
+  deeper_mechanism?: string;
+  best_specific_fact?: string;
+  explainability?: string;
+  curator_value_reason?: string;
+  classification?: string;
   suggested_query: string;
   created_at: string | null;
 };

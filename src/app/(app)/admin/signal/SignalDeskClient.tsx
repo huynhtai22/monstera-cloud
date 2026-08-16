@@ -54,8 +54,8 @@ type DraftDepth = "concise" | "standard" | "deep";
 const SCORE_ROWS: { key: keyof NonNullable<Draft["score"]>; label: string; risk?: boolean }[] = [
   { key: "reply_potential", label: "Reply Potential" },
   { key: "share_potential", label: "Share Potential" },
-  { key: "dwell_potential", label: "Dwell Potential" },
-  { key: "follow_potential", label: "Follow Potential" },
+  { key: "dwell_potential", label: "Curiosity / Surprise" },
+  { key: "follow_potential", label: "Specificity" },
   { key: "originality", label: "Originality" },
   { key: "spam_risk", label: "Spam Risk", risk: true },
 ];
@@ -159,9 +159,9 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
           setBriefBusy(false);
           clearInterval(interval);
           if (updated.status === "completed") {
-            toast.success("Morning Brief run completed!");
+            toast.success("Curator Brief run completed!");
           } else {
-            toast.error(updated.error_message || "Morning Brief run failed");
+            toast.error(updated.error_message || "Curator Brief run failed");
           }
         }
       } catch {
@@ -211,10 +211,10 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
     try {
       const newBrief = await signalApi.runMorningBrief();
       setBrief(newBrief);
-      toast.info("Morning Brief started in background");
+      toast.info("Curator Brief started in background");
     } catch (err: any) {
-      setGlobalError(err.message || "Morning Brief failed to start");
-      toast.error(err.message || "Morning Brief failed to start");
+      setGlobalError(err.message || "Curator Brief failed to start");
+      toast.error(err.message || "Curator Brief failed to start");
       setBriefBusy(false);
     }
   }
@@ -997,7 +997,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                   ) : (
                     <Radio className="h-4 w-4" />
                   )}
-                  {briefBusy ? "Running Discovery Scan…" : "Run Morning Brief"}
+                  {briefBusy ? "Running Discovery Scan…" : "Run Curator Brief"}
                 </button>
 
                 {brief && (
@@ -1063,7 +1063,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <Radio className="h-5 w-5 text-cyan-500" /> Latest Morning Brief Opportunities
+                    <Radio className="h-5 w-5 text-cyan-500" /> Latest Curator Brief Opportunities
                   </h2>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     Cross-referenced opportunities synthesized from current industry discussions.
@@ -1118,7 +1118,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
 
             {items.length === 0 ? (
               <div className="rounded-xl border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] p-8 text-center text-xs text-gray-500">
-                No past research collections found. Run a Morning Brief or search a keyword above!
+                No past research collections found. Run a Curator Brief or search a keyword above!
               </div>
             ) : (
               <div className="rounded-xl border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] overflow-hidden shadow-sm">
@@ -1186,8 +1186,17 @@ function OpportunityCard({
     <div className="flex flex-col justify-between rounded-xl border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] p-5 shadow-sm hover:border-cyan-500/40 transition-all space-y-4">
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-cyan-600 dark:text-cyan-400">
+          <span className="text-xs font-bold text-cyan-600 dark:text-cyan-400 flex items-center gap-2">
             #{opportunity.rank} Opportunity
+            {opportunity.classification && (
+              <span className={`rounded-md px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${
+                opportunity.classification === "High Priority" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300" :
+                opportunity.classification === "Hidden Gem" ? "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300" :
+                "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300"
+              }`}>
+                {opportunity.classification}
+              </span>
+            )}
           </span>
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
@@ -1214,12 +1223,41 @@ function OpportunityCard({
             <span>{opportunity.underused_angle}</span>
           </div>
         </div>
+
+        <details className="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-100 dark:border-gray-800 mt-2">
+          <summary className="cursor-pointer font-medium hover:underline">Curator Diagnostics & Hidden Mechanics</summary>
+          <div className="mt-2 space-y-2 p-3 rounded-lg bg-gray-50 dark:bg-[#1d1f23]">
+            <p><strong>Surprising Part:</strong> {opportunity.surprising_part}</p>
+            <p><strong>Smart Reader Might Not Know:</strong> {opportunity.smart_reader_might_not_know}</p>
+            <p><strong>Deeper Mechanism:</strong> {opportunity.deeper_mechanism}</p>
+            <p><strong>Best Specific Fact:</strong> {opportunity.best_specific_fact}</p>
+            <p><strong>Explainability:</strong> {opportunity.explainability}</p>
+            <p><strong>Curator Value Reason:</strong> {opportunity.curator_value_reason}</p>
+          </div>
+        </details>
       </div>
 
       <div className="pt-3 border-t border-gray-100 dark:border-gray-800 space-y-3">
         <div className="flex items-center justify-between text-xs text-gray-500">
-          <span>Score: <strong className="text-gray-900 dark:text-white font-bold">{opportunity.content_opportunity_score.toFixed(1)}/10</strong></span>
-          <span>X: {opportunity.x_signal.toFixed(1)} · Web: {opportunity.web_signal ? opportunity.web_signal.toFixed(1) : "—"}</span>
+          <div className="flex gap-3">
+            <span>Trend: <strong className="text-gray-900 dark:text-white font-bold">{opportunity.content_opportunity_score?.toFixed(1) || "0.0"}</strong></span>
+            <span>Curator: <strong className="text-purple-600 dark:text-purple-400 font-bold">{opportunity.curator_value_score?.toFixed(1) || "0.0"}</strong></span>
+          </div>
+        </div>
+        
+        <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+          <span className="rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-1 font-semibold text-gray-700 dark:text-gray-300">
+            X signal: {opportunity.x_signal?.toFixed(1) || "0.0"}/10
+          </span>
+          {opportunity.web_signal !== null && opportunity.web_signal !== undefined ? (
+            <span className="rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 px-2 py-1 font-semibold">
+              Web signal: {opportunity.web_signal.toFixed(1)}/10
+            </span>
+          ) : (
+            <span className="rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 px-2 py-1 font-semibold">
+              Web validation unavailable (X-only)
+            </span>
+          )}
         </div>
 
         <button
@@ -1265,9 +1303,9 @@ function TrendDiagnosticsCard({
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
         <div className="rounded-lg bg-gray-50 dark:bg-[#1d1f23] p-2.5 text-center">
-          <p className="text-[10px] text-gray-400 font-medium">X Discussion</p>
+          <p className="text-[10px] text-gray-400 font-medium">X Signal</p>
           <p className="text-sm font-bold text-gray-900 dark:text-white">
-            {trend.x_discussion_strength} / 10
+            {trend.x_discussion_strength ? `${trend.x_discussion_strength} / 10` : "Not checked"}
           </p>
         </div>
         <div className="rounded-lg bg-gray-50 dark:bg-[#1d1f23] p-2.5 text-center">
@@ -1414,7 +1452,7 @@ function ScorePanel({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200/60 dark:border-gray-800 pb-3">
         <div>
           <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
-            Algorithmic Evaluation
+            Content Potential Evaluation
           </span>
           <h4 className="text-sm font-bold text-gray-900 dark:text-white">
             Content Potential Score: {score.overall_score.toFixed(1)} / 10
