@@ -410,12 +410,19 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
               className={`h-2 w-2 rounded-full ${
                 health?.web_status === "ready"
                   ? "bg-emerald-500"
-                  : health?.web_search_configured
+                  : health?.tavily_web_status === "ready"
                   ? "bg-amber-500"
-                  : "bg-gray-400"
+                  : "bg-red-500"
               }`}
             />
-            <span>Web Search: {health?.web_status || "checking"}</span>
+            <span>
+              Web Search:{" "}
+              {health?.web_status === "ready" 
+                ? "ready" 
+                : health?.tavily_web_status === "ready"
+                  ? "degraded · Tavily fallback ready"
+                  : (health?.web_status || "checking")}
+            </span>
           </div>
 
           <button

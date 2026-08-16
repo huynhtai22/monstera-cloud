@@ -5,6 +5,7 @@ export type Health = {
   llm_configured: boolean;
   web_search_configured: boolean;
   web_status?: "ready" | "auth_error" | "unavailable" | "rate_limited" | "not_configured" | string;
+  tavily_web_status?: "ready" | "auth_error" | "unavailable" | "rate_limited" | "not_configured" | "disabled" | string;
   cloud_llm_status?: "ready" | "auth_error" | "unavailable" | "not_configured" | string;
   local_llm_status?: "ready" | "unavailable" | "disabled" | "not_configured" | string;
   active_llm_provider?: string;
