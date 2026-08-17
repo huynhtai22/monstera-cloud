@@ -238,7 +238,6 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
         if (["shopee", "tiktok_business", "meta_ads", "google_ads", "lazada"].includes(id)) {
             trackEvent("oauth_started", { provider: id });
             // A full navigation is required because this API route redirects to the provider origin.
-            // eslint-disable-next-line @next/next/no-location-assign-relative-destination
             window.location.href = `/api/auth/connect?provider=${encodeURIComponent(id)}&workspaceId=${encodeURIComponent(activeWorkspaceId)}`;
             return;
         }

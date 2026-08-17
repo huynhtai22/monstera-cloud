@@ -159,8 +159,8 @@ export async function recordViolation(
   });
 
   // Send alert if configured
-  if (rule.severity === "critical") {
-    await sendDataQualityAlert(rule, details);
+  if (rule.severity === "critical" || rule.severity === "warning") {
+    await sendDataQualityAlert(rule, workspaceId, details);
   }
 }
 
@@ -292,14 +292,23 @@ export async function getMetricSnapshot(
  */
 async function sendDataQualityAlert(
   rule: DataQualityRule,
+  workspaceId: string,
   details: { actualValue: number; expectedValue?: number; pctChange?: number }
 ): Promise<void> {
-  // This would integrate with your notification system (Telegram, email, etc.)
   logger.warn(`[Data Quality Alert] ${rule.name}: ${details.actualValue} (expected: ${details.expectedValue})`);
 
-  // TODO: Implement actual notification sending
-  // - Telegram alert for critical issues
-  // - Email digest for warnings
+  try {
+    const { sendAgencyAlert } = await import("@/lib/alerts");
+    const changeText = details.pctChange !== undefined ? ` (${(details.pctChange * 100).toFixed(1)}% change)` : "";
+    const msg = `⚠️ Data Quality Triggered: "${rule.name}"\nMetric: ${rule.metric} | Value: ${details.actualValue}${details.expectedValue !== undefined ? ` (expected: ${details.expectedValue})` : ""}${changeText}\nSeverity: ${rule.severity.toUpperCase()}`;
+    await sendAgencyAlert({
+      workspaceId,
+      pipelineName: rule.name,
+      errorMsg: msg,
+    });
+  } catch (e) {
+    logger.error("[sendDataQualityAlert] Failed to dispatch alert", e);
+  }
 }
 
 /**

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings2, Building2, Users, CreditCard, KeyRound, Briefcase } from "lucide-react";
+import { Settings2, Building2, Users, CreditCard, KeyRound, Briefcase, Bell } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import useSWR from "swr";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ import { ClientsTab } from "@/components/settings/ClientsTab";
 import { TeamTab } from "@/components/settings/TeamTab";
 import { BillingTab } from "@/components/settings/BillingTab";
 import { ApiKeysTab } from "@/components/settings/ApiKeysTab";
+import { DataQualityTab } from "@/components/settings/DataQualityTab";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
@@ -21,7 +22,7 @@ const fetcher = async (url: string) => {
 };
 
 export default function SettingsPage() {
-    const [activeTab, setActiveTab] = useState<'workspace' | 'clients' | 'team' | 'billing' | 'api'>('workspace');
+    const [activeTab, setActiveTab] = useState<'workspace' | 'clients' | 'team' | 'alerts' | 'billing' | 'api'>('workspace');
     const { activeWorkspaceId } = useWorkspaceStore();
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const activeWorkspace = Array.isArray(workspaces) ? workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0] : null;
@@ -42,17 +43,34 @@ export default function SettingsPage() {
     const [isAddingClient, setIsAddingClient] = useState(false);
     const [newClientName, setNewClientName] = useState('');
 
+    // Data Quality State
+    const [qualityData, setQualityData] = useState<{ rules: any[]; violations: any[]; telegramChatId: string }>({
+        rules: [],
+        violations: [],
+        telegramChatId: "",
+    });
+
     // Persistence of Tab
     useEffect(() => {
         if (typeof window === "undefined") return;
         const params = new URLSearchParams(window.location.search);
         const tab = params.get("tab") as any;
-        if (['workspace', 'clients', 'team', 'billing', 'api'].includes(tab)) {
+        if (['workspace', 'clients', 'team', 'alerts', 'billing', 'api'].includes(tab)) {
             setActiveTab(tab);
         }
     }, []);
 
     // --- API Handlers ---
+
+    const fetchQualityData = useCallback(async () => {
+        if (!activeWorkspaceId) return;
+        try {
+            const res = await fetch(`/api/settings/data-quality?workspaceId=${encodeURIComponent(activeWorkspaceId)}`);
+            if (res.ok) setQualityData(await res.json());
+        } catch {
+            toast.error("Failed to fetch quality rules");
+        }
+    }, [activeWorkspaceId]);
 
     const fetchApiKeys = useCallback(async () => {
         try {
@@ -82,12 +100,13 @@ export default function SettingsPage() {
     }, [activeWorkspaceId]);
 
     useEffect(() => {
+        if (activeTab === 'alerts' && activeWorkspaceId) void fetchQualityData();
         if (activeTab === 'api' && activeWorkspaceId) void fetchApiKeys();
         if (activeTab === 'clients' && activeWorkspaceId) {
             void fetchClients();
             void fetchUnassigned();
         }
-    }, [activeTab, activeWorkspaceId, fetchApiKeys, fetchClients, fetchUnassigned]);
+    }, [activeTab, activeWorkspaceId, fetchQualityData, fetchApiKeys, fetchClients, fetchUnassigned]);
 
     const handleAddClient = async () => {
         if (!newClientName.trim()) return;
@@ -195,6 +214,7 @@ export default function SettingsPage() {
                                 { id: 'workspace', label: 'Workspace', icon: Building2 },
                                 { id: 'clients', label: 'Clients', icon: Briefcase },
                                 { id: 'team', label: 'Team', icon: Users },
+                                { id: 'alerts', label: 'Alerts & Quality', icon: Bell },
                                 { id: 'billing', label: 'Billing', icon: CreditCard },
                                 { id: 'api', label: 'API Keys', icon: KeyRound },
                             ].map((tab) => (
@@ -244,6 +264,16 @@ export default function SettingsPage() {
                         />
                     )}
                     {activeTab === 'team' && <TeamTab workspaceId={activeWorkspaceId} currentRole={activeWorkspace?.role} />}
+                    {activeTab === 'alerts' && (
+                        <DataQualityTab
+                            workspaceId={activeWorkspaceId!}
+                            canManage={canManage}
+                            rules={qualityData.rules}
+                            violations={qualityData.violations}
+                            telegramChatId={qualityData.telegramChatId}
+                            onRefresh={fetchQualityData}
+                        />
+                    )}
                     {activeTab === 'billing' && <BillingTab workspacePlan={workspacePlan} />}
                     {activeTab === 'api' && (
                         <ApiKeysTab

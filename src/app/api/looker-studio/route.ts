@@ -112,18 +112,29 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "No Monstera account found", code: "NO_ACCOUNT" }, { status: 404 });
       }
       const requestedWorkspaceId = req.nextUrl.searchParams.get("workspaceId")?.trim();
-      if (!requestedWorkspaceId) {
-        return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
+      let workspace;
+      if (requestedWorkspaceId) {
+        workspace = await prisma.workspace.findFirst({
+          where: {
+            id: requestedWorkspaceId,
+            members: { some: { userId: user.id } },
+          },
+          select: { id: true, plan: true },
+        });
+      } else {
+        workspace = await prisma.workspace.findFirst({
+          where: {
+            OR: [
+              { ownerId: user.id },
+              { members: { some: { userId: user.id } } },
+            ],
+          },
+          select: { id: true, plan: true },
+          orderBy: { updatedAt: "desc" },
+        });
       }
-      const workspace = await prisma.workspace.findFirst({
-        where: {
-          id: requestedWorkspaceId,
-          members: { some: { userId: user.id } },
-        },
-        select: { id: true, plan: true },
-      });
       if (!workspace) {
-        return NextResponse.json({ error: "No workspace found" }, { status: 404 });
+        return NextResponse.json({ error: "No workspace found", code: "NO_WORKSPACE" }, { status: 404 });
       }
       workspaceId = workspace.id;
       workspacePlan = workspace.plan;

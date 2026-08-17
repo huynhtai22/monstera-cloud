@@ -699,20 +699,53 @@ export function WarehouseWorkbench() {
           since: startDate,
           until: endDate,
           items,
+          async: true,
         }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
         setBatchError(payload.error || `Import batch failed (${res.status})`);
+        setBatchImporting(false);
         return;
       }
       
-      // Extract specific errors from the batch if any failed
-      const errors = payload.results?.filter((r: any) => !r.ok && r.error).map((r: any) => `${r.provider}: ${r.error}`);
-      if (errors && errors.length > 0) {
-        setBatchError(`Some imports failed:\n${errors.join("\n")}`);
+      if (payload.async && payload.jobId) {
+        setBatchMessage(`Refresh started… Processing tasks.`);
+        let completed = false;
+        let attempts = 0;
+        while (!completed && attempts < 120) {
+          await new Promise((r) => setTimeout(r, 1500));
+          attempts++;
+          const jobRes = await fetch(`/api/data-explorer/warehouse/jobs/${encodeURIComponent(payload.jobId)}`);
+          if (!jobRes.ok) continue;
+          const jobData = await jobRes.json();
+          if (jobData.status === "completed") {
+            completed = true;
+            const okCount = jobData.results?.filter((r: any) => r.ok).length ?? 0;
+            const errors = jobData.results?.filter((r: any) => !r.ok && r.error).map((r: any) => `${r.provider}: ${r.error}`);
+            if (errors && errors.length > 0) {
+              setBatchError(`Some imports failed:\n${errors.join("\n")}`);
+            } else {
+              setBatchMessage(`Completed! ${okCount}/${jobData.totalItems} source(s) refreshed (~${(jobData.approximateRows || 0).toLocaleString()} rows).`);
+            }
+            break;
+          } else if (jobData.status === "failed") {
+            setBatchError(jobData.error || "Batch refresh failed");
+            completed = true;
+            break;
+          } else {
+            setBatchMessage(
+              `Refreshing ${jobData.completedItems || 0}/${jobData.totalItems} source(s) (~${(jobData.approximateRows || 0).toLocaleString()} rows ingested)…`
+            );
+          }
+        }
       } else {
-        setBatchMessage(payload.message ?? "Import batch finished.");
+        const errors = payload.results?.filter((r: any) => !r.ok && r.error).map((r: any) => `${r.provider}: ${r.error}`);
+        if (errors && errors.length > 0) {
+          setBatchError(`Some imports failed:\n${errors.join("\n")}`);
+        } else {
+          setBatchMessage(payload.message ?? "Import batch finished.");
+        }
       }
       
       await mutate();

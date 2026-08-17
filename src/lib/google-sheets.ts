@@ -17,7 +17,17 @@ interface GoogleTokens {
   expiresAt: number | null;
 }
 
-export async function getGoogleTokens(userId: string): Promise<GoogleTokens | null> {
+export async function getGoogleTokens(userId: string, explicitCreds?: any): Promise<GoogleTokens | null> {
+  if (explicitCreds?.refreshToken || explicitCreds?.refresh_token) {
+    return {
+      accessToken: explicitCreds.accessToken || explicitCreds.access_token || '',
+      refreshToken: explicitCreds.refreshToken || explicitCreds.refresh_token,
+      expiresAt: explicitCreds.expiresAt || explicitCreds.expires_at || null,
+    };
+  }
+
+  if (!userId) return null;
+
   const account = await (prisma.account as any).findFirst({
     where: { userId, provider: 'google' },
   });
@@ -29,18 +39,18 @@ export async function getGoogleTokens(userId: string): Promise<GoogleTokens | nu
   };
 }
 
-async function refreshIfNeeded(userId: string): Promise<string> {
-  const tokens = await getGoogleTokens(userId);
-  if (!tokens) throw new Error('No Google account linked — please log in with Google.');
+async function refreshIfNeeded(userId: string, explicitCreds?: any): Promise<string> {
+  const tokens = await getGoogleTokens(userId, explicitCreds);
+  if (!tokens) throw new Error('No Google account or refresh token linked — please connect Google Sheets.');
 
   const now = Math.floor(Date.now() / 1000);
-  if (tokens.expiresAt && tokens.expiresAt > now + 60) {
+  if (tokens.accessToken && tokens.expiresAt && tokens.expiresAt > now + 60) {
     return tokens.accessToken;
   }
 
   // Token expired — refresh it
   if (!tokens.refreshToken) {
-    throw new Error('Google token expired and no refresh token available. Please sign out and log in again with Google.');
+    throw new Error('Google token expired and no refresh token available. Please re-authorize Google Sheets.');
   }
 
   const res = await fetch('https://oauth2.googleapis.com/token', {
@@ -59,14 +69,18 @@ async function refreshIfNeeded(userId: string): Promise<string> {
     throw new Error(`Google token refresh failed: ${data.error_description || data.error}`);
   }
 
-  // Persist the new access token
-  await (prisma.account as any).updateMany({
-    where: { userId, provider: 'google' },
-    data: {
-      access_token: data.access_token,
-      expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
-    },
-  });
+  // Persist the new access token if user account exists
+  if (userId) {
+    try {
+      await (prisma.account as any).updateMany({
+        where: { userId, provider: 'google' },
+        data: {
+          access_token: data.access_token,
+          expires_at: Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
+        },
+      });
+    } catch {}
+  }
 
   return data.access_token as string;
 }
@@ -83,8 +97,9 @@ export interface SheetInfo {
 export async function createSpreadsheet(
   userId: string,
   title: string,
+  explicitCreds?: any,
 ): Promise<SheetInfo> {
-  const token = await refreshIfNeeded(userId);
+  const token = await refreshIfNeeded(userId, explicitCreds);
 
   const res = await fetch(SHEETS_BASE, {
     method: 'POST',
@@ -117,8 +132,9 @@ export async function copySpreadsheet(
   userId: string,
   templateSpreadsheetId: string,
   title: string,
+  explicitCreds?: any,
 ): Promise<SheetInfo> {
-  const token = await refreshIfNeeded(userId);
+  const token = await refreshIfNeeded(userId, explicitCreds);
 
   const res = await fetch(`${DRIVE_BASE}/files/${templateSpreadsheetId}/copy`, {
     method: 'POST',
@@ -150,8 +166,8 @@ export async function copySpreadsheet(
 }
 
 /** List spreadsheets the user owns or has edit access to. */
-export async function listSpreadsheets(userId: string): Promise<SheetInfo[]> {
-  const token = await refreshIfNeeded(userId);
+export async function listSpreadsheets(userId: string, explicitCreds?: any): Promise<SheetInfo[]> {
+  const token = await refreshIfNeeded(userId, explicitCreds);
 
   const url = new URL(`${DRIVE_BASE}/files`);
   url.searchParams.set('q', "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false");
@@ -182,8 +198,9 @@ export async function writeToSheet(
   sheetName: string,
   columns: string[],
   rows: (string | number)[][],
+  explicitCreds?: any,
 ): Promise<{ updatedRows: number }> {
-  const token = await refreshIfNeeded(userId);
+  const token = await refreshIfNeeded(userId, explicitCreds);
 
   // Clear sheet first
   await fetch(
@@ -229,8 +246,9 @@ export async function writeToSheetChunked(
   columns: string[],
   rows: (string | number | null)[][],
   chunkSize: number = 2000,
+  explicitCreds?: any,
 ): Promise<{ updatedRows: number }> {
-  const token = await refreshIfNeeded(userId);
+  const token = await refreshIfNeeded(userId, explicitCreds);
   const stagingName = `__staging_${sheetName}_${Date.now()}`;
 
   // Create staging tab to avoid destructive clear-first writes on the live tab.
@@ -357,8 +375,9 @@ export async function appendToSheet(
   spreadsheetId: string,
   sheetName: string,
   rows: (string | number)[][],
+  explicitCreds?: any,
 ): Promise<{ updatedRows: number }> {
-  const token = await refreshIfNeeded(userId);
+  const token = await refreshIfNeeded(userId, explicitCreds);
   const range = `${sheetName}!A1`;
 
   const res = await fetch(
@@ -391,8 +410,9 @@ export async function formatPremiumSheet(opts: {
     clientName?: string;
     rowCount: number;
     colCount: number;
+    explicitCreds?: any;
 }) {
-    const token = await refreshIfNeeded(opts.userId);
+    const token = await refreshIfNeeded(opts.userId, opts.explicitCreds);
     
     // 1. Get sheet ID
     const metaRes = await fetch(`${SHEETS_BASE}/${opts.spreadsheetId}`, {

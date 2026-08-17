@@ -17,3 +17,4 @@ tmp/
 /generated/prisma
 .vercel
 .env.production
+*.tsbuildinfo

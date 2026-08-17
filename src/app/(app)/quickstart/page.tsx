@@ -190,14 +190,20 @@ export default function QuickStartPage() {
                                 {[
                                     { 
                                         id: "google_sheets", 
-                                        name: "Google Sheets", 
-                                        desc: "Best for quick analysis and sharing",
+                                        name: "Google Sheets (Scheduled Push)", 
+                                        desc: "Automated scheduled push to spreadsheets",
                                         recommended: true 
                                     },
                                     { 
+                                        id: "addon_direct", 
+                                        name: "Google Sheets Add-on / Looker (Direct Pull)", 
+                                        desc: "Query warehouse metrics on-demand from Google Sheets or Looker Studio",
+                                        recommended: false 
+                                    },
+                                    { 
                                         id: "looker_studio", 
-                                        name: "Looker Studio", 
-                                        desc: "Best for dashboards and reporting",
+                                        name: "Looker Studio Dashboard", 
+                                        desc: "Connect directly to Looker Studio for dashboards",
                                         recommended: false 
                                     },
                                 ].map((dest) => (
@@ -211,7 +217,7 @@ export default function QuickStartPage() {
                                         )}
                                     >
                                         <img
-                                            src={logoPathForConnectionProvider(dest.id)}
+                                            src={logoPathForConnectionProvider(dest.id === "addon_direct" ? "google_sheets" : dest.id)}
                                             alt={dest.name}
                                             className="h-10 w-10 object-contain"
                                         />
@@ -251,7 +257,9 @@ export default function QuickStartPage() {
                                     Ready to connect
                                 </h2>
                                 <p className="mt-2 text-gray-600 dark:text-gray-400">
-                                    We'll create a pipeline that syncs automatically
+                                    {selectedDestination === "addon_direct"
+                                        ? "Connect your marketing source and start pulling data in Google Sheets or Looker Studio"
+                                        : "We'll create a pipeline that syncs your data automatically"}
                                 </p>
                             </div>
 
@@ -279,12 +287,16 @@ export default function QuickStartPage() {
                                     {selectedDestination && (
                                         <div className="flex flex-col items-center gap-2">
                                             <img
-                                                src={logoPathForConnectionProvider(selectedDestination)}
+                                                src={logoPathForConnectionProvider(selectedDestination === "addon_direct" ? "google_sheets" : selectedDestination)}
                                                 alt=""
                                                 className="h-12 w-12 object-contain"
                                             />
                                             <span className="text-sm font-medium text-gray-900 dark:text-white">
-                                                {selectedDestination === "google_sheets" ? "Google Sheets" : "Looker Studio"}
+                                                {selectedDestination === "google_sheets"
+                                                    ? "Google Sheets"
+                                                    : selectedDestination === "addon_direct"
+                                                    ? "Add-on / Looker"
+                                                    : "Looker Studio"}
                                             </span>
                                         </div>
                                     )}
@@ -293,15 +305,19 @@ export default function QuickStartPage() {
                                 <div className="mt-6 space-y-3 rounded-lg bg-gray-50 p-4 dark:bg-[#1d1f23]/50">
                                     <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                         <CheckCircle2 className="h-4 w-4 text-cyan-600" />
-                                        <span>Syncs run automatically every 6 hours</span>
+                                        <span>
+                                            {selectedDestination === "addon_direct"
+                                                ? "Data stored in your private Monstera warehouse"
+                                                : "Syncs run automatically in the background"}
+                                        </span>
                                     </div>
                                     <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                         <CheckCircle2 className="h-4 w-4 text-cyan-600" />
-                                        <span>First sync completes in 1-2 minutes</span>
+                                        <span>First data sync completes in 1-2 minutes</span>
                                     </div>
                                     <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                         <CheckCircle2 className="h-4 w-4 text-cyan-600" />
-                                        <span>You can add more sources later</span>
+                                        <span>Connect unlimited accounts across channels</span>
                                     </div>
                                 </div>
                             </div>

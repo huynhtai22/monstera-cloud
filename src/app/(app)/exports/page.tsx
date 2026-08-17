@@ -32,15 +32,39 @@ export default function ExportsPage() {
         <div className="relative w-full max-w-5xl mx-auto px-6 py-8 sm:px-10 sm:py-10 animate-in fade-in duration-300">
 
             {/* Header */}
-            <div className="relative z-10 mb-8 flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-gray-200 dark:border-[#2f3336] pb-6">
+            <div className="relative z-10 mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-gray-200 dark:border-[#2f3336] pb-6">
                 <div className="flex items-center gap-4">
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-cyan-100 bg-cyan-50 text-cyan-600 shadow-sm dark:border-cyan-900/50 dark:bg-cyan-950/40 dark:text-cyan-400">
                         <Send className="h-6 w-6" aria-hidden />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Exports & API</h1>
+                        <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Exports & Connectors</h1>
                         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            Pull data from your Monstera Cloud warehouse directly into your favorite tools.
+                            Pull data from your Monstera Cloud warehouse directly into your reporting tools.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            {/* Distribution Model Comparison Banner */}
+            <div className="mb-8 rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 to-cyan-50/40 p-5 dark:border-[#2f3336] dark:from-[#16181c] dark:to-[#16181c]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                    <div className="rounded-xl border border-white/80 bg-white/80 p-4 shadow-sm dark:border-white/5 dark:bg-black/40">
+                        <div className="flex items-center gap-2 font-bold text-cyan-700 dark:text-cyan-400 mb-1">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-100 dark:bg-cyan-950/60 text-[10px]">A</span>
+                            On-Demand Connectors (Type A)
+                        </div>
+                        <p className="text-gray-600 dark:text-gray-300">
+                            Query warehouse metrics directly within <strong>Google Sheets™ Add-on</strong> or <strong>Looker Studio™</strong> on demand using your Workspace API key. No server destination configuration required.
+                        </p>
+                    </div>
+                    <div className="rounded-xl border border-white/80 bg-white/80 p-4 shadow-sm dark:border-white/5 dark:bg-black/40">
+                        <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200 mb-1">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-800 text-[10px]">B</span>
+                            Scheduled Background Push (Type B)
+                        </div>
+                        <p className="text-gray-600 dark:text-gray-300">
+                            Automate scheduled data refreshes (daily / every 4 hours) writing directly into your destination Google Sheet tabs even when no user has the spreadsheet open.
                         </p>
                     </div>
                 </div>

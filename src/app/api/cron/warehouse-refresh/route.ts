@@ -14,10 +14,21 @@ function isoDate(offsetDays = 0) {
   return date.toISOString().slice(0, 10);
 }
 
-/** Nightly warehouse-only refresh. It does not execute destination pipelines. */
+/**
+ * GET /api/cron/warehouse-refresh?lookbackDays=30
+ * Warehouse-only refresh for all connected ad sources.
+ * Supports lookbackDays (e.g. lookbackDays=3 for frequent 4h cron runs).
+ */
 export async function GET(request: Request) {
   const denied = requireCronSecret(request);
   if (denied) return denied;
+
+  const startTime = Date.now();
+  const url = new URL(request.url);
+  const lookbackParam = parseInt(url.searchParams.get("lookbackDays") || "30", 10);
+  const lookbackDays = Number.isFinite(lookbackParam) && lookbackParam > 0 ? Math.min(lookbackParam, 90) : 30;
+  const sinceDate = isoDate(-(lookbackDays - 1));
+  const untilDate = isoDate();
 
   const workspaces = await prisma.workspace.findMany({
     where: { status: { in: ["PILOT", "ACTIVE"] } },
@@ -51,8 +62,8 @@ export async function GET(request: Request) {
           provider: connection.provider,
           credentials,
           userPlan: workspace.plan,
-          since: isoDate(-29),
-          until: isoDate(),
+          since: sinceDate,
+          until: untilDate,
         });
         if (result.success) {
           await prisma.connection.updateMany({
@@ -70,7 +81,7 @@ export async function GET(request: Request) {
         };
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Refresh failed";
-        logger.error("[NIGHTLY_WAREHOUSE_REFRESH]", { workspaceId: workspace.id, connectionId: connection.id, provider: connection.provider }, error);
+        logger.error("[WAREHOUSE_REFRESH]", { workspaceId: workspace.id, connectionId: connection.id, provider: connection.provider }, error);
         await prisma.connection.updateMany({
           where: { id: connection.id, workspaceId: workspace.id },
           data: { lastError: message },
@@ -81,7 +92,26 @@ export async function GET(request: Request) {
     results.push(...settled);
   }
 
+  const durationMs = Date.now() - startTime;
   const succeeded = results.filter((result) => result.ok).length;
-  logger.info("[NIGHTLY_WAREHOUSE_REFRESH_COMPLETE]", { total: results.length, succeeded, failed: results.length - succeeded });
-  return NextResponse.json({ total: results.length, succeeded, failed: results.length - succeeded, results });
+  const totalRows = results.reduce((sum, r) => sum + (r.rows || 0), 0);
+
+  logger.info("[WAREHOUSE_REFRESH_COMPLETE]", {
+    total: results.length,
+    succeeded,
+    failed: results.length - succeeded,
+    totalRows,
+    durationMs,
+    lookbackDays,
+  });
+
+  return NextResponse.json({
+    total: results.length,
+    succeeded,
+    failed: results.length - succeeded,
+    totalRows,
+    durationMs,
+    window: { since: sinceDate, until: untilDate, lookbackDays },
+    results,
+  });
 }

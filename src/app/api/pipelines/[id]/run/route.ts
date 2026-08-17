@@ -15,6 +15,8 @@ import { requireWorkspaceAccess, RbacError } from "@/lib/rbac";
 import { hasBearerSecret } from "@/lib/request-auth";
 import { isPilotMode } from "@/lib/pilot-mode";
 
+import { runPostSyncQualityChecks } from "@/lib/observability/data-quality";
+
 export async function POST(req: Request, context: { params: any }) {
     const syncStartTime = Date.now();
     let pipelineId: string | undefined;
@@ -232,6 +234,14 @@ export async function POST(req: Request, context: { params: any }) {
         });
 
         await markConnectionsSyncedOk(connIds, now);
+
+        // Run data quality rules asynchronously without blocking response
+        runPostSyncQualityChecks(pipeline.workspaceId, {
+            id: syncLog.id,
+            pipelineId: pipeline.id,
+            rowsSynced: etl.rowsSynced,
+            status: "success",
+        }).catch((err) => logger.error("[Data Quality] Post-sync check error", err));
 
         if (etl.rowsSynced === 0) {
             return NextResponse.json({

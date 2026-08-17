@@ -9,6 +9,13 @@ import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentia
 import { logger } from "@/lib/logger";
 import { requireWorkspaceAccess } from "@/lib/rbac";
 
+import { randomUUID } from "crypto";
+import {
+  createImportJob,
+  updateImportJob,
+  type BatchImportJobResult,
+} from "@/lib/warehouse-import-job";
+
 const AD_PROVIDERS = new Set([
   "meta_ads",
   "google_ads",
@@ -23,61 +30,20 @@ export interface BatchImportItem {
   adAccountId?: string;
 }
 
-/**
- * POST /api/data-explorer/warehouse/import-batch
- * Runs warehouse refresh for selected connections (and optional Meta ad accounts).
- */
-export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  let body: {
-    workspaceId?: string;
-    since?: string;
-    until?: string;
-    items?: BatchImportItem[];
-  };
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-
-  const { workspaceId, since, until, items } = body;
-  if (!workspaceId || !since || !until || !items?.length) {
-    return NextResponse.json(
-      { error: "workspaceId, since, until, and non-empty items[] are required" },
-      { status: 400 },
-    );
-  }
-
-  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-  if (!dateRe.test(since) || !dateRe.test(until)) {
-    return NextResponse.json({ error: "since and until must be YYYY-MM-DD" }, { status: 400 });
-  }
-
-  await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member", operation: "batch_import_warehouse" });
-  const workspace = await prisma.workspace.findUnique({
-    where: { id: workspaceId },
-    select: { plan: true },
-  });
-  const plan = workspace?.plan ?? "pilot";
-
-  const results: Array<{
-    connectionId: string;
-    provider: string;
-    adAccountId?: string;
-    ok: boolean;
-    upserted?: number;
-    rowsIngested?: number;
-    error?: string;
-  }> = [];
-
+async function processBatchItems(params: {
+  workspaceId: string;
+  since: string;
+  until: string;
+  plan: string;
+  items: BatchImportItem[];
+  onProgress?: (progress: { completed: number; total: number; results: BatchImportJobResult[] }) => Promise<void>;
+}): Promise<BatchImportJobResult[]> {
+  const { workspaceId, since, until, plan, items, onProgress } = params;
+  const results: BatchImportJobResult[] = [];
   const processedNonMetaConnections = new Set<string>();
 
-  for (const item of items) {
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
     const conn = await prisma.connection.findFirst({
       where: {
         id: item.connectionId,
@@ -95,6 +61,7 @@ export async function POST(req: Request) {
         ok: false,
         error: "Connection not found or not a supported ad warehouse source.",
       });
+      if (onProgress) await onProgress({ completed: i + 1, total: items.length, results });
       continue;
     }
 
@@ -117,6 +84,13 @@ export async function POST(req: Request) {
         });
       } else {
         if (processedNonMetaConnections.has(conn.id)) {
+          results.push({
+            connectionId: conn.id,
+            provider: conn.provider,
+            ok: true,
+            rowsIngested: 0,
+          });
+          if (onProgress) await onProgress({ completed: i + 1, total: items.length, results });
           continue;
         }
         processedNonMetaConnections.add(conn.id);
@@ -157,7 +131,129 @@ export async function POST(req: Request) {
         error: msg,
       });
     }
+
+    if (onProgress) {
+      await onProgress({ completed: i + 1, total: items.length, results });
+    }
   }
+
+  return results;
+}
+
+/**
+ * POST /api/data-explorer/warehouse/import-batch
+ * Runs warehouse refresh for selected connections (and optional Meta ad accounts).
+ * Supports both synchronous and asynchronous (async: true) execution modes.
+ */
+export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let body: {
+    workspaceId?: string;
+    since?: string;
+    until?: string;
+    items?: BatchImportItem[];
+    async?: boolean;
+  };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { workspaceId, since, until, items, async: isAsync } = body;
+  if (!workspaceId || !since || !until || !items?.length) {
+    return NextResponse.json(
+      { error: "workspaceId, since, until, and non-empty items[] are required" },
+      { status: 400 },
+    );
+  }
+
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRe.test(since) || !dateRe.test(until)) {
+    return NextResponse.json({ error: "since and until must be YYYY-MM-DD" }, { status: 400 });
+  }
+
+  await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member", operation: "batch_import_warehouse" });
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { plan: true },
+  });
+  const plan = workspace?.plan ?? "pilot";
+
+  if (isAsync) {
+    const jobId = `import_${randomUUID()}`;
+    await createImportJob({
+      id: jobId,
+      workspaceId,
+      since,
+      until,
+      totalItems: items.length,
+    });
+
+    // Fire and run asynchronously in the background
+    (async () => {
+      try {
+        await updateImportJob(jobId, { status: "running" });
+        const results = await processBatchItems({
+          workspaceId,
+          since,
+          until,
+          plan,
+          items,
+          onProgress: async ({ completed, results: currentResults }) => {
+            const approxRows = currentResults.reduce((s, r) => s + (r.upserted ?? r.rowsIngested ?? 0), 0);
+            await updateImportJob(jobId, {
+              completedItems: completed,
+              approximateRows: approxRows,
+              results: currentResults,
+            });
+          },
+        });
+
+        const okCount = results.filter((r) => r.ok).length;
+        const totalUpserts = results.reduce((s, r) => s + (r.upserted ?? r.rowsIngested ?? 0), 0);
+
+        await updateImportJob(jobId, {
+          status: "completed",
+          completedItems: items.length,
+          approximateRows: totalUpserts,
+          results,
+        });
+        logger.info(`[warehouse/import-batch] Async job ${jobId} finished: ${okCount}/${results.length} succeeded`);
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : "Batch job failed";
+        logger.error(`[warehouse/import-batch] Async job ${jobId} failed:`, err);
+        await updateImportJob(jobId, {
+          status: "failed",
+          error: errorMsg,
+        });
+      }
+    })();
+
+    return NextResponse.json(
+      {
+        success: true,
+        async: true,
+        jobId,
+        status: "queued",
+        totalJobs: items.length,
+        message: `Batch import job ${jobId} started with ${items.length} task(s).`,
+      },
+      { status: 202 }
+    );
+  }
+
+  const results = await processBatchItems({
+    workspaceId,
+    since,
+    until,
+    plan,
+    items,
+  });
 
   const okCount = results.filter((r) => r.ok).length;
   const totalUpserts = results.reduce((s, r) => s + (r.upserted ?? r.rowsIngested ?? 0), 0);

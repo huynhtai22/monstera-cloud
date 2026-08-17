@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { Redis } from "@upstash/redis";
 import { logger } from "@/lib/logger";
+import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
 import { resolveApiKey } from "@/lib/api-key-security";
 
 const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN ? Redis.fromEnv() : null;
+
+function isGoogleJwt(token: string): boolean {
+  const parts = token.split('.');
+  return parts.length === 3 && parts[0].startsWith('eyJ');
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,10 +24,50 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized. Missing API key." }, { status: 401 });
     }
 
-    const keyRecord = await resolveApiKey(apiKey);
-    if (!keyRecord) return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
+    let workspaceId: string;
 
-    const workspaceId = keyRecord.workspaceId;
+    if (isGoogleJwt(apiKey)) {
+      const verification = await verifyGoogleIdToken(apiKey, {
+        audiences: getGoogleIdTokenAudienceAllowlist(),
+      });
+      if (!verification) {
+        return NextResponse.json({ error: "Invalid or expired Google token" }, { status: 401 });
+      }
+      const user = await prisma.user.findUnique({ where: { email: verification.email } });
+      if (!user) {
+        return NextResponse.json({ error: "No Monstera account found", code: "NO_ACCOUNT" }, { status: 404 });
+      }
+      const requestedWorkspaceId = req.nextUrl.searchParams.get("workspaceId")?.trim();
+      let workspace;
+      if (requestedWorkspaceId) {
+        workspace = await prisma.workspace.findFirst({
+          where: {
+            id: requestedWorkspaceId,
+            members: { some: { userId: user.id } },
+          },
+          select: { id: true },
+        });
+      } else {
+        workspace = await prisma.workspace.findFirst({
+          where: {
+            OR: [
+              { ownerId: user.id },
+              { members: { some: { userId: user.id } } },
+            ],
+          },
+          select: { id: true },
+          orderBy: { updatedAt: "desc" },
+        });
+      }
+      if (!workspace) {
+        return NextResponse.json({ error: "No workspace found", code: "NO_WORKSPACE" }, { status: 404 });
+      }
+      workspaceId = workspace.id;
+    } else {
+      const keyRecord = await resolveApiKey(apiKey);
+      if (!keyRecord) return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
+      workspaceId = keyRecord.workspaceId;
+    }
     const startDateParam = req.nextUrl.searchParams.get("startDate");
     const endDateParam = req.nextUrl.searchParams.get("endDate");
     const platform = req.nextUrl.searchParams.get("platform");

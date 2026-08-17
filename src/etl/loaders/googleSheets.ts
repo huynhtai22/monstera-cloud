@@ -17,8 +17,8 @@ export async function loadToGoogleSheets(opts: {
   if (!actualSpreadsheetId || actualSpreadsheetId === 'target_spreadsheet') {
     const title = `Monstera Sync: ${opts.pipeline.name}`;
     const created = templateSpreadsheetId
-      ? await copySpreadsheet(opts.userId, templateSpreadsheetId, title)
-      : await createSpreadsheet(opts.userId, title);
+      ? await copySpreadsheet(opts.userId, templateSpreadsheetId, title, destCreds)
+      : await createSpreadsheet(opts.userId, title, destCreds);
     actualSpreadsheetId = created.spreadsheetId;
     await prisma.connection.update({
       where: { id: opts.pipeline.destinationConnection.id },
@@ -35,6 +35,8 @@ export async function loadToGoogleSheets(opts: {
     sheetName,
     opts.columns,
     opts.rows,
+    2000,
+    destCreds,
   );
 
   // 2. Apply Premium Formatting
@@ -43,7 +45,8 @@ export async function loadToGoogleSheets(opts: {
     spreadsheetId: actualSpreadsheetId,
     sheetName,
     rowCount: opts.rows.length,
-    colCount: opts.columns.length
+    colCount: opts.columns.length,
+    explicitCreds: destCreds,
   }).catch(e => console.error("[ETL][SHEETS] Formatting failed", e));
 
   return { spreadsheetId: actualSpreadsheetId };
