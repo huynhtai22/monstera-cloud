@@ -77,9 +77,30 @@ export async function isAlertInCooldown(workspaceId: string, ruleId: string): Pr
   }
 }
 
+function extractRecordKeys(record: any): string[] {
+  if (!record || typeof record !== "object") return [];
+  const keys = new Set<string>(Object.keys(record));
+  if (record.rawData) {
+    if (typeof record.rawData === "object" && record.rawData !== null) {
+      Object.keys(record.rawData).forEach((k) => keys.add(k));
+    } else if (typeof record.rawData === "string") {
+      try {
+        const parsed = JSON.parse(record.rawData);
+        if (typeof parsed === "object" && parsed !== null) {
+          Object.keys(parsed).forEach((k) => keys.add(k));
+        }
+      } catch {
+        // Malformed JSON string in rawData — cannot extract raw fields
+      }
+    }
+  }
+  return Array.from(keys);
+}
+
 /**
  * Inspects real observed columns from warehouse tables (CampaignMetric, RetailOrder)
- * and compares against expectedColumns. Never defaults an error or empty state to passed.
+ * and compares against expectedColumns. Scoped to the connection/provider table.
+ * Never defaults an error or empty state to passed.
  */
 export async function inspectObservedSchema(
   workspaceId: string,
@@ -87,44 +108,78 @@ export async function inspectObservedSchema(
   expectedColumns?: string[]
 ): Promise<{ schemaValid: boolean; missingColumns: string[]; observedColumns: string[] }> {
   if (!expectedColumns || expectedColumns.length === 0) {
-    return { schemaValid: true, missingColumns: [], observedColumns: [] };
+    return {
+      schemaValid: false,
+      missingColumns: ["No expected columns configured for schema check rule"],
+      observedColumns: [],
+    };
   }
 
   try {
-    const [latestCampaignMetric, latestRetailOrder] = await Promise.all([
-      prisma.campaignMetric.findFirst({
-        where: {
-          workspaceId,
-          ...(connectionId ? { connectionId } : {}),
-        },
-        orderBy: { date: "desc" },
-      }),
-      prisma.retailOrder.findFirst({
+    let provider: string | null = null;
+    if (connectionId) {
+      const conn = await prisma.connection.findFirst({
+        where: { id: connectionId, workspaceId },
+        select: { provider: true },
+      });
+      provider = conn?.provider ?? null;
+    }
+
+    const isEcommerce = provider ? ["shopee", "lazada", "shopify", "retail"].includes(provider) : false;
+    const isAdPlatform = provider ? ["meta_ads", "google_ads", "tiktok_business"].includes(provider) : false;
+
+    let observedKeys: string[] = [];
+
+    if (isEcommerce) {
+      // Only inspect RetailOrder for e-commerce connections
+      const order = await prisma.retailOrder.findFirst({
         where: {
           workspaceId,
           ...(connectionId ? { connectionId } : {}),
         },
         orderBy: { createdAtIso: "desc" },
-      }),
-    ]);
-
-    const observedSet = new Set<string>();
-
-    if (latestCampaignMetric) {
-      Object.keys(latestCampaignMetric).forEach((k) => observedSet.add(k));
-      if (latestCampaignMetric.rawData && typeof latestCampaignMetric.rawData === "object") {
-        Object.keys(latestCampaignMetric.rawData as object).forEach((k) => observedSet.add(k));
+      });
+      if (order) {
+        observedKeys = extractRecordKeys(order);
+      }
+    } else if (isAdPlatform) {
+      // Only inspect CampaignMetric for ad platform connections
+      const metric = await prisma.campaignMetric.findFirst({
+        where: {
+          workspaceId,
+          ...(connectionId ? { connectionId } : {}),
+        },
+        orderBy: { date: "desc" },
+      });
+      if (metric) {
+        observedKeys = extractRecordKeys(metric);
+      }
+    } else {
+      // If provider is unspecified or unknown, check CampaignMetric first, then RetailOrder
+      const metric = await prisma.campaignMetric.findFirst({
+        where: {
+          workspaceId,
+          ...(connectionId ? { connectionId } : {}),
+        },
+        orderBy: { date: "desc" },
+      });
+      if (metric) {
+        observedKeys = extractRecordKeys(metric);
+      } else {
+        const order = await prisma.retailOrder.findFirst({
+          where: {
+            workspaceId,
+            ...(connectionId ? { connectionId } : {}),
+          },
+          orderBy: { createdAtIso: "desc" },
+        });
+        if (order) {
+          observedKeys = extractRecordKeys(order);
+        }
       }
     }
 
-    if (latestRetailOrder) {
-      Object.keys(latestRetailOrder).forEach((k) => observedSet.add(k));
-      if (latestRetailOrder.rawData && typeof latestRetailOrder.rawData === "object") {
-        Object.keys(latestRetailOrder.rawData as object).forEach((k) => observedSet.add(k));
-      }
-    }
-
-    if (observedSet.size === 0) {
+    if (observedKeys.length === 0) {
       return {
         schemaValid: false,
         missingColumns: expectedColumns,
@@ -132,11 +187,11 @@ export async function inspectObservedSchema(
       };
     }
 
-    const observedColumns = Array.from(observedSet);
+    const observedSet = new Set(observedKeys);
     const missingColumns = expectedColumns.filter((col) => !observedSet.has(col));
     const schemaValid = missingColumns.length === 0;
 
-    return { schemaValid, missingColumns, observedColumns };
+    return { schemaValid, missingColumns, observedColumns: observedKeys };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     logger.error("[inspectObservedSchema] Error inspecting schema:", err);
@@ -240,16 +295,26 @@ export function evaluateRule(
       }
       break;
 
-    case "schema_check":
-      if (snapshot.schemaValid === false) {
+    case "schema_check": {
+      const expected = rule.expectedColumns ?? [];
+      if (expected.length === 0) {
         return {
           violated: true,
           actualValue: 0,
           expectedValue: 1,
-          message: `Schema drift detected: missing columns [${(snapshot.missingColumns || []).join(", ")}]`,
+          message: "Rule configuration invalid: no expected columns configured",
+        };
+      }
+      if (snapshot.schemaValid === false || (snapshot.missingColumns && snapshot.missingColumns.length > 0)) {
+        return {
+          violated: true,
+          actualValue: 0,
+          expectedValue: 1,
+          message: `Schema drift detected: missing columns [${(snapshot.missingColumns || expected).join(", ")}]`,
         };
       }
       return { violated: false, actualValue: 1, message: "Schema OK" };
+    }
   }
 
   return { violated: false, actualValue: actual, message: "Rule not applicable" };

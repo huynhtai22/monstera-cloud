@@ -229,14 +229,14 @@ describe("Data Quality Route Handlers (Real Handler Invocations)", () => {
     (prisma as any).dataQualityRule = {
       findFirst: async ({ where }: any) => {
         if (where.id === "rule-existing-1" && where.workspaceId === mockWorkspaceId) {
-          return existingRule;
+          return { ...existingRule, ...capturedUpdateData };
         }
         return null;
       },
-      update: async ({ where, data }: any) => {
+      updateMany: async ({ where, data }: any) => {
         capturedUpdateWhere = where;
         capturedUpdateData = data;
-        return { ...existingRule, ...data };
+        return { count: 1 };
       },
     };
 
@@ -252,6 +252,7 @@ describe("Data Quality Route Handlers (Real Handler Invocations)", () => {
     const res = await PATCH(req);
     assert.equal(res.status, 200);
     assert.equal(capturedUpdateWhere.id, "rule-existing-1");
+    assert.equal(capturedUpdateWhere.workspaceId, mockWorkspaceId);
     assert.equal(capturedUpdateData.threshold, 750);
     assert.equal(capturedUpdateData.enabled, false);
   });

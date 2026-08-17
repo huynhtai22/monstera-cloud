@@ -288,9 +288,20 @@ export async function PATCH(req: NextRequest) {
       if (patchFields.notifyEmail !== undefined) updateData.notifyEmail = patchFields.notifyEmail;
       if (patchFields.notifyTelegram !== undefined) updateData.notifyTelegram = patchFields.notifyTelegram;
 
-      const updatedRule = await prisma.dataQualityRule.update({
-        where: { id: ruleId },
+      const updated = await prisma.dataQualityRule.updateMany({
+        where: { id: ruleId, workspaceId },
         data: updateData,
+      });
+
+      if (updated.count === 0) {
+        return NextResponse.json(
+          { error: "Rule not found in this workspace" },
+          { status: 404 }
+        );
+      }
+
+      const updatedRule = await prisma.dataQualityRule.findFirst({
+        where: { id: ruleId, workspaceId },
       });
 
       return NextResponse.json({ success: true, rule: updatedRule });

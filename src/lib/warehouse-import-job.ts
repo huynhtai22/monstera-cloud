@@ -1,7 +1,7 @@
+import { randomUUID } from "node:crypto";
 import prisma from "@/lib/prisma";
-import { getRedis } from "./redis";
+import { getRedis } from "@/lib/redis";
 import { logger } from "@/lib/logger";
-import { randomUUID } from "crypto";
 
 export interface BatchImportItem {
   connectionId: string;
@@ -13,79 +13,99 @@ export interface BatchImportJobResult {
   provider: string;
   adAccountId?: string;
   ok: boolean;
-  upserted?: number;
   rowsIngested?: number;
+  upserted?: number;
   error?: string;
 }
 
 export interface BatchImportJobState {
   id: string;
   workspaceId: string;
-  userId?: string;
-  plan?: string;
-  status: "queued" | "running" | "completed" | "failed";
+  userId: string;
+  plan: string;
   since: string;
   until: string;
+  items: BatchImportItem[];
   totalItems: number;
   completedItems: number;
   approximateRows: number;
+  status: "queued" | "running" | "completed" | "failed";
+  retryCount: number;
+  maxRetries: number;
+  scheduledAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  heartbeatAt: string | null;
+  leaseId: string | null;
+  leaseExpiresAt: string | null;
+  priority: number;
+  idempotencyKey: string | null;
   results: BatchImportJobResult[];
-  error?: string;
-  retryCount?: number;
-  maxRetries?: number;
-  scheduledAt?: string | Date;
-  startedAt?: string | Date | null;
-  finishedAt?: string | Date | null;
-  createdAt: number;
-  updatedAt: number;
+  errorMsg: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export class LeaseLostError extends Error {
   constructor(jobId: string, leaseId: string) {
-    super(`Lease ${leaseId} lost or superseded for job ${jobId}`);
+    super(`Lease ${leaseId} for job ${jobId} was lost, expired, or claimed by another worker.`);
     this.name = "LeaseLostError";
   }
 }
 
-const JOB_KEY_PREFIX = "monstera:import_job:";
-const JOB_CACHE_TTL_SECONDS = 3600; // 1 hour for fast reads
+const JOB_KEY_PREFIX = "warehouse_job:";
+const JOB_CACHE_TTL_SECONDS = 86400; // 24 hours
 
-function toState(job: any): BatchImportJobState {
+/**
+ * Calculates exponential backoff delay in ms with bounded jitter.
+ * Base 5s -> 20s -> 60s -> max 120s
+ */
+export function computeBackoffMs(retryCount: number): number {
+  const delays = [5000, 20000, 60000, 120000];
+  const idx = Math.min(retryCount, delays.length - 1);
+  const baseDelay = delays[idx];
+  const jitter = Math.floor(Math.random() * (baseDelay * 0.2));
+  return baseDelay + jitter;
+}
+
+function toState(record: any): BatchImportJobState {
+  const scheduledAt = record.scheduledAt ? new Date(record.scheduledAt).toISOString() : new Date().toISOString();
+  const createdAt = record.createdAt ? new Date(record.createdAt).toISOString() : new Date().toISOString();
+  const updatedAt = record.updatedAt ? new Date(record.updatedAt).toISOString() : new Date().toISOString();
+
   return {
-    id: job.id,
-    workspaceId: job.workspaceId,
-    userId: job.userId,
-    plan: job.plan,
-    status: job.status as BatchImportJobState["status"],
-    since: job.since,
-    until: job.until,
-    totalItems: job.totalItems,
-    completedItems: job.completedItems,
-    approximateRows: job.approximateRows,
-    results: (job.results as BatchImportJobResult[]) || [],
-    error: job.errorMsg || undefined,
-    retryCount: job.retryCount,
-    maxRetries: job.maxRetries,
-    scheduledAt: job.scheduledAt,
-    startedAt: job.startedAt,
-    finishedAt: job.finishedAt,
-    createdAt: job.createdAt instanceof Date ? job.createdAt.getTime() : job.createdAt,
-    updatedAt: job.updatedAt instanceof Date ? job.updatedAt.getTime() : job.updatedAt,
+    id: record.id,
+    workspaceId: record.workspaceId,
+    userId: record.userId,
+    plan: record.plan,
+    since: record.since,
+    until: record.until,
+    items: (record.items as unknown as BatchImportItem[]) || [],
+    totalItems: record.totalItems ?? (record.items?.length || 0),
+    completedItems: record.completedItems ?? 0,
+    approximateRows: record.approximateRows ?? 0,
+    status: record.status,
+    retryCount: record.retryCount ?? 0,
+    maxRetries: record.maxRetries ?? 3,
+    scheduledAt,
+    startedAt: record.startedAt ? new Date(record.startedAt).toISOString() : null,
+    finishedAt: record.finishedAt ? new Date(record.finishedAt).toISOString() : null,
+    heartbeatAt: record.heartbeatAt ? new Date(record.heartbeatAt).toISOString() : null,
+    leaseId: record.leaseId ?? null,
+    leaseExpiresAt: record.leaseExpiresAt ? new Date(record.leaseExpiresAt).toISOString() : null,
+    priority: record.priority ?? 1,
+    idempotencyKey: record.idempotencyKey ?? null,
+    results: (record.results as unknown as BatchImportJobResult[]) || [],
+    errorMsg: record.errorMsg ?? null,
+    createdAt,
+    updatedAt,
   };
 }
 
-export function computeBackoffMs(retryCount: number): number {
-  if (retryCount <= 0) return 5000; // 5s
-  if (retryCount === 1) return 20000; // 20s
-  return 60000; // 60s max
-}
-
 /**
- * Creates a durable import job in PostgreSQL (and writes cache).
- * Handles race-safe idempotency scoped strictly to (workspaceId, idempotencyKey).
+ * Creates and persists a new warehouse import job with scoped idempotency.
  */
 export async function createImportJob(params: {
-  id?: string;
   workspaceId: string;
   userId: string;
   plan?: string;
@@ -94,8 +114,10 @@ export async function createImportJob(params: {
   items: BatchImportItem[];
   idempotencyKey?: string;
   priority?: number;
+  id?: string;
 }): Promise<BatchImportJobState> {
-  const jobId = params.id || `import_${randomUUID()}`;
+  const jobId = params.id || `wjob_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+  const now = new Date();
 
   // If idempotencyKey is provided, check if existing job exists for this workspace
   if (params.idempotencyKey) {
@@ -126,6 +148,7 @@ export async function createImportJob(params: {
         status: "queued",
         priority: params.priority || 1,
         idempotencyKey: params.idempotencyKey || null,
+        scheduledAt: now,
         results: [],
       },
     });
@@ -162,6 +185,7 @@ export async function createImportJob(params: {
 
 /**
  * Claims a specific queued or expired running job atomically.
+ * Default lease duration is 60 seconds (60000ms).
  */
 export async function claimImportJob(
   jobId: string,
@@ -208,6 +232,7 @@ export async function claimImportJob(
 /**
  * Claims the next available queued or expired job from the PostgreSQL queue.
  * Orders by priority DESC, scheduledAt ASC.
+ * Default lease duration is 60 seconds (60000ms).
  */
 export async function claimNextImportJob(
   leaseDurationMs = 60000
@@ -264,6 +289,7 @@ export async function claimNextImportJob(
 
 /**
  * Extends the lease of an actively running job.
+ * Requires unexpired lease (leaseExpiresAt >= now).
  * Throws LeaseLostError if the lease was lost or expired.
  */
 export async function heartbeatImportJob(
@@ -293,8 +319,8 @@ export async function heartbeatImportJob(
 }
 
 /**
- * Updates progress of an import job atomically under the active lease.
- * Throws LeaseLostError if the lease was lost.
+ * Updates progress of an import job atomically under the active unexpired lease.
+ * Throws LeaseLostError if the lease was lost or expired.
  */
 export async function updateImportJobProgress(
   jobId: string,
@@ -346,8 +372,8 @@ export async function updateImportJobProgress(
 }
 
 /**
- * Marks an import job as completed under the active lease.
- * Throws LeaseLostError if the lease was lost.
+ * Marks an import job as completed under the active unexpired lease.
+ * Throws LeaseLostError if the lease was lost or expired.
  */
 export async function completeImportJob(
   jobId: string,
@@ -394,7 +420,8 @@ export async function completeImportJob(
 
 /**
  * Fails a job with bounded exponential backoff or marks it permanently failed.
- * Throws LeaseLostError if the lease was lost.
+ * Atomically verifies active unexpired lease (leaseExpiresAt >= now) on both read and update.
+ * Throws LeaseLostError if the lease was lost or expired.
  */
 export async function failImportJob(
   jobId: string,
@@ -408,6 +435,7 @@ export async function failImportJob(
       id: jobId,
       leaseId,
       status: "running",
+      leaseExpiresAt: { gte: now },
     },
     select: {
       retryCount: true,
@@ -434,6 +462,7 @@ export async function failImportJob(
         id: jobId,
         leaseId,
         status: "running",
+        leaseExpiresAt: { gte: now },
       },
       data: {
         status: "queued",
@@ -448,7 +477,9 @@ export async function failImportJob(
       },
     });
 
-    if (updated.count === 0) throw new LeaseLostError(jobId, leaseId);
+    if (updated.count === 0) {
+      throw new LeaseLostError(jobId, leaseId);
+    }
   } else {
     logger.error(`[failImportJob] Job ${jobId} failed permanently: ${errorMsg}`);
 
@@ -457,11 +488,12 @@ export async function failImportJob(
         id: jobId,
         leaseId,
         status: "running",
+        leaseExpiresAt: { gte: now },
       },
       data: {
         status: "failed",
-        finishedAt: now,
         errorMsg,
+        finishedAt: now,
         leaseId: null,
         leaseExpiresAt: null,
         heartbeatAt: now,
@@ -469,7 +501,9 @@ export async function failImportJob(
       },
     });
 
-    if (updated.count === 0) throw new LeaseLostError(jobId, leaseId);
+    if (updated.count === 0) {
+      throw new LeaseLostError(jobId, leaseId);
+    }
   }
 
   const job = await prisma.warehouseImportJob.findUnique({ where: { id: jobId } });
@@ -485,25 +519,20 @@ export async function failImportJob(
 }
 
 /**
- * Retrieves a job state, strictly validating workspace access.
+ * Retrieves the current state of an import job by ID and workspaceId.
+ * Enforces workspace boundary.
  */
 export async function getImportJob(
   jobId: string,
   workspaceId: string
 ): Promise<BatchImportJobState | null> {
-  const job = await prisma.warehouseImportJob.findUnique({
-    where: { id: jobId },
+  const job = await prisma.warehouseImportJob.findFirst({
+    where: {
+      id: jobId,
+      workspaceId,
+    },
   });
 
-  if (!job || job.workspaceId !== workspaceId) {
-    return null;
-  }
-
-  const state = toState(job);
-  try {
-    const redis = getRedis();
-    await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
-  } catch {}
-
-  return state;
+  if (!job) return null;
+  return toState(job);
 }

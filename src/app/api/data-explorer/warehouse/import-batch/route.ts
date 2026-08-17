@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { getAuthSession } from "@/lib/auth-session";
@@ -11,6 +11,7 @@ import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { clampTimeRangeToPlanMaxDays, getPlanLimits } from "@/lib/plan-config";
 import {
   createImportJob,
+  claimImportJob,
   updateImportJobProgress,
   completeImportJob,
   failImportJob,
@@ -60,13 +61,15 @@ export async function processBatchItems(opts: {
   jobId?: string;
   leaseId?: string;
   syncFn?: typeof syncConnectionData;
+  isLeaseLost?: () => boolean;
   onProgress?: (progress: {
     completed: number;
     total: number;
     results: BatchImportJobResult[];
   }) => Promise<void>;
 }): Promise<BatchImportJobResult[]> {
-  const { workspaceId, since, until, plan, items, onProgress, syncFn } = opts;
+  const { workspaceId, since, until, plan, items, onProgress, syncFn, isLeaseLost } = opts;
+  const syncRunner = syncFn ?? syncConnectionData;
   const results: BatchImportJobResult[] = [];
 
   const connIds = Array.from(new Set(items.map((i) => i.connectionId)));
@@ -80,6 +83,11 @@ export async function processBatchItems(opts: {
   const connMap = new Map(connections.map((c) => [c.id, c]));
 
   for (let i = 0; i < items.length; i++) {
+    // Fencing check: halt processing immediately if lease was lost or heartbeat failed
+    if (isLeaseLost?.()) {
+      throw new LeaseLostError(opts.jobId ?? "unknown", opts.leaseId ?? "unknown");
+    }
+
     const item = items[i];
     const conn = connMap.get(item.connectionId);
     if (!conn) {
@@ -104,7 +112,7 @@ export async function processBatchItems(opts: {
       >;
 
       if (syncFn) {
-        const sync = await syncFn({
+        const sync = await syncRunner({
           workspaceId,
           connectionId: conn.id,
           provider: conn.provider,
@@ -194,16 +202,14 @@ export async function runDurableImportWorker(
     });
     if (!jobRecord) return;
 
-    // Start continuous heartbeat while processing
+    // Start continuous heartbeat while processing (every 10s)
     heartbeatTimer = setInterval(async () => {
       try {
         await heartbeatImportJob(jobId, leaseId);
       } catch (err) {
-        if (err instanceof LeaseLostError) {
-          isLeaseLost = true;
-          logger.warn(`[runDurableImportWorker] Lease lost for job ${jobId}, aborting`);
-          if (heartbeatTimer) clearInterval(heartbeatTimer);
-        }
+        isLeaseLost = true;
+        logger.error(`[runDurableImportWorker] Heartbeat failed for job ${jobId}, aborting execution:`, err);
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
       }
     }, 10000);
 
@@ -217,6 +223,7 @@ export async function runDurableImportWorker(
       jobId,
       leaseId,
       syncFn,
+      isLeaseLost: () => isLeaseLost,
       onProgress: async ({ completed, results: currentResults }) => {
         if (isLeaseLost) throw new LeaseLostError(jobId, leaseId);
         const approxRows = currentResults.reduce(
@@ -258,8 +265,8 @@ export async function runDurableImportWorker(
       `[warehouse/import-batch] Durable job ${jobId} finished: ${okCount}/${results.length} succeeded`
     );
   } catch (err: unknown) {
-    if (err instanceof LeaseLostError) {
-      logger.warn(`[runDurableImportWorker] Aborted job ${jobId} due to lost lease`);
+    if (err instanceof LeaseLostError || isLeaseLost) {
+      logger.warn(`[runDurableImportWorker] Aborted job ${jobId} due to lost lease or heartbeat failure`);
       return;
     }
     const errorMsg = err instanceof Error ? err.message : "Batch job execution failed";
@@ -393,24 +400,17 @@ export async function POST(req: Request) {
       priority: planLimits.priority,
     });
 
-    // Trigger queue processor out-of-band if cron secret configured
-    if (process.env.CRON_SECRET) {
-      const baseUrl = (
-        process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
-        new URL(req.url).origin
-      ).replace(/\/$/, "");
-
-      fetch(`${baseUrl}/api/cron/warehouse-jobs`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.CRON_SECRET}`,
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-      }).catch(() => {
-        // Fallback: 1-minute Vercel Cron will durably pick up the queued job
-      });
-    }
+    // Durably schedule execution in the serverless background context using Next.js after()
+    after(async () => {
+      try {
+        const claim = await claimImportJob(jobState.id);
+        if (claim.claimed && claim.leaseId) {
+          await runDurableImportWorker(jobState.id, claim.leaseId);
+        }
+      } catch (err) {
+        logger.error(`[warehouse/import-batch] after() worker execution error for job ${jobState.id}:`, err);
+      }
+    });
 
     return NextResponse.json(
       {

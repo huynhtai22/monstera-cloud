@@ -221,6 +221,58 @@ describe("Warehouse Import Job State Manager & Concurrency Fencing", () => {
     assert.equal(validComplete.status, "completed");
   });
 
+  it("CONCURRENCY FENCING: Worker cannot update, fail, or complete if lease expired even BEFORE another worker claims it", async () => {
+    const jobId = "expired_unclaimed_job";
+    await createImportJob({
+      id: jobId,
+      workspaceId: "ws-expire-test",
+      userId: "user-1",
+      since: "2026-01-01",
+      until: "2026-01-15",
+      items: [{ connectionId: "conn-1" }],
+    });
+
+    const worker = await claimImportJob(jobId, 50);
+    assert.equal(worker.claimed, true);
+    const leaseId = worker.leaseId!;
+
+    // Expire the lease in the past
+    const rawJob = mockDb.get(jobId);
+    rawJob.leaseExpiresAt = new Date(Date.now() - 5000);
+
+    // 1. updateImportJobProgress must throw LeaseLostError
+    await assert.rejects(
+      async () => {
+        await updateImportJobProgress(jobId, leaseId, { completedItems: 1 });
+      },
+      (err: any) => err instanceof LeaseLostError
+    );
+
+    // 2. failImportJob must throw LeaseLostError
+    await assert.rejects(
+      async () => {
+        await failImportJob(jobId, leaseId, "Network failure");
+      },
+      (err: any) => err instanceof LeaseLostError
+    );
+
+    // 3. completeImportJob must throw LeaseLostError
+    await assert.rejects(
+      async () => {
+        await completeImportJob(jobId, leaseId, [], 0);
+      },
+      (err: any) => err instanceof LeaseLostError
+    );
+
+    // 4. heartbeatImportJob must throw LeaseLostError
+    await assert.rejects(
+      async () => {
+        await heartbeatImportJob(jobId, leaseId);
+      },
+      (err: any) => err instanceof LeaseLostError
+    );
+  });
+
   it("SCOPED IDEMPOTENCY: Same workspace returns existing job; different workspace creates separate job", async () => {
     const sharedKey = "idempotent-shared-key-999";
 
@@ -310,6 +362,6 @@ describe("Warehouse Import Job State Manager & Concurrency Fencing", () => {
     const claim4 = await claimImportJob(jobId);
     const finalFail = await failImportJob(jobId, claim4.leaseId!, "Permanent auth failure");
     assert.equal(finalFail.status, "failed");
-    assert.equal(finalFail.error, "Permanent auth failure");
+    assert.equal(finalFail.errorMsg, "Permanent auth failure");
   });
 });

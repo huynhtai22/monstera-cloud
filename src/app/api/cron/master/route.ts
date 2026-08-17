@@ -11,6 +11,7 @@ export async function GET(request: Request) {
   const tasks = [
     ["warehouseRefresh", "/api/cron/warehouse-refresh"],
     ["shopeeRefresh", "/api/cron/shopee/refresh"],
+    ["warehouseJobs", "/api/cron/warehouse-jobs"],
     ["alerts", "/api/cron/performance-alerts"],
   ] as const;
 

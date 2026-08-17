@@ -188,7 +188,7 @@ describe("Data Quality Rules Engine & Notification Boundary", () => {
       assert.match(resInvalid.message, /missing columns \[grossRevenue\]/);
     });
 
-    it("inspectObservedSchema accurately identifies missing columns from warehouse records", async () => {
+    it("inspectObservedSchema accurately identifies missing columns from warehouse records and JSON rawData", async () => {
       (prisma as any).campaignMetric = {
         findFirst: async () => ({
           id: "cm-1",
@@ -196,6 +196,7 @@ describe("Data Quality Rules Engine & Notification Boundary", () => {
           spend: 100,
           impressions: 5000,
           clicks: 200,
+          rawData: JSON.stringify({ customMetaCost: 100, adSetId: "adset-123" }),
           date: new Date(),
         }),
       };
@@ -203,15 +204,97 @@ describe("Data Quality Rules Engine & Notification Boundary", () => {
         findFirst: async () => null,
       };
 
-      // When all expected columns are present
-      const res1 = await inspectObservedSchema(mockWorkspaceId, undefined, ["spend", "clicks"]);
+      // 1. When all expected columns (including rawData JSON fields) are present
+      const res1 = await inspectObservedSchema(mockWorkspaceId, undefined, ["spend", "clicks", "customMetaCost", "adSetId"]);
       assert.equal(res1.schemaValid, true);
       assert.equal(res1.missingColumns.length, 0);
 
-      // When expected columns are missing
+      // 2. When expected columns are missing
       const res2 = await inspectObservedSchema(mockWorkspaceId, undefined, ["spend", "nonExistentField"]);
       assert.equal(res2.schemaValid, false);
       assert.deepEqual(res2.missingColumns, ["nonExistentField"]);
+    });
+
+    it("inspectObservedSchema safely handles malformed JSON in rawData without crashing", async () => {
+      (prisma as any).campaignMetric = {
+        findFirst: async () => ({
+          id: "cm-2",
+          workspaceId: mockWorkspaceId,
+          spend: 100,
+          rawData: "{ invalid_json: unquoted, broken: ",
+          date: new Date(),
+        }),
+      };
+      (prisma as any).retailOrder = {
+        findFirst: async () => null,
+      };
+
+      const res = await inspectObservedSchema(mockWorkspaceId, undefined, ["spend", "missingRawField"]);
+      assert.equal(res.schemaValid, false);
+      assert.deepEqual(res.missingColumns, ["missingRawField"]);
+    });
+
+    it("inspectObservedSchema and evaluateRule fail when expectedColumns is empty", async () => {
+      // Empty expectedColumns must fail
+      const res = await inspectObservedSchema(mockWorkspaceId, undefined, []);
+      assert.equal(res.schemaValid, false);
+      assert.ok(res.missingColumns.length > 0);
+
+      const emptyRule: DataQualityRule = {
+        id: "rule-empty-cols",
+        name: "Empty Columns Rule",
+        ruleType: "schema_check",
+        metric: "orders",
+        operator: "schema_check",
+        severity: "critical",
+        expectedColumns: [],
+      };
+
+      const evalRes = evaluateRule(emptyRule, {
+        metric: "orders",
+        current: 1,
+        schemaValid: true,
+        timestamp: new Date(),
+      });
+      assert.equal(evalRes.violated, true);
+      assert.match(evalRes.message, /invalid/i);
+    });
+
+    it("inspectObservedSchema scopes inspection to connection provider table", async () => {
+      (prisma as any).connection = {
+        findFirst: async ({ where }: any) => {
+          if (where.id === "conn-meta-1") return { provider: "meta_ads" };
+          if (where.id === "conn-shopee-1") return { provider: "shopee" };
+          return null;
+        },
+      };
+
+      (prisma as any).campaignMetric = {
+        findFirst: async () => ({
+          id: "cm-meta-1",
+          workspaceId: mockWorkspaceId,
+          spend: 500,
+          date: new Date(),
+        }),
+      };
+
+      (prisma as any).retailOrder = {
+        findFirst: async () => ({
+          id: "ro-shopee-1",
+          workspaceId: mockWorkspaceId,
+          orderId: "order-999",
+          createdAtIso: new Date().toISOString(),
+        }),
+      };
+
+      // For meta_ads connection: only checks CampaignMetric (has spend, does not have orderId)
+      const resMeta = await inspectObservedSchema(mockWorkspaceId, "conn-meta-1", ["orderId"]);
+      assert.equal(resMeta.schemaValid, false);
+      assert.deepEqual(resMeta.missingColumns, ["orderId"]);
+
+      // For shopee connection: only checks RetailOrder (has orderId)
+      const resShopee = await inspectObservedSchema(mockWorkspaceId, "conn-shopee-1", ["orderId"]);
+      assert.equal(resShopee.schemaValid, true);
     });
 
     it("inspectObservedSchema never defaults to passed when warehouse has no records or inspection fails", async () => {
