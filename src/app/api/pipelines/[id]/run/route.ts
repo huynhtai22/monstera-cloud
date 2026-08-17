@@ -241,7 +241,6 @@ export async function POST(req: Request, context: { params: any }) {
                 id: syncLog.id,
                 pipelineId: pipeline.id,
                 rowsSynced: etl.rowsSynced,
-                status: "success",
             });
         } catch (err) {
             logger.error("[Data Quality] Post-sync check error", err);

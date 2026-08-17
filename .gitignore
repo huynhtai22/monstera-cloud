@@ -22,4 +22,6 @@ tmp/
 .system_generated/
 repomix-output.*
 .antigravitycli/
+test-results/
+playwright-report/
 

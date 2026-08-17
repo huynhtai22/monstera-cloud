@@ -33,6 +33,7 @@ export interface DataQualityRule {
   severity: DataQualitySeverity;
   notifyTelegram?: boolean;
   notifyEmail?: boolean;
+  expectedColumns?: string[];
 }
 
 export interface MetricSnapshot {
@@ -45,44 +46,121 @@ export interface MetricSnapshot {
 }
 
 // In-memory fallback cooldown map (used when Redis is unavailable)
-const localAlertCooldownMap = new Map<string, number>();
-const ALERT_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown per rule violation
+const memoryCooldownMap = new Map<string, number>();
+const COOLDOWN_SECONDS = 3600; // 1-hour alert deduplication cooldown
 
 /**
- * Check if alert is in cooldown to prevent notification fatigue.
+ * Checks if an alert is in cooldown. If not in cooldown, sets the cooldown timestamp.
+ * Note: Only critical Telegram-eligible alerts should invoke this function.
  */
 export async function isAlertInCooldown(workspaceId: string, ruleId: string): Promise<boolean> {
-  const cooldownKey = `dq_alert_cooldown:${workspaceId}:${ruleId}`;
+  const cooldownKey = `monstera:dq_cooldown:${workspaceId}:${ruleId}`;
+  const now = Date.now();
+
   try {
     const redis = getRedis();
-    const exists = await redis.get(cooldownKey);
-    if (exists) return true;
-    await redis.set(cooldownKey, "1", { ex: 3600 });
-    return false;
-  } catch {
-    const now = Date.now();
-    const lastSent = localAlertCooldownMap.get(cooldownKey);
-    if (lastSent && now - lastSent < ALERT_COOLDOWN_MS) {
+    const existing = await redis.get(cooldownKey);
+    if (existing) {
       return true;
     }
-    localAlertCooldownMap.set(cooldownKey, now);
+    // Set 1-hour cooldown key in Redis
+    await redis.set(cooldownKey, now.toString(), { ex: COOLDOWN_SECONDS });
+    return false;
+  } catch {
+    // In-memory fallback
+    const lastSent = memoryCooldownMap.get(cooldownKey);
+    if (lastSent && now - lastSent < COOLDOWN_SECONDS * 1000) {
+      return true;
+    }
+    memoryCooldownMap.set(cooldownKey, now);
     return false;
   }
 }
 
 /**
- * Evaluate a data quality rule against current metrics.
+ * Inspects real observed columns from warehouse tables (CampaignMetric, RetailOrder)
+ * and compares against expectedColumns. Never defaults an error or empty state to passed.
  */
-export async function evaluateRule(
+export async function inspectObservedSchema(
+  workspaceId: string,
+  connectionId?: string | null,
+  expectedColumns?: string[]
+): Promise<{ schemaValid: boolean; missingColumns: string[]; observedColumns: string[] }> {
+  if (!expectedColumns || expectedColumns.length === 0) {
+    return { schemaValid: true, missingColumns: [], observedColumns: [] };
+  }
+
+  try {
+    const [latestCampaignMetric, latestRetailOrder] = await Promise.all([
+      prisma.campaignMetric.findFirst({
+        where: {
+          workspaceId,
+          ...(connectionId ? { connectionId } : {}),
+        },
+        orderBy: { date: "desc" },
+      }),
+      prisma.retailOrder.findFirst({
+        where: {
+          workspaceId,
+          ...(connectionId ? { connectionId } : {}),
+        },
+        orderBy: { createdAtIso: "desc" },
+      }),
+    ]);
+
+    const observedSet = new Set<string>();
+
+    if (latestCampaignMetric) {
+      Object.keys(latestCampaignMetric).forEach((k) => observedSet.add(k));
+      if (latestCampaignMetric.rawData && typeof latestCampaignMetric.rawData === "object") {
+        Object.keys(latestCampaignMetric.rawData as object).forEach((k) => observedSet.add(k));
+      }
+    }
+
+    if (latestRetailOrder) {
+      Object.keys(latestRetailOrder).forEach((k) => observedSet.add(k));
+      if (latestRetailOrder.rawData && typeof latestRetailOrder.rawData === "object") {
+        Object.keys(latestRetailOrder.rawData as object).forEach((k) => observedSet.add(k));
+      }
+    }
+
+    if (observedSet.size === 0) {
+      return {
+        schemaValid: false,
+        missingColumns: expectedColumns,
+        observedColumns: [],
+      };
+    }
+
+    const observedColumns = Array.from(observedSet);
+    const missingColumns = expectedColumns.filter((col) => !observedSet.has(col));
+    const schemaValid = missingColumns.length === 0;
+
+    return { schemaValid, missingColumns, observedColumns };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.error("[inspectObservedSchema] Error inspecting schema:", err);
+    return {
+      schemaValid: false,
+      missingColumns: [`Inspection Error: ${errorMsg}`],
+      observedColumns: [],
+    };
+  }
+}
+
+/**
+ * Evaluate a single rule against a metric snapshot.
+ */
+export function evaluateRule(
   rule: DataQualityRule,
   snapshot: MetricSnapshot
-): Promise<{
+): {
   violated: boolean;
-  expectedValue?: number;
   actualValue: number;
+  expectedValue?: number;
   pctChange?: number;
   message: string;
-}> {
+} {
   const { metric, operator, threshold, pctThreshold } = rule;
   const actual = snapshot.current;
   const previous = snapshot.previous;
@@ -95,7 +173,9 @@ export async function evaluateRule(
           violated,
           expectedValue: threshold,
           actualValue: actual,
-          message: violated ? `${metric} (${actual}) exceeds threshold (${threshold})` : "OK",
+          message: violated
+            ? `${metric} value (${actual}) exceeded maximum threshold (${threshold})`
+            : "OK",
         };
       }
       break;
@@ -107,19 +187,23 @@ export async function evaluateRule(
           violated,
           expectedValue: threshold,
           actualValue: actual,
-          message: violated ? `${metric} (${actual}) below threshold (${threshold})` : "OK",
+          message: violated
+            ? `${metric} value (${actual}) dropped below minimum threshold (${threshold})`
+            : "OK",
         };
       }
       break;
 
     case "eq":
       if (threshold !== undefined && threshold !== null) {
-        const violated = actual === threshold;
+        const violated = actual !== threshold;
         return {
           violated,
           expectedValue: threshold,
           actualValue: actual,
-          message: violated ? `${metric} (${actual}) matches equality check (${threshold})` : "OK",
+          message: violated
+            ? `${metric} value (${actual}) does not equal expected (${threshold})`
+            : "OK",
         };
       }
       break;
@@ -127,7 +211,7 @@ export async function evaluateRule(
     case "drop_pct":
       if (previous !== undefined && pctThreshold !== undefined && pctThreshold !== null && previous > 0) {
         const pctChange = (actual - previous) / previous;
-        const violated = pctChange < -pctThreshold;
+        const violated = pctChange < -Math.abs(pctThreshold);
         return {
           violated,
           expectedValue: previous,
@@ -143,7 +227,7 @@ export async function evaluateRule(
     case "increase_pct":
       if (previous !== undefined && pctThreshold !== undefined && pctThreshold !== null && previous > 0) {
         const pctChange = (actual - previous) / previous;
-        const violated = pctChange > pctThreshold;
+        const violated = pctChange > Math.abs(pctThreshold);
         return {
           violated,
           expectedValue: previous,
@@ -184,19 +268,32 @@ export async function getActiveRules(
       workspaceId,
       enabled: true,
       OR: [
-        { pipelineId: null, connectionId: null }, // Global rules
+        { pipelineId: null, connectionId: null },
         ...(pipelineId ? [{ pipelineId }] : []),
         ...(connectionId ? [{ connectionId }] : []),
       ],
     },
-    orderBy: { severity: "desc" }, // Critical first
   });
 
-  return rules as unknown as DataQualityRule[];
+  return rules.map((r) => ({
+    id: r.id,
+    name: r.name,
+    ruleType: r.ruleType as DataQualityRuleType,
+    metric: r.metric as DataQualityMetric,
+    operator: r.operator as DataQualityOperator,
+    threshold: r.threshold,
+    pctThreshold: r.pctThreshold,
+    pipelineId: r.pipelineId,
+    connectionId: r.connectionId,
+    severity: r.severity as DataQualitySeverity,
+    notifyTelegram: r.notifyTelegram,
+    notifyEmail: r.notifyEmail,
+    expectedColumns: r.expectedColumns || [],
+  }));
 }
 
 /**
- * Record a data quality violation and send deduplicated alert.
+ * Record a violation and send alerts.
  */
 export async function recordViolation(
   rule: DataQualityRule,
@@ -226,14 +323,13 @@ export async function recordViolation(
     },
   });
 
-  // Alert dispatch rules:
-  // - Warnings are audit-only (violation recorded, no external alert dispatched)
+  // - Warnings are audit-only (violation recorded, no external alert dispatched, no cooldown consumed)
   // - Critical violations trigger Telegram only when notifyTelegram is enabled and not in cooldown
-  const inCooldown = await isAlertInCooldown(workspaceId, rule.id);
-  const shouldNotifyTelegram = rule.severity === "critical" && (rule.notifyTelegram ?? true) && !inCooldown;
-
-  if (shouldNotifyTelegram) {
-    await sendDataQualityAlert(rule, workspaceId, details);
+  if (rule.severity === "critical" && (rule.notifyTelegram ?? true)) {
+    const inCooldown = await isAlertInCooldown(workspaceId, rule.id);
+    if (!inCooldown) {
+      await sendDataQualityAlert(rule, workspaceId, details);
+    }
   }
 }
 
@@ -247,6 +343,7 @@ export async function getMetricSnapshot(
     pipelineId?: string;
     connectionId?: string;
     dateRange?: "day" | "week" | "month";
+    expectedColumns?: string[];
   }
 ): Promise<MetricSnapshot> {
   const now = new Date();
@@ -260,6 +357,18 @@ export async function getMetricSnapshot(
 
   let current = 0;
   let previous = 0;
+
+  // Schema check evaluation
+  if (options.expectedColumns && options.expectedColumns.length > 0) {
+    const schemaResult = await inspectObservedSchema(workspaceId, options.connectionId, options.expectedColumns);
+    return {
+      metric,
+      current: schemaResult.schemaValid ? 1 : 0,
+      schemaValid: schemaResult.schemaValid,
+      missingColumns: schemaResult.missingColumns,
+      timestamp: now,
+    };
+  }
 
   switch (metric) {
     case "row_count": {
@@ -413,26 +522,27 @@ export async function getMetricSnapshot(
     }
 
     case "roas": {
-      const currentAttribution = await prisma.attributionSnapshot.aggregate({
-        where: {
-          workspaceId,
-          date: { gte: currentStart },
-        },
-        _sum: { attributedRevenue: true, adSpend: true },
-      });
-      const previousAttribution = await prisma.attributionSnapshot.aggregate({
-        where: {
-          workspaceId,
-          date: { gte: previousStart, lt: currentStart },
-        },
-        _sum: { attributedRevenue: true, adSpend: true },
-      });
-      const currentRevenue = currentAttribution._sum.attributedRevenue || 0;
-      const currentAdSpend = currentAttribution._sum.adSpend || 1;
-      const previousRevenue = previousAttribution._sum.attributedRevenue || 0;
-      const previousAdSpend = previousAttribution._sum.adSpend || 1;
-      current = currentRevenue / currentAdSpend;
-      previous = previousRevenue / previousAdSpend;
+      const [spendAgg, revAgg] = await Promise.all([
+        prisma.campaignMetric.aggregate({
+          where: {
+            workspaceId,
+            ...(options.connectionId && { connectionId: options.connectionId }),
+            date: { gte: currentStart },
+          },
+          _sum: { spend: true },
+        }),
+        prisma.retailOrder.aggregate({
+          where: {
+            workspaceId,
+            ...(options.connectionId && { connectionId: options.connectionId }),
+            createdAt: { gte: currentStart },
+          },
+          _sum: { netRevenue: true },
+        }),
+      ]);
+      const totalSpend = spendAgg._sum.spend || 0;
+      const totalRev = revAgg._sum.netRevenue || 0;
+      current = totalSpend > 0 ? totalRev / totalSpend : 0;
       break;
     }
   }
@@ -440,95 +550,127 @@ export async function getMetricSnapshot(
   return {
     metric,
     current,
-    previous: previous > 0 ? previous : undefined,
+    previous: previous || undefined,
+    schemaValid: true,
     timestamp: now,
   };
 }
 
 /**
- * Send alert for data quality violation.
+ * Send Telegram alert for data quality violation.
  */
-async function sendDataQualityAlert(
+export async function sendDataQualityAlert(
   rule: DataQualityRule,
   workspaceId: string,
-  details: { actualValue: number; expectedValue?: number; pctChange?: number }
+  details: {
+    expectedValue?: number;
+    actualValue: number;
+    pctChange?: number;
+  }
 ): Promise<void> {
-  logger.warn(`[Data Quality Alert] ${rule.name}: ${details.actualValue} (expected: ${details.expectedValue})`);
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { name: true, telegramChatId: true },
+  });
+
+  const chatId = workspace?.telegramChatId || process.env.TELEGRAM_ALERT_CHAT_ID;
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+
+  if (!chatId || !botToken) {
+    logger.info("[sendDataQualityAlert] Telegram not configured for workspace", { workspaceId });
+    return;
+  }
+
+  const emoji = rule.severity === "critical" ? "🚨" : "⚠️";
+  const lines = [
+    `${emoji} <b>Data Quality Alert</b>`,
+    `<b>Workspace:</b> ${workspace?.name || workspaceId}`,
+    `<b>Rule:</b> ${rule.name}`,
+    `<b>Severity:</b> ${rule.severity.toUpperCase()}`,
+    `<b>Metric:</b> ${rule.metric}`,
+    `<b>Actual:</b> ${details.actualValue.toLocaleString()}`,
+  ];
+
+  if (details.expectedValue !== undefined) {
+    lines.push(`<b>Expected:</b> ${details.expectedValue.toLocaleString()}`);
+  }
+  if (details.pctChange !== undefined) {
+    lines.push(`<b>Change:</b> ${(details.pctChange * 100).toFixed(1)}%`);
+  }
+
+  const message = lines.join("\n");
 
   try {
-    const { sendAgencyAlert } = await import("@/lib/alerts");
-    const changeText = details.pctChange !== undefined ? ` (${(details.pctChange * 100).toFixed(1)}% change)` : "";
-    const msg = `⚠️ Data Quality Triggered: "${rule.name}"\nMetric: ${rule.metric} | Value: ${details.actualValue}${details.expectedValue !== undefined ? ` (expected: ${details.expectedValue})` : ""}${changeText}\nSeverity: ${rule.severity.toUpperCase()}`;
-    await sendAgencyAlert({
-      workspaceId,
-      pipelineName: rule.name,
-      errorMsg: msg,
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: "HTML",
+      }),
     });
-  } catch (e) {
-    logger.error("[sendDataQualityAlert] Failed to dispatch alert", e);
+  } catch (err) {
+    logger.error("[sendDataQualityAlert] Failed to send Telegram alert:", err);
   }
 }
 
 /**
- * Run data quality checks after a pipeline sync.
+ * Run all active quality checks after a pipeline sync.
  */
 export async function runPostSyncQualityChecks(
   workspaceId: string,
-  syncLog: {
-    id: string;
-    pipelineId: string;
-    rowsSynced: number;
-    status: string;
-  }
+  syncLog: { id: string; pipelineId: string; rowsSynced: number }
 ): Promise<void> {
-  if (syncLog.status !== "success") return;
-
-  const rules = await getActiveRules(workspaceId, syncLog.pipelineId);
-
-  for (const rule of rules) {
-    const snapshot = await getMetricSnapshot(workspaceId, rule.metric, {
-      pipelineId: syncLog.pipelineId,
-      dateRange: "day",
-    });
-
-    const result = await evaluateRule(rule, snapshot);
-
-    if (result.violated) {
-      await recordViolation(rule, workspaceId, {
-        expectedValue: result.expectedValue,
-        actualValue: result.actualValue,
-        pctChange: result.pctChange,
-        syncLogId: syncLog.id,
+  try {
+    const rules = await getActiveRules(workspaceId, syncLog.pipelineId);
+    for (const rule of rules) {
+      const snapshot = await getMetricSnapshot(workspaceId, rule.metric, {
         pipelineId: syncLog.pipelineId,
+        expectedColumns: rule.expectedColumns,
       });
+      const result = evaluateRule(rule, snapshot);
+      if (result.violated) {
+        await recordViolation(rule, workspaceId, {
+          expectedValue: result.expectedValue,
+          actualValue: result.actualValue,
+          pctChange: result.pctChange,
+          syncLogId: syncLog.id,
+          pipelineId: syncLog.pipelineId,
+        });
+      }
     }
+  } catch (err) {
+    logger.error("[runPostSyncQualityChecks] Error evaluating rules:", err);
   }
 }
 
 /**
- * Run data quality checks after a warehouse refresh or batch import.
+ * Run quality checks after a warehouse refresh.
  */
 export async function runPostWarehouseRefreshQualityChecks(
   workspaceId: string,
   connectionId?: string
 ): Promise<void> {
-  const rules = await getActiveRules(workspaceId, undefined, connectionId);
-
-  for (const rule of rules) {
-    const snapshot = await getMetricSnapshot(workspaceId, rule.metric, {
-      connectionId,
-      dateRange: "day",
-    });
-
-    const result = await evaluateRule(rule, snapshot);
-
-    if (result.violated) {
-      await recordViolation(rule, workspaceId, {
-        expectedValue: result.expectedValue,
-        actualValue: result.actualValue,
-        pctChange: result.pctChange,
+  try {
+    const rules = await getActiveRules(workspaceId, undefined, connectionId);
+    for (const rule of rules) {
+      const snapshot = await getMetricSnapshot(workspaceId, rule.metric, {
         connectionId,
+        expectedColumns: rule.expectedColumns,
       });
+      const result = evaluateRule(rule, snapshot);
+      if (result.violated) {
+        await recordViolation(rule, workspaceId, {
+          expectedValue: result.expectedValue,
+          actualValue: result.actualValue,
+          pctChange: result.pctChange,
+          connectionId,
+        });
+      }
     }
+  } catch (err) {
+    logger.error("[runPostWarehouseRefreshQualityChecks] Error evaluating rules:", err);
   }
 }

@@ -1,33 +1,95 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { logger } from "@/lib/logger";
 import { z } from "zod";
 
-const CreateRuleSchema = z.object({
+const BaseRuleFields = {
   workspaceId: z.string().min(1, "workspaceId is required"),
   name: z.string().min(1, "name is required").max(100),
-  ruleType: z.enum(["threshold", "comparison", "schema_check"]),
-  metric: z.enum(["revenue", "orders", "roas", "row_count", "spend", "conversions", "impressions", "clicks"]),
-  operator: z.enum(["gt", "lt", "eq", "drop_pct", "increase_pct", "schema_check"]),
-  threshold: z.number().optional(),
-  pctThreshold: z.number().optional(),
   severity: z.enum(["warning", "critical"]),
+  notifyEmail: z.boolean().optional(),
+  notifyTelegram: z.boolean().optional(),
   pipelineId: z.string().optional().nullable(),
   connectionId: z.string().optional().nullable(),
+};
+
+const MetricEnum = z.enum([
+  "revenue",
+  "orders",
+  "roas",
+  "row_count",
+  "spend",
+  "conversions",
+  "impressions",
+  "clicks",
+]);
+
+const ThresholdRuleSchema = z.object({
+  ...BaseRuleFields,
+  ruleType: z.literal("threshold"),
+  metric: MetricEnum,
+  operator: z.enum(["gt", "lt", "eq"]),
+  threshold: z
+    .number({ message: "threshold is required for threshold rules" })
+    .refine((v) => Number.isFinite(v), "threshold must be a finite number"),
+  pctThreshold: z.undefined().or(z.null()).optional(),
+  expectedColumns: z.array(z.string()).optional(),
 });
+
+const ComparisonRuleSchema = z.object({
+  ...BaseRuleFields,
+  ruleType: z.literal("comparison"),
+  metric: MetricEnum,
+  operator: z.enum(["drop_pct", "increase_pct"]),
+  pctThreshold: z
+    .number({ message: "pctThreshold is required for comparison rules" })
+    .min(0.01, "pctThreshold must be at least 0.01 (1%)")
+    .max(1.0, "pctThreshold cannot exceed 1.0 (100%)"),
+  threshold: z.undefined().or(z.null()).optional(),
+  expectedColumns: z.array(z.string()).optional(),
+});
+
+const SchemaCheckRuleSchema = z.object({
+  ...BaseRuleFields,
+  ruleType: z.literal("schema_check"),
+  metric: MetricEnum.default("orders"),
+  operator: z.literal("schema_check"),
+  expectedColumns: z
+    .array(z.string().min(1))
+    .min(1, "expectedColumns must contain at least one column name for schema_check rules"),
+  threshold: z.undefined().or(z.null()).optional(),
+  pctThreshold: z.undefined().or(z.null()).optional(),
+});
+
+export const CreateRuleSchema = z.discriminatedUnion("ruleType", [
+  ThresholdRuleSchema,
+  ComparisonRuleSchema,
+  SchemaCheckRuleSchema,
+]);
 
 const PatchRuleSchema = z.object({
   workspaceId: z.string().min(1, "workspaceId is required"),
   ruleId: z.string().optional(),
   enabled: z.boolean().optional(),
   telegramChatId: z.string().optional(),
+  name: z.string().min(1).max(100).optional(),
+  ruleType: z.enum(["threshold", "comparison", "schema_check"]).optional(),
+  metric: MetricEnum.optional(),
+  operator: z.enum(["gt", "lt", "eq", "drop_pct", "increase_pct", "schema_check"]).optional(),
+  threshold: z.number().optional().nullable(),
+  pctThreshold: z.number().optional().nullable(),
+  severity: z.enum(["warning", "critical"]).optional(),
+  notifyEmail: z.boolean().optional(),
+  notifyTelegram: z.boolean().optional(),
+  pipelineId: z.string().optional().nullable(),
+  connectionId: z.string().optional().nullable(),
+  expectedColumns: z.array(z.string()).optional(),
 });
 
 export async function GET(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -77,7 +139,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -97,40 +159,32 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const {
-    workspaceId,
-    name,
-    ruleType,
-    metric,
-    operator,
-    threshold,
-    pctThreshold,
-    severity,
-    pipelineId,
-    connectionId,
-  } = parsed.data;
+  const data = parsed.data;
 
   try {
     await requireWorkspaceAccess({
       userId: session.user.id,
-      workspaceId,
+      workspaceId: data.workspaceId,
       minimumRole: "admin",
       operation: "create_data_quality_rule",
     });
 
     const rule = await prisma.dataQualityRule.create({
       data: {
-        workspaceId,
-        name,
-        ruleType,
-        metric,
-        operator,
-        threshold: threshold !== undefined ? Number(threshold) : null,
-        pctThreshold: pctThreshold !== undefined ? Number(pctThreshold) : null,
-        severity,
+        workspaceId: data.workspaceId,
+        name: data.name,
+        ruleType: data.ruleType,
+        metric: data.metric,
+        operator: data.operator,
+        threshold: data.ruleType === "threshold" ? data.threshold : null,
+        pctThreshold: data.ruleType === "comparison" ? data.pctThreshold : null,
+        expectedColumns: data.ruleType === "schema_check" ? data.expectedColumns : [],
+        severity: data.severity,
         enabled: true,
-        pipelineId: pipelineId || null,
-        connectionId: connectionId || null,
+        notifyEmail: data.notifyEmail ?? false,
+        notifyTelegram: data.notifyTelegram ?? true,
+        pipelineId: data.pipelineId || null,
+        connectionId: data.connectionId || null,
       },
     });
 
@@ -145,7 +199,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -165,7 +219,7 @@ export async function PATCH(req: NextRequest) {
     );
   }
 
-  const { workspaceId, ruleId, enabled, telegramChatId } = parsed.data;
+  const { workspaceId, ruleId, telegramChatId, ...patchFields } = parsed.data;
 
   try {
     await requireWorkspaceAccess({
@@ -183,25 +237,63 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: true, telegramChatId });
     }
 
-    if (ruleId && enabled !== undefined) {
-      // Secure tenant-isolated update: rule must belong to the caller's workspaceId
-      const updated = await prisma.dataQualityRule.updateMany({
+    if (ruleId) {
+      // Find existing rule within caller's workspace
+      const existing = await prisma.dataQualityRule.findFirst({
         where: { id: ruleId, workspaceId },
-        data: { enabled },
       });
 
-      if (updated.count === 0) {
+      if (!existing) {
         return NextResponse.json(
           { error: "Rule not found in this workspace" },
           { status: 404 }
         );
       }
 
-      const rule = await prisma.dataQualityRule.findFirst({
-        where: { id: ruleId, workspaceId },
+      // If updating rule properties beyond just `enabled`, validate the merged entity
+      const mergedCandidate = {
+        workspaceId,
+        name: patchFields.name ?? existing.name,
+        ruleType: patchFields.ruleType ?? existing.ruleType,
+        metric: patchFields.metric ?? existing.metric,
+        operator: patchFields.operator ?? existing.operator,
+        threshold: patchFields.threshold !== undefined ? patchFields.threshold : existing.threshold,
+        pctThreshold: patchFields.pctThreshold !== undefined ? patchFields.pctThreshold : existing.pctThreshold,
+        expectedColumns: patchFields.expectedColumns ?? existing.expectedColumns,
+        severity: patchFields.severity ?? existing.severity,
+        notifyEmail: patchFields.notifyEmail ?? existing.notifyEmail,
+        notifyTelegram: patchFields.notifyTelegram ?? existing.notifyTelegram,
+        pipelineId: patchFields.pipelineId !== undefined ? patchFields.pipelineId : existing.pipelineId,
+        connectionId: patchFields.connectionId !== undefined ? patchFields.connectionId : existing.connectionId,
+      };
+
+      const mergedParsed = CreateRuleSchema.safeParse(mergedCandidate);
+      if (!mergedParsed.success) {
+        return NextResponse.json(
+          { error: "Validation failed on merged rule", details: mergedParsed.error.format() },
+          { status: 400 }
+        );
+      }
+
+      const updateData: any = {};
+      if (patchFields.enabled !== undefined) updateData.enabled = patchFields.enabled;
+      if (patchFields.name !== undefined) updateData.name = patchFields.name;
+      if (patchFields.ruleType !== undefined) updateData.ruleType = patchFields.ruleType;
+      if (patchFields.metric !== undefined) updateData.metric = patchFields.metric;
+      if (patchFields.operator !== undefined) updateData.operator = patchFields.operator;
+      if (patchFields.threshold !== undefined) updateData.threshold = patchFields.threshold;
+      if (patchFields.pctThreshold !== undefined) updateData.pctThreshold = patchFields.pctThreshold;
+      if (patchFields.expectedColumns !== undefined) updateData.expectedColumns = patchFields.expectedColumns;
+      if (patchFields.severity !== undefined) updateData.severity = patchFields.severity;
+      if (patchFields.notifyEmail !== undefined) updateData.notifyEmail = patchFields.notifyEmail;
+      if (patchFields.notifyTelegram !== undefined) updateData.notifyTelegram = patchFields.notifyTelegram;
+
+      const updatedRule = await prisma.dataQualityRule.update({
+        where: { id: ruleId },
+        data: updateData,
       });
 
-      return NextResponse.json({ success: true, rule });
+      return NextResponse.json({ success: true, rule: updatedRule });
     }
 
     return NextResponse.json({ error: "No valid update parameters provided" }, { status: 400 });
@@ -215,7 +307,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

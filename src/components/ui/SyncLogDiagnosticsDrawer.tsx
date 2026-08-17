@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { 
   X, 
@@ -12,7 +12,6 @@ import {
   RefreshCw, 
   Terminal, 
   Database, 
-  Key, 
   FileText, 
   ShieldAlert,
   HelpCircle,

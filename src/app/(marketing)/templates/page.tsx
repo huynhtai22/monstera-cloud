@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, BarChart3, Receipt, Tag, ShieldCheck, ChevronRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, BarChart3, Receipt, Tag, ShieldCheck } from "lucide-react";
 
 export default function TemplatesPage() {
     return (

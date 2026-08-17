@@ -40,6 +40,13 @@ export interface BatchImportJobState {
   updatedAt: number;
 }
 
+export class LeaseLostError extends Error {
+  constructor(jobId: string, leaseId: string) {
+    super(`Lease ${leaseId} lost or superseded for job ${jobId}`);
+    this.name = "LeaseLostError";
+  }
+}
+
 const JOB_KEY_PREFIX = "monstera:import_job:";
 const JOB_CACHE_TTL_SECONDS = 3600; // 1 hour for fast reads
 
@@ -67,8 +74,15 @@ function toState(job: any): BatchImportJobState {
   };
 }
 
+export function computeBackoffMs(retryCount: number): number {
+  if (retryCount <= 0) return 5000; // 5s
+  if (retryCount === 1) return 20000; // 20s
+  return 60000; // 60s max
+}
+
 /**
  * Creates a durable import job in PostgreSQL (and writes cache).
+ * Handles race-safe idempotency scoped strictly to (workspaceId, idempotencyKey).
  */
 export async function createImportJob(params: {
   id?: string;
@@ -83,50 +97,71 @@ export async function createImportJob(params: {
 }): Promise<BatchImportJobState> {
   const jobId = params.id || `import_${randomUUID()}`;
 
-  // If idempotencyKey is provided, check if existing job exists
+  // If idempotencyKey is provided, check if existing job exists for this workspace
   if (params.idempotencyKey) {
     const existing = await prisma.warehouseImportJob.findUnique({
-      where: { idempotencyKey: params.idempotencyKey },
+      where: {
+        workspaceId_idempotencyKey: {
+          workspaceId: params.workspaceId,
+          idempotencyKey: params.idempotencyKey,
+        },
+      },
     });
     if (existing) {
       return toState(existing);
     }
   }
 
-  const created = await prisma.warehouseImportJob.create({
-    data: {
-      id: jobId,
-      workspaceId: params.workspaceId,
-      userId: params.userId,
-      plan: params.plan || "pilot",
-      since: params.since,
-      until: params.until,
-      items: params.items as any,
-      status: "queued",
-      totalItems: params.items.length,
-      completedItems: 0,
-      approximateRows: 0,
-      priority: params.priority ?? 1,
-      idempotencyKey: params.idempotencyKey || null,
-      results: [],
-    },
-  });
-
-  const state = toState(created);
-
   try {
-    const redis = getRedis();
-    const key = `${JOB_KEY_PREFIX}${jobId}`;
-    await redis.set(key, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
-  } catch {
-    // Non-fatal: PostgreSQL is authoritative
-  }
+    const created = await prisma.warehouseImportJob.create({
+      data: {
+        id: jobId,
+        workspaceId: params.workspaceId,
+        userId: params.userId,
+        plan: params.plan || "pilot",
+        since: params.since,
+        until: params.until,
+        items: params.items as any,
+        totalItems: params.items.length,
+        status: "queued",
+        priority: params.priority || 1,
+        idempotencyKey: params.idempotencyKey || null,
+        results: [],
+      },
+    });
 
-  return state;
+    const state = toState(created);
+
+    try {
+      const redis = getRedis();
+      const key = `${JOB_KEY_PREFIX}${jobId}`;
+      await redis.set(key, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
+    } catch {
+      // Non-fatal: PostgreSQL is authoritative
+    }
+
+    return state;
+  } catch (err: any) {
+    // Handle concurrent creation race on (workspaceId, idempotencyKey)
+    if (err?.code === "P2002" && params.idempotencyKey) {
+      const existing = await prisma.warehouseImportJob.findUnique({
+        where: {
+          workspaceId_idempotencyKey: {
+            workspaceId: params.workspaceId,
+            idempotencyKey: params.idempotencyKey,
+          },
+        },
+      });
+      if (existing) {
+        return toState(existing);
+      }
+    }
+    throw err;
+  }
 }
 
 /**
- * Claims a queued or expired running job atomically.
+ * Claims a specific queued or expired running job atomically.
  */
 export async function claimImportJob(
   jobId: string,
@@ -141,7 +176,7 @@ export async function claimImportJob(
     where: {
       id: jobId,
       OR: [
-        { status: "queued" },
+        { status: "queued", scheduledAt: { lte: now } },
         { status: "running", leaseExpiresAt: { lt: now } },
       ],
     },
@@ -162,251 +197,12 @@ export async function claimImportJob(
   if (!job) return { claimed: false };
 
   const state = toState(job);
-
   try {
     const redis = getRedis();
     await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
   } catch {}
 
   return { claimed: true, leaseId, job: state };
-}
-
-/**
- * Extends lease time on an active job.
- */
-export async function heartbeatImportJob(
-  jobId: string,
-  leaseId: string,
-  extendMs = 60000
-): Promise<boolean> {
-  const now = new Date();
-  const leaseExpiresAt = new Date(now.getTime() + extendMs);
-
-  const updated = await prisma.warehouseImportJob.updateMany({
-    where: { id: jobId, leaseId, status: "running" },
-    data: {
-      heartbeatAt: now,
-      leaseExpiresAt,
-    },
-  });
-
-  return updated.count > 0;
-}
-
-/**
- * Updates import job progress.
- */
-export async function updateImportJobProgress(
-  jobId: string,
-  leaseId: string | null,
-  patch: {
-    completedItems?: number;
-    approximateRows?: number;
-    results?: BatchImportJobResult[];
-  }
-): Promise<BatchImportJobState | null> {
-  const where: any = { id: jobId };
-  if (leaseId) where.leaseId = leaseId;
-
-  const job = await prisma.warehouseImportJob.findFirst({ where });
-  if (!job) return null;
-
-  const data: any = {
-    updatedAt: new Date(),
-  };
-  if (typeof patch.completedItems === "number") data.completedItems = patch.completedItems;
-  if (typeof patch.approximateRows === "number") data.approximateRows = patch.approximateRows;
-  if (patch.results) data.results = patch.results as any;
-
-  const updated = await prisma.warehouseImportJob.update({
-    where: { id: jobId },
-    data,
-  });
-
-  const state = toState(updated);
-  try {
-    const redis = getRedis();
-    await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
-  } catch {}
-
-  return state;
-}
-
-/**
- * Marks job as completed.
- */
-export async function completeImportJob(
-  jobId: string,
-  leaseId: string | null,
-  summary: {
-    completedItems?: number;
-    approximateRows?: number;
-    results?: BatchImportJobResult[];
-  }
-): Promise<BatchImportJobState | null> {
-  const now = new Date();
-  const where: any = { id: jobId };
-  if (leaseId) where.leaseId = leaseId;
-
-  const job = await prisma.warehouseImportJob.findFirst({ where });
-  if (!job) return null;
-
-  const updated = await prisma.warehouseImportJob.update({
-    where: { id: jobId },
-    data: {
-      status: "completed",
-      completedItems: summary.completedItems ?? job.totalItems,
-      approximateRows: summary.approximateRows ?? job.approximateRows,
-      results: (summary.results as any) ?? job.results,
-      finishedAt: now,
-      leaseId: null,
-      leaseExpiresAt: null,
-    },
-  });
-
-  const state = toState(updated);
-  try {
-    const redis = getRedis();
-    await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
-  } catch {}
-
-  return state;
-}
-
-/**
- * Handles job failure with bounded exponential backoff retries.
- */
-export async function failImportJob(
-  jobId: string,
-  leaseId: string | null,
-  errorMsg: string,
-  shouldRetry = true
-): Promise<BatchImportJobState | null> {
-  const now = new Date();
-  const where: any = { id: jobId };
-  if (leaseId) where.leaseId = leaseId;
-
-  const job = await prisma.warehouseImportJob.findFirst({ where });
-  if (!job) return null;
-
-  const canRetry = shouldRetry && job.retryCount < job.maxRetries;
-
-  if (canRetry) {
-    // Exponential backoff: 5s, 20s, 60s
-    const backoffSeconds = Math.min(60, 5 * Math.pow(2, job.retryCount * 2));
-    const nextSchedule = new Date(now.getTime() + backoffSeconds * 1000);
-
-    const updated = await prisma.warehouseImportJob.update({
-      where: { id: jobId },
-      data: {
-        status: "queued",
-        retryCount: { increment: 1 },
-        scheduledAt: nextSchedule,
-        errorMsg: `Attempt ${job.retryCount + 1} failed: ${errorMsg}`,
-        leaseId: null,
-        leaseExpiresAt: null,
-      },
-    });
-
-    const state = toState(updated);
-    try {
-      const redis = getRedis();
-      await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
-    } catch {}
-
-    logger.warn(`[failImportJob] Job ${jobId} failed, scheduled retry #${job.retryCount + 1} in ${backoffSeconds}s`);
-    return state;
-  }
-
-  // Max retries exceeded -> final failure
-  const updated = await prisma.warehouseImportJob.update({
-    where: { id: jobId },
-    data: {
-      status: "failed",
-      errorMsg,
-      finishedAt: now,
-      leaseId: null,
-      leaseExpiresAt: null,
-    },
-  });
-
-  const state = toState(updated);
-  try {
-    const redis = getRedis();
-    await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
-  } catch {}
-
-  logger.error(`[failImportJob] Job ${jobId} failed permanently: ${errorMsg}`);
-  return state;
-}
-
-/**
- * Fetches an import job by ID with fallback from Redis cache to authoritative PostgreSQL.
- */
-export async function getImportJob(
-  jobId: string,
-  workspaceId?: string
-): Promise<BatchImportJobState | null> {
-  // Try Redis first
-  try {
-    const redis = getRedis();
-    const cached = await redis.get(`${JOB_KEY_PREFIX}${jobId}`);
-    if (cached) {
-      const state: BatchImportJobState = typeof cached === "string" ? JSON.parse(cached) : cached;
-      if (!workspaceId || state.workspaceId === workspaceId) {
-        return state;
-      }
-    }
-  } catch {
-    // Fall back to DB
-  }
-
-  const where: any = { id: jobId };
-  if (workspaceId) where.workspaceId = workspaceId;
-
-  const job = await prisma.warehouseImportJob.findFirst({ where });
-  if (!job) return null;
-
-  const state = toState(job);
-
-  // Refresh cache
-  try {
-    const redis = getRedis();
-    await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
-  } catch {}
-
-  return state;
-}
-
-/**
- * Backward compatibility: updateImportJob
- */
-export async function updateImportJob(
-  jobId: string,
-  patch: Partial<BatchImportJobState>
-): Promise<BatchImportJobState | null> {
-  const data: any = { updatedAt: new Date() };
-  if (patch.status) data.status = patch.status;
-  if (typeof patch.completedItems === "number") data.completedItems = patch.completedItems;
-  if (typeof patch.approximateRows === "number") data.approximateRows = patch.approximateRows;
-  if (patch.results) data.results = patch.results as any;
-  if (patch.error) data.errorMsg = patch.error;
-
-  try {
-    const updated = await prisma.warehouseImportJob.update({
-      where: { id: jobId },
-      data,
-    });
-    const state = toState(updated);
-    try {
-      const redis = getRedis();
-      await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
-    } catch {}
-    return state;
-  } catch (err) {
-    logger.error(`[updateImportJob] Error updating job ${jobId}`, err);
-    return null;
-  }
 }
 
 /**
@@ -420,7 +216,7 @@ export async function claimNextImportJob(
   const leaseExpiresAt = new Date(now.getTime() + leaseDurationMs);
   const leaseId = randomUUID();
 
-  // Find next eligible job
+  // Find next eligible candidate
   const candidate = await prisma.warehouseImportJob.findFirst({
     where: {
       OR: [
@@ -464,4 +260,250 @@ export async function claimNextImportJob(
   } catch {}
 
   return { claimed: true, leaseId, job: state };
+}
+
+/**
+ * Extends the lease of an actively running job.
+ * Throws LeaseLostError if the lease was lost or expired.
+ */
+export async function heartbeatImportJob(
+  jobId: string,
+  leaseId: string,
+  extensionMs = 60000
+): Promise<void> {
+  const now = new Date();
+  const leaseExpiresAt = new Date(now.getTime() + extensionMs);
+
+  const updated = await prisma.warehouseImportJob.updateMany({
+    where: {
+      id: jobId,
+      leaseId,
+      status: "running",
+      leaseExpiresAt: { gte: now },
+    },
+    data: {
+      heartbeatAt: now,
+      leaseExpiresAt,
+    },
+  });
+
+  if (updated.count === 0) {
+    throw new LeaseLostError(jobId, leaseId);
+  }
+}
+
+/**
+ * Updates progress of an import job atomically under the active lease.
+ * Throws LeaseLostError if the lease was lost.
+ */
+export async function updateImportJobProgress(
+  jobId: string,
+  leaseId: string,
+  progress: {
+    completedItems: number;
+    approximateRows?: number;
+    results?: BatchImportJobResult[];
+  }
+): Promise<BatchImportJobState> {
+  const now = new Date();
+  const data: any = {
+    completedItems: progress.completedItems,
+    heartbeatAt: now,
+    updatedAt: now,
+  };
+
+  if (typeof progress.approximateRows === "number") {
+    data.approximateRows = progress.approximateRows;
+  }
+  if (progress.results) {
+    data.results = progress.results as any;
+  }
+
+  const updated = await prisma.warehouseImportJob.updateMany({
+    where: {
+      id: jobId,
+      leaseId,
+      status: "running",
+      leaseExpiresAt: { gte: now },
+    },
+    data,
+  });
+
+  if (updated.count === 0) {
+    throw new LeaseLostError(jobId, leaseId);
+  }
+
+  const job = await prisma.warehouseImportJob.findUnique({ where: { id: jobId } });
+  if (!job) throw new LeaseLostError(jobId, leaseId);
+
+  const state = toState(job);
+  try {
+    const redis = getRedis();
+    await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
+  } catch {}
+
+  return state;
+}
+
+/**
+ * Marks an import job as completed under the active lease.
+ * Throws LeaseLostError if the lease was lost.
+ */
+export async function completeImportJob(
+  jobId: string,
+  leaseId: string,
+  results: BatchImportJobResult[],
+  approximateRows: number
+): Promise<BatchImportJobState> {
+  const now = new Date();
+
+  const updated = await prisma.warehouseImportJob.updateMany({
+    where: {
+      id: jobId,
+      leaseId,
+      status: "running",
+      leaseExpiresAt: { gte: now },
+    },
+    data: {
+      status: "completed",
+      results: results as any,
+      completedItems: results.length,
+      approximateRows,
+      finishedAt: now,
+      leaseId: null,
+      leaseExpiresAt: null,
+      updatedAt: now,
+    },
+  });
+
+  if (updated.count === 0) {
+    throw new LeaseLostError(jobId, leaseId);
+  }
+
+  const job = await prisma.warehouseImportJob.findUnique({ where: { id: jobId } });
+  if (!job) throw new LeaseLostError(jobId, leaseId);
+
+  const state = toState(job);
+  try {
+    const redis = getRedis();
+    await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
+  } catch {}
+
+  return state;
+}
+
+/**
+ * Fails a job with bounded exponential backoff or marks it permanently failed.
+ * Throws LeaseLostError if the lease was lost.
+ */
+export async function failImportJob(
+  jobId: string,
+  leaseId: string,
+  errorMsg: string
+): Promise<BatchImportJobState> {
+  const now = new Date();
+
+  const current = await prisma.warehouseImportJob.findFirst({
+    where: {
+      id: jobId,
+      leaseId,
+      status: "running",
+    },
+    select: {
+      retryCount: true,
+      maxRetries: true,
+    },
+  });
+
+  if (!current) {
+    throw new LeaseLostError(jobId, leaseId);
+  }
+
+  const retryCount = current.retryCount;
+  const maxRetries = current.maxRetries;
+
+  if (retryCount < maxRetries) {
+    const nextRetry = retryCount + 1;
+    const delayMs = computeBackoffMs(retryCount);
+    const scheduledAt = new Date(Date.now() + delayMs);
+
+    logger.warn(`[failImportJob] Job ${jobId} failed, scheduled retry #${nextRetry} in ${Math.round(delayMs / 1000)}s`);
+
+    const updated = await prisma.warehouseImportJob.updateMany({
+      where: {
+        id: jobId,
+        leaseId,
+        status: "running",
+      },
+      data: {
+        status: "queued",
+        retryCount: nextRetry,
+        scheduledAt,
+        startedAt: null,
+        errorMsg,
+        leaseId: null,
+        leaseExpiresAt: null,
+        heartbeatAt: now,
+        updatedAt: now,
+      },
+    });
+
+    if (updated.count === 0) throw new LeaseLostError(jobId, leaseId);
+  } else {
+    logger.error(`[failImportJob] Job ${jobId} failed permanently: ${errorMsg}`);
+
+    const updated = await prisma.warehouseImportJob.updateMany({
+      where: {
+        id: jobId,
+        leaseId,
+        status: "running",
+      },
+      data: {
+        status: "failed",
+        finishedAt: now,
+        errorMsg,
+        leaseId: null,
+        leaseExpiresAt: null,
+        heartbeatAt: now,
+        updatedAt: now,
+      },
+    });
+
+    if (updated.count === 0) throw new LeaseLostError(jobId, leaseId);
+  }
+
+  const job = await prisma.warehouseImportJob.findUnique({ where: { id: jobId } });
+  if (!job) throw new LeaseLostError(jobId, leaseId);
+
+  const state = toState(job);
+  try {
+    const redis = getRedis();
+    await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
+  } catch {}
+
+  return state;
+}
+
+/**
+ * Retrieves a job state, strictly validating workspace access.
+ */
+export async function getImportJob(
+  jobId: string,
+  workspaceId: string
+): Promise<BatchImportJobState | null> {
+  const job = await prisma.warehouseImportJob.findUnique({
+    where: { id: jobId },
+  });
+
+  if (!job || job.workspaceId !== workspaceId) {
+    return null;
+  }
+
+  const state = toState(job);
+  try {
+    const redis = getRedis();
+    await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
+  } catch {}
+
+  return state;
 }

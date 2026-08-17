@@ -1,219 +1,343 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, beforeEach } from "node:test";
 import {
   evaluateRule,
   recordViolation,
-  isAlertInCooldown,
-  type DataQualityRuleType,
-  type DataQualityMetric,
-  type DataQualityOperator,
-  type DataQualitySeverity,
+  inspectObservedSchema,
+  type DataQualityRule,
 } from "./data-quality";
 import prisma from "@/lib/prisma";
 
-describe("Data Quality Rule Evaluation", () => {
-  it("detects threshold violations for greater-than operator", async () => {
-    const rule = {
-      id: "rule-1",
-      name: "Ad Spend Cap Alert",
-      ruleType: "threshold" as DataQualityRuleType,
-      metric: "spend" as DataQualityMetric,
-      operator: "gt" as DataQualityOperator,
-      threshold: 1000,
-      severity: "critical" as DataQualitySeverity,
+describe("Data Quality Rules Engine & Notification Boundary", () => {
+  const mockWorkspaceId = "ws-quality-test-123";
+  let capturedTelegramRequests: any[] = [];
+  let capturedViolations: any[] = [];
+
+  beforeEach(() => {
+    capturedTelegramRequests = [];
+    capturedViolations = [];
+
+    // Mock global fetch for Telegram webhook spying
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      const urlStr = String(url);
+      if (urlStr.includes("api.telegram.org")) {
+        capturedTelegramRequests.push({
+          url: urlStr,
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+        });
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      return new Response("OK", { status: 200 });
+    }) as any;
+
+    process.env.TELEGRAM_BOT_TOKEN = "mock-bot-token-123";
+    process.env.TELEGRAM_ALERT_CHAT_ID = "-100987654321";
+
+    // Mock prisma for violations and workspace queries
+    (prisma as any).workspace = {
+      findUnique: async () => ({
+        id: mockWorkspaceId,
+        name: "Test Quality Workspace",
+        telegramChatId: "-100987654321",
+      }),
     };
 
-    const violatedResult = await evaluateRule(rule, {
-      metric: "spend",
-      current: 1250,
-      timestamp: new Date(),
-    });
-    assert.equal(violatedResult.violated, true);
-    assert.equal(violatedResult.actualValue, 1250);
-
-    const normalResult = await evaluateRule(rule, {
-      metric: "spend",
-      current: 850,
-      timestamp: new Date(),
-    });
-    assert.equal(normalResult.violated, false);
-  });
-
-  it("detects threshold violations for less-than operator (zero row sync)", async () => {
-    const rule = {
-      id: "rule-2",
-      name: "Minimum Row Count Check",
-      ruleType: "threshold" as DataQualityRuleType,
-      metric: "row_count" as DataQualityMetric,
-      operator: "lt" as DataQualityOperator,
-      threshold: 1,
-      severity: "critical" as DataQualitySeverity,
-    };
-
-    const violatedResult = await evaluateRule(rule, {
-      metric: "row_count",
-      current: 0,
-      timestamp: new Date(),
-    });
-    assert.equal(violatedResult.violated, true);
-    assert.equal(violatedResult.actualValue, 0);
-
-    const normalResult = await evaluateRule(rule, {
-      metric: "row_count",
-      current: 450,
-      timestamp: new Date(),
-    });
-    assert.equal(normalResult.violated, false);
-  });
-
-  it("detects exact equality threshold checks", async () => {
-    const rule = {
-      id: "rule-eq",
-      name: "Zero Conversions Alert",
-      ruleType: "threshold" as DataQualityRuleType,
-      metric: "conversions" as DataQualityMetric,
-      operator: "eq" as DataQualityOperator,
-      threshold: 0,
-      severity: "warning" as DataQualitySeverity,
-    };
-
-    const matchResult = await evaluateRule(rule, {
-      metric: "conversions",
-      current: 0,
-      timestamp: new Date(),
-    });
-    assert.equal(matchResult.violated, true);
-
-    const nonMatchResult = await evaluateRule(rule, {
-      metric: "conversions",
-      current: 25,
-      timestamp: new Date(),
-    });
-    assert.equal(nonMatchResult.violated, false);
-  });
-
-  it("detects significant drop percentage anomalies", async () => {
-    const rule = {
-      id: "rule-3",
-      name: "Revenue Drop Alert",
-      ruleType: "comparison" as DataQualityRuleType,
-      metric: "revenue" as DataQualityMetric,
-      operator: "drop_pct" as DataQualityOperator,
-      pctThreshold: 0.3, // 30% drop
-      severity: "warning" as DataQualitySeverity,
-    };
-
-    const violatedResult = await evaluateRule(rule, {
-      metric: "revenue",
-      current: 500,
-      previous: 1000, // 50% drop
-      timestamp: new Date(),
-    });
-    assert.equal(violatedResult.violated, true);
-    assert.equal(violatedResult.pctChange, -0.5);
-
-    const normalResult = await evaluateRule(rule, {
-      metric: "revenue",
-      current: 850,
-      previous: 1000, // 15% drop, below threshold
-      timestamp: new Date(),
-    });
-    assert.equal(normalResult.violated, false);
-  });
-
-  it("evaluates schema check rules and catches schema drift", async () => {
-    const rule = {
-      id: "rule-schema",
-      name: "Order Schema Check",
-      ruleType: "schema_check" as DataQualityRuleType,
-      metric: "orders" as DataQualityMetric,
-      operator: "schema_check" as DataQualityOperator,
-      severity: "critical" as DataQualitySeverity,
-    };
-
-    const schemaDrift = await evaluateRule(rule, {
-      metric: "orders",
-      current: 100,
-      schemaValid: false,
-      missingColumns: ["total_price", "currency"],
-      timestamp: new Date(),
-    });
-    assert.equal(schemaDrift.violated, true);
-    assert.match(schemaDrift.message, /Schema drift detected/);
-
-    const schemaValid = await evaluateRule(rule, {
-      metric: "orders",
-      current: 100,
-      schemaValid: true,
-      timestamp: new Date(),
-    });
-    assert.equal(schemaValid.violated, false);
-  });
-
-  it("enforces cooldown deduplication across recent violations", async () => {
-    // First check should allow alert and start cooldown window
-    const firstCheck = await isAlertInCooldown("workspace-test-cd", "rule-test-1");
-    assert.equal(firstCheck, false);
-
-    // Immediate second check should be suppressed by cooldown
-    const secondCheck = await isAlertInCooldown("workspace-test-cd", "rule-test-1");
-    assert.equal(secondCheck, true);
-
-    // Different rule in same workspace is not blocked
-    const differentRuleCheck = await isAlertInCooldown("workspace-test-cd", "rule-test-2");
-    assert.equal(differentRuleCheck, false);
-  });
-
-  it("keeps warnings audit-only and respects notifyTelegram flags", async () => {
-    let createdViolation: any = null;
     (prisma as any).dataQualityViolation = {
       create: async ({ data }: any) => {
-        createdViolation = data;
-        return { id: "viol-1", ...data };
+        capturedViolations.push(data);
+        return { id: `violation-${Date.now()}`, ...data };
       },
-      findMany: async () => [],
     };
+  });
 
-    // Warning severity rule (audit log only)
-    const warningRule = {
-      id: "rule-warn",
-      workspaceId: "ws-test",
-      name: "Low Volume Warning",
-      ruleType: "threshold",
-      metric: "spend",
-      operator: "lt",
-      severity: "warning",
-      notifyTelegram: true,
-      enabled: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      description: null,
-      threshold: 10,
-      pctThreshold: null,
-      pipelineId: null,
-      connectionId: null,
-      notifyEmail: false,
-    };
+  describe("Operator & Anomaly Evaluations", () => {
+    it("detects threshold violations for greater-than operator", () => {
+      const rule: DataQualityRule = {
+        id: "rule-gt",
+        name: "Spend Cap",
+        ruleType: "threshold",
+        metric: "spend",
+        operator: "gt",
+        threshold: 500,
+        severity: "critical",
+      };
 
-    await recordViolation(warningRule as any, "ws-test", {
-      actualValue: 5,
-      expectedValue: 10,
+      const res = evaluateRule(rule, {
+        metric: "spend",
+        current: 650,
+        timestamp: new Date(),
+      });
+      assert.equal(res.violated, true);
+      assert.equal(res.actualValue, 650);
+      assert.equal(res.expectedValue, 500);
     });
-    assert.equal(createdViolation.ruleId, "rule-warn");
-    assert.equal(createdViolation.status, "open");
 
-    // Critical rule with notifyTelegram disabled
-    const silentCriticalRule = {
-      ...warningRule,
-      id: "rule-silent-crit",
-      severity: "critical",
-      notifyTelegram: false,
-    };
+    it("detects threshold violations for less-than operator (e.g. zero row sync)", () => {
+      const rule: DataQualityRule = {
+        id: "rule-lt",
+        name: "Minimum Row Ingestion",
+        ruleType: "threshold",
+        metric: "row_count",
+        operator: "lt",
+        threshold: 10,
+        severity: "warning",
+      };
 
-    await recordViolation(silentCriticalRule as any, "ws-test", {
-      actualValue: 0,
-      expectedValue: 10,
+      const res = evaluateRule(rule, {
+        metric: "row_count",
+        current: 0,
+        timestamp: new Date(),
+      });
+      assert.equal(res.violated, true);
+      assert.equal(res.actualValue, 0);
     });
-    assert.equal(createdViolation.ruleId, "rule-silent-crit");
+
+    it("detects exact equality threshold checks", () => {
+      const rule: DataQualityRule = {
+        id: "rule-eq",
+        name: "Orders Match",
+        ruleType: "threshold",
+        metric: "orders",
+        operator: "eq",
+        threshold: 100,
+        severity: "warning",
+      };
+
+      const res = evaluateRule(rule, {
+        metric: "orders",
+        current: 95,
+        timestamp: new Date(),
+      });
+      assert.equal(res.violated, true);
+    });
+
+    it("detects significant drop percentage anomalies", () => {
+      const rule: DataQualityRule = {
+        id: "rule-drop",
+        name: "Revenue Drop Alert",
+        ruleType: "comparison",
+        metric: "revenue",
+        operator: "drop_pct",
+        pctThreshold: 0.3, // 30% drop threshold
+        severity: "critical",
+      };
+
+      const res = evaluateRule(rule, {
+        metric: "revenue",
+        current: 600,
+        previous: 1000, // 40% drop
+        timestamp: new Date(),
+      });
+      assert.equal(res.violated, true);
+      assert.equal(res.pctChange, -0.4);
+    });
+
+    it("detects significant increase percentage anomalies", () => {
+      const rule: DataQualityRule = {
+        id: "rule-inc",
+        name: "Spend Spike Alert",
+        ruleType: "comparison",
+        metric: "spend",
+        operator: "increase_pct",
+        pctThreshold: 0.5, // 50% increase threshold
+        severity: "critical",
+      };
+
+      const res = evaluateRule(rule, {
+        metric: "spend",
+        current: 1600,
+        previous: 1000, // 60% increase
+        timestamp: new Date(),
+      });
+      assert.equal(res.violated, true);
+      assert.equal(res.pctChange, 0.6);
+    });
+  });
+
+  describe("Schema Check Evaluations", () => {
+    it("evaluates schema check rules and catches missing expected columns", () => {
+      const rule: DataQualityRule = {
+        id: "rule-schema",
+        name: "Orders Table Schema",
+        ruleType: "schema_check",
+        metric: "orders",
+        operator: "schema_check",
+        severity: "critical",
+        expectedColumns: ["orderId", "grossRevenue", "currency"],
+      };
+
+      // 1. Schema valid snapshot
+      const resValid = evaluateRule(rule, {
+        metric: "orders",
+        current: 1,
+        schemaValid: true,
+        missingColumns: [],
+        timestamp: new Date(),
+      });
+      assert.equal(resValid.violated, false);
+
+      // 2. Schema invalid snapshot with missing columns
+      const resInvalid = evaluateRule(rule, {
+        metric: "orders",
+        current: 0,
+        schemaValid: false,
+        missingColumns: ["grossRevenue"],
+        timestamp: new Date(),
+      });
+      assert.equal(resInvalid.violated, true);
+      assert.match(resInvalid.message, /missing columns \[grossRevenue\]/);
+    });
+
+    it("inspectObservedSchema accurately identifies missing columns from warehouse records", async () => {
+      (prisma as any).campaignMetric = {
+        findFirst: async () => ({
+          id: "cm-1",
+          workspaceId: mockWorkspaceId,
+          spend: 100,
+          impressions: 5000,
+          clicks: 200,
+          date: new Date(),
+        }),
+      };
+      (prisma as any).retailOrder = {
+        findFirst: async () => null,
+      };
+
+      // When all expected columns are present
+      const res1 = await inspectObservedSchema(mockWorkspaceId, undefined, ["spend", "clicks"]);
+      assert.equal(res1.schemaValid, true);
+      assert.equal(res1.missingColumns.length, 0);
+
+      // When expected columns are missing
+      const res2 = await inspectObservedSchema(mockWorkspaceId, undefined, ["spend", "nonExistentField"]);
+      assert.equal(res2.schemaValid, false);
+      assert.deepEqual(res2.missingColumns, ["nonExistentField"]);
+    });
+
+    it("inspectObservedSchema never defaults to passed when warehouse has no records or inspection fails", async () => {
+      (prisma as any).campaignMetric = {
+        findFirst: async () => null,
+      };
+      (prisma as any).retailOrder = {
+        findFirst: async () => null,
+      };
+
+      const res = await inspectObservedSchema(mockWorkspaceId, undefined, ["orderId", "revenue"]);
+      assert.equal(res.schemaValid, false);
+      assert.deepEqual(res.missingColumns, ["orderId", "revenue"]);
+    });
+  });
+
+  describe("Notification & Cooldown Boundary", () => {
+    it("warning-only events record violations in DB but DO NOT send Telegram alerts", async () => {
+      const warningRule: DataQualityRule = {
+        id: "rule-warning-1",
+        name: "Low Volume Warning",
+        ruleType: "threshold",
+        metric: "orders",
+        operator: "lt",
+        threshold: 5,
+        severity: "warning",
+        notifyTelegram: true,
+      };
+
+      await recordViolation(warningRule, mockWorkspaceId, {
+        actualValue: 2,
+        expectedValue: 5,
+      });
+
+      // Violation recorded in DB
+      assert.equal(capturedViolations.length, 1);
+      assert.equal(capturedViolations[0].ruleId, "rule-warning-1");
+
+      // Telegram alert was NOT sent
+      assert.equal(capturedTelegramRequests.length, 0);
+    });
+
+    it("warning-only events DO NOT start or consume the Telegram cooldown", async () => {
+      const warningRule: DataQualityRule = {
+        id: "rule-shared-cooldown-test",
+        name: "Warning Anomaly",
+        ruleType: "threshold",
+        metric: "spend",
+        operator: "gt",
+        threshold: 50,
+        severity: "warning",
+        notifyTelegram: true,
+      };
+
+      // 1. Fire warning violation
+      await recordViolation(warningRule, mockWorkspaceId, {
+        actualValue: 100,
+        expectedValue: 50,
+      });
+      assert.equal(capturedTelegramRequests.length, 0);
+
+      // 2. Fire critical violation on the same rule id
+      const criticalRule: DataQualityRule = {
+        ...warningRule,
+        severity: "critical",
+      };
+      await recordViolation(criticalRule, mockWorkspaceId, {
+        actualValue: 200,
+        expectedValue: 50,
+      });
+
+      // The critical alert MUST be sent because warning did not consume cooldown
+      assert.equal(capturedTelegramRequests.length, 1);
+      assert.match(capturedTelegramRequests[0].body.text, /CRITICAL/);
+    });
+
+    it("critical events with notifyTelegram: true send Telegram and enforce 1-hour cooldown", async () => {
+      const criticalRule: DataQualityRule = {
+        id: `rule-crit-${Date.now()}`,
+        name: "Revenue Crash",
+        ruleType: "comparison",
+        metric: "revenue",
+        operator: "drop_pct",
+        pctThreshold: 0.5,
+        severity: "critical",
+        notifyTelegram: true,
+      };
+
+      // First critical event -> Sends alert
+      await recordViolation(criticalRule, mockWorkspaceId, {
+        actualValue: 100,
+        expectedValue: 1000,
+        pctChange: -0.9,
+      });
+      assert.equal(capturedTelegramRequests.length, 1);
+
+      // Second immediate critical event on the same rule -> Suppressed by cooldown
+      await recordViolation(criticalRule, mockWorkspaceId, {
+        actualValue: 120,
+        expectedValue: 1000,
+        pctChange: -0.88,
+      });
+      assert.equal(capturedTelegramRequests.length, 1); // Still 1 (second was suppressed)
+    });
+
+    it("critical events with notifyTelegram: false suppress Telegram delivery", async () => {
+      const silentRule: DataQualityRule = {
+        id: `rule-silent-${Date.now()}`,
+        name: "Silent Critical Check",
+        ruleType: "threshold",
+        metric: "spend",
+        operator: "gt",
+        threshold: 1000,
+        severity: "critical",
+        notifyTelegram: false,
+      };
+
+      await recordViolation(silentRule, mockWorkspaceId, {
+        actualValue: 2000,
+        expectedValue: 1000,
+      });
+
+      // Violation recorded in DB
+      assert.equal(capturedViolations.length, 1);
+      // No Telegram request made
+      assert.equal(capturedTelegramRequests.length, 0);
+    });
   });
 });

@@ -519,10 +519,11 @@ model DataQualityRule {
   connectionId String? // Apply to specific connection
 
   // Alerting
-  severity       String  @default("warning") // warning | critical
-  enabled        Boolean @default(true)
-  notifyEmail    Boolean @default(false)
-  notifyTelegram Boolean @default(true)
+  severity        String   @default("warning") // warning | critical
+  enabled         Boolean  @default(true)
+  notifyEmail     Boolean  @default(false)
+  notifyTelegram  Boolean  @default(true)
+  expectedColumns String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -749,12 +750,13 @@ model WarehouseImportJob {
   scheduledAt    DateTime  @default(now())
   startedAt      DateTime?
   finishedAt     DateTime?
-  idempotencyKey String?   @unique
+  idempotencyKey String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
+  @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, status])
   @@index([status, scheduledAt])
   @@index([status, leaseExpiresAt])

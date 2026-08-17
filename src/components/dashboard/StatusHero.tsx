@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { RefreshCw, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { PrimaryButton, primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
+import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { secondaryButtonLinkClassName } from "@/components/ui/SecondaryButton";
 import { HealthGauge } from "@/components/dashboard/HealthGauge";
 import { cn } from "@/lib/utils";

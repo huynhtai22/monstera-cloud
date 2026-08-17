@@ -1,54 +1,57 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { syncMetaInsightsIntoWarehouse } from "@/lib/ingestion/meta-campaign-metrics";
-import { syncConnectionData } from "@/lib/sync-connection";
-import { safeDecrypt } from "@/lib/encryption";
-import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
-import { logger } from "@/lib/logger";
-import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
-import { getPlanLimits, clampTimeRangeToPlanMaxDays } from "@/lib/plan-config";
 import { z } from "zod";
+import prisma from "@/lib/prisma";
+import { getAuthSession } from "@/lib/auth-session";
+import { safeDecrypt } from "@/lib/encryption";
+import { logger } from "@/lib/logger";
+import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
+import { syncConnectionData } from "@/lib/sync-connection";
+import { syncMetaInsightsIntoWarehouse } from "@/lib/ingestion/meta-campaign-metrics";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { clampTimeRangeToPlanMaxDays, getPlanLimits } from "@/lib/plan-config";
 import {
   createImportJob,
-  claimImportJob,
-  heartbeatImportJob,
   updateImportJobProgress,
   completeImportJob,
   failImportJob,
+  heartbeatImportJob,
+  LeaseLostError,
   type BatchImportItem,
   type BatchImportJobResult,
 } from "@/lib/warehouse-import-job";
+import { runPostWarehouseRefreshQualityChecks } from "@/lib/observability/data-quality";
 
-const AD_PROVIDERS = new Set([
-  "meta_ads",
-  "google_ads",
-  "tiktok_business",
-  "shopee",
-]);
-
-const MAX_ITEMS_PER_BATCH = 50;
 const MAX_CONCURRENT_JOBS_PER_WORKSPACE = 5;
+const MAX_ITEMS_PER_REQUEST = 50;
+
+const ItemSchema = z.object({
+  connectionId: z.string().min(1, "connectionId is required"),
+  adAccountId: z.string().optional(),
+});
 
 const ImportBatchSchema = z.object({
   workspaceId: z.string().min(1, "workspaceId is required"),
-  since: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "since must be YYYY-MM-DD"),
-  until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "until must be YYYY-MM-DD"),
+  since: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "since must be formatted as YYYY-MM-DD"),
+  until: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "until must be formatted as YYYY-MM-DD"),
   items: z
-    .array(
-      z.object({
-        connectionId: z.string().min(1, "connectionId is required"),
-        adAccountId: z.string().optional(),
-      })
-    )
-    .min(1, "items must contain at least 1 item")
-    .max(MAX_ITEMS_PER_BATCH, `Maximum ${MAX_ITEMS_PER_BATCH} items per batch request`),
-  async: z.boolean().optional().default(false),
+    .array(ItemSchema)
+    .min(1, "At least one item must be provided")
+    .max(
+      MAX_ITEMS_PER_REQUEST,
+      `Cannot import more than ${MAX_ITEMS_PER_REQUEST} items per batch`
+    ),
+  async: z.boolean().optional(),
   idempotencyKey: z.string().max(128).optional(),
 });
 
-export async function processBatchItems(params: {
+/**
+ * Executes warehouse refresh sync for an array of items.
+ */
+export async function processBatchItems(opts: {
   workspaceId: string;
   since: string;
   until: string;
@@ -56,86 +59,91 @@ export async function processBatchItems(params: {
   items: BatchImportItem[];
   jobId?: string;
   leaseId?: string;
-  onProgress?: (progress: { completed: number; total: number; results: BatchImportJobResult[] }) => Promise<void>;
+  syncFn?: typeof syncConnectionData;
+  onProgress?: (progress: {
+    completed: number;
+    total: number;
+    results: BatchImportJobResult[];
+  }) => Promise<void>;
 }): Promise<BatchImportJobResult[]> {
-  const { workspaceId, since, until, plan, items, jobId, leaseId, onProgress } = params;
+  const { workspaceId, since, until, plan, items, onProgress, syncFn } = opts;
   const results: BatchImportJobResult[] = [];
-  const processedNonMetaConnections = new Set<string>();
+
+  const connIds = Array.from(new Set(items.map((i) => i.connectionId)));
+  const connections = await prisma.connection.findMany({
+    where: {
+      id: { in: connIds },
+      workspaceId,
+      status: "connected",
+    },
+  });
+  const connMap = new Map(connections.map((c) => [c.id, c]));
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-
-    // Maintain lease heartbeat if processing background job
-    if (jobId && leaseId) {
-      await heartbeatImportJob(jobId, leaseId).catch(() => {});
-    }
-
-    const conn = await prisma.connection.findFirst({
-      where: {
-        id: item.connectionId,
-        workspaceId,
-        type: "source",
-      },
-      select: { id: true, provider: true },
-    });
-
-    if (!conn || !AD_PROVIDERS.has(conn.provider)) {
+    const conn = connMap.get(item.connectionId);
+    if (!conn) {
       results.push({
         connectionId: item.connectionId,
-        provider: conn?.provider ?? "unknown",
+        provider: "unknown",
         adAccountId: item.adAccountId,
         ok: false,
-        error: "Connection not found or not a supported ad warehouse source.",
+        error: "Connection not found or not connected",
       });
-      if (onProgress) await onProgress({ completed: i + 1, total: items.length, results });
+      if (onProgress) {
+        await onProgress({ completed: i + 1, total: items.length, results });
+      }
       continue;
     }
 
     try {
-      if (conn.provider === "meta_ads") {
-        const r = await syncMetaInsightsIntoWarehouse({
+      const rawCreds = safeDecrypt(conn.credentials);
+      const credentials = parseConnectionCredentialsJson(rawCreds) as Record<
+        string,
+        unknown
+      >;
+
+      if (syncFn) {
+        const sync = await syncFn({
           workspaceId,
           connectionId: conn.id,
+          provider: conn.provider,
+          credentials,
           since,
           until,
           userPlan: plan,
-          adAccountId: item.adAccountId || undefined,
         });
         results.push({
           connectionId: conn.id,
           provider: conn.provider,
           adAccountId: item.adAccountId,
+          ok: sync.success,
+          rowsIngested: sync.rowsIngested,
+          error: sync.error,
+        });
+      } else if (conn.provider === "meta_ads" && item.adAccountId) {
+        const metaRes = await syncMetaInsightsIntoWarehouse({
+          workspaceId,
+          connectionId: conn.id,
+          adAccountId: item.adAccountId,
+          userPlan: plan,
+          since,
+          until,
+        });
+
+        results.push({
+          connectionId: conn.id,
+          provider: conn.provider,
+          adAccountId: item.adAccountId,
           ok: true,
-          upserted: r.upserted,
+          upserted: metaRes.upserted,
         });
       } else {
-        if (processedNonMetaConnections.has(conn.id)) {
-          results.push({
-            connectionId: conn.id,
-            provider: conn.provider,
-            ok: true,
-            rowsIngested: 0,
-          });
-          if (onProgress) await onProgress({ completed: i + 1, total: items.length, results });
-          continue;
-        }
-        processedNonMetaConnections.add(conn.id);
-        const connectionRecord = await prisma.connection.findFirst({
-          where: { id: conn.id, workspaceId },
-          select: { credentials: true },
-        });
-
-        if (!connectionRecord) {
-          throw new Error("Connection credentials not found");
-        }
-
-        const raw = safeDecrypt(connectionRecord.credentials);
-        const credentials = parseConnectionCredentialsJson(raw) as Record<string, unknown>;
         const sync = await syncConnectionData({
+          workspaceId,
           connectionId: conn.id,
           provider: conn.provider,
           credentials,
-          workspaceId,
           since,
           until,
           userPlan: plan,
@@ -169,14 +177,35 @@ export async function processBatchItems(params: {
 }
 
 /**
- * Runs a background import job with durable state updates and exponential backoff retry.
+ * Runs a background import job with durable state updates, continuous heartbeat,
+ * deduplicated post-refresh data-quality checks, and exponential backoff retry.
  */
-export async function runDurableImportWorker(jobId: string, leaseId: string) {
+export async function runDurableImportWorker(
+  jobId: string,
+  leaseId: string,
+  syncFn?: typeof syncConnectionData
+) {
+  let heartbeatTimer: NodeJS.Timeout | null = null;
+  let isLeaseLost = false;
+
   try {
     const jobRecord = await prisma.warehouseImportJob.findUnique({
       where: { id: jobId },
     });
     if (!jobRecord) return;
+
+    // Start continuous heartbeat while processing
+    heartbeatTimer = setInterval(async () => {
+      try {
+        await heartbeatImportJob(jobId, leaseId);
+      } catch (err) {
+        if (err instanceof LeaseLostError) {
+          isLeaseLost = true;
+          logger.warn(`[runDurableImportWorker] Lease lost for job ${jobId}, aborting`);
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
+        }
+      }
+    }, 10000);
 
     const items = (jobRecord.items as unknown as BatchImportItem[]) || [];
     const results = await processBatchItems({
@@ -187,7 +216,9 @@ export async function runDurableImportWorker(jobId: string, leaseId: string) {
       items,
       jobId,
       leaseId,
+      syncFn,
       onProgress: async ({ completed, results: currentResults }) => {
+        if (isLeaseLost) throw new LeaseLostError(jobId, leaseId);
         const approxRows = currentResults.reduce(
           (s, r) => s + (r.upserted ?? r.rowsIngested ?? 0),
           0
@@ -200,25 +231,48 @@ export async function runDurableImportWorker(jobId: string, leaseId: string) {
       },
     });
 
+    if (isLeaseLost) throw new LeaseLostError(jobId, leaseId);
+
+    // Run post-refresh data quality checks for each successfully refreshed connection (deduplicated)
+    const successfulConnections = Array.from(
+      new Set(results.filter((r) => r.ok).map((r) => r.connectionId))
+    );
+
+    for (const connId of successfulConnections) {
+      try {
+        await runPostWarehouseRefreshQualityChecks(jobRecord.workspaceId, connId);
+      } catch (dqErr) {
+        logger.error(`[runDurableImportWorker][DATA_QUALITY] Error checking connection ${connId}:`, dqErr);
+      }
+    }
+
     const okCount = results.filter((r) => r.ok).length;
     const totalUpserts = results.reduce(
       (s, r) => s + (r.upserted ?? r.rowsIngested ?? 0),
       0
     );
 
-    await completeImportJob(jobId, leaseId, {
-      completedItems: items.length,
-      approximateRows: totalUpserts,
-      results,
-    });
+    await completeImportJob(jobId, leaseId, results, totalUpserts);
 
     logger.info(
       `[warehouse/import-batch] Durable job ${jobId} finished: ${okCount}/${results.length} succeeded`
     );
   } catch (err: unknown) {
+    if (err instanceof LeaseLostError) {
+      logger.warn(`[runDurableImportWorker] Aborted job ${jobId} due to lost lease`);
+      return;
+    }
     const errorMsg = err instanceof Error ? err.message : "Batch job execution failed";
     logger.error(`[warehouse/import-batch] Durable job ${jobId} failed:`, err);
-    await failImportJob(jobId, leaseId, errorMsg, true);
+    try {
+      await failImportJob(jobId, leaseId, errorMsg);
+    } catch {
+      // Lease may have been lost during fail update
+    }
+  } finally {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+    }
   }
 }
 
@@ -228,7 +282,7 @@ export async function runDurableImportWorker(jobId: string, leaseId: string) {
  * Supports durable background asynchronous execution and synchronous execution.
  */
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -248,7 +302,14 @@ export async function POST(req: Request) {
     );
   }
 
-  const { workspaceId, since: rawSince, until: rawUntil, items: rawItems, async: isAsync, idempotencyKey } = parsed.data;
+  const {
+    workspaceId,
+    since: rawSince,
+    until: rawUntil,
+    items: rawItems,
+    async: isAsync,
+    idempotencyKey,
+  } = parsed.data;
 
   // Validate date logic
   const sinceDate = new Date(rawSince);
@@ -279,7 +340,7 @@ export async function POST(req: Request) {
   });
   const plan = workspace?.plan ?? "pilot";
 
-  // Plan limits: clamp or validate date span
+  // Plan limits: clamp date span
   const planLimits = getPlanLimits(plan);
   const { since, until, clamped } = clampTimeRangeToPlanMaxDays(plan, {
     since: rawSince,
@@ -332,11 +393,23 @@ export async function POST(req: Request) {
       priority: planLimits.priority,
     });
 
-    // Attempt to claim and start processing immediately
-    const claim = await claimImportJob(jobState.id);
-    if (claim.claimed && claim.leaseId) {
-      // Run background worker asynchronously
-      void runDurableImportWorker(jobState.id, claim.leaseId);
+    // Trigger queue processor out-of-band if cron secret configured
+    if (process.env.CRON_SECRET) {
+      const baseUrl = (
+        process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
+        new URL(req.url).origin
+      ).replace(/\/$/, "");
+
+      fetch(`${baseUrl}/api/cron/warehouse-jobs`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.CRON_SECRET}`,
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      }).catch(() => {
+        // Fallback: 1-minute Vercel Cron will durably pick up the queued job
+      });
     }
 
     return NextResponse.json(
@@ -359,6 +432,18 @@ export async function POST(req: Request) {
     plan,
     items,
   });
+
+  // Await post-refresh quality checks for successful connections
+  const successfulConnections = Array.from(
+    new Set(results.filter((r) => r.ok).map((r) => r.connectionId))
+  );
+  for (const connId of successfulConnections) {
+    try {
+      await runPostWarehouseRefreshQualityChecks(workspaceId, connId);
+    } catch (dqErr) {
+      logger.error(`[warehouse/import-batch][DATA_QUALITY] Error checking connection ${connId}:`, dqErr);
+    }
+  }
 
   const okCount = results.filter((r) => r.ok).length;
   const totalUpserts = results.reduce(

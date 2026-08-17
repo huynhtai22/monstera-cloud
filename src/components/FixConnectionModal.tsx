@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X, AlertCircle, RefreshCw, CheckCircle2, ArrowRight } from "lucide-react";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { PrimaryButton, SecondaryButton } from "@/components/ui";
@@ -275,7 +274,7 @@ export function FixConnectionModal({
                             </div>
 
                             {/* Action button */}
-                            <PrimaryButton onClick={handleReconnect} className="w-full py-3">
+                            <PrimaryButton onClick={handleReconnect} disabled={isReconnecting} className="w-full py-3">
                                 Reconnect Now
                                 <ArrowRight className="h-4 w-4" />
                             </PrimaryButton>
