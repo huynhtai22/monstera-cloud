@@ -1,5 +1,3 @@
-import crypto from "crypto";
-
 export interface TikTokTokenResponse {
   access_token: string;
   refresh_token: string;

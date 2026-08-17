@@ -188,7 +188,6 @@ export function applyFormula(
     const sanitized = expr.replace(/[^0-9+\-*/().\s]/g, "");
 
     try {
-        // eslint-disable-next-line no-new-func
         const result = new Function(`return (${sanitized})`)();
         if (typeof result === "number" && !isNaN(result)) {
             return { ...record, [targetField]: result };

@@ -4,7 +4,7 @@
  */
 
 import { toast } from "sonner";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import Image from "next/image";
 import { logoPathForConnectionProvider } from "./integration-logos";
 
 interface SyncToastStats {
@@ -22,7 +22,6 @@ export function showSyncToast(
     stats: SyncToastStats
 ): void {
     const logo = logoPathForConnectionProvider(provider);
-    const hasData = stats.rows > 0;
     
     toast.success(
         sourceName,
@@ -30,9 +29,11 @@ export function showSyncToast(
             description: `${stats.rows.toLocaleString()} rows synced in ${Math.round(stats.duration)}s`,
             duration: 4000,
             icon: (
-                <img 
+                <Image 
                     src={logo} 
                     alt={provider} 
+                    width={16}
+                    height={16}
                     className="h-4 w-4 object-contain" 
                 />
             ),
@@ -55,7 +56,7 @@ export function showSyncErrorToast(
         {
             description: error,
             duration: 6000,
-            icon: <img src={logo} alt={provider} className="h-4 w-4 object-contain" />,
+            icon: <Image src={logo} alt={provider} width={16} height={16} className="h-4 w-4 object-contain" />,
         }
     );
 }
@@ -75,7 +76,9 @@ export function showPipelineCreatedToast(
             duration: 5000,
             action: {
                 label: "View Reports",
-                onClick: () => (window.location.href = "/reports"),
+                onClick: () => {
+                    window.location.pathname = "/reports";
+                },
             },
         }
     );

@@ -2,9 +2,6 @@
  * OAuth Framework - Provider Adapter Interface
  * Unified abstraction for all source OAuth flows
  */
-
-import type { Connection, Prisma } from "@prisma/client";
-
 /** Standardized connected account representation */
 export interface ConnectedAccount {
     id: string;

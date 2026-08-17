@@ -12,7 +12,7 @@
     "lint": "eslint src",
     "lint:ci": "eslint src --max-warnings 105",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test \"src/**/*.test.ts\" \"src/**/**/*.test.ts\" \"src/**/**/**/*.test.ts\"",
     "test:e2e": "playwright test",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:prepare": "node scripts/prepare-deploy-migrations.mjs",
@@ -24,8 +24,8 @@
     "reset-smoke-plan": "tsx scripts/reset-smoke-test-plan.ts",
     "seed-demo-metrics": "tsx scripts/seed-demo-metrics.ts",
     "encrypt-connection-credentials": "tsx prisma/scripts/encrypt-connection-credentials.ts",
-    "encrypt-connection-credentials:dry-run": "tsx prisma/scripts/encrypt-connection-credentials.ts --dry-run",
-    "job-worker": "tsx scripts/looker-job-worker.ts"
+    "job-worker": "tsx scripts/looker-job-worker.ts",
+    "import-worker": "tsx scripts/warehouse-import-worker.ts"
   },
   "keywords": [],
   "author": "",

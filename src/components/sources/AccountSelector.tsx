@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { Check, ChevronDown, Building2, Layers, Users } from "lucide-react";
@@ -53,7 +53,7 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
     { refreshInterval: 0 }
   );
 
-  const accounts: Account[] = data?.accounts || [];
+  const accounts: Account[] = useMemo(() => data?.accounts || [], [data?.accounts]);
   const selectedCount = accounts.filter((a) => a.selected).length;
 
   const toggleAccount = useCallback((accountId: string) => {

@@ -5,6 +5,9 @@ import { logger } from "@/lib/logger";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { requireCronSecret } from "@/lib/request-auth";
 import { syncConnectionData } from "@/lib/sync-connection";
+import { runPostWarehouseRefreshQualityChecks } from "@/lib/observability/data-quality";
+import { claimNextImportJob } from "@/lib/warehouse-import-job";
+import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
 
 const PILOT_PROVIDERS = new Set(["meta_ads", "google_ads", "tiktok_business", "shopee"]);
 
@@ -70,6 +73,13 @@ export async function GET(request: Request) {
             where: { id: connection.id, workspaceId: workspace.id },
             data: { lastSyncAt: new Date(), lastError: null },
           });
+
+          // Await post-refresh data quality checks
+          try {
+            await runPostWarehouseRefreshQualityChecks(workspace.id, connection.id);
+          } catch (dqErr) {
+            logger.error("[WAREHOUSE_REFRESH][DATA_QUALITY]", { workspaceId: workspace.id, connectionId: connection.id }, dqErr);
+          }
         }
         return {
           workspaceId: workspace.id,
@@ -92,6 +102,23 @@ export async function GET(request: Request) {
     results.push(...settled);
   }
 
+  // Drain and process up to 3 queued/pending background import jobs
+  let processedImportJobs = 0;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const claim = await claimNextImportJob();
+      if (claim.claimed && claim.job && claim.leaseId) {
+        await runDurableImportWorker(claim.job.id, claim.leaseId);
+        processedImportJobs++;
+      } else {
+        break;
+      }
+    } catch (jobErr) {
+      logger.error("[WAREHOUSE_REFRESH][JOB_DRAIN]", jobErr);
+      break;
+    }
+  }
+
   const durationMs = Date.now() - startTime;
   const succeeded = results.filter((result) => result.ok).length;
   const totalRows = results.reduce((sum, r) => sum + (r.rows || 0), 0);
@@ -101,6 +128,7 @@ export async function GET(request: Request) {
     succeeded,
     failed: results.length - succeeded,
     totalRows,
+    processedImportJobs,
     durationMs,
     lookbackDays,
   });
@@ -110,6 +138,7 @@ export async function GET(request: Request) {
     succeeded,
     failed: results.length - succeeded,
     totalRows,
+    processedImportJobs,
     durationMs,
     window: { since: sinceDate, until: untilDate, lookbackDays },
     results,

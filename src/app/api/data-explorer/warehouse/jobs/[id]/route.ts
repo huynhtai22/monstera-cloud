@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { getImportJob } from "@/lib/warehouse-import-job";
-import { requireWorkspaceAccess } from "@/lib/rbac";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 export async function GET(
   req: NextRequest,
@@ -30,7 +30,9 @@ export async function GET(
       minimumRole: "viewer",
       operation: "view_warehouse_import_job",
     });
-  } catch {
+  } catch (err) {
+    const rbacRes = toRbacResponse(err);
+    if (rbacRes) return rbacRes;
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

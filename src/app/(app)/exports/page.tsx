@@ -46,25 +46,25 @@ export default function ExportsPage() {
                 </div>
             </div>
 
-            {/* Distribution Model Comparison Banner */}
+            {/* Delivery Methods Banner */}
             <div className="mb-8 rounded-2xl border border-slate-200 bg-gradient-to-r from-slate-50 to-cyan-50/40 p-5 dark:border-[#2f3336] dark:from-[#16181c] dark:to-[#16181c]">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                     <div className="rounded-xl border border-white/80 bg-white/80 p-4 shadow-sm dark:border-white/5 dark:bg-black/40">
                         <div className="flex items-center gap-2 font-bold text-cyan-700 dark:text-cyan-400 mb-1">
-                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-100 dark:bg-cyan-950/60 text-[10px]">A</span>
-                            On-Demand Connectors (Type A)
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-100 dark:bg-cyan-950/60 text-[10px]">✓</span>
+                            On-Demand Data Pull (Available in Pilot)
                         </div>
                         <p className="text-gray-600 dark:text-gray-300">
-                            Query warehouse metrics directly within <strong>Google Sheets™ Add-on</strong> or <strong>Looker Studio™</strong> on demand using your Workspace API key. No server destination configuration required.
+                            Query warehouse metrics directly within <strong>Google Sheets™ Add-on</strong> or <strong>Looker Studio™</strong> on demand using your Workspace API key.
                         </p>
                     </div>
                     <div className="rounded-xl border border-white/80 bg-white/80 p-4 shadow-sm dark:border-white/5 dark:bg-black/40">
-                        <div className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200 mb-1">
-                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-800 text-[10px]">B</span>
-                            Scheduled Background Push (Type B)
+                        <div className="flex items-center gap-2 font-bold text-slate-700 dark:text-slate-300 mb-1">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-400 text-[10px]">⏱</span>
+                            Scheduled Spreadsheet Delivery (Coming Soon)
                         </div>
                         <p className="text-gray-600 dark:text-gray-300">
-                            Automate scheduled data refreshes (daily / every 4 hours) writing directly into your destination Google Sheet tabs even when no user has the spreadsheet open.
+                            Automated background push to Google Sheets is not active during the pilot program. Use the Google Sheets Add-on or Looker Studio connector for live data pulls.
                         </p>
                     </div>
                 </div>

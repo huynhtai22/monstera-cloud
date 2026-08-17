@@ -109,7 +109,7 @@ export async function interceptRequest(
     case "oauth":
       return await signOAuthRequest(context, config, token);
     case "api_key":
-      return await signApiKeyRequest(context, config);
+      return await signApiKeyRequest();
     default:
       throw new Error(`Unsupported auth type: ${config.authType}`);
   }
@@ -191,10 +191,7 @@ async function signOAuthRequest(
 /**
  * API Key signing (simple platforms)
  */
-async function signApiKeyRequest(
-  context: RequestContext,
-  config: PlatformConfig
-): Promise<InterceptedRequest> {
+async function signApiKeyRequest(): Promise<InterceptedRequest> {
   // Implementation for API key platforms
   throw new Error("API Key auth not yet implemented");
 }
@@ -277,10 +274,9 @@ function getPartnerKey(platform: string): string {
  * Tracks API calls per connection to respect platform limits
  */
 export async function checkRateLimit(
-  connectionId: string,
-  platform: string,
-  limit: number,
-  windowSeconds: number
+  _connectionId: string,
+  _platform: string,
+  limit: number
 ): Promise<{ allowed: boolean; remaining: number }> {
   // Implementation would use Redis to track call counts
   // For now, always allow (implement with Redis)

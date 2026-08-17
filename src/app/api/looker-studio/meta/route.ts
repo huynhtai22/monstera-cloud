@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
       try {
         const cached = await redis.get(cacheKey);
         if (cached && typeof cached === 'string') return NextResponse.json(JSON.parse(cached));
-      } catch (e) {
+      } catch {
         // ignore cache read errors
       }
     }

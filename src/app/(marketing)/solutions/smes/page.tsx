@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import {
     ArrowRight,
@@ -187,12 +188,12 @@ export default function SMEsSolutionPage() {
                             Official API Partner · Trusted by sellers across Vietnam · Indonesia · Thailand
                         </p>
                         <div className="flex flex-wrap items-center justify-center gap-6 opacity-50 hover:opacity-70 transition-opacity">
-                            <img src={INTEGRATION_LOGOS.tiktok}       alt="TikTok Ads"    className="h-5 w-auto" />
-                            <img src={INTEGRATION_LOGOS.meta}         alt="Meta Ads"      className="h-5 w-auto" />
-                            <img src={INTEGRATION_LOGOS.shopee}       alt="Shopee"        className="h-5 w-auto" />
-                            <img src={INTEGRATION_LOGOS.googleAds}    alt="Google Ads"    className="h-5 w-auto" />
-                            <img src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" className="h-5 w-auto" />
-                            <img src={INTEGRATION_LOGOS.looker}       alt="Looker Studio" className="h-5 w-auto" />
+                            <Image src={INTEGRATION_LOGOS.tiktok}       alt="TikTok Ads"    width={20} height={20} className="h-5 w-auto" />
+                            <Image src={INTEGRATION_LOGOS.meta}         alt="Meta Ads"      width={20} height={20} className="h-5 w-auto" />
+                            <Image src={INTEGRATION_LOGOS.shopee}       alt="Shopee"        width={20} height={20} className="h-5 w-auto" />
+                            <Image src={INTEGRATION_LOGOS.googleAds}    alt="Google Ads"    width={20} height={20} className="h-5 w-auto" />
+                            <Image src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" width={20} height={20} className="h-5 w-auto" />
+                            <Image src={INTEGRATION_LOGOS.looker}       alt="Looker Studio" width={20} height={20} className="h-5 w-auto" />
                         </div>
                     </div>
                 </div>
@@ -250,9 +251,11 @@ export default function SMEsSolutionPage() {
                                     ${activePlatform.id === p.id ? p.pillActive : p.pillInactive}
                                 `}
                             >
-                                <img
+                                <Image
                                     src={p.logo}
                                     alt={p.label}
+                                    width={16}
+                                    height={16}
                                     className="h-4 w-4 object-contain"
                                 />
                                 {p.label}
@@ -278,7 +281,7 @@ export default function SMEsSolutionPage() {
                             <div className="w-3 h-3 rounded-full bg-amber-400" />
                             <div className="w-3 h-3 rounded-full bg-green-400" />
                             <div className="flex items-center gap-2 ml-3">
-                                <img src={activePlatform.logo} alt={activePlatform.label} className="h-3.5 w-3.5 object-contain" />
+                                <Image src={activePlatform.logo} alt={activePlatform.label} width={14} height={14} className="h-3.5 w-3.5 object-contain" />
                                 <span className="text-xs text-slate-400 font-mono">{activePlatform.filename} — warehouse export preview</span>
                             </div>
                         </div>
@@ -292,7 +295,7 @@ export default function SMEsSolutionPage() {
                                     <p className="text-xs text-slate-400 mt-2">{activePlatform.metric.sub}</p>
                                 </div>
                                 <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border ${activePlatform.badgeClass}`}>
-                                    <img src={activePlatform.logo} alt={activePlatform.label} className="h-3 w-3 object-contain" />
+                                    <Image src={activePlatform.logo} alt={activePlatform.label} width={12} height={12} className="h-3 w-3 object-contain" />
                                     {activePlatform.label}
                                 </div>
                             </div>

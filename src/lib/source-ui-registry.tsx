@@ -3,10 +3,6 @@
  * Provider-specific UI configuration for the ConnectSourceModal
  * Part of the OAuth Framework architecture refactor
  */
-
-import React from "react";
-import { Facebook } from "lucide-react";
-
 export type SourceAuthType = "oauth" | "oauth-with-domain" | "api-key";
 
 export interface SourceUIConfig {

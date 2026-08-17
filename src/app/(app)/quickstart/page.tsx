@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { ArrowRight, CheckCircle2, Store, FileSpreadsheet, BarChart3, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -14,7 +15,7 @@ export default function QuickStartPage() {
     const router = useRouter();
     const [step, setStep] = useState<Step>("source");
     const [selectedSource, setSelectedSource] = useState<string | null>(null);
-    const [selectedDestination, setSelectedDestination] = useState<string | null>("google_sheets");
+    const [selectedDestination, setSelectedDestination] = useState<string | null>("addon_sheets");
     const [isConnecting, setIsConnecting] = useState(false);
 
     const handleSourceSelect = useCallback((sourceId: string) => {
@@ -48,11 +49,11 @@ export default function QuickStartPage() {
             } else {
                 throw new Error("No authorization URL returned");
             }
-        } catch (err) {
+        } catch {
             toast.error("Failed to start connection. Please try again.");
             setIsConnecting(false);
         }
-    }, [selectedSource, router]);
+    }, [selectedSource]);
 
     const steps = [
         { id: "source", label: "Source", icon: Store },
@@ -156,9 +157,11 @@ export default function QuickStartPage() {
                                             "hover:bg-cyan-50/50 dark:hover:bg-cyan-950/20"
                                         )}
                                     >
-                                        <img
+                                        <Image
                                             src={logoPathForConnectionProvider(source.id)}
                                             alt={source.name}
+                                            width={48}
+                                            height={48}
                                             className="h-12 w-12 object-contain"
                                         />
                                         <div className="text-center">
@@ -189,36 +192,44 @@ export default function QuickStartPage() {
                             <div className="space-y-3">
                                 {[
                                     { 
-                                        id: "google_sheets", 
-                                        name: "Google Sheets (Scheduled Push)", 
-                                        desc: "Automated scheduled push to spreadsheets",
-                                        recommended: true 
-                                    },
-                                    { 
-                                        id: "addon_direct", 
-                                        name: "Google Sheets Add-on / Looker (Direct Pull)", 
-                                        desc: "Query warehouse metrics on-demand from Google Sheets or Looker Studio",
-                                        recommended: false 
+                                        id: "addon_sheets", 
+                                        name: "Google Sheets Add-on", 
+                                        desc: "Query warehouse metrics on-demand in Google Sheets",
+                                        recommended: true,
+                                        disabled: false
                                     },
                                     { 
                                         id: "looker_studio", 
-                                        name: "Looker Studio Dashboard", 
-                                        desc: "Connect directly to Looker Studio for dashboards",
-                                        recommended: false 
+                                        name: "Looker Studio Connector", 
+                                        desc: "Connect directly to Looker Studio using your Workspace API key",
+                                        recommended: false,
+                                        disabled: false
+                                    },
+                                    { 
+                                        id: "google_sheets_scheduled", 
+                                        name: "Scheduled Spreadsheet Delivery", 
+                                        desc: "Automated background sync to Google Sheets (Coming soon — not available in pilot)",
+                                        recommended: false,
+                                        disabled: true
                                     },
                                 ].map((dest) => (
                                     <button
                                         key={dest.id}
-                                        onClick={() => handleDestinationSelect(dest.id)}
+                                        disabled={dest.disabled}
+                                        onClick={() => !dest.disabled && handleDestinationSelect(dest.id)}
                                         className={cn(
                                             "flex w-full items-center gap-4 rounded-xl border-2 p-4 text-left transition-all",
-                                            "border-gray-200 bg-white hover:border-cyan-300 dark:border-[#2f3336] dark:bg-[#16181c]",
+                                            dest.disabled
+                                                ? "border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed dark:border-[#2f3336] dark:bg-[#16181c]/40"
+                                                : "border-gray-200 bg-white hover:border-cyan-300 dark:border-[#2f3336] dark:bg-[#16181c]",
                                             dest.recommended && "border-cyan-200 bg-cyan-50/30 dark:border-cyan-800/50 dark:bg-cyan-950/20"
                                         )}
                                     >
-                                        <img
-                                            src={logoPathForConnectionProvider(dest.id === "addon_direct" ? "google_sheets" : dest.id)}
+                                        <Image
+                                            src={logoPathForConnectionProvider(dest.id === "looker_studio" ? "looker_studio" : "google_sheets")}
                                             alt={dest.name}
+                                            width={40}
+                                            height={40}
                                             className="h-10 w-10 object-contain"
                                         />
                                         <div className="flex-1">
@@ -229,6 +240,11 @@ export default function QuickStartPage() {
                                                 {dest.recommended && (
                                                     <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-medium text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-300">
                                                         Recommended
+                                                    </span>
+                                                )}
+                                                {dest.disabled && (
+                                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                                        Coming soon
                                                     </span>
                                                 )}
                                             </div>
@@ -257,9 +273,7 @@ export default function QuickStartPage() {
                                     Ready to connect
                                 </h2>
                                 <p className="mt-2 text-gray-600 dark:text-gray-400">
-                                    {selectedDestination === "addon_direct"
-                                        ? "Connect your marketing source and start pulling data in Google Sheets or Looker Studio"
-                                        : "We'll create a pipeline that syncs your data automatically"}
+                                    Connect your marketing source and start pulling normalized metrics into your warehouse
                                 </p>
                             </div>
 
@@ -267,9 +281,11 @@ export default function QuickStartPage() {
                                 <div className="flex items-center justify-center gap-4">
                                     {selectedSource && (
                                         <div className="flex flex-col items-center gap-2">
-                                            <img
+                                            <Image
                                                 src={logoPathForConnectionProvider(selectedSource)}
                                                 alt=""
+                                                width={48}
+                                                height={48}
                                                 className="h-12 w-12 object-contain"
                                             />
                                             <span className="text-sm font-medium text-gray-900 dark:text-white">
@@ -286,17 +302,17 @@ export default function QuickStartPage() {
                                     
                                     {selectedDestination && (
                                         <div className="flex flex-col items-center gap-2">
-                                            <img
-                                                src={logoPathForConnectionProvider(selectedDestination === "addon_direct" ? "google_sheets" : selectedDestination)}
+                                            <Image
+                                                src={logoPathForConnectionProvider(selectedDestination === "looker_studio" ? "looker_studio" : "google_sheets")}
                                                 alt=""
+                                                width={48}
+                                                height={48}
                                                 className="h-12 w-12 object-contain"
                                             />
                                             <span className="text-sm font-medium text-gray-900 dark:text-white">
-                                                {selectedDestination === "google_sheets"
-                                                    ? "Google Sheets"
-                                                    : selectedDestination === "addon_direct"
-                                                    ? "Add-on / Looker"
-                                                    : "Looker Studio"}
+                                                {selectedDestination === "looker_studio"
+                                                    ? "Looker Studio"
+                                                    : "Google Sheets Add-on"}
                                             </span>
                                         </div>
                                     )}
@@ -305,11 +321,7 @@ export default function QuickStartPage() {
                                 <div className="mt-6 space-y-3 rounded-lg bg-gray-50 p-4 dark:bg-[#1d1f23]/50">
                                     <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                         <CheckCircle2 className="h-4 w-4 text-cyan-600" />
-                                        <span>
-                                            {selectedDestination === "addon_direct"
-                                                ? "Data stored in your private Monstera warehouse"
-                                                : "Syncs run automatically in the background"}
-                                        </span>
+                                        <span>Data normalized and stored in your private Monstera warehouse</span>
                                     </div>
                                     <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                         <CheckCircle2 className="h-4 w-4 text-cyan-600" />
@@ -317,7 +329,7 @@ export default function QuickStartPage() {
                                     </div>
                                     <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                                         <CheckCircle2 className="h-4 w-4 text-cyan-600" />
-                                        <span>Connect unlimited accounts across channels</span>
+                                        <span>Connect unlimited accounts across certified channels</span>
                                     </div>
                                 </div>
                             </div>

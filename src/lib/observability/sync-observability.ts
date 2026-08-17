@@ -4,7 +4,6 @@
  */
 
 import prisma from "@/lib/prisma";
-import { decrypt } from "@/lib/encryption";
 
 export type SyncStage = "extract" | "transform" | "load";
 export type SyncDetailStatus = "success" | "warning" | "error";
@@ -297,9 +296,12 @@ export async function checkSyncHealth(
 }> {
   const issues: string[] = [];
 
-  // Get last 5 sync attempts
+  // Get last 5 sync attempts scoped to workspace
   const recentSyncs = await prisma.syncLog.findMany({
-    where: { pipelineId },
+    where: {
+      pipelineId,
+      pipeline: { workspaceId },
+    },
     orderBy: { createdAt: "desc" },
     take: 5,
   });

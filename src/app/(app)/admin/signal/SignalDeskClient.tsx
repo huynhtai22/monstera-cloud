@@ -4,37 +4,26 @@ import React, { FormEvent, useCallback, useEffect, useMemo, useState } from "rea
 import { useSearchParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Activity,
   AlertCircle,
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
   BarChart3,
-  Bot,
   Check,
-  CheckCircle2,
-  ChevronDown,
   ChevronRight,
-  Clock,
   Compass,
   Copy,
   ExternalLink,
-  Eye,
   FileText,
   Flame,
   Gauge,
-  Globe,
-  Layers,
-  Lightbulb,
   Radio,
   RefreshCw,
   Search as SearchIcon,
   ShieldAlert,
   Sparkles,
-  Target,
   Terminal,
   TrendingUp,
-  Zap,
 } from "lucide-react";
 import { signalApi } from "@/lib/signal-api";
 import type {
@@ -44,7 +33,6 @@ import type {
   Idea,
   MorningBrief,
   MorningBriefOpportunity,
-  ResearchItem,
   SearchDetail,
   SearchSummary,
 } from "@/types/signal-desk";
@@ -110,7 +98,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
 
   // Hub state
   const [keyword, setKeyword] = useState("");
-  const [mode, setMode] = useState("keyword");
+  const [mode] = useState("keyword");
   const [health, setHealth] = useState<Health | null>(null);
   const [items, setItems] = useState<SearchSummary[]>([]);
   const [brief, setBrief] = useState<MorningBrief | null>(null);
@@ -122,7 +110,6 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
 
   // Active collection state
   const [activeCollection, setActiveCollection] = useState<SearchDetail | null>(null);
-  const [collectionLoading, setCollectionLoading] = useState(false);
   const [operation, setOperation] = useState<"analysis" | "draft" | "score" | null>(null);
   const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
@@ -173,11 +160,10 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [brief?.id, brief?.status]);
+  }, [brief]);
 
   // Load active collection if URL param exists
   const loadCollection = useCallback(async (id: string, version?: number) => {
-    setCollectionLoading(true);
     try {
       const data = await signalApi.getSearch(id, version);
       setActiveCollection(data);
@@ -191,8 +177,6 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
     } catch (err: any) {
       toast.error(err.message || "Failed to load collection");
       setGlobalError(err.message);
-    } finally {
-      setCollectionLoading(false);
     }
   }, [selectedDraft]);
 

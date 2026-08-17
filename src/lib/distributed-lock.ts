@@ -193,7 +193,9 @@ export async function acquireLock(
         if (typeof redis.unsubscribe === 'function') {
            redis.unsubscribe(LOCK_RELEASE_CHANNEL, messageHandler).catch(() => {});
         }
-      } catch (e) {}
+      } catch {
+        // ignore unsubscribe errors
+      }
     };
 
     // Set a maximum wait time timeout, after which we give up or force a final check
@@ -272,7 +274,7 @@ export async function isLocked(resourceId: string): Promise<boolean> {
   try {
     const exists = await redis.exists(lockKey);
     return exists === 1;
-  } catch (err) {
+  } catch {
     return false;
   }
 }
@@ -288,7 +290,9 @@ export async function forceUnlock(resourceId: string): Promise<void> {
     await redis.del(lockKey);
     await redis.publish(LOCK_RELEASE_CHANNEL, resourceId);
     logger.info(`[Lock] Force unlocked ${resourceId}`);
-  } catch (err) {}
+  } catch (err) {
+    logger.warn(`[Lock] Failed to force unlock ${resourceId}`, err);
+  }
 }
 
 /**
