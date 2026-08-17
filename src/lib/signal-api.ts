@@ -101,4 +101,22 @@ export const signalApi = {
         created_at: string | null;
       }>;
     }>("/morning-briefs"),
+
+  // Feedback & Preference Learning
+  submitFeedback: (payload: import("@/types/signal-desk").CreateFeedbackPayload) =>
+    request<import("@/types/signal-desk").FeedbackItem>("/feedback", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  listFeedback: (params?: { stage?: string; sentiment?: string; limit?: number }) => {
+    const sp = new URLSearchParams();
+    if (params?.stage) sp.set("stage", params.stage);
+    if (params?.sentiment) sp.set("sentiment", params.sentiment);
+    if (params?.limit) sp.set("limit", String(params.limit));
+    const qs = sp.toString() ? `?${sp.toString()}` : "";
+    return request<import("@/types/signal-desk").FeedbackItem[]>(`/feedback${qs}`);
+  },
+  getFeedbackSummary: () =>
+    request<import("@/types/signal-desk").PreferenceSummary>("/feedback/summary"),
 };
+

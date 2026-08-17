@@ -48,6 +48,9 @@ import type {
   SearchDetail,
   SearchSummary,
 } from "@/types/signal-desk";
+import { FeedbackBar } from "./FeedbackBar";
+import { PreferenceInsightsCard } from "./PreferenceInsightsCard";
+
 
 type DraftDepth = "concise" | "standard" | "deep";
 
@@ -705,7 +708,22 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                     icon={Compass}
                   />
                 </div>
+
+                <div className="bg-white dark:bg-[#16181c] rounded-xl border border-gray-200 dark:border-[#2f3336] px-4 py-2">
+                  <FeedbackBar
+                    stage="analysis"
+                    entityType="analysis"
+                    entityId={activeCollection.analysis.id}
+                    searchId={activeCollection.id}
+                    contentExcerpt={activeCollection.analysis.summary || activeCollection.keyword}
+                    metadata={{
+                      keyword: activeCollection.keyword,
+                      insight_count: activeCollection.analysis.insights?.dominant_topics?.length || 0,
+                    }}
+                  />
+                </div>
               </div>
+
 
               {/* Ideas Grid */}
               <div id="ideas-section" className="space-y-4 pt-4">
@@ -837,10 +855,32 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                     </div>
                   </div>
 
+                  {/* Draft Feedback Bar */}
+                  <FeedbackBar
+                    stage="draft"
+                    entityType="draft"
+                    entityId={selectedDraft.id}
+                    ideaId={selectedIdea?.id}
+                    draftId={selectedDraft.id}
+                    contentExcerpt={selectedDraft.text}
+                    promptVersion="generate_draft.v4"
+                    metadata={{
+                      draft_depth: selectedDraft.requested_length_mode || draftDepth,
+                      angle_type: selectedIdea?.angle,
+                      content_pillar: selectedIdea?.content_pillar,
+                    }}
+                  />
+
                   {/* Content Potential Score Panel */}
                   {selectedDraft.score && (
-                    <ScorePanel score={selectedDraft.score} idea={selectedIdea || undefined} />
+                    <ScorePanel
+                      score={selectedDraft.score}
+                      idea={selectedIdea || undefined}
+                      draftId={selectedDraft.id}
+                    />
                   )}
+
+
                 </div>
               )}
 
@@ -974,9 +1014,13 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
         /* ═══════════════════════════════════════════════════════════
            DISCOVERY HUB (OVERVIEW MODE)
            ═══════════════════════════════════════════════════════════ */
-        <div className="space-y-10">
+        <div className="space-y-8">
+          {/* Preference Learning & Signal Dashboard */}
+          <PreferenceInsightsCard />
+
           {/* Two-Entry Hero Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
             {/* Entry 1: Morning Brief */}
             <div className="flex flex-col justify-between rounded-2xl border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] p-6 shadow-sm space-y-6">
               <div className="space-y-2">
@@ -1280,10 +1324,27 @@ function OpportunityCard({
           )}
           {busy ? "Seeding Research…" : "Research this Opportunity →"}
         </button>
+
+        <FeedbackBar
+          stage="curator"
+          entityType="opportunity"
+          entityId={opportunity.id}
+          opportunityId={opportunity.id}
+          contentExcerpt={opportunity.title}
+          promptVersion="morning_brief_angles.v3"
+          metadata={{
+            classification: opportunity.classification,
+            category: opportunity.classification,
+            underused_angle: opportunity.underused_angle,
+            content_opportunity_score: opportunity.content_opportunity_score,
+            curator_value_score: opportunity.curator_value_score,
+          }}
+        />
       </div>
     </div>
   );
 }
+
 
 function TrendDiagnosticsCard({
   trend,
@@ -1428,7 +1489,7 @@ function IdeaCard({
         </div>
       </div>
 
-      <div className="pt-2">
+      <div className="pt-2 space-y-2">
         <button
           type="button"
           onClick={onWrite}
@@ -1442,18 +1503,36 @@ function IdeaCard({
           )}
           {busy ? "Drafting with DeepSeek…" : "Write Draft"}
         </button>
+
+        <FeedbackBar
+          stage="idea"
+          entityType="idea"
+          entityId={idea.id}
+          ideaId={idea.id}
+          contentExcerpt={idea.title}
+          promptVersion="generate_ideas.v6"
+          metadata={{
+            angle_type: idea.angle || idea.content_angle,
+            content_pillar: idea.content_pillar,
+            hook: idea.hook,
+          }}
+        />
       </div>
     </div>
   );
 }
 
+
 function ScorePanel({
   score,
   idea,
+  draftId,
 }: {
   score: NonNullable<Draft["score"]>;
   idea?: Idea;
+  draftId?: string;
 }) {
+
   return (
     <div className="rounded-xl border border-gray-200 dark:border-[#2f3336] bg-gray-50/70 dark:bg-[#000000]/60 p-5 space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200/60 dark:border-gray-800 pb-3">
@@ -1518,9 +1597,25 @@ function ScorePanel({
           </p>
         </details>
       )}
+
+      <FeedbackBar
+        stage="scoring"
+        entityType="score"
+        entityId={score.id}
+        draftId={draftId || score.draft_id}
+        contentExcerpt={score.notes}
+        promptVersion="score_draft.v3"
+        metadata={{
+          overall_score: score.overall_score,
+          originality: score.originality,
+          spam_risk: score.spam_risk,
+        }}
+      />
     </div>
   );
 }
+
+
 
 function strongestItems(insights?: Record<string, EvidenceItem[]>) {
   if (!insights) return [];

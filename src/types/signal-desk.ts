@@ -89,6 +89,7 @@ export type CollectedPost = {
 
 export type Score = {
   id: string;
+  draft_id?: string;
   reply_potential: number;
   share_potential: number;
   dwell_potential: number;
@@ -107,10 +108,12 @@ export type Score = {
   created_at: string | null;
 };
 
+
 export type Draft = {
   id: string;
   text: string;
   status: string;
+  requested_length_mode?: string;
   content_pillar: string;
   hook_type: string;
   content_format: string;
@@ -122,6 +125,7 @@ export type Draft = {
   created_at: string | null;
   score: Score | null;
 };
+
 
 export type Idea = {
   id: string;
@@ -263,3 +267,96 @@ export type MorningBrief = {
   created_at: string | null;
   completed_at: string | null;
 };
+
+export type FeedbackStage = "curator" | "analysis" | "idea" | "draft" | "scoring";
+export type FeedbackEntityType = "opportunity" | "analysis" | "idea" | "draft" | "score";
+export type FeedbackSentiment = "positive" | "negative" | "neutral";
+
+export type FeedbackReasonCode =
+  | "TOO_GENERIC"
+  | "WEAK_SOURCE"
+  | "BAD_TOPIC"
+  | "FORCED_ANALOGY"
+  | "REPETITIVE"
+  | "WEAK_HOOK"
+  | "FACTUAL_CONCERN"
+  | "UNSUPPORTED_CLAIM"
+  | "TOO_LONG"
+  | "TOO_SHORT"
+  | "BAD_STRUCTURE"
+  | "BAD_SCORE"
+  | "UI_CONFUSING"
+  | "TOO_SLOW"
+  | "OTHER";
+
+export type FeedbackItem = {
+  id: string;
+  created_at: string;
+  stage: FeedbackStage;
+  entity_type: FeedbackEntityType;
+  entity_id: string;
+  sentiment: FeedbackSentiment;
+  reason_codes: FeedbackReasonCode[];
+  note: string | null;
+  brief_id?: string | null;
+  opportunity_id?: string | null;
+  analysis_id?: string | null;
+  idea_id?: string | null;
+  draft_id?: string | null;
+  score_id?: string | null;
+  model_provider?: string | null;
+  model_name?: string | null;
+  prompt_version?: string | null;
+  content_excerpt?: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type CreateFeedbackPayload = {
+  stage: FeedbackStage;
+  entity_type: FeedbackEntityType;
+  entity_id: string;
+  sentiment: FeedbackSentiment;
+  reason_codes?: FeedbackReasonCode[];
+  note?: string | null;
+  brief_id?: string | null;
+  opportunity_id?: string | null;
+  search_id?: string | null;
+  analysis_id?: string | null;
+  idea_id?: string | null;
+  draft_id?: string | null;
+  score_id?: string | null;
+  model_provider?: string | null;
+  model_name?: string | null;
+  prompt_version?: string | null;
+  content_excerpt?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type PreferenceSummary = {
+  total_count: number;
+  positive_count: number;
+  negative_count: number;
+  neutral_count: number;
+  positive_rate: number;
+  sample_confidence: "insufficient_data" | "weak_signal" | "meaningful_signal";
+  message: string;
+  positive_rate_by_pillar: Record<string, { rate: number; count: number; confidence: string }>;
+  positive_rate_by_angle_type: Record<string, { rate: number; count: number; confidence: string }>;
+  positive_rate_by_category: Record<string, { rate: number; count: number; confidence: string }>;
+  positive_rate_by_draft_length: Record<string, { rate: number; count: number; confidence: string }>;
+  negative_reason_frequency: Record<string, number>;
+  negative_reasons_by_stage: Record<string, Record<string, number>>;
+  recurring_positive_patterns: Array<{
+    type: string;
+    value: string;
+    positive_rate: number;
+    sample_size: number;
+  }>;
+  recurring_negative_patterns: Array<{
+    reason_code: string;
+    occurrences: number;
+    affected_stages: string[];
+  }>;
+  suggested_review_areas: string[];
+};
+
