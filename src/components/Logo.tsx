@@ -21,7 +21,7 @@ export function Logo({ className = "w-8 h-8", textClassName = "text-xl font-bold
         </svg>
       </div>
       <span className={`text-gray-900 dark:text-white transition-colors ${textClassName}`}>
-        Monstera
+        Monstera Cloud
       </span>
     </div>
   );
