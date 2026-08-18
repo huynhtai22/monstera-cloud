@@ -272,7 +272,7 @@ async function metaFetch(
       try {
         const errJson = await clone.json() as { error?: { code?: number; message?: string } };
         const code = errJson?.error?.code;
-        if ((code === 17 || code === 32 || code === 613) && attempt < maxRetries - 1) {
+        if ((code === 17 || code === 32 || code === 613 || code === 80004) && attempt < maxRetries - 1) {
           await backoff(attempt);
           continue;
         }
@@ -326,7 +326,7 @@ export class MetaReportClient {
 
       allRows.push(...(json.data ?? []));
       afterCursor = json.paging?.next ? (json.paging.cursors?.after ?? null) : null;
-    } while (afterCursor);
+    } while (afterCursor && allRows.length < 500_000);
 
     return allRows;
   }
@@ -403,7 +403,7 @@ export class MetaReportClient {
 
       allRows.push(...(json.data ?? []));
       afterCursor = json.paging?.next ? (json.paging.cursors?.after ?? null) : null;
-    } while (afterCursor);
+    } while (afterCursor && allRows.length < 500_000);
 
     return allRows;
   }

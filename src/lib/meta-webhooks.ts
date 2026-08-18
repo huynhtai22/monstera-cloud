@@ -212,17 +212,24 @@ export async function handleMetaWebhookPayload(payload: MetaWebhookPayload): Pro
                             reason: val.review_feedback || val.disapproval_reason,
                         });
 
-                        // Try alerting default workspaces if configured
-                        const workspaces = await prisma.workspace.findMany({
-                            where: { status: "ACTIVE" },
-                            select: { id: true },
-                            take: 5,
+                        // Find specific workspace connections that own this ad account
+                        const targetAccountId = String(val.account_id || val.ad_account_id || entry.id || "").replace(/^act_/, "");
+                        
+                        const matchingConnections = await prisma.connection.findMany({
+                            where: {
+                                provider: "meta_ads",
+                                OR: [
+                                    { remoteAccountId: targetAccountId },
+                                    { remoteAccountId: `act_${targetAccountId}` },
+                                ],
+                            },
+                            select: { workspaceId: true, id: true, name: true },
                         });
 
-                        for (const ws of workspaces) {
+                        for (const conn of matchingConnections) {
                             await sendAgencyAlert({
-                                workspaceId: ws.id,
-                                pipelineName: `Meta Ads Policy Alert (Ad ID: ${adId})`,
+                                workspaceId: conn.workspaceId,
+                                pipelineName: `Meta Ads Policy Alert (${conn.name || `Ad ${adId}`})`,
                                 errorMsg: `Meta Ad status changed to ${status}. Feedback: ${JSON.stringify(
                                     val.review_feedback || val.disapproval_reason || "Check Ads Manager"
                                 )}`,

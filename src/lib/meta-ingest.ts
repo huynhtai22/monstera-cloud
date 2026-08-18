@@ -87,15 +87,22 @@ function extractPurchaseRoas(row: MetaInsightsRow): number {
 
 function extractConversions(row: MetaInsightsRow): number {
   const actions = row.actions as MetaAction[] | undefined;
-  if (!actions) return 0;
-  const purchase = actions.find(
-    (a) =>
+  if (!actions || !actions.length) return 0;
+  let total = 0;
+  for (const a of actions) {
+    if (
       a.action_type === 'purchase' ||
-      a.action_type === 'offsite_conversion.fb_pixel_purchase',
-  );
-  if (!purchase) return 0;
-  const v = parseFloat(purchase.value ?? '');
-  return isNaN(v) ? 0 : v;
+      a.action_type === 'offsite_conversion.fb_pixel_purchase' ||
+      a.action_type === 'omni_purchase' ||
+      a.action_type === 'web_in_store_purchase' ||
+      a.action_type === 'lead' ||
+      a.action_type === 'offsite_conversion.fb_pixel_lead'
+    ) {
+      const v = parseFloat(a.value ?? '');
+      if (!isNaN(v)) total += v;
+    }
+  }
+  return total;
 }
 
 function extractRevenue(row: MetaInsightsRow): number {
