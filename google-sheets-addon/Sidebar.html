@@ -162,9 +162,22 @@
     <option value="account">Account</option>
   </select>
 
-  <div class="row">
-    <div><label>Start Date</label><input type="date" id="startDate" /></div>
-    <div><label>End Date</label><input type="date" id="endDate" /></div>
+  <label for="timeframe">Time Frame</label>
+  <select id="timeframe" onchange="handleTimeframeChange()">
+    <option value="last_30d">Last 30 Days (Default)</option>
+    <option value="today">Today</option>
+    <option value="yesterday">Yesterday</option>
+    <option value="last_7d">Last 7 Days</option>
+    <option value="last_14d">Last 14 Days</option>
+    <option value="this_month">This Month (MTD)</option>
+    <option value="last_month">Last Month</option>
+    <option value="last_90d">Last 90 Days</option>
+    <option value="custom">Custom Date Range…</option>
+  </select>
+
+  <div class="row" id="customDateRow">
+    <div><label>Start Date</label><input type="date" id="startDate" onchange="document.getElementById('timeframe').value='custom'" /></div>
+    <div><label>End Date</label><input type="date" id="endDate" onchange="document.getElementById('timeframe').value='custom'" /></div>
   </div>
 
   <label>Write to Cell</label>
@@ -194,12 +207,7 @@
 
   // ── Init — auto-auth via Google identity ──────────────────────────────────
   (function init() {
-    var today = new Date().toISOString().slice(0, 10);
-    var ago30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-    var sd = document.getElementById('startDate');
-    var ed = document.getElementById('endDate');
-    if (sd) sd.value = ago30;
-    if (ed) ed.value = today;
+    handleTimeframeChange();
 
     google.script.run
       .withSuccessHandler(function(result) {
@@ -218,6 +226,45 @@
       })
       .checkAuth();
   })();
+
+  function handleTimeframeChange() {
+    var tf = document.getElementById('timeframe').value;
+    if (tf === 'custom') return;
+
+    var now = new Date();
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    var fmt = function(d) {
+      return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    };
+
+    var start = new Date();
+    var end = new Date();
+
+    if (tf === 'today') {
+      // today is default
+    } else if (tf === 'yesterday') {
+      start.setDate(now.getDate() - 1);
+      end.setDate(now.getDate() - 1);
+    } else if (tf === 'last_7d') {
+      start.setDate(now.getDate() - 7);
+    } else if (tf === 'last_14d') {
+      start.setDate(now.getDate() - 14);
+    } else if (tf === 'last_30d') {
+      start.setDate(now.getDate() - 30);
+    } else if (tf === 'this_month') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    } else if (tf === 'last_month') {
+      start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      end = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else if (tf === 'last_90d') {
+      start.setDate(now.getDate() - 90);
+    }
+
+    var sd = document.getElementById('startDate');
+    var ed = document.getElementById('endDate');
+    if (sd) sd.value = fmt(start);
+    if (ed) ed.value = fmt(end);
+  }
 
   function showApp(user) {
     document.getElementById('noAccountScreen').style.display = 'none';
