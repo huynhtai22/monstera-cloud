@@ -525,32 +525,7 @@ async function syncTikTok(opts: {
       }
 
       if (status.status === "COMPLETED" && status.url) {
-        const reportRes = await fetch(status.url);
-        const reportText = await reportRes.text();
-        const reportRows = reportText.split("\n").filter((l) => l.trim()).slice(1);
-
-        const rows = reportRows.map((line) => {
-          const parts = line.split(",");
-          return {
-            dimensions: {
-              campaign_id: parts[0],
-              campaign_name: parts[1],
-              adgroup_id: parts[2],
-              adgroup_name: parts[3],
-              stat_time_day: parts[4],
-            },
-            metrics: {
-              impression: parts[5],
-              click: parts[6],
-              spend: parts[7],
-              cpc: parts[8],
-              ctr: parts[9],
-              conversion: parts[10],
-              revenue: parts[11],
-              roas: parts[12],
-            },
-          };
-        });
+        const rows = await tiktokReportClient.downloadRows(status.url);
 
         if (rows.length > 0) {
           const result = await ingestTiktokRows(rows, {

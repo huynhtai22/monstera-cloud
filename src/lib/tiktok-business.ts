@@ -207,16 +207,81 @@ export class TikTokReportClient {
 
   /**
    * Step 3 — Once COMPLETED, download rows from the returned URL.
-   * TikTok returns NDJSON (one JSON object per line).
+   * TikTok returns NDJSON (one JSON object per line) or CSV depending on export type.
    */
   async downloadRows(downloadUrl: string): Promise<ReportRow[]> {
     const res = await fetch(downloadUrl);
     if (!res.ok) throw new Error(`TikTok report download failed: ${res.status}`);
     const text = await res.text();
-    return text
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as ReportRow);
+    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) return [];
+
+    const rows: ReportRow[] = [];
+
+    // Format 1: NDJSON or JSON lines
+    if (lines[0].startsWith('{')) {
+      for (const line of lines) {
+        try {
+          const parsed = JSON.parse(line);
+          if (parsed.dimensions || parsed.metrics) {
+            rows.push(parsed as ReportRow);
+          } else {
+            rows.push({
+              dimensions: {
+                campaign_id: String(parsed.campaign_id ?? ''),
+                campaign_name: String(parsed.campaign_name ?? ''),
+                adgroup_id: String(parsed.adgroup_id ?? ''),
+                adgroup_name: String(parsed.adgroup_name ?? ''),
+                stat_time_day: String(parsed.stat_time_day ?? parsed.date ?? ''),
+              },
+              metrics: {
+                impression: parsed.impression ?? parsed.impressions ?? 0,
+                click: parsed.click ?? parsed.clicks ?? 0,
+                spend: parsed.spend ?? parsed.cost ?? 0,
+                cpc: parsed.cpc ?? 0,
+                ctr: parsed.ctr ?? 0,
+                conversion: parsed.conversion ?? parsed.conversions ?? 0,
+                revenue: parsed.revenue ?? parsed.conversion_value ?? 0,
+                roas: parsed.roas ?? 0,
+              },
+            });
+          }
+        } catch {
+          // ignore corrupted line
+        }
+      }
+    } else {
+      // Format 2: CSV format
+      const header = lines[0].split(',').map((h) => h.trim().toLowerCase());
+      for (let i = 1; i < lines.length; i++) {
+        const parts = lines[i].split(',');
+        const rowObj: Record<string, string> = {};
+        header.forEach((h, idx) => {
+          rowObj[h] = parts[idx]?.trim() ?? '';
+        });
+        rows.push({
+          dimensions: {
+            campaign_id: rowObj.campaign_id || parts[0] || '',
+            campaign_name: rowObj.campaign_name || parts[1] || '',
+            adgroup_id: rowObj.adgroup_id || parts[2] || '',
+            adgroup_name: rowObj.adgroup_name || parts[3] || '',
+            stat_time_day: rowObj.stat_time_day || rowObj.date || parts[4] || '',
+          },
+          metrics: {
+            impression: rowObj.impression || rowObj.impressions || parts[5] || '0',
+            click: rowObj.click || rowObj.clicks || parts[6] || '0',
+            spend: rowObj.spend || rowObj.cost || parts[7] || '0',
+            cpc: rowObj.cpc || parts[8] || '0',
+            ctr: rowObj.ctr || parts[9] || '0',
+            conversion: rowObj.conversion || rowObj.conversions || parts[10] || '0',
+            revenue: rowObj.revenue || rowObj.conversion_value || parts[11] || '0',
+            roas: rowObj.roas || parts[12] || '0',
+          },
+        });
+      }
+    }
+
+    return rows;
   }
 
   /**
