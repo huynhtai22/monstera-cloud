@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { Database, Plug, Send, GitMerge, ChevronRight, Plus, Loader2 } from "lucide-react";
+import { Database, Plug, Send, ChevronRight, Plus, Loader2 } from "lucide-react";
 import useSWR, { useSWRConfig } from "swr";
 import { useResolvedWorkspaceId } from "@/hooks/use-resolved-workspace-id";
 import { primaryButtonLinkClassName } from "@/components/ui/PrimaryButton";
@@ -223,7 +223,6 @@ export function DashboardHomePage() {
     }, [workspaces, workspaceId]);
 
     const hasSource = connectedSourcesCount > 0;
-    const hasDestination = connectedDestinationsCount > 0;
 
     const { sourceHealth, warehouseVolume, incidents, stalePipelineIds } = React.useMemo(() => {
         const sources = connections.filter((connection) => connection.type === "source");

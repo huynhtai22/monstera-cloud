@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ArrowLeft, ShieldCheck, Database, Zap, Lock, Building2, CheckCircle2 } from "lucide-react";
+import { ArrowRight, ArrowLeft, ShieldCheck, Database, Zap, Building2, CheckCircle2 } from "lucide-react";
 import { DataStreamBackground } from "@/components/DataStreamBackground";
 
 export default function AgenciesSolutionPage() {

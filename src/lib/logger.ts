@@ -14,10 +14,6 @@
 
 const isDev = process.env.NODE_ENV === "development";
 
-function fmt(level: string, msg: string): string {
-  return `[${level}] ${msg}`;
-}
-
 export const logger = {
   info(msg: any, ...args: any[]) {
     if (!isDev) return; // suppress in prod — use warn/error for signals

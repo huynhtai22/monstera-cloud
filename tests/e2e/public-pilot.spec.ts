@@ -15,7 +15,7 @@ test("version endpoint exposes an uncached release identity", async ({ request }
   expect(response.ok()).toBeTruthy();
   expect(response.headers()["cache-control"]).toContain("no-store");
   await expect(response.json()).resolves.toMatchObject({
-    schemaVersion: "20260813090000_agency_pilot_tenancy",
+    schemaVersion: "20260818000000_harden_idempotency_and_schema_checks",
   });
 });
 

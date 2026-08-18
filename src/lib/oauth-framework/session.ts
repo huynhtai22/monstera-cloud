@@ -5,7 +5,7 @@
 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import type { SessionContext, OAuthError } from "./types";
+import type { SessionContext } from "./types";
 import { OAuthError as OAuthErrorClass } from "./types";
 
 export async function requireSession(): Promise<SessionContext> {

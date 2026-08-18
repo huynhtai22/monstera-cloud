@@ -6,7 +6,6 @@ import {
 } from "@/lib/meta-ads";
 import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import { getPlanLimits } from "@/lib/plan-config";
-import { logger } from "@/lib/logger";
 import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";

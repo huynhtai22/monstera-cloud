@@ -125,11 +125,12 @@ model Workspace {
   userDashboards UserDashboard[]
 
   // Looker Studio integration jobs
-  lookerJobs     LookerJob[]
-  providerAccess WorkspaceProviderAccess[]
-  invitations    WorkspaceInvitation[]
-  oauthAttempts  OAuthAttempt[]
-  auditEvents    AuditEvent[]
+  lookerJobs          LookerJob[]
+  warehouseImportJobs WarehouseImportJob[]
+  providerAccess      WorkspaceProviderAccess[]
+  invitations         WorkspaceInvitation[]
+  oauthAttempts       OAuthAttempt[]
+  auditEvents         AuditEvent[]
 }
 
 model Client {
@@ -518,10 +519,11 @@ model DataQualityRule {
   connectionId String? // Apply to specific connection
 
   // Alerting
-  severity       String  @default("warning") // warning | critical
-  enabled        Boolean @default(true)
-  notifyEmail    Boolean @default(false)
-  notifyTelegram Boolean @default(true)
+  severity        String   @default("warning") // warning | critical
+  enabled         Boolean  @default(true)
+  notifyEmail     Boolean  @default(false)
+  notifyTelegram  Boolean  @default(true)
+  expectedColumns String[] @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -722,4 +724,40 @@ model SyncLock {
   @@index([provider, workspaceId, accountId])
   @@index([leaseExpiresAt])
   @@index([jobId])
+}
+
+// Durable execution for asynchronous warehouse batch imports
+model WarehouseImportJob {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  userId         String
+  plan           String    @default("pilot")
+  since          String
+  until          String
+  items          Json      // BatchImportItem[]
+  status         String    @default("queued") // queued | running | completed | failed
+  totalItems     Int       @default(0)
+  completedItems Int       @default(0)
+  approximateRows Int      @default(0)
+  results        Json?     // BatchImportJobResult[]
+  errorMsg       String?
+  priority       Int       @default(1)
+  retryCount     Int       @default(0)
+  maxRetries     Int       @default(3)
+  leaseId        String?
+  leaseExpiresAt DateTime?
+  heartbeatAt    DateTime?
+  scheduledAt    DateTime  @default(now())
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  idempotencyKey String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, status])
+  @@index([status, scheduledAt])
+  @@index([status, leaseExpiresAt])
 }

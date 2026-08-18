@@ -33,7 +33,6 @@ export class ShopeeOAuthAdapter implements OAuthProviderAdapter {
 
     async exchangeCode({
         code,
-        metadata,
     }: {
         code: string;
         redirectUri: string;

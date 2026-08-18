@@ -19,9 +19,9 @@ export async function extractForProvider(opts: {
     case 'shopify':
       return extractShopifyOrders(opts.ctx, opts.sourceCreds, opts.cursorRaw);
     case 'amazon':
-      return extractAmazonOrders(opts.ctx, opts.sourceCreds, opts.cursorRaw);
+      return extractAmazonOrders();
     case 'lazada':
-      return extractLazadaOrders(opts.ctx, opts.sourceCreds, opts.cursorRaw);
+      return extractLazadaOrders();
     case 'meta_ads':
       await refreshMetaWarehouseForPipeline({
         workspaceId: opts.ctx.workspaceId,

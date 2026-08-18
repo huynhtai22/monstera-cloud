@@ -18,3 +18,10 @@ tmp/
 .vercel
 .env.production
 *.tsbuildinfo
+*.log
+.system_generated/
+repomix-output.*
+.antigravitycli/
+test-results/
+playwright-report/
+

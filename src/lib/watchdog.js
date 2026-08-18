@@ -1,6 +1,6 @@
 // Proactive Data Freshness Watchdog Logic
 // Refinement: Add a buffer and clear "Actionable" states to avoid alert fatigue.
-async function verifyDataFreshness() {
+export async function verifyDataFreshness() {
   const connections = await prisma.connection.findMany({ where: { status: 'connected' } });
   
   for (const conn of connections) {

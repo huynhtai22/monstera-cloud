@@ -9,7 +9,7 @@ type PageShellProps = {
     withBackdrop?: boolean;
 };
 
-export function PageShell({ children, className, withBackdrop: _withBackdrop = true }: PageShellProps) {
+export function PageShell({ children, className }: PageShellProps) {
     return (
         <div
             className={cn(

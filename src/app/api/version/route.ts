@@ -7,7 +7,7 @@ export async function GET() {
     {
       commitSha: process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || "development",
       buildTime: process.env.BUILD_TIME || null,
-      schemaVersion: "20260813090000_agency_pilot_tenancy",
+      schemaVersion: "20260818000000_harden_idempotency_and_schema_checks",
       environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
     },
     { headers: { "Cache-Control": "no-store, max-age=0" } },

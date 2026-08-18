@@ -99,10 +99,6 @@ function partnerKey(): string {
   return key;
 }
 
-/** Returns the HMAC key as a Buffer (raw UTF-8 bytes). */
-function partnerKeyBuffer(): Buffer {
-  return Buffer.from(partnerKey(), "utf8");
-}
 /** Same UTF-8 secret as API signing; used by `POST /api/webhooks/shopee` body HMAC. */
 export function shopeePartnerKeySecretForWebhook(): string {
   return partnerKey();

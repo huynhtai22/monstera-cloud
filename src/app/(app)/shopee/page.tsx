@@ -4,12 +4,10 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { 
-  BarChart3, 
   RefreshCw,
   AlertCircle,
   Loader2,
   Database,
-  LineChart,
   ShoppingBag,
   Package,
   Store
@@ -107,7 +105,7 @@ export default function ShopeePage() {
     <IntegrationPageLayout
       title="Shopee Data Explorer"
       description="Pull orders, products, and shop info from your connected Shopee store."
-      icon={<img src={INTEGRATION_LOGOS.shopee} alt="Shopee" width={22} height={22} />}
+      icon={<Image src={INTEGRATION_LOGOS.shopee} alt="Shopee" width={22} height={22} />}
       banner={
         !hasConnection ? (
           <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300">

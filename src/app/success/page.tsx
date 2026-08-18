@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 const POLL_INTERVAL_MS = 2500;
 const POLL_TIMEOUT_MS = 40_000;
@@ -16,6 +16,7 @@ type State = "polling" | "success" | "timeout";
 
 function SuccessContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const transactionId = searchParams.get("_ptxn")?.trim() ?? "";
   const [state, setState] = useState<State>("polling");
   const [planLabel, setPlanLabel] = useState("");
@@ -39,7 +40,7 @@ function SuccessContent() {
       const res = await fetch(`/api/user/plan?workspaceId=${encodeURIComponent(workspaceId)}`);
       if (res.status === 401) {
         const callbackUrl = `${window.location.pathname}${window.location.search}`;
-        window.location.href = `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+        router.push(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
         return true;
       }
       if (res.ok) {
@@ -58,7 +59,7 @@ function SuccessContent() {
       );
       if (res.status === 401) {
         const callbackUrl = `${window.location.pathname}${window.location.search}`;
-        window.location.href = `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+        router.push(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
         return true;
       }
       if (res.ok) {
@@ -85,7 +86,7 @@ function SuccessContent() {
     return () => {
       stopped = true;
     };
-  }, [transactionId]);
+  }, [router, transactionId]);
 
   if (state === "polling") {
     return (

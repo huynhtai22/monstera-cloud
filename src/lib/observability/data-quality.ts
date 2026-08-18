@@ -1,76 +1,272 @@
 /**
  * OBSERVABILITY: Data Quality Rules Engine
- * Anomaly detection for pipeline syncs
+ * Anomaly detection for pipeline syncs and warehouse imports.
  */
 
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { getRedis } from "@/lib/redis";
 
 export type DataQualityRuleType = "threshold" | "comparison" | "schema_check";
-export type DataQualityMetric = "revenue" | "orders" | "roas" | "row_count" | "spend" | "conversions";
-export type DataQualityOperator = "gt" | "lt" | "eq" | "drop_pct" | "increase_pct";
+export type DataQualityMetric =
+  | "revenue"
+  | "orders"
+  | "roas"
+  | "row_count"
+  | "spend"
+  | "conversions"
+  | "impressions"
+  | "clicks";
+export type DataQualityOperator = "gt" | "lt" | "eq" | "drop_pct" | "increase_pct" | "schema_check";
 export type DataQualitySeverity = "warning" | "critical";
 
-interface DataQualityRule {
+export interface DataQualityRule {
   id: string;
   name: string;
   ruleType: DataQualityRuleType;
   metric: DataQualityMetric;
   operator: DataQualityOperator;
-  threshold?: number;
-  pctThreshold?: number;
+  threshold?: number | null;
+  pctThreshold?: number | null;
   pipelineId?: string | null;
   connectionId?: string | null;
   severity: DataQualitySeverity;
+  notifyTelegram?: boolean;
+  notifyEmail?: boolean;
+  expectedColumns?: string[];
 }
 
-interface MetricSnapshot {
+export interface MetricSnapshot {
   metric: DataQualityMetric;
   current: number;
   previous?: number;
+  schemaValid?: boolean;
+  missingColumns?: string[];
   timestamp: Date;
 }
 
+// In-memory fallback cooldown map (used when Redis is unavailable)
+const memoryCooldownMap = new Map<string, number>();
+const COOLDOWN_SECONDS = 3600; // 1-hour alert deduplication cooldown
+
 /**
- * Evaluate a data quality rule against current metrics
+ * Checks if an alert is in cooldown. If not in cooldown, sets the cooldown timestamp.
+ * Note: Only critical Telegram-eligible alerts should invoke this function.
  */
-export async function evaluateRule(
+export async function isAlertInCooldown(workspaceId: string, ruleId: string): Promise<boolean> {
+  const cooldownKey = `monstera:dq_cooldown:${workspaceId}:${ruleId}`;
+  const now = Date.now();
+
+  try {
+    const redis = getRedis();
+    const existing = await redis.get(cooldownKey);
+    if (existing) {
+      return true;
+    }
+    // Set 1-hour cooldown key in Redis
+    await redis.set(cooldownKey, now.toString(), { ex: COOLDOWN_SECONDS });
+    return false;
+  } catch {
+    // In-memory fallback
+    const lastSent = memoryCooldownMap.get(cooldownKey);
+    if (lastSent && now - lastSent < COOLDOWN_SECONDS * 1000) {
+      return true;
+    }
+    memoryCooldownMap.set(cooldownKey, now);
+    return false;
+  }
+}
+
+function extractRecordKeys(record: any): string[] {
+  if (!record || typeof record !== "object") return [];
+  const keys = new Set<string>(Object.keys(record));
+  if (record.rawData) {
+    if (typeof record.rawData === "object" && record.rawData !== null) {
+      Object.keys(record.rawData).forEach((k) => keys.add(k));
+    } else if (typeof record.rawData === "string") {
+      try {
+        const parsed = JSON.parse(record.rawData);
+        if (typeof parsed === "object" && parsed !== null) {
+          Object.keys(parsed).forEach((k) => keys.add(k));
+        }
+      } catch {
+        // Malformed JSON string in rawData — cannot extract raw fields
+      }
+    }
+  }
+  return Array.from(keys);
+}
+
+/**
+ * Inspects real observed columns from warehouse tables (CampaignMetric, RetailOrder)
+ * and compares against expectedColumns. Scoped to the connection/provider table.
+ * Never defaults an error or empty state to passed.
+ */
+export async function inspectObservedSchema(
+  workspaceId: string,
+  connectionId?: string | null,
+  expectedColumns?: string[]
+): Promise<{ schemaValid: boolean; missingColumns: string[]; observedColumns: string[] }> {
+  if (!expectedColumns || expectedColumns.length === 0) {
+    return {
+      schemaValid: false,
+      missingColumns: ["No expected columns configured for schema check rule"],
+      observedColumns: [],
+    };
+  }
+
+  try {
+    let provider: string | null = null;
+    if (connectionId) {
+      const conn = await prisma.connection.findFirst({
+        where: { id: connectionId, workspaceId },
+        select: { provider: true },
+      });
+      provider = conn?.provider ?? null;
+    }
+
+    const isEcommerce = provider ? ["shopee", "lazada", "shopify", "retail"].includes(provider) : false;
+    const isAdPlatform = provider ? ["meta_ads", "google_ads", "tiktok_business"].includes(provider) : false;
+
+    let observedKeys: string[] = [];
+
+    if (isEcommerce) {
+      // Only inspect RetailOrder for e-commerce connections
+      const order = await prisma.retailOrder.findFirst({
+        where: {
+          workspaceId,
+          ...(connectionId ? { connectionId } : {}),
+        },
+        orderBy: { createdAtIso: "desc" },
+      });
+      if (order) {
+        observedKeys = extractRecordKeys(order);
+      }
+    } else if (isAdPlatform) {
+      // Only inspect CampaignMetric for ad platform connections
+      const metric = await prisma.campaignMetric.findFirst({
+        where: {
+          workspaceId,
+          ...(connectionId ? { connectionId } : {}),
+        },
+        orderBy: { date: "desc" },
+      });
+      if (metric) {
+        observedKeys = extractRecordKeys(metric);
+      }
+    } else {
+      // If provider is unspecified or unknown, check CampaignMetric first, then RetailOrder
+      const metric = await prisma.campaignMetric.findFirst({
+        where: {
+          workspaceId,
+          ...(connectionId ? { connectionId } : {}),
+        },
+        orderBy: { date: "desc" },
+      });
+      if (metric) {
+        observedKeys = extractRecordKeys(metric);
+      } else {
+        const order = await prisma.retailOrder.findFirst({
+          where: {
+            workspaceId,
+            ...(connectionId ? { connectionId } : {}),
+          },
+          orderBy: { createdAtIso: "desc" },
+        });
+        if (order) {
+          observedKeys = extractRecordKeys(order);
+        }
+      }
+    }
+
+    if (observedKeys.length === 0) {
+      return {
+        schemaValid: false,
+        missingColumns: expectedColumns,
+        observedColumns: [],
+      };
+    }
+
+    const observedSet = new Set(observedKeys);
+    const missingColumns = expectedColumns.filter((col) => !observedSet.has(col));
+    const schemaValid = missingColumns.length === 0;
+
+    return { schemaValid, missingColumns, observedColumns: observedKeys };
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.error("[inspectObservedSchema] Error inspecting schema:", err);
+    return {
+      schemaValid: false,
+      missingColumns: [`Inspection Error: ${errorMsg}`],
+      observedColumns: [],
+    };
+  }
+}
+
+/**
+ * Evaluate a single rule against a metric snapshot.
+ */
+export function evaluateRule(
   rule: DataQualityRule,
   snapshot: MetricSnapshot
-): Promise<{ violated: boolean; expectedValue?: number; actualValue: number; pctChange?: number; message: string }> {
+): {
+  violated: boolean;
+  actualValue: number;
+  expectedValue?: number;
+  pctChange?: number;
+  message: string;
+} {
   const { metric, operator, threshold, pctThreshold } = rule;
   const actual = snapshot.current;
   const previous = snapshot.previous;
 
   switch (operator) {
     case "gt":
-      if (threshold !== undefined) {
+      if (threshold !== undefined && threshold !== null) {
         const violated = actual > threshold;
         return {
           violated,
           expectedValue: threshold,
           actualValue: actual,
-          message: violated ? `${metric} (${actual}) exceeds threshold (${threshold})` : "OK",
+          message: violated
+            ? `${metric} value (${actual}) exceeded maximum threshold (${threshold})`
+            : "OK",
         };
       }
       break;
 
     case "lt":
-      if (threshold !== undefined) {
+      if (threshold !== undefined && threshold !== null) {
         const violated = actual < threshold;
         return {
           violated,
           expectedValue: threshold,
           actualValue: actual,
-          message: violated ? `${metric} (${actual}) below threshold (${threshold})` : "OK",
+          message: violated
+            ? `${metric} value (${actual}) dropped below minimum threshold (${threshold})`
+            : "OK",
+        };
+      }
+      break;
+
+    case "eq":
+      if (threshold !== undefined && threshold !== null) {
+        const violated = actual !== threshold;
+        return {
+          violated,
+          expectedValue: threshold,
+          actualValue: actual,
+          message: violated
+            ? `${metric} value (${actual}) does not equal expected (${threshold})`
+            : "OK",
         };
       }
       break;
 
     case "drop_pct":
-      if (previous !== undefined && pctThreshold !== undefined && previous > 0) {
+      if (previous !== undefined && pctThreshold !== undefined && pctThreshold !== null && previous > 0) {
         const pctChange = (actual - previous) / previous;
-        const violated = pctChange < -pctThreshold;
+        const violated = pctChange < -Math.abs(pctThreshold);
         return {
           violated,
           expectedValue: previous,
@@ -84,9 +280,9 @@ export async function evaluateRule(
       break;
 
     case "increase_pct":
-      if (previous !== undefined && pctThreshold !== undefined && previous > 0) {
+      if (previous !== undefined && pctThreshold !== undefined && pctThreshold !== null && previous > 0) {
         const pctChange = (actual - previous) / previous;
-        const violated = pctChange > pctThreshold;
+        const violated = pctChange > Math.abs(pctThreshold);
         return {
           violated,
           expectedValue: previous,
@@ -98,13 +294,34 @@ export async function evaluateRule(
         };
       }
       break;
+
+    case "schema_check": {
+      const expected = rule.expectedColumns ?? [];
+      if (expected.length === 0) {
+        return {
+          violated: true,
+          actualValue: 0,
+          expectedValue: 1,
+          message: "Rule configuration invalid: no expected columns configured",
+        };
+      }
+      if (snapshot.schemaValid === false || (snapshot.missingColumns && snapshot.missingColumns.length > 0)) {
+        return {
+          violated: true,
+          actualValue: 0,
+          expectedValue: 1,
+          message: `Schema drift detected: missing columns [${(snapshot.missingColumns || expected).join(", ")}]`,
+        };
+      }
+      return { violated: false, actualValue: 1, message: "Schema OK" };
+    }
   }
 
   return { violated: false, actualValue: actual, message: "Rule not applicable" };
 }
 
 /**
- * Get active rules for a workspace/pipeline
+ * Get active rules for a workspace/pipeline.
  */
 export async function getActiveRules(
   workspaceId: string,
@@ -116,19 +333,32 @@ export async function getActiveRules(
       workspaceId,
       enabled: true,
       OR: [
-        { pipelineId: null, connectionId: null }, // Global rules
+        { pipelineId: null, connectionId: null },
         ...(pipelineId ? [{ pipelineId }] : []),
         ...(connectionId ? [{ connectionId }] : []),
       ],
     },
-    orderBy: { severity: "desc" }, // Critical first
   });
 
-  return rules as DataQualityRule[];
+  return rules.map((r) => ({
+    id: r.id,
+    name: r.name,
+    ruleType: r.ruleType as DataQualityRuleType,
+    metric: r.metric as DataQualityMetric,
+    operator: r.operator as DataQualityOperator,
+    threshold: r.threshold,
+    pctThreshold: r.pctThreshold,
+    pipelineId: r.pipelineId,
+    connectionId: r.connectionId,
+    severity: r.severity as DataQualitySeverity,
+    notifyTelegram: r.notifyTelegram,
+    notifyEmail: r.notifyEmail,
+    expectedColumns: r.expectedColumns || [],
+  }));
 }
 
 /**
- * Record a data quality violation
+ * Record a violation and send alerts.
  */
 export async function recordViolation(
   rule: DataQualityRule,
@@ -138,7 +368,7 @@ export async function recordViolation(
     actualValue: number;
     pctChange?: number;
     syncLogId?: string;
-    sampleData?: any;
+    sampleData?: unknown;
     pipelineId?: string;
     connectionId?: string;
   }
@@ -158,14 +388,18 @@ export async function recordViolation(
     },
   });
 
-  // Send alert if configured
-  if (rule.severity === "critical" || rule.severity === "warning") {
-    await sendDataQualityAlert(rule, workspaceId, details);
+  // - Warnings are audit-only (violation recorded, no external alert dispatched, no cooldown consumed)
+  // - Critical violations trigger Telegram only when notifyTelegram is enabled and not in cooldown
+  if (rule.severity === "critical" && (rule.notifyTelegram ?? true)) {
+    const inCooldown = await isAlertInCooldown(workspaceId, rule.id);
+    if (!inCooldown) {
+      await sendDataQualityAlert(rule, workspaceId, details);
+    }
   }
 }
 
 /**
- * Get metrics for comparison (current vs previous period)
+ * Get metrics for comparison (current vs previous period).
  */
 export async function getMetricSnapshot(
   workspaceId: string,
@@ -174,6 +408,7 @@ export async function getMetricSnapshot(
     pipelineId?: string;
     connectionId?: string;
     dateRange?: "day" | "week" | "month";
+    expectedColumns?: string[];
   }
 ): Promise<MetricSnapshot> {
   const now = new Date();
@@ -185,13 +420,23 @@ export async function getMetricSnapshot(
   const previousStart = new Date(currentStart);
   previousStart.setDate(previousStart.getDate() - period);
 
-  // Aggregate based on metric type
   let current = 0;
   let previous = 0;
 
+  // Schema check evaluation
+  if (options.expectedColumns && options.expectedColumns.length > 0) {
+    const schemaResult = await inspectObservedSchema(workspaceId, options.connectionId, options.expectedColumns);
+    return {
+      metric,
+      current: schemaResult.schemaValid ? 1 : 0,
+      schemaValid: schemaResult.schemaValid,
+      missingColumns: schemaResult.missingColumns,
+      timestamp: now,
+    };
+  }
+
   switch (metric) {
-    case "row_count":
-      // Count sync log rows
+    case "row_count": {
       const currentLogs = await prisma.syncLog.aggregate({
         where: {
           pipeline: { workspaceId, ...(options.pipelineId && { id: options.pipelineId }) },
@@ -209,9 +454,9 @@ export async function getMetricSnapshot(
       current = currentLogs._sum.rowsSynced || 0;
       previous = previousLogs._sum.rowsSynced || 0;
       break;
+    }
 
-    case "revenue":
-      // Sum orders
+    case "revenue": {
       const currentOrders = await prisma.retailOrder.aggregate({
         where: {
           workspaceId,
@@ -231,9 +476,29 @@ export async function getMetricSnapshot(
       current = currentOrders._sum.netRevenue || 0;
       previous = previousOrders._sum.netRevenue || 0;
       break;
+    }
 
-    case "spend":
-      // Sum campaign spend
+    case "orders": {
+      const currentOrdersCount = await prisma.retailOrder.count({
+        where: {
+          workspaceId,
+          ...(options.connectionId && { connectionId: options.connectionId }),
+          createdAt: { gte: currentStart },
+        },
+      });
+      const previousOrdersCount = await prisma.retailOrder.count({
+        where: {
+          workspaceId,
+          ...(options.connectionId && { connectionId: options.connectionId }),
+          createdAt: { gte: previousStart, lt: currentStart },
+        },
+      });
+      current = currentOrdersCount;
+      previous = previousOrdersCount;
+      break;
+    }
+
+    case "spend": {
       const currentSpend = await prisma.campaignMetric.aggregate({
         where: {
           workspaceId,
@@ -253,98 +518,224 @@ export async function getMetricSnapshot(
       current = currentSpend._sum.spend || 0;
       previous = previousSpend._sum.spend || 0;
       break;
+    }
 
-    case "roas":
-      // Calculate ROAS
-      const currentAttribution = await prisma.attributionSnapshot.aggregate({
+    case "conversions": {
+      const currentConversions = await prisma.campaignMetric.aggregate({
         where: {
           workspaceId,
+          ...(options.connectionId && { connectionId: options.connectionId }),
           date: { gte: currentStart },
         },
-        _sum: { attributedRevenue: true, adSpend: true },
+        _sum: { conversions: true },
       });
-      const previousAttribution = await prisma.attributionSnapshot.aggregate({
+      const previousConversions = await prisma.campaignMetric.aggregate({
         where: {
           workspaceId,
+          ...(options.connectionId && { connectionId: options.connectionId }),
           date: { gte: previousStart, lt: currentStart },
         },
-        _sum: { attributedRevenue: true, adSpend: true },
+        _sum: { conversions: true },
       });
-      const currentRevenue = currentAttribution._sum.attributedRevenue || 0;
-      const currentAdSpend = currentAttribution._sum.adSpend || 1;
-      const previousRevenue = previousAttribution._sum.attributedRevenue || 0;
-      const previousAdSpend = previousAttribution._sum.adSpend || 1;
-      current = currentRevenue / currentAdSpend;
-      previous = previousRevenue / previousAdSpend;
+      current = currentConversions._sum.conversions || 0;
+      previous = previousConversions._sum.conversions || 0;
       break;
+    }
+
+    case "impressions": {
+      const currentImpressions = await prisma.campaignMetric.aggregate({
+        where: {
+          workspaceId,
+          ...(options.connectionId && { connectionId: options.connectionId }),
+          date: { gte: currentStart },
+        },
+        _sum: { impressions: true },
+      });
+      const previousImpressions = await prisma.campaignMetric.aggregate({
+        where: {
+          workspaceId,
+          ...(options.connectionId && { connectionId: options.connectionId }),
+          date: { gte: previousStart, lt: currentStart },
+        },
+        _sum: { impressions: true },
+      });
+      current = currentImpressions._sum.impressions || 0;
+      previous = previousImpressions._sum.impressions || 0;
+      break;
+    }
+
+    case "clicks": {
+      const currentClicks = await prisma.campaignMetric.aggregate({
+        where: {
+          workspaceId,
+          ...(options.connectionId && { connectionId: options.connectionId }),
+          date: { gte: currentStart },
+        },
+        _sum: { clicks: true },
+      });
+      const previousClicks = await prisma.campaignMetric.aggregate({
+        where: {
+          workspaceId,
+          ...(options.connectionId && { connectionId: options.connectionId }),
+          date: { gte: previousStart, lt: currentStart },
+        },
+        _sum: { clicks: true },
+      });
+      current = currentClicks._sum.clicks || 0;
+      previous = previousClicks._sum.clicks || 0;
+      break;
+    }
+
+    case "roas": {
+      const [spendAgg, revAgg] = await Promise.all([
+        prisma.campaignMetric.aggregate({
+          where: {
+            workspaceId,
+            ...(options.connectionId && { connectionId: options.connectionId }),
+            date: { gte: currentStart },
+          },
+          _sum: { spend: true },
+        }),
+        prisma.retailOrder.aggregate({
+          where: {
+            workspaceId,
+            ...(options.connectionId && { connectionId: options.connectionId }),
+            createdAt: { gte: currentStart },
+          },
+          _sum: { netRevenue: true },
+        }),
+      ]);
+      const totalSpend = spendAgg._sum.spend || 0;
+      const totalRev = revAgg._sum.netRevenue || 0;
+      current = totalSpend > 0 ? totalRev / totalSpend : 0;
+      break;
+    }
   }
 
   return {
     metric,
     current,
-    previous: previous > 0 ? previous : undefined,
+    previous: previous || undefined,
+    schemaValid: true,
     timestamp: now,
   };
 }
 
 /**
- * Send alert for data quality violation
+ * Send Telegram alert for data quality violation.
  */
-async function sendDataQualityAlert(
+export async function sendDataQualityAlert(
   rule: DataQualityRule,
   workspaceId: string,
-  details: { actualValue: number; expectedValue?: number; pctChange?: number }
+  details: {
+    expectedValue?: number;
+    actualValue: number;
+    pctChange?: number;
+  }
 ): Promise<void> {
-  logger.warn(`[Data Quality Alert] ${rule.name}: ${details.actualValue} (expected: ${details.expectedValue})`);
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { name: true, telegramChatId: true },
+  });
+
+  const chatId = workspace?.telegramChatId || process.env.TELEGRAM_ALERT_CHAT_ID;
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+
+  if (!chatId || !botToken) {
+    logger.info("[sendDataQualityAlert] Telegram not configured for workspace", { workspaceId });
+    return;
+  }
+
+  const emoji = rule.severity === "critical" ? "🚨" : "⚠️";
+  const lines = [
+    `${emoji} <b>Data Quality Alert</b>`,
+    `<b>Workspace:</b> ${workspace?.name || workspaceId}`,
+    `<b>Rule:</b> ${rule.name}`,
+    `<b>Severity:</b> ${rule.severity.toUpperCase()}`,
+    `<b>Metric:</b> ${rule.metric}`,
+    `<b>Actual:</b> ${details.actualValue.toLocaleString()}`,
+  ];
+
+  if (details.expectedValue !== undefined) {
+    lines.push(`<b>Expected:</b> ${details.expectedValue.toLocaleString()}`);
+  }
+  if (details.pctChange !== undefined) {
+    lines.push(`<b>Change:</b> ${(details.pctChange * 100).toFixed(1)}%`);
+  }
+
+  const message = lines.join("\n");
 
   try {
-    const { sendAgencyAlert } = await import("@/lib/alerts");
-    const changeText = details.pctChange !== undefined ? ` (${(details.pctChange * 100).toFixed(1)}% change)` : "";
-    const msg = `⚠️ Data Quality Triggered: "${rule.name}"\nMetric: ${rule.metric} | Value: ${details.actualValue}${details.expectedValue !== undefined ? ` (expected: ${details.expectedValue})` : ""}${changeText}\nSeverity: ${rule.severity.toUpperCase()}`;
-    await sendAgencyAlert({
-      workspaceId,
-      pipelineName: rule.name,
-      errorMsg: msg,
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: "HTML",
+      }),
     });
-  } catch (e) {
-    logger.error("[sendDataQualityAlert] Failed to dispatch alert", e);
+  } catch (err) {
+    logger.error("[sendDataQualityAlert] Failed to send Telegram alert:", err);
   }
 }
 
 /**
- * Run data quality checks after a sync
+ * Run all active quality checks after a pipeline sync.
  */
 export async function runPostSyncQualityChecks(
   workspaceId: string,
-  syncLog: {
-    id: string;
-    pipelineId: string;
-    rowsSynced: number;
-    status: string;
-  }
+  syncLog: { id: string; pipelineId: string; rowsSynced: number }
 ): Promise<void> {
-  if (syncLog.status !== "success") return;
-
-  // Get active rules for this pipeline
-  const rules = await getActiveRules(workspaceId, syncLog.pipelineId);
-
-  // Get metrics snapshot
-  for (const rule of rules) {
-    const snapshot = await getMetricSnapshot(workspaceId, rule.metric, {
-      pipelineId: syncLog.pipelineId,
-      dateRange: "day",
-    });
-
-    const result = await evaluateRule(rule, snapshot);
-
-    if (result.violated) {
-      await recordViolation(rule, workspaceId, {
-        expectedValue: result.expectedValue,
-        actualValue: result.actualValue,
-        pctChange: result.pctChange,
-        syncLogId: syncLog.id,
+  try {
+    const rules = await getActiveRules(workspaceId, syncLog.pipelineId);
+    for (const rule of rules) {
+      const snapshot = await getMetricSnapshot(workspaceId, rule.metric, {
         pipelineId: syncLog.pipelineId,
+        expectedColumns: rule.expectedColumns,
       });
+      const result = evaluateRule(rule, snapshot);
+      if (result.violated) {
+        await recordViolation(rule, workspaceId, {
+          expectedValue: result.expectedValue,
+          actualValue: result.actualValue,
+          pctChange: result.pctChange,
+          syncLogId: syncLog.id,
+          pipelineId: syncLog.pipelineId,
+        });
+      }
     }
+  } catch (err) {
+    logger.error("[runPostSyncQualityChecks] Error evaluating rules:", err);
+  }
+}
+
+/**
+ * Run quality checks after a warehouse refresh.
+ */
+export async function runPostWarehouseRefreshQualityChecks(
+  workspaceId: string,
+  connectionId?: string
+): Promise<void> {
+  try {
+    const rules = await getActiveRules(workspaceId, undefined, connectionId);
+    for (const rule of rules) {
+      const snapshot = await getMetricSnapshot(workspaceId, rule.metric, {
+        connectionId,
+        expectedColumns: rule.expectedColumns,
+      });
+      const result = evaluateRule(rule, snapshot);
+      if (result.violated) {
+        await recordViolation(rule, workspaceId, {
+          expectedValue: result.expectedValue,
+          actualValue: result.actualValue,
+          pctChange: result.pctChange,
+          connectionId,
+        });
+      }
+    }
+  } catch (err) {
+    logger.error("[runPostWarehouseRefreshQualityChecks] Error evaluating rules:", err);
   }
 }

@@ -22,7 +22,7 @@ const fetcher = (url: string) => fetch(url).then(res => res.json());
 export function HealthDashboard() {
   const { workspaceId } = useResolvedWorkspaceId();
 
-  const { data, error, isLoading } = useSWR(
+  const { data, isLoading } = useSWR(
     workspaceId ? `/api/workspaces/${workspaceId}/health-stats` : null,
     fetcher,
     { refreshInterval: 30000 }

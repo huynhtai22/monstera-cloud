@@ -1,27 +1,25 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
-  Bell,
   AlertTriangle,
   Plus,
   Trash2,
   CheckCircle2,
   Send,
   Sliders,
-  TrendingDown,
   ShieldCheck,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-interface DataQualityRule {
+export interface DataQualityRule {
   id: string;
   name: string;
   ruleType: "threshold" | "comparison" | "schema_check";
-  metric: "revenue" | "orders" | "roas" | "row_count" | "spend" | "conversions";
-  operator: "gt" | "lt" | "eq" | "drop_pct" | "increase_pct";
+  metric: "revenue" | "orders" | "roas" | "row_count" | "spend" | "conversions" | "impressions" | "clicks";
+  operator: "gt" | "lt" | "eq" | "drop_pct" | "increase_pct" | "schema_check";
   threshold?: number | null;
   pctThreshold?: number | null;
   severity: "warning" | "critical";
@@ -29,7 +27,7 @@ interface DataQualityRule {
   createdAt: string;
 }
 
-interface DataQualityViolation {
+export interface DataQualityViolation {
   id: string;
   ruleId: string;
   expectedValue?: number | null;
@@ -39,7 +37,7 @@ interface DataQualityViolation {
   createdAt: string;
 }
 
-interface DataQualityTabProps {
+export interface DataQualityTabProps {
   workspaceId: string;
   canManage: boolean;
   rules: DataQualityRule[];
@@ -59,6 +57,11 @@ export function DataQualityTab({
   const [chatId, setChatId] = useState(initialChatId);
   const [isSavingChatId, setIsSavingChatId] = useState(false);
   const [isCreatingRule, setIsCreatingRule] = useState(false);
+
+  // Sync state when initialChatId updates from server
+  useEffect(() => {
+    setChatId(initialChatId);
+  }, [initialChatId]);
 
   // New Rule Form State
   const [name, setName] = useState("");
@@ -85,7 +88,7 @@ export function DataQualityTab({
         toast.error(err.error || "Failed to save Telegram settings");
       }
     } catch {
-      toast.error("Network error");
+      toast.error("Network error saving Telegram settings");
     } finally {
       setIsSavingChatId(false);
     }
@@ -102,6 +105,9 @@ export function DataQualityTab({
       if (res.ok) {
         toast.success(enabled ? "Rule enabled" : "Rule paused");
         onRefresh();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Failed to update rule status");
       }
     } catch {
       toast.error("Failed to toggle rule");
@@ -120,6 +126,9 @@ export function DataQualityTab({
       if (res.ok) {
         toast.success("Rule deleted");
         onRefresh();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Failed to delete rule");
       }
     } catch {
       toast.error("Failed to delete rule");
@@ -131,7 +140,7 @@ export function DataQualityTab({
     if (!canManage || !name.trim()) return;
 
     const isComparison = operator === "drop_pct" || operator === "increase_pct";
-    const ruleType = isComparison ? "comparison" : "threshold";
+    const ruleType = isComparison ? "comparison" : operator === "schema_check" ? "schema_check" : "threshold";
 
     try {
       const res = await fetch("/api/settings/data-quality", {
@@ -275,6 +284,9 @@ export function DataQualityTab({
                   <option value="row_count">Row Count (Sync volume)</option>
                   <option value="roas">ROAS (Return on Ad Spend)</option>
                   <option value="orders">Order Volume</option>
+                  <option value="conversions">Conversions</option>
+                  <option value="impressions">Impressions</option>
+                  <option value="clicks">Clicks</option>
                 </select>
               </div>
 
@@ -289,8 +301,10 @@ export function DataQualityTab({
                 >
                   <option value="gt">Greater Than (&gt; hard threshold)</option>
                   <option value="lt">Less Than (&lt; minimum threshold)</option>
+                  <option value="eq">Equals (= exact threshold check)</option>
                   <option value="drop_pct">Drops by &gt; X% vs Previous Day</option>
                   <option value="increase_pct">Spikes by &gt; X% vs Previous Day</option>
+                  <option value="schema_check">Schema Drift &amp; Missing Columns Check</option>
                 </select>
               </div>
 
@@ -446,7 +460,7 @@ export function DataQualityTab({
           </div>
           <div>
             <h2 className="text-base font-bold text-gray-900 dark:text-white">
-              Incident & Violation History
+              Incident &amp; Violation History
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Audit log of all detected threshold violations.

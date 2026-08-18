@@ -43,7 +43,9 @@ export async function runEtlPipeline(opts: {
       if (lastCols && JSON.stringify(lastCols) !== JSON.stringify(extracted.columns)) {
           logger.warn(`[ETL][DRIFT] Column schema changed for pipeline ${opts.pipeline.id}. Old: ${lastCols.length}, New: ${extracted.columns.length}`);
       }
-    } catch (e) {}
+    } catch (err) {
+      logger.info("[ETL][DRIFT] Drift check skipped", err);
+    }
   }
 
   if (extracted.rows.length === 0) {

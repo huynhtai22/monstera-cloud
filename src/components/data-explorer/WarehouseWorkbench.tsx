@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
+import Image from "next/image";
 import {
   AlertCircle,
   Calendar,
@@ -74,27 +75,27 @@ const PLATFORM_OPTIONS = [
   {
     value: "meta_ads",
     label: "Meta Ads",
-    icon: <img alt="" src={INTEGRATION_LOGOS.meta} className="h-4 w-4" />,
+    icon: <Image alt="" src={INTEGRATION_LOGOS.meta} width={16} height={16} className="h-4 w-4" />,
   },
   {
     value: "tiktok_business",
     label: "TikTok Ads",
-    icon: <img alt="" src={INTEGRATION_LOGOS.tiktok} className="h-4 w-4" />,
+    icon: <Image alt="" src={INTEGRATION_LOGOS.tiktok} width={16} height={16} className="h-4 w-4" />,
   },
   {
     value: "google_ads",
     label: "Google Ads",
-    icon: <img alt="" src={INTEGRATION_LOGOS.googleAds} className="h-4 w-4" />,
+    icon: <Image alt="" src={INTEGRATION_LOGOS.googleAds} width={16} height={16} className="h-4 w-4" />,
   },
   {
     value: "shopee",
     label: "Shopee",
-    icon: <img alt="" src={INTEGRATION_LOGOS.shopee} className="h-4 w-4" />,
+    icon: <Image alt="" src={INTEGRATION_LOGOS.shopee} width={16} height={16} className="h-4 w-4" />,
   },
   {
     value: "lazada",
     label: "Lazada",
-    icon: <img alt="" src={INTEGRATION_LOGOS.lazada} className="h-4 w-4" />,
+    icon: <Image alt="" src={INTEGRATION_LOGOS.lazada} width={16} height={16} className="h-4 w-4" />,
   },
 ];
 
@@ -149,10 +150,6 @@ const WAREHOUSE_COLUMNS: ColumnDef[] = [
   { id: "roas", label: "ROAS", group: "metric", defaultOn: true },
   { id: "spend", label: "Spend", group: "metric", defaultOn: true },
 ];
-
-const DEFAULT_VISIBLE = new Set(
-  WAREHOUSE_COLUMNS.filter((c) => c.defaultOn).map((c) => c.id),
-);
 
 function rowSearchBlob(m: MetricRow): string {
   const parts = [

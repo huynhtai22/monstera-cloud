@@ -235,13 +235,16 @@ export async function POST(req: Request, context: { params: any }) {
 
         await markConnectionsSyncedOk(connIds, now);
 
-        // Run data quality rules asynchronously without blocking response
-        runPostSyncQualityChecks(pipeline.workspaceId, {
-            id: syncLog.id,
-            pipelineId: pipeline.id,
-            rowsSynced: etl.rowsSynced,
-            status: "success",
-        }).catch((err) => logger.error("[Data Quality] Post-sync check error", err));
+        // Await data quality checks
+        try {
+            await runPostSyncQualityChecks(pipeline.workspaceId, {
+                id: syncLog.id,
+                pipelineId: pipeline.id,
+                rowsSynced: etl.rowsSynced,
+            });
+        } catch (err) {
+            logger.error("[Data Quality] Post-sync check error", err);
+        }
 
         if (etl.rowsSynced === 0) {
             return NextResponse.json({

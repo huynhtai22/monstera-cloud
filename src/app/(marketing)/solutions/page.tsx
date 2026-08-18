@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ShoppingBag, Globe, Database, ArrowRight } from "lucide-react";
+import { ShoppingBag, Database } from "lucide-react";
 
 export default function SolutionsPage() {
     return (
