@@ -110,8 +110,22 @@ async function main() {
   });
 
   // 4. Seed sample connections for Alpha Agency
-  const alphaMeta = await prisma.connection.create({
-    data: {
+  const alphaMeta = await prisma.connection.upsert({
+    where: {
+      workspaceId_provider_remoteAccountId: {
+        workspaceId: wsA.id,
+        provider: "meta_ads",
+        remoteAccountId: "act_alpha_meta_1001",
+      },
+    },
+    update: {
+      name: "Alpha Meta Ads Main",
+      type: "source",
+      credentials: "enc:v1:rehearsal_encrypted_payload",
+      status: "connected",
+      lastSyncAt: new Date(),
+    },
+    create: {
       workspaceId: wsA.id,
       name: "Alpha Meta Ads Main",
       type: "source",
@@ -124,8 +138,22 @@ async function main() {
   });
 
   // 5. Seed sample connections for Beta Media
-  const betaGoogle = await prisma.connection.create({
-    data: {
+  const betaGoogle = await prisma.connection.upsert({
+    where: {
+      workspaceId_provider_remoteAccountId: {
+        workspaceId: wsB.id,
+        provider: "google_ads",
+        remoteAccountId: "customers/beta_gads_2002",
+      },
+    },
+    update: {
+      name: "Beta Google Ads Primary",
+      type: "source",
+      credentials: "enc:v1:rehearsal_encrypted_payload",
+      status: "connected",
+      lastSyncAt: new Date(),
+    },
+    create: {
       workspaceId: wsB.id,
       name: "Beta Google Ads Primary",
       type: "source",
@@ -171,6 +199,7 @@ async function main() {
         revenue: 890.0,
       },
     ],
+    skipDuplicates: true,
   });
 
   // 7. Seed sample CampaignMetrics for Beta
@@ -192,6 +221,7 @@ async function main() {
         revenue: 4800.0,
       },
     ],
+    skipDuplicates: true,
   });
 
   console.log("✅ Seeded Tenant A (Alpha Agency):");

@@ -7,26 +7,26 @@ const ogImage = `${PRODUCT_SITE_URL}/favicon.svg`;
 
 export const metadata: Metadata = {
     title: {
-        default: "Monstera Cloud | E-commerce data in Google Sheets™",
+        default: "Monstera Cloud | Client-Ready Reporting for Marketing Agencies",
         template: "%s | Monstera Cloud",
     },
     description:
-        "Connect TikTok Ads, Meta, Shopee, and Google Ads. Pull performance into Google Sheets™ automatically — built for Southeast Asia.",
+        "Monstera Cloud gives marketing agencies one place to connect, normalize, and deliver client-ready reporting across Meta, Google Ads, TikTok, and Shopee.",
     openGraph: {
         type: "website",
         locale: "en_US",
         url: PRODUCT_SITE_URL,
         siteName: "Monstera Cloud",
-        title: "Monstera Cloud | E-commerce data in Google Sheets™",
+        title: "Monstera Cloud | Client-Ready Reporting for Marketing Agencies",
         description:
-            "Stop reconciling spreadsheets at midnight. One workspace for TikTok, Meta, Shopee, and Google Ads.",
+            "Turn ad and marketplace data into client-ready Looker Studio and Google Sheets reports without spreadsheet cleanup.",
         images: [{ url: ogImage, width: 512, height: 512, alt: "Monstera Cloud" }],
     },
     twitter: {
         card: "summary_large_image",
-        title: "Monstera Cloud | E-commerce data in Google Sheets™",
+        title: "Monstera Cloud | Client-Ready Reporting for Marketing Agencies",
         description:
-            "Connect TikTok Ads, Meta, Shopee, and Google Ads. Pull performance into Google Sheets™ automatically.",
+            "Turn ad and marketplace data into client-ready Looker Studio and Google Sheets reports without spreadsheet cleanup.",
         images: [ogImage],
     },
 };
