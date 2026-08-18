@@ -224,8 +224,8 @@ export async function POST(req: Request, context: { params: any }) {
             },
         });
 
-        await prisma.pipeline.update({
-            where: { id: pipeline.id },
+        await prisma.pipeline.updateMany({
+            where: { id: pipeline.id, workspaceId: pipeline.workspaceId },
             data: {
                 lastSyncedAt: now,
                 healthStatus: "healthy",
@@ -286,10 +286,12 @@ export async function POST(req: Request, context: { params: any }) {
             }).catch(() => {});
         }
 
-        if (pipelineId) {
+        // Never persist an error against a caller-supplied pipeline ID unless the
+        // pipeline was already loaded and authorized for this execution.
+        if (pipelineId && activePipeline?.workspaceId) {
             try {
-                await prisma.pipeline.update({
-                    where: { id: String(pipelineId) },
+                await prisma.pipeline.updateMany({
+                    where: { id: String(pipelineId), workspaceId: activePipeline.workspaceId },
                     data: { healthStatus: "error" },
                 });
 

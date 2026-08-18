@@ -14,6 +14,7 @@ import {
   instantiateTemplate,
 } from "@/lib/dashboard-templates";
 import { logger } from "@/lib/logger";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 // GET /api/dashboard-templates - List available templates
 export async function GET(request: Request) {
@@ -35,17 +36,12 @@ export async function GET(request: Request) {
     }
 
     if (workspaceId) {
-      // Check workspace membership
-      const membership = await prisma.workspaceMember.findFirst({
-        where: {
-          workspaceId,
-          userId: session.user.id,
-        },
+      await requireWorkspaceAccess({
+        userId: session.user.id,
+        workspaceId,
+        minimumRole: "viewer",
+        operation: "list_dashboard_templates",
       });
-
-      if (!membership) {
-        return NextResponse.json({ error: "Access denied" }, { status: 403 });
-      }
 
       // Get connected sources for this workspace
       const connections = await prisma.connection.findMany({
@@ -72,6 +68,8 @@ export async function GET(request: Request) {
       templates: getFeaturedTemplates(),
     });
   } catch (error) {
+    const rbac = toRbacResponse(error);
+    if (rbac) return rbac;
     logger.error("[GET /api/dashboard-templates]", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
@@ -95,17 +93,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check workspace membership
-    const membership = await prisma.workspaceMember.findFirst({
-      where: {
-        workspaceId,
-        userId: session.user.id,
-      },
+    // Creating a dashboard changes shared workspace state. Viewers are read-only.
+    await requireWorkspaceAccess({
+      userId: session.user.id,
+      workspaceId,
+      minimumRole: "member",
+      operation: "create_dashboard_template_instance",
     });
-
-    if (!membership) {
-      return NextResponse.json({ error: "Access denied" }, { status: 403 });
-    }
 
     // Get template
     const template = getTemplateBySlug(templateSlug);
@@ -166,6 +160,8 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    const rbac = toRbacResponse(error);
+    if (rbac) return rbac;
     logger.error("[POST /api/dashboard-templates]", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }

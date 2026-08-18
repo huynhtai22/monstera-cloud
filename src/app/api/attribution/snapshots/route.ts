@@ -8,6 +8,7 @@ import {
   type WorkspaceDemoFlags,
 } from '@/lib/mock-console-data';
 import { productionRouteDisabled } from '@/lib/request-auth';
+import { requireWorkspaceAccess, toRbacResponse } from '@/lib/rbac';
 
 function dateKey(d: Date | string): string {
   const x = d instanceof Date ? d : new Date(d);
@@ -57,12 +58,16 @@ export async function GET(req: Request) {
 
   if (!workspaceId) return NextResponse.json({ error: 'workspaceId is required' }, { status: 400 });
 
-  // Verify membership
-  const membership = await (prisma.workspaceMember as any).findFirst({
-    where: { workspaceId, userId: session.user.id },
-    select: { id: true },
-  });
-  if (!membership) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  try {
+    await requireWorkspaceAccess({
+      userId: session.user.id,
+      workspaceId,
+      minimumRole: 'viewer',
+      operation: 'view_attribution_snapshots',
+    });
+  } catch (error) {
+    return toRbacResponse(error) ?? NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const endDate = new Date();
   const startDate = new Date(Date.now() - Math.max(1, Math.min(90, days)) * 24 * 60 * 60 * 1000);
