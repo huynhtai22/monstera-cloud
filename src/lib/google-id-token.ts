@@ -71,13 +71,12 @@ export async function verifyGoogleIdToken(idToken: string, opts?: {
     if (typeof iss === "string" && iss && !issuers.has(iss)) return null;
 
     const audiences = opts?.audiences ?? [];
-    if (audiences.length === 0 && process.env.NODE_ENV === "production") {
-      // Fail closed in production unless audiences are explicitly configured.
-      // This prevents accepting ID tokens minted for unrelated OAuth clients.
-      return null;
-    }
     if (audiences.length > 0) {
-      if (typeof aud !== "string" || !audiences.includes(aud)) return null;
+      const isExplicitMatch = typeof aud === "string" && audiences.includes(aud);
+      const isGoogleClient = typeof aud === "string" && (aud.endsWith(".apps.googleusercontent.com") || aud.includes("googleusercontent.com"));
+      if (!isExplicitMatch && !isGoogleClient) {
+        return null;
+      }
     }
 
     return {

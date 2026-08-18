@@ -19,15 +19,44 @@ export async function POST(req: NextRequest) {
     }
     const email = verification.email;
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    let user = await prisma.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+    });
+
     if (!user) {
-      return NextResponse.json(
-        { error: 'No Monstera account found. Sign up at monsteracloud.com', code: 'NO_ACCOUNT' },
-        { status: 404 }
-      );
+      // Auto-provision user & Agency Pilot Workspace on first Google Sheets open
+      user = await prisma.$transaction(async (tx) => {
+        const newUser = await tx.user.create({
+          data: {
+            email,
+            name: email.split("@")[0],
+            plan: "pilot",
+            emailVerified: new Date(),
+          },
+        });
+        await tx.workspace.create({
+          data: {
+            name: `${newUser.name}'s Agency`,
+            slug: `agency-${newUser.id.slice(0, 8)}`,
+            ownerId: newUser.id,
+            plan: "pilot",
+            status: "PILOT",
+            members: { create: { userId: newUser.id, role: "owner" } },
+            providerAccess: {
+              create: [
+                { provider: "meta_ads", enabled: true },
+                { provider: "google_ads", enabled: true },
+                { provider: "tiktok_business", enabled: true },
+                { provider: "shopee", enabled: true },
+              ],
+            },
+          },
+        });
+        return newUser;
+      });
     }
 
-    const workspaces = await prisma.workspace.findMany({
+    let workspaces = await prisma.workspace.findMany({
       where: {
         OR: [
           { ownerId: user.id },
@@ -44,7 +73,31 @@ export async function POST(req: NextRequest) {
     });
 
     if (workspaces.length === 0) {
-      return NextResponse.json({ error: 'No workspace found', code: 'NO_WORKSPACE' }, { status: 404 });
+      const newWs = await prisma.workspace.create({
+        data: {
+          name: "Agency Workspace",
+          slug: `agency-${user.id.slice(0, 8)}`,
+          ownerId: user.id,
+          plan: "pilot",
+          status: "PILOT",
+          members: { create: { userId: user.id, role: "owner" } },
+          providerAccess: {
+            create: [
+              { provider: "meta_ads", enabled: true },
+              { provider: "google_ads", enabled: true },
+              { provider: "tiktok_business", enabled: true },
+              { provider: "shopee", enabled: true },
+            ],
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          plan: true,
+          members: { select: { userId: true, role: true } },
+        },
+      });
+      workspaces = [newWs];
     }
 
     return NextResponse.json({
