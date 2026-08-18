@@ -93,6 +93,30 @@ export async function GET(req: NextRequest) {
         }));
       }
 
+      if (conn.provider === 'shopee') {
+        const shopId = String(creds.shopId || conn.remoteAccountId || conn.id);
+        const shopName = creds.shopName || conn.name || `Shopee Shop ${shopId}`;
+        return [{
+          connectionId: conn.id,
+          connectionName: conn.name,
+          platform: conn.provider,
+          accountId: shopId,
+          accountName: shopName,
+        }];
+      }
+
+      if (conn.provider === 'lazada') {
+        const sellerId = String(creds.sellerId || conn.remoteAccountId || conn.id);
+        const sellerName = creds.sellerName || conn.name || `Lazada Shop ${sellerId}`;
+        return [{
+          connectionId: conn.id,
+          connectionName: conn.name,
+          platform: conn.provider,
+          accountId: sellerId,
+          accountName: sellerName,
+        }];
+      }
+
       return [];
     });
 

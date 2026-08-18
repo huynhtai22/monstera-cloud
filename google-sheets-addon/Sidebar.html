@@ -132,10 +132,12 @@
 
   <label>Platform</label>
   <select id="platform" onchange="handlePlatformChange()">
-    <option value="">All Platforms</option>
-    <option value="tiktok_business">TikTok Ads</option>
+    <option value="">All Platforms (Blended)</option>
     <option value="meta_ads">Meta Ads</option>
     <option value="google_ads">Google Ads</option>
+    <option value="tiktok_business">TikTok Ads</option>
+    <option value="shopee">Shopee Ads & Store</option>
+    <option value="lazada">Lazada</option>
   </select>
   <div id="platformTip" class="tip-box">
     💡 Use one platform per sheet tab for full platform-specific metrics. "All Platforms" shows common columns only.
@@ -184,7 +186,9 @@
     '':               { label: 'All Platforms', cols: 'date, platform, accountName, campaignName, adsetName, spend, impressions, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' },
     'meta_ads':       { label: 'Meta Ads',      cols: 'date, accountName, campaignName, adsetName, spend, impressions, reach, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' },
     'google_ads':     { label: 'Google Ads',    cols: 'date, accountName, campaignName, adsetName, spend, impressions, clicks, ctr, cpc, conversions, revenue, roas, currency' },
-    'tiktok_business':{ label: 'TikTok Ads',   cols: 'date, accountName, campaignName, adsetName, spend, impressions, reach, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' }
+    'tiktok_business':{ label: 'TikTok Ads',   cols: 'date, accountName, campaignName, adsetName, spend, impressions, reach, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' },
+    'shopee':         { label: 'Shopee Ads & Store', cols: 'date, accountName, campaignName, spend, impressions, clicks, ctr, cpc, conversions, revenue, roas, currency' },
+    'lazada':         { label: 'Lazada',        cols: 'date, accountName, campaignName, spend, impressions, clicks, conversions, revenue, roas, currency' }
   };
   var WORKSPACES = [];
 
