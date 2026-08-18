@@ -22,7 +22,6 @@ const isProduction = process.env.NODE_ENV === "production"
  * Must be called OUTSIDE of an auth transaction to avoid deadlocks.
  */
 async function ensureWorkspace(userId: string): Promise<void> {
-    if (isPilotMode()) return;
     const existing = await prisma.workspaceMember.findFirst({
         where: { userId },
         select: { id: true },
@@ -33,9 +32,19 @@ async function ensureWorkspace(userId: string): Promise<void> {
         await prisma.$transaction(async (tx) => {
             const workspace = await tx.workspace.create({
                 data: {
-                    name: "Personal Workspace",
-                    slug: `personal-${userId.slice(0, 8)}`,
+                    name: "Agency Workspace",
+                    slug: `agency-${userId.slice(0, 8)}`,
                     ownerId: userId,
+                    plan: "pilot",
+                    status: "PILOT",
+                    providerAccess: {
+                        create: [
+                            { provider: "meta_ads", enabled: true },
+                            { provider: "google_ads", enabled: true },
+                            { provider: "tiktok_business", enabled: true },
+                            { provider: "shopee", enabled: true },
+                        ],
+                    },
                 },
             });
             await tx.workspaceMember.create({
@@ -191,7 +200,7 @@ export const authOptions: NextAuthOptions = {
 
             if (!existingUser) {
                 // Truly new user — PrismaAdapter will create the row normally
-                return !isPilotMode();
+                return true;
             }
 
             // Email already belongs to a credentials (or other provider) account.

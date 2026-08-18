@@ -21,8 +21,9 @@ test.describe("Agency-First User Flow & Usability", () => {
   test("Registration form input validation", async ({ page }) => {
     await page.goto("/register");
 
-    // Form heading check
+    // Form heading & pilot badge check
     await expect(page.getByText("Create your account")).toBeVisible();
+    await expect(page.getByText("14-Day Agency Pilot")).toBeVisible();
 
     // Verify input fields exist and are visible
     const nameInput = page.locator('input[name="name"], input#name, input[type="text"]').first();

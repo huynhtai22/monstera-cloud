@@ -51,17 +51,19 @@ export async function POST(req: Request) {
       );
     }
 
-    if (isPilotMode()) {
-      const token = typeof inviteToken === "string" ? inviteToken.trim() : "";
-      const invitation = token
-        ? await prisma.workspaceInvitation.findUnique({ where: { tokenHash: hashInvitationToken(token) } })
-        : null;
+    let invitationRecord: any = null;
+    if (inviteToken && typeof inviteToken === "string") {
+      const token = inviteToken.trim();
+      const invitation = await prisma.workspaceInvitation.findUnique({
+        where: { tokenHash: hashInvitationToken(token) },
+      });
       if (!invitation || invitation.acceptedAt || invitation.expiresAt <= new Date() || normalizeEmail(invitation.email) !== email) {
         return NextResponse.json(
-          { message: "A valid pilot invitation for this email is required." },
-          { status: 403 },
+          { message: "A valid pilot invitation for this email is required or the invitation has expired." },
+          { status: 400 },
         );
       }
+      invitationRecord = invitation;
     }
 
     // Case-insensitive duplicate check — catches "Tai@gmail.com" vs "tai@gmail.com"
@@ -96,13 +98,54 @@ export async function POST(req: Request) {
         },
       });
 
-      if (!isPilotMode()) {
+      if (invitationRecord) {
+        let workspaceId = invitationRecord.workspaceId;
+        if (!workspaceId) {
+          const ws = await tx.workspace.create({
+            data: {
+              name: invitationRecord.agencyName || `${name.trim()}'s Agency`,
+              slug: invitationRecord.agencySlug || `agency-${user.id.slice(0, 8)}`,
+              ownerId: user.id,
+              plan: invitationRecord.plan || "pilot",
+              status: "PILOT",
+              members: { create: { userId: user.id, role: "owner" } },
+              providerAccess: {
+                create: (invitationRecord.enabledProviders || ["meta_ads", "google_ads", "tiktok_business", "shopee"]).map((provider: string) => ({
+                  provider,
+                  enabled: true,
+                })),
+              },
+            },
+          });
+          workspaceId = ws.id;
+        } else {
+          await tx.workspaceMember.create({
+            data: { workspaceId, userId: user.id, role: invitationRecord.role },
+          });
+        }
+
+        await tx.workspaceInvitation.update({
+          where: { id: invitationRecord.id },
+          data: { acceptedAt: new Date(), acceptedByUserId: user.id, workspaceId },
+        });
+      } else {
+        // Self-serve agency registration: provision default pilot workspace
         await tx.workspace.create({
           data: {
-            name: "Personal Workspace",
-            slug: `personal-${user.id.slice(0, 8)}`,
+            name: `${name.trim()}'s Agency`,
+            slug: `agency-${user.id.slice(0, 8)}`,
             ownerId: user.id,
+            plan: "pilot",
+            status: "PILOT",
             members: { create: { userId: user.id, role: "owner" } },
+            providerAccess: {
+              create: [
+                { provider: "meta_ads", enabled: true },
+                { provider: "google_ads", enabled: true },
+                { provider: "tiktok_business", enabled: true },
+                { provider: "shopee", enabled: true },
+              ],
+            },
           },
         });
       }
