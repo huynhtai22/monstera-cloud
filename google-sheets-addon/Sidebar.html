@@ -238,7 +238,20 @@
   function handleWorkspaceChange() {
     var workspaceId = document.getElementById('workspace').value;
     var selected = WORKSPACES.filter(function(workspace) { return workspace.id === workspaceId; })[0];
-    document.getElementById('badgePlan').textContent = selected ? selected.plan + ' workspace' : 'Choose an agency workspace';
+    if (selected) {
+      var seatInfo = selected.seatsUsed + '/' + selected.maxSeats + ' seats';
+      document.getElementById('badgePlan').textContent = selected.plan + ' (' + seatInfo + ')';
+      if (selected.isOverSeatLimit) {
+        document.getElementById('appError').style.display = 'block';
+        document.getElementById('appError').textContent = '⚠️ Seat limit reached (' + selected.seatsUsed + ' members on a ' + selected.maxSeats + '-seat ' + selected.plan + ' plan). Upgrade your plan at monsteracloud.com/pricing to add more seats.';
+        document.getElementById('runBtn').disabled = true;
+        return;
+      } else {
+        document.getElementById('appError').style.display = 'none';
+      }
+    } else {
+      document.getElementById('badgePlan').textContent = 'Choose an agency workspace';
+    }
     document.getElementById('runBtn').disabled = !workspaceId;
     handlePlatformChange();
   }

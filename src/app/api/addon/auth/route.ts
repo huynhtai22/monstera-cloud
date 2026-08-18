@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { logger } from "@/lib/logger";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
+import { getPlanLimits } from "@/lib/plan-config";
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,7 +34,12 @@ export async function POST(req: NextRequest) {
           { members: { some: { userId: user.id } } },
         ],
       },
-      select: { id: true, name: true, plan: true },
+      select: {
+        id: true,
+        name: true,
+        plan: true,
+        members: { select: { userId: true, role: true } },
+      },
       orderBy: { name: 'asc' },
     });
 
@@ -44,11 +50,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       email: user.email,
       name: user.name,
-      workspaces: workspaces.map((workspace) => ({
-        id: workspace.id,
-        name: workspace.name,
-        plan: workspace.plan,
-      })),
+      workspaces: workspaces.map((workspace) => {
+        const limits = getPlanLimits(workspace.plan);
+        const seatsUsed = workspace.members.length;
+        return {
+          id: workspace.id,
+          name: workspace.name,
+          plan: workspace.plan,
+          seatsUsed,
+          maxSeats: limits.maxSeats,
+          maxConnections: limits.maxConnections,
+          maxQueriesPerMonth: limits.maxQueriesPerMonth,
+          isOverSeatLimit: seatsUsed > limits.maxSeats,
+        };
+      }),
     });
   } catch (error) {
     logger.error('[ADDON_AUTH]', error);

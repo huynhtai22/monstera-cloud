@@ -209,14 +209,14 @@ export default function PricingPage() {
                     <div className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col hover:border-gray-300 transition-colors shadow-sm">
                         <div className="mb-4">
                             <h3 className="text-slate-900 text-lg font-bold">Starter</h3>
-                            <p className="text-slate-400 text-sm mt-0.5">Solo sellers &amp; freelancers</p>
+                            <p className="text-slate-400 text-sm mt-0.5">Solo media buyers &amp; freelancers</p>
                         </div>
                         <div className={`mb-5 ${priceClass}`}>
                             <span className="text-4xl font-extrabold text-slate-900">
-                                {fmtPrice(isAnnual ? 39 : 39)}
+                                {fmtPrice(isAnnual ? 39 : 49)}
                             </span>
                             <p className="text-slate-400 text-xs mt-1">
-                                per user / month
+                                1 seat included / month
                                 {isAnnual && (
                                     <span className="text-cyan-600 ml-1">· save {yearlySaving(49)} /yr</span>
                                 )}
@@ -236,16 +236,18 @@ export default function PricingPage() {
                             Get Starter
                         </CheckoutButton>
                         <p className="text-slate-400 text-[10px] text-center mb-6">
-                            Invitation-only pilot · plan assigned by an operator
+                            Includes 14-day full pilot access
                         </p>
                         <PlatformBadges sources={PLAN_SOURCES.starter} />
                         <div className="border-t border-gray-100 pt-4 flex-1">
-                            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Free, plus</p>
+                            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest mb-3">Included in Starter</p>
                             <ul className="space-y-2">
-                                <FeatureItem>Workspace-scoped exports</FeatureItem>
-                                <FeatureItem>Manual + nightly refresh</FeatureItem>
-                                <FeatureItem>CSV + Excel export</FeatureItem>
-                                <FeatureItem>Email support</FeatureItem>
+                                <FeatureItem><strong>1 Licensed User Seat</strong> (Google Account)</FeatureItem>
+                                <FeatureItem><strong>Up to 5 Connected Accounts</strong> (Meta, Google, TikTok, Shopee)</FeatureItem>
+                                <FeatureItem><strong>500 Sheet &amp; Looker Queries / mo</strong></FeatureItem>
+                                <FeatureItem>Google Sheets™ Add-on &amp; Looker Studio</FeatureItem>
+                                <FeatureItem>Daily automated refresh + manual pulls</FeatureItem>
+                                <FeatureItem>Standard email support</FeatureItem>
                             </ul>
                         </div>
                     </div>
@@ -254,17 +256,17 @@ export default function PricingPage() {
                     <div className="relative bg-white border-2 border-cyan-500 rounded-xl p-8 flex flex-col shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-500/20">
                         <div className="mb-4">
                             <div className="flex items-center gap-2.5">
-                                <h3 className="text-slate-900 text-xl font-bold">Pro</h3>
+                                <h3 className="text-slate-900 text-xl font-bold">Agency Pro</h3>
                                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-700 border border-cyan-200 uppercase tracking-wider">Recommended</span>
                             </div>
-                            <p className="text-cyan-600 text-sm mt-0.5">Best value for growing teams</p>
+                            <p className="text-cyan-600 text-sm mt-0.5">Best value for growing agencies &amp; teams</p>
                         </div>
                         <div className={`mb-5 ${priceClass}`}>
                             <span className="text-5xl font-extrabold text-slate-900">
                                 {fmtPrice(isAnnual ? 119 : 149)}
                             </span>
                             <p className="text-slate-500 text-xs mt-1">
-                                per user / month
+                                3 team seats included / month
                                 {isAnnual && (
                                     <span className="text-cyan-600 ml-1">· save {yearlySaving(149)} /yr</span>
                                 )}
@@ -281,21 +283,23 @@ export default function PricingPage() {
                             }}
                             className="w-full py-3 rounded-lg bg-cyan-600 text-white text-sm font-bold text-center hover:bg-cyan-700 transition-colors mb-1 shadow-lg shadow-cyan-600/20"
                         >
-                            Continue to secure checkout
+                            Start Agency Pilot
                         </CheckoutButton>
                         <p className="text-slate-400 text-[10px] text-center mb-6">
-                            Public checkout is not available during the pilot
+                            14-day free agency pilot · Cancel anytime
                         </p>
                         <PlatformBadges sources={PLAN_SOURCES.pro} />
                         <div className="border-t border-cyan-200 pt-4 flex-1">
                             <p className="text-cyan-600/70 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Starter, plus</p>
                             <ul className="space-y-2">
-                                <FeatureItem accent>Multi-staff agency workspace</FeatureItem>
-                                <FeatureItem accent>Manual + nightly refresh</FeatureItem>
-                                <FeatureItem accent>Workspace API keys</FeatureItem>
-                                <FeatureItem accent>Freshness and sync activity</FeatureItem>
-                                <FeatureItem accent>Higher API rate limits &amp; priority exports</FeatureItem>
-                                <FeatureItem accent>Priority email support</FeatureItem>
+                                <FeatureItem accent><strong>3 Licensed Team Seats</strong> (+ $25/mo per extra seat)</FeatureItem>
+                                <FeatureItem accent><strong>Up to 20 Connected Accounts &amp; Shops</strong></FeatureItem>
+                                <FeatureItem accent><strong>3,000 Queries / mo</strong> + Priority Quota</FeatureItem>
+                                <FeatureItem accent>Full Southeast Asia Marketplaces (Shopee, Lazada, TikTok Shop)</FeatureItem>
+                                <FeatureItem accent>Multi-Client Workspace Isolation</FeatureItem>
+                                <FeatureItem accent>Hourly &amp; Nightly Scheduled Syncs</FeatureItem>
+                                <FeatureItem accent>Workspace API Keys for Looker Studio</FeatureItem>
+                                <FeatureItem accent>Priority Email &amp; Chat Support</FeatureItem>
                             </ul>
                         </div>
                     </div>
@@ -303,7 +307,7 @@ export default function PricingPage() {
                 </div>
 
                 <p className="mt-10 text-center text-sm text-slate-500">
-                    Need more than 15 pipelines, dedicated hosting, or custom connectors?{" "}
+                    Need more than 10 seats, 100+ client ad accounts, or dedicated database warehousing?{" "}
                     <Link
                         href="mailto:hello@monsteracloud.com"
                         onClick={() =>
@@ -314,7 +318,7 @@ export default function PricingPage() {
                         }
                         className="text-cyan-600 hover:text-cyan-700 underline underline-offset-2"
                     >
-                        Talk to us about Enterprise
+                        Talk to us about Enterprise Scale
                     </Link>
                 </p>
 
@@ -322,7 +326,7 @@ export default function PricingPage() {
                 <div className="mt-14 text-center">
                     <p className="text-slate-400 text-xs uppercase tracking-widest font-semibold mb-5">All plans include</p>
                     <div className="flex flex-wrap justify-center gap-x-8 gap-y-3 text-slate-500 text-sm">
-                        {["AES-256-GCM credential encryption", "OAuth 2.0 authentication", "Invitation-only access", "Workspace-scoped roles", "Manual + nightly refresh"].map((item) => (
+                        {["AES-256-GCM credential encryption", "OAuth 2.0 authentication", "Google Sheets™ Add-on", "Looker Studio Connector", "Multi-tenant workspace isolation", "Nightly + manual refresh"].map((item) => (
                             <span key={item} className="flex items-center gap-2">
                                 <Check className="w-3.5 h-3.5 text-cyan-500" />
                                 {item}
@@ -343,18 +347,20 @@ export default function PricingPage() {
                                     <th className="py-3 px-6 text-slate-400 text-xs font-semibold uppercase tracking-widest border-r border-gray-100 w-1/3">Spec</th>
                                     <th className="py-3 px-4 text-slate-900 text-xs font-bold text-center border-r border-gray-100">Free</th>
                                     <th className="py-3 px-4 text-slate-900 text-xs font-bold text-center border-r border-gray-100">Starter</th>
-                                    <th className="py-3 px-4 text-cyan-600 text-xs font-bold text-center bg-cyan-50/50">Pro ✦</th>
+                                    <th className="py-3 px-4 text-cyan-600 text-xs font-bold text-center bg-cyan-50/50">Agency Pro ✦</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                <CompareRow label="Workspace access" values={["Invite", "Invite", "Invite"]} />
-                                <CompareRow label="Refresh" values={["Manual + nightly", "Manual + nightly", "Manual + nightly"]} />
-                                <CompareRow label="Data Explorer" values={[true, true, true]} />
-                                <CompareRow label="Sync activity" values={[true, true, true]} />
-                                <CompareRow label="CSV / Excel Export" values={[false, true, true]} />
+                                <CompareRow label="Licensed User Seats" values={["1 Seat", "1 Seat", "3 Seats (Scale to 10+)"]} />
+                                <CompareRow label="Connected Ad Accounts / Shops" values={["2 Accounts", "5 Accounts", "20 Accounts"]} />
+                                <CompareRow label="Monthly Sheet & Looker Queries" values={["100 / mo", "500 / mo", "3,000 / mo"]} />
                                 <CompareRow label="Google Sheets™ Add-on" values={[true, true, true]} />
-                                <CompareRow label="API requests (per min)" values={["60", "300", "1000+"]} />
-                                <CompareRow label="Max sync rows (per request)" values={["5k", "20k", "50k"]} />
+                                <CompareRow label="Looker Studio Connector" values={[false, true, true]} />
+                                <CompareRow label="Shopee & SEA Marketplaces" values={["Shopee", "Shopee", "Shopee + Lazada + TikTok"]} />
+                                <CompareRow label="Multi-Client Brand Isolation" values={[false, false, true]} />
+                                <CompareRow label="Sync Refresh Cadence" values={["Daily", "Daily + Manual", "Hourly + Nightly + Manual"]} />
+                                <CompareRow label="API Requests (per min)" values={["60", "300", "1,000+"]} />
+                                <CompareRow label="Max sync rows (per request)" values={["500", "1,000", "5,000"]} />
                             </tbody>
                         </table>
                     </div>
