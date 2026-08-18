@@ -78,8 +78,14 @@ export default function RegisterPage() {
         </div>
 
         {inviteToken ? (
-          <p className="mb-6 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900">Create the account matching your agency invitation.</p>
-        ) : null}
+          <div className="mb-6 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900">
+            Create the account matching your agency invitation.
+          </div>
+        ) : (
+          <div className="mb-6 rounded-lg border border-cyan-200 bg-cyan-50/70 p-3.5 text-center text-sm text-cyan-900">
+            <span className="font-semibold">🚀 14-Day Agency Pilot:</span> Full access to Meta, Google, TikTok & Shopee data normalization.
+          </div>
+        )}
 
         {/* Google account creation is deferred in invite-only pilot onboarding. */}
         {!inviteToken ? <div className="mb-6">

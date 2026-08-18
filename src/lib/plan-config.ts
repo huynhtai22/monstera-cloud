@@ -27,6 +27,12 @@ export function isPaidSubscriptionPlan(plan: string | undefined | null): boolean
 export interface PlanLimits {
   /** Maximum number of pipelines a user can create */
   maxPipelines: number;
+  /** Maximum licensed user seats per workspace */
+  maxSeats: number;
+  /** Maximum connected ad accounts and shops per workspace */
+  maxConnections: number;
+  /** Maximum queries/refreshes per month */
+  maxQueriesPerMonth: number;
   /** Minimum ms between pipeline syncs (cooldown window) */
   syncIntervalMs: number;
   /** Free tier: max calendar days of report history (ad APIs); paid tiers omit = unlimited */
@@ -50,6 +56,9 @@ export interface PlanLimits {
 export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
   free: {
     maxPipelines: 2,
+    maxSeats: 1,
+    maxConnections: 2,
+    maxQueriesPerMonth: 100,
     syncIntervalMs: 60 * 1000,                    // TODO: restore to 24h — temporarily relaxed for testing
     maxHistoryDays: 14,
     tiktokReportCooldownMs: 60 * 60 * 1000,      // 1 hour cooldown on reports
@@ -62,6 +71,9 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
   },
   pilot: {
     maxPipelines: 25,
+    maxSeats: 5,
+    maxConnections: 25,
+    maxQueriesPerMonth: 5000,
     syncIntervalMs: 24 * 60 * 60 * 1000,
     tiktokReportCooldownMs: 30 * 60 * 1000,
     metaReportCooldownMs: 30 * 60 * 1000,
@@ -73,6 +85,9 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
   },
   starter: {
     maxPipelines: 5,
+    maxSeats: 1,
+    maxConnections: 5,
+    maxQueriesPerMonth: 500,
     syncIntervalMs: 24 * 60 * 60 * 1000,         // 1 day
     tiktokReportCooldownMs: 30 * 60 * 1000,       // 30 min cooldown — clear gap vs Pro (10 min)
     metaReportCooldownMs: 30 * 60 * 1000,         // 30 min cooldown
@@ -84,6 +99,9 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
   },
   professional: {
     maxPipelines: 15,
+    maxSeats: 3,
+    maxConnections: 20,
+    maxQueriesPerMonth: 3000,
     syncIntervalMs: 60 * 60 * 1000,              // 1 hour
     tiktokReportCooldownMs: 10 * 60 * 1000,      // 10 min cooldown — 3x faster than Starter
     metaReportCooldownMs: 10 * 60 * 1000,        // 10 min cooldown
@@ -95,6 +113,9 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
   },
   enterprise: {
     maxPipelines: Infinity,
+    maxSeats: 10,
+    maxConnections: 100,
+    maxQueriesPerMonth: 50000,
     syncIntervalMs: 15 * 60 * 1000,              // 15 min
     tiktokReportCooldownMs: 5 * 60 * 1000,       // 5 min cooldown
     metaReportCooldownMs: 5 * 60 * 1000,         // 5 min cooldown

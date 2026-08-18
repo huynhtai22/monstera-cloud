@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
 import { buildPerformanceContext } from "@/lib/ai/build-performance-context";
 import { generatePerformanceSummary } from "@/lib/ai/openai-summary";
 import { logger } from "@/lib/logger";
 import { productionRouteDisabled } from "@/lib/request-auth";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 /**
  * POST /api/ai/performance-summary
@@ -26,12 +26,15 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
         }
 
-        const membership = await prisma.workspaceMember.findUnique({
-            where: { workspaceId_userId: { workspaceId, userId: session.user.id } },
-            select: { id: true },
-        });
-        if (!membership) {
-            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        try {
+            await requireWorkspaceAccess({
+                userId: session.user.id,
+                workspaceId,
+                minimumRole: "viewer",
+                operation: "generate_performance_summary",
+            });
+        } catch (error) {
+            return toRbacResponse(error) ?? NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
         if (!process.env.OPENAI_API_KEY?.trim()) {

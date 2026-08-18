@@ -38,6 +38,16 @@ var PLATFORM_FIELDS = {
     'spend', 'impressions', 'reach', 'clicks', 'ctr', 'cpc', 'cpm',
     'conversions', 'revenue', 'roas', 'currency'
   ],
+  shopee: [
+    'date', 'accountName', 'campaignName',
+    'spend', 'impressions', 'clicks', 'ctr', 'cpc',
+    'conversions', 'revenue', 'roas', 'currency'
+  ],
+  lazada: [
+    'date', 'accountName', 'campaignName',
+    'spend', 'impressions', 'clicks',
+    'conversions', 'revenue', 'roas', 'currency'
+  ],
   all: [
     'date', 'platform', 'accountName', 'campaignName', 'adsetName',
     'spend', 'impressions', 'clicks', 'ctr', 'cpc', 'cpm',

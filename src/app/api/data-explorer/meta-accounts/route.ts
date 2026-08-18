@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { safeDecrypt } from "@/lib/encryption";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 /**
  * GET /api/data-explorer/meta-accounts?connectionId=
@@ -21,16 +22,23 @@ export async function GET(req: Request) {
   }
 
   const conn = await prisma.connection.findFirst({
-    where: {
-      id: connectionId,
-      provider: "meta_ads",
-      workspace: { members: { some: { userId: session.user.id } } },
-    },
-    select: { id: true, name: true, credentials: true },
+    where: { id: connectionId, provider: "meta_ads" },
+    select: { id: true, name: true, credentials: true, workspaceId: true },
   });
 
   if (!conn) {
     return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+  }
+
+  try {
+    await requireWorkspaceAccess({
+      userId: session.user.id,
+      workspaceId: conn.workspaceId,
+      minimumRole: "viewer",
+      operation: "list_meta_connection_accounts",
+    });
+  } catch (error) {
+    return toRbacResponse(error) ?? NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const creds = JSON.parse(safeDecrypt(conn.credentials)) as {

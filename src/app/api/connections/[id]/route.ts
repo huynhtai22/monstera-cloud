@@ -120,6 +120,7 @@ export async function DELETE(
         await prisma.$transaction(async (tx) => {
             await tx.pipeline.deleteMany({
                 where: {
+                    workspaceId: connection.workspaceId,
                     OR: [
                         { sourceConnectionId: connectionId },
                         { destinationConnectionId: connectionId },
@@ -127,11 +128,12 @@ export async function DELETE(
                 },
             });
             await tx.campaignMetric.deleteMany({
-                where: { connectionId },
+                where: { connectionId, workspaceId: connection.workspaceId },
             });
-            await tx.connection.delete({
-                where: { id: connectionId },
+            const deleted = await tx.connection.deleteMany({
+                where: { id: connectionId, workspaceId: connection.workspaceId },
             });
+            if (deleted.count !== 1) throw new Error("Connection was changed before deletion");
         });
 
         return NextResponse.json({

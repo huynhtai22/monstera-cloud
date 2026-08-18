@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { logger } from "@/lib/logger";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { computeAttributionSnapshots } from "@/etl/attribution/engine";
 import {
     buildMockAttributionSnapshots,
@@ -68,13 +69,15 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
     }
 
-    // Verify workspace membership
-    const membership = await (prisma.workspaceMember as any).findFirst({
-        where: { workspaceId, userId: session.user.id },
-        select: { id: true },
-    });
-    if (!membership) {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    try {
+        await requireWorkspaceAccess({
+            userId: session.user.id,
+            workspaceId,
+            minimumRole: "viewer",
+            operation: "view_dashboard_summary",
+        });
+    } catch (error) {
+        return toRbacResponse(error) ?? NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     try {

@@ -205,8 +205,8 @@ export async function POST(
       }
 
       // Update connection sync time
-      await prisma.connection.update({
-        where: { id: connectionId },
+      await prisma.connection.updateMany({
+        where: { id: connectionId, workspaceId: connection.workspaceId },
         data: { lastSyncAt: new Date() },
       });
 
@@ -294,8 +294,8 @@ export async function POST(
       }
 
       // Update connection sync time
-      await prisma.connection.update({
-        where: { id: connectionId },
+      await prisma.connection.updateMany({
+        where: { id: connectionId, workspaceId: connection.workspaceId },
         data: { lastSyncAt: new Date() },
       });
 
@@ -412,8 +412,8 @@ export async function POST(
       }
 
       // Update connection sync time
-      await prisma.connection.update({
-        where: { id: connectionId },
+      await prisma.connection.updateMany({
+        where: { id: connectionId, workspaceId: connection.workspaceId },
         data: { lastSyncAt: new Date() },
       });
 
