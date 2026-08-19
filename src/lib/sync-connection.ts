@@ -19,7 +19,7 @@ import { syncShopeeAdsWarehouseMetrics } from "@/lib/sync-shopee-ads-warehouse";
 
 // Meta imports
 import { ingestMetaRows } from "@/lib/meta-ingest";
-import { metaReportClient, META_DEFAULT_FIELDS } from "@/lib/meta-ads";
+import { metaAdsClient, metaReportClient, META_DEFAULT_FIELDS } from "@/lib/meta-ads";
 import {
   acquireMetaSyncLock,
   releaseMetaSyncLock,
@@ -172,24 +172,59 @@ async function syncMetaAds(opts: {
   }
   logger.info(`[syncMetaAds] Got access token`);
 
-  // Get ad accounts - stored in extraFields.adAccounts from OAuth
+  // 1. Get ad accounts - stored in extraFields.adAccounts from OAuth
   const extraFields = credentials.extraFields || {};
-  let adAccounts = extraFields.adAccounts || 
+  let adAccounts = extraFields.adAccounts || credentials.adAccounts ||
     (extraFields.adAccountIds || credentials.adAccountIds || []).map((id: string) => ({ id, name: id }));
-  logger.info(`[syncMetaAds] Total ad accounts from extraFields:`, adAccounts.length);
+  logger.info(`[syncMetaAds] Total ad accounts from credentials:`, adAccounts?.length || 0);
 
-  // Filter to selected if specified
-  const selectedIds = extraFields.selectedAdAccountIds || credentials.selectedAdAccountIds;
-  if (selectedIds?.length > 0) {
-    adAccounts = adAccounts.filter((acc: any) => 
-      selectedIds.includes(acc.id)
-    );
+  // 2. Fallback to Connection row in database (remoteAccountId / name)
+  if ((!adAccounts || adAccounts.length === 0) && connectionId) {
+    try {
+      const conn = await prisma.connection.findUnique({
+        where: { id: connectionId },
+        select: { remoteAccountId: true, name: true },
+      });
+      if (conn?.remoteAccountId && conn.remoteAccountId.trim().length > 0) {
+        adAccounts = [{ id: conn.remoteAccountId, name: conn.name || conn.remoteAccountId }];
+        logger.info(`[syncMetaAds] Resolved ad account from DB remoteAccountId: ${conn.remoteAccountId}`);
+      }
+    } catch (dbErr) {
+      logger.warn(`[syncMetaAds] DB connection query failed:`, dbErr);
+    }
+  }
+
+  // 3. Fallback: query Meta Graph API dynamically using the valid accessToken
+  if ((!adAccounts || adAccounts.length === 0) && accessToken) {
+    try {
+      logger.info(`[syncMetaAds] Querying Meta Graph API dynamically for accessible ad accounts`);
+      const apiAccounts = await metaAdsClient.getAdAccounts(accessToken);
+      if (apiAccounts && apiAccounts.length > 0) {
+        adAccounts = apiAccounts.map((a: any) => ({ id: a.id, name: a.name || a.id }));
+        logger.info(`[syncMetaAds] Dynamically discovered ${adAccounts.length} Meta ad accounts from Graph API`);
+      }
+    } catch (apiErr) {
+      logger.warn(`[syncMetaAds] Dynamic Meta API ad account discovery failed:`, apiErr);
+    }
+  }
+
+  // 4. Filter to selected if specified (normalized matching without act_ prefix issues)
+  const selectedIds: string[] = extraFields.selectedAdAccountIds || credentials.selectedAdAccountIds;
+  if (selectedIds?.length > 0 && adAccounts?.length > 0) {
+    const normSelected = new Set(selectedIds.map((s) => String(s).replace(/^act_/, "").trim()));
+    const filtered = adAccounts.filter((acc: any) => {
+      const normId = String(acc.id).replace(/^act_/, "").trim();
+      return normSelected.has(normId) || selectedIds.includes(acc.id);
+    });
+    if (filtered.length > 0) {
+      adAccounts = filtered;
+    }
     logger.info(`[syncMetaAds] Filtered to ${adAccounts.length} selected accounts`);
   }
 
   if (!adAccounts?.length) {
-    logger.error(`[syncMetaAds] No ad accounts to sync`);
-    return { success: false, rowsIngested: 0, error: "No ad accounts selected" };
+    logger.error(`[syncMetaAds] No ad accounts found to sync`);
+    return { success: false, rowsIngested: 0, error: "No ad accounts selected or found on connection" };
   }
 
   const jobId = `pipeline-${Date.now()}`;

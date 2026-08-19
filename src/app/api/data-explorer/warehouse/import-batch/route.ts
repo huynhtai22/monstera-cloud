@@ -8,6 +8,7 @@ import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentia
 import { syncConnectionData } from "@/lib/sync-connection";
 import { syncMetaInsightsIntoWarehouse } from "@/lib/ingestion/meta-campaign-metrics";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { listEnabledWorkspaceProviders } from "@/lib/workspace-provider-access";
 import { clampTimeRangeToPlanMaxDays, getPlanLimits } from "@/lib/plan-config";
 import {
   createImportJob,
@@ -81,6 +82,7 @@ export async function processBatchItems(opts: {
     },
   });
   const connMap = new Map(connections.map((c) => [c.id, c]));
+  const enabledProviders = await listEnabledWorkspaceProviders(workspaceId);
 
   for (let i = 0; i < items.length; i++) {
     // Fencing check: halt processing immediately if lease was lost or heartbeat failed
@@ -104,12 +106,30 @@ export async function processBatchItems(opts: {
       continue;
     }
 
+    if (!enabledProviders.has(conn.provider)) {
+      results.push({
+        connectionId: conn.id,
+        provider: conn.provider,
+        adAccountId: item.adAccountId,
+        ok: false,
+        error: "Provider is not enabled for this workspace",
+      });
+      if (onProgress) {
+        await onProgress({ completed: i + 1, total: items.length, results });
+      }
+      continue;
+    }
+
     try {
       const rawCreds = safeDecrypt(conn.credentials);
-      const credentials = parseConnectionCredentialsJson(rawCreds) as Record<
+      const parsedCreds = parseConnectionCredentialsJson(rawCreds) as Record<
         string,
         unknown
       >;
+      const credentials = {
+        ...parsedCreds,
+        remoteAccountId: conn.remoteAccountId,
+      };
 
       if (syncFn) {
         const sync = await syncRunner({
