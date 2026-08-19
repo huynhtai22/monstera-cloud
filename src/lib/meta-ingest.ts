@@ -26,6 +26,7 @@ export interface IngestMetaRowsOpts {
   connectionId: string;
   accountId: string;
   accountName?: string;
+  currency?: string;
   level: string;
   breakdowns?: string[];
   rows: MetaInsightsRow[];
@@ -159,6 +160,7 @@ async function processChunk(
           conversions:  extractConversions(row),
           revenue:      extractRevenue(row),
           roas:         extractPurchaseRoas(row),
+          currency:     opts.currency || 'USD',
           rawData:      row,
         };
 

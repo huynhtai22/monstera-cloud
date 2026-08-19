@@ -290,12 +290,16 @@ async function syncMetaAds(opts: {
 
       if (rows.length > 0) {
         // Ingest to CampaignMetric
-        logger.info(`[syncMetaAds] Ingesting ${rows.length} rows to CampaignMetric`);
+        const currency = account.currency || 
+          credentials.adAccounts?.find((a: any) => a.id === accountId || a.id === `act_${accountId}`)?.currency || 
+          "USD";
+
         const result = await ingestMetaRows({
           workspaceId,
           connectionId,
           accountId,
           accountName,
+          currency,
           level: "campaign",
           rows,
           syncJobId: jobId,
