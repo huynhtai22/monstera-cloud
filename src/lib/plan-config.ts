@@ -212,3 +212,68 @@ export function userCronOffset(userId: string): number {
 export function userSyncCron(userId: string): string {
   return `${userCronOffset(userId)} * * * *`;
 }
+
+// ── Dual Currency Pricing Matrices (USD & VND PPP) ───────────────────────────
+
+export interface PlanPriceConfig {
+  usdMonthly: number;
+  usdAnnualMonthly: number; // Effective monthly price when billed annually
+  vndMonthly: number;       // VND per month
+  vndAnnualMonthly: number; // Effective VND per month when billed annually
+}
+
+export const PLAN_PRICING: Record<PlanName, PlanPriceConfig> = {
+  free: {
+    usdMonthly: 0,
+    usdAnnualMonthly: 0,
+    vndMonthly: 0,
+    vndAnnualMonthly: 0,
+  },
+  pilot: {
+    usdMonthly: 0,
+    usdAnnualMonthly: 0,
+    vndMonthly: 0,
+    vndAnnualMonthly: 0,
+  },
+  starter: {
+    usdMonthly: 29,
+    usdAnnualMonthly: 24, // $288/year
+    vndMonthly: 490_000,
+    vndAnnualMonthly: 390_000, // 4,680,000 đ/year
+  },
+  professional: {
+    usdMonthly: 79,
+    usdAnnualMonthly: 64, // $768/year
+    vndMonthly: 1_190_000,
+    vndAnnualMonthly: 990_000, // 11,880,000 đ/year
+  },
+  enterprise: {
+    usdMonthly: 199,
+    usdAnnualMonthly: 159, // $1,908/year
+    vndMonthly: 2_490_000,
+    vndAnnualMonthly: 1_990_000, // 23,880,000 đ/year
+  },
+};
+
+export function formatPlanPrice(
+  plan: PlanName,
+  currency: 'USD' | 'VND',
+  isAnnual: boolean
+): { amount: number; formatted: string; billingCycleText: string } {
+  const cfg = PLAN_PRICING[plan] ?? PLAN_PRICING.free;
+  if (currency === 'VND') {
+    const amount = isAnnual ? cfg.vndAnnualMonthly : cfg.vndMonthly;
+    return {
+      amount,
+      formatted: `${amount.toLocaleString('vi-VN')} đ`,
+      billingCycleText: isAnnual ? '/tháng (thanh toán năm)' : '/tháng',
+    };
+  }
+  const amount = isAnnual ? cfg.usdAnnualMonthly : cfg.usdMonthly;
+  return {
+    amount,
+    formatted: `$${amount}`,
+    billingCycleText: isAnnual ? '/mo (billed annually)' : '/mo',
+  };
+}
+

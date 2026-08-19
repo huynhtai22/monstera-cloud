@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Check, CheckCircle2, Shield, ShieldCheck, Zap, MapPin } from "lucide-react";
+import { Check, CheckCircle2, Shield, ShieldCheck, Zap, MapPin, QrCode, CreditCard } from "lucide-react";
 import { CheckoutButton } from "@/components/CheckoutButton";
+import { VietQrModal } from "@/components/pricing/VietQrModal";
 import { MarketingTrustSecuritySection } from "@/components/marketing/MarketingTrustSecuritySection";
 import { useState, useEffect } from "react";
 import { metaPixelCustom } from "@/lib/meta-pixel";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+import { PLAN_PRICING, type PlanName } from "@/lib/plan-config";
 
 const PLAN_SOURCES = {
     free: [
@@ -56,25 +58,43 @@ function PlatformBadges({ sources, showDestinations = true }: { sources: { src: 
     );
 }
 
+function FeatureItem({ children, accent = false }: { children: React.ReactNode; accent?: boolean }) {
+    return (
+        <li className="flex items-start gap-2 text-xs text-slate-600">
+            <CheckCircle2 className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${accent ? "text-cyan-500" : "text-slate-400"}`} />
+            <span>{children}</span>
+        </li>
+    );
+}
+
 export default function PricingPage() {
     const [isAnnual, setIsAnnual] = useState(true);
     const [payCurrency, setPayCurrency] = useState<"VND" | "USD">("USD");
     const [currencyReady, setCurrencyReady] = useState(false);
     const [regionHint, setRegionHint] = useState<string | null>(null);
 
-    // Default USD on first paint; after IP resolves, VN → VNĐ and optional region label for copy
+    // VietQR Modal State
+    const [qrModalOpen, setQrModalOpen] = useState(false);
+    const [selectedQrPlan, setSelectedQrPlan] = useState<{
+        name: string;
+        displayName: string;
+        amount: number;
+    }>({
+        name: "starter",
+        displayName: "Starter",
+        amount: 490000,
+    });
+
+    // Auto-detect geo using fast internal edge route (/api/geo)
     useEffect(() => {
-        fetch("https://ipapi.co/json/")
+        fetch("/api/geo")
             .then((r) => r.json())
-            .then((data: { country_code?: string; city?: string }) => {
-                setPayCurrency(data.country_code === "VN" ? "VND" : "USD");
+            .then((data: { country?: string; city?: string; currency?: string; isVietnam?: boolean }) => {
+                const detectedCurrency = data.currency === "VND" || data.isVietnam ? "VND" : "USD";
+                setPayCurrency(detectedCurrency);
                 const city = data.city && String(data.city).trim();
                 setRegionHint(
-                    city
-                        ? city
-                        : data.country_code === "VN"
-                          ? "Vietnam"
-                          : (data.country_code as string) || null
+                    city ? city : data.isVietnam ? "Việt Nam (Ưu đãi nội địa)" : data.country || null
                 );
             })
             .catch(() => {
@@ -84,17 +104,43 @@ export default function PricingPage() {
             .finally(() => setCurrencyReady(true));
     }, []);
 
-    const VND_RATE = 25000;
-    const fmtVnd = (usd: number) => `${(usd * VND_RATE).toLocaleString("vi-VN")}đ`;
-    const fmtPrice = (usd: number) =>
-        payCurrency === "VND" ? fmtVnd(usd) : `$${usd}`;
-
-    // How much a user saves per year on annual billing
-    const yearlySaving = (monthlyUsd: number) => {
-        const saving = Math.round(monthlyUsd * 0.2) * 12;
-        return payCurrency === "VND" ? fmtVnd(saving) : `$${saving}`;
+    const getPlanPriceDisplay = (plan: PlanName) => {
+        const cfg = PLAN_PRICING[plan] || PLAN_PRICING.free;
+        if (payCurrency === "VND") {
+            const amount = isAnnual ? cfg.vndAnnualMonthly : cfg.vndMonthly;
+            return {
+                amount,
+                text: `${amount.toLocaleString("vi-VN")} đ`,
+                saving: isAnnual ? `${((cfg.vndMonthly - cfg.vndAnnualMonthly) * 12).toLocaleString("vi-VN")} đ` : null,
+            };
+        }
+        const amount = isAnnual ? cfg.usdAnnualMonthly : cfg.usdMonthly;
+        return {
+            amount,
+            text: `$${amount}`,
+            saving: isAnnual ? `$${(cfg.usdMonthly - cfg.usdAnnualMonthly) * 12}` : null,
+        };
     };
 
+    const openVietQr = (plan: PlanName, displayName: string) => {
+        const cfg = PLAN_PRICING[plan];
+        const monthlyAmount = isAnnual ? cfg.vndAnnualMonthly : cfg.vndMonthly;
+        const totalAmount = isAnnual ? monthlyAmount * 12 : monthlyAmount;
+        setSelectedQrPlan({
+            name: plan,
+            displayName,
+            amount: totalAmount,
+        });
+        setQrModalOpen(true);
+        metaPixelCustom("MC_Pricing_VietQR_Open", {
+            plan,
+            billing_cycle: isAnnual ? "annual" : "monthly",
+            amount: totalAmount,
+        });
+    };
+
+    const starterPricing = getPlanPriceDisplay("starter");
+    const proPricing = getPlanPriceDisplay("professional");
     const priceClass = "transition-all duration-300";
 
     return (
@@ -104,22 +150,22 @@ export default function PricingPage() {
                 {/* Header */}
                 <div className="text-center mb-14">
                     <div className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold text-cyan-600 border border-cyan-200 bg-cyan-50 tracking-widest uppercase mb-5">
-                        Pricing
+                        Bảng Giá &amp; Gói Dịch Vụ
                     </div>
                     <h1 className="text-slate-900 text-4xl md:text-5xl font-extrabold leading-tight tracking-tight">
-                        One flat price. Every platform. No permanent row caps.
+                        {payCurrency === "VND"
+                            ? "Một mức giá phẳng. Đầy đủ nền tảng. Không giới hạn số dòng."
+                            : "One flat price. Every platform. No permanent row caps."}
                     </h1>
                     <p className="text-slate-500 text-lg max-w-xl mx-auto mt-4">
-                        Most teams save $2,400/year vs Supermetrics on Pro. Cancel anytime — billing questions reviewed within 14 days (see our{" "}
-                        <Link href="/legal/refund-policy" className="text-cyan-600 hover:text-cyan-700 underline underline-offset-2">
-                            Refund Policy
-                        </Link>
-                        ).
+                        {payCurrency === "VND"
+                            ? "Tiết kiệm 80% chi phí so với Supermetrics. Hỗ trợ thanh toán VietQR & Xuất hóa đơn VAT đầy đủ."
+                            : "Most teams save $2,400/year vs Supermetrics on Pro. Cancel anytime."}
                     </p>
                 </div>
 
-                {/* Billing toggle */}
-                <div className="flex flex-col items-center gap-3 mb-4">
+                {/* Billing Toggle & Currency Switcher */}
+                <div className="flex flex-col items-center gap-3 mb-8">
                     <div className="flex p-1 bg-slate-100 border border-gray-200 rounded-lg w-[240px] text-sm font-medium">
                         <button
                             onClick={() => setIsAnnual(false)}
@@ -127,7 +173,7 @@ export default function PricingPage() {
                                 !isAnnual ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
                             }`}
                         >
-                            Monthly
+                            {payCurrency === "VND" ? "Theo tháng" : "Monthly"}
                         </button>
                         <button
                             onClick={() => setIsAnnual(true)}
@@ -135,49 +181,58 @@ export default function PricingPage() {
                                 isAnnual ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
                             }`}
                         >
-                            Annual
+                            {payCurrency === "VND" ? "Theo năm" : "Annual"}
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-600 font-bold border border-cyan-200">
                                 −20%
                             </span>
                         </button>
                     </div>
-                    {/* Auto-detected currency with subtle override */}
+
+                    {/* Currency Switcher Bar */}
                     {currencyReady && (
-                        <p className="text-slate-400 text-xs flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 max-w-md text-center">
-                            <MapPin className="w-3 h-3 shrink-0" />
-                            {regionHint ? (
-                                <>
-                                    Auto-detected for <span className="text-slate-600 font-medium">{regionHint}</span>
-                                    <span className="text-slate-300">·</span>
-                                </>
-                            ) : null}
-                            Showing prices in{" "}
-                            <span className="text-slate-600 font-medium">{payCurrency === "VND" ? "VNĐ" : "USD"}</span>
-                            <button
-                                type="button"
-                                onClick={() => setPayCurrency(payCurrency === "VND" ? "USD" : "VND")}
-                                className="text-cyan-600 underline underline-offset-2 hover:text-cyan-700 transition-colors"
-                            >
-                                Switch to {payCurrency === "VND" ? "USD" : "VNĐ"}
-                            </button>
-                        </p>
+                        <div className="flex items-center gap-2 text-xs bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-full">
+                            <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                            {regionHint && <span className="text-slate-600 font-semibold">{regionHint}</span>}
+                            <span className="text-slate-300">·</span>
+                            <span className="text-slate-500">Tiền tệ:</span>
+                            <div className="inline-flex rounded-md p-0.5 bg-slate-200/70 text-slate-700">
+                                <button
+                                    type="button"
+                                    onClick={() => setPayCurrency("VND")}
+                                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                                        payCurrency === "VND" ? "bg-white text-emerald-700 shadow-xs" : "text-slate-500 hover:text-slate-900"
+                                    }`}
+                                >
+                                    🇻🇳 VNĐ
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setPayCurrency("USD")}
+                                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                                        payCurrency === "USD" ? "bg-white text-blue-700 shadow-xs" : "text-slate-500 hover:text-slate-900"
+                                    }`}
+                                >
+                                    🌍 USD
+                                </button>
+                            </div>
+                        </div>
                     )}
                 </div>
 
-                {/* Pricing Cards — Pro gets extra width via fractional grid */}
-                <div className="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+                {/* Pricing Cards */}
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
 
-                    {/* Free */}
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col hover:border-gray-300 transition-colors shadow-sm">
+                    {/* Free Tier */}
+                    <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col hover:border-gray-300 transition-colors shadow-sm">
                         <div className="mb-4">
-                            <h3 className="text-slate-900 text-lg font-bold">Free</h3>
-                            <p className="text-slate-400 text-sm mt-0.5">No card needed</p>
+                            <h3 className="text-slate-900 text-lg font-bold">Free Trial</h3>
+                            <p className="text-slate-400 text-sm mt-0.5">Không cần thẻ tín dụng</p>
                         </div>
                         <div className={`mb-5 ${priceClass}`}>
                             <span className="text-4xl font-extrabold text-slate-900">
-                                {payCurrency === "VND" ? "0đ" : "$0"}
+                                {payCurrency === "VND" ? "0 đ" : "$0"}
                             </span>
-                            <p className="text-slate-400 text-xs mt-1">per user / month</p>
+                            <p className="text-slate-400 text-xs mt-1">miễn phí trải nghiệm</p>
                         </div>
                         <Link
                             href="/sources"
@@ -188,145 +243,174 @@ export default function PricingPage() {
                                     currency: payCurrency,
                                 })
                             }
-                            className="w-full py-2.5 rounded-lg bg-slate-900 text-white text-sm font-semibold text-center hover:bg-slate-800 transition-colors mb-6"
+                            className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold text-center hover:bg-slate-800 transition-colors mb-6"
                         >
-                            Get started
+                            Bắt đầu miễn phí
                         </Link>
                         <PlatformBadges sources={PLAN_SOURCES.free} />
                         <div className="border-t border-gray-100 pt-4 flex-1">
-                            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest mb-3">What&apos;s included</p>
+                            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest mb-3">Tính năng bao gồm</p>
                             <ul className="space-y-2">
-                                <FeatureItem>2 active pipelines</FeatureItem>
-                                <FeatureItem>Daily sync</FeatureItem>
-                                <FeatureItem>Up to 14 days ad report history</FeatureItem>
-                                <FeatureItem>TikTok Ads &amp; Shopee connectors</FeatureItem>
-                                <FeatureItem>Google Sheets™ add-on</FeatureItem>
+                                <FeatureItem>2 kết nối ad accounts</FeatureItem>
+                                <FeatureItem>Đồng bộ dữ liệu hàng ngày</FeatureItem>
+                                <FeatureItem>Lịch sử báo cáo 14 ngày</FeatureItem>
+                                <FeatureItem>Kết nối TikTok Ads &amp; Shopee</FeatureItem>
+                                <FeatureItem>Google Sheets™ Add-on</FeatureItem>
                             </ul>
                         </div>
                     </div>
 
-                    {/* Starter */}
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 flex flex-col hover:border-gray-300 transition-colors shadow-sm">
+                    {/* Starter Tier */}
+                    <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col hover:border-gray-300 transition-colors shadow-sm">
                         <div className="mb-4">
                             <h3 className="text-slate-900 text-lg font-bold">Starter</h3>
-                            <p className="text-slate-400 text-sm mt-0.5">Solo media buyers &amp; freelancers</p>
+                            <p className="text-slate-400 text-sm mt-0.5">Solo Media Buyer &amp; Chủ Shop</p>
                         </div>
                         <div className={`mb-5 ${priceClass}`}>
                             <span className="text-4xl font-extrabold text-slate-900">
-                                {fmtPrice(isAnnual ? 39 : 49)}
+                                {starterPricing.text}
                             </span>
                             <p className="text-slate-400 text-xs mt-1">
-                                1 seat included / month
-                                {isAnnual && (
-                                    <span className="text-cyan-600 ml-1">· save {yearlySaving(49)} /yr</span>
+                                1 tài khoản quản trị / tháng
+                                {starterPricing.saving && (
+                                    <span className="text-cyan-600 ml-1 block sm:inline">· tiết kiệm {starterPricing.saving}/năm</span>
                                 )}
                             </p>
                         </div>
-                        <CheckoutButton
-                            plan="starter"
-                            billingCycle={isAnnual ? "annual" : "monthly"}
-                            invoiceCurrency={payCurrency}
-                            metaPixelEvent="MC_Pricing_Starter_Checkout"
-                            metaPixelParams={{
-                                billing_cycle: isAnnual ? "annual" : "monthly",
-                                currency: payCurrency,
-                            }}
-                            className="w-full py-2.5 rounded-lg bg-slate-900 text-white text-sm font-semibold text-center hover:bg-slate-800 transition-colors mb-2"
-                        >
-                            Get Starter
-                        </CheckoutButton>
+
+                        {/* Payment Button: VietQR if VND, Paddle Checkout if USD */}
+                        {payCurrency === "VND" ? (
+                            <button
+                                onClick={() => openVietQr("starter", "Starter")}
+                                className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold text-center hover:bg-emerald-700 transition-all mb-2 flex items-center justify-center gap-2 shadow-sm"
+                            >
+                                <QrCode className="w-4 h-4" />
+                                Thanh toán VietQR (Napas 24/7)
+                            </button>
+                        ) : (
+                            <CheckoutButton
+                                plan="starter"
+                                billingCycle={isAnnual ? "annual" : "monthly"}
+                                invoiceCurrency={payCurrency}
+                                metaPixelEvent="MC_Pricing_Starter_Checkout"
+                                metaPixelParams={{
+                                    billing_cycle: isAnnual ? "annual" : "monthly",
+                                    currency: payCurrency,
+                                }}
+                                className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold text-center hover:bg-slate-800 transition-colors mb-2"
+                            >
+                                Get Starter
+                            </CheckoutButton>
+                        )}
+
                         <p className="text-slate-400 text-[10px] text-center mb-6">
-                            Includes 14-day full pilot access
+                            Bao gồm 14 ngày dùng thử đầy đủ tính năng
                         </p>
                         <PlatformBadges sources={PLAN_SOURCES.starter} />
                         <div className="border-t border-gray-100 pt-4 flex-1">
-                            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest mb-3">Included in Starter</p>
+                            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest mb-3">Tính năng gói Starter</p>
                             <ul className="space-y-2">
-                                <FeatureItem><strong>1 Licensed User Seat</strong> (Google Account)</FeatureItem>
-                                <FeatureItem><strong>Up to 5 Connected Accounts</strong> (Meta, Google, TikTok, Shopee)</FeatureItem>
-                                <FeatureItem><strong>500 Sheet &amp; Looker Queries / mo</strong></FeatureItem>
+                                <FeatureItem><strong>1 User Seat</strong> (Google Account)</FeatureItem>
+                                <FeatureItem><strong>Tối đa 5 Accounts &amp; Shops</strong> (Meta, Google, TikTok, Shopee)</FeatureItem>
+                                <FeatureItem><strong>500 Lần truy vấn / tháng</strong></FeatureItem>
                                 <FeatureItem>Google Sheets™ Add-on &amp; Looker Studio</FeatureItem>
-                                <FeatureItem>Daily automated refresh + manual pulls</FeatureItem>
-                                <FeatureItem>Standard email support</FeatureItem>
+                                <FeatureItem>Tự động cập nhật số liệu mỗi ngày</FeatureItem>
+                                <FeatureItem>Hỗ trợ qua Zalo &amp; Email</FeatureItem>
                             </ul>
                         </div>
                     </div>
 
-                    {/* Pro — hero card */}
-                    <div className="relative bg-white border-2 border-cyan-500 rounded-xl p-8 flex flex-col shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-500/20">
+                    {/* Agency Pro — Hero Card */}
+                    <div className="relative bg-white border-2 border-cyan-500 rounded-2xl p-8 flex flex-col shadow-xl shadow-cyan-500/10 ring-1 ring-cyan-500/20">
                         <div className="mb-4">
                             <div className="flex items-center gap-2.5">
                                 <h3 className="text-slate-900 text-xl font-bold">Agency Pro</h3>
-                                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-700 border border-cyan-200 uppercase tracking-wider">Recommended</span>
+                                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-700 border border-cyan-200 uppercase tracking-wider">
+                                    Khuyên dùng
+                                </span>
                             </div>
-                            <p className="text-cyan-600 text-sm mt-0.5">Best value for growing agencies &amp; teams</p>
+                            <p className="text-cyan-600 text-sm mt-0.5">Lựa chọn số 1 cho Agency &amp; Brand Enabler</p>
                         </div>
                         <div className={`mb-5 ${priceClass}`}>
                             <span className="text-5xl font-extrabold text-slate-900">
-                                {fmtPrice(isAnnual ? 119 : 149)}
+                                {proPricing.text}
                             </span>
                             <p className="text-slate-500 text-xs mt-1">
-                                3 team seats included / month
-                                {isAnnual && (
-                                    <span className="text-cyan-600 ml-1">· save {yearlySaving(149)} /yr</span>
+                                3 thành viên quản trị / tháng
+                                {proPricing.saving && (
+                                    <span className="text-cyan-600 ml-1 block sm:inline">· tiết kiệm {proPricing.saving}/năm</span>
                                 )}
                             </p>
                         </div>
-                        <CheckoutButton
-                            plan="professional"
-                            billingCycle={isAnnual ? "annual" : "monthly"}
-                            invoiceCurrency={payCurrency}
-                            metaPixelEvent="MC_Pricing_Pro_Checkout"
-                            metaPixelParams={{
-                                billing_cycle: isAnnual ? "annual" : "monthly",
-                                currency: payCurrency,
-                            }}
-                            className="w-full py-3 rounded-lg bg-cyan-600 text-white text-sm font-bold text-center hover:bg-cyan-700 transition-colors mb-1 shadow-lg shadow-cyan-600/20"
-                        >
-                            Start Agency Pilot
-                        </CheckoutButton>
+
+                        {/* Payment Button: VietQR if VND, Paddle Checkout if USD */}
+                        {payCurrency === "VND" ? (
+                            <button
+                                onClick={() => openVietQr("professional", "Agency Pro")}
+                                className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-sm font-bold text-center transition-all mb-1 shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2"
+                            >
+                                <QrCode className="w-4 h-4" />
+                                Thanh toán VietQR (Kích hoạt ngay)
+                            </button>
+                        ) : (
+                            <CheckoutButton
+                                plan="professional"
+                                billingCycle={isAnnual ? "annual" : "monthly"}
+                                invoiceCurrency={payCurrency}
+                                metaPixelEvent="MC_Pricing_Pro_Checkout"
+                                metaPixelParams={{
+                                    billing_cycle: isAnnual ? "annual" : "monthly",
+                                    currency: payCurrency,
+                                }}
+                                className="w-full py-3 rounded-xl bg-cyan-600 text-white text-sm font-bold text-center hover:bg-cyan-700 transition-colors mb-1 shadow-lg shadow-cyan-600/20"
+                            >
+                                Start Agency Pilot
+                            </CheckoutButton>
+                        )}
+
                         <p className="text-slate-400 text-[10px] text-center mb-6">
-                            14-day free agency pilot · Cancel anytime
+                            14 ngày dùng thử Agency Pilot miễn phí · Hỗ trợ xuất hóa đơn VAT
                         </p>
                         <PlatformBadges sources={PLAN_SOURCES.pro} />
                         <div className="border-t border-cyan-200 pt-4 flex-1">
-                            <p className="text-cyan-600/70 text-[10px] font-semibold uppercase tracking-widest mb-3">Everything in Starter, plus</p>
+                            <p className="text-cyan-600/70 text-[10px] font-semibold uppercase tracking-widest mb-3">Tất cả quyền lợi Starter, cộng thêm</p>
                             <ul className="space-y-2">
-                                <FeatureItem accent><strong>3 Licensed Team Seats</strong> (+ $25/mo per extra seat)</FeatureItem>
-                                <FeatureItem accent><strong>Up to 20 Connected Accounts &amp; Shops</strong></FeatureItem>
-                                <FeatureItem accent><strong>3,000 Queries / mo</strong> + Priority Quota</FeatureItem>
-                                <FeatureItem accent>Full Southeast Asia Marketplaces (Shopee, Lazada, TikTok Shop)</FeatureItem>
-                                <FeatureItem accent>Multi-Client Workspace Isolation</FeatureItem>
-                                <FeatureItem accent>Hourly &amp; Nightly Scheduled Syncs</FeatureItem>
-                                <FeatureItem accent>Workspace API Keys for Looker Studio</FeatureItem>
-                                <FeatureItem accent>Priority Email &amp; Chat Support</FeatureItem>
+                                <FeatureItem accent><strong>3 Thành viên nhóm</strong> (Thêm user dễ dàng)</FeatureItem>
+                                <FeatureItem accent><strong>Tối đa 20 Accounts &amp; Gian hàng Shopee</strong></FeatureItem>
+                                <FeatureItem accent><strong>3.000 Lần truy vấn / tháng</strong> + Băng thông ưu tiên</FeatureItem>
+                                <FeatureItem accent>Full Sàn Đông Nam Á (Shopee, Lazada, TikTok Shop)</FeatureItem>
+                                <FeatureItem accent>Phân quyền workspace theo từng khách hàng</FeatureItem>
+                                <FeatureItem accent>Tự động cập nhật số liệu theo giờ &amp; theo đêm</FeatureItem>
+                                <FeatureItem accent>Hỗ trợ kỹ thuật 1-1 qua Zalo &amp; Telegram</FeatureItem>
                             </ul>
                         </div>
                     </div>
 
                 </div>
 
-                <p className="mt-10 text-center text-sm text-slate-500">
-                    Need more than 10 seats, 100+ client ad accounts, or dedicated database warehousing?{" "}
+                {/* Enterprise Contact Link */}
+                <p className="mt-12 text-center text-sm text-slate-500">
+                    Bạn cần quản lý trên 50+ tài khoản quảng cáo hoặc xuất hóa đơn VAT doanh nghiệp?{" "}
                     <Link
-                        href="mailto:hello@monsteracloud.com"
-                        onClick={() =>
-                            metaPixelCustom("MC_Pricing_Enterprise_Contact", {
-                                plan: "enterprise",
-                                currency: payCurrency,
-                            })
-                        }
-                        className="text-cyan-600 hover:text-cyan-700 underline underline-offset-2"
+                        href="mailto:support@monsteracloud.com"
+                        className="text-cyan-600 hover:text-cyan-700 underline underline-offset-2 font-semibold"
                     >
-                        Talk to us about Enterprise Scale
+                        Liên hệ tư vấn gói Enterprise
                     </Link>
                 </p>
 
-                {/* All plans include */}
+                {/* Security and Trust Badges */}
                 <div className="mt-14 text-center">
-                    <p className="text-slate-400 text-xs uppercase tracking-widest font-semibold mb-5">All plans include</p>
+                    <p className="text-slate-400 text-xs uppercase tracking-widest font-semibold mb-5">Tiêu chuẩn an toàn &amp; Bảo mật</p>
                     <div className="flex flex-wrap justify-center gap-x-8 gap-y-3 text-slate-500 text-sm">
-                        {["AES-256-GCM credential encryption", "OAuth 2.0 authentication", "Google Sheets™ Add-on", "Looker Studio Connector", "Multi-tenant workspace isolation", "Nightly + manual refresh"].map((item) => (
+                        {[
+                            "Mã hóa bảo mật AES-256-GCM",
+                            "Chuẩn xác thực Google OAuth 2.0",
+                            "Google Sheets™ Add-on chính thức",
+                            "Looker Studio Connector",
+                            "Cô lập dữ liệu đa người dùng (Multi-tenant)",
+                            "Hỗ trợ Napas 24/7 & Hóa đơn VAT",
+                        ].map((item) => (
                             <span key={item} className="flex items-center gap-2">
                                 <Check className="w-3.5 h-3.5 text-cyan-500" />
                                 {item}
@@ -335,119 +419,17 @@ export default function PricingPage() {
                     </div>
                 </div>
 
-                {/* Feature Comparison Table */}
-                <div className="mt-20 overflow-hidden border border-gray-200 rounded-xl bg-white">
-                    <div className="p-6 border-b border-gray-100">
-                        <h3 className="text-slate-900 text-sm font-bold uppercase tracking-widest">Compare plans</h3>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse min-w-[520px] text-sm">
-                            <thead className="bg-slate-50">
-                                <tr>
-                                    <th className="py-3 px-6 text-slate-400 text-xs font-semibold uppercase tracking-widest border-r border-gray-100 w-1/3">Spec</th>
-                                    <th className="py-3 px-4 text-slate-900 text-xs font-bold text-center border-r border-gray-100">Free</th>
-                                    <th className="py-3 px-4 text-slate-900 text-xs font-bold text-center border-r border-gray-100">Starter</th>
-                                    <th className="py-3 px-4 text-cyan-600 text-xs font-bold text-center bg-cyan-50/50">Agency Pro ✦</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                <CompareRow label="Licensed User Seats" values={["1 Seat", "1 Seat", "3 Seats (Scale to 10+)"]} />
-                                <CompareRow label="Connected Ad Accounts / Shops" values={["2 Accounts", "5 Accounts", "20 Accounts"]} />
-                                <CompareRow label="Monthly Sheet & Looker Queries" values={["100 / mo", "500 / mo", "3,000 / mo"]} />
-                                <CompareRow label="Google Sheets™ Add-on" values={[true, true, true]} />
-                                <CompareRow label="Looker Studio Connector" values={[false, true, true]} />
-                                <CompareRow label="Shopee & SEA Marketplaces" values={["Shopee", "Shopee", "Shopee + Lazada + TikTok"]} />
-                                <CompareRow label="Multi-Client Brand Isolation" values={[false, false, true]} />
-                                <CompareRow label="Sync Refresh Cadence" values={["Daily", "Daily + Manual", "Hourly + Nightly + Manual"]} />
-                                <CompareRow label="API Requests (per min)" values={["60", "300", "1,000+"]} />
-                                <CompareRow label="Max sync rows (per request)" values={["500", "1,000", "5,000"]} />
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                {/* FAQ Section */}
-                <div className="mt-28 max-w-4xl mx-auto border-t border-gray-100 pt-20">
-                    <div className="text-center mb-12">
-                        <h2 className="text-slate-900 text-2xl md:text-3xl font-bold tracking-tight">Frequently asked questions</h2>
-                    </div>
-                    <div className="grid md:grid-cols-2 gap-x-12 gap-y-10">
-                        <div>
-                            <h4 className="text-slate-900 font-semibold text-sm mb-2.5">What happens if I hit a row limit?</h4>
-                                <p className="text-slate-500 text-sm leading-relaxed">We don't impose permanent row caps — however, very large synchronous exports are limited to keep performance predictable. Small-to-medium requests are served live; very large exports are handled asynchronously via our job queue (you'll receive a job ID and status). We also enforce per-API-key rate limits to protect service quality (see plan comparison above). If you need higher throughput, upgrade to a higher tier or contact Sales for Enterprise options.</p>
-                        </div>
-                        <div>
-                            <h4 className="text-slate-900 font-semibold text-sm mb-2.5">Is my store and ad data secure?</h4>
-                            <p className="text-slate-500 text-sm leading-relaxed">Yes. We use OAuth 2.0 so we never see or store your passwords. All data in transit is encrypted using TLS 1.3, and we do not store your raw ad data on our servers—it streams safely to your destination.</p>
-                        </div>
-                        <div>
-                            <h4 className="text-slate-900 font-semibold text-sm mb-2.5">Do you offer refunds?</h4>
-                            <p className="text-slate-500 text-sm leading-relaxed">Yes, you can cancel at any time. If you have billing issues or are unsatisfied with the product, our 14-day transparent refund policy covers you. Just contact our email support.</p>
-                        </div>
-                        <div>
-                            <h4 className="text-slate-900 font-semibold text-sm mb-2.5">Can I upgrade to annual billing later?</h4>
-                            <p className="text-slate-500 text-sm leading-relaxed">Absolutely. You can switch to annual billing at any point from your dashboard settings to instantly secure the 20% discount.</p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Trust footer */}
-                <div className="mt-24 pt-12 border-t border-gray-200 text-center">
-                    <div className="flex justify-center gap-12 text-slate-400">
-                        <div className="flex flex-col items-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
-                            <ShieldCheck className="w-6 h-6 text-slate-600" />
-                            <span className="text-[10px] font-mono tracking-widest uppercase">256-bit encrypted</span>
-                        </div>
-                        <div className="flex flex-col items-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
-                            <Shield className="w-6 h-6 text-slate-600" />
-                            <span className="text-[10px] font-mono tracking-widest uppercase">OAuth 2.0</span>
-                        </div>
-                        <div className="flex flex-col items-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
-                            <Zap className="w-6 h-6 text-slate-600" />
-                            <span className="text-[10px] font-mono tracking-widest uppercase">VND + USD billing</span>
-                        </div>
-                    </div>
-                    <p className="mt-10 text-[10px] text-slate-400 max-w-xl mx-auto leading-relaxed">
-                        Google Sheets™ and Google Workspace™ are trademarks of Google LLC.
-                    </p>
-                </div>
-
-                <MarketingTrustSecuritySection />
             </div>
+
+            {/* VietQR Modal */}
+            <VietQrModal
+                isOpen={qrModalOpen}
+                onClose={() => setQrModalOpen(false)}
+                planName={selectedQrPlan.name}
+                planDisplayName={selectedQrPlan.displayName}
+                amountVnd={selectedQrPlan.amount}
+                billingCycle={isAnnual ? "annual" : "monthly"}
+            />
         </div>
-    );
-}
-
-function FeatureItem({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
-    return (
-        <li className={`flex items-start gap-2.5 text-sm ${accent ? "text-slate-700" : "text-slate-500"}`}>
-            <Check className={`w-4 h-4 shrink-0 mt-0.5 ${accent ? "text-cyan-500" : "text-cyan-500"}`} />
-            {children}
-        </li>
-    );
-}
-
-function CompareRow({ label, values }: { label: string; values: (string | boolean)[] }) {
-    const proCol = values.length - 1;
-    return (
-        <tr className="hover:bg-slate-50/50 transition-colors">
-            <td className="py-3.5 px-6 text-slate-600 font-medium border-r border-gray-100">{label}</td>
-            {values.map((v, i) => (
-                <td
-                    key={i}
-                    className={`py-3.5 px-4 text-center border-r border-gray-100 last:border-r-0 ${i === proCol ? "bg-cyan-50/50" : ""}`}
-                >
-                    {typeof v === "boolean" ? (
-                        v ? (
-                            <CheckCircle2 className="inline w-4 h-4 text-cyan-500" />
-                        ) : (
-                            <span className="text-slate-300">—</span>
-                        )
-                    ) : (
-                        <span className={i === proCol ? "text-cyan-600 font-semibold" : "text-slate-500"}>{v}</span>
-                    )}
-                </td>
-            ))}
-        </tr>
     );
 }
