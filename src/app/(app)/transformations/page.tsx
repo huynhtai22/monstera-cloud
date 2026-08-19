@@ -1,40 +1,34 @@
 "use client";
 
 import React, { useState } from 'react';
-import Image from 'next/image';
 import { Settings2, ArrowRight, Save, Plus, Database, Sparkles, AlertCircle, CheckCircle2, Waypoints } from "lucide-react";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+import { IntegrationMark } from "@/components/ui/IntegrationMark";
 
 export default function TransformationsPage() {
     const [activeTab, setActiveTab] = useState<'mapping' | 'cleansing'>('mapping');
 
     return (
-        <div className="relative max-w-7xl mx-auto px-8 py-10 w-full animate-in fade-in duration-300">
-            {/* Liquid Glass Background Effects */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-                <div className="absolute top-[0%] left-[20%] w-[40%] h-[40%] rounded-full bg-indigo-200/20 dark:bg-indigo-900/20 blur-[120px]" />
-                <div className="absolute top-[40%] right-[-10%] w-[30%] h-[50%] rounded-full bg-violet-200/20 dark:bg-violet-900/20 blur-[120px]" />
-            </div>
-
+        <div className="relative max-w-7xl mx-auto px-6 sm:px-8 py-8 w-full font-sans text-ink animate-in fade-in duration-300">
             {/* Header Section */}
-            <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between space-y-4 sm:space-y-0 relative z-10">
+            <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-6 border-b border-line">
                 <div>
                     <div className="flex items-center space-x-3 mb-2">
-                        <div className="w-10 h-10 bg-white/50 dark:bg-[#000000]/50 backdrop-blur-md border border-white dark:border-[#2f3336]/60 dark:border-[#2f3336]/40 rounded-xl flex items-center justify-center shadow-sm text-indigo-600">
+                        <div className="w-10 h-10 bg-panel border border-line rounded-lg flex items-center justify-center text-accent">
                             <Waypoints className="w-5 h-5" />
                         </div>
-                        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Transformations</h1>
+                        <h1 className="text-2xl font-bold tracking-tight text-ink">Transformations</h1>
                     </div>
-                    <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm max-w-2xl">
+                    <p className="text-ink-mute text-xs sm:text-sm max-w-2xl">
                         Cleanse, map, and transform your data in-flight before it reaches your destination warehouse. No SQL required.
                     </p>
                 </div>
 
                 <div className="flex items-center space-x-3">
-                    <button className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-slate-300 bg-white/60 dark:bg-[#000000]/60 backdrop-blur-sm border border-white dark:border-[#2f3336]/80 dark:border-[#2f3336]/60 rounded-xl hover:bg-white dark:bg-[#16181c] transition-all shadow-sm">
+                    <button className="px-4 py-2 text-xs font-semibold text-ink bg-panel border border-line rounded-md hover:bg-[#16181c] transition-colors">
                         Discard Changes
                     </button>
-                    <button className="flex items-center space-x-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-md shadow-indigo-500/20">
+                    <button className="flex items-center space-x-2 px-4 py-2 bg-white hover:bg-neutral-200 text-black rounded-md text-xs font-semibold transition-colors shadow-xs">
                         <Save className="w-4 h-4" />
                         <span>Deploy Transformation</span>
                     </button>
@@ -42,28 +36,28 @@ export default function TransformationsPage() {
             </div>
 
             {/* Pipeline Selector (Top Bar) */}
-            <div className="bg-white/40 dark:bg-[#000000]/40 backdrop-blur-md border border-white dark:border-[#2f3336]/60 dark:border-[#2f3336]/40 rounded-2xl p-4 mb-8 flex items-center justify-between shadow-[0_8px_30px_rgb(0,0,0,0.02)] relative z-10">
+            <div className="bg-panel border border-line rounded-lg p-4 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center space-x-6">
                     <div className="flex flex-col">
-                        <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1">Editing Pipeline</span>
-                        <select className="bg-transparent text-gray-900 dark:text-white font-semibold focus:outline-none cursor-pointer">
+                        <span className="text-[10px] font-bold text-ink-mute uppercase tracking-wider mb-1">Editing Pipeline</span>
+                        <select className="bg-canvas border border-line text-ink text-xs font-medium rounded-md px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer">
                             <option>Shopee Orders → Google Sheets™</option>
                             <option>Meta Ads → Looker Studio™</option>
                         </select>
                     </div>
                 </div>
 
-                <div className="flex bg-gray-100 dark:bg-[#16181c]/50 p-1 rounded-xl border border-gray-200 dark:border-[#2f3336]/50 backdrop-blur-sm">
+                <div className="flex bg-canvas p-1 rounded-md border border-line">
                     <button
                         onClick={() => setActiveTab('mapping')}
-                        className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'mapping' ? 'bg-white dark:bg-[#16181c] text-indigo-700 shadow-sm border border-gray-200 dark:border-[#2f3336]/50' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-slate-300'
+                        className={`px-3 py-1 text-xs font-semibold rounded transition-colors ${activeTab === 'mapping' ? 'bg-panel text-ink shadow-xs border border-line' : 'text-ink-mute hover:text-ink'
                             }`}
                     >
                         Schema Mapping
                     </button>
                     <button
                         onClick={() => setActiveTab('cleansing')}
-                        className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'cleansing' ? 'bg-white dark:bg-[#16181c] text-indigo-700 shadow-sm border border-gray-200 dark:border-[#2f3336]/50' : 'text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:text-slate-300'
+                        className={`px-3 py-1 text-xs font-semibold rounded transition-colors ${activeTab === 'cleansing' ? 'bg-panel text-ink shadow-xs border border-line' : 'text-ink-mute hover:text-ink'
                             }`}
                     >
                         Data Cleansing
@@ -73,21 +67,19 @@ export default function TransformationsPage() {
 
             {/* Main Editor UI */}
             {activeTab === 'mapping' && (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in fade-in duration-300 relative z-10">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
                     {/* Source Schema */}
-                    <div className="lg:col-span-5 bg-white/50 dark:bg-[#000000]/50 backdrop-blur-xl border border-white dark:border-[#2f3336]/60 dark:border-[#2f3336]/40 rounded-2xl shadow-sm overflow-hidden flex flex-col">
-                        <div className="p-4 border-b border-gray-100 dark:border-[#2f3336] flex items-center justify-between bg-white/40 dark:bg-[#000000]/40">
+                    <div className="lg:col-span-5 bg-panel border border-line rounded-lg overflow-hidden flex flex-col">
+                        <div className="p-4 border-b border-line flex items-center justify-between bg-canvas/40">
                             <div className="flex items-center space-x-3">
-                                <div className="w-8 h-8 rounded-lg bg-white dark:bg-[#16181c] border border-gray-200 dark:border-[#2f3336] flex items-center justify-center p-1.5 shadow-sm">
-                                    <Image src={INTEGRATION_LOGOS.shopee} alt="Source" width={20} height={20} className="object-contain" />
-                                </div>
+                                <IntegrationMark src={INTEGRATION_LOGOS.shopee} alt="Shopee" size="sm" />
                                 <div>
-                                    <h3 className="font-bold text-gray-900 dark:text-white text-sm">Shopee Orders API</h3>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Source Fields</p>
+                                    <h3 className="font-bold text-ink text-xs">Shopee Orders API</h3>
+                                    <p className="text-[11px] text-ink-mute">Source Fields</p>
                                 </div>
                             </div>
-                            <span className="px-2 py-1 bg-blue-50 text-blue-700 text-[10px] font-bold uppercase rounded-md border border-blue-100">14 Active</span>
+                            <span className="px-2 py-0.5 bg-canvas text-accent text-[10px] font-semibold uppercase rounded border border-line">14 Active</span>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-2">
                             {[
@@ -98,41 +90,39 @@ export default function TransformationsPage() {
                                 { name: 'create_time', type: 'TIMESTAMP', isKey: false },
                                 { name: 'order_status', type: 'ENUM', isKey: false }
                             ].map((field) => (
-                                <div key={field.name} className="flex items-center justify-between p-3 bg-white/80 dark:bg-[#000000]/80 border border-gray-100 dark:border-[#2f3336] rounded-xl hover:border-indigo-200 hover:shadow-sm transition-all cursor-grab group">
-                                    <div className="flex items-center space-x-3">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-gray-300 group-hover:bg-indigo-400" />
-                                        <span className={`text-sm font-medium ${field.isKey ? 'text-indigo-700 font-bold' : 'text-gray-700 dark:text-slate-300'}`}>{field.name}</span>
+                                <div key={field.name} className="flex items-center justify-between p-2.5 bg-canvas border border-line rounded-md hover:border-[#333] transition-colors cursor-grab group">
+                                    <div className="flex items-center space-x-2.5">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-line group-hover:bg-accent" />
+                                        <span className={`text-xs ${field.isKey ? 'text-accent font-semibold' : 'text-ink'}`}>{field.name}</span>
                                     </div>
-                                    <span className="text-[10px] uppercase font-semibold text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-[#16181c] px-2 py-0.5 rounded border border-gray-100 dark:border-[#2f3336]">{field.type}</span>
+                                    <span className="text-[10px] uppercase font-mono text-ink-mute bg-panel px-1.5 py-0.5 rounded border border-line">{field.type}</span>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    {/* Mapping Arrows (Visual Only for mock) */}
+                    {/* Mapping Arrows */}
                     <div className="hidden lg:flex lg:col-span-2 items-center justify-center">
-                        <div className="flex flex-col items-center space-y-8 py-10 opacity-40">
-                            <ArrowRight className="w-6 h-6 text-gray-400 dark:text-gray-500" />
-                            <ArrowRight className="w-6 h-6 text-indigo-400" />
-                            <ArrowRight className="w-6 h-6 text-gray-400 dark:text-gray-500" />
-                            <ArrowRight className="w-6 h-6 text-gray-400 dark:text-gray-500" />
-                            <ArrowRight className="w-6 h-6 text-gray-400 dark:text-gray-500" />
+                        <div className="flex flex-col items-center space-y-8 py-10 opacity-30">
+                            <ArrowRight className="w-5 h-5 text-ink-mute" />
+                            <ArrowRight className="w-5 h-5 text-accent" />
+                            <ArrowRight className="w-5 h-5 text-ink-mute" />
+                            <ArrowRight className="w-5 h-5 text-ink-mute" />
+                            <ArrowRight className="w-5 h-5 text-ink-mute" />
                         </div>
                     </div>
 
                     {/* Destination Schema */}
-                    <div className="lg:col-span-5 bg-white/50 dark:bg-[#000000]/50 backdrop-blur-xl border border-white dark:border-[#2f3336]/60 dark:border-[#2f3336]/40 rounded-2xl shadow-sm overflow-hidden flex flex-col">
-                        <div className="p-4 border-b border-gray-100 dark:border-[#2f3336] flex items-center justify-between bg-white/40 dark:bg-[#000000]/40">
+                    <div className="lg:col-span-5 bg-panel border border-line rounded-lg overflow-hidden flex flex-col">
+                        <div className="p-4 border-b border-line flex items-center justify-between bg-canvas/40">
                             <div className="flex items-center space-x-3">
-                                <div className="w-8 h-8 rounded-lg bg-white dark:bg-[#16181c] border border-gray-200 dark:border-[#2f3336] flex items-center justify-center p-1.5 shadow-sm">
-                                    <Image src={INTEGRATION_LOGOS.googleSheets} alt="Destination" width={20} height={20} className="object-contain" />
-                                </div>
+                                <IntegrationMark src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" size="sm" />
                                 <div>
-                                    <h3 className="font-bold text-gray-900 dark:text-white text-sm">Google Sheets™ Tab</h3>
-                                    <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500">Destination Columns</p>
+                                    <h3 className="font-bold text-ink text-xs">Google Sheets™ Tab</h3>
+                                    <p className="text-[11px] text-ink-mute">Destination Columns</p>
                                 </div>
                             </div>
-                            <button className="text-[10px] font-bold uppercase text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded transition-colors border border-transparent hover:border-indigo-100 flex items-center">
+                            <button className="text-[10px] font-bold uppercase text-ink-mute hover:text-ink px-2 py-0.5 rounded transition-colors border border-line flex items-center bg-canvas">
                                 <Plus className="w-3 h-3 mr-1" /> Add Col
                             </button>
                         </div>
@@ -145,17 +135,17 @@ export default function TransformationsPage() {
                                 { name: 'Order Date', type: 'DATE', mappedFrom: 'create_time' },
                                 { name: 'Status', type: 'TEXT', mappedFrom: 'order_status' }
                             ].map((col) => (
-                                <div key={col.name} className="flex flex-col p-3 bg-white/80 dark:bg-[#000000]/80 border border-gray-100 dark:border-[#2f3336] rounded-xl hover:border-indigo-200 hover:shadow-sm transition-all relative overflow-hidden group">
+                                <div key={col.name} className="flex flex-col p-2.5 bg-canvas border border-line rounded-md hover:border-[#333] transition-colors relative overflow-hidden group">
                                     {col.hasRule && (
-                                        <div className="absolute top-0 right-0 w-8 h-8 bg-gradient-to-bl from-amber-100 to-transparent flex items-start justify-end p-1">
-                                            <Sparkles className="w-3 h-3 text-amber-500" />
+                                        <div className="absolute top-1 right-1">
+                                            <Sparkles className="w-3 h-3 text-accent" />
                                         </div>
                                     )}
-                                    <div className="flex items-center justify-between mb-2">
-                                        <span className="text-sm font-semibold text-gray-900 dark:text-white">{col.name}</span>
-                                        <span className="text-[10px] uppercase font-semibold text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-[#16181c] px-2 py-0.5 rounded border border-gray-100 dark:border-[#2f3336]">{col.type}</span>
+                                    <div className="flex items-center justify-between mb-1.5">
+                                        <span className="text-xs font-semibold text-ink">{col.name}</span>
+                                        <span className="text-[10px] uppercase font-mono text-ink-mute bg-panel px-1.5 py-0.5 rounded border border-line">{col.type}</span>
                                     </div>
-                                    <div className="flex items-center text-xs text-indigo-600 bg-indigo-50/50 px-2 py-1 rounded-lg border border-indigo-100/50 self-start">
+                                    <div className="flex items-center text-[11px] text-accent bg-panel px-2 py-0.5 rounded border border-line self-start">
                                         <code className="font-mono">{col.mappedFrom}</code>
                                     </div>
                                 </div>
@@ -167,64 +157,64 @@ export default function TransformationsPage() {
             )}
 
             {activeTab === 'cleansing' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in duration-300 relative z-10">
-                    <div className="md:col-span-2 bg-white/50 dark:bg-[#000000]/50 backdrop-blur-xl border border-white dark:border-[#2f3336]/60 dark:border-[#2f3336]/40 rounded-2xl shadow-sm p-6">
-                        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                            <Sparkles className="w-5 h-5 text-indigo-500 mr-2" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="md:col-span-2 bg-panel border border-line rounded-lg p-6">
+                        <h3 className="text-base font-bold text-ink mb-4 flex items-center">
+                            <Sparkles className="w-4 h-4 text-accent mr-2" />
                             Active Cleansing Rules
                         </h3>
 
                         <div className="space-y-4">
                             {/* Rule 1 */}
-                            <div className="flex items-start space-x-4 p-4 bg-white/80 dark:bg-[#000000]/80 rounded-xl border border-gray-200 dark:border-[#2f3336]">
-                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
+                            <div className="flex items-start space-x-3.5 p-4 bg-canvas rounded-lg border border-line">
+                                <div className="p-2 bg-panel border border-line text-accent rounded-md shrink-0">
                                     <Settings2 className="w-4 h-4" />
                                 </div>
                                 <div className="flex-1">
                                     <div className="flex items-center justify-between mb-1">
-                                        <h4 className="font-semibold text-gray-900 dark:text-white text-sm">Mask PII (Username)</h4>
-                                        <span className="text-xs font-medium px-2 py-1 bg-cyan-50 text-cyan-600 rounded-md border border-cyan-100">Active</span>
+                                        <h4 className="font-semibold text-ink text-xs">Mask PII (Username)</h4>
+                                        <span className="text-[10px] font-semibold px-2 py-0.5 bg-panel text-accent rounded border border-line">Active</span>
                                     </div>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-3">Converts 'buyer_username' to a secure, anonymized SHA-256 hash before writing to the destination.</p>
-                                    <div className="bg-gray-900 dark:bg-[#16181c] rounded-lg p-3 overflow-x-auto text-xs text-green-400 font-mono">
-                                        <span className="text-pink-400">HASH</span>(<span className="text-blue-300">shopee.buyer_username</span>, 'sha256') <span className="text-gray-400 dark:text-gray-500">-{'>'} Destination.'Customer Name'</span>
+                                    <p className="text-xs text-ink-mute mb-3">Converts &apos;buyer_username&apos; to a secure, anonymized SHA-256 hash before writing to the destination.</p>
+                                    <div className="bg-panel border border-line rounded-md p-2.5 overflow-x-auto text-[11px] text-accent font-mono">
+                                        <span>HASH</span>(<span>shopee.buyer_username</span>, &apos;sha256&apos;) <span className="text-ink-mute">-&gt; Destination.&apos;Customer Name&apos;</span>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Rule 2 */}
-                            <div className="flex items-start space-x-4 p-4 bg-white/80 dark:bg-[#000000]/80 rounded-xl border border-gray-200 dark:border-[#2f3336]">
-                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
+                            <div className="flex items-start space-x-3.5 p-4 bg-canvas rounded-lg border border-line">
+                                <div className="p-2 bg-panel border border-line text-accent rounded-md shrink-0">
                                     <Database className="w-4 h-4" />
                                 </div>
                                 <div className="flex-1">
                                     <div className="flex items-center justify-between mb-1">
-                                        <h4 className="font-semibold text-gray-900 dark:text-white text-sm">Currency Normalization</h4>
-                                        <span className="text-xs font-medium px-2 py-1 bg-cyan-50 text-cyan-600 rounded-md border border-cyan-100">Active</span>
+                                        <h4 className="font-semibold text-ink text-xs">Currency Normalization</h4>
+                                        <span className="text-[10px] font-semibold px-2 py-0.5 bg-panel text-accent rounded border border-line">Active</span>
                                     </div>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-3">Converts 'total_amount' from integer cents to localized decimal currency format.</p>
-                                    <div className="bg-gray-900 dark:bg-[#16181c] rounded-lg p-3 overflow-x-auto text-xs text-green-400 font-mono">
-                                        <span className="text-pink-400">DIVIDE</span>(<span className="text-blue-300">shopee.total_amount</span>, 100) <span className="text-gray-400 dark:text-gray-500">-{'>'} Destination.'Revenue'</span>
+                                    <p className="text-xs text-ink-mute mb-3">Converts &apos;total_amount&apos; from integer cents to localized decimal currency format.</p>
+                                    <div className="bg-panel border border-line rounded-md p-2.5 overflow-x-auto text-[11px] text-accent font-mono">
+                                        <span>DIVIDE</span>(<span>shopee.total_amount</span>, 100) <span className="text-ink-mute">-&gt; Destination.&apos;Revenue&apos;</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <button className="mt-6 w-full py-3 border border-dashed border-gray-300 dark:border-[#2f3336] rounded-xl text-sm font-medium text-gray-500 dark:text-gray-400 dark:text-gray-500 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50/50 transition-colors flex items-center justify-center">
-                            <Plus className="w-4 h-4 mr-2" /> Add Rule
+                        <button className="mt-6 w-full py-2.5 border border-dashed border-line rounded-md text-xs font-medium text-ink-mute hover:text-ink hover:border-[#444] transition-colors flex items-center justify-center">
+                            <Plus className="w-3.5 h-3.5 mr-1.5" /> Add Rule
                         </button>
                     </div>
 
-                    <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6 h-fit backdrop-blur-xl">
-                        <AlertCircle className="w-6 h-6 text-blue-600 mb-3" />
-                        <h4 className="font-bold text-gray-900 dark:text-white mb-2">Why transform data?</h4>
-                        <p className="text-sm text-gray-600 dark:text-gray-300 dark:text-gray-600 mb-4 leading-relaxed">
+                    <div className="bg-panel border border-line rounded-lg p-6 h-fit">
+                        <AlertCircle className="w-5 h-5 text-accent mb-3" />
+                        <h4 className="font-bold text-ink text-sm mb-2">Why transform data?</h4>
+                        <p className="text-xs text-ink-mute mb-4 leading-relaxed">
                             Transformations run securely isolated on Monstera Cloud infrastructure. They allow you to structure and sanitize your data exactly as your analysts need it before they ever run a query.
                         </p>
-                        <ul className="text-sm text-gray-600 dark:text-gray-300 dark:text-gray-600 space-y-2">
-                            <li className="flex items-center"><CheckCircle2 className="w-4 h-4 text-cyan-500 mr-2" /> PII Masking</li>
-                            <li className="flex items-center"><CheckCircle2 className="w-4 h-4 text-cyan-500 mr-2" /> Data Type Casting</li>
-                            <li className="flex items-center"><CheckCircle2 className="w-4 h-4 text-cyan-500 mr-2" /> Currency Conversion</li>
+                        <ul className="text-xs text-ink-mute space-y-2">
+                            <li className="flex items-center"><CheckCircle2 className="w-3.5 h-3.5 text-accent mr-2" /> PII Masking</li>
+                            <li className="flex items-center"><CheckCircle2 className="w-3.5 h-3.5 text-accent mr-2" /> Data Type Casting</li>
+                            <li className="flex items-center"><CheckCircle2 className="w-3.5 h-3.5 text-accent mr-2" /> Currency Conversion</li>
                         </ul>
                     </div>
                 </div>

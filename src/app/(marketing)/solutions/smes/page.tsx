@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useState } from "react";
 import {
     ArrowRight,
@@ -24,14 +23,7 @@ const PLATFORMS = [
     {
         id: "tiktok",
         label: "TikTok Ads",
-        logo: "/logos/tiktok.svg",
-        pillActive: "bg-pink-50 border-pink-300 text-pink-600",
-        pillInactive: "border-gray-200 text-slate-400 hover:text-slate-600 hover:border-gray-300",
-        accent: "text-pink-600",
-        cardBorder: "border-t-pink-400",
-        cardGlow: "shadow-pink-500/10",
-        cardBg: "bg-white",
-        badgeClass: "bg-pink-50 border-pink-200 text-pink-600",
+        logo: INTEGRATION_LOGOS.tiktok,
         description: "Your TikTok Ads campaigns — spend, impressions, CTR, and conversions. Refreshed manually or nightly.",
         filename: "TikTok_Ads_Report.xlsx",
         headers: ["Campaign", "Spend", "Impressions", "Conv."],
@@ -48,14 +40,7 @@ const PLATFORMS = [
     {
         id: "meta",
         label: "Meta Ads",
-        logo: "/logos/meta.svg",
-        pillActive: "bg-blue-50 border-blue-300 text-blue-600",
-        pillInactive: "border-gray-200 text-slate-400 hover:text-slate-600 hover:border-gray-300",
-        accent: "text-blue-600",
-        cardBorder: "border-t-blue-400",
-        cardGlow: "shadow-blue-500/10",
-        cardBg: "bg-white",
-        badgeClass: "bg-blue-50 border-blue-200 text-blue-600",
+        logo: INTEGRATION_LOGOS.meta,
         description: "Facebook & Instagram ad metrics — reach, CPM, ROAS, and conversions by ad set.",
         filename: "Meta_Ads_Report.xlsx",
         headers: ["Ad Set", "Spend", "Reach", "ROAS"],
@@ -72,14 +57,7 @@ const PLATFORMS = [
     {
         id: "shopee",
         label: "Shopee",
-        logo: "/logos/shopee.svg",
-        pillActive: "bg-orange-50 border-orange-300 text-orange-600",
-        pillInactive: "border-gray-200 text-slate-400 hover:text-slate-600 hover:border-gray-300",
-        accent: "text-orange-600",
-        cardBorder: "border-t-orange-400",
-        cardGlow: "shadow-orange-500/10",
-        cardBg: "bg-white",
-        badgeClass: "bg-orange-50 border-orange-200 text-orange-600",
+        logo: INTEGRATION_LOGOS.shopee,
         description: "Shopee orders, revenue, and top products — directly from your seller account.",
         filename: "Shopee_Orders_Report.xlsx",
         headers: ["Product", "Orders", "Revenue", "Rating"],
@@ -96,14 +74,7 @@ const PLATFORMS = [
     {
         id: "google",
         label: "Google Ads",
-        logo: "/logos/google-ads.svg",
-        pillActive: "bg-green-50 border-green-300 text-green-600",
-        pillInactive: "border-gray-200 text-slate-400 hover:text-slate-600 hover:border-gray-300",
-        accent: "text-green-600",
-        cardBorder: "border-t-green-400",
-        cardGlow: "shadow-green-500/10",
-        cardBg: "bg-white",
-        badgeClass: "bg-green-50 border-green-200 text-green-600",
+        logo: INTEGRATION_LOGOS.googleAds,
         description: "Google Search, Shopping, and Performance Max — clicks, CPC, and conversions.",
         filename: "Google_Ads_Report.xlsx",
         headers: ["Campaign", "Spend", "Clicks", "Conv."],
@@ -127,65 +98,47 @@ const PAIN_POINTS = [
 ];
 
 const FEATURES = [
-    { icon: TrendingUp,    color: "cyan", title: "TikTok & Meta Ads in one place",  desc: "See spend, impressions, clicks, and conversions from all your ad accounts side by side. No switching tabs." },
-    { icon: ShoppingBag,   color: "orange",  title: "Shopee order data",               desc: "Pull orders, revenue, and product performance from your Shopee seller account. Filter by date and status." },
-    { icon: FileSpreadsheet,color:"blue",    title: "Query from Google Sheets™",     desc: "Use the private add-on to choose an agency workspace and pull its current warehouse data into a sheet." },
-    { icon: BarChart3,     color: "purple",  title: "Looker Studio dashboards",        desc: "Connect to Looker Studio for beautiful charts. Share live reports with your team or your boss." },
-    { icon: RefreshCw,     color: "cyan", title: "Scheduled auto-sync",             desc: "Set it and forget it. Monstera syncs your data on a schedule so your numbers are always up to date." },
-    { icon: Zap,           color: "yellow",  title: "No engineers needed",             desc: "Built for business owners, not developers. Connect your accounts in minutes with just a few clicks." },
+    { icon: TrendingUp,    title: "TikTok & Meta Ads in one place",  desc: "See spend, impressions, clicks, and conversions from all your ad accounts side by side. No switching tabs." },
+    { icon: ShoppingBag,   title: "Shopee order data",               desc: "Pull orders, revenue, and product performance from your Shopee seller account. Filter by date and status." },
+    { icon: FileSpreadsheet,title: "Query from Google Sheets™",      desc: "Use the private add-on to choose an agency workspace and pull its current warehouse data into a sheet." },
+    { icon: BarChart3,     title: "Looker Studio dashboards",        desc: "Connect to Looker Studio for beautiful charts. Share live reports with your team or your boss." },
+    { icon: RefreshCw,     title: "Scheduled auto-sync",             desc: "Set it and forget it. Monstera syncs your data on a schedule so your numbers are always up to date." },
+    { icon: Zap,           title: "No engineers needed",             desc: "Built for business owners, not developers. Connect your accounts in minutes with just a few clicks." },
 ];
-
-const colorMap: Record<string, string> = {
-    cyan: "text-cyan-600 bg-cyan-50 group-hover:bg-cyan-100",
-    orange:  "text-orange-600 bg-orange-50 group-hover:bg-orange-100",
-    blue:    "text-blue-600 bg-blue-50 group-hover:bg-blue-100",
-    purple:  "text-purple-600 bg-purple-50 group-hover:bg-purple-100",
-    yellow:  "text-amber-600 bg-amber-50 group-hover:bg-amber-100",
-};
-
-const borderMap: Record<string, string> = {
-    cyan: "hover:border-cyan-200",
-    orange:  "hover:border-orange-200",
-    blue:    "hover:border-blue-200",
-    purple:  "hover:border-purple-200",
-    yellow:  "hover:border-amber-200",
-};
 
 export default function SMEsSolutionPage() {
     const [activePlatform, setActivePlatform] = useState(PLATFORMS[0]);
 
     return (
-        <div className="flex flex-col items-center bg-white text-slate-800 w-full selection:bg-cyan-500/20 overflow-hidden font-sans">
+        <div className="flex flex-col items-center bg-canvas text-ink w-full selection:bg-accent/20 overflow-hidden font-sans">
 
             {/* ── HERO ─────────────────────────────────────────────────────── */}
-            <section className="relative w-full pt-32 pb-24 px-4 sm:px-6 lg:px-8 overflow-hidden border-b border-gray-100">
-                <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[350px] bg-cyan-500/10 blur-[140px] rounded-full" />
-
+            <section className="relative w-full pt-32 pb-24 px-4 sm:px-6 lg:px-8 overflow-hidden border-b border-line">
                 <div className="relative z-10 w-full max-w-4xl mx-auto text-center flex flex-col items-center">
-                    <h1 className="text-5xl md:text-7xl font-black text-slate-900 tracking-tight leading-[1.08] mb-6">
+                    <h1 className="text-4xl sm:text-6xl md:text-7xl font-bold text-ink tracking-tight leading-[1.08] mb-6">
                         Stop copying data.<br className="hidden md:block" />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-cyan-600">
+                        <span className="text-accent">
                             Start growing.
                         </span>
                     </h1>
 
-                    <p className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto mb-10 leading-relaxed">
+                    <p className="text-base sm:text-lg text-ink-mute max-w-2xl mx-auto mb-10 leading-relaxed">
                         Monstera connects TikTok Ads, Meta Ads, Shopee, and Google Ads in one normalized warehouse for Data Explorer, Google Sheets™, Looker Studio™, and API access.
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full mb-12">
-                        <Link href="/register" className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-8 py-4 text-base font-bold text-white bg-cyan-600 hover:bg-cyan-700 rounded-xl transition-all shadow-lg shadow-cyan-600/20">
+                        <Link href="/register" className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-black bg-white hover:bg-neutral-200 rounded-md transition-colors shadow-xs">
                             Start Free — No Credit Card
                             <ArrowRight className="w-4 h-4" />
                         </Link>
-                        <Link href="/pricing" className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 text-base font-semibold text-slate-600 border border-gray-200 hover:border-gray-300 rounded-xl transition-all">
+                        <Link href="/pricing" className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-ink bg-panel border border-line hover:bg-[#16181c] rounded-md transition-colors">
                             See Pricing
                         </Link>
                     </div>
 
                     {/* Official partner logo strip */}
                     <div className="flex flex-col items-center gap-4 pt-2">
-                        <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">
+                        <p className="text-[10px] font-mono text-ink-mute uppercase tracking-widest">
                             Official API Partner · Trusted by sellers across Vietnam · Indonesia · Thailand
                         </p>
                         <div className="flex flex-wrap items-center justify-center gap-3">
@@ -201,109 +154,101 @@ export default function SMEsSolutionPage() {
             </section>
 
             {/* ── PAIN POINTS ──────────────────────────────────────────────── */}
-            <section className="w-full py-24 px-4 sm:px-6 lg:px-8">
+            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-b border-line">
                 <div className="max-w-4xl mx-auto text-center">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-50 border border-red-200 text-red-500 text-xs font-bold uppercase tracking-widest mb-6">
-                        <Clock className="w-3 h-3" /> Sound familiar?
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-panel border border-line text-ink-mute text-xs font-semibold uppercase tracking-wider mb-6">
+                        <Clock className="w-3.5 h-3.5 text-accent" />
+                        <span>Sound familiar?</span>
                     </div>
-                    <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight mb-12">
+                    <h2 className="text-3xl md:text-4xl font-bold text-ink tracking-tight mb-12">
                         Every SME seller wastes hours on this.
                     </h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left mb-12">
                         {PAIN_POINTS.map((pain) => (
-                            <div key={pain} className="flex items-start gap-3 p-5 rounded-2xl bg-red-50/50 border border-red-100">
-                                <span className="mt-0.5 text-red-400 text-lg leading-none">✗</span>
-                                <p className="text-slate-600 text-sm leading-relaxed">{pain}</p>
+                            <div key={pain} className="flex items-start gap-3 p-5 rounded-lg bg-panel border border-line">
+                                <span className="mt-0.5 text-red-400 text-base font-bold leading-none">✗</span>
+                                <p className="text-ink-mute text-xs sm:text-sm leading-relaxed">{pain}</p>
                             </div>
                         ))}
                     </div>
-                    <p className="text-slate-500 text-lg">
-                        That's <span className="text-slate-900 font-bold">5–10 hours a week</span> you could spend on growing your business instead.
+                    <p className="text-ink-mute text-base">
+                        That's <span className="text-ink font-semibold">5–10 hours a week</span> you could spend on growing your business instead.
                     </p>
                 </div>
             </section>
 
             {/* ── INTERACTIVE PLATFORM TOGGLE ──────────────────────────────── */}
-            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-t border-gray-100">
+            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-b border-line">
                 <div className="max-w-5xl mx-auto">
 
                     {/* Header */}
                     <div className="text-center mb-14">
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-600 text-xs font-bold uppercase tracking-widest mb-6">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-panel border border-line text-accent text-xs font-semibold uppercase tracking-wider mb-6">
                             Live preview
                         </div>
-                        <h2 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tight mb-4">
+                        <h2 className="text-3xl md:text-5xl font-bold text-ink tracking-tight mb-4">
                             See exactly what you get.
                         </h2>
-                        <p className="text-slate-500 text-lg max-w-xl mx-auto">
+                        <p className="text-ink-mute text-sm sm:text-base max-w-xl mx-auto">
                             Pick a platform and see how normalized warehouse data can be queried in Google Sheets™ after a manual or nightly refresh.
                         </p>
                     </div>
 
                     {/* Platform pill toggles */}
-                    <div className="flex flex-wrap justify-center gap-3 mb-10">
+                    <div className="flex flex-wrap justify-center gap-2 mb-10">
                         {PLATFORMS.map((p) => (
                             <button
                                 key={p.id}
                                 onClick={() => setActivePlatform(p)}
                                 className={`
-                                    inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full border text-sm font-semibold
-                                    transition-all duration-200 cursor-pointer
-                                    ${activePlatform.id === p.id ? p.pillActive : p.pillInactive}
+                                    inline-flex items-center gap-2 px-4 py-2 rounded-md border text-xs font-semibold
+                                    transition-colors cursor-pointer
+                                    ${activePlatform.id === p.id 
+                                        ? "bg-white text-black border-white shadow-xs" 
+                                        : "bg-panel border-line text-ink-mute hover:text-ink hover:border-[#333]"}
                                 `}
                             >
-                                <Image
-                                    src={p.logo}
-                                    alt={p.label}
-                                    width={16}
-                                    height={16}
-                                    className="h-4 w-4 object-contain"
-                                />
-                                {p.label}
+                                <IntegrationMark src={p.logo} alt={p.label} size="sm" />
+                                <span>{p.label}</span>
                             </button>
                         ))}
                     </div>
 
                     {/* Description line */}
-                    <p className={`text-center text-sm mb-8 transition-all duration-300 ${activePlatform.accent}`}>
+                    <p className="text-center text-xs text-ink-mute mb-8">
                         {activePlatform.description}
                     </p>
 
                     {/* Data preview card */}
-                    <div className={`
-                        rounded-2xl border border-t-2 overflow-hidden
-                        transition-all duration-300
-                        ${activePlatform.cardBg} ${activePlatform.cardBorder} ${activePlatform.cardGlow} shadow-xl
-                        border-gray-200
-                    `}>
+                    <div className="rounded-lg border border-line bg-panel overflow-hidden shadow-sm">
                         {/* Window chrome */}
-                        <div className="bg-slate-50 px-5 py-4 flex items-center gap-2 border-b border-gray-200">
-                            <div className="w-3 h-3 rounded-full bg-red-400" />
-                            <div className="w-3 h-3 rounded-full bg-amber-400" />
-                            <div className="w-3 h-3 rounded-full bg-green-400" />
+                        <div className="bg-canvas px-4 py-3 flex items-center gap-2 border-b border-line">
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#333]" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#333]" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#333]" />
                             <div className="flex items-center gap-2 ml-3">
-                                <Image src={activePlatform.logo} alt={activePlatform.label} width={14} height={14} className="h-3.5 w-3.5 object-contain" />
-                                <span className="text-xs text-slate-400 font-mono">{activePlatform.filename} — warehouse export preview</span>
+                                <IntegrationMark src={activePlatform.logo} alt={activePlatform.label} size="sm" />
+                                <span className="text-xs text-ink-mute font-mono">{activePlatform.filename} — warehouse export preview</span>
                             </div>
                         </div>
 
-                        <div className="p-8">
+                        <div className="p-6 md:p-8">
                             {/* Metric highlight */}
                             <div className="flex items-start justify-between mb-8">
                                 <div>
-                                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-2">{activePlatform.metric.label}</p>
-                                    <p className={`text-5xl font-black tracking-tight ${activePlatform.accent}`}>{activePlatform.metric.value}</p>
-                                    <p className="text-xs text-slate-400 mt-2">{activePlatform.metric.sub}</p>
+                                    <p className="text-[10px] text-ink-mute uppercase tracking-widest font-bold mb-2">{activePlatform.metric.label}</p>
+                                    <p className="text-4xl md:text-5xl font-bold tracking-tight text-ink">{activePlatform.metric.value}</p>
+                                    <p className="text-xs text-ink-mute mt-2">{activePlatform.metric.sub}</p>
                                 </div>
-                                <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border ${activePlatform.badgeClass}`}>
-                                    <Image src={activePlatform.logo} alt={activePlatform.label} width={12} height={12} className="h-3 w-3 object-contain" />
-                                    {activePlatform.label}
+                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md text-xs font-medium border border-line bg-canvas text-ink">
+                                    <IntegrationMark src={activePlatform.logo} alt={activePlatform.label} size="sm" />
+                                    <span>{activePlatform.label}</span>
                                 </div>
                             </div>
 
                             {/* Table */}
                             <div className="font-mono text-xs">
-                                <div className="grid grid-cols-4 gap-4 text-slate-400 font-bold text-[10px] uppercase tracking-wider border-b border-gray-100 pb-3 mb-1">
+                                <div className="grid grid-cols-4 gap-4 text-ink-mute font-bold text-[10px] uppercase tracking-wider border-b border-line pb-3 mb-1">
                                     {activePlatform.headers.map((h) => (
                                         <span key={h}>{h}</span>
                                     ))}
@@ -311,55 +256,55 @@ export default function SMEsSolutionPage() {
                                 {activePlatform.rows.map((row, i) => (
                                     <div
                                         key={i}
-                                        className="grid grid-cols-4 gap-4 text-[12px] py-3.5 border-b border-gray-50 items-center hover:bg-slate-50/50 transition-colors"
+                                        className="grid grid-cols-4 gap-4 text-[12px] py-3 border-b border-line/40 items-center hover:bg-canvas/50 transition-colors"
                                     >
-                                        <span className="text-slate-700 truncate flex items-center gap-1.5">
+                                        <span className="text-ink truncate flex items-center gap-1.5">
                                             {row.cells[0]}
                                             {row.badge && (
-                                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${activePlatform.badgeClass}`}>
+                                                <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-canvas border border-line text-accent">
                                                     {row.badge}
                                                 </span>
                                             )}
                                         </span>
-                                        <span className={activePlatform.accent}>{row.cells[1]}</span>
-                                        <span className="text-blue-500">{row.cells[2]}</span>
-                                        <span className="text-purple-500">{row.cells[3]}</span>
+                                        <span className="text-ink font-medium">{row.cells[1]}</span>
+                                        <span className="text-ink-mute">{row.cells[2]}</span>
+                                        <span className="text-accent">{row.cells[3]}</span>
                                     </div>
                                 ))}
                             </div>
 
                             {/* Sync footer */}
-                            <p className="mt-6 text-[10px] text-slate-400 font-mono">
+                            <p className="mt-6 text-[10px] text-ink-mute font-mono">
                                 {activePlatform.syncNote}
                             </p>
                         </div>
                     </div>
 
-                    <p className="text-center text-xs text-slate-400 mt-6">
+                    <p className="text-center text-xs text-ink-mute mt-6">
                         This data goes directly into your Google Sheets™ — or use it in Looker Studio for live dashboards.
                     </p>
                 </div>
             </section>
 
             {/* ── FEATURES GRID ────────────────────────────────────────────── */}
-            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-t border-gray-100 bg-slate-50/50">
+            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-b border-line">
                 <div className="max-w-6xl mx-auto">
                     <div className="text-center mb-14">
-                        <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight mb-4">
+                        <h2 className="text-3xl md:text-4xl font-bold text-ink tracking-tight mb-4">
                             Everything your business needs.
                         </h2>
-                        <p className="text-slate-500 max-w-xl mx-auto">One workspace for connected sources, freshness checks, and exports.</p>
+                        <p className="text-ink-mute text-sm sm:text-base max-w-xl mx-auto">One workspace for connected sources, freshness checks, and exports.</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {FEATURES.map((f) => {
                             const Icon = f.icon;
                             return (
-                                <div key={f.title} className={`p-8 rounded-2xl bg-white border border-gray-200 ${borderMap[f.color]} transition-all group shadow-sm`}>
-                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-6 transition-colors ${colorMap[f.color]}`}>
-                                        <Icon className="w-6 h-6" />
+                                <div key={f.title} className="p-6 rounded-lg bg-panel border border-line transition-colors hover:border-[#333]">
+                                    <div className="w-10 h-10 rounded-md bg-canvas border border-line flex items-center justify-center mb-5 text-accent">
+                                        <Icon className="w-5 h-5" />
                                     </div>
-                                    <h3 className="text-lg font-bold text-slate-900 mb-3">{f.title}</h3>
-                                    <p className="text-slate-500 text-sm leading-relaxed">{f.desc}</p>
+                                    <h3 className="text-base font-bold text-ink mb-2">{f.title}</h3>
+                                    <p className="text-ink-mute text-xs leading-relaxed">{f.desc}</p>
                                 </div>
                             );
                         })}
@@ -368,26 +313,26 @@ export default function SMEsSolutionPage() {
             </section>
 
             {/* ── HOW IT WORKS ─────────────────────────────────────────────── */}
-            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-t border-gray-100">
+            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-b border-line">
                 <div className="max-w-4xl mx-auto">
                     <div className="text-center mb-16">
-                        <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight mb-4">
+                        <h2 className="text-3xl md:text-4xl font-bold text-ink tracking-tight mb-4">
                             Up and running in 3 steps.
                         </h2>
-                        <p className="text-slate-500">No IT team. No code. No meetings.</p>
+                        <p className="text-ink-mute text-sm">No IT team. No code. No meetings.</p>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {[
-                            { step: "01", color: "cyan", title: "Connect your platforms", desc: "Sign in with TikTok Ads, Meta Ads, Shopee, or Google Ads. Takes 2 minutes. We handle the OAuth — you just click Authorize." },
-                            { step: "02", color: "blue",    title: "Choose your destination", desc: "Send data to Google Sheets™ with our add-on, or build a live Looker Studio dashboard with our connector." },
-                            { step: "03", color: "purple",  title: "Verify freshness", desc: "Run the first import, inspect rows in Data Explorer, then rely on manual and nightly warehouse refresh." },
+                            { step: "01", title: "Connect your platforms", desc: "Sign in with TikTok Ads, Meta Ads, Shopee, or Google Ads. Takes 2 minutes. We handle the OAuth — you just click Authorize." },
+                            { step: "02", title: "Choose your destination", desc: "Send data to Google Sheets™ with our add-on, or build a live Looker Studio dashboard with our connector." },
+                            { step: "03", title: "Verify freshness", desc: "Run the first import, inspect rows in Data Explorer, then rely on manual and nightly warehouse refresh." },
                         ].map((item) => (
-                            <div key={item.step} className="flex flex-col items-start">
-                                <div className={`text-5xl font-black mb-4 ${item.color === "cyan" ? "text-cyan-200" : item.color === "blue" ? "text-blue-200" : "text-purple-200"}`}>
+                            <div key={item.step} className="p-6 rounded-lg bg-panel border border-line flex flex-col items-start">
+                                <div className="text-3xl font-bold text-ink-mute mb-3 font-mono">
                                     {item.step}
                                 </div>
-                                <h3 className="text-xl font-bold text-slate-900 mb-3">{item.title}</h3>
-                                <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
+                                <h3 className="text-base font-bold text-ink mb-2">{item.title}</h3>
+                                <p className="text-ink-mute text-xs leading-relaxed">{item.desc}</p>
                             </div>
                         ))}
                     </div>
@@ -395,16 +340,16 @@ export default function SMEsSolutionPage() {
             </section>
 
             {/* ── WHAT YOU GET ─────────────────────────────────────────────── */}
-            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-t border-gray-100 bg-slate-50/50">
-                <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-b border-line">
+                <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
                     <div>
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-600 text-xs font-bold uppercase tracking-widest mb-6">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-panel border border-line text-accent text-xs font-semibold uppercase tracking-wider mb-6">
                             What you get
                         </div>
-                        <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight mb-8">
+                        <h2 className="text-3xl md:text-4xl font-bold text-ink tracking-tight mb-8">
                             Your full picture. Every morning.
                         </h2>
-                        <ul className="space-y-4">
+                        <ul className="space-y-3.5">
                             {[
                                 "TikTok Ads: spend, impressions, clicks, conversions by campaign",
                                 "Meta Ads: reach, CPM, ROAS broken down by ad set",
@@ -414,8 +359,8 @@ export default function SMEsSolutionPage() {
                                 "All platforms in one workspace — not scattered across 5 tabs",
                             ].map((item) => (
                                 <li key={item} className="flex items-start gap-3">
-                                    <CheckCircle2 className="w-5 h-5 text-cyan-500 shrink-0 mt-0.5" />
-                                    <span className="text-slate-600 text-sm leading-relaxed">{item}</span>
+                                    <CheckCircle2 className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                                    <span className="text-ink-mute text-xs sm:text-sm leading-relaxed">{item}</span>
                                 </li>
                             ))}
                         </ul>
@@ -424,17 +369,17 @@ export default function SMEsSolutionPage() {
                     {/* Mini stat cards */}
                     <div className="grid grid-cols-2 gap-4">
                         {[
-                            { label: "Hours saved per week",  value: "8–10h",  color: "cyan", sub: "On manual reporting" },
-                            { label: "Platforms connected",   value: "4+",     color: "blue",    sub: "TikTok, Meta, Shopee, Google" },
-                            { label: "Pilot refresh",         value: "Nightly", color: "purple", sub: "+ manual refresh" },
-                            { label: "Setup time",            value: "< 2min", color: "orange",  sub: "No engineers needed" },
+                            { label: "Hours saved per week",  value: "8–10h",  sub: "On manual reporting" },
+                            { label: "Platforms connected",   value: "4+",     sub: "TikTok, Meta, Shopee, Google" },
+                            { label: "Pilot refresh",         value: "Nightly", sub: "+ manual refresh" },
+                            { label: "Setup time",            value: "< 2min", sub: "No engineers needed" },
                         ].map((stat) => (
-                            <div key={stat.label} className="p-6 rounded-2xl bg-white border border-gray-200 flex flex-col gap-1 shadow-sm">
-                                <p className="text-xs text-slate-400 font-medium">{stat.label}</p>
-                                <p className={`text-2xl font-black ${stat.color === "cyan" ? "text-cyan-600" : stat.color === "blue" ? "text-blue-600" : stat.color === "purple" ? "text-purple-600" : "text-orange-600"}`}>
+                            <div key={stat.label} className="p-5 rounded-lg bg-panel border border-line flex flex-col gap-1">
+                                <p className="text-[11px] text-ink-mute font-medium">{stat.label}</p>
+                                <p className="text-2xl font-bold text-ink">
                                     {stat.value}
                                 </p>
-                                <p className="text-xs text-slate-400">{stat.sub}</p>
+                                <p className="text-[11px] text-ink-mute">{stat.sub}</p>
                             </div>
                         ))}
                     </div>
@@ -442,34 +387,30 @@ export default function SMEsSolutionPage() {
             </section>
 
             {/* ── CTA ──────────────────────────────────────────────────────── */}
-            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-t border-gray-100">
+            <section className="w-full py-24 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-3xl mx-auto">
-                    <div className="relative border border-cyan-200 bg-cyan-50/60 rounded-3xl overflow-hidden">
-                        <div className="pointer-events-none absolute top-0 left-0 w-64 h-64 bg-cyan-400/10 blur-[80px]" />
-                        <div className="pointer-events-none absolute bottom-0 right-0 w-64 h-64 bg-cyan-400/10 blur-[80px]" />
-                        <div className="relative px-8 py-20 text-center">
-                            <h2 className="text-3xl md:text-4xl font-black text-slate-900 tracking-tight mb-4">
-                                Ready to get your time back?
-                            </h2>
-                            <p className="text-slate-500 mb-10 max-w-md mx-auto">
-                                Connect your first data source in under 2 minutes. Free plan available — no credit card required.
-                            </p>
-                            <Link href="/register" className="group inline-flex items-center gap-2 px-10 py-5 text-lg font-bold text-white bg-cyan-600 hover:bg-cyan-700 rounded-xl shadow-xl shadow-cyan-600/20 transition-all">
-                                Start Free Today
-                                <ArrowRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
-                            </Link>
-                            <p className="mt-8 text-[10px] text-slate-400 uppercase tracking-[0.3em] font-bold">
-                                Free plan available · VND + USD billing · Cancel anytime
-                            </p>
-                        </div>
+                    <div className="relative border border-line bg-panel rounded-lg p-10 md:p-14 text-center">
+                        <h2 className="text-3xl md:text-4xl font-bold text-ink tracking-tight mb-4">
+                            Ready to get your time back?
+                        </h2>
+                        <p className="text-ink-mute mb-8 max-w-md mx-auto text-xs sm:text-sm leading-relaxed">
+                            Connect your first data source in under 2 minutes. Free plan available — no credit card required.
+                        </p>
+                        <Link href="/register" className="inline-flex items-center gap-2 px-8 py-3.5 text-sm font-semibold text-black bg-white hover:bg-neutral-200 rounded-md shadow-xs transition-colors">
+                            Start Free Today
+                            <ArrowRight className="w-4 h-4" />
+                        </Link>
+                        <p className="mt-8 text-[10px] text-ink-mute uppercase tracking-[0.2em] font-medium">
+                            Free plan available · VND + USD billing · Cancel anytime
+                        </p>
                     </div>
                 </div>
 
                 <div className="max-w-4xl mx-auto mt-16 text-center">
-                    <Link href="/" className="inline-flex items-center text-sm font-medium text-slate-400 hover:text-slate-900 transition-colors">
+                    <Link href="/" className="inline-flex items-center text-xs font-medium text-ink-mute hover:text-ink transition-colors">
                         <ArrowLeft className="w-4 h-4 mr-2" /> Back to Platform Overview
                     </Link>
-                    <p className="mt-6 text-[10px] text-slate-400 font-medium italic">
+                    <p className="mt-6 text-[10px] text-ink-mute font-medium italic">
                         Google Sheets™ and Google Workspace™ are trademarks of Google LLC.
                     </p>
                 </div>

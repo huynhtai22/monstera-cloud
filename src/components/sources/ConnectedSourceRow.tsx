@@ -9,6 +9,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { IntegrationMark } from "@/components/ui/IntegrationMark";
 
 export interface ConnectedSourceRowProps {
   integration: any;
@@ -60,77 +61,74 @@ export const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
   return (
     <div
       className={cn(
-        "group flex items-center gap-3 rounded-xl border bg-white/80 px-3 py-2.5 shadow-sm transition-colors dark:bg-[#000000]/70",
+        "group flex items-center gap-3 rounded-lg border bg-panel px-3 py-2.5 shadow-xs transition-colors",
         isError
-          ? "border-red-100 dark:border-red-900/40"
+          ? "border-red-500/40"
           : isStale
-            ? "border-amber-100 dark:border-amber-900/40"
-            : "border-gray-200/80 hover:border-cyan-200/80 dark:border-[#2f3336]/60 dark:hover:border-cyan-700/50"
+            ? "border-amber-500/40"
+            : "border-line hover:border-[#333]"
       )}
     >
-      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200/70 bg-white p-1.5 dark:border-[#2f3336]/60 dark:bg-white">
+      <div className="relative shrink-0">
         {isError && (
-          <span className="absolute -right-1 -top-1 flex h-3 w-3">
+          <span className="absolute -right-1 -top-1 z-10 flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500"></span>
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500"></span>
           </span>
         )}
         {isStale && !isError && (
-          <span className="absolute -right-1 -top-1 flex h-3 w-3">
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-amber-400"></span>
+          <span className="absolute -right-1 -top-1 z-10 flex h-2.5 w-2.5">
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400"></span>
           </span>
         )}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <IntegrationMark
           src={integration.logoSrc}
-          alt=""
-          width={24}
-          height={24}
-          className="h-6 w-6 object-contain"
+          alt={integration.name}
+          size="md"
         />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <Link
             href={`/sources/${integration.id}`}
-            className="truncate text-sm font-semibold text-gray-900 hover:text-cyan-700 dark:text-white dark:hover:text-cyan-300"
+            className="truncate text-xs font-semibold text-ink hover:text-accent transition-colors"
           >
             {integration.name}
           </Link>
           {isError ? (
-            <AlertCircle className="h-3.5 w-3.5 shrink-0 text-red-500" aria-label="Error" />
+            <AlertCircle className="h-3 w-3 shrink-0 text-red-500" aria-label="Error" />
           ) : isStale ? (
-            <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-400" aria-label="Stale" />
+            <AlertCircle className="h-3 w-3 shrink-0 text-amber-400" aria-label="Stale" />
           ) : (
-            <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-cyan-500 dark:text-cyan-400" aria-label="Connected" />
+            <CheckCircle2 className="h-3 w-3 shrink-0 text-accent" aria-label="Connected" />
           )}
         </div>
         <p
           className={cn(
-            "mt-0.5 truncate text-xs",
+            "mt-0.5 truncate text-[11px]",
             isError
-              ? "text-red-600 dark:text-red-400"
+              ? "text-red-400"
               : isStale
-                ? "text-amber-600 dark:text-amber-400"
+                ? "text-amber-400"
                 : !integration.pipelineId
-                  ? "text-amber-500 dark:text-amber-400"
-                  : "text-gray-500 dark:text-slate-400"
+                  ? "text-amber-400"
+                  : "text-ink-mute"
           )}
           title={subLabel}
         >
           {subLabel.length > 72 ? subLabel.slice(0, 72) + "…" : subLabel}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1.5">
         {isError ? (
           <button
             type="button"
             onClick={() => onFixConnection(integration)}
             className={cn(
-              "rounded-md border px-2 py-1 text-xs font-semibold transition-colors",
+              "rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors",
               isAuthError
-                ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-200 dark:hover:bg-amber-950/90"
-                : "border-red-300 bg-red-50 text-red-800 hover:bg-red-100 dark:border-red-800/60 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/60"
+                ? "border-amber-700 bg-amber-950/60 text-amber-200 hover:bg-amber-950/90"
+                : "border-red-800/60 bg-red-950/40 text-red-300 hover:bg-red-950/60"
             )}
           >
             {isAuthError ? "Reconnect" : "Fix"}
@@ -155,7 +153,7 @@ export const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
               }
               onSync(integration.pipelineId, integration.id);
             }}
-            className="inline-flex items-center gap-1 rounded-md border border-cyan-300/80 bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-800 transition-colors hover:bg-cyan-100 disabled:pointer-events-none disabled:opacity-50 dark:border-cyan-700/60 dark:bg-cyan-900/40 dark:text-cyan-200 dark:hover:bg-cyan-900/70"
+            className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1 text-xs font-semibold text-ink transition-colors hover:bg-panel disabled:pointer-events-none disabled:opacity-50"
           >
             {isSyncing ? (
               <>
@@ -171,7 +169,7 @@ export const ConnectedSourceRow = React.memo(function ConnectedSourceRow({
           type="button"
           disabled={isBusy}
           onClick={() => onDisconnect(integration.id, integration.name)}
-          className="rounded-md px-2 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-red-700 disabled:pointer-events-none disabled:opacity-50 dark:text-slate-400 dark:hover:bg-[#16181c] dark:hover:text-red-300"
+          className="rounded-md px-2 py-1 text-xs font-medium text-ink-mute transition-colors hover:text-red-400 disabled:pointer-events-none disabled:opacity-50"
         >
           {isDisconnecting ? "Disconnecting…" : "Disconnect"}
         </button>

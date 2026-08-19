@@ -175,17 +175,17 @@ export function DataQualityTab({
   return (
     <div className="space-y-8 animate-in fade-in duration-200">
       {/* Telegram Alert Notification Channel */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#2f3336] dark:bg-[#16181c]">
+      <div className="rounded-lg border border-line bg-panel p-6 shadow-xs">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600 dark:bg-cyan-950/40 dark:text-cyan-400">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-canvas border border-line text-accent">
               <Send className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-gray-900 dark:text-white">
+              <h2 className="text-sm font-bold text-ink">
                 Telegram Incident Alerts
               </h2>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-ink-mute">
                 Receive real-time instant alerts when critical data quality violations or pipeline errors occur.
               </p>
             </div>
@@ -200,20 +200,20 @@ export function DataQualityTab({
               onChange={(e) => setChatId(e.target.value)}
               placeholder="e.g. -1001234567890 (Channel/Group or User ID)"
               disabled={!canManage}
-              className="w-full rounded-xl border border-gray-200 bg-gray-50/50 px-3.5 py-2.5 text-sm text-gray-900 focus:border-cyan-500 focus:bg-white focus:outline-none dark:border-[#2f3336] dark:bg-[#000000] dark:text-white"
+              className="w-full rounded-md border border-line bg-canvas px-3.5 py-2 text-xs text-ink placeholder:text-ink-mute focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
           {canManage && (
             <button
               onClick={handleSaveTelegram}
               disabled={isSavingChatId}
-              className="rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-700 disabled:opacity-50"
+              className="rounded-md bg-white hover:bg-neutral-200 px-4 py-2 text-xs font-semibold text-black transition-colors shadow-xs disabled:opacity-50"
             >
               {isSavingChatId ? "Saving…" : "Save Alert Target"}
             </button>
           )}
         </div>
-        <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+        <p className="mt-2 text-[11px] text-ink-mute">
           Tip: Add your bot to a Telegram channel and paste the Chat ID here to broadcast alerts to your operations team.
         </p>
       </div>

@@ -5,19 +5,20 @@ import { ArrowLeft, ArrowRight, BarChart3, Receipt, Tag, ShieldCheck } from "luc
 
 export default function TemplatesPage() {
     return (
-        <div className="min-h-screen pt-32 pb-24 bg-[#09090b] font-sans overflow-hidden">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div className="min-h-screen pt-32 pb-24 bg-canvas text-ink font-sans overflow-hidden">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
                 
                 {/* Header */}
-                <div className="text-center space-y-4 mb-20">
-                    <div className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold text-purple-400 border border-purple-500/20 bg-purple-500/10 tracking-widest uppercase mb-4 shadow-[0_0_15px_rgba(168,85,247,0.15)]">
-                        1-Click ROI Templates
+                <div className="text-center space-y-4 mb-16">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-line bg-panel text-ink-mute text-xs font-semibold uppercase tracking-wider mb-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-accent"></span>
+                        <span>Dashboard Templates</span>
                     </div>
-                    <h1 className="text-white text-4xl md:text-6xl font-extrabold leading-[1.05] tracking-tighter">
-                        Turn raw JSON into <br className="hidden md:block"/>
-                        <span className="text-purple-500">Business Intelligence.</span>
+                    <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold tracking-tight text-ink">
+                        Turn raw metrics into <br className="hidden md:block"/>
+                        <span className="text-accent">Business Intelligence.</span>
                     </h1>
-                    <p className="text-gray-400 text-lg md:text-xl font-normal max-w-2xl mx-auto mt-4">
+                    <p className="text-sm sm:text-base text-ink-mute max-w-2xl mx-auto mt-3 font-normal">
                         Preview patterns for future work. Pilot users access normalized warehouse data through Data Explorer, Google Sheets™, Looker Studio™, and API.
                     </p>
                 </div>
@@ -26,69 +27,69 @@ export default function TemplatesPage() {
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                     
                     {/* Template 1: COD */}
-                    <div className="bg-[#18181b] border border-white/10 rounded-xl p-6 hover:border-purple-500/30 transition-all group flex flex-col h-full relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-purple-500/10"></div>
-                        <Receipt className="w-10 h-10 text-emerald-500 mb-6" />
-                        <h3 className="text-white text-xl font-bold tracking-tight mb-3">COD Reconciliation Engine</h3>
-                        <p className="text-sm text-gray-400 mb-6 flex-1">
+                    <div className="bg-panel border border-line rounded-lg p-6 flex flex-col h-full">
+                        <div className="w-10 h-10 rounded-md bg-canvas border border-line flex items-center justify-center mb-5 text-accent">
+                            <Receipt className="w-5 h-5" />
+                        </div>
+                        <h3 className="text-base font-bold text-ink mb-2">COD Reconciliation Engine</h3>
+                        <p className="text-xs text-ink-mute mb-6 flex-1 leading-relaxed">
                             Automatically reconcile Cash-on-Delivery (COD) statuses across Shopee and TikTok. Instantly flag missing remittances and logistics discrepancies.
                         </p>
-                        <div className="pt-6 border-t border-white/5 mt-auto">
-                            <div className="flex items-center justify-between text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">
+                        <div className="pt-5 border-t border-line mt-auto">
+                            <div className="text-[11px] font-bold text-ink-mute uppercase tracking-wider mb-3">
                                 <span>Includes</span>
                             </div>
-                            <ul className="space-y-2 mb-6">
-                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-emerald-500 before:rounded-full before:mr-2">Looker Studio report template</li>
-                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-emerald-500 before:rounded-full before:mr-2">Google Sheets™ summary view</li>
+                            <ul className="space-y-1.5 mb-6 text-xs text-ink-mute">
+                                <li className="flex items-center"><span className="w-1 h-1 rounded-full bg-accent mr-2"></span>Looker Studio report template</li>
+                                <li className="flex items-center"><span className="w-1 h-1 rounded-full bg-accent mr-2"></span>Google Sheets™ summary view</li>
                             </ul>
-                            <Link href="/register" className="inline-flex items-center text-sm font-semibold text-white hover:text-purple-400 transition-colors">
-                                Deploy Template <ArrowRight className="w-4 h-4 ml-1" />
+                            <Link href="/register" className="inline-flex items-center text-xs font-semibold text-accent hover:underline">
+                                Deploy Template <ArrowRight className="w-3.5 h-3.5 ml-1" />
                             </Link>
                         </div>
                     </div>
 
                     {/* Template 2: Voucher Stacking */}
-                    <div className="bg-[#18181b] border border-white/10 rounded-xl p-6 hover:border-purple-500/30 transition-all group flex flex-col h-full relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-purple-500/10"></div>
-                        <Tag className="w-10 h-10 text-amber-500 mb-6" />
-                        <h3 className="text-white text-xl font-bold tracking-tight mb-3">Voucher Stacking Margin Analyzer</h3>
-                        <p className="text-sm text-gray-400 mb-6 flex-1">
+                    <div className="bg-panel border border-line rounded-lg p-6 flex flex-col h-full">
+                        <div className="w-10 h-10 rounded-md bg-canvas border border-line flex items-center justify-center mb-5 text-accent">
+                            <Tag className="w-5 h-5" />
+                        </div>
+                        <h3 className="text-base font-bold text-ink mb-2">Voucher Stacking Margin Analyzer</h3>
+                        <p className="text-xs text-ink-mute mb-6 flex-1 leading-relaxed">
                             Decode complex multi-layer discounts. Separate platform subsidies from seller-funded vouchers to calculate true net margin per SKU.
                         </p>
-                        <div className="pt-6 border-t border-white/5 mt-auto">
-                            <div className="flex items-center justify-between text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">
+                        <div className="pt-5 border-t border-line mt-auto">
+                            <div className="text-[11px] font-bold text-ink-mute uppercase tracking-wider mb-3">
                                 <span>Includes</span>
                             </div>
-                            <ul className="space-y-2 mb-6">
-                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-amber-500 before:rounded-full before:mr-2">Looker Studio report template</li>
-                                <li className="text-sm text-gray-300 flex items-center before:content-[''] before:w-1 before:h-1 before:bg-amber-500 before:rounded-full before:mr-2">Google Sheets™ margin tracker</li>
+                            <ul className="space-y-1.5 mb-6 text-xs text-ink-mute">
+                                <li className="flex items-center"><span className="w-1 h-1 rounded-full bg-accent mr-2"></span>Looker Studio report template</li>
+                                <li className="flex items-center"><span className="w-1 h-1 rounded-full bg-accent mr-2"></span>Google Sheets™ margin tracker</li>
                             </ul>
-                            <Link href="/register" className="inline-flex items-center text-sm font-semibold text-white hover:text-purple-400 transition-colors">
-                                Deploy Template <ArrowRight className="w-4 h-4 ml-1" />
+                            <Link href="/register" className="inline-flex items-center text-xs font-semibold text-accent hover:underline">
+                                Deploy Template <ArrowRight className="w-3.5 h-3.5 ml-1" />
                             </Link>
                         </div>
                     </div>
 
                     {/* Template 3: 11.11 Tracker */}
-                    <div className="bg-[#18181b] border-2 border-purple-500/30 rounded-xl p-6 hover:border-purple-500 transition-all group flex flex-col h-full relative overflow-hidden shadow-[0_0_30px_rgba(168,85,247,0.05)] md:-translate-y-2">
-                         <div className="absolute top-0 inset-x-0 bg-purple-500/20 text-purple-300 text-[10px] font-bold px-4 py-1.5 text-center uppercase tracking-widest border-b border-purple-500/30 z-10 backdrop-blur-sm">
-                            Most Deployed
+                    <div className="bg-panel border border-line rounded-lg p-6 flex flex-col h-full">
+                        <div className="w-10 h-10 rounded-md bg-canvas border border-line flex items-center justify-center mb-5 text-accent">
+                            <BarChart3 className="w-5 h-5" />
                         </div>
-                        <div className="absolute top-0 right-0 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-purple-500/20"></div>
-                        <BarChart3 className="w-10 h-10 text-purple-400 mb-6 mt-4 relative z-10" />
-                        <h3 className="text-white text-xl font-bold tracking-tight mb-3 relative z-10">11.11 Mega-Campaign Tracker</h3>
-                        <p className="text-sm text-gray-400 mb-6 flex-1 relative z-10">
-                            Concept preview for GMV surge tracking. This template is not enabled in the private pilot.
+                        <h3 className="text-base font-bold text-ink mb-2">11.11 Mega-Campaign Tracker</h3>
+                        <p className="text-xs text-ink-mute mb-6 flex-1 leading-relaxed">
+                            Concept preview for GMV surge tracking. Real-time ROAS and spend tracking across multiple regional ad channels.
                         </p>
-                        <div className="pt-6 border-t border-white/10 mt-auto relative z-10">
-                            <div className="flex items-center justify-between text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">
+                        <div className="pt-5 border-t border-line mt-auto">
+                            <div className="text-[11px] font-bold text-ink-mute uppercase tracking-wider mb-3">
                                 <span>Includes</span>
                             </div>
-                            <ul className="space-y-2 mb-6">
-                                <li className="text-sm text-white font-medium flex items-center before:content-[''] before:w-1.5 before:h-1.5 before:bg-purple-500 before:rounded-full before:mr-2">Live Looker report</li>
-                                <li className="text-sm text-white font-medium flex items-center before:content-[''] before:w-1.5 before:h-1.5 before:bg-purple-500 before:rounded-full before:mr-2">Slack Alerting Integration</li>
+                            <ul className="space-y-1.5 mb-6 text-xs text-ink-mute">
+                                <li className="flex items-center"><span className="w-1 h-1 rounded-full bg-accent mr-2"></span>Live Looker report</li>
+                                <li className="flex items-center"><span className="w-1 h-1 rounded-full bg-accent mr-2"></span>Cross-channel aggregation</li>
                             </ul>
-                            <Link href="/register" className="w-full inline-flex items-center justify-center p-3 text-sm font-semibold text-white bg-purple-600 hover:bg-purple-500 rounded-lg transition-all shadow-[0_0_15px_rgba(168,85,247,0.4)]">
+                            <Link href="/register" className="w-full inline-flex items-center justify-center p-2.5 text-xs font-semibold text-black bg-white hover:bg-neutral-200 rounded-md transition-colors shadow-xs">
                                 Initialize Campaign Hub
                             </Link>
                         </div>
@@ -97,25 +98,25 @@ export default function TemplatesPage() {
                 </div>
 
                 {/* Bottom Architectural Note */}
-                <div className="mt-24 p-8 border border-white/10 rounded-xl bg-[#18181b] flex flex-col md:flex-row items-center justify-between gap-8">
+                <div className="mt-20 p-6 border border-line rounded-lg bg-panel flex flex-col md:flex-row items-center justify-between gap-6">
                     <div>
-                        <div className="flex items-center gap-2 mb-3">
-                            <ShieldCheck className="w-5 h-5 text-emerald-500" />
-                            <h4 className="text-white font-bold tracking-tight">Open Architecture</h4>
+                        <div className="flex items-center gap-2 mb-2">
+                            <ShieldCheck className="w-4 h-4 text-accent" />
+                            <h4 className="text-sm font-bold text-ink">Open Architecture</h4>
                         </div>
-                        <p className="text-sm text-gray-400 max-w-xl">
+                        <p className="text-xs text-ink-mute max-w-xl leading-relaxed">
                             Templates are illustrative companions to the live app: you own the Sheets and Looker assets you create; Monstera handles extraction and refresh into those surfaces.
                         </p>
                     </div>
                     <div>
-                        <Link href="/docs#architecture" className="inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-white/5 border border-white/10 hover:bg-white/10 rounded transition-all whitespace-nowrap">
+                        <Link href="/docs#architecture" className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold text-ink bg-canvas border border-line hover:bg-[#16181c] rounded-md transition-colors whitespace-nowrap">
                             Read Architecture Docs
                         </Link>
                     </div>
                 </div>
 
-                <div className="mt-16 text-center">
-                    <Link href="/" className="inline-flex items-center text-sm font-medium text-gray-500 hover:text-white transition-colors">
+                <div className="mt-14 text-center">
+                    <Link href="/" className="inline-flex items-center text-xs font-medium text-ink-mute hover:text-ink transition-colors">
                         <ArrowLeft className="w-4 h-4 mr-2" /> Back to Platform Overview
                     </Link>
                 </div>

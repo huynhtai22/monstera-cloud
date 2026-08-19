@@ -163,35 +163,35 @@ export default function PricingPage() {
     ];
 
     return (
-        <div className="min-h-screen pt-28 pb-24 bg-gradient-to-b from-slate-50/70 via-white to-slate-50/70 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 font-sans text-slate-900 dark:text-slate-100 antialiased selection:bg-cyan-500 selection:text-white">
+        <div className="min-h-screen pt-28 pb-24 bg-canvas font-sans text-ink antialiased selection:bg-accent/20 selection:text-ink">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
                 {/* ── Top Header Section ────────────────────────────────────────────── */}
                 <div className="text-center max-w-3xl mx-auto pt-6 mb-12">
-                    <div className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-semibold text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/60 bg-cyan-50 dark:bg-cyan-950/40 backdrop-blur-xs mb-6 shadow-2xs">
-                        <Sparkles className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                    <div className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-semibold text-ink border border-line bg-panel mb-6">
+                        <Sparkles className="w-3.5 h-3.5 text-accent" />
                         <span>{payCurrency === "VND" ? "Bảng Giá Minh Bạch · Không Phí Ẩn" : "Transparent Pricing · Zero Hidden Fees"}</span>
                     </div>
 
-                    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-950 dark:text-white leading-[1.15]">
+                    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-ink leading-[1.15]">
                         {payCurrency === "VND" ? (
                             <>
                                 Tự động hóa báo cáo Ads. <br />
-                                <span className="bg-gradient-to-r from-cyan-600 via-teal-600 to-emerald-600 bg-clip-text text-transparent">
+                                <span className="text-accent">
                                     Tiết kiệm 80% chi phí.
                                 </span>
                             </>
                         ) : (
                             <>
                                 Unified Ads Reporting. <br />
-                                <span className="bg-gradient-to-r from-cyan-600 via-teal-600 to-emerald-600 bg-clip-text text-transparent">
+                                <span className="text-accent">
                                     One Flat Subscription.
                                 </span>
                             </>
                         )}
                     </h1>
 
-                    <p className="mt-5 text-base sm:text-lg text-slate-600 dark:text-slate-400 font-normal max-w-2xl mx-auto leading-relaxed">
+                    <p className="mt-5 text-base sm:text-lg text-ink-mute font-normal max-w-2xl mx-auto leading-relaxed">
                         {payCurrency === "VND"
                             ? "Kéo dữ liệu Meta Ads, Google Ads, TikTok Ads và Shopee trực tiếp vào Google Sheets & Looker Studio. Hỗ trợ thanh toán VietQR và xuất hóa đơn VAT."
                             : "Stream performance data from Meta, Google, TikTok, and Shopee straight into Google Sheets and Looker Studio. No row limits, no complex setups."}
@@ -200,15 +200,15 @@ export default function PricingPage() {
 
                 {/* ── Control Bar: Billing Cycle & Currency Switcher ─────────────────── */}
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-14">
-                    {/* Billing Toggle (Pill style like Claude / OpenAI) */}
-                    <div className="inline-flex p-1 rounded-full bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
+                    {/* Billing Toggle */}
+                    <div className="inline-flex p-1 rounded-lg bg-panel border border-line">
                         <button
                             type="button"
                             onClick={() => setIsAnnual(false)}
-                            className={`px-5 py-2 rounded-full text-xs font-semibold transition-all duration-200 ${
+                            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${
                                 !isAnnual
-                                    ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
-                                    : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                    ? "bg-white text-black shadow-xs"
+                                    : "text-ink-mute hover:text-ink"
                             }`}
                         >
                             {payCurrency === "VND" ? "Thanh toán theo tháng" : "Monthly billing"}
@@ -216,14 +216,14 @@ export default function PricingPage() {
                         <button
                             type="button"
                             onClick={() => setIsAnnual(true)}
-                            className={`px-5 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 ${
+                            className={`px-4 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${
                                 isAnnual
-                                    ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
-                                    : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                    ? "bg-white text-black shadow-xs"
+                                    : "text-ink-mute hover:text-ink"
                             }`}
                         >
                             <span>{payCurrency === "VND" ? "Thanh toán theo năm" : "Annual billing"}</span>
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-canvas text-accent border border-line">
                                 −20%
                             </span>
                         </button>
@@ -231,14 +231,14 @@ export default function PricingPage() {
 
                     {/* Currency Selector */}
                     {currencyReady && (
-                        <div className="inline-flex items-center gap-1 p-1 rounded-full bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-xs shadow-2xs">
+                        <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-panel border border-line text-xs">
                             <button
                                 type="button"
                                 onClick={() => setPayCurrency("VND")}
-                                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+                                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5 ${
                                     payCurrency === "VND"
-                                        ? "bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-xs"
-                                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                        ? "bg-white text-black shadow-xs"
+                                        : "text-ink-mute hover:text-ink"
                                 }`}
                             >
                                 <span>🇻🇳</span>
@@ -247,10 +247,10 @@ export default function PricingPage() {
                             <button
                                 type="button"
                                 onClick={() => setPayCurrency("USD")}
-                                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+                                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5 ${
                                     payCurrency === "USD"
-                                        ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-xs"
-                                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                        ? "bg-white text-black shadow-xs"
+                                        : "text-ink-mute hover:text-ink"
                                 }`}
                             >
                                 <span>🌍</span>
@@ -260,42 +260,42 @@ export default function PricingPage() {
                     )}
                 </div>
 
-                {/* ── Polished 3-Pillar Pricing Grid (Spacious, Clean, Elevated) ───────── */}
+                {/* ── Polished 3-Pillar Pricing Grid ─────────────────────────────────── */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto items-stretch">
 
                     {/* ── PILLAR 1: STARTER ────────────────────────────────────────────── */}
-                    <div className="relative rounded-3xl p-6 md:p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between transition-all duration-300 ease-out hover:-translate-y-2 hover:shadow-2xl shadow-sm">
+                    <div className="relative rounded-lg p-6 md:p-8 bg-panel border border-line flex flex-col justify-between transition-colors hover:border-[#333]">
                         <div className="flex flex-col">
                             {/* Plan Header */}
                             <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Starter</h3>
-                                <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                <h3 className="text-xl font-bold text-ink tracking-tight">Starter</h3>
+                                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded bg-canvas text-ink-mute border border-line">
                                     Solo &amp; Freelancer
                                 </span>
                             </div>
 
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed min-h-[36px]">
+                            <p className="text-xs text-ink-mute mb-6 leading-relaxed min-h-[36px]">
                                 {payCurrency === "VND"
                                     ? "Dành cho Media Buyer cá nhân, nhà bán lẻ và chủ shop tự vận hành báo cáo hàng ngày."
                                     : "For solo media buyers, indie marketers, and shop owners automating their daily reports."}
                             </p>
 
-                            {/* Price Hero Section with whitespace-nowrap & inline symbol */}
+                            {/* Price Hero Section */}
                             <div className="mb-6 space-y-1.5">
                                 <div className="flex items-baseline gap-1 whitespace-nowrap">
-                                    <span className="text-3xl md:text-4xl font-bold tracking-tight text-slate-950 dark:text-white">
+                                    <span className="text-3xl md:text-4xl font-bold tracking-tight text-ink">
                                         {starterPricing.amountFormatted}
                                     </span>
                                     {starterPricing.currencySymbol ? (
-                                        <span className="text-lg md:text-xl font-bold text-slate-700 dark:text-slate-300">
+                                        <span className="text-lg md:text-xl font-bold text-ink-mute">
                                             {starterPricing.currencySymbol}
                                         </span>
                                     ) : null}
-                                    <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
+                                    <span className="text-sm font-normal text-ink-mute">
                                         {starterPricing.unit}
                                     </span>
                                 </div>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                <p className="text-xs text-ink-mute">
                                     {starterPricing.billingNote}
                                 </p>
                             </div>
@@ -304,9 +304,9 @@ export default function PricingPage() {
                             {payCurrency === "VND" ? (
                                 <button
                                     onClick={() => openVietQr("starter", "Starter")}
-                                    className="w-full py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2 mb-6"
+                                    className="w-full py-3 px-4 rounded-md bg-white hover:bg-neutral-200 text-black font-semibold text-xs transition-colors flex items-center justify-center gap-2 mb-6"
                                 >
-                                    <QrCode className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
+                                    <QrCode className="w-4 h-4 text-emerald-600" />
                                     <span>Thanh toán VietQR (Napas 24/7)</span>
                                 </button>
                             ) : (
@@ -316,7 +316,7 @@ export default function PricingPage() {
                                     invoiceCurrency={payCurrency}
                                     metaPixelEvent="MC_Pricing_Starter_Checkout"
                                     metaPixelParams={{ billing_cycle: isAnnual ? "annual" : "monthly", currency: payCurrency }}
-                                    className="w-full py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2 mb-6"
+                                    className="w-full py-3 px-4 rounded-md bg-white hover:bg-neutral-200 text-black font-semibold text-xs transition-colors flex items-center justify-center gap-2 mb-6"
                                 >
                                     <span>Get Started</span>
                                     <ArrowRight className="w-4 h-4" />
@@ -324,8 +324,8 @@ export default function PricingPage() {
                             )}
 
                             {/* Channel Badges */}
-                            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mb-6">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-3">
+                            <div className="pt-4 border-t border-line mb-6">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-mute block mb-3">
                                     {payCurrency === "VND" ? "Kênh hỗ trợ kết nối" : "Supported Channels"}
                                 </span>
                                 <div className="flex items-center gap-2.5">
@@ -337,28 +337,28 @@ export default function PricingPage() {
 
                             {/* Feature List */}
                             <div className="space-y-3 pt-2">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-mute block">
                                     {payCurrency === "VND" ? "Quyền lợi gói Starter" : "What's included"}
                                 </span>
-                                <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
+                                <ul className="space-y-2.5 text-xs text-ink-mute">
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                                        <span><strong>1 Tài khoản quản trị</strong> (Google Workspace)</span>
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                        <span><strong className="text-ink">1 Tài khoản quản trị</strong> (Google Workspace)</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                                        <span><strong>Tối đa 5 Ad Accounts &amp; Shops</strong> (Meta, Google, TikTok, Shopee)</span>
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                        <span><strong className="text-ink">Tối đa 5 Ad Accounts &amp; Shops</strong> (Meta, Google, TikTok, Shopee)</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                                        <span><strong>500 Lượt làm mới / tháng</strong></span>
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                        <span><strong className="text-ink">500 Lượt làm mới / tháng</strong></span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                                         <span>Google Sheets™ Add-on &amp; Looker Studio</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                                         <span>Lịch tự động làm mới hàng ngày</span>
                                     </li>
                                 </ul>
@@ -367,46 +367,46 @@ export default function PricingPage() {
                     </div>
 
                     {/* ── PILLAR 2: AGENCY PRO (Hero / Highlighted Card) ───────────────── */}
-                    <div className="relative rounded-3xl p-6 md:p-8 bg-white dark:bg-slate-900 border-2 border-cyan-500 dark:border-cyan-500 flex flex-col justify-between shadow-2xl shadow-cyan-500/10 ring-1 ring-cyan-500/30 transition-all duration-300 ease-out hover:-translate-y-2 hover:shadow-2xl">
+                    <div className="relative rounded-lg p-6 md:p-8 bg-panel border border-accent/40 ring-1 ring-accent/20 flex flex-col justify-between shadow-sm transition-colors hover:border-accent/60">
                         {/* Top Floating Badge */}
-                        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-cyan-600 to-emerald-600 text-white text-[11px] font-extrabold uppercase tracking-wider shadow-md flex items-center gap-1.5 whitespace-nowrap">
-                            <Sparkles className="w-3.5 h-3.5" />
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-canvas border border-accent/40 text-accent text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap">
+                            <Sparkles className="w-3 h-3" />
                             <span>{payCurrency === "VND" ? "✦ Lựa chọn phổ biến nhất" : "✦ Most Popular"}</span>
                         </div>
 
                         <div className="flex flex-col">
                             {/* Plan Header */}
                             <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                                <h3 className="text-xl font-bold text-ink tracking-tight flex items-center gap-2">
                                     Agency Pro
                                 </h3>
-                                <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-cyan-50 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
+                                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded bg-canvas text-accent border border-accent/30">
                                     Agency &amp; Growth
                                 </span>
                             </div>
 
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed min-h-[36px]">
+                            <p className="text-xs text-ink-mute mb-6 leading-relaxed min-h-[36px]">
                                 {payCurrency === "VND"
                                     ? "Giải pháp hoàn chỉnh cho Marketing Agency, Team chạy Ads và Enabler quản lý nhiều khách hàng."
                                     : "Designed for performance agencies and brand enablers managing multi-client ad accounts."}
                             </p>
 
-                            {/* Price Hero Section with whitespace-nowrap & inline symbol */}
+                            {/* Price Hero Section */}
                             <div className="mb-6 space-y-1.5">
                                 <div className="flex items-baseline gap-1 whitespace-nowrap">
-                                    <span className="text-3xl md:text-4xl font-bold tracking-tight text-slate-950 dark:text-white">
+                                    <span className="text-3xl md:text-4xl font-bold tracking-tight text-ink">
                                         {proPricing.amountFormatted}
                                     </span>
                                     {proPricing.currencySymbol ? (
-                                        <span className="text-lg md:text-xl font-bold text-cyan-600 dark:text-cyan-400">
+                                        <span className="text-lg md:text-xl font-bold text-accent">
                                             {proPricing.currencySymbol}
                                         </span>
                                     ) : null}
-                                    <span className="text-sm font-normal text-cyan-600 dark:text-cyan-400">
+                                    <span className="text-sm font-normal text-accent">
                                         {proPricing.unit}
                                     </span>
                                 </div>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                <p className="text-xs text-ink-mute">
                                     {proPricing.billingNote}
                                 </p>
                             </div>
@@ -415,9 +415,9 @@ export default function PricingPage() {
                             {payCurrency === "VND" ? (
                                 <button
                                     onClick={() => openVietQr("professional", "Agency Pro")}
-                                    className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:to-cyan-700 text-white font-bold text-xs shadow-lg shadow-cyan-600/25 transition-all flex items-center justify-center gap-2 mb-6"
+                                    className="w-full py-3 px-4 rounded-md bg-white hover:bg-neutral-200 text-black font-semibold text-xs transition-colors flex items-center justify-center gap-2 mb-6 shadow-sm"
                                 >
-                                    <QrCode className="w-4 h-4" />
+                                    <QrCode className="w-4 h-4 text-emerald-600" />
                                     <span>Thanh toán VietQR (Kích hoạt ngay)</span>
                                 </button>
                             ) : (
@@ -427,7 +427,7 @@ export default function PricingPage() {
                                     invoiceCurrency={payCurrency}
                                     metaPixelEvent="MC_Pricing_Pro_Checkout"
                                     metaPixelParams={{ billing_cycle: isAnnual ? "annual" : "monthly", currency: payCurrency }}
-                                    className="w-full py-3.5 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs shadow-lg shadow-cyan-600/25 transition-all flex items-center justify-center gap-2 mb-6"
+                                    className="w-full py-3 px-4 rounded-md bg-white hover:bg-neutral-200 text-black font-semibold text-xs transition-colors flex items-center justify-center gap-2 mb-6 shadow-sm"
                                 >
                                     <span>Start 14-Day Pilot</span>
                                     <ArrowRight className="w-4 h-4" />
@@ -435,7 +435,7 @@ export default function PricingPage() {
                             )}
 
                             {/* Channel Badges */}
-                            <div className="pt-4 border-t border-cyan-100 dark:border-cyan-900/60 mb-6">
+                            <div className="pt-4 border-t border-line mb-6">
                                 <span className="text-[10px] font-bold uppercase tracking-wider text-ink-mute block mb-3">
                                     {payCurrency === "VND" ? "Đầy đủ tất cả nền tảng" : "All Platforms Included"}
                                 </span>
@@ -448,32 +448,32 @@ export default function PricingPage() {
 
                             {/* Feature List */}
                             <div className="space-y-3 pt-2">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 block">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-accent block">
                                     {payCurrency === "VND" ? "Bao gồm quyền lợi Starter, cộng thêm:" : "Everything in Starter, plus:"}
                                 </span>
-                                <ul className="space-y-2.5 text-xs text-slate-700 dark:text-slate-200">
-                                    <li className="flex items-start gap-2.5 font-medium">
-                                        <Check className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
-                                        <span><strong>3 Thành viên nhóm</strong> (Thêm user dễ dàng)</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5 font-medium">
-                                        <Check className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
-                                        <span><strong>Tối đa 20 Accounts &amp; Shops</strong> (Meta + TikTok + Shopee + Google)</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5 font-medium">
-                                        <Check className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
-                                        <span><strong>3.000 Lượt làm mới / tháng</strong> + Băng thông ưu tiên</span>
+                                <ul className="space-y-2.5 text-xs text-ink-mute">
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                                        <span><strong className="text-ink">3 Thành viên nhóm</strong> (Thêm user dễ dàng)</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
+                                        <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                                        <span><strong className="text-ink">Tối đa 20 Accounts &amp; Shops</strong> (Meta + TikTok + Shopee + Google)</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
+                                        <span><strong className="text-ink">3.000 Lượt làm mới / tháng</strong> + Băng thông ưu tiên</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
                                         <span>Phân quyền Workspace riêng biệt cho từng Client</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
+                                        <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
                                         <span>Lịch tự động làm mới theo giờ &amp; theo đêm</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
+                                        <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
                                         <span>Hỗ trợ kỹ thuật 1-1 qua Zalo / Telegram</span>
                                     </li>
                                 </ul>
@@ -482,38 +482,38 @@ export default function PricingPage() {
                     </div>
 
                     {/* ── PILLAR 3: ENTERPRISE ────────────────────────────────────────── */}
-                    <div className="relative rounded-3xl p-6 md:p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between transition-all duration-300 ease-out hover:-translate-y-2 hover:shadow-2xl shadow-sm">
+                    <div className="relative rounded-lg p-6 md:p-8 bg-panel border border-line flex flex-col justify-between transition-colors hover:border-[#333]">
                         <div className="flex flex-col">
                             {/* Plan Header */}
                             <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Enterprise</h3>
-                                <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                <h3 className="text-xl font-bold text-ink tracking-tight">Enterprise</h3>
+                                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded bg-canvas text-ink-mute border border-line">
                                     Quy mô lớn
                                 </span>
                             </div>
 
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed min-h-[36px]">
+                            <p className="text-xs text-ink-mute mb-6 leading-relaxed min-h-[36px]">
                                 {payCurrency === "VND"
                                     ? "Dành cho Agency lớn, Tập đoàn bán lẻ và doanh nghiệp cần kho dữ liệu BigQuery / PostgreSQL riêng."
                                     : "For large agencies and brands needing dedicated cloud warehousing, custom integrations, and SLA."}
                             </p>
 
-                            {/* Price Hero Section with whitespace-nowrap & inline symbol */}
+                            {/* Price Hero Section */}
                             <div className="mb-6 space-y-1.5">
                                 <div className="flex items-baseline gap-1 whitespace-nowrap">
-                                    <span className="text-3xl md:text-4xl font-bold tracking-tight text-slate-950 dark:text-white">
+                                    <span className="text-3xl md:text-4xl font-bold tracking-tight text-ink">
                                         {enterprisePricing.amountFormatted}
                                     </span>
                                     {enterprisePricing.currencySymbol ? (
-                                        <span className="text-lg md:text-xl font-bold text-slate-700 dark:text-slate-300">
+                                        <span className="text-lg md:text-xl font-bold text-ink-mute">
                                             {enterprisePricing.currencySymbol}
                                         </span>
                                     ) : null}
-                                    <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
+                                    <span className="text-sm font-normal text-ink-mute">
                                         {enterprisePricing.unit}
                                     </span>
                                 </div>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                <p className="text-xs text-ink-mute">
                                     {enterprisePricing.billingNote}
                                 </p>
                             </div>
@@ -521,15 +521,15 @@ export default function PricingPage() {
                             {/* CTA Action Button */}
                             <Link
                                 href="mailto:support@monsteracloud.com?subject=Inquiry%20Enterprise%20Plan%20Monstera%20Cloud"
-                                className="w-full py-3.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold text-xs transition-all flex items-center justify-center gap-2 mb-6 shadow-2xs"
+                                className="w-full py-3 px-4 rounded-md border border-line bg-canvas hover:bg-[#16181c] text-ink font-semibold text-xs transition-colors flex items-center justify-center gap-2 mb-6"
                             >
-                                <Building2 className="w-4 h-4 text-slate-500" />
+                                <Building2 className="w-4 h-4 text-ink-mute" />
                                 <span>{payCurrency === "VND" ? "Liên hệ tư vấn Enterprise" : "Contact Sales"}</span>
                             </Link>
 
                             {/* Channel Badges */}
-                            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mb-6">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-3">
+                            <div className="pt-4 border-t border-line mb-6">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-mute block mb-3">
                                     {payCurrency === "VND" ? "Không giới hạn kênh & tài khoản" : "Unlimited Custom Channels"}
                                 </span>
                                 <div className="flex items-center gap-2.5">
@@ -541,28 +541,28 @@ export default function PricingPage() {
 
                             {/* Feature List */}
                             <div className="space-y-3 pt-2">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-mute block">
                                     {payCurrency === "VND" ? "Đặc quyền Enterprise" : "Enterprise features"}
                                 </span>
-                                <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
+                                <ul className="space-y-2.5 text-xs text-ink-mute">
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                                        <span><strong>Không giới hạn tài khoản &amp; Pipelines</strong></span>
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                        <span><strong className="text-ink">Không giới hạn tài khoản &amp; Pipelines</strong></span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                                        <span><strong>10+ User Seats</strong> tùy chỉnh theo nhu cầu</span>
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                        <span><strong className="text-ink">10+ User Seats</strong> tùy chỉnh theo nhu cầu</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                                         <span>Dedicated Database Warehouse (PostgreSQL / BigQuery)</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                                         <span>Hợp đồng dịch vụ doanh nghiệp (SLA 99.9%)</span>
                                     </li>
                                     <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                                         <span>Xuất hóa đơn điện tử VAT hàng tháng</span>
                                     </li>
                                 </ul>
@@ -573,12 +573,12 @@ export default function PricingPage() {
                 </div>
 
                 {/* ── Enterprise Custom Banner ────────────────────────────────────────── */}
-                <div className="mt-16 max-w-4xl mx-auto rounded-2xl p-6 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                <div className="mt-16 max-w-4xl mx-auto rounded-lg p-6 bg-panel border border-line flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
                     <div>
-                        <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                        <h4 className="font-bold text-sm text-ink">
                             {payCurrency === "VND" ? "Bạn cần tư vấn giải pháp đo lường dữ liệu riêng?" : "Looking for custom data engineering or bespoke setup?"}
                         </h4>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        <p className="text-xs text-ink-mute mt-1">
                             {payCurrency === "VND"
                                 ? "Đội ngũ kỹ thuật của Monstera Cloud sẵn sàng hỗ trợ setup và đào tạo trực tiếp cho Agency của bạn."
                                 : "Our engineering team provides direct onboarding, custom connector development, and dedicated warehouse support."}
@@ -586,37 +586,37 @@ export default function PricingPage() {
                     </div>
                     <Link
                         href="mailto:support@monsteracloud.com"
-                        className="px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-50 shadow-2xs whitespace-nowrap"
+                        className="px-4 py-2 rounded-md bg-canvas border border-line text-xs font-semibold text-ink hover:bg-[#16181c] transition-colors whitespace-nowrap"
                     >
                         {payCurrency === "VND" ? "Gặp chuyên gia tư vấn" : "Talk to Sales"}
                     </Link>
                 </div>
 
                 {/* ── Security Trust Grid ────────────────────────────────────────────── */}
-                <div className="mt-20 pt-10 border-t border-slate-200 dark:border-slate-800 text-center">
-                    <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-8">
+                <div className="mt-20 pt-10 border-t border-line text-center">
+                    <p className="text-xs font-bold uppercase tracking-widest text-ink-mute mb-8">
                         {payCurrency === "VND" ? "Tiêu chuẩn an toàn & Bảo mật quốc tế" : "Enterprise Security Standards"}
                     </p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto text-xs text-slate-600 dark:text-slate-400">
-                        <div className="flex flex-col items-center p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-                            <Lock className="w-5 h-5 text-cyan-600 mb-2" />
-                            <span className="font-bold text-slate-900 dark:text-white">AES-256-GCM</span>
-                            <span className="text-[11px] text-slate-400 mt-0.5">Mã hóa dữ liệu 2 lớp</span>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto text-xs text-ink-mute">
+                        <div className="flex flex-col items-center p-4 rounded-lg bg-panel border border-line">
+                            <Lock className="w-5 h-5 text-accent mb-2" />
+                            <span className="font-semibold text-ink">AES-256-GCM</span>
+                            <span className="text-[11px] text-ink-mute mt-0.5">Mã hóa dữ liệu 2 lớp</span>
                         </div>
-                        <div className="flex flex-col items-center p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-                            <ShieldCheck className="w-5 h-5 text-cyan-600 mb-2" />
-                            <span className="font-bold text-slate-900 dark:text-white">Google OAuth 2.0</span>
-                            <span className="text-[11px] text-slate-400 mt-0.5">Xác thực chính thức</span>
+                        <div className="flex flex-col items-center p-4 rounded-lg bg-panel border border-line">
+                            <ShieldCheck className="w-5 h-5 text-accent mb-2" />
+                            <span className="font-semibold text-ink">Google OAuth 2.0</span>
+                            <span className="text-[11px] text-ink-mute mt-0.5">Xác thực chính thức</span>
                         </div>
-                        <div className="flex flex-col items-center p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-                            <Layers className="w-5 h-5 text-cyan-600 mb-2" />
-                            <span className="font-bold text-slate-900 dark:text-white">Multi-Tenant</span>
-                            <span className="text-[11px] text-slate-400 mt-0.5">Cô lập dữ liệu client</span>
+                        <div className="flex flex-col items-center p-4 rounded-lg bg-panel border border-line">
+                            <Layers className="w-5 h-5 text-accent mb-2" />
+                            <span className="font-semibold text-ink">Multi-Tenant</span>
+                            <span className="text-[11px] text-ink-mute mt-0.5">Cô lập dữ liệu client</span>
                         </div>
-                        <div className="flex flex-col items-center p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-                            <RefreshCw className="w-5 h-5 text-cyan-600 mb-2" />
-                            <span className="font-bold text-slate-900 dark:text-white">Napas 24/7 &amp; VAT</span>
-                            <span className="text-[11px] text-slate-400 mt-0.5">Xuất hóa đơn đỏ</span>
+                        <div className="flex flex-col items-center p-4 rounded-lg bg-panel border border-line">
+                            <RefreshCw className="w-5 h-5 text-accent mb-2" />
+                            <span className="font-semibold text-ink">Napas 24/7 &amp; VAT</span>
+                            <span className="text-[11px] text-ink-mute mt-0.5">Xuất hóa đơn đỏ</span>
                         </div>
                     </div>
                 </div>
@@ -624,10 +624,10 @@ export default function PricingPage() {
                 {/* ── FAQ Section (Clean Minimalist Accordion) ────────────────────────── */}
                 <div className="mt-24 max-w-3xl mx-auto">
                     <div className="text-center mb-10">
-                        <h3 className="text-2xl font-bold text-slate-900 dark:text-white">
+                        <h3 className="text-2xl font-bold text-ink">
                             {payCurrency === "VND" ? "Câu hỏi thường gặp" : "Frequently Asked Questions"}
                         </h3>
-                        <p className="text-xs text-slate-500 mt-1">
+                        <p className="text-xs text-ink-mute mt-1">
                             {payCurrency === "VND" ? "Mọi điều bạn cần biết về dịch vụ và thanh toán" : "Everything you need to know about plans and billing"}
                         </p>
                     </div>
@@ -638,18 +638,18 @@ export default function PricingPage() {
                             return (
                                 <div
                                     key={idx}
-                                    className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors"
+                                    className="rounded-lg bg-panel border border-line overflow-hidden transition-colors"
                                 >
                                     <button
                                         type="button"
                                         onClick={() => setOpenFaq(isOpen ? null : idx)}
-                                        className="w-full px-6 py-4 flex items-center justify-between text-left font-semibold text-sm text-slate-900 dark:text-white hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors"
+                                        className="w-full px-6 py-4 flex items-center justify-between text-left font-medium text-sm text-ink hover:text-white transition-colors"
                                     >
                                         <span>{faq.q}</span>
-                                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180 text-cyan-600" : ""}`} />
+                                        <ChevronDown className={`w-4 h-4 text-ink-mute transition-transform duration-200 ${isOpen ? "rotate-180 text-ink" : ""}`} />
                                     </button>
                                     {isOpen && (
-                                        <div className="px-6 pb-4 text-xs text-slate-600 dark:text-slate-300 leading-relaxed border-t border-slate-100 dark:border-slate-800 pt-3 animate-in fade-in duration-150">
+                                        <div className="px-6 pb-4 text-xs text-ink-mute leading-relaxed border-t border-line pt-3">
                                             {faq.a}
                                         </div>
                                     )}
