@@ -17,7 +17,6 @@ import { PageShell } from "@/components/ui/PageShell";
 import { DataFlowExplainer } from "@/components/data-flow/DataFlowExplainer";
 import { RefreshedAt } from "@/components/ui/RefreshedAt";
 import { SecondaryButton, primaryButtonLinkClassName, IntegrationMark } from "@/components/ui";
-import { ConnectedSourceCard } from "@/components/sources/ConnectedSourceCard";
 import { IntegrationCard, IntegrationCardSkeleton } from "@/components/sources/IntegrationCard";
 import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
 import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
@@ -69,25 +68,9 @@ export default function SourcesPage() {
     const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
     const [disconnectTarget, setDisconnectTarget] = useState<{ id: string; name: string } | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeFilter, setActiveFilter] = useState('all');
+    const [activeFilter, setActiveFilter] = useState('connected');
     const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
     const addSourceMenuRef = useRef<HTMLDivElement>(null);
-
-    type ViewMode = "cards" | "list";
-    const [viewMode, setViewMode] = useState<ViewMode>("list");
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        try {
-            const raw = window.localStorage.getItem("mc_sources_view_mode");
-            if (raw === "list" || raw === "cards") setViewMode(raw);
-        } catch { /* ignore */ }
-    }, []);
-    const setViewModePersisted = (m: ViewMode) => {
-        setViewMode(m);
-        try {
-            window.localStorage.setItem("mc_sources_view_mode", m);
-        } catch { /* ignore */ }
-    };
     
     // P1: Fix It flow state
     const [fixConnectionTarget, setFixConnectionTarget] = useState<{
@@ -533,7 +516,7 @@ export default function SourcesPage() {
 
             if (activeFilter === 'connected') return integration.status !== 'available';
             if (activeFilter === 'available') return integration.status === 'available';
-            return true;
+            return integration.status !== 'available';
         });
     }, [searchQuery, activeFilter, sourceConnections, pipelines, activeWorkspaceId, catalogIntegrations]);
 
@@ -638,7 +621,7 @@ export default function SourcesPage() {
                             ? "Loading your workspace…"
                             : connectedSourceCount === 0
                               ? "Connect Meta, Google Ads, TikTok Ads, or Shopee. OAuth is read-only."
-                              : `${connectedSourceCount} connected${lastSyncSummary ? ` · Last sync ${lastSyncSummary}` : ""}`}
+                              : "Connector management for this workspace."}
                     </p>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3">
@@ -778,14 +761,6 @@ export default function SourcesPage() {
                 <div className="flex flex-wrap items-center gap-4" role="tablist" aria-label="Filter integrations">
                     <button
                         role="tab"
-                        aria-selected={activeFilter === 'all'}
-                        onClick={() => setActiveFilter('all')}
-                        className={`py-1.5 text-sm transition-colors ${activeFilter === 'all' ? 'border-b border-ink font-semibold text-ink' : 'text-ink-mute hover:text-ink'}`}
-                    >
-                        All
-                    </button>
-                    <button
-                        role="tab"
                         aria-selected={activeFilter === 'connected'}
                         onClick={() => setActiveFilter('connected')}
                         className={`py-1.5 text-sm transition-colors ${activeFilter === 'connected' ? 'border-b border-ink font-semibold text-ink' : 'text-ink-mute hover:text-ink'}`}
@@ -819,28 +794,6 @@ export default function SourcesPage() {
                             className="h-8 w-44 rounded-md border border-line bg-panel py-1.5 pl-8 pr-3 text-sm text-ink placeholder:text-ink-mute focus:border-white/25 focus:outline-none"
                         />
                     </div>
-                    <div className="hidden sm:flex items-center rounded-md border border-line p-0.5">
-                        <button
-                            type="button"
-                            onClick={() => setViewModePersisted("list")}
-                            className={cn(
-                                "rounded px-2.5 py-1 text-[11px] font-medium",
-                                viewMode === "list" ? "bg-white/[0.06] text-ink" : "text-ink-mute hover:text-ink",
-                            )}
-                        >
-                            List
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setViewModePersisted("cards")}
-                            className={cn(
-                                "rounded px-2.5 py-1 text-[11px] font-medium",
-                                viewMode === "cards" ? "bg-white/[0.06] text-ink" : "text-ink-mute hover:text-ink",
-                            )}
-                        >
-                            Cards
-                        </button>
-                    </div>
                 </div>
             </div>
 
@@ -871,94 +824,46 @@ export default function SourcesPage() {
                 </div>
             ) : (
                 <div role="tabpanel" aria-live="polite" className="space-y-8">
-                    {connectedRows.length > 0 ? (
+                    {activeFilter === 'connected' && connectedRows.length > 0 && (
                         <section aria-labelledby="sources-connected-heading">
-                            {viewMode !== "list" ? (
-                                <div className="mb-3 flex items-end justify-between">
-                                    <h2
-                                        id="sources-connected-heading"
-                                        className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute"
-                                    >
-                                        Connected
-                                    </h2>
-                                    <span className="text-xs text-ink-mute">{connectedRows.length}</span>
-                                </div>
-                            ) : (
-                                <h2 id="sources-connected-heading" className="sr-only">Connected</h2>
-                            )}
-                            {viewMode === "list" && activeFilter !== "available" ? (
-                                <ConnectedSourceList
-                                    rows={connectedRows}
-                                    busyActions={busyActions}
-                                    onSync={handleSync}
-                                    onDirectSync={(id, provider) => handleDirectSync(id, provider)}
-                                    onDisconnect={disconnectSource}
-                                    onFixConnection={handleFixConnection}
-                                />
-                            ) : (
-                                <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" style={{ gridAutoRows: "minmax(0,auto)", isolation: "isolate" }}>
-                                    {connectedRows.map((integration: any) => (
-                                        <div key={integration.id} className="stagger-item min-w-0">
-                                        <ConnectedSourceCard
-                                            integration={integration}
-                                            busyActions={busyActions}
-                                            onSync={handleSync}
-                                            onDirectSync={handleDirectSync}
-                                            onDisconnect={disconnectSource}
-                                            onFixConnection={handleFixConnection}
-                                        />
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                            <h2 id="sources-connected-heading" className="sr-only">Connected</h2>
+                            <ConnectedSourceList
+                                rows={connectedRows}
+                                busyActions={busyActions}
+                                onSync={handleSync}
+                                onDirectSync={(id, provider) => handleDirectSync(id, provider)}
+                                onDisconnect={disconnectSource}
+                                onFixConnection={handleFixConnection}
+                            />
                         </section>
-                    ) : null}
-                    {availableCards.length > 0 ? (
+                    )}
+                    {activeFilter === 'available' && availableCards.length > 0 && (
                         <section aria-labelledby="sources-available-heading">
                             <div className="mb-3 flex items-end justify-between">
                                 <h2
                                     id="sources-available-heading"
                                     className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute"
                                 >
-                                    {connectedSourceCount > 0 ? "Add another" : "Catalog"}
+                                    Available connectors
                                 </h2>
                                 <span className="text-xs text-ink-mute">{availableCards.length}</span>
                             </div>
-                            {connectedSourceCount > 0 && activeFilter !== "available" ? (
-                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                                    {availableCards.map((integration: any) => (
-                                        <button
-                                            key={integration.id}
-                                            type="button"
-                                            onClick={() => handleConnect(integration)}
-                                            className="governed-hover flex items-center gap-3 rounded-lg border border-line bg-panel px-3 py-2.5 text-left"
-                                        >
-                                            <IntegrationMark src={integration.logoSrc} size="sm" />
-                                            <span className="min-w-0 flex-1">
-                                                <span className="block truncate text-sm font-medium text-ink">{integration.name}</span>
-                                                <span className="block text-[11px] text-ink-mute">Connect</span>
-                                            </span>
-                                        </button>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" style={{ gridAutoRows: "minmax(0,auto)", isolation: "isolate" }}>
-                                    {availableCards.map((integration: any) => (
-                                        <div key={integration.id} className="stagger-item min-w-0">
-                                        <IntegrationCard
-                                            integration={integration}
-                                            busyActions={busyActions}
-                                            onSync={handleSync}
-                                            onDisconnect={disconnectSource}
-                                            onFixConnection={handleFixConnection}
-                                            onConnect={handleConnect}
-                                        />
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                            <div className="stagger-list grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" style={{ gridAutoRows: "minmax(0,auto)", isolation: "isolate" }}>
+                                {availableCards.map((integration: any) => (
+                                    <div key={integration.id} className="stagger-item min-w-0">
+                                    <IntegrationCard
+                                        integration={integration}
+                                        busyActions={busyActions}
+                                        onSync={handleSync}
+                                        onDisconnect={disconnectSource}
+                                        onFixConnection={handleFixConnection}
+                                        onConnect={handleConnect}
+                                    />
+                                    </div>
+                                ))}
+                            </div>
                         </section>
-                    ) : null}
+                    )}
                 </div>
             )}
 

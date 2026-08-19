@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { isPlatformAdminEmail } from "@/lib/admin-auth";
 import prisma from "@/lib/prisma";
 import { withSystemScope } from "@/lib/tenant-guard";
 import { listRecentVietQrOrders } from "@/lib/vietqr-gateway";
@@ -8,9 +9,10 @@ import { PLAN_PRICING, type PlanName } from "@/lib/plan-config";
 
 export async function GET(req: NextRequest) {
     const session = await getServerSession(authOptions);
-    const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
 
-    // Check authorization: must be logged in and matching ADMIN_EMAIL or OPERATOR platformRole
+    const isEmailAdmin = isPlatformAdminEmail(session?.user?.email);
+
+    // Check authorization: must be logged in and matching admin whitelist or OPERATOR platformRole
     const isOperator =
         session?.user?.id &&
         (await prisma.user.findFirst({
@@ -18,13 +20,8 @@ export async function GET(req: NextRequest) {
             select: { id: true },
         }));
 
-    const isEmailAdmin =
-        session?.user?.email &&
-        adminEmail &&
-        session.user.email.trim().toLowerCase() === adminEmail;
-
     // Allow in development or for authorized operators/admins
-    if (process.env.NODE_ENV === "production" && !isOperator && !isEmailAdmin) {
+    if (!isOperator && !isEmailAdmin) {
         return NextResponse.json({ error: "Forbidden - Administrator access required" }, { status: 403 });
     }
 

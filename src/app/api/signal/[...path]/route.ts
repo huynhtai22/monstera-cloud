@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { isPlatformAdminEmail } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
-
-function getAdminEmail(): string | null {
-  return process.env.ADMIN_EMAIL?.trim().toLowerCase() || null;
-}
-
-function isAuthorizedAdmin(sessionUserEmail?: string | null): boolean {
-  const admin = getAdminEmail();
-  if (!admin || !sessionUserEmail) return false;
-  return sessionUserEmail.trim().toLowerCase() === admin;
-}
 
 async function handleProxy(
   request: NextRequest,
@@ -20,7 +11,7 @@ async function handleProxy(
 ) {
   // 1. Validate NextAuth session & admin role
   const session = await getServerSession(authOptions);
-  if (!session?.user?.email || !isAuthorizedAdmin(session.user.email)) {
+  if (!session?.user?.email || !isPlatformAdminEmail(session.user.email)) {
     return NextResponse.json(
       { error: "Forbidden: Admin authorization required" },
       { status: 403 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { isPlatformAdminEmail } from "@/lib/admin-auth";
 import prisma from "@/lib/prisma";
 import { withSystemScope } from "@/lib/tenant-guard";
 
@@ -17,7 +18,10 @@ function classifyError(msg: string | null): "timeout" | "oauth" | "rateLimit" | 
 
 export async function GET() {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id || !(await prisma.user.findFirst({ where: { id: session.user.id, platformRole: "OPERATOR" }, select: { id: true } }))) {
+    const isEmailAdmin = isPlatformAdminEmail(session?.user?.email);
+    const isOperator = session?.user?.id && (await prisma.user.findFirst({ where: { id: session.user.id, platformRole: "OPERATOR" }, select: { id: true } }));
+
+    if (!isOperator && !isEmailAdmin) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

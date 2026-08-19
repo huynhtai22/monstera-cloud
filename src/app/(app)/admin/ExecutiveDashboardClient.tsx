@@ -6,9 +6,6 @@ import {
     TrendingUp,
     Users,
     CreditCard,
-    Database,
-    Activity,
-    AlertTriangle,
     CheckCircle2,
     RefreshCw,
     ArrowUpRight,
@@ -18,11 +15,10 @@ import {
     Layers,
     Server,
     ShieldCheck,
-    Clock,
-    UserMinus,
+    AlertTriangle,
     UserCheck,
-    Sparkles,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface MetricData {
     timeframe: string;
@@ -120,56 +116,70 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
     };
 
     return (
-        <div className="min-h-screen bg-canvas p-4 sm:p-8 lg:p-10 font-sans text-ink antialiased space-y-8">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-line">
+        <div className="space-y-6">
+            {/* Header & Controls */}
+            <div className="flex flex-col gap-4 border-b border-line pb-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2.5 py-0.5 rounded-md text-[10px] font-medium uppercase tracking-[0.14em] bg-panel text-ink-mute border border-line font-mono">
+                    <div className="mb-1.5 flex items-center gap-2">
+                        <span className="rounded border border-line bg-panel px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">
                             Executive Ops &amp; Finance
                         </span>
-                        <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-medium bg-panel text-ink border border-line font-mono">
+                        <div className="flex items-center gap-1.5 rounded border border-line bg-panel px-2 py-0.5 font-mono text-[10px] text-ink-mute">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
                             <span>DB Ping: {data?.dbHealth.latencyMs ?? "--"}ms</span>
                         </div>
                     </div>
-                    <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-ink">
-                        Admin portal
+                    <h1 className="text-xl font-semibold tracking-tight text-ink">
+                        Finance &amp; Admin
                     </h1>
-                    <p className="text-xs text-ink-mute mt-1">
-                        Incidents, tickets, and finance for {userEmail}.
+                    <p className="mt-0.5 text-xs text-ink-mute">
+                        Platform telemetry, billing, and incident response for {userEmail}.
                     </p>
-                    <div className="mt-3 inline-flex rounded-md border border-line bg-panel p-1 text-xs font-medium">
+
+                    {/* View Switcher */}
+                    <div className="mt-3 inline-flex rounded-md border border-line bg-panel p-0.5 text-xs font-medium">
                         <button
                             type="button"
                             onClick={() => setTab("incidents")}
-                            className={`rounded-md px-3 py-1.5 ${tab === "incidents" ? "bg-primary text-primary-foreground" : "text-ink-mute hover:text-ink"}`}
+                            className={cn(
+                                "rounded px-3 py-1.5 transition-colors",
+                                tab === "incidents"
+                                    ? "bg-white/[0.08] text-ink font-semibold"
+                                    : "text-ink-mute hover:text-ink"
+                            )}
                         >
                             Incidents
                         </button>
                         <button
                             type="button"
                             onClick={() => setTab("finance")}
-                            className={`rounded-md px-3 py-1.5 ${tab === "finance" ? "bg-primary text-primary-foreground" : "text-ink-mute hover:text-ink"}`}
+                            className={cn(
+                                "rounded px-3 py-1.5 transition-colors",
+                                tab === "finance"
+                                    ? "bg-white/[0.08] text-ink font-semibold"
+                                    : "text-ink-mute hover:text-ink"
+                            )}
                         >
-                            Finance
+                            Finance &amp; Revenue
                         </button>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    <div className="inline-flex p-1 rounded-md bg-panel border border-line text-xs font-medium">
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <div className="inline-flex rounded-md border border-line bg-panel p-0.5 text-xs font-medium">
                         {(["7d", "30d", "90d", "all"] as const).map((tf) => (
                             <button
                                 key={tf}
                                 type="button"
                                 onClick={() => setTimeframe(tf)}
-                                className={`px-3 py-1.5 rounded-md transition-colors ${
+                                className={cn(
+                                    "rounded px-2.5 py-1.5 transition-colors",
                                     timeframe === tf
-                                        ? "bg-white/[0.06] text-ink font-semibold"
+                                        ? "bg-white/[0.08] text-ink font-semibold"
                                         : "text-ink-mute hover:text-ink"
-                                }`}
+                                )}
                             >
-                                {tf === "7d" ? "7 Ngày" : tf === "30d" ? "30 Ngày" : tf === "90d" ? "90 Ngày" : "Tất Cả"}
+                                {tf === "7d" ? "7 Days" : tf === "30d" ? "30 Days" : tf === "90d" ? "90 Days" : "All Time"}
                             </button>
                         ))}
                     </div>
@@ -177,356 +187,348 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                     <button
                         type="button"
                         onClick={loadMetrics}
-                        className="p-2.5 rounded-md bg-panel border border-line hover:bg-white/[0.04] text-ink-mute hover:text-ink transition-colors"
-                        title="Làm mới dữ liệu"
+                        className="rounded-md border border-line bg-panel p-2 text-ink-mute hover:bg-white/[0.04] hover:text-ink transition-colors"
+                        title="Refresh metrics"
                     >
-                        <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-accent" : ""}`} strokeWidth={1.5} />
+                        <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin text-ink")} strokeWidth={1.5} />
                     </button>
                 </div>
             </div>
 
+            {/* Incidents Panel */}
             {tab === "incidents" && <AdminIncidentsPanel />}
 
+            {/* Finance & Telemetry Panel */}
             {tab === "finance" && (
-            <>
-            {/* ── SECTION 1: FINANCE & REVENUE (MONEY-IN) ───────────────────── */}
-            <div>
-                <div className="flex items-center gap-2 mb-4">
-                    <CreditCard className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <h2 className="font-bold text-sm uppercase tracking-wider text-slate-700 dark:text-slate-300">
-                        Chỉ Số Doanh Thu &amp; Dòng Tiền (Money-In)
-                    </h2>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-                    {/* Card 1: MRR */}
-                    <div className="p-6 rounded-lg bg-panel border border-line space-y-2">
-                        <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
-                            <span>MRR (Doanh thu tháng)</span>
-                            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
-                                <DollarSign className="w-4 h-4" />
-                            </div>
-                        </div>
-                        <div className="space-y-1">
-                            <div className="text-2xl sm:text-3xl font-extrabold text-slate-950 dark:text-white tracking-tight">
-                                {(data?.finance.mrrVnd || 0).toLocaleString("vi-VN")} đ
-                            </div>
-                            {(data?.finance.mrrUsd || 0) > 0 && (
-                                <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-                                    + ${(data?.finance.mrrUsd || 0).toLocaleString()} USD
-                                </p>
-                            )}
-                        </div>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
-                            ARR ước tính: <strong>{((data?.finance.arrVnd || 0) / 1000000).toFixed(1)}M đ/năm</strong>
-                        </p>
-                    </div>
-
-                    {/* Card 2: Realized VietQR Cash-In */}
-                    <div className="p-6 rounded-lg bg-panel border border-line space-y-2">
-                        <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
-                            <span>Thực Thu VietQR (Cash-In)</span>
-                            <div className="p-2 rounded-md bg-canvas border border-line text-white">
-                                <QrCode className="w-4 h-4" />
-                            </div>
-                        </div>
-                        <div className="space-y-1">
-                            <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 tracking-tight">
-                                {(data?.finance.totalVndRealized || 0).toLocaleString("vi-VN")} đ
-                            </div>
-                            <p className="text-xs text-slate-500">Tiền thực nhận qua Techcombank</p>
-                        </div>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
-                            TK Thụ hưởng: <strong>19036348292019</strong>
-                        </p>
-                    </div>
-
-                    {/* Card 3: Paying Workspaces */}
-                    <div className="p-6 rounded-lg bg-panel border border-line space-y-2">
-                        <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
-                            <span>Khách Hàng Trả Phí</span>
-                            <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400">
-                                <UserCheck className="w-4 h-4" />
-                            </div>
-                        </div>
-                        <div className="space-y-1">
-                            <div className="text-2xl sm:text-3xl font-extrabold text-slate-950 dark:text-white tracking-tight">
-                                {data?.finance.payingWorkspacesCount ?? 0}{" "}
-                                <span className="text-xs font-normal text-slate-400">workspaces</span>
-                            </div>
-                            <p className="text-xs text-slate-500">Starter, Pro, Enterprise</p>
-                        </div>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
-                            Tỷ lệ chuyển đổi Paid: <strong>{data?.finance.paidConversionRate ?? 0}%</strong>
-                        </p>
-                    </div>
-
-                    {/* Card 4: Net Growth Rate */}
-                    <div className="p-6 rounded-lg bg-panel border border-line space-y-2">
-                        <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
-                            <span>Tăng Trưởng Workspace</span>
-                            <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
-                                <TrendingUp className="w-4 h-4" />
-                            </div>
-                        </div>
-                        <div className="space-y-1">
-                            <div className="text-2xl sm:text-3xl font-extrabold text-slate-950 dark:text-white tracking-tight flex items-center gap-1.5">
-                                <span>+{data?.growth.newWorkspacesInPeriod ?? 0}</span>
-                                <span
-                                    className={`text-xs px-2 py-0.5 rounded-full font-bold flex items-center ${
-                                        (data?.growth.growthRatePercent || 0) >= 0
-                                            ? "bg-emerald-100 text-emerald-700"
-                                            : "bg-red-100 text-red-700"
-                                    }`}
-                                >
-                                    {(data?.growth.growthRatePercent || 0) >= 0 ? (
-                                        <ArrowUpRight className="w-3 h-3" />
-                                    ) : (
-                                        <ArrowDownRight className="w-3 h-3" />
-                                    )}
-                                    {Math.abs(data?.growth.growthRatePercent || 0)}%
-                                </span>
-                            </div>
-                            <p className="text-xs text-slate-500">Mới tạo trong {timeframe}</p>
-                        </div>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-2 border-t border-slate-100 dark:border-slate-800">
-                            Tổng Workspace: <strong>{data?.growth.totalWorkspaces ?? 0}</strong>
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            {/* ── SECTION 2: USERS & CHURN TELEMETRY (USER-LEAVE) ───────────── */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* User & Churn Breakdown */}
-                <div className="p-6 md:p-8 rounded-lg bg-panel border border-line space-y-6">
-                    <div className="flex items-center justify-between">
-                        <h3 className="font-bold text-sm uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                            <Users className="w-4 h-4 text-white" />
-                            <span>Người Dùng &amp; Tỷ Lệ Rời Bỏ (Churn)</span>
-                        </h3>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 rounded-lg bg-canvas border border-line">
-                            <span className="text-[11px] text-slate-400 block font-medium">Người dùng hoạt động (Active)</span>
-                            <span className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
-                                {data?.growth.activeWorkspacesCount ?? 0}
-                            </span>
-                            <span className="text-[10px] text-slate-500 block mt-0.5">Sync dữ liệu &lt;14 ngày</span>
-                        </div>
-
-                        <div className="p-4 rounded-lg bg-canvas border border-line">
-                            <span className="text-[11px] text-slate-400 block font-medium">Rời bỏ / Tạm dừng (Churn)</span>
-                            <span className="text-2xl font-extrabold text-rose-600 dark:text-rose-400">
-                                {(data?.growth.suspendedWorkspacesCount || 0) + (data?.growth.inactiveWorkspacesCount || 0)}
-                            </span>
-                            <span className="text-[10px] text-slate-500 block mt-0.5">
-                                Churn rate: {data?.growth.churnRatePercent ?? 0}%
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Health Note */}
-                    <div className="p-4 rounded-lg bg-amber-950/20 border border-amber-900/40 text-xs text-amber-200 space-y-1">
-                        <div className="flex items-center gap-1.5 font-bold">
-                            <AlertTriangle className="w-4 h-4 text-amber-500" />
-                            <span>Phân tích giữ chân người dùng (Retention)</span>
-                        </div>
-                        <p className="text-[11px] leading-relaxed text-ink-mute">
-                            Có <strong>{data?.growth.inactiveWorkspacesCount ?? 0}</strong> workspace không kích hoạt sync trong 14 ngày qua. Đội ngũ BD nên gửi email hỗ trợ thiết lập Google Sheets Add-on.
-                        </p>
-                    </div>
-                </div>
-
-                {/* Plan Distribution Breakdown */}
-                <div className="p-6 md:p-8 rounded-lg bg-panel border border-line space-y-5 lg:col-span-2">
-                    <h3 className="font-bold text-sm uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                        <Layers className="w-4 h-4 text-white" />
-                        <span>Phân Bổ Gói Đăng Ký (Plan Tier Distribution)</span>
-                    </h3>
-
-                    <div className="space-y-3">
-                        {data?.growth.planDistribution &&
-                            Object.entries(data.growth.planDistribution).map(([plan, count]) => {
-                                const total = data.growth.totalWorkspaces || 1;
-                                const pct = Math.round((count / total) * 100);
-                                return (
-                                    <div key={plan} className="space-y-1 text-xs">
-                                        <div className="flex justify-between font-semibold">
-                                            <span className="uppercase text-slate-700 dark:text-slate-300">
-                                                {plan === "free" ? "Free Trial" : plan}
-                                            </span>
-                                            <span className="text-slate-500">
-                                                {count} ({pct}%)
-                                            </span>
-                                        </div>
-                                        <div className="h-2 rounded-full bg-canvas border border-line overflow-hidden">
-                                            <div
-                                                className={`h-full rounded-full ${
-                                                    plan === "professional"
-                                                        ? "bg-white"
-                                                        : plan === "starter"
-                                                        ? "bg-emerald-500"
-                                                        : plan === "enterprise"
-                                                        ? "bg-indigo-400"
-                                                        : "bg-slate-500"
-                                                }`}
-                                                style={{ width: `${pct}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                    </div>
-                </div>
-            </div>
-
-            {/* ── SECTION 3: LIVE TRANSACTIONS & APPROVAL LEDGER ────────────── */}
-            <div className="p-6 md:p-8 rounded-lg bg-panel border border-line space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="space-y-6">
+                    {/* SECTION 1: REVENUE KPIS */}
                     <div>
-                        <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
-                            <QrCode className="w-5 h-5 text-white" />
-                            <span>Sổ Nhật Ký Giao Dịch VietQR &amp; Thanh Toán (Ledger)</span>
-                        </h3>
-                        <p className="text-xs text-slate-500">
-                            Các mã thanh toán VietQR Napas 24/7 được tạo và trạng thái đối soát từ ngân hàng.
-                        </p>
-                    </div>
-                </div>
+                        <div className="mb-3 flex items-center gap-2">
+                            <CreditCard className="h-4 w-4 text-emerald-400" />
+                            <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-mute">
+                                Revenue &amp; Cashflow
+                            </h2>
+                        </div>
 
-                {!data?.finance.recentTransactions || data.finance.recentTransactions.length === 0 ? (
-                    <div className="p-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                        Chưa có giao dịch thanh toán nào được ghi nhận.
-                    </div>
-                ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs border-collapse">
-                            <thead>
-                                <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-semibold">
-                                    <th className="py-3 px-3">Mã Đơn</th>
-                                    <th className="py-3 px-3">Gói Dịch Vụ</th>
-                                    <th className="py-3 px-3">Số Tiền</th>
-                                    <th className="py-3 px-3">Nội Dung CK</th>
-                                    <th className="py-3 px-3">Thời Gian</th>
-                                    <th className="py-3 px-3">Trạng Thái</th>
-                                    <th className="py-3 px-3 text-right">Duyệt</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-600 dark:text-slate-300">
-                                {data.finance.recentTransactions.map((tx) => (
-                                    <tr key={tx.orderCode} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-                                        <td className="py-3 px-3 font-mono font-bold text-slate-900 dark:text-white">
-                                            #{tx.orderCode}
-                                        </td>
-                                        <td className="py-3 px-3 uppercase font-semibold text-white">{tx.plan}</td>
-                                        <td className="py-3 px-3 font-bold text-slate-900 dark:text-white">
-                                            {tx.amount.toLocaleString("vi-VN")} đ
-                                        </td>
-                                        <td className="py-3 px-3 font-mono font-bold text-emerald-600">{tx.memo}</td>
-                                        <td className="py-3 px-3 text-slate-400">
-                                            {new Date(tx.createdAt).toLocaleString("vi-VN")}
-                                        </td>
-                                        <td className="py-3 px-3">
-                                            <span
-                                                className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                                                    tx.status === "PAID"
-                                                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                                                        : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                                                }`}
-                                            >
-                                                {tx.status}
-                                            </span>
-                                        </td>
-                                        <td className="py-3 px-3 text-right">
-                                            {tx.status === "PAID" ? (
-                                                <span className="text-emerald-600 font-semibold flex items-center justify-end gap-1 text-[11px]">
-                                                    <CheckCircle2 className="w-3.5 h-3.5" /> Đã Kích Hoạt
-                                                </span>
-                                            ) : (
-                                                <button
-                                                    type="button"
-                                                    disabled={approvingCode === tx.orderCode}
-                                                    onClick={() => handleApproveOrder(tx.orderCode)}
-                                                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-2xs transition-all disabled:opacity-50"
-                                                >
-                                                    {approvingCode === tx.orderCode ? "Đang duyệt..." : "Duyệt Kích Hoạt"}
-                                                </button>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            {/* MRR */}
+                            <div className="rounded-lg border border-line bg-panel p-5 space-y-2">
+                                <div className="flex items-center justify-between text-xs font-medium text-ink-mute">
+                                    <span>MRR (Monthly Run-Rate)</span>
+                                    <DollarSign className="h-4 w-4 text-emerald-400" />
+                                </div>
+                                <div className="space-y-0.5">
+                                    <div className="text-2xl font-bold tracking-tight text-ink">
+                                        {(data?.finance.mrrVnd || 0).toLocaleString("vi-VN")} đ
+                                    </div>
+                                    {(data?.finance.mrrUsd || 0) > 0 && (
+                                        <p className="text-xs text-blue-400 font-medium">
+                                            + ${(data?.finance.mrrUsd || 0).toLocaleString()} USD
+                                        </p>
+                                    )}
+                                </div>
+                                <p className="border-t border-line pt-2 text-[11px] text-ink-mute">
+                                    Est. ARR: <strong className="text-ink">{((data?.finance.arrVnd || 0) / 1_000_000).toFixed(1)}M đ/yr</strong>
+                                </p>
+                            </div>
+
+                            {/* Realized Cash-in */}
+                            <div className="rounded-lg border border-line bg-panel p-5 space-y-2">
+                                <div className="flex items-center justify-between text-xs font-medium text-ink-mute">
+                                    <span>Realized Cash-In</span>
+                                    <QrCode className="h-4 w-4 text-ink-mute" />
+                                </div>
+                                <div className="space-y-0.5">
+                                    <div className="text-2xl font-bold tracking-tight text-emerald-400">
+                                        {(data?.finance.totalVndRealized || 0).toLocaleString("vi-VN")} đ
+                                    </div>
+                                    <p className="text-xs text-ink-mute">Collected via VietQR Napas 24/7</p>
+                                </div>
+                                <p className="border-t border-line pt-2 text-[11px] text-ink-mute">
+                                    Beneficiary: <strong className="text-ink font-mono">19036348292019</strong>
+                                </p>
+                            </div>
+
+                            {/* Paying Workspaces */}
+                            <div className="rounded-lg border border-line bg-panel p-5 space-y-2">
+                                <div className="flex items-center justify-between text-xs font-medium text-ink-mute">
+                                    <span>Paying Accounts</span>
+                                    <UserCheck className="h-4 w-4 text-purple-400" />
+                                </div>
+                                <div className="space-y-0.5">
+                                    <div className="text-2xl font-bold tracking-tight text-ink">
+                                        {data?.finance.payingWorkspacesCount ?? 0}{" "}
+                                        <span className="text-xs font-normal text-ink-mute">workspaces</span>
+                                    </div>
+                                    <p className="text-xs text-ink-mute">Starter, Pro, Enterprise</p>
+                                </div>
+                                <p className="border-t border-line pt-2 text-[11px] text-ink-mute">
+                                    Paid conversion: <strong className="text-ink">{data?.finance.paidConversionRate ?? 0}%</strong>
+                                </p>
+                            </div>
+
+                            {/* Growth */}
+                            <div className="rounded-lg border border-line bg-panel p-5 space-y-2">
+                                <div className="flex items-center justify-between text-xs font-medium text-ink-mute">
+                                    <span>Workspace Growth</span>
+                                    <TrendingUp className="h-4 w-4 text-blue-400" />
+                                </div>
+                                <div className="space-y-0.5">
+                                    <div className="flex items-center gap-2 text-2xl font-bold tracking-tight text-ink">
+                                        <span>+{data?.growth.newWorkspacesInPeriod ?? 0}</span>
+                                        <span
+                                            className={cn(
+                                                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold",
+                                                (data?.growth.growthRatePercent || 0) >= 0
+                                                    ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/20"
+                                                    : "bg-red-950/40 text-red-400 border border-red-500/20"
                                             )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
-
-            {/* ── SECTION 4: DATABASE & INFRASTRUCTURE HEALTH ──────────────── */}
-            <div className="p-6 md:p-8 rounded-lg bg-panel border border-line space-y-6">
-                <div className="flex items-center justify-between">
-                    <h3 className="font-bold text-sm uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                        <Server className="w-4 h-4 text-white" />
-                        <span>Sức Khỏe Cơ Sở Dữ Liệu PostgreSQL &amp; Hạ Tầng ETL</span>
-                    </h3>
-                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5">
-                        <ShieldCheck className="w-4 h-4" /> Hệ thống sẵn sàng 99.9%
-                    </span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                    <div className="p-4 rounded-lg bg-canvas border border-line">
-                        <span className="text-slate-400 block">Dữ liệu Ads (CampaignMetrics)</span>
-                        <span className="text-xl font-mono font-bold text-slate-900 dark:text-white">
-                            {(data?.dbHealth.tables.campaignMetrics || 0).toLocaleString()} dòng
-                        </span>
+                                        >
+                                            {(data?.growth.growthRatePercent || 0) >= 0 ? (
+                                                <ArrowUpRight className="h-3 w-3" />
+                                            ) : (
+                                                <ArrowDownRight className="h-3 w-3" />
+                                            )}
+                                            {Math.abs(data?.growth.growthRatePercent || 0)}%
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-ink-mute">Created in {timeframe}</p>
+                                </div>
+                                <p className="border-t border-line pt-2 text-[11px] text-ink-mute">
+                                    Total workspaces: <strong className="text-ink">{data?.growth.totalWorkspaces ?? 0}</strong>
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="p-4 rounded-lg bg-canvas border border-line">
-                        <span className="text-slate-400 block">Đơn hàng sàn (RetailOrders)</span>
-                        <span className="text-xl font-mono font-bold text-slate-900 dark:text-white">
-                            {(data?.dbHealth.tables.retailOrders || 0).toLocaleString()} dòng
-                        </span>
-                    </div>
+                    {/* SECTION 2: USERS & RETENTION */}
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                        {/* Retention Breakdown */}
+                        <div className="rounded-lg border border-line bg-panel p-5 space-y-4">
+                            <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-ink-mute">
+                                <Users className="h-4 w-4 text-ink" />
+                                User Activity &amp; Churn
+                            </h3>
 
-                    <div className="p-4 rounded-lg bg-canvas border border-line">
-                        <span className="text-slate-400 block">Lịch sử Sync (SyncLogs)</span>
-                        <span className="text-xl font-mono font-bold text-slate-900 dark:text-white">
-                            {(data?.dbHealth.tables.syncLogs || 0).toLocaleString()} records
-                        </span>
-                    </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="rounded-md border border-line bg-canvas p-3.5">
+                                    <span className="block text-[11px] text-ink-mute font-medium">Active Workspaces</span>
+                                    <span className="text-2xl font-bold text-emerald-400">
+                                        {data?.growth.activeWorkspacesCount ?? 0}
+                                    </span>
+                                    <span className="block text-[10px] text-ink-mute mt-0.5">Synced &lt;14 days</span>
+                                </div>
 
-                    <div className="p-4 rounded-lg bg-canvas border border-line">
-                        <span className="text-slate-400 block">Tỷ Lệ Sync Thành Công (24h)</span>
-                        <span className="text-xl font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                            {data?.syncTelemetry.syncSuccessRate ?? 100}%
-                        </span>
-                    </div>
-                </div>
-
-                {/* Connections by Platform */}
-                <div className="pt-2">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-3">
-                        Số lượng kết nối theo nền tảng
-                    </span>
-                    <div className="flex flex-wrap gap-3">
-                        {data?.syncTelemetry.connectionsByProvider &&
-                            data.syncTelemetry.connectionsByProvider.map((c) => (
-                                <div
-                                    key={c.provider}
-                                    className="px-3.5 py-2 rounded-lg bg-canvas border border-line text-xs font-semibold flex items-center gap-2"
-                                >
-                                    <span className="capitalize text-ink">{c.provider.replace(/_/g, " ")}</span>
-                                    <span className="px-2 py-0.5 rounded-full bg-panel border border-line font-bold text-white shadow-2xs">
-                                        {c.count}
+                                <div className="rounded-md border border-line bg-canvas p-3.5">
+                                    <span className="block text-[11px] text-ink-mute font-medium">Churned / Inactive</span>
+                                    <span className="text-2xl font-bold text-rose-400">
+                                        {(data?.growth.suspendedWorkspacesCount || 0) + (data?.growth.inactiveWorkspacesCount || 0)}
+                                    </span>
+                                    <span className="block text-[10px] text-ink-mute mt-0.5">
+                                        Churn rate: {data?.growth.churnRatePercent ?? 0}%
                                     </span>
                                 </div>
-                            ))}
+                            </div>
+
+                            <div className="rounded-md border border-amber-900/40 bg-amber-950/20 p-3 text-xs text-amber-200 space-y-1">
+                                <div className="flex items-center gap-1.5 font-semibold">
+                                    <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                                    <span>Retention Analysis</span>
+                                </div>
+                                <p className="text-[11px] leading-relaxed text-ink-mute">
+                                    <strong>{data?.growth.inactiveWorkspacesCount ?? 0}</strong> workspaces have not synced data in the last 14 days. Proactive onboarding assistance is recommended.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Plan Tier Distribution */}
+                        <div className="rounded-lg border border-line bg-panel p-5 space-y-4 lg:col-span-2">
+                            <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-ink-mute">
+                                <Layers className="h-4 w-4 text-ink" />
+                                Plan Tier Distribution
+                            </h3>
+
+                            <div className="space-y-3 pt-1">
+                                {data?.growth.planDistribution &&
+                                    Object.entries(data.growth.planDistribution).map(([plan, count]) => {
+                                        const total = data.growth.totalWorkspaces || 1;
+                                        const pct = Math.round((count / total) * 100);
+                                        return (
+                                            <div key={plan} className="space-y-1 text-xs">
+                                                <div className="flex justify-between font-medium">
+                                                    <span className="uppercase text-ink">
+                                                        {plan === "free" ? "Free Trial" : plan}
+                                                    </span>
+                                                    <span className="text-ink-mute font-mono">
+                                                        {count} ({pct}%)
+                                                    </span>
+                                                </div>
+                                                <div className="h-2 rounded-full border border-line bg-canvas overflow-hidden">
+                                                    <div
+                                                        className={cn(
+                                                            "h-full rounded-full transition-all",
+                                                            plan === "professional"
+                                                                ? "bg-white"
+                                                                : plan === "starter"
+                                                                ? "bg-emerald-400"
+                                                                : plan === "enterprise"
+                                                                ? "bg-indigo-400"
+                                                                : "bg-neutral-600"
+                                                        )}
+                                                        style={{ width: `${pct}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* SECTION 3: TRANSACTIONS LEDGER */}
+                    <div className="rounded-lg border border-line bg-panel p-5 space-y-4">
+                        <div>
+                            <h3 className="flex items-center gap-2 text-sm font-semibold text-ink">
+                                <QrCode className="h-4 w-4 text-ink" />
+                                VietQR Payment &amp; Activation Ledger
+                            </h3>
+                            <p className="text-xs text-ink-mute mt-0.5">
+                                Real-time Napas 24/7 bank transfer orders and automated reconciliation.
+                            </p>
+                        </div>
+
+                        {!data?.finance.recentTransactions || data.finance.recentTransactions.length === 0 ? (
+                            <div className="rounded-md border border-dashed border-line p-8 text-center text-xs text-ink-mute">
+                                No payment transactions recorded in this period.
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left text-xs">
+                                    <thead>
+                                        <tr className="border-b border-line text-[11px] font-semibold uppercase tracking-wider text-ink-mute">
+                                            <th className="py-2.5 px-3">Order</th>
+                                            <th className="py-2.5 px-3">Plan</th>
+                                            <th className="py-2.5 px-3">Amount</th>
+                                            <th className="py-2.5 px-3">Transfer Memo</th>
+                                            <th className="py-2.5 px-3">Created</th>
+                                            <th className="py-2.5 px-3">Status</th>
+                                            <th className="py-2.5 px-3 text-right">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-line">
+                                        {data.finance.recentTransactions.map((tx) => (
+                                            <tr key={tx.orderCode} className="hover:bg-white/[0.02] transition-colors">
+                                                <td className="py-2.5 px-3 font-mono font-semibold text-ink">
+                                                    #{tx.orderCode}
+                                                </td>
+                                                <td className="py-2.5 px-3 uppercase font-semibold text-ink">{tx.plan}</td>
+                                                <td className="py-2.5 px-3 font-semibold text-ink">
+                                                    {tx.amount.toLocaleString("vi-VN")} đ
+                                                </td>
+                                                <td className="py-2.5 px-3 font-mono font-medium text-emerald-400">{tx.memo}</td>
+                                                <td className="py-2.5 px-3 text-ink-mute">
+                                                    {new Date(tx.createdAt).toLocaleString()}
+                                                </td>
+                                                <td className="py-2.5 px-3">
+                                                    <span
+                                                        className={cn(
+                                                            "inline-flex items-center rounded px-2 py-0.5 text-[10px] font-semibold uppercase",
+                                                            tx.status === "PAID"
+                                                                ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/30"
+                                                                : "bg-amber-950/40 text-amber-400 border border-amber-500/30"
+                                                        )}
+                                                    >
+                                                        {tx.status}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right">
+                                                    {tx.status === "PAID" ? (
+                                                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400">
+                                                            <CheckCircle2 className="h-3.5 w-3.5" /> Activated
+                                                        </span>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            disabled={approvingCode === tx.orderCode}
+                                                            onClick={() => handleApproveOrder(tx.orderCode)}
+                                                            className="rounded bg-white px-2.5 py-1 text-[11px] font-semibold text-neutral-900 transition-colors hover:bg-neutral-100 disabled:opacity-50"
+                                                        >
+                                                            {approvingCode === tx.orderCode ? "Approving…" : "Approve"}
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* SECTION 4: INFRASTRUCTURE & DB HEALTH */}
+                    <div className="rounded-lg border border-line bg-panel p-5 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-ink-mute">
+                                <Server className="h-4 w-4 text-ink" />
+                                Database &amp; ETL Health Telemetry
+                            </h3>
+                            <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                                <ShieldCheck className="h-4 w-4" /> 99.9% Uptime SLA
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-xs">
+                            <div className="rounded-md border border-line bg-canvas p-3.5">
+                                <span className="block text-ink-mute text-[11px]">Campaign Metrics Rows</span>
+                                <span className="text-lg font-mono font-bold text-ink">
+                                    {(data?.dbHealth.tables.campaignMetrics || 0).toLocaleString()}
+                                </span>
+                            </div>
+
+                            <div className="rounded-md border border-line bg-canvas p-3.5">
+                                <span className="block text-ink-mute text-[11px]">Retail Orders Rows</span>
+                                <span className="text-lg font-mono font-bold text-ink">
+                                    {(data?.dbHealth.tables.retailOrders || 0).toLocaleString()}
+                                </span>
+                            </div>
+
+                            <div className="rounded-md border border-line bg-canvas p-3.5">
+                                <span className="block text-ink-mute text-[11px]">Sync Logs</span>
+                                <span className="text-lg font-mono font-bold text-ink">
+                                    {(data?.dbHealth.tables.syncLogs || 0).toLocaleString()}
+                                </span>
+                            </div>
+
+                            <div className="rounded-md border border-line bg-canvas p-3.5">
+                                <span className="block text-ink-mute text-[11px]">Sync Success Rate (24h)</span>
+                                <span className="text-lg font-mono font-bold text-emerald-400">
+                                    {data?.syncTelemetry.syncSuccessRate ?? 100}%
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Connected Providers Breakdown */}
+                        <div className="border-t border-line pt-3">
+                            <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-ink-mute">
+                                Connections by Platform
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                                {data?.syncTelemetry.connectionsByProvider &&
+                                    data.syncTelemetry.connectionsByProvider.map((c) => (
+                                        <div
+                                            key={c.provider}
+                                            className="flex items-center gap-2 rounded-md border border-line bg-canvas px-3 py-1.5 text-xs"
+                                        >
+                                            <span className="capitalize text-ink">{c.provider.replace(/_/g, " ")}</span>
+                                            <span className="rounded-full border border-line bg-panel px-2 py-0.2 text-[10px] font-mono font-semibold text-ink">
+                                                {c.count}
+                                            </span>
+                                        </div>
+                                    ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
-            </div>
-            </>
             )}
         </div>
     );

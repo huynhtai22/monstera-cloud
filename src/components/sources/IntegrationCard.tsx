@@ -77,10 +77,23 @@ export const IntegrationCard = React.memo(function IntegrationCard({
 
   return (
     <div
+      onClick={(e) => {
+        if (integration.status === "available" && integration.envConnectReady !== false) {
+          e.stopPropagation();
+          onConnect(integration);
+        }
+      }}
+      role={integration.status === "available" && integration.envConnectReady !== false ? "button" : undefined}
+      tabIndex={integration.status === "available" && integration.envConnectReady !== false ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (integration.status === "available" && integration.envConnectReady !== false && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onConnect(integration);
+        }
+      }}
       className={`glass-card governed-hover relative overflow-hidden rounded-lg p-5 group flex flex-col justify-between
-        ${integration.status === "error"
-          ? "!border-red-500/40 hover:!border-red-400/60"
-          : ""}`}
+        ${integration.status === "error" ? "!border-red-500/40 hover:!border-red-400/60" : ""}
+        ${integration.status === "available" ? (integration.envConnectReady === false ? "opacity-60 cursor-not-allowed" : "cursor-pointer") : ""}`}
     >
       <div className="flex items-start justify-between mb-3 relative z-10">
         <IntegrationMark src={integration.logoSrc} alt={`${integration.name} logo`} size="lg" />
@@ -123,7 +136,7 @@ export const IntegrationCard = React.memo(function IntegrationCard({
             </h3>
           )}
         </div>
-        <p className="text-sm leading-relaxed text-ink-mute line-clamp-2">
+        <p className={`text-sm leading-relaxed text-ink-mute ${integration.status !== "available" ? "line-clamp-2" : ""}`}>
           {integration.description}
         </p>
 
@@ -153,9 +166,11 @@ export const IntegrationCard = React.memo(function IntegrationCard({
               </span>
             ))}
             {integration.accountTags.length > 3 && (
-              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-[#1d1f23]/80 dark:text-slate-400">
-                +{integration.accountTags.length - 3} more
-              </span>
+              <div className="relative">
+                <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:bg-[#1d1f23]/80 dark:text-slate-400">
+                  +{integration.accountTags.length - 3} more
+                </span>
+              </div>
             )}
           </div>
         )}
@@ -244,15 +259,14 @@ export const IntegrationCard = React.memo(function IntegrationCard({
             </p>
           </div>
         ) : (
-          <PrimaryButton
-            onClick={(e) => {
-              e.stopPropagation();
-              onConnect(integration);
-            }}
-            className="w-full"
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onConnect(integration); }}
+            className="group/cta inline-flex w-full items-center justify-between rounded-lg border border-line bg-canvas px-3 py-2.5 text-sm font-semibold text-ink transition-colors duration-150 hover:border-white/20 hover:bg-white/[0.04] hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
           >
-            Connect <ArrowRight className="h-3.5 w-3.5" />
-          </PrimaryButton>
+            <span>Connect {integration.name}</span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-ink-mute group-hover/cta:text-white group-hover/cta:translate-x-0.5 transition-all duration-150" />
+          </button>
         )}
       </div>
     </div>

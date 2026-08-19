@@ -3,7 +3,7 @@ import { MarketingNavbar } from "@/components/MarketingNavbar";
 import { MarketingFooter } from "@/components/MarketingFooter";
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
 
-const ogImage = `${PRODUCT_SITE_URL}/favicon.svg`;
+const ogImage = `${PRODUCT_SITE_URL}/icon-512.png`;
 
 export const metadata: Metadata = {
     title: {

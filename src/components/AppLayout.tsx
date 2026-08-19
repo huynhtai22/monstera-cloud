@@ -29,7 +29,7 @@ function mobileSectionTitle(pathname: string | null): string {
         reports: "Reports",
         settings: "Settings",
         console: "Dashboard",
-        explorer: "Data explorer",
+        explorer: "Warehouse",
         transformations: "Transformations",
         "internal-templates": "Templates",
         "google-ads": "Google Ads",
@@ -147,7 +147,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 setCollapsed={setSidebarCollapsed}
             />
 
-            <div className={`relative flex min-w-0 flex-1 flex-col bg-canvas text-ink ${sidebarCollapsed ? "lg:pl-[68px]" : "lg:pl-64"}`} style={{ transition: "padding-left 220ms cubic-bezier(0.25,0.1,0.25,1)" }}>
+            <div className={`relative flex min-w-0 flex-1 flex-col bg-canvas text-ink ${sidebarCollapsed ? "lg:pl-[68px]" : "lg:pl-64"}`} style={{ transition: "padding-left 240ms cubic-bezier(0.2, 0.8, 0.2, 1)" }}>
                 <div className="h-14 shrink-0 lg:hidden" />
                 {/* pointer-events-none: sticky bar spans full width above main (z-10); without this, flex “gaps” steal clicks from content scrolling underneath. */}
                 <div className="pointer-events-none z-20 hidden items-center justify-between gap-3 border-b border-line bg-canvas/90 px-6 py-2.5 backdrop-blur-md lg:sticky lg:top-0 lg:flex">

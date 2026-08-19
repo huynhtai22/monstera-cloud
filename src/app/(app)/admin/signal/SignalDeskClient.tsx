@@ -354,25 +354,25 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
       : "Research";
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+    <div className="space-y-6">
       {/* ── Top Header ─────────────────────────────────────────────── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 dark:border-[#2f3336] pb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-line pb-5">
         <div>
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-panel text-white">
-              <Radio className="h-6 w-6" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-panel text-ink">
+              <Radio className="h-5 w-5 text-ink" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+                <h1 className="text-xl font-semibold tracking-tight text-ink">
                   Signal Desk
                 </h1>
-                <span className="inline-flex items-center gap-1 rounded-full border border-line bg-panel px-2 py-0.5 text-xs font-semibold text-white">
-                  <Sparkles className="h-3 w-3" /> Private Engine
+                <span className="inline-flex items-center gap-1 rounded border border-line bg-panel px-2 py-0.5 font-mono text-[10px] font-medium text-ink-mute uppercase">
+                  <Sparkles className="h-3 w-3 text-accent" /> Private Engine
                 </span>
               </div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Autonomous X + Web intelligence & content generation desk.
+              <p className="text-xs text-ink-mute mt-0.5">
+                Autonomous X + Web intelligence &amp; content generation desk.
               </p>
             </div>
           </div>
@@ -380,46 +380,48 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
 
         {/* Health status bar */}
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300">
+          <div className="inline-flex items-center gap-1.5 rounded-md border border-line bg-panel px-3 py-1.5 text-xs font-medium text-ink">
             <span
               className={`h-2 w-2 rounded-full ${
                 health?.cloud_llm_status === "ready"
-                  ? "bg-emerald-500"
+                  ? "bg-emerald-400"
                   : health?.llm_configured
-                  ? "bg-amber-500"
-                  : "bg-red-500"
+                  ? "bg-amber-400"
+                  : "bg-red-400"
               }`}
             />
-            <span>LLM: {health?.active_llm_model || "deepseek-v4-flash"}</span>
+            <span className="text-ink-mute">LLM: <strong className="text-ink font-mono font-normal">{health?.active_llm_model || "deepseek-v4-flash"}</strong></span>
           </div>
 
-          <div className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300">
+          <div className="inline-flex items-center gap-1.5 rounded-md border border-line bg-panel px-3 py-1.5 text-xs font-medium text-ink">
             <span
               className={`h-2 w-2 rounded-full ${
                 health?.web_status === "ready"
-                  ? "bg-emerald-500"
+                  ? "bg-emerald-400"
                   : health?.tavily_web_status === "ready"
-                  ? "bg-amber-500"
-                  : "bg-red-500"
+                  ? "bg-amber-400"
+                  : "bg-red-400"
               }`}
             />
-            <span>
-              Web Search:{" "}
-              {health?.web_status === "ready" 
-                ? "ready" 
-                : health?.tavily_web_status === "ready"
-                  ? "degraded · Tavily fallback ready"
-                  : (health?.web_status || "checking")}
+            <span className="text-ink-mute">
+              Web:{" "}
+              <strong className="text-ink font-mono font-normal">
+                {health?.web_status === "ready" 
+                  ? "ready" 
+                  : health?.tavily_web_status === "ready"
+                    ? "degraded (Tavily fallback)"
+                    : (health?.web_status || "checking")}
+              </strong>
             </span>
           </div>
 
           <button
             type="button"
             onClick={() => setShowDiagnostics(!showDiagnostics)}
-            className="p-2 rounded-lg border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] hover:bg-gray-50 dark:hover:bg-[#1d1f23] text-gray-500 dark:text-gray-400 transition-colors"
+            className="p-2 rounded-md border border-line bg-panel hover:bg-white/[0.04] text-ink-mute hover:text-ink transition-colors"
             title="Technical Diagnostics"
           >
-            <Terminal className="h-4 w-4" />
+            <Gauge className="h-4 w-4" />
           </button>
         </div>
       </div>

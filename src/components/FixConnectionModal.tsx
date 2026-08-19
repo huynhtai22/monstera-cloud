@@ -268,7 +268,7 @@ export function FixConnectionModal({
                                 <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-mute">Connection</p>
                                 <p className="font-medium text-ink">{connection.name}</p>
                                 {connection.lastSync && connection.lastSync !== "Never" && (
-                                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    <p className="text-xs text-ink-mute">
                                         Last successful sync: {connection.lastSync}
                                     </p>
                                 )}
@@ -287,13 +287,13 @@ export function FixConnectionModal({
                             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center">
                                 <RefreshCw className="h-8 w-8 animate-spin text-accent" strokeWidth={1.5} />
                             </div>
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            <h3 className="text-lg font-semibold text-ink">
                                 Waiting for authorization...
                             </h3>
-                            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                            <p className="mt-2 text-sm text-ink-mute">
                                 Complete the authentication in the popup window.
                             </p>
-                            <p className="mt-4 text-xs text-gray-500 dark:text-gray-500">
+                            <p className="mt-4 text-xs text-ink-mute">
                                 Don't close this window until you're done.
                             </p>
                         </div>
@@ -301,16 +301,16 @@ export function FixConnectionModal({
 
                     {step === "success" && (
                         <div className="py-8 text-center">
-                            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
-                                <CheckCircle2 className="h-10 w-10 text-emerald-600 dark:text-emerald-400" />
+                            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-950/40">
+                                <CheckCircle2 className="h-10 w-10 text-emerald-400" />
                             </div>
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            <h3 className="text-lg font-semibold text-ink">
                                 Connection restored!
                             </h3>
-                            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                            <p className="mt-2 text-sm text-ink-mute">
                                 Your {connection.name} connection is working again.
                             </p>
-                            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                            <p className="mt-1 text-sm text-ink-mute">
                                 Syncs will resume automatically.
                             </p>
                             <PrimaryButton onClick={handleClose} className="mt-6 w-full">
@@ -321,10 +321,10 @@ export function FixConnectionModal({
 
                     {step === "error" && (
                         <div className="py-6 text-center">
-                            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-                                <AlertCircle className="h-10 w-10 text-red-600 dark:text-red-400" />
+                            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-950/40">
+                                <AlertCircle className="h-10 w-10 text-red-400" />
                             </div>
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                            <h3 className="text-lg font-semibold text-ink">
                                 Could not reconnect
                             </h3>
                             <p className="mt-2 text-sm text-red-600 dark:text-red-400">

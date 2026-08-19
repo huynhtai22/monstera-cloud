@@ -8,7 +8,7 @@ import bcrypt from "bcryptjs"
 import { logger } from "@/lib/logger";
 import { isPilotMode } from "@/lib/pilot-mode";
 import { allowAuthAttempt } from "@/lib/auth-rate-limit";
-
+import { isPlatformAdminEmail } from "@/lib/admin-auth";
 import { isWhitelistedProEmail } from "@/lib/plan-config";
 
 /** Long session when “Keep me signed in” is enabled (or OAuth). */
@@ -274,12 +274,7 @@ export const authOptions: NextAuthOptions = {
         async session({ session, token }: any) {
             if (!session.user) return session
 
-            const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-            session.user.isAdmin = Boolean(
-                session.user.email &&
-                adminEmail &&
-                session.user.email.trim().toLowerCase() === adminEmail
-            );
+            session.user.isAdmin = isPlatformAdminEmail(session.user.email);
 
             let userId = token.id as string | undefined
             if (!userId && session.user.email) {

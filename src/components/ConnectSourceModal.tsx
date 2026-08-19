@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
-import { X, Loader2, CheckCircle2, ChevronRight, Copy, Check, Lock, Shield } from "lucide-react";
+import { X, Loader2, CheckCircle2, ChevronRight, Copy, Check, Lock } from "lucide-react";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -379,11 +379,13 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                                     </span>
                                                     {connected ? (
                                                         <span className="rounded border border-line px-1.5 py-0.5 font-mono text-[9px] font-medium uppercase tracking-wide text-accent">
-                                                            Linked
+                                                            Connected
                                                         </span>
                                                     ) : null}
                                                 </span>
-                                                {!disabled ? (
+                                                {connected ? (
+                                                    <span className="shrink-0 text-[11px] font-medium text-ink-mute group-hover:text-ink">Manage →</span>
+                                                ) : !disabled ? (
                                                     <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-ink-mute group-hover:text-ink" strokeWidth={1.5} />
                                                 ) : (
                                                     <span className="shrink-0 rounded border border-line px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-ink-mute">
@@ -427,9 +429,6 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                     <div className="flex items-center gap-3 border-b border-line px-5 py-4">
                         <IntegrationMark src={logoSrc} alt={name} size="lg" />
                         <div className="min-w-0 flex-1">
-                            <p className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">
-                                Read-only OAuth
-                            </p>
                             <h3 id="connect-source-modal-title" className="truncate text-base font-semibold tracking-tight text-ink">
                                 {name}
                             </h3>
@@ -454,43 +453,37 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                         </button>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto px-5 py-5">
-                        <ol className="mb-5 grid grid-cols-2 gap-2">
-                            <li className="rounded-md border border-line bg-white/[0.03] px-3 py-2">
-                                <p className="font-mono text-[10px] text-accent">01</p>
-                                <p className="mt-0.5 text-xs font-medium text-ink">Review access</p>
-                            </li>
-                            <li className="rounded-md border border-line px-3 py-2">
-                                <p className="font-mono text-[10px] text-ink-mute">02</p>
-                                <p className="mt-0.5 text-xs font-medium text-ink-mute">Sign in on {name}</p>
-                            </li>
-                        </ol>
-
-                        <div className="mb-4">
-                            <h4 className="text-base font-semibold text-ink">{step1Content.title}</h4>
-                            <p className="mt-1 text-sm leading-relaxed text-ink-mute">{step1Content.subtitle}</p>
+                    <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+                        {/* Description */}
+                        <div>
+                            <h4 className="text-base font-semibold text-ink">Connect {name}</h4>
+                            <p className="mt-1.5 text-sm leading-relaxed text-ink-mute">
+                                {step1Content.subtitle}
+                            </p>
                         </div>
 
-                        <div className="overflow-hidden rounded-md border border-line">
-                            <div className="flex items-center gap-2 border-b border-line px-3 py-2">
-                                <Shield className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
-                                <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">
-                                    Permissions requested
-                                </p>
-                            </div>
-                            <ul className="divide-y divide-line">
+                        {/* Access section */}
+                        <div>
+                            <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-mute">Access</p>
+                            <ul className="space-y-2">
                                 {step1Content.permissions.map((line) => (
-                                    <li key={line} className="flex items-start gap-2.5 px-3 py-2.5 text-sm text-ink">
+                                    <li key={line} className="flex items-start gap-2.5 text-sm text-ink">
                                         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-accent" strokeWidth={1.5} />
                                         {line}
                                     </li>
                                 ))}
                             </ul>
                         </div>
-                        <p className="mt-3 text-xs leading-relaxed text-ink-mute">{step1Content.footnote}</p>
 
+                        {/* Read-only reassurance */}
+                        <div className="border-t border-line pt-4">
+                            <p className="text-xs font-semibold text-ink">Read-only access</p>
+                            <p className="mt-1 text-xs leading-relaxed text-ink-mute">{step1Content.footnote}</p>
+                        </div>
+
+                        {/* Shopify domain input — unchanged */}
                         {id === "shopify" && (
-                            <div className="mt-4 space-y-1.5">
+                            <div className="space-y-1.5">
                                 <label htmlFor="shopify-domain" className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">
                                     {uiConfig?.domainInputLabel ?? "Shopify store domain"}
                                 </label>
@@ -506,69 +499,77 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                             </div>
                         )}
 
+                        {/* Developer: OAuth callback — collapsed by default */}
                         {(id === "meta_ads" || id === "google_ads" || id === "amazon" || id === "lazada") && (
-                            <div className="mt-4 space-y-2 rounded-md border border-dashed border-line px-3 py-3">
-                                <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">
-                                    {id === "meta_ads"
-                                        ? "Meta — Valid OAuth Redirect URI"
-                                        : id === "google_ads"
-                                          ? "Google Cloud — Authorized redirect URI"
-                                          : id === "amazon"
-                                            ? "Amazon — Allowed OAuth redirect URI"
-                                            : "Lazada — Callback URL"}
-                                </p>
-                                <p className="text-[11px] leading-snug text-ink-mute">
-                                    Production domain{" "}
-                                    <span className="text-ink">monsteracloud.com</span> — paste the full URL into the developer console.
-                                </p>
-                                {productionOauthUrl ? (
-                                    <div className="flex items-start gap-2">
-                                        <code className="flex-1 break-all rounded-md border border-line bg-canvas px-2.5 py-2 font-mono text-[11px] leading-relaxed text-ink">
-                                            {productionOauthUrl}
-                                        </code>
-                                        <button
-                                            type="button"
-                                            onClick={() => copyOAuthCallback(productionOauthUrl, "production")}
-                                            className="shrink-0 rounded-md border border-line p-2 text-ink-mute transition-colors hover:bg-white/[0.04] hover:text-ink"
-                                            title="Copy production URL"
-                                        >
-                                            {copiedWhich === "production" ? (
-                                                <Check className="h-4 w-4 text-accent" strokeWidth={1.5} aria-hidden />
-                                            ) : (
-                                                <Copy className="h-4 w-4" strokeWidth={1.5} aria-hidden />
-                                            )}
-                                        </button>
-                                    </div>
-                                ) : intConfig ? (
-                                    <p className="text-[11px] text-amber-400">Could not load production callback URL.</p>
-                                ) : (
-                                    <p className="animate-pulse text-[11px] text-ink-mute">Loading…</p>
-                                )}
-                                {sessionDiffersFromProduction && oauthCallbackUrl && (
-                                    <div className="space-y-1.5 border-t border-line pt-2">
-                                        <p className="font-mono text-[10px] uppercase tracking-wide text-ink-mute">
-                                            This session (local / preview)
-                                        </p>
+                            <details className="group">
+                                <summary className="cursor-pointer list-none text-[11px] text-ink-mute hover:text-ink select-none flex items-center gap-1">
+                                    <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" strokeWidth={1.5} />
+                                    Advanced setup
+                                </summary>
+                                <div className="mt-3 space-y-2 rounded-md border border-dashed border-line px-3 py-3">
+                                    <p className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">
+                                        {id === "meta_ads"
+                                            ? "Meta — Valid OAuth Redirect URI"
+                                            : id === "google_ads"
+                                            ? "Google Cloud — Authorized redirect URI"
+                                            : id === "amazon"
+                                                ? "Amazon — Allowed OAuth redirect URI"
+                                                : "Lazada — Callback URL"}
+                                    </p>
+                                    <p className="text-[11px] leading-snug text-ink-mute">
+                                        Production domain{" "}
+                                        <span className="text-ink">monsteracloud.com</span> — paste the full URL into the developer console.
+                                    </p>
+                                    {productionOauthUrl ? (
                                         <div className="flex items-start gap-2">
-                                            <code className="flex-1 break-all rounded-md border border-line bg-canvas/70 px-2 py-1.5 font-mono text-[11px] text-ink-mute">
-                                                {oauthCallbackUrl}
+                                            <code className="flex-1 break-all rounded-md border border-line bg-canvas px-2.5 py-2 font-mono text-[11px] leading-relaxed text-ink">
+                                                {productionOauthUrl}
                                             </code>
                                             <button
                                                 type="button"
-                                                onClick={() => copyOAuthCallback(oauthCallbackUrl, "session")}
-                                                className="shrink-0 rounded-md border border-line px-2 py-1.5 font-mono text-[10px] text-ink-mute hover:text-ink"
+                                                onClick={() => copyOAuthCallback(productionOauthUrl, "production")}
+                                                className="shrink-0 rounded-md border border-line p-2 text-ink-mute transition-colors hover:bg-white/[0.04] hover:text-ink"
+                                                title="Copy production URL"
                                             >
-                                                {copiedWhich === "session" ? "Copied" : "Copy"}
+                                                {copiedWhich === "production" ? (
+                                                    <Check className="h-4 w-4 text-accent" strokeWidth={1.5} aria-hidden />
+                                                ) : (
+                                                    <Copy className="h-4 w-4" strokeWidth={1.5} aria-hidden />
+                                                )}
                                             </button>
                                         </div>
-                                    </div>
-                                )}
-                            </div>
+                                    ) : intConfig ? (
+                                        <p className="text-[11px] text-amber-400">Could not load production callback URL.</p>
+                                    ) : (
+                                        <p className="animate-pulse text-[11px] text-ink-mute">Loading…</p>
+                                    )}
+                                    {sessionDiffersFromProduction && oauthCallbackUrl && (
+                                        <div className="space-y-1.5 border-t border-line pt-2">
+                                            <p className="font-mono text-[10px] uppercase tracking-wide text-ink-mute">
+                                                This session (local / preview)
+                                            </p>
+                                            <div className="flex items-start gap-2">
+                                                <code className="flex-1 break-all rounded-md border border-line bg-canvas/70 px-2 py-1.5 font-mono text-[11px] text-ink-mute">
+                                                    {oauthCallbackUrl}
+                                                </code>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => copyOAuthCallback(oauthCallbackUrl, "session")}
+                                                    className="shrink-0 rounded-md border border-line px-2 py-1.5 font-mono text-[10px] text-ink-mute hover:text-ink"
+                                                >
+                                                    {copiedWhich === "session" ? "Copied" : "Copy"}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </details>
                         )}
 
-                        <div className="mt-5 flex items-start gap-2 text-[11px] leading-relaxed text-ink-mute">
-                            <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-mute" strokeWidth={1.5} />
-                            <span>Tokens encrypted at rest. Read-only scopes. You can revoke access anytime in the provider console.</span>
+                        {/* Security footnote */}
+                        <div className="flex items-start gap-2 text-[11px] leading-relaxed text-ink-mute">
+                            <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
+                            <span>Tokens encrypted at rest. You can revoke access anytime in the provider console.</span>
                         </div>
                     </div>
 
@@ -576,7 +577,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                         <button
                             onClick={handleClose}
                             disabled={isProcessing}
-                            className="rounded-md px-3 py-2 text-sm font-medium text-ink-mute transition-colors hover:text-ink disabled:opacity-50"
+                            className="rounded-md border border-line px-4 py-2.5 text-sm font-medium text-ink-mute transition-colors hover:bg-white/[0.04] hover:text-ink disabled:opacity-50"
                         >
                             Cancel
                         </button>
@@ -598,7 +599,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                         <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-current" aria-hidden>
                                             <path d="M13.5 21v-7.5h2.5l.4-3H13.5V8.6c0-.9.3-1.5 1.6-1.5H16.5V4.4c-.3 0-1.2-.1-2.3-.1-2.3 0-3.9 1.4-3.9 4v2.2H8v3h2.3V21h3.2z" />
                                         </svg>
-                                        Continue with Facebook
+                                        Continue with Meta
                                     </>
                                 )}
                             </button>
@@ -644,7 +645,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                     </>
                                 ) : (
                                     <>
-                                        Continue to {name} <ChevronRight className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+                                        Continue with {name} <ChevronRight className="h-4 w-4 shrink-0" strokeWidth={1.5} />
                                     </>
                                 )}
                             </button>
