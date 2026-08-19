@@ -215,6 +215,23 @@ export default function SourcesPage() {
                     </div>,
                     { duration: 30000, id: 'sync-blocked' }
                 );
+            } else if (data.code === 'SYNC_COOLDOWN') {
+                toast(
+                    <div className="max-w-md">
+                        <p className="font-semibold mb-1 text-white">Sync Cooldown Active</p>
+                        <p className="text-sm mb-3 text-neutral-300">{data.error}</p>
+                        <button
+                            onClick={() => {
+                                toast.dismiss('sync-cooldown');
+                                handleDirectSync(connectionId, provider, true);
+                            }}
+                            className="text-xs bg-white hover:bg-neutral-200 text-black font-semibold px-3 py-1.5 rounded transition-colors"
+                        >
+                            Force Sync Now
+                        </button>
+                    </div>,
+                    { duration: 12000, id: 'sync-cooldown' }
+                );
             } else {
                 // DEBUG: Show full error details since Vercel logs are unavailable
                 const errorDetails = JSON.stringify(data, null, 2);

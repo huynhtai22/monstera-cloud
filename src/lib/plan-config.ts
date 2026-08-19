@@ -7,6 +7,20 @@
 export type PlanName = 'free' | 'pilot' | 'starter' | 'professional' | 'enterprise';
 
 /**
+ * Whitelisted emails that automatically receive Agency Pro plan privileges.
+ */
+export const PRO_WHITELIST_EMAILS = [
+  "huynhcamtai1234@gmail.com",
+  "huynhtai@monsteracloud.com",
+];
+
+export function isWhitelistedProEmail(email: string | undefined | null): boolean {
+  if (!email) return false;
+  const normalized = email.toLowerCase().trim();
+  return PRO_WHITELIST_EMAILS.includes(normalized);
+}
+
+/**
  * True when the user has an active paid tier (anything other than free).
  * Used for post-login routing; keep in sync with webhook `user.plan` values.
  */

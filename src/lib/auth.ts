@@ -9,6 +9,8 @@ import { logger } from "@/lib/logger";
 import { isPilotMode } from "@/lib/pilot-mode";
 import { allowAuthAttempt } from "@/lib/auth-rate-limit";
 
+import { isWhitelistedProEmail } from "@/lib/plan-config";
+
 /** Long session when “Keep me signed in” is enabled (or OAuth). */
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 /** Short session when user opts out of “keep signed in”. */
@@ -21,12 +23,21 @@ const isProduction = process.env.NODE_ENV === "production"
  * Idempotent — safe to call multiple times; workspace is only created once.
  * Must be called OUTSIDE of an auth transaction to avoid deadlocks.
  */
-async function ensureWorkspace(userId: string): Promise<void> {
+async function ensureWorkspace(userId: string, email?: string | null): Promise<void> {
+    const isPro = isWhitelistedProEmail(email);
     const existing = await prisma.workspaceMember.findFirst({
         where: { userId },
-        select: { id: true },
+        select: { id: true, workspaceId: true, workspace: { select: { plan: true } } },
     });
-    if (existing) return;
+    if (existing) {
+        if (isPro && existing.workspace.plan !== "professional" && existing.workspace.plan !== "enterprise") {
+            await prisma.workspace.update({
+                where: { id: existing.workspaceId },
+                data: { plan: "professional", status: "ACTIVE" },
+            });
+        }
+        return;
+    }
 
     try {
         await prisma.$transaction(async (tx) => {
@@ -35,8 +46,8 @@ async function ensureWorkspace(userId: string): Promise<void> {
                     name: "Agency Workspace",
                     slug: `agency-${userId.slice(0, 8)}`,
                     ownerId: userId,
-                    plan: "pilot",
-                    status: "PILOT",
+                    plan: isPro ? "professional" : "pilot",
+                    status: isPro ? "ACTIVE" : "PILOT",
                     providerAccess: {
                         create: [
                             { provider: "meta_ads", enabled: true },
@@ -289,9 +300,19 @@ export const authOptions: NextAuthOptions = {
                 session.user.id = userId
                 const row = await prisma.user.findUnique({
                     where: { id: userId },
-                    select: { hashedPassword: true, workspaces: { select: { workspace: { select: { plan: true } } } } },
+                    select: { hashedPassword: true, workspaces: { select: { workspace: { select: { id: true, plan: true } } } } },
                 })
-                session.user.plan = row?.workspaces[0]?.workspace.plan ?? "free"
+                const currentPlan = row?.workspaces[0]?.workspace.plan ?? "free";
+                const isPro = isWhitelistedProEmail(session.user.email);
+                if (isPro && currentPlan !== "professional" && currentPlan !== "enterprise" && row?.workspaces[0]?.workspace.id) {
+                    await prisma.workspace.update({
+                        where: { id: row.workspaces[0].workspace.id },
+                        data: { plan: "professional", status: "ACTIVE" },
+                    }).catch(() => {});
+                    session.user.plan = "professional";
+                } else {
+                    session.user.plan = isPro ? "professional" : currentPlan;
+                }
                 session.user.hasPassword = Boolean(row?.hashedPassword)
             }
             return session
@@ -307,7 +328,7 @@ export const authOptions: NextAuthOptions = {
         async createUser({ user }) {
             if (!user?.id) return;
             try {
-                await ensureWorkspace(user.id);
+                await ensureWorkspace(user.id, user.email);
             } catch (err) {
                 logger.error("[AUTH] createUser workspace provisioning failed:", err);
             }

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { isWhitelistedProEmail } from "@/lib/plan-config";
 
 /**
  * GET /api/user/plan
@@ -28,9 +29,18 @@ export async function GET(request: Request) {
     });
     const workspace = await prisma.workspace.findUniqueOrThrow({
       where: { id: workspaceId },
-      select: { plan: true, status: true },
+      select: { id: true, plan: true, status: true },
     });
-    return NextResponse.json(workspace);
+
+    if (isWhitelistedProEmail(session.user.email) && workspace.plan !== "professional" && workspace.plan !== "enterprise") {
+      await prisma.workspace.update({
+        where: { id: workspace.id },
+        data: { plan: "professional", status: "ACTIVE" },
+      }).catch(() => {});
+      return NextResponse.json({ plan: "professional", status: "ACTIVE" });
+    }
+
+    return NextResponse.json({ plan: workspace.plan, status: workspace.status });
   } catch (error) {
     const rbac = toRbacResponse(error);
     if (rbac) return rbac;
