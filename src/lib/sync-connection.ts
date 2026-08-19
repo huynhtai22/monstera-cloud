@@ -349,6 +349,22 @@ async function syncGoogleAds(opts: {
   // Google stores customerIds in extraFields
   const extraFields = credentials.extraFields || {};
   let customerIds = extraFields.customerIds || credentials.customerIds || [];
+
+  if ((!customerIds || customerIds.length === 0) && connectionId) {
+    try {
+      const conn = await prisma.connection.findUnique({
+        where: { id: connectionId },
+        select: { remoteAccountId: true },
+      });
+      if (conn?.remoteAccountId && conn.remoteAccountId.trim().length > 0) {
+        customerIds = [conn.remoteAccountId.trim()];
+        logger.info(`[syncGoogleAds] Resolved customerId from DB remoteAccountId: ${conn.remoteAccountId}`);
+      }
+    } catch (dbErr) {
+      logger.warn(`[syncGoogleAds] DB connection query failed:`, dbErr);
+    }
+  }
+
   logger.info(`[syncGoogleAds] Total customer IDs:`, customerIds.length);
 
   const selectedIds = extraFields.selectedCustomerIds || credentials.selectedCustomerIds;
@@ -358,7 +374,7 @@ async function syncGoogleAds(opts: {
   }
 
   if (!customerIds.length) {
-    return { success: false, rowsIngested: 0, error: "No customer accounts selected" };
+    return { success: false, rowsIngested: 0, error: "No customer accounts selected or found on connection" };
   }
 
   const dateSpec =
@@ -529,6 +545,22 @@ async function syncTikTok(opts: {
   // TikTok stores advertiserIds in extraFields
   const extraFields = credentials.extraFields || {};
   let advertiserIds = extraFields.advertiserIds || credentials.advertiserIds || [];
+
+  if ((!advertiserIds || advertiserIds.length === 0) && connectionId) {
+    try {
+      const conn = await prisma.connection.findUnique({
+        where: { id: connectionId },
+        select: { remoteAccountId: true },
+      });
+      if (conn?.remoteAccountId && conn.remoteAccountId.trim().length > 0) {
+        advertiserIds = [conn.remoteAccountId.trim()];
+        logger.info(`[syncTikTok] Resolved advertiserId from DB remoteAccountId: ${conn.remoteAccountId}`);
+      }
+    } catch (dbErr) {
+      logger.warn(`[syncTikTok] DB connection query failed:`, dbErr);
+    }
+  }
+
   logger.info(`[syncTikTok] Total advertiser IDs:`, advertiserIds.length);
 
   const selectedIds = extraFields.selectedAdvertiserIds || credentials.selectedAdvertiserIds;
@@ -538,7 +570,7 @@ async function syncTikTok(opts: {
   }
 
   if (!advertiserIds.length) {
-    return { success: false, rowsIngested: 0, error: "No advertisers selected" };
+    return { success: false, rowsIngested: 0, error: "No advertisers selected or found on connection" };
   }
 
   const jobId = `pipeline-${Date.now()}`;
