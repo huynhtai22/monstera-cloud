@@ -63,7 +63,14 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
 
   try {
     if (provider === "meta_ads") {
-      return await syncMetaAds({ connectionId, credentials, workspaceId });
+      return await syncMetaAds({
+        connectionId,
+        credentials,
+        workspaceId,
+        since: opts.since,
+        until: opts.until,
+        userPlan: plan,
+      });
     } else if (provider === "google_ads") {
       return await syncGoogleAds({
         connectionId,
@@ -147,10 +154,13 @@ async function syncMetaAds(opts: {
   connectionId: string;
   credentials: any;
   workspaceId: string;
+  since?: string;
+  until?: string;
+  userPlan?: string;
 }): Promise<SyncResult> {
-  const { connectionId, credentials, workspaceId } = opts;
+  const { connectionId, credentials, workspaceId, since, until } = opts;
   
-  logger.info(`[syncMetaAds] Starting. adAccounts:`, credentials.adAccounts?.length || 0, 
+  logger.info(`[syncMetaAds] Starting. range=${since ?? "none"}..${until ?? "none"} adAccounts:`, credentials.adAccounts?.length || 0, 
     'adAccountIds:', credentials.adAccountIds?.length || 0);
 
   // Get valid token
@@ -254,14 +264,21 @@ async function syncMetaAds(opts: {
 
     try {
       // Fetch insights from Meta API
-      logger.info(`[syncMetaAds] Fetching Meta API for ${accountId}`);
-      const rows = await metaReportClient.getInsights(accessToken, {
+      logger.info(`[syncMetaAds] Fetching Meta API for ${accountId} with range=${since ?? "last_30d"}..${until ?? "today"}`);
+      const insightsQuery: any = {
         adAccountId: accountId.replace("act_", ""),
         fields: META_DEFAULT_FIELDS,
         level: "campaign",
-        datePreset: "last_30d",
         timeIncrement: 1,
-      });
+      };
+
+      if (since && until) {
+        insightsQuery.timeRange = { since, until };
+      } else {
+        insightsQuery.datePreset = "last_30d";
+      }
+
+      const rows = await metaReportClient.getInsights(accessToken, insightsQuery);
       logger.info(`[syncMetaAds] Meta API returned ${rows.length} rows for ${accountId}`);
 
       if (rows.length > 0) {

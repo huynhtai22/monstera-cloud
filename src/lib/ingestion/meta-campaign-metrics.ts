@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import {
+  metaAdsClient,
   metaReportClient,
   type MetaInsightsRow,
   type MetaAction,
@@ -124,13 +125,28 @@ export async function syncMetaInsightsIntoWarehouse(
   if (accountIds.length === 0 && creds.adAccounts?.length) {
     accountIds = creds.adAccounts.map((a) => a.id);
   }
-  if (accountIds.length === 0) {
-    throw new Error("No Meta ad accounts on this connection. Reconnect Meta Ads.");
+
+  if (accountIds.length === 0 && conn.remoteAccountId && conn.remoteAccountId.trim().length > 0) {
+    accountIds = [conn.remoteAccountId];
   }
 
   const range = { since: params.since, until: params.until };
-
   const accessToken = await getValidOAuthToken(conn);
+
+  if (accountIds.length === 0 && accessToken) {
+    try {
+      const apiAccounts = await metaAdsClient.getAdAccounts(accessToken);
+      if (apiAccounts && apiAccounts.length > 0) {
+        accountIds = apiAccounts.map((a) => a.id);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (accountIds.length === 0) {
+    throw new Error("No Meta ad accounts on this connection. Reconnect Meta Ads.");
+  }
 
   let total = 0;
   let acctCount = 0;
