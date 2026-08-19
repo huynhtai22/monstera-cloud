@@ -48,8 +48,8 @@ export function PilotProvisioningClient() {
     const finalTotal = Math.round(rawTotal * (1 - bdDiscountPercent / 100));
 
     const BANK_ID = "TCB";
-    const ACCOUNT_NO = "19036888888888";
-    const ACCOUNT_NAME = "MONSTERA CLOUD VIETNAM";
+    const ACCOUNT_NO = "19036348292019";
+    const ACCOUNT_NAME = "HUYNH CAM TAI";
     const memo = `MC ${bdPlan.toUpperCase()} ${bdAgencyName ? bdAgencyName.trim().toUpperCase().replace(/\s+/g, "") : "AGENCY"}`.slice(0, 25);
 
     const bdQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.png?amount=${finalTotal}&addInfo=${encodeURIComponent(
@@ -120,7 +120,7 @@ export function PilotProvisioningClient() {
     }
 
     const copySalesPitch = () => {
-        const pitch = `Chào bạn, Monstera Cloud gửi bạn thông tin kích hoạt gói ${bdPlan.toUpperCase()} (${bdDurationMonths} tháng):\n- Số tiền: ${finalTotal.toLocaleString("vi-VN")} đ\n- Ngân hàng: Techcombank (19036888888888)\n- Tên TK: MONSTERA CLOUD VIETNAM\n- Nội dung CK: ${memo}\n- Link đăng nhập & kết nối: https://monsteracloud.com/console`;
+        const pitch = `Chào bạn, Monstera Cloud gửi bạn thông tin kích hoạt gói ${bdPlan.toUpperCase()} (${bdDurationMonths} tháng):\n- Số tiền: ${finalTotal.toLocaleString("vi-VN")} đ\n- Ngân hàng: Techcombank (19036348292019)\n- Tên TK: HUYNH CAM TAI\n- Nội dung CK: ${memo}\n- Link đăng nhập & kết nối: https://monsteracloud.com/console`;
         navigator.clipboard.writeText(pitch);
         setCopiedQr(true);
         setTimeout(() => setCopiedQr(false), 2500);
@@ -283,7 +283,8 @@ export function PilotProvisioningClient() {
                                 <div className="space-y-1 text-xs">
                                     <p className="font-bold text-emerald-600 text-sm">{finalTotal.toLocaleString("vi-VN")} đ</p>
                                     <p className="text-slate-500 font-mono">Nội dung: {memo}</p>
-                                    <p className="text-slate-400">Techcombank · 19036888888888</p>
+                                    <p className="text-slate-400 font-medium">Techcombank · 19036348292019</p>
+                                    <p className="text-slate-400 font-bold uppercase">HUYNH CAM TAI</p>
                                 </div>
                             </div>
 

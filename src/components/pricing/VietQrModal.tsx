@@ -32,9 +32,9 @@ export function VietQrModal({
     const [isPaid, setIsPaid] = useState(false);
     const [notified, setNotified] = useState(false);
 
-    const BANK_NAME = "Techcombank (Ngân hàng Kỹ Thương)";
-    const ACCOUNT_NO = "19036888888888";
-    const ACCOUNT_NAME = "MONSTERA CLOUD VIETNAM";
+    const [bankName, setBankName] = useState<string>("Techcombank (Ngân hàng Kỹ Thương)");
+    const [accountNo, setAccountNo] = useState<string>("19036348292019");
+    const [accountName, setAccountName] = useState<string>("HUYNH CAM TAI");
 
     // 1. Create dynamic payment order on open
     useEffect(() => {
@@ -180,9 +180,19 @@ export function VietQrModal({
                                 <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
                                     <div>
                                         <span className="text-slate-400 block font-medium">Ngân hàng thụ hưởng</span>
-                                        <span className="font-semibold text-slate-800 dark:text-slate-200">{BANK_NAME}</span>
+                                        <span className="font-semibold text-slate-800 dark:text-slate-200">{bankName}</span>
                                     </div>
                                     <Building2 className="w-5 h-5 text-slate-400" />
+                                </div>
+
+                                {/* Account Holder Name */}
+                                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                                    <div>
+                                        <span className="text-slate-400 block font-medium">Chủ tài khoản</span>
+                                        <span className="font-bold text-slate-900 dark:text-white uppercase tracking-wide">
+                                            {accountName}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 {/* Account Number */}
@@ -190,12 +200,12 @@ export function VietQrModal({
                                     <div>
                                         <span className="text-slate-400 block font-medium">Số tài khoản</span>
                                         <span className="font-mono font-bold text-slate-900 dark:text-white text-sm tracking-wide">
-                                            {ACCOUNT_NO}
+                                            {accountNo}
                                         </span>
                                     </div>
                                     <button
                                         type="button"
-                                        onClick={() => copyToClipboard(ACCOUNT_NO, "account")}
+                                        onClick={() => copyToClipboard(accountNo, "account")}
                                         className="flex items-center gap-1.5 px-3 py-1.5 font-semibold rounded-lg bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 shadow-2xs"
                                     >
                                         {copiedField === "account" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}

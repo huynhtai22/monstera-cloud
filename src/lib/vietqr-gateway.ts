@@ -35,8 +35,8 @@ export function getBankConfig() {
     return {
         bankId: (process.env.VIETQR_BANK_ID || "TCB").trim(), // TCB, VCB, MB, ACB, VPB, etc.
         bankName: (process.env.VIETQR_BANK_NAME || "Techcombank").trim(),
-        accountNo: (process.env.VIETQR_ACCOUNT_NO || "19036888888888").trim(),
-        accountName: (process.env.VIETQR_ACCOUNT_NAME || "MONSTERA CLOUD VIETNAM").trim(),
+        accountNo: (process.env.VIETQR_ACCOUNT_NO || "19036348292019").trim(),
+        accountName: (process.env.VIETQR_ACCOUNT_NAME || "HUYNH CAM TAI").trim(),
     };
 }
 
