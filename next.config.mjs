@@ -32,6 +32,10 @@ const nextConfig = {
       { source: "/ops", destination: "/console", permanent: false },
       // Short URL for payment gateways and app store listings
       { source: "/refund", destination: "/legal/refund-policy", permanent: true },
+      { source: "/privacy", destination: "/legal/privacy-policy", permanent: true },
+      { source: "/privacy-policy", destination: "/legal/privacy-policy", permanent: true },
+      { source: "/terms", destination: "/legal/terms-of-service", permanent: true },
+      { source: "/terms-of-service", destination: "/legal/terms-of-service", permanent: true },
     ];
   },
   // OWASP Security Headers
