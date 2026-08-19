@@ -27,6 +27,7 @@ import {
   releaseMetaSyncLock,
 } from "@/lib/meta-sync-lock";
 import { requireWorkspaceAccess } from "@/lib/rbac";
+import { assertWorkspaceProviderEnabled } from "@/lib/workspace-provider-access";
 
 export async function POST(
   request: Request,
@@ -61,6 +62,10 @@ export async function POST(
       workspaceId: connection.workspaceId,
       minimumRole: force ? "admin" : "member",
       operation: force ? "force_unlock_connection" : "manual_sync",
+    });
+    await assertWorkspaceProviderEnabled({
+      workspaceId: connection.workspaceId,
+      provider: connection.provider,
     });
 
     // Only for ad platforms that use CampaignMetric

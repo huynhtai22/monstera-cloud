@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { withSystemScope } from "@/lib/tenant-guard";
 
 /** Classify a sync error message into a broad bucket. */
 function classifyError(msg: string | null): "timeout" | "oauth" | "rateLimit" | "schema" | "other" {
@@ -20,6 +21,10 @@ export async function GET() {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    return withSystemScope(() => collectOpsStats());
+}
+
+async function collectOpsStats() {
     const now = new Date();
     const ago24h = new Date(now.getTime() - 24 * 3_600_000);
     const ago1h = new Date(now.getTime() - 3_600_000);

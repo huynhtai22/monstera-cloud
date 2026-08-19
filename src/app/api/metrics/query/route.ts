@@ -10,7 +10,7 @@ import {
   ADS_FIELDS_BY_ID,
 } from "@/lib/ads-field-registry";
 import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-cache";
-import { requireWorkspaceAccess } from "@/lib/rbac";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { queryWarehouse } from "@/lib/warehouse-query";
 
 /**
@@ -58,12 +58,18 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
   }
 
-  await requireWorkspaceAccess({
-    userId: session.user.id,
-    workspaceId,
-    minimumRole: "viewer",
-    operation: "query_metrics",
-  });
+  try {
+    await requireWorkspaceAccess({
+      userId: session.user.id,
+      workspaceId,
+      minimumRole: "viewer",
+      operation: "query_metrics",
+    });
+  } catch (err) {
+    const rbac = toRbacResponse(err);
+    if (rbac) return rbac;
+    throw err;
+  }
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
     select: { plan: true },

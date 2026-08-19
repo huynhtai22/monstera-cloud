@@ -3,7 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import GoogleProvider from "next-auth/providers/google"
 import { PrismaAdapter } from "@next-auth/prisma-adapter"
 import { encode as jwtEncode, decode as jwtDecode } from "next-auth/jwt"
-import prisma from "@/lib/prisma"
+import prisma, { prismaBase } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { logger } from "@/lib/logger";
 import { isPilotMode } from "@/lib/pilot-mode";
@@ -61,7 +61,7 @@ async function ensureWorkspace(userId: string): Promise<void> {
 }
 
 export const authOptions: NextAuthOptions = {
-    adapter: PrismaAdapter(prisma),
+    adapter: PrismaAdapter(prismaBase),
     // Only pin the short-lived OAuth handshake cookies (state + PKCE verifier).
     // These are the ones that break in incognito / on Vercel preview URLs because
     // NextAuth auto-applies the __Secure- prefix which Chrome drops on cross-site

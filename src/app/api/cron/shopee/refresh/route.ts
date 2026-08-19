@@ -12,6 +12,7 @@ import {
 import { encrypt, safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { requireCronSecret } from "@/lib/request-auth";
+import { withSystemScope } from "@/lib/tenant-guard";
 
 export async function GET(request: Request) {
   try {
@@ -20,12 +21,14 @@ export async function GET(request: Request) {
 
     logger.info("[CRON: SHOPEE REFRESH] Fleet token refresh starting…");
 
-    const connections = await prisma.connection.findMany({
-      where: {
-        provider: "shopee",
-        status: "connected",
-      },
-    });
+    const connections = await withSystemScope(() =>
+      prisma.connection.findMany({
+        where: {
+          provider: "shopee",
+          status: "connected",
+        },
+      }),
+    );
 
     const now = Date.now();
     const shopeeClient = new ShopeeClient();

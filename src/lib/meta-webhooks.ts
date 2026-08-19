@@ -11,6 +11,7 @@ import crypto from "crypto";
 import { logger } from "@/lib/logger";
 import prisma from "@/lib/prisma";
 import { sendAgencyAlert } from "@/lib/alerts";
+import { withSystemScope } from "@/lib/tenant-guard";
 
 const META_API_VERSION = "v23.0";
 const META_GRAPH_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
@@ -151,6 +152,14 @@ export async function fetchMetaLeadDetails(
  * Core event dispatcher for incoming Meta Webhooks
  */
 export async function handleMetaWebhookPayload(payload: MetaWebhookPayload): Promise<{
+    processed: number;
+    leads: number;
+    alerts: number;
+}> {
+    return withSystemScope(() => handleMetaWebhookPayloadUnsafe(payload));
+}
+
+async function handleMetaWebhookPayloadUnsafe(payload: MetaWebhookPayload): Promise<{
     processed: number;
     leads: number;
     alerts: number;

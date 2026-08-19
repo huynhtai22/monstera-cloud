@@ -1,15 +1,37 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from "@prisma/client";
+import { assertTenantScoped, shouldSkipTenantGuard } from "@/lib/tenant-guard";
 
-const prismaClientSingleton = () => {
-    return new PrismaClient()
-}
+const prismaClientSingleton = () => new PrismaClient();
 
 declare global {
-    var prismaGlobal: undefined | ReturnType<typeof prismaClientSingleton>
+  var prismaBaseGlobal: undefined | PrismaClient;
+  var prismaGlobal: undefined | ReturnType<typeof createGuardedPrisma>;
 }
 
-const prisma = globalThis.prismaGlobal ?? prismaClientSingleton()
+function createGuardedPrisma(base: PrismaClient) {
+  return base.$extends({
+    query: {
+      $allModels: {
+        async $allOperations({ model, operation, args, query }) {
+          if (!shouldSkipTenantGuard()) {
+            assertTenantScoped(model, operation, args);
+          }
+          return query(args);
+        },
+      },
+    },
+  });
+}
 
-export default prisma
+const prismaBase = globalThis.prismaBaseGlobal ?? prismaClientSingleton();
+const prisma = globalThis.prismaGlobal ?? createGuardedPrisma(prismaBase);
 
-if (process.env.NODE_ENV !== 'production') globalThis.prismaGlobal = prisma
+/** Unguarded client for NextAuth adapter and other identity tables. */
+export { prismaBase };
+
+export default prisma;
+
+if (process.env.NODE_ENV !== "production") {
+  globalThis.prismaBaseGlobal = prismaBase;
+  globalThis.prismaGlobal = prisma;
+}

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { withSystemScope } from "@/lib/tenant-guard";
 import { listRecentVietQrOrders } from "@/lib/vietqr-gateway";
 import { PLAN_PRICING, type PlanName } from "@/lib/plan-config";
 
@@ -55,7 +56,8 @@ export async function GET(req: NextRequest) {
         totalRetailOrders,
         totalSyncLogs,
         totalSyncJobs,
-    ] = await Promise.all([
+    ] = await withSystemScope(() =>
+        Promise.all([
         prisma.user.count(),
         prisma.workspace.count(),
         prisma.connection.count(),
@@ -64,7 +66,8 @@ export async function GET(req: NextRequest) {
         prisma.retailOrder.count(),
         prisma.syncLog.count(),
         prisma.syncJob.count(),
-    ]);
+        ]),
+    );
 
     // ── 2. User Growth & Churn Metrics ─────────────────────────────────────────
     const newUsersInPeriod = await prisma.user.count({
@@ -171,10 +174,12 @@ export async function GET(req: NextRequest) {
         totalSyncs24h > 0 ? Math.round((successfulSyncs24h / totalSyncs24h) * 100) : 100;
 
     // Connections by Provider
-    const connectionsByProvider = await prisma.connection.groupBy({
-        by: ["provider"],
-        _count: { _all: true },
-    });
+    const connectionsByProvider = await withSystemScope(() =>
+        prisma.connection.groupBy({
+            by: ["provider"],
+            _count: { _all: true },
+        }),
+    );
 
     return NextResponse.json({
         timeframe,

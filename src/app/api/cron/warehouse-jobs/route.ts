@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { requireCronSecret } from "@/lib/request-auth";
+import { withSystemScope } from "@/lib/tenant-guard";
 import { claimNextImportJob } from "@/lib/warehouse-import-job";
 import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
 
@@ -32,6 +33,10 @@ export async function POST(req: Request) {
 }
 
 async function processWarehouseQueue() {
+  return withSystemScope(() => processWarehouseQueueUnsafe());
+}
+
+async function processWarehouseQueueUnsafe() {
   const now = new Date();
 
   // 1. Recover jobs whose worker lease expired (worker crashed/aborted).

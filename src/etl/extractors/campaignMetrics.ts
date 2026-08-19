@@ -21,8 +21,17 @@ export async function extractCampaignMetricsFromDb(opts: {
   const cursor = opts.cursorRaw ? safeJsonParse(opts.cursorRaw) : null;
   const after = cursor?.lastDate ? new Date(String(cursor.lastDate)) : null;
 
+  const connection = await prisma.connection.findUnique({
+    where: { id: opts.connectionId },
+    select: { workspaceId: true },
+  });
+  if (!connection) {
+    return { columns: [], rows: [], nextCursor: null };
+  }
+
   const metrics = await prisma.campaignMetric.findMany({
     where: {
+      workspaceId: connection.workspaceId,
       connectionId: opts.connectionId,
       ...(after ? { date: { gt: after } } : {}),
     },

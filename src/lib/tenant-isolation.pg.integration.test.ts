@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { PrismaClient } from "@prisma/client";
 import { RbacError, requireWorkspaceAccess } from "./rbac";
+import guardedPrisma from "./prisma";
+import { TenantScopeError } from "./tenant-guard";
 
 /**
  * A real PostgreSQL safety net for the resource types exposed by the pilot.
@@ -200,5 +202,12 @@ describe("PostgreSQL integration: tenant isolation safety gate", () => {
     assert.equal(connectionUpdate.count, 0);
     assert.equal(ruleDelete.count, 0);
     assert.equal(apiKeyRevoke.count, 0);
+  });
+
+  it("rejects unscoped Connection lists on the guarded Prisma client", async () => {
+    await assert.rejects(
+      () => guardedPrisma.connection.findMany({ where: { status: "connected" } }),
+      (error: unknown) => error instanceof TenantScopeError,
+    );
   });
 });

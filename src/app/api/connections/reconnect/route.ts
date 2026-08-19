@@ -11,6 +11,7 @@ import { getProviderRegistry } from "@/lib/oauth-framework/registry";
 import { logger } from "@/lib/logger";
 import { createOAuthAttempt, oauthAttemptCookieName } from "@/lib/oauth-attempt";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { assertWorkspaceProviderEnabled, toProviderAccessResponse } from "@/lib/workspace-provider-access";
 
 export async function POST(request: Request) {
     try {
@@ -62,18 +63,10 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: "Provider does not match connection" }, { status: 400 });
         }
 
-        const providerAccess = await prisma.workspaceProviderAccess.findUnique({
-            where: {
-                workspaceId_provider: {
-                    workspaceId: connection.workspaceId,
-                    provider: providerId,
-                },
-            },
-            select: { enabled: true },
+        await assertWorkspaceProviderEnabled({
+            workspaceId: connection.workspaceId,
+            provider: providerId,
         });
-        if (!providerAccess?.enabled) {
-            return NextResponse.json({ error: "Provider is not enabled for this workspace" }, { status: 403 });
-        }
 
         // Get provider adapter
         const registry = getProviderRegistry();
@@ -118,6 +111,8 @@ export async function POST(request: Request) {
     } catch (error) {
         const rbac = toRbacResponse(error);
         if (rbac) return rbac;
+        const providerDenied = toProviderAccessResponse(error);
+        if (providerDenied) return providerDenied;
         logger.error("[POST /api/connections/reconnect]", error);
         return NextResponse.json(
             { error: "Internal server error" },

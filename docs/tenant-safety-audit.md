@@ -13,6 +13,10 @@
 
 No route may accept a caller-supplied workspace ID as its only authorization proof.
 
+Write paths that connect, reconnect, import, or sync a provider must also pass `assertWorkspaceProviderEnabled` (`src/lib/workspace-provider-access.ts`). The workspace allowlist plus connect flags both have to be true.
+
+Bulk Prisma reads/writes on `Connection`, `CampaignMetric`, `WarehouseImportJob`, and `ApiKey` must include `workspaceId` (or a membership nested filter). The guarded client in `src/lib/prisma.ts` throws `TenantScopeError` otherwise. Fleet cron and webhooks wrap work in `withSystemScope()`.
+
 ## Audited application and connector routes
 
 | Route(s) | Ownership | Guard |

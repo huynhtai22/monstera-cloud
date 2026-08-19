@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { getToken } from "@/lib/token-cache";
 import { logger } from "@/lib/logger";
 import { requireCronSecret } from "@/lib/request-auth";
+import { withSystemScope } from "@/lib/tenant-guard";
 
 export async function GET(request: Request) {
   try {
@@ -11,6 +12,7 @@ export async function GET(request: Request) {
 
     logger.info("[CRON: TOKEN PRE-FETCH] Warming up token cache...");
 
+    return await withSystemScope(async () => {
     const connections = await prisma.connection.findMany({
       where: {
         status: "connected",
@@ -49,6 +51,7 @@ export async function GET(request: Request) {
         cacheWarmed: successCount,
         failed: failCount,
       },
+    });
     });
   } catch (error) {
     logger.error("[CRON: TOKEN PRE-FETCH] Fatal execution error:", error);

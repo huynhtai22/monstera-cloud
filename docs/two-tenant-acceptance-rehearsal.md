@@ -76,7 +76,13 @@ Open three separate private/incognito browser windows:
 
 ---
 
-## 4. Operational Sign-Off
+## 4. Automated evidence
+
+CI runs `tests/e2e/two-tenant-isolation.spec.ts` after seeding this rehearsal data: Bob must receive **403** on Alice’s `GET /api/metrics/query`, and Amazon connect must fail closed. PostgreSQL isolation tests in `src/lib/tenant-isolation.pg.integration.test.ts` remain the SQL-level gate.
+
+A live production pass of sections 1–3 is still required before inviting more than the current design partners.
+
+## 5. Operational Sign-Off
 
 | Milestone | Sign-Off Date | Operator | Verdict |
 |---|---|---|---|

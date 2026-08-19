@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { withSystemScope } from "@/lib/tenant-guard";
 
 /** Pipelines and connected sources older than this are stale. */
 export const STALE_AFTER_MS = 26 * 60 * 60 * 1000;
@@ -25,6 +26,10 @@ export type StaleHealthReport = {
  * staleness is freshness, not a credential failure.
  */
 export async function evaluateStaleHealth(now: Date = new Date()): Promise<StaleHealthReport> {
+  return withSystemScope(() => evaluateStaleHealthUnsafe(now));
+}
+
+async function evaluateStaleHealthUnsafe(now: Date): Promise<StaleHealthReport> {
   const staleThreshold = new Date(now.getTime() - STALE_AFTER_MS);
 
   const stalePipelines = await prisma.pipeline.updateMany({

@@ -98,4 +98,4 @@ This file is the **source of truth** for what we optimize first. Technical const
 
 ---
 
-*Last updated: priorities file created; §1 “Reliable ingestion” initialized with checklist and code anchors.*
+*Last updated: P1 tenant safety — provider allowlist on write paths, Prisma workspace guard, two-tenant e2e.*

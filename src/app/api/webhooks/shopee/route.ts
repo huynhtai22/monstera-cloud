@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { logger } from "@/lib/logger";
 import { shopeePartnerKeySecretForWebhook } from "@/lib/shopee";
 import { getRedis } from "@/lib/redis";
+import { withSystemScope } from "@/lib/tenant-guard";
 
 /** Optional extra secret for Push “Verify and Save” if Shopee signs with Test Push Partner Key (see Open Platform → Push). */
 function trimEnvSecret(raw: string | undefined): string {
@@ -138,7 +139,8 @@ export async function POST(request: Request) {
                 logger.info(`[SHOPEE WEBHOOK] Received deauthorization for shop: ${shopId}. Purging connections...`);
                 
                 // Find connections by shopId - search in credentials JSON or by name pattern
-                const connections = await prisma.connection.findMany({
+                const connections = await withSystemScope(() =>
+                    prisma.connection.findMany({
                     where: {
                         provider: "shopee",
                         OR: [
@@ -147,7 +149,8 @@ export async function POST(request: Request) {
                             { name: `Shopee ID: ${shopId}` },
                         ]
                     }
-                });
+                    }),
+                );
                 
                 for (const conn of connections) {
                     // Delete associated pipelines first to avoid foreign key issues

@@ -15,6 +15,7 @@ import { logger } from "@/lib/logger";
 import { upsertSourceConnection } from "@/lib/connection-upsert";
 import { consumeOAuthAttempt, oauthAttemptCookieName } from "@/lib/oauth-attempt";
 import { requireWorkspaceAccess } from "@/lib/rbac";
+import { assertWorkspaceProviderEnabled, ProviderAccessError } from "@/lib/workspace-provider-access";
 
 export const dynamic = "force-dynamic";
 
@@ -74,12 +75,13 @@ export async function GET(request: NextRequest) {
             minimumRole: "member",
             operation: reconnectConnectionId ? "reconnect_source" : "connect_source",
         });
-        const providerAccess = await prisma.workspaceProviderAccess.findUnique({
-            where: { workspaceId_provider: { workspaceId, provider: providerId } },
-            select: { enabled: true },
-        });
-        if (!providerAccess?.enabled) {
-            throw new OAuthError("configuration_error", "Provider is not enabled for this workspace", providerId);
+        try {
+            await assertWorkspaceProviderEnabled({ workspaceId, provider: providerId });
+        } catch (error) {
+            if (error instanceof ProviderAccessError) {
+                throw new OAuthError("configuration_error", error.message, providerId);
+            }
+            throw error;
         }
         
         // Get provider adapter

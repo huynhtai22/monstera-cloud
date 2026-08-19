@@ -12,8 +12,8 @@ import { getProvider, isProviderConfigured, isProviderEnabled } from "@/lib/oaut
 import { OAuthError } from "@/lib/oauth-framework/types";
 import { logger } from "@/lib/logger";
 import { createOAuthAttempt, oauthAttemptCookieName } from "@/lib/oauth-attempt";
-import { requireWorkspaceAccess } from "@/lib/rbac";
-import prisma from "@/lib/prisma";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { assertWorkspaceProviderEnabled, toProviderAccessResponse } from "@/lib/workspace-provider-access";
 
 export async function GET(request: NextRequest) {
     try {
@@ -53,13 +53,7 @@ export async function GET(request: NextRequest) {
             minimumRole: "member",
             operation: "connect_source",
         });
-        const providerAccess = await prisma.workspaceProviderAccess.findUnique({
-            where: { workspaceId_provider: { workspaceId, provider: providerId } },
-            select: { enabled: true },
-        });
-        if (!providerAccess?.enabled) {
-            return NextResponse.json({ error: "Provider is not enabled for this workspace" }, { status: 403 });
-        }
+        await assertWorkspaceProviderEnabled({ workspaceId, provider: providerId });
         
         // Get provider adapter
         const provider = getProvider(providerId);
@@ -95,6 +89,11 @@ export async function GET(request: NextRequest) {
     } catch (error) {
         logger.error("[OAuth Connect] Error:", error);
         
+        const providerDenied = toProviderAccessResponse(error);
+        if (providerDenied) return providerDenied;
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
+
         if (error instanceof OAuthError) {
             const params = new URLSearchParams({
                 error: error.code,

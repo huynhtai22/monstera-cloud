@@ -55,13 +55,21 @@ describe("Batch Import Worker & Post-Refresh Data Quality Gating", () => {
         {
           id: "conn-success-2",
           workspaceId: mockWorkspaceId,
-          provider: "shopify",
+          provider: "google_ads",
           credentials: encryptedCredentials,
           status: "connected",
         },
-        // conn-failed-3 is absent / disconnected -> will fail
       ],
     };
+
+    // Mock workspaceProviderAccess in prisma
+    (prisma as any).workspaceProviderAccess = {
+      findMany: async () => [
+        { provider: "meta_ads", enabled: true },
+        { provider: "google_ads", enabled: true },
+      ],
+    };
+
 
     // Mock dataQualityRule to track post-refresh quality check invocations
     (prisma as any).dataQualityRule = {

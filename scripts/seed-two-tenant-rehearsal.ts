@@ -109,6 +109,17 @@ async function main() {
     create: { workspaceId: wsB.id, userId: bob.id, role: "owner" },
   });
 
+  await prisma.workspaceProviderAccess.upsert({
+    where: { workspaceId_provider: { workspaceId: wsA.id, provider: "meta_ads" } },
+    update: { enabled: true },
+    create: { workspaceId: wsA.id, provider: "meta_ads", enabled: true },
+  });
+  await prisma.workspaceProviderAccess.upsert({
+    where: { workspaceId_provider: { workspaceId: wsB.id, provider: "google_ads" } },
+    update: { enabled: true },
+    create: { workspaceId: wsB.id, provider: "google_ads", enabled: true },
+  });
+
   // 4. Seed sample connections for Alpha Agency
   const alphaMeta = await prisma.connection.upsert({
     where: {

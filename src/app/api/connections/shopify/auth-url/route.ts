@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth";
 import { ShopifyOAuthClient } from "@/lib/shopify";
 import { isShopifyConnectEnabled } from "@/lib/integration-flags";
 import { logger } from "@/lib/logger";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { assertWorkspaceProviderEnabled, toProviderAccessResponse } from "@/lib/workspace-provider-access";
 
 export async function GET(request: Request) {
   try {
@@ -27,6 +29,14 @@ export async function GET(request: Request) {
       );
     }
 
+    await requireWorkspaceAccess({
+      userId: session.user.id,
+      workspaceId,
+      minimumRole: "member",
+      operation: "connect_source",
+    });
+    await assertWorkspaceProviderEnabled({ workspaceId, provider: "shopify" });
+
     const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
     const host = request.headers.get("host") || "localhost:3000";
     const redirectUri = `${protocol}://${host}/api/auth/shopify/callback`;
@@ -36,6 +46,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ url: authUrl });
   } catch (error) {
+    const rbac = toRbacResponse(error);
+    if (rbac) return rbac;
+    const providerDenied = toProviderAccessResponse(error);
+    if (providerDenied) return providerDenied;
     logger.error("Error generating Shopify Auth URL:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
