@@ -142,27 +142,37 @@ function VerifyContent() {
   };
 
   return (
-    <div className="w-full flex flex-col items-center bg-white dark:bg-slate-950 min-h-screen pt-16 sm:pt-24 px-4">
-      <div className="w-full max-w-[440px] pb-10">
-        
-        <div className="flex flex-col items-center text-center mb-10">
-          <div className="mb-6 text-gray-900 dark:text-white">
-            <Logo className="w-8 h-8" textClassName="hidden" />
-          </div>
-          <h2 className="text-[32px] font-semibold tracking-tight text-gray-900 dark:text-white">
+    <div className="w-full flex flex-col min-h-screen justify-between bg-black text-white selection:bg-neutral-800">
+      {/* Top Header */}
+      <header className="w-full max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-2.5 group">
+          <Logo className="w-7 h-7" textClassName="text-sm font-semibold tracking-tight text-white" />
+        </Link>
+        <Link
+          href="/login"
+          className="text-xs font-medium text-neutral-300 hover:text-white px-3.5 py-1.5 rounded-full border border-[#262626] bg-[#0c0c0c] hover:bg-[#161616] hover:border-[#3a3a3a] transition-all"
+        >
+          Log In
+        </Link>
+      </header>
+
+      {/* Main Center Form */}
+      <main className="w-full max-w-[380px] mx-auto px-4 py-8 flex flex-col items-center">
+        <div className="w-full text-center mb-8">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
             Verify your email
-          </h2>
-          <p className="mt-4 text-gray-500 text-[15px]">
+          </h1>
+          <p className="mt-2 text-xs sm:text-sm text-neutral-400 font-normal leading-relaxed">
             {email ? (
               <>
                 We&apos;ve sent a 6-digit code to{" "}
-                <span className="font-semibold text-gray-900 dark:text-white">{email}</span>. Enter it below to complete
-                your registration.
+                <span className="font-semibold text-white">{email}</span>. Enter it below to complete
+                your verification.
               </>
             ) : (
               <>
                 If you just registered, open this page from the same browser, or{" "}
-                <Link href="/register" className="text-[#1ba177] font-semibold hover:underline">
+                <Link href="/register" className="text-white font-semibold hover:underline">
                   start again
                 </Link>
                 .
@@ -171,19 +181,19 @@ function VerifyContent() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} method="post" action="#" className="space-y-8">
+        <form onSubmit={handleSubmit} method="post" action="#" className="w-full space-y-6">
           {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center">
+            <div className="bg-red-950/50 border border-red-900/60 text-red-300 px-3.5 py-2.5 rounded-lg text-xs text-center font-medium">
               {error}
             </div>
           )}
           {message && (
-            <div className="border border-line bg-panel text-ink p-3 rounded-md text-xs text-center">
+            <div className="border border-[#222] bg-[#0c0c0c] text-white p-3 rounded-lg text-xs text-center">
               {message}
             </div>
           )}
 
-          <div className="flex justify-between gap-2 sm:gap-4">
+          <div className="flex justify-between gap-2">
             {otp.map((digit, index) => (
               <input
                 key={index}
@@ -193,7 +203,7 @@ function VerifyContent() {
                 value={digit}
                 onChange={(e) => handleChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
-                className="w-full aspect-square text-center text-2xl font-bold border border-[#d2ddec] dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1ba177] focus:border-transparent bg-[#f0f4f9] dark:bg-slate-800 text-gray-900 dark:text-white transition-all shadow-sm"
+                className="w-12 h-12 text-center text-xl font-bold border border-[#222] rounded-lg focus:outline-none focus:ring-1 focus:ring-white focus:border-white bg-[#0a0a0a] text-white transition-all"
               />
             ))}
           </div>
@@ -201,37 +211,54 @@ function VerifyContent() {
           <button
             type="submit"
             disabled={isLoading || otp.some((d) => !d)}
-            className="w-full flex justify-center py-4 px-4 border border-transparent rounded-md text-[16px] font-medium text-white bg-[#1ba177] hover:bg-[#178c66] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1ba177] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full flex items-center justify-center py-2.5 px-4 rounded-lg text-sm font-semibold text-black bg-white hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-white disabled:opacity-50 transition-all shadow-sm active:scale-[0.99]"
           >
-            {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify Identity"}
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin text-black" /> : "Verify Identity"}
           </button>
         </form>
 
-        <div className="mt-8 text-center">
-          <p className="text-[15px] text-gray-500">
+        <div className="mt-8 text-center space-y-3">
+          <p className="text-xs text-neutral-400">
             Didn't receive the code?{" "}
             <button
               onClick={handleResend}
               disabled={timer > 0 || isResending}
-              className={`font-semibold transition-colors ${
+              className={`font-medium transition-colors ${
                 timer > 0 || isResending 
-                  ? "text-gray-300 cursor-not-allowed" 
-                  : "text-[#1ba177] hover:underline"
+                  ? "text-neutral-600 cursor-not-allowed" 
+                  : "text-white hover:underline"
               }`}
             >
               {isResending ? "Resending..." : timer > 0 ? `Resend in ${timer}s` : "Resend OTP"}
             </button>
           </p>
           
-          <Link
-            href="/register"
-            className="mt-6 inline-flex items-center text-gray-500 hover:text-gray-900 dark:hover:text-white text-sm transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to registration
-          </Link>
+          <div>
+            <Link
+              href="/register"
+              className="inline-flex items-center text-neutral-500 hover:text-neutral-300 text-xs transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 mr-1.5" />
+              Back to registration
+            </Link>
+          </div>
         </div>
-      </div>
+      </main>
+
+      {/* Bottom Footer */}
+      <footer className="w-full max-w-6xl mx-auto px-6 py-6 flex flex-wrap items-center justify-center gap-6 text-xs text-neutral-600">
+        <Link href="/legal/terms-of-service" className="hover:text-neutral-400 transition-colors">
+          Terms of Service
+        </Link>
+        <span className="text-neutral-700">·</span>
+        <Link href="/legal/privacy-policy" className="hover:text-neutral-400 transition-colors">
+          Privacy Policy
+        </Link>
+        <span className="text-neutral-700">·</span>
+        <Link href="/support" className="hover:text-neutral-400 transition-colors">
+          Support
+        </Link>
+      </footer>
     </div>
   );
 }
@@ -239,8 +266,8 @@ function VerifyContent() {
 export default function VerifyPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-[#1ba177]" />
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-6 h-6 animate-spin text-white" />
       </div>
     }>
       <VerifyContent />

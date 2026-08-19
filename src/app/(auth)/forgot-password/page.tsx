@@ -38,56 +38,67 @@ export default function ForgotPasswordPage() {
     };
 
     return (
-        <div className="w-full flex flex-col items-center bg-white dark:bg-slate-950 min-h-screen pt-16 sm:pt-24 px-4">
-            <div className="w-full max-w-[400px] pb-10">
-                <div className="flex flex-col items-center text-center mb-10">
-                    <div className="mb-6 text-gray-900 dark:text-white">
-                        <Logo className="w-8 h-8" textClassName="hidden" />
-                    </div>
-                    <h2 className="text-[32px] font-semibold tracking-tight text-gray-900 dark:text-white">
+        <div className="w-full flex flex-col min-h-screen justify-between bg-black text-white selection:bg-neutral-800">
+            {/* Top Header */}
+            <header className="w-full max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
+                <Link href="/" className="flex items-center gap-2.5 group">
+                    <Logo className="w-7 h-7" textClassName="text-sm font-semibold tracking-tight text-white" />
+                </Link>
+                <Link
+                    href="/login"
+                    className="text-xs font-medium text-neutral-300 hover:text-white px-3.5 py-1.5 rounded-full border border-[#262626] bg-[#0c0c0c] hover:bg-[#161616] hover:border-[#3a3a3a] transition-all"
+                >
+                    Log In
+                </Link>
+            </header>
+
+            {/* Main Center Form */}
+            <main className="w-full max-w-[380px] mx-auto px-4 py-8 flex flex-col items-center">
+                <div className="w-full text-center mb-8">
+                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
                         Reset your password
-                    </h2>
-                    <p className="mt-3 text-[15px] text-gray-500 dark:text-gray-400">
-                        Enter your email and we&apos;ll send you a reset link.
+                    </h1>
+                    <p className="mt-2 text-xs sm:text-sm text-neutral-400 font-normal leading-relaxed">
+                        Enter your email address and we&apos;ll send you a password recovery link.
                     </p>
                 </div>
 
                 {sent ? (
-                    <div className="flex flex-col items-center text-center space-y-4">
-                        <CheckCircle className="w-12 h-12 text-[#1ba177]" />
-                        <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Check your inbox</h3>
-                        <p className="text-[15px] text-gray-500 dark:text-gray-400">
-                            If an account exists for <strong>{email}</strong>, we've sent a password reset link. It expires in 1 hour.
+                    <div className="w-full flex flex-col items-center text-center space-y-4 border border-[#222] bg-[#0c0c0c] p-6 rounded-lg">
+                        <CheckCircle className="w-10 h-10 text-white" />
+                        <h3 className="text-base font-semibold text-white">Check your inbox</h3>
+                        <p className="text-xs text-neutral-400">
+                            If an account exists for <span className="text-white font-medium">{email}</span>, we've sent a password reset link. It expires in 1 hour.
                         </p>
                         <Link
                             href="/login"
-                            className="mt-4 flex items-center justify-center text-[15px] text-[#1ba177] hover:underline font-medium"
+                            className="mt-4 inline-flex items-center justify-center text-xs text-white hover:underline font-medium"
                         >
-                            <ArrowLeft className="w-4 h-4 mr-1" />
+                            <ArrowLeft className="w-3.5 h-3.5 mr-1" />
                             Back to sign in
                         </Link>
                     </div>
                 ) : (
-                    <form className="space-y-6" method="post" action="#" onSubmit={handleSubmit}>
+                    <form className="w-full space-y-4" method="post" action="#" onSubmit={handleSubmit}>
                         {error && (
-                            <div className="bg-red-50 text-red-600 p-3 rounded-md text-sm text-center">
+                            <div className="bg-red-950/50 border border-red-900/60 text-red-300 px-3.5 py-2.5 rounded-lg text-xs text-center font-medium">
                                 {error}
                             </div>
                         )}
 
                         <div>
-                            <label htmlFor="email" className="block text-[15px] font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                Email
+                            <label htmlFor="email" className="block text-xs font-medium text-neutral-300 mb-1.5">
+                                Email Address
                             </label>
                             <input
                                 id="email"
                                 type="email"
-                                placeholder="jsmith@domain.com"
+                                placeholder="you@agency.com"
                                 autoComplete="email"
                                 required
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
-                                className="appearance-none block w-full px-5 py-4 border border-[#d2ddec] dark:border-slate-700 rounded-md placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-[#1ba177] focus:border-[#1ba177] sm:text-[16px] bg-[#f0f4f9] dark:bg-slate-800 text-gray-900 dark:text-white transition-colors"
+                                className="w-full bg-[#0a0a0a] border border-[#222] focus:border-white focus:outline-none focus:ring-1 focus:ring-white rounded-lg text-sm text-white placeholder:text-neutral-600 px-3.5 py-2.5 transition-colors"
                             />
                         </div>
 
@@ -95,21 +106,36 @@ export default function ForgotPasswordPage() {
                             <button
                                 type="submit"
                                 disabled={isLoading}
-                                className="w-full flex justify-center py-4 px-4 border border-transparent rounded-md text-[16px] font-medium text-white bg-[#1ba177] hover:bg-[#178c66] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1ba177] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="w-full flex items-center justify-center py-2.5 px-4 rounded-lg text-sm font-semibold text-black bg-white hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-white disabled:opacity-50 transition-all shadow-sm active:scale-[0.99]"
                             >
-                                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Send reset link"}
+                                {isLoading ? <Loader2 className="w-4 h-4 animate-spin text-black" /> : "Send reset link"}
                             </button>
                         </div>
 
-                        <p className="text-center text-[15px] text-gray-500 dark:text-gray-400">
-                            <Link href="/login" className="flex items-center justify-center text-[#1ba177] hover:underline font-medium">
-                                <ArrowLeft className="w-4 h-4 mr-1" />
+                        <p className="pt-4 text-center text-xs text-neutral-400">
+                            <Link href="/login" className="inline-flex items-center text-neutral-400 hover:text-white transition-colors">
+                                <ArrowLeft className="w-3.5 h-3.5 mr-1" />
                                 Back to sign in
                             </Link>
                         </p>
                     </form>
                 )}
-            </div>
+            </main>
+
+            {/* Bottom Footer */}
+            <footer className="w-full max-w-6xl mx-auto px-6 py-6 flex flex-wrap items-center justify-center gap-6 text-xs text-neutral-600">
+                <Link href="/legal/terms-of-service" className="hover:text-neutral-400 transition-colors">
+                    Terms of Service
+                </Link>
+                <span className="text-neutral-700">·</span>
+                <Link href="/legal/privacy-policy" className="hover:text-neutral-400 transition-colors">
+                    Privacy Policy
+                </Link>
+                <span className="text-neutral-700">·</span>
+                <Link href="/support" className="hover:text-neutral-400 transition-colors">
+                    Support
+                </Link>
+            </footer>
         </div>
     );
 }
