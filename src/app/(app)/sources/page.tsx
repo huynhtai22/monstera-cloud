@@ -9,9 +9,8 @@ import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import useSWR, { useSWRConfig } from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
-import { integrationCatalogId } from "@/lib/sources-integration-catalog";
+import { integrationCatalogId, isSourceEnvReady, visibleSourcesCatalog } from "@/lib/sources-integration-catalog";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
-import { SOURCES_CATALOG, isSourceEnvReady } from "@/lib/sources-integration-catalog";
 import { cn } from "@/lib/utils";
 import { trackEvent, trackOnce } from "@/lib/analytics-events";
 import { PageShell } from "@/components/ui/PageShell";
@@ -422,13 +421,12 @@ export default function SourcesPage() {
     );
     const recentLogs = (recentLogsData?.logs ?? []).slice(0, 5) as Array<any>;
 
-    /** Full catalog always listed so App Review sees real connectors; `envConnectReady` gates the Connect action. */
+    /** Certified connectors plus any uncertified ones explicitly enabled for this workspace. */
     const catalogIntegrations = useMemo(() => {
         const active = Array.isArray(workspaces)
             ? workspaces.find((workspace: { id: string }) => workspace.id === activeWorkspaceId)
             : null;
-        const enabled = new Set<string>(active?.enabledProviders ?? []);
-        return SOURCES_CATALOG.filter((item) => enabled.has(item.id)).map((item) => ({
+        return visibleSourcesCatalog(intConfig, active?.enabledProviders ?? []).map((item) => ({
             ...item,
             status: "available" as const,
             envConnectReady: isSourceEnvReady(item.id, intConfig),

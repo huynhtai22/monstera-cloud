@@ -1,39 +1,93 @@
 /**
  * Backend toggles for which connect flows appear in the product.
  *
- * Connectors are VISIBLE by default — set <NAME>_CONNECT_ENABLED=false to
- * explicitly hide one (e.g. for a region where it isn't supported).
- *
- * Credentials are only required at OAuth / connect time, not to show the card.
+ * Certified pilot providers default ON. Uncertified providers default OFF
+ * and stay hidden unless explicitly enabled after certification.
  */
+
+const TRUTHY = new Set(["1", "true", "yes", "on"]);
+const FALSY = new Set(["0", "false", "no", "off"]);
+
+export const PILOT_CERTIFIED_PROVIDERS = [
+  "meta_ads",
+  "google_ads",
+  "tiktok_business",
+  "shopee",
+] as const;
+
+export type PilotCertifiedProvider = (typeof PILOT_CERTIFIED_PROVIDERS)[number];
+
+const UNCERTIFIED_PROVIDERS = ["tiktok_shop", "lazada", "shopify", "amazon"] as const;
+
+export function isPilotCertifiedProvider(providerId: string): boolean {
+  return (PILOT_CERTIFIED_PROVIDERS as readonly string[]).includes(providerId);
+}
+
+function envFlagEnabled(name: string, defaultEnabled: boolean): boolean {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === "") return defaultEnabled;
+  const value = raw.trim().toLowerCase();
+  if (FALSY.has(value)) return false;
+  if (TRUTHY.has(value)) return true;
+  return defaultEnabled;
+}
+
 export function isTikTokShopConnectEnabled(): boolean {
-  return (process.env.TIKTOK_SHOP_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
+  return envFlagEnabled("TIKTOK_SHOP_CONNECT_ENABLED", false);
 }
 
 export function isShopeeConnectEnabled(): boolean {
-  return (process.env.SHOPEE_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
+  return envFlagEnabled("SHOPEE_CONNECT_ENABLED", true);
 }
 
 export function isMetaAdsConnectEnabled(): boolean {
-  return (process.env.META_ADS_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
+  return envFlagEnabled("META_ADS_CONNECT_ENABLED", true);
 }
 
 export function isGoogleAdsConnectEnabled(): boolean {
-  return (process.env.GOOGLE_ADS_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
+  return envFlagEnabled("GOOGLE_ADS_CONNECT_ENABLED", true);
 }
 
 export function isTikTokBusinessConnectEnabled(): boolean {
-  return (process.env.TIKTOK_BUSINESS_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
+  return envFlagEnabled("TIKTOK_BUSINESS_CONNECT_ENABLED", true);
 }
 
 export function isShopifyConnectEnabled(): boolean {
-  return (process.env.SHOPIFY_CONNECT_ENABLED || 'true').toLowerCase() !== 'false';
+  return envFlagEnabled("SHOPIFY_CONNECT_ENABLED", false);
 }
 
 export function isAmazonConnectEnabled(): boolean {
-  return (process.env.AMAZON_CONNECT_ENABLED || "true").toLowerCase() !== "false";
+  return envFlagEnabled("AMAZON_CONNECT_ENABLED", false);
 }
 
 export function isLazadaConnectEnabled(): boolean {
-  return (process.env.LAZADA_CONNECT_ENABLED || "true").toLowerCase() !== "false";
+  return envFlagEnabled("LAZADA_CONNECT_ENABLED", false);
+}
+
+/** Connect-surface gate used by OAuth and catalog UI. Unknown ids stay closed. */
+export function isConnectEnabled(providerId: string): boolean {
+  switch (providerId) {
+    case "meta_ads":
+      return isMetaAdsConnectEnabled();
+    case "google_ads":
+      return isGoogleAdsConnectEnabled();
+    case "tiktok_business":
+      return isTikTokBusinessConnectEnabled();
+    case "shopee":
+      return isShopeeConnectEnabled();
+    case "tiktok_shop":
+      return isTikTokShopConnectEnabled();
+    case "shopify":
+      return isShopifyConnectEnabled();
+    case "amazon":
+      return isAmazonConnectEnabled();
+    case "lazada":
+      return isLazadaConnectEnabled();
+    default:
+      return false;
+  }
+}
+
+export function isUncertifiedProvider(providerId: string): boolean {
+  return (UNCERTIFIED_PROVIDERS as readonly string[]).includes(providerId);
 }

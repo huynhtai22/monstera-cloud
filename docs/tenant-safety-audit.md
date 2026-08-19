@@ -47,7 +47,7 @@ No route may accept a caller-supplied workspace ID as its only authorization pro
 
 | Route(s) | Guard | Notes |
 |---|---|---|
-| `/api/cron/master`, `/connections/token-prefetch`, `/performance-alerts`, `/report-schedules`, `/shopee/refresh`, `/sync-jobs`, `/warehouse-jobs`, `/warehouse-refresh`, `/meta-keep-alive` | `CRON_SECRET` via constant-time bearer comparison | Fails closed when the secret is absent or shorter than 32 characters. These workers intentionally process multiple workspaces and are not callable by tenant users. |
+| `/api/cron/master`, `/connections/token-prefetch`, `/performance-alerts`, `/report-schedules`, `/shopee/refresh`, `/sync-jobs`, `/warehouse-jobs`, `/warehouse-refresh`, `/health-tick`, `/meta-keep-alive` | `CRON_SECRET` via constant-time bearer comparison | Fails closed when the secret is absent or shorter than 32 characters. These workers intentionally process multiple workspaces and are not callable by tenant users. Health-tick marks stale pipelines; `/sync-jobs` remains 410 in pilot. |
 | `/api/webhooks/paddle` | Paddle signature | Workspace plan changes are derived from verified provider data. |
 | `/api/webhooks/lemonsqueezy` | Lemon Squeezy signature | User plan changes are derived from verified provider data. |
 | `/api/xendit/webhook` | Xendit callback token | User plan changes are derived from verified provider data. |

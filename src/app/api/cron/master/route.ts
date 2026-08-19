@@ -12,6 +12,7 @@ export async function GET(request: Request) {
     ["warehouseRefresh", "/api/cron/warehouse-refresh"],
     ["shopeeRefresh", "/api/cron/shopee/refresh"],
     ["warehouseJobs", "/api/cron/warehouse-jobs"],
+    ["healthTick", "/api/cron/health-tick"],
     ["alerts", "/api/cron/performance-alerts"],
   ] as const;
 

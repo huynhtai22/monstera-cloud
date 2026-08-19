@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { isProviderConfigured } from "./registry";
+import { isProviderConfigured, isProviderEnabled } from "./registry";
 
 const trackedKeys = [
   "TIKTOK_BUSINESS_APP_ID",
@@ -11,6 +11,7 @@ const trackedKeys = [
   "AMAZON_CLIENT_SECRET",
   "AMAZON_LWA_CLIENT_ID",
   "AMAZON_LWA_CLIENT_SECRET",
+  "AMAZON_CONNECT_ENABLED",
 ] as const;
 
 const originalEnv = Object.fromEntries(
@@ -48,5 +49,8 @@ describe("OAuth provider configuration aliases", () => {
     process.env.AMAZON_LWA_CLIENT_ID = "amzn-lwa-id";
     process.env.AMAZON_LWA_CLIENT_SECRET = "amzn-lwa-secret";
     assert.equal(isProviderConfigured("amazon"), true);
+    assert.equal(isProviderEnabled("amazon"), false);
+    process.env.AMAZON_CONNECT_ENABLED = "true";
+    assert.equal(isProviderEnabled("amazon"), true);
   });
 });

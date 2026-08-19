@@ -33,10 +33,11 @@ import {
   ADS_FIELDS_BY_ID,
   getDefaultAdsExplorerSelection,
 } from "@/lib/ads-field-registry";
+import { describeImportJob, type ImportJobStatusView } from "@/lib/ingestion/import-job-status";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-const AD_SOURCES = ["meta_ads", "google_ads", "tiktok_business", "shopee", "lazada"] as const;
+const AD_SOURCES = ["meta_ads", "google_ads", "tiktok_business", "shopee"] as const;
 
 interface MetricRow {
   id: string;
@@ -421,6 +422,8 @@ export function WarehouseWorkbench() {
   const [batchImporting, setBatchImporting] = useState(false);
   const [batchMessage, setBatchMessage] = useState<string | null>(null);
   const [batchError, setBatchError] = useState<string | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<ImportJobStatusView | null>(null);
 
   /** Warehouse table: which columns show, sort, quick row filter (client-side, loaded rows only). */
   const [visibleColIds, setVisibleColIds] = useState<WarehouseColId[]>(() =>
@@ -673,6 +676,103 @@ export function WarehouseWorkbench() {
     return items;
   };
 
+  const applyJobPayload = useCallback(
+    (jobData: {
+      status?: string;
+      completedItems?: number;
+      totalItems?: number;
+      approximateRows?: number;
+      retryCount?: number;
+      maxRetries?: number;
+      heartbeatAt?: string | null;
+      errorMsg?: string | null;
+      error?: string;
+      results?: Array<{ ok?: boolean; provider?: string; error?: string }>;
+    }) => {
+      const status = jobData.status ?? "queued";
+      const view = describeImportJob({
+        status,
+        completedItems: jobData.completedItems,
+        totalItems: jobData.totalItems,
+        approximateRows: jobData.approximateRows,
+        retryCount: jobData.retryCount,
+        maxRetries: jobData.maxRetries,
+        heartbeatAt: jobData.heartbeatAt,
+        errorMsg: jobData.errorMsg ?? jobData.error,
+      });
+      setJobStatus(view);
+      if (status === "completed") {
+        const errors = jobData.results?.filter((r) => !r.ok && r.error).map((r) => `${r.provider}: ${r.error}`) ?? [];
+        if (errors.length > 0) {
+          setBatchError(`Some imports failed:\n${errors.join("\n")}`);
+          setBatchMessage(null);
+        } else {
+          setBatchError(null);
+          setBatchMessage(view.detail);
+        }
+        setBatchImporting(false);
+        return "done";
+      }
+      if (status === "failed") {
+        setBatchError(view.detail);
+        setBatchMessage(null);
+        setBatchImporting(false);
+        return "done";
+      }
+      if (status === "queued") {
+        setBatchImporting(false);
+        setBatchMessage(null);
+      } else {
+        setBatchMessage(null);
+      }
+      return "poll";
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!activeJobId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+
+    const poll = async () => {
+      attempts += 1;
+      try {
+        const jobRes = await fetch(`/api/data-explorer/warehouse/jobs/${encodeURIComponent(activeJobId)}`);
+        if (!cancelled && jobRes.ok) {
+          const jobData = await jobRes.json();
+          const next = applyJobPayload(jobData);
+          if (next === "done") {
+            await mutate();
+            return;
+          }
+        }
+      } catch {
+        /* keep polling */
+      }
+      if (cancelled) return;
+      const delay = attempts < 40 ? 2000 : 10000;
+      if (attempts >= 70) {
+        setJobStatus({
+          tone: "queued",
+          title: "Still queued",
+          detail:
+            "This job is still waiting for a worker. The next run is within about 15 minutes. You can leave this page.",
+        });
+        setBatchImporting(false);
+        return;
+      }
+      timer = setTimeout(poll, delay);
+    };
+
+    timer = setTimeout(poll, 1500);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeJobId, applyJobPayload, mutate]);
+
   const runBatchImport = async () => {
     if (!activeWorkspaceId || !startDate || !endDate || dateRangeError) {
       setBatchError("Set a valid date range first.");
@@ -687,6 +787,9 @@ export function WarehouseWorkbench() {
     setBatchImporting(true);
     setBatchError(null);
     setBatchMessage(null);
+    setJobStatus(null);
+    setActiveJobId(null);
+    let queuedJobId: string | null = null;
     try {
       const res = await fetch("/api/data-explorer/warehouse/import-batch", {
         method: "POST",
@@ -705,51 +808,30 @@ export function WarehouseWorkbench() {
         setBatchImporting(false);
         return;
       }
-      
+
       if (payload.async && payload.jobId) {
-        setBatchMessage(`Refresh started… Processing tasks.`);
-        let completed = false;
-        let attempts = 0;
-        while (!completed && attempts < 120) {
-          await new Promise((r) => setTimeout(r, 1500));
-          attempts++;
-          const jobRes = await fetch(`/api/data-explorer/warehouse/jobs/${encodeURIComponent(payload.jobId)}`);
-          if (!jobRes.ok) continue;
-          const jobData = await jobRes.json();
-          if (jobData.status === "completed") {
-            completed = true;
-            const okCount = jobData.results?.filter((r: any) => r.ok).length ?? 0;
-            const errors = jobData.results?.filter((r: any) => !r.ok && r.error).map((r: any) => `${r.provider}: ${r.error}`);
-            if (errors && errors.length > 0) {
-              setBatchError(`Some imports failed:\n${errors.join("\n")}`);
-            } else {
-              setBatchMessage(`Completed! ${okCount}/${jobData.totalItems} source(s) refreshed (~${(jobData.approximateRows || 0).toLocaleString()} rows).`);
-            }
-            break;
-          } else if (jobData.status === "failed") {
-            setBatchError(jobData.error || "Batch refresh failed");
-            completed = true;
-            break;
-          } else {
-            setBatchMessage(
-              `Refreshing ${jobData.completedItems || 0}/${jobData.totalItems} source(s) (~${(jobData.approximateRows || 0).toLocaleString()} rows ingested)…`
-            );
-          }
-        }
-      } else {
-        const errors = payload.results?.filter((r: any) => !r.ok && r.error).map((r: any) => `${r.provider}: ${r.error}`);
-        if (errors && errors.length > 0) {
-          setBatchError(`Some imports failed:\n${errors.join("\n")}`);
-        } else {
-          setBatchMessage(payload.message ?? "Import batch finished.");
-        }
+        queuedJobId = payload.jobId;
+        setActiveJobId(payload.jobId);
+        applyJobPayload({
+          status: payload.status || "queued",
+          totalItems: payload.totalJobs ?? items.length,
+          retryCount: 0,
+          maxRetries: 3,
+        });
+        return;
       }
-      
+
+      const errors = payload.results?.filter((r: { ok?: boolean; error?: string }) => !r.ok && r.error).map((r: { provider?: string; error?: string }) => `${r.provider}: ${r.error}`);
+      if (errors && errors.length > 0) {
+        setBatchError(`Some imports failed:\n${errors.join("\n")}`);
+      } else {
+        setBatchMessage(payload.message ?? "Import batch finished.");
+      }
       await mutate();
     } catch (e) {
       setBatchError(e instanceof Error ? e.message : "Batch import failed");
     } finally {
-      setBatchImporting(false);
+      if (!queuedJobId) setBatchImporting(false);
     }
   };
 
@@ -942,8 +1024,8 @@ export function WarehouseWorkbench() {
               Refresh warehouse from sources
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-gray-600 dark:text-slate-400">
-              Pull campaign or marketplace metrics into the internal warehouse for the date range below. Meta, Google Ads, TikTok, Shopee, and Lazada
-              all respect this range (large rewinds may take longer and paginate).
+              Pull campaign or marketplace metrics into the warehouse for the date range below. Meta, Google Ads, TikTok Ads, and Shopee
+              respect this range. Queued jobs are picked up within about 15 minutes if this request cannot finish in the background.
             </p>
           </div>
           <PrimaryButton
@@ -1024,6 +1106,19 @@ export function WarehouseWorkbench() {
           </ul>
         )}
 
+        {jobStatus && jobStatus.tone !== "completed" && jobStatus.tone !== "failed" && (
+          <div
+            className={cn(
+              "mt-4 rounded-lg border p-3 text-sm",
+              jobStatus.tone === "running"
+                ? "border-cyan-200 bg-cyan-50 text-cyan-900 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-200"
+                : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200",
+            )}
+          >
+            <p className="font-medium">{jobStatus.title}</p>
+            <p className="mt-1 whitespace-pre-line">{jobStatus.detail}</p>
+          </div>
+        )}
         {batchError && (
           <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300">
             {batchError}

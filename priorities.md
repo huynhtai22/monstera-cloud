@@ -20,8 +20,8 @@ This file is the **source of truth** for what we optimize first. Technical const
 - **Pipeline run path** — `/api/pipelines/[id]/run` records every completed attempt: **success** logs include `rowsSynced` (including 0) and `durationMs`; **error** logs include `durationMs`, classified `errorMsg`, and JSON `code`/`tag` for clients (`src/app/api/pipelines/[id]/run/route.ts`). Removed the blanket **Google OAuth before ETL** gate so extract can run; Google is only required when rows are actually loaded to Sheets.
 - **Connection surface** — Successful runs call `markConnectionsSyncedOk`; failures call `markConnectionsSyncError` (`src/lib/ingestion/connection-sync-state.ts`). Console prefers `**connection.lastSyncAt`** for “last sync” when set (`src/app/(app)/console/page.tsx`).
 - **Actionable errors** — `classifyIngestionError` + `formatLogError` tag auth / quota / network / source / destination (`src/lib/ingestion/error-taxonomy.ts`).
-- **Health semantics** — `Pipeline.healthStatus` and `lastSyncedAt` stay aligned with logs (healthy vs stale vs error). *(Success + error paths updated; **stale** still needs a scheduled evaluator or cron rule.)*
-- **Cron worker** — `/api/cron/sync-jobs` behavior documented; if on Vercel Hobby, external scheduler documented in `roadmap.md` is understood and chosen.
+- **Health semantics** — `Pipeline.healthStatus` and `lastSyncedAt` stay aligned with logs (healthy vs stale vs error). Stale evaluation runs on `/api/cron/health-tick` (15-minute GitHub Actions worker + nightly master). `/api/cron/sync-jobs` stays 410 in pilot.
+- **Cron worker** — Hobby substitute is `.github/workflows/pilot-cron.yml` every 15 minutes (`roadmap.md`). Vercel native cron remains nightly via `/api/cron/master`.
 
 ### Checklist — trust extras
 
@@ -39,6 +39,8 @@ This file is the **source of truth** for what we optimize first. Technical const
 | Connection last sync / last error | `src/lib/ingestion/connection-sync-state.ts`        |
 | Pipeline run + logs               | `src/app/api/pipelines/[id]/run/route.ts`           |
 | Scheduled jobs                    | `src/app/api/cron/sync-jobs/route.ts`               |
+| Stale health tick                 | `/api/cron/health-tick`, `src/lib/ingestion/stale-health.ts` |
+| Hobby 15-minute worker            | `.github/workflows/pilot-cron.yml`                  |
 | Alerts                            | `src/lib/alerts.ts`, cron email alerts              |
 | Health aggregation                | `src/app/api/workspaces/[id]/health-stats/route.ts` |
 

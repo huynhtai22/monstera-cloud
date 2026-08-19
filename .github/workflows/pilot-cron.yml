@@ -1,0 +1,50 @@
+name: Pilot cron
+
+# Hobby Vercel cron is daily. This curl-only worker is the budget substitute
+# for minute-level Pro cron: reclaim warehouse jobs, refresh tokens, and
+# mark stale health about every 15 minutes.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Hit warehouse jobs, token prefetch, Shopee refresh, health tick
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CRON_BASE_URL: ${{ vars.CRON_BASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "Set the CRON_SECRET GitHub Actions secret to the same value as production CRON_SECRET."
+            exit 1
+          fi
+          BASE="${CRON_BASE_URL:-https://monsteracloud.com}"
+          BASE="${BASE%/}"
+          fail=0
+          for path in \
+            /api/cron/warehouse-jobs \
+            /api/cron/connections/token-prefetch \
+            /api/cron/shopee/refresh \
+            /api/cron/health-tick
+          do
+            echo "::group::${path}"
+            code=$(curl -sS -o /tmp/cron-body -w "%{http_code}" \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              --max-time 110 \
+              "${BASE}${path}" || echo "000")
+            echo "HTTP ${code}"
+            head -c 2000 /tmp/cron-body || true
+            echo
+            echo "::endgroup::"
+            if [ "${code}" != "200" ]; then
+              fail=1
+            fi
+          done
+          exit "${fail}"

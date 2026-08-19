@@ -1,4 +1,5 @@
 import { logoPathForCatalogId } from "@/lib/integration-logos";
+import { isPilotCertifiedProvider, isUncertifiedProvider } from "@/lib/integration-flags";
 
 export type SourcesCatalogItem = {
     id: string;
@@ -63,28 +64,49 @@ export function catalogItemById(id: string): SourcesCatalogItem | undefined {
     return SOURCES_CATALOG.find((c) => c.id === id);
 }
 
+export type IntegrationsPublicConfig = {
+    tiktokShop?: boolean;
+    tiktokBusiness?: boolean;
+    shopee?: boolean;
+    metaAds?: boolean;
+    googleAds?: boolean;
+    amazon?: boolean;
+    lazada?: boolean;
+    shopify?: boolean;
+};
+
 /** Whether OAuth/env is enabled for this connector on the deployment (matches `/api/integrations/config`). */
 export function isSourceEnvReady(
     catalogId: string,
-    intConfig: {
-        tiktokShop?: boolean;
-        tiktokBusiness?: boolean;
-        shopee?: boolean;
-        metaAds?: boolean;
-        googleAds?: boolean;
-        amazon?: boolean;
-        lazada?: boolean;
-    } | undefined
+    intConfig: IntegrationsPublicConfig | undefined
 ): boolean {
-    if (!intConfig) return true;
-    if (catalogId === "tiktok_shop") return intConfig.tiktokShop !== false;
+    if (isUncertifiedProvider(catalogId)) {
+        if (!intConfig) return false;
+        if (catalogId === "tiktok_shop") return intConfig.tiktokShop === true;
+        if (catalogId === "amazon") return intConfig.amazon === true;
+        if (catalogId === "lazada") return intConfig.lazada === true;
+        if (catalogId === "shopify") return intConfig.shopify === true;
+        return false;
+    }
+    if (!intConfig) return isPilotCertifiedProvider(catalogId);
     if (catalogId === "tiktok_business") return intConfig.tiktokBusiness !== false;
     if (catalogId === "shopee") return intConfig.shopee !== false;
     if (catalogId === "meta_ads") return intConfig.metaAds !== false;
     if (catalogId === "google_ads") return intConfig.googleAds !== false;
-    if (catalogId === "amazon") return intConfig.amazon !== false;
-    if (catalogId === "lazada") return intConfig.lazada !== false;
-    return true;
+    return isPilotCertifiedProvider(catalogId);
+}
+
+/** Connect picker: certified sources always listed; uncertified only when explicitly enabled. */
+export function visibleSourcesCatalog(
+    intConfig: IntegrationsPublicConfig | undefined,
+    enabledProviders?: Iterable<string>,
+): SourcesCatalogItem[] {
+    const enabled = enabledProviders ? new Set(enabledProviders) : null;
+    return SOURCES_CATALOG.filter((item) => {
+        if (enabled && !enabled.has(item.id)) return false;
+        if (isPilotCertifiedProvider(item.id)) return true;
+        return isSourceEnvReady(item.id, intConfig);
+    });
 }
 
 /** Maps DB Connection.provider → console catalog card id (one connect slot per type). */

@@ -8,7 +8,7 @@ import useSWR from "swr";
 import { toast } from "sonner";
 import { useWorkspaceStore } from "@/store/workspace";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
-import { SOURCES_CATALOG, isSourceEnvReady, type SourcesCatalogItem } from "@/lib/sources-integration-catalog";
+import { isSourceEnvReady, visibleSourcesCatalog, type SourcesCatalogItem } from "@/lib/sources-integration-catalog";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics-events";
 import { useMounted } from "@/hooks/useMounted";
@@ -369,7 +369,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                                 Add a data source
                             </h3>
                             <p className="mt-1 text-xs leading-snug text-slate-600 dark:text-slate-400">
-                                Same list as the header menu — includes connectors already linked or not yet configured on this server.
+                                Certified pilot sources: Meta Ads, Google Ads, TikTok Ads, and Shopee.
                             </p>
                         </div>
                         <button
@@ -386,7 +386,7 @@ export function ConnectSourceModal({ isOpen, onClose, integration, connectedCata
                         role="listbox"
                         aria-label="Available connectors"
                     >
-                        {SOURCES_CATALOG.map((item) => {
+                        {visibleSourcesCatalog(intConfig).map((item) => {
                             const connected = connectedSet.has(item.id);
                             const ready = isSourceEnvReady(item.id, intConfig);
                             const disabled = !ready;

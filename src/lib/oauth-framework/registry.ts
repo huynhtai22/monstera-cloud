@@ -13,6 +13,7 @@ import { TikTokBusinessOAuthAdapter } from "./providers/tiktok-business";
 import { LazadaOAuthAdapter } from "./providers/lazada";
 import { ShopifyOAuthAdapter } from "./providers/shopify";
 import { AmazonOAuthAdapter } from "./providers/amazon";
+import { isConnectEnabled } from "@/lib/integration-flags";
 
 /** Lazy-loaded registry */
 let registry: OAuthProviderRegistry | null = null;
@@ -54,7 +55,7 @@ export function listProviders(): OAuthProviderAdapter[] {
 }
 
 export function isProviderEnabled(id: string): boolean {
-    // Check if provider exists and has required env vars
+    if (!isConnectEnabled(id)) return false;
     try {
         const provider = getProvider(id);
         return !!provider;

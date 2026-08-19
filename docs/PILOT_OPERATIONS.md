@@ -10,6 +10,16 @@
 
 Pause expansion immediately for a confirmed tenant leak, data corruption, or sustained connector failure. Revoke affected API keys and OAuth credentials, preserve audit evidence, and notify affected pilot owners through the agreed incident channel.
 
+## Hobby scheduler
+
+Vercel Hobby only runs `/api/cron/master` once a day. Production also needs the GitHub Actions workflow **Pilot cron** (`.github/workflows/pilot-cron.yml`) so warehouse job recovery, token prefetch, Shopee refresh, and stale-health evaluation run about every 15 minutes.
+
+1. Add repository secret `CRON_SECRET` with the same value as production `CRON_SECRET`.
+2. Optionally set repository variable `CRON_BASE_URL` if the production origin is not `https://monsteracloud.com`.
+3. Confirm a `workflow_dispatch` run returns HTTP 200 for each path before relying on the schedule.
+
+Do not promise import recovery faster than that interval.
+
 ## Required monitors
 
 - OAuth attempts by provider and failure code, especially invalid/reused state.

@@ -141,12 +141,10 @@ export default function QuickStartPage() {
 
                             <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
                                 {[
-                                    { id: "shopee", name: "Shopee", category: "marketplace" },
-                                    { id: "lazada", name: "Lazada", category: "marketplace" },
-                                    { id: "tiktok_shop", name: "TikTok Shop", category: "marketplace" },
                                     { id: "meta_ads", name: "Meta Ads", category: "ads" },
                                     { id: "google_ads", name: "Google Ads", category: "ads" },
                                     { id: "tiktok_business", name: "TikTok Ads", category: "ads" },
+                                    { id: "shopee", name: "Shopee", category: "marketplace" },
                                 ].map((source) => (
                                     <button
                                         key={source.id}

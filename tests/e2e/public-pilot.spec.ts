@@ -23,6 +23,9 @@ test("cron and disabled production integrations fail closed", async ({ request }
   const cron = await request.get("/api/cron/master");
   expect([401, 503]).toContain(cron.status());
 
+  const healthTick = await request.get("/api/cron/health-tick");
+  expect([401, 503]).toContain(healthTick.status());
+
   const stripe = await request.post("/api/stripe/webhook", { data: {} });
   expect(stripe.status()).toBe(404);
 

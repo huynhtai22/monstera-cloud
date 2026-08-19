@@ -5,6 +5,7 @@ import { getPlanLimits } from "@/lib/plan-config";
 import { logger } from "@/lib/logger";
 import { requireCronSecret } from "@/lib/request-auth";
 import { isPilotMode } from "@/lib/pilot-mode";
+import { evaluateStaleHealth } from "@/lib/ingestion/stale-health";
 
 /**
  * GET /api/cron/sync-jobs
@@ -31,24 +32,10 @@ export async function GET(req: Request) {
 
   const now = new Date();
 
-  // Evaluate pipeline health: mark active pipelines that haven't synced in 26 hours as "stale"
   try {
-    const staleThreshold = new Date(now.getTime() - 26 * 60 * 60 * 1000);
-    const staleCount = await prisma.pipeline.updateMany({
-      where: {
-        status: "active",
-        healthStatus: "healthy",
-        OR: [
-          { lastSyncedAt: { lt: staleThreshold } },
-          { lastSyncedAt: null, createdAt: { lt: staleThreshold } },
-        ],
-      },
-      data: {
-        healthStatus: "stale",
-      },
-    });
-    if (staleCount.count > 0) {
-      logger.info(`[SYNC_JOBS_CRON] Marked ${staleCount.count} stale pipelines`);
+    const stale = await evaluateStaleHealth(now);
+    if (stale.pipelinesMarkedStale > 0) {
+      logger.warn(`[SYNC_JOBS_CRON] Marked ${stale.pipelinesMarkedStale} stale pipelines`);
     }
   } catch (err) {
     logger.error("[SYNC_JOBS_CRON] Failed to update stale pipelines:", err);

@@ -38,6 +38,8 @@ Guidance for autonomous agents working in this repo.
 
 - **`/sources/setup`:** `GET /api/connections/[id]` returns `{ connection, pipelines, recentLogs }`. The setup client must read **`data.connection`** (not the whole JSON). After OAuth, it also **syncs `activeWorkspaceId`** to `connection.workspaceId` so the connection appears under **Your sources** for the same workspace the row was stored in.
 
+- **Hobby cron:** Vercel only runs `/api/cron/master` daily. The GitHub Actions workflow `.github/workflows/pilot-cron.yml` curls `/api/cron/warehouse-jobs`, `/api/cron/connections/token-prefetch`, `/api/cron/shopee/refresh`, and `/api/cron/health-tick` every 15 minutes. Stale pipeline evaluation lives on health-tick (not on `/api/cron/sync-jobs`, which is 410 in pilot). Production GitHub secret `CRON_SECRET` must match the app secret.
+
 - **Shopee Push callback:** `POST /api/webhooks/shopee` (and `GET` returns `200 ok` for probes). Shopee signs **`Authorization`** or **`x-shopee-signature`** as **hex HMAC-SHA256(secret, request body)** (header may include a `SHA256 ` prefix; we try **wire body** and **compact `JSON.stringify(JSON.parse(body))`**). Secrets: **`SHOPEE_PARTNER_KEY`**, then optional **`SHOPEE_PUSH_VERIFICATION_KEY`** (Push screen “Test Push Partner Key” when it differs from the API key). Non-2xx fails Partner Center verification.
 
 - **App shell / click-through:** On large screens, `AppLayout` uses a **full-width** `lg:sticky` top strip for `NotificationCenter` (`z-20`) above `main` (`z-10`). That strip must use `pointer-events-none` on the row and `pointer-events-auto` on the bell control only; otherwise empty flex space overlaps scrolling page content and **intercepts clicks** (e.g. setup wizard CTAs, links).

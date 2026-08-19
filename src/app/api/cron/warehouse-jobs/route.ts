@@ -10,8 +10,8 @@ const BATCH_SIZE = 5;
 /**
  * GET/POST /api/cron/warehouse-jobs
  *
- * Invoked every minute by Vercel Cron (schedule: "* * * * *")
- * or triggered out-of-band by authenticated internal requests.
+ * Invoked about every 15 minutes by .github/workflows/pilot-cron.yml
+ * (Hobby has no minute-level Vercel cron) and nightly via /api/cron/master.
  *
  * 1. Reclaims orphaned running jobs whose lease expired.
  * 2. Claims due queued jobs up to BATCH_SIZE (by priority DESC, scheduledAt ASC).

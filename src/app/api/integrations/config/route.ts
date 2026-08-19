@@ -7,6 +7,7 @@ import {
   isGoogleAdsConnectEnabled,
   isAmazonConnectEnabled,
   isLazadaConnectEnabled,
+  isShopifyConnectEnabled,
 } from '@/lib/integration-flags';
 import {
   amazonSpOAuthRedirectUri,
@@ -32,6 +33,7 @@ export async function GET(request: Request) {
     amazon:
       isAmazonConnectEnabled() && isAmazonOAuthEnvConfigured(),
     lazada: isLazadaConnectEnabled() && isLazadaOAuthEnvConfigured(),
+    shopify: isShopifyConnectEnabled(),
     productDomain: PRODUCT_SITE_URL,
     oauthCallbacks: {
       metaAds: metaAdsOAuthRedirectUri(request),
