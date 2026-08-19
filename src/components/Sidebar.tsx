@@ -141,8 +141,9 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
         ...(isAdmin
             ? [
                   {
-                      label: "Intelligence",
+                      label: "Executive Operations",
                       items: [
+                          { name: "Finance & Admin", href: "/admin", icon: LineChart },
                           { name: "Signal Desk", href: "/admin/signal", icon: Radio },
                       ],
                   },
