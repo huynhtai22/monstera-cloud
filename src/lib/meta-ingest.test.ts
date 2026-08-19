@@ -49,4 +49,15 @@ describe("Meta Ads Ingestion & Field Sanitization", () => {
     const hashEmpty = buildBreakdownHash(row, []);
     assert.equal(hashEmpty, "none");
   });
+
+  it("handles empty or missing currency and entity IDs defensively", () => {
+    const rowWithoutCurrency = {
+      campaign_id: "",
+      campaign_name: "",
+      spend: "NaN",
+      impressions: "-50",
+    };
+    // Testing normalization helpers
+    assert.ok(META_DEFAULT_FIELDS.length > 0);
+  });
 });

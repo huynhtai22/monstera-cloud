@@ -73,15 +73,32 @@ export async function upsertCampaignMetric(
     syncJobId,
   } = payload;
 
+  const safeCurrency = currency?.trim() || 'USD';
+  const safeCampaignId = campaignId?.trim() || entityId?.trim() || 'unknown_campaign';
+  const safeCampaignName = campaignName?.trim() || safeCampaignId;
+  const safeEntityId = entityId?.trim() || safeCampaignId;
+  const safeLevel = level?.trim() || 'campaign';
+  const safeBreakdownHash = breakdownHash?.trim() || 'none';
+
+  const safeImpressions = Number.isFinite(impressions) ? Math.max(0, Math.round(impressions)) : 0;
+  const safeClicks = Number.isFinite(clicks) ? Math.max(0, Math.round(clicks)) : 0;
+  const safeSpend = Number.isFinite(spend) ? Math.max(0, spend) : 0;
+  const safeReach = Number.isFinite(reach) ? Math.max(0, Math.round(reach)) : 0;
+  const safeConversions = Number.isFinite(conversions) ? Math.max(0, conversions) : 0;
+  const safeRevenue = Number.isFinite(revenue) ? Math.max(0, revenue) : 0;
+  const safeRoas = Number.isFinite(roas) ? Math.max(0, roas) : 0;
+  const safeCpc = Number.isFinite(cpc) ? Math.max(0, cpc) : safeClicks > 0 ? safeSpend / safeClicks : 0;
+  const safeCtr = Number.isFinite(ctr) ? Math.max(0, ctr) : safeImpressions > 0 ? (safeClicks / safeImpressions) * 100 : 0;
+
   await (prisma as any).campaignMetric.upsert({
     where: {
       connectionId_accountId_level_entityId_date_breakdownHash: {
         connectionId,
         accountId,
-        level,
-        entityId,
+        level: safeLevel,
+        entityId: safeEntityId,
         date,
-        breakdownHash,
+        breakdownHash: safeBreakdownHash,
       },
     },
     create: {
@@ -90,40 +107,46 @@ export async function upsertCampaignMetric(
       platform,
       accountId,
       accountName: accountName ?? null,
-      level,
-      entityId,
-      campaignId,
-      campaignName: campaignName ?? '',
+      level: safeLevel,
+      entityId: safeEntityId,
+      campaignId: safeCampaignId,
+      campaignName: safeCampaignName,
       adsetId: adsetId ?? '',
       adsetName: adsetName ?? null,
       adId: adId ?? '',
       date,
-      breakdownHash,
-      impressions,
-      clicks,
-      spend,
-      reach,
-      cpc,
-      ctr,
-      conversions,
-      revenue,
-      roas,
-      currency: currency ?? null,
+      breakdownHash: safeBreakdownHash,
+      impressions: safeImpressions,
+      clicks: safeClicks,
+      spend: safeSpend,
+      reach: safeReach,
+      cpc: safeCpc,
+      ctr: safeCtr,
+      conversions: safeConversions,
+      revenue: safeRevenue,
+      roas: safeRoas,
+      currency: safeCurrency,
       rawData: rawData ? JSON.stringify(rawData) : null,
       syncJobId: syncJobId ?? null,
       pulledAt: new Date(),
     },
     update: {
-      impressions,
-      clicks,
-      spend,
-      reach,
-      cpc,
-      ctr,
-      conversions,
-      revenue,
-      roas,
-      currency: currency ?? null,
+      accountName: accountName ?? null,
+      campaignId: safeCampaignId,
+      campaignName: safeCampaignName,
+      adsetId: adsetId ?? '',
+      adsetName: adsetName ?? null,
+      adId: adId ?? '',
+      impressions: safeImpressions,
+      clicks: safeClicks,
+      spend: safeSpend,
+      reach: safeReach,
+      cpc: safeCpc,
+      ctr: safeCtr,
+      conversions: safeConversions,
+      revenue: safeRevenue,
+      roas: safeRoas,
+      currency: safeCurrency,
       rawData: rawData ? JSON.stringify(rawData) : null,
       syncJobId: syncJobId ?? null,
       pulledAt: new Date(),

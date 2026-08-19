@@ -224,15 +224,32 @@ export async function upsertMetaMetric(params: {
   // Fencing check — reject stale workers before any DB write
   await assertMetaSyncLease({ scope: lockScope, leaseId, fencingToken });
 
+  const safeCurrency = metrics.currency?.trim() || 'USD';
+  const safeCampaignId = campaignId?.trim() || entityId?.trim() || 'unknown_campaign';
+  const safeCampaignName = campaignName?.trim() || safeCampaignId;
+  const safeEntityId = entityId?.trim() || safeCampaignId;
+  const safeLevel = level?.trim() || 'campaign';
+  const safeBreakdownHash = breakdownHash?.trim() || 'none';
+
+  const safeImpressions = Number.isFinite(metrics.impressions) ? Math.max(0, Math.round(metrics.impressions)) : 0;
+  const safeClicks = Number.isFinite(metrics.clicks) ? Math.max(0, Math.round(metrics.clicks)) : 0;
+  const safeSpend = Number.isFinite(metrics.spend) ? Math.max(0, metrics.spend) : 0;
+  const safeReach = Number.isFinite(metrics.reach) ? Math.max(0, Math.round(metrics.reach)) : 0;
+  const safeConversions = Number.isFinite(metrics.conversions) ? Math.max(0, metrics.conversions) : 0;
+  const safeRevenue = Number.isFinite(metrics.revenue) ? Math.max(0, metrics.revenue) : 0;
+  const safeRoas = Number.isFinite(metrics.roas) ? Math.max(0, metrics.roas) : 0;
+  const safeCpc = Number.isFinite(metrics.cpc) ? Math.max(0, metrics.cpc) : safeClicks > 0 ? safeSpend / safeClicks : 0;
+  const safeCtr = Number.isFinite(metrics.ctr) ? Math.max(0, metrics.ctr) : safeImpressions > 0 ? (safeClicks / safeImpressions) * 100 : 0;
+
   await (prisma as any).campaignMetric.upsert({
     where: {
       connectionId_accountId_level_entityId_date_breakdownHash: {
         connectionId,
         accountId,
-        level,
-        entityId,
+        level: safeLevel,
+        entityId: safeEntityId,
         date,
-        breakdownHash,
+        breakdownHash: safeBreakdownHash,
       },
     },
     create: {
@@ -241,40 +258,47 @@ export async function upsertMetaMetric(params: {
       platform: 'meta_ads',
       accountId,
       accountName: accountName ?? null,
-      level,
-      entityId,
-      campaignId: campaignId ?? '',
-      campaignName: campaignName ?? '',
+      level: safeLevel,
+      entityId: safeEntityId,
+      campaignId: safeCampaignId,
+      campaignName: safeCampaignName,
       adsetId: adsetId ?? '',
+      adsetName: null,
       adId: adId ?? '',
       date,
-      breakdownHash,
-      impressions: metrics.impressions,
-      clicks: metrics.clicks,
-      spend: metrics.spend,
-      reach: metrics.reach,
-      cpc: metrics.cpc,
-      ctr: metrics.ctr,
-      conversions: metrics.conversions,
-      revenue: metrics.revenue,
-      roas: metrics.roas,
-      currency: metrics.currency || 'USD',
+      breakdownHash: safeBreakdownHash,
+      impressions: safeImpressions,
+      clicks: safeClicks,
+      spend: safeSpend,
+      reach: safeReach,
+      cpc: safeCpc,
+      ctr: safeCtr,
+      conversions: safeConversions,
+      revenue: safeRevenue,
+      roas: safeRoas,
+      currency: safeCurrency,
       rawData: metrics.rawData ? JSON.stringify(metrics.rawData) : null,
       syncJobId,
       lockScope,
       fencingToken,
+      pulledAt: new Date(),
     },
     update: {
-      impressions: metrics.impressions,
-      clicks: metrics.clicks,
-      spend: metrics.spend,
-      reach: metrics.reach,
-      cpc: metrics.cpc,
-      ctr: metrics.ctr,
-      conversions: metrics.conversions,
-      revenue: metrics.revenue,
-      roas: metrics.roas,
-      currency: metrics.currency || 'USD',
+      accountName: accountName ?? null,
+      campaignId: safeCampaignId,
+      campaignName: safeCampaignName,
+      adsetId: adsetId ?? '',
+      adId: adId ?? '',
+      impressions: safeImpressions,
+      clicks: safeClicks,
+      spend: safeSpend,
+      reach: safeReach,
+      cpc: safeCpc,
+      ctr: safeCtr,
+      conversions: safeConversions,
+      revenue: safeRevenue,
+      roas: safeRoas,
+      currency: safeCurrency,
       rawData: metrics.rawData ? JSON.stringify(metrics.rawData) : null,
       pulledAt: new Date(),
       syncJobId,
