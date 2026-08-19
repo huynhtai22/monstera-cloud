@@ -245,6 +245,7 @@ async function syncMetaAds(opts: {
 
   const jobId = `pipeline-${Date.now()}`;
   let totalRows = 0;
+  const accountErrors: string[] = [];
 
   logger.info(`[syncMetaAds] Starting sync for ${adAccounts.length} accounts`);
 
@@ -310,8 +311,10 @@ async function syncMetaAds(opts: {
       }
 
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: true });
-    } catch (error) {
+    } catch (error: any) {
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: false });
+      const msg = error instanceof Error ? error.message : String(error);
+      accountErrors.push(`${accountId}: ${msg}`);
       logger.error(`[syncMetaAds] Failed for account ${accountId}:`, error);
       // Continue with next account
     }
@@ -322,6 +325,10 @@ async function syncMetaAds(opts: {
     where: { id: connectionId },
     data: { lastSyncAt: new Date() },
   });
+
+  if (totalRows === 0 && accountErrors.length > 0) {
+    return { success: false, rowsIngested: 0, error: accountErrors.join("; ") };
+  }
 
   return { success: true, rowsIngested: totalRows };
 }

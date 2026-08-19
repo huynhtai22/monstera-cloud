@@ -298,8 +298,9 @@ export class MetaReportClient {
     const allRows: MetaInsightsRow[] = [];
     let afterCursor: string | null = null;
 
+    const cleanAdAccountId = String(params.adAccountId).replace(/^act_/, "");
     do {
-      const url = new URL(`${META_GRAPH_BASE}/act_${params.adAccountId}/insights`);
+      const url = new URL(`${META_GRAPH_BASE}/act_${cleanAdAccountId}/insights`);
       url.searchParams.set('access_token', accessToken);
       url.searchParams.set('fields', params.fields.join(','));
       url.searchParams.set('level', params.level);
@@ -339,7 +340,8 @@ export class MetaReportClient {
     accessToken: string,
     params: MetaInsightsParams,
   ): Promise<string> {
-    const url = new URL(`${META_GRAPH_BASE}/act_${params.adAccountId}/insights`);
+    const cleanAdAccountId = String(params.adAccountId).replace(/^act_/, "");
+    const url = new URL(`${META_GRAPH_BASE}/act_${cleanAdAccountId}/insights`);
 
     const body = new URLSearchParams();
     body.set('access_token', accessToken);
