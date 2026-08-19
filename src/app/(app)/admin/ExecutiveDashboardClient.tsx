@@ -226,7 +226,7 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                     <div className="p-6 rounded-lg bg-panel border border-line space-y-2">
                         <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
                             <span>Thực Thu VietQR (Cash-In)</span>
-                            <div className="p-2 rounded-xl bg-cyan-50 dark:bg-cyan-950/60 text-cyan-600 dark:text-cyan-400">
+                            <div className="p-2 rounded-md bg-canvas border border-line text-white">
                                 <QrCode className="w-4 h-4" />
                             </div>
                         </div>
@@ -302,13 +302,13 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                 <div className="p-6 md:p-8 rounded-lg bg-panel border border-line space-y-6">
                     <div className="flex items-center justify-between">
                         <h3 className="font-bold text-sm uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                            <Users className="w-4 h-4 text-cyan-600" />
+                            <Users className="w-4 h-4 text-white" />
                             <span>Người Dùng &amp; Tỷ Lệ Rời Bỏ (Churn)</span>
                         </h3>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                        <div className="p-4 rounded-lg bg-canvas border border-line">
                             <span className="text-[11px] text-slate-400 block font-medium">Người dùng hoạt động (Active)</span>
                             <span className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">
                                 {data?.growth.activeWorkspacesCount ?? 0}
@@ -316,7 +316,7 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                             <span className="text-[10px] text-slate-500 block mt-0.5">Sync dữ liệu &lt;14 ngày</span>
                         </div>
 
-                        <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                        <div className="p-4 rounded-lg bg-canvas border border-line">
                             <span className="text-[11px] text-slate-400 block font-medium">Rời bỏ / Tạm dừng (Churn)</span>
                             <span className="text-2xl font-extrabold text-rose-600 dark:text-rose-400">
                                 {(data?.growth.suspendedWorkspacesCount || 0) + (data?.growth.inactiveWorkspacesCount || 0)}
@@ -328,12 +328,12 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                     </div>
 
                     {/* Health Note */}
-                    <div className="p-4 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 text-xs text-amber-900 dark:text-amber-300 space-y-1">
+                    <div className="p-4 rounded-lg bg-amber-950/20 border border-amber-900/40 text-xs text-amber-200 space-y-1">
                         <div className="flex items-center gap-1.5 font-bold">
-                            <AlertTriangle className="w-4 h-4 text-amber-600" />
+                            <AlertTriangle className="w-4 h-4 text-amber-500" />
                             <span>Phân tích giữ chân người dùng (Retention)</span>
                         </div>
-                        <p className="text-[11px] leading-relaxed">
+                        <p className="text-[11px] leading-relaxed text-ink-mute">
                             Có <strong>{data?.growth.inactiveWorkspacesCount ?? 0}</strong> workspace không kích hoạt sync trong 14 ngày qua. Đội ngũ BD nên gửi email hỗ trợ thiết lập Google Sheets Add-on.
                         </p>
                     </div>
@@ -342,7 +342,7 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                 {/* Plan Distribution Breakdown */}
                 <div className="p-6 md:p-8 rounded-lg bg-panel border border-line space-y-5 lg:col-span-2">
                     <h3 className="font-bold text-sm uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                        <Layers className="w-4 h-4 text-indigo-600" />
+                        <Layers className="w-4 h-4 text-white" />
                         <span>Phân Bổ Gói Đăng Ký (Plan Tier Distribution)</span>
                     </h3>
 
@@ -361,16 +361,16 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                                                 {count} ({pct}%)
                                             </span>
                                         </div>
-                                        <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                                        <div className="h-2 rounded-full bg-canvas border border-line overflow-hidden">
                                             <div
                                                 className={`h-full rounded-full ${
                                                     plan === "professional"
-                                                        ? "bg-cyan-500"
+                                                        ? "bg-white"
                                                         : plan === "starter"
                                                         ? "bg-emerald-500"
                                                         : plan === "enterprise"
-                                                        ? "bg-indigo-600"
-                                                        : "bg-slate-400"
+                                                        ? "bg-indigo-400"
+                                                        : "bg-slate-500"
                                                 }`}
                                                 style={{ width: `${pct}%` }}
                                             ></div>
@@ -387,7 +387,7 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                 <div className="flex items-center justify-between">
                     <div>
                         <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
-                            <QrCode className="w-5 h-5 text-emerald-600" />
+                            <QrCode className="w-5 h-5 text-white" />
                             <span>Sổ Nhật Ký Giao Dịch VietQR &amp; Thanh Toán (Ledger)</span>
                         </h3>
                         <p className="text-xs text-slate-500">
@@ -420,7 +420,7 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                                         <td className="py-3 px-3 font-mono font-bold text-slate-900 dark:text-white">
                                             #{tx.orderCode}
                                         </td>
-                                        <td className="py-3 px-3 uppercase font-semibold text-cyan-600">{tx.plan}</td>
+                                        <td className="py-3 px-3 uppercase font-semibold text-white">{tx.plan}</td>
                                         <td className="py-3 px-3 font-bold text-slate-900 dark:text-white">
                                             {tx.amount.toLocaleString("vi-VN")} đ
                                         </td>
@@ -464,10 +464,10 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
             </div>
 
             {/* ── SECTION 4: DATABASE & INFRASTRUCTURE HEALTH ──────────────── */}
-            <div className="p-6 md:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+            <div className="p-6 md:p-8 rounded-lg bg-panel border border-line space-y-6">
                 <div className="flex items-center justify-between">
                     <h3 className="font-bold text-sm uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                        <Server className="w-4 h-4 text-emerald-600" />
+                        <Server className="w-4 h-4 text-white" />
                         <span>Sức Khỏe Cơ Sở Dữ Liệu PostgreSQL &amp; Hạ Tầng ETL</span>
                     </h3>
                     <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5">
@@ -476,28 +476,28 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                    <div className="p-4 rounded-lg bg-canvas border border-line">
                         <span className="text-slate-400 block">Dữ liệu Ads (CampaignMetrics)</span>
                         <span className="text-xl font-mono font-bold text-slate-900 dark:text-white">
                             {(data?.dbHealth.tables.campaignMetrics || 0).toLocaleString()} dòng
                         </span>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                    <div className="p-4 rounded-lg bg-canvas border border-line">
                         <span className="text-slate-400 block">Đơn hàng sàn (RetailOrders)</span>
                         <span className="text-xl font-mono font-bold text-slate-900 dark:text-white">
                             {(data?.dbHealth.tables.retailOrders || 0).toLocaleString()} dòng
                         </span>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                    <div className="p-4 rounded-lg bg-canvas border border-line">
                         <span className="text-slate-400 block">Lịch sử Sync (SyncLogs)</span>
                         <span className="text-xl font-mono font-bold text-slate-900 dark:text-white">
                             {(data?.dbHealth.tables.syncLogs || 0).toLocaleString()} records
                         </span>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+                    <div className="p-4 rounded-lg bg-canvas border border-line">
                         <span className="text-slate-400 block">Tỷ Lệ Sync Thành Công (24h)</span>
                         <span className="text-xl font-mono font-bold text-emerald-600 dark:text-emerald-400">
                             {data?.syncTelemetry.syncSuccessRate ?? 100}%
@@ -515,10 +515,10 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                             data.syncTelemetry.connectionsByProvider.map((c) => (
                                 <div
                                     key={c.provider}
-                                    className="px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold flex items-center gap-2"
+                                    className="px-3.5 py-2 rounded-lg bg-canvas border border-line text-xs font-semibold flex items-center gap-2"
                                 >
-                                    <span className="capitalize">{c.provider.replace(/_/g, " ")}</span>
-                                    <span className="px-2 py-0.5 rounded-full bg-white dark:bg-slate-900 font-bold text-cyan-600 shadow-2xs">
+                                    <span className="capitalize text-ink">{c.provider.replace(/_/g, " ")}</span>
+                                    <span className="px-2 py-0.5 rounded-full bg-panel border border-line font-bold text-white shadow-2xs">
                                         {c.count}
                                     </span>
                                 </div>

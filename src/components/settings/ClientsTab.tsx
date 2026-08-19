@@ -103,7 +103,7 @@ export function ClientsTab({
                                                 <input
                                                     value={editClientNameValue}
                                                     onChange={e => setEditClientNameValue(e.target.value)}
-                                                    className="px-2 py-1 text-sm bg-slate-50 dark:bg-[#000000]/60 border border-slate-200 dark:border-white/10 rounded-md outline-none text-gray-900 dark:text-white placeholder:text-slate-400 focus:ring-1 focus:ring-cyan-500/40"
+                                                    className="px-2 py-1 text-xs bg-canvas border border-line rounded-md outline-none text-ink placeholder:text-ink-mute focus:ring-1 focus:ring-white"
                                                 />
                                                 <button onClick={() => handleUpdateClient(client.id)} className="text-xs text-ink font-semibold">Save</button>
                                                 <button onClick={() => setEditingClientId(null)} className="text-xs text-gray-500">Cancel</button>

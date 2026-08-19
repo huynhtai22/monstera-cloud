@@ -130,41 +130,41 @@ export function PilotProvisioningClient() {
         <main className="mx-auto max-w-6xl p-6 sm:p-10 space-y-10">
             {/* Header */}
             <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-cyan-700">Internal Operations &amp; Sales Hub</p>
-                <h1 className="mt-2 text-3xl font-bold text-slate-950 dark:text-white">Business Development &amp; Pilot Control</h1>
-                <p className="mt-2 text-slate-600 dark:text-slate-300">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-ink-mute">Internal Operations &amp; Sales Hub</p>
+                <h1 className="mt-2 text-2xl font-bold text-ink">Business Development &amp; Pilot Control</h1>
+                <p className="mt-1 text-xs text-ink-mute">
                     Tạo lời mời Pilot 14 ngày cho Agency, tạo mã VietQR chốt đơn, hoặc duyệt kích hoạt tài khoản thanh toán chuyển khoản thủ công.
                 </p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Tool 1: 14-Day Pilot Invitation Generator */}
-                <div className="rounded-3xl border border-slate-200 bg-white p-6 md:p-8 dark:border-slate-800 dark:bg-slate-900 shadow-sm flex flex-col justify-between">
+                <div className="rounded-lg border border-line bg-panel p-6 md:p-8 shadow-xs flex flex-col justify-between">
                     <div>
                         <div className="flex items-center gap-2 mb-4">
-                            <span className="p-2 rounded-xl bg-cyan-100 text-cyan-700 font-bold text-xs">Option 1</span>
-                            <h2 className="font-bold text-lg text-slate-900 dark:text-white">Tạo link mời Pilot Agency</h2>
+                            <span className="p-2 rounded-md border border-line bg-canvas text-white font-bold text-xs">Option 1</span>
+                            <h2 className="font-bold text-base text-ink">Tạo link mời Pilot Agency</h2>
                         </div>
-                        <p className="text-xs text-slate-500 mb-6">
+                        <p className="text-xs text-ink-mute mb-6">
                             Tạo link đăng ký đặc quyền cho Agency với đầy đủ các kênh Meta Ads, TikTok Ads, Shopee và Google Ads.
                         </p>
 
                         <form onSubmit={submit} className="grid gap-4">
-                            <label className="grid gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            <label className="grid gap-1.5 text-xs font-semibold text-ink">
                                 Tên Agency / Khách hàng
-                                <input name="agencyName" required placeholder="Ví dụ: PMAX Agency" className="rounded-xl border border-slate-300 bg-transparent px-3 py-2 text-sm" />
+                                <input name="agencyName" required placeholder="Ví dụ: PMAX Agency" className="rounded-md border border-line bg-canvas px-3 py-2 text-xs text-ink focus:border-white focus:outline-none" />
                             </label>
-                            <label className="grid gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            <label className="grid gap-1.5 text-xs font-semibold text-ink">
                                 Workspace Slug (viết liền không dấu)
-                                <input name="agencySlug" required pattern="[a-z0-9-]{3,}" placeholder="pmax-agency" className="rounded-xl border border-slate-300 bg-transparent px-3 py-2 text-sm" />
+                                <input name="agencySlug" required pattern="[a-z0-9-]{3,}" placeholder="pmax-agency" className="rounded-md border border-line bg-canvas px-3 py-2 text-xs text-ink focus:border-white focus:outline-none" />
                             </label>
-                            <label className="grid gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            <label className="grid gap-1.5 text-xs font-semibold text-ink">
                                 Email Agency Owner
-                                <input name="email" required type="email" placeholder="owner@agency.vn" className="rounded-xl border border-slate-300 bg-transparent px-3 py-2 text-sm" />
+                                <input name="email" required type="email" placeholder="owner@agency.vn" className="rounded-md border border-line bg-canvas px-3 py-2 text-xs text-ink focus:border-white focus:outline-none" />
                             </label>
-                            <label className="grid gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            <label className="grid gap-1.5 text-xs font-semibold text-ink">
                                 Gói dịch vụ
-                                <select name="plan" defaultValue="pilot" className="rounded-xl border border-slate-300 bg-transparent px-3 py-2 text-sm">
+                                <select name="plan" defaultValue="pilot" className="rounded-md border border-line bg-canvas px-3 py-2 text-xs text-ink focus:border-white focus:outline-none">
                                     <option value="pilot">Pilot (14 ngày dùng thử)</option>
                                     <option value="starter">Starter</option>
                                     <option value="professional">Professional</option>
@@ -172,17 +172,17 @@ export function PilotProvisioningClient() {
                                 </select>
                             </label>
                             <fieldset>
-                                <legend className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Kênh quảng cáo kích hoạt</legend>
+                                <legend className="text-xs font-semibold text-ink mb-2">Kênh quảng cáo kích hoạt</legend>
                                 <div className="grid grid-cols-2 gap-2">
                                     {providers.map(([id, label]) => (
-                                        <label key={id} className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                                            <input name={id} type="checkbox" defaultChecked /> {label}
+                                        <label key={id} className="flex items-center gap-2 text-xs text-ink-mute">
+                                            <input name={id} type="checkbox" defaultChecked className="accent-white rounded" /> {label}
                                         </label>
                                     ))}
                                 </div>
                             </fieldset>
-                            {error ? <p role="alert" className="rounded-lg bg-red-50 p-3 text-xs text-red-700 font-semibold">{error}</p> : null}
-                            <button disabled={busy} className="mt-2 flex items-center justify-center rounded-xl bg-cyan-700 px-4 py-3 font-bold text-sm text-white hover:bg-cyan-800 disabled:opacity-60 transition-all">
+                            {error ? <p role="alert" className="rounded-md border border-red-900/40 bg-red-950/30 p-3 text-xs text-red-200 font-semibold">{error}</p> : null}
+                            <button disabled={busy} className="mt-2 flex items-center justify-center rounded-md bg-white px-4 py-2.5 font-bold text-xs text-black hover:bg-neutral-200 disabled:opacity-60 transition-colors shadow-xs">
                                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Tạo link mời Agency"}
                             </button>
                         </form>
@@ -342,7 +342,7 @@ export function PilotProvisioningClient() {
                                 {recentOrders.map((ord) => (
                                     <tr key={ord.orderCode} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                                         <td className="py-3 px-3 font-mono font-bold text-slate-900 dark:text-white">#{ord.orderCode}</td>
-                                        <td className="py-3 px-3 uppercase font-semibold text-cyan-600">{ord.plan}</td>
+                                        <td className="py-3 px-3 uppercase font-semibold text-white">{ord.plan}</td>
                                         <td className="py-3 px-3 font-bold text-slate-900 dark:text-white">
                                             {ord.amount.toLocaleString("vi-VN")} đ
                                         </td>

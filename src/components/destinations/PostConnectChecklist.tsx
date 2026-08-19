@@ -12,16 +12,16 @@ type PostConnectChecklistProps = {
 export function PostConnectChecklist({ variant }: PostConnectChecklistProps) {
     if (variant === "looker") {
         return (
-            <div className="mt-4 rounded-xl border border-cyan-100/90 bg-cyan-50/50 p-4 text-left dark:border-cyan-900/40 dark:bg-cyan-950/25">
-                <p className="text-xs font-bold uppercase tracking-wide text-cyan-900 dark:text-cyan-200">Next steps</p>
-                <ul className="mt-3 space-y-2 text-sm text-gray-700 dark:text-gray-300">
+            <div className="mt-4 rounded-lg border border-line bg-canvas p-4 text-left">
+                <p className="text-xs font-bold uppercase tracking-wide text-ink">Next steps</p>
+                <ul className="mt-3 space-y-2 text-xs text-ink-mute">
                     <li className="flex items-start gap-2">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400" aria-hidden />
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-white" aria-hidden />
                         <span>
                             Copy your workspace API key from{" "}
                             <Link
                                 href="/settings?tab=api"
-                                className="font-semibold text-cyan-700 underline underline-offset-2 hover:no-underline dark:text-cyan-300"
+                                className="font-semibold text-white underline underline-offset-2 hover:no-underline"
                             >
                                 Settings → API
                             </Link>
@@ -29,12 +29,12 @@ export function PostConnectChecklist({ variant }: PostConnectChecklistProps) {
                         </span>
                     </li>
                     <li className="flex items-start gap-2">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400" aria-hidden />
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-white" aria-hidden />
                         <span>
                             Run a sync from{" "}
                             <Link
                                 href={DESTINATION_HELP_PATHS.sources}
-                                className="font-semibold text-cyan-700 underline underline-offset-2 hover:no-underline dark:text-cyan-300"
+                                className="font-semibold text-white underline underline-offset-2 hover:no-underline"
                             >
                                 Sources
                             </Link>{" "}

@@ -78,12 +78,12 @@ export default function RegisterPage() {
         </div>
 
         {inviteToken ? (
-          <div className="mb-6 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-900">
+          <div className="mb-6 rounded-md border border-line bg-panel p-3 text-xs text-ink">
             Create the account matching your agency invitation.
           </div>
         ) : (
-          <div className="mb-6 rounded-lg border border-cyan-200 bg-cyan-50/70 p-3.5 text-center text-sm text-cyan-900">
-            <span className="font-semibold">🚀 14-Day Agency Pilot:</span> Full access to Meta, Google, TikTok & Shopee data normalization.
+          <div className="mb-6 rounded-md border border-line bg-panel p-3 text-center text-xs text-ink">
+            <span className="font-semibold text-white">14-Day Agency Pilot:</span> Full access to Meta, Google, TikTok & Shopee data normalization.
           </div>
         )}
 

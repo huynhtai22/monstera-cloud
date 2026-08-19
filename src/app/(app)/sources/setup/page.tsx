@@ -148,68 +148,68 @@ function SourceSetupPageContent() {
     };
 
     if (!newConnectionId || !provider) {
-        return <PageShell><EmptyState icon={<X className="h-12 w-12" />} title="Invalid setup link" description="Missing connection information. Connect the source again." primaryAction={<Link href="/sources" className="inline-flex rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white">Go to Sources</Link>} /></PageShell>;
+        return <PageShell><EmptyState icon={<X className="h-12 w-12" />} title="Invalid setup link" description="Missing connection information. Connect the source again." primaryAction={<Link href="/sources" className="inline-flex rounded-md bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-neutral-200 shadow-xs">Go to Sources</Link>} /></PageShell>;
     }
 
     if (isLoading) {
-        return <PageShell><div className="flex h-96 items-center justify-center" role="status" aria-label="Loading connection"><Loader2 className="h-8 w-8 animate-spin text-cyan-500" /></div></PageShell>;
+        return <PageShell><div className="flex h-96 items-center justify-center" role="status" aria-label="Loading connection"><Loader2 className="h-8 w-8 animate-spin text-white" /></div></PageShell>;
     }
 
     if (error || !connection) {
-        return <PageShell><EmptyState icon={<Database className="h-12 w-12" />} title="Connection not found" description={error instanceof Error ? error.message : "The connection is unavailable."} primaryAction={<Link href="/sources" className="inline-flex rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white">Back to Sources</Link>} /></PageShell>;
+        return <PageShell><EmptyState icon={<Database className="h-12 w-12" />} title="Connection not found" description={error instanceof Error ? error.message : "The connection is unavailable."} primaryAction={<Link href="/sources" className="inline-flex rounded-md bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-neutral-200 shadow-xs">Back to Sources</Link>} /></PageShell>;
     }
 
     return (
         <PageShell>
             <div className="mx-auto max-w-2xl">
                 <div className="mb-8 text-center">
-                    <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-100 dark:bg-cyan-900/30">
-                        {importResult ? <CheckCircle2 className="h-8 w-8 text-emerald-600" /> : <Image src={logoPathForConnectionProvider(provider)} alt="" width={40} height={40} className="h-10 w-10 object-contain" />}
+                    <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-lg border border-line bg-panel">
+                        {importResult ? <CheckCircle2 className="h-8 w-8 text-white" /> : <Image src={logoPathForConnectionProvider(provider)} alt="" width={36} height={36} className="h-9 w-9 object-contain" />}
                     </div>
-                    <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    <h1 className="text-xl font-bold text-ink">
                         {importResult ? "Warehouse data is ready" : `${sourceConfig?.name || provider} connected`}
                     </h1>
-                    <p className="mt-2 text-gray-600 dark:text-gray-400">
+                    <p className="mt-1 text-xs text-ink-mute">
                         {importResult ? `${importResult.rows.toLocaleString()} rows were processed. Verify freshness and data below.` : "Choose the remote accounts, then run the first 30-day warehouse import."}
                     </p>
                 </div>
 
-                <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-black">
+                <div className="mb-6 rounded-lg border border-line bg-panel p-4">
                     <div className="flex items-center gap-3">
                         <Image src={logoPathForConnectionProvider(provider)} alt="" width={32} height={32} className="h-8 w-8 object-contain" />
-                        <div><p className="font-semibold text-gray-900 dark:text-white">{connection.name}</p><p className="text-sm text-emerald-600">Connected</p></div>
-                        <CheckCircle2 className="ml-auto h-5 w-5 text-emerald-500" />
+                        <div><p className="font-semibold text-xs text-ink">{connection.name}</p><p className="text-[11px] text-ink-mute">Connected</p></div>
+                        <CheckCircle2 className="ml-auto h-4 w-4 text-white" />
                     </div>
                 </div>
 
                 {!importResult && (
                     <>
-                        {loadingAccounts && <div className="mb-6 flex items-center gap-2 text-sm text-gray-600" role="status"><Loader2 className="h-4 w-4 animate-spin" />Loading remote accounts…</div>}
+                        {loadingAccounts && <div className="mb-6 flex items-center gap-2 text-xs text-ink-mute" role="status"><Loader2 className="h-3.5 w-3.5 animate-spin text-white" />Loading remote accounts…</div>}
                         {accounts.length > 0 && (
-                            <fieldset className="mb-6 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-black">
-                                <legend className="px-1 font-semibold text-gray-900 dark:text-white">Accounts to import</legend>
-                                <p className="mb-4 text-sm text-gray-500">Only selected accounts will be used for this source.</p>
+                            <fieldset className="mb-6 rounded-lg border border-line bg-panel p-4">
+                                <legend className="px-1 text-xs font-semibold text-ink">Accounts to import</legend>
+                                <p className="mb-4 text-xs text-ink-mute">Only selected accounts will be used for this source.</p>
                                 <div className="max-h-60 space-y-2 overflow-y-auto">
                                     {accounts.map((account) => (
-                                        <label key={account.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-gray-100 p-3 focus-within:ring-2 focus-within:ring-cyan-500 dark:border-[#2f3336]">
-                                            <input type="checkbox" checked={selectedAccounts.includes(account.id)} onChange={(event) => setSelectedAccounts((current) => event.target.checked ? [...current, account.id] : current.filter((id) => id !== account.id))} className="h-4 w-4 rounded" />
-                                            <span className="min-w-0"><span className="block truncate font-medium">{account.name}</span><span className="block text-xs text-gray-500">ID: {account.id}</span></span>
+                                        <label key={account.id} className="flex cursor-pointer items-center gap-3 rounded-md border border-line bg-canvas p-3 focus-within:ring-1 focus-within:ring-white">
+                                            <input type="checkbox" checked={selectedAccounts.includes(account.id)} onChange={(event) => setSelectedAccounts((current) => event.target.checked ? [...current, account.id] : current.filter((id) => id !== account.id))} className="h-4 w-4 rounded accent-white" />
+                                            <span className="min-w-0"><span className="block truncate text-xs font-medium text-ink">{account.name}</span><span className="block text-[10px] text-ink-mute">ID: {account.id}</span></span>
                                         </label>
                                     ))}
                                 </div>
                             </fieldset>
                         )}
-                        <button onClick={runFirstImport} disabled={importing || loadingAccounts} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-600 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">
-                            {importing ? <><Loader2 className="h-4 w-4 animate-spin" />Importing data…</> : <>Run first import<ArrowRight className="h-4 w-4" /></>}
+                        <button onClick={runFirstImport} disabled={importing || loadingAccounts} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-white px-4 py-2.5 text-xs font-semibold text-black hover:bg-neutral-200 disabled:cursor-not-allowed disabled:opacity-50 transition-colors shadow-xs">
+                            {importing ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Importing data…</> : <>Run first import<ArrowRight className="h-3.5 w-3.5" /></>}
                         </button>
-                        <button onClick={() => router.push("/sources")} className="mt-3 w-full rounded-lg border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:text-gray-300">Do this later</button>
+                        <button onClick={() => router.push("/sources")} className="mt-3 w-full rounded-md border border-line bg-panel px-4 py-2.5 text-xs font-semibold text-ink hover:bg-white/[0.06] transition-colors">Do this later</button>
                     </>
                 )}
 
                 {importResult && (
                     <div className="space-y-3">
-                        <button onClick={() => router.push("/explorer?tab=warehouse")} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-cyan-600 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-700">Verify data in Data Explorer<ArrowRight className="h-4 w-4" /></button>
-                        <Link href="/settings?tab=api" className="inline-flex w-full items-center justify-center rounded-lg border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:text-gray-300">Set up Sheets, Looker, or API access</Link>
+                        <button onClick={() => router.push("/explorer?tab=warehouse")} className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-white px-4 py-2.5 text-xs font-semibold text-black hover:bg-neutral-200 transition-colors shadow-xs">Verify data in Data Explorer<ArrowRight className="h-3.5 w-3.5" /></button>
+                        <Link href="/settings?tab=api" className="inline-flex w-full items-center justify-center rounded-md border border-line bg-panel px-4 py-2.5 text-xs font-semibold text-ink hover:bg-white/[0.06] transition-colors">Set up Sheets, Looker, or API access</Link>
                     </div>
                 )}
                 <RunsView workspaceId={connection?.workspaceId || activeWorkspaceId} connectionId={connection?.id} title="This source’s runs" />
@@ -219,5 +219,5 @@ function SourceSetupPageContent() {
 }
 
 export default function SourceSetupPage() {
-    return <Suspense fallback={<PageShell><div className="flex h-96 items-center justify-center" role="status"><Loader2 className="h-8 w-8 animate-spin text-cyan-500" /></div></PageShell>}><SourceSetupPageContent /></Suspense>;
+    return <Suspense fallback={<PageShell><div className="flex h-96 items-center justify-center" role="status"><Loader2 className="h-8 w-8 animate-spin text-white" /></div></PageShell>}><SourceSetupPageContent /></Suspense>;
 }

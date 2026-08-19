@@ -343,16 +343,16 @@ export function ReportsClient() {
                                 setDateTo("");
                                 setStatusFilter("all");
                             }}
-                            className="font-semibold text-cyan-700 underline dark:text-cyan-300"
+                            className="font-semibold text-white underline hover:no-underline"
                         >
                             Reset filters
                         </button>
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
+                        <table className="w-full text-left text-xs">
                             <thead>
-                                <tr className="border-b border-gray-200 text-xs font-bold uppercase tracking-wide text-gray-500 dark:border-[#2f3336] dark:text-slate-400">
+                                <tr className="border-b border-line text-[10px] font-bold uppercase tracking-wider text-ink-mute">
                                     <th className="py-3 pr-4">Pipeline</th>
                                     <th className="py-3 pr-4">Status</th>
                                     <th className="py-3 pr-4">Rows</th>
@@ -371,33 +371,33 @@ export function ReportsClient() {
                                             <Link
                                                 href={`/sources/${srcId}`}
                                                 onClick={(e) => e.stopPropagation()}
-                                                className="font-semibold text-cyan-700 underline decoration-cyan-700/30 underline-offset-2 hover:text-cyan-600 dark:text-cyan-300 dark:decoration-cyan-500/40 dark:hover:text-cyan-200"
+                                                className="font-semibold text-white underline underline-offset-2 hover:text-neutral-300"
                                             >
                                                 {name}
                                             </Link>
                                         ) : (
-                                            <span className="font-semibold text-gray-900 dark:text-white">{name}</span>
+                                            <span className="font-semibold text-ink">{name}</span>
                                         );
                                     return (
                                         <tr 
                                             key={l.id} 
                                             onClick={() => handleOpenDrawer(l as any)}
-                                            className="border-b border-gray-100 dark:border-[#2f3336]/80 cursor-pointer hover:bg-gray-50/40 dark:hover:bg-slate-900/10 transition-colors"
+                                            className="border-b border-line cursor-pointer hover:bg-white/[0.02] transition-colors"
                                         >
                                             <td className="py-3 pr-4">{pipelineCell}</td>
                                             <td className="py-3 pr-4">
                                                 {l.status === "success" ? (
-                                                    <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 px-2 py-1 text-xs font-bold text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-200">
-                                                        <CheckCircle2 className="h-3.5 w-3.5" /> Success
+                                                    <span className="inline-flex items-center gap-1 rounded-full border border-line bg-canvas px-2 py-0.5 text-[10px] font-semibold text-white">
+                                                        <CheckCircle2 className="h-3 w-3" /> Success
                                                     </span>
                                                 ) : (
-                                                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-xs font-bold text-red-700 dark:bg-red-950/30 dark:text-red-200">
-                                                        <AlertCircle className="h-3.5 w-3.5" /> Error
+                                                    <span className="inline-flex items-center gap-1 rounded-full border border-red-900/40 bg-red-950/30 px-2 py-0.5 text-[10px] font-semibold text-red-200">
+                                                        <AlertCircle className="h-3 w-3" /> Error
                                                     </span>
                                                 )}
                                             </td>
-                                            <td className="py-3 pr-4 text-gray-700 dark:text-slate-200">{l.rowsSynced ?? 0}</td>
-                                            <td className="py-3 pr-4 text-gray-700 dark:text-slate-200">
+                                            <td className="py-3 pr-4 text-ink">{l.rowsSynced ?? 0}</td>
+                                            <td className="py-3 pr-4 text-ink-mute">
                                                 {Math.round((l.durationMs ?? 0) / 100) / 10}s
                                             </td>
                                             <td className="py-3 pr-4 text-gray-500 dark:text-slate-400">

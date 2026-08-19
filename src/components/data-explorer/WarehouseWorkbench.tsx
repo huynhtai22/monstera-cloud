@@ -1138,7 +1138,7 @@ export function WarehouseWorkbench() {
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
                     type="checkbox"
-                    className="mt-1 h-4 w-4 rounded border-gray-300 text-cyan-600"
+                    className="mt-1 h-4 w-4 rounded border-line accent-white"
                     checked={selectedConnIds.has(c.id)}
                     onChange={() => toggleConnImport(c)}
                   />
@@ -1162,7 +1162,7 @@ export function WarehouseWorkbench() {
                                 type="checkbox"
                                 checked={metaAcctPick[c.id]?.has(a.id) ?? false}
                                 onChange={() => toggleMetaAcct(c.id, a.id)}
-                                className="rounded border-gray-300 text-cyan-600"
+                                className="rounded border-line accent-white"
                               />
                               <span className="truncate text-ink">{a.name || a.id}</span>
                             </label>
@@ -1656,10 +1656,10 @@ export function WarehouseWorkbench() {
                     .sort((a, b) => a.label.localeCompare(b.label))
                     .map((c) => (
                       <li key={c.id}>
-                        <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                        <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
                           <input
                             type="checkbox"
-                            className="rounded border-gray-300 text-cyan-600"
+                            className="rounded border-line accent-white"
                             checked={visibleColSet.has(c.id)}
                             onChange={() => toggleWarehouseColumn(c.id)}
                           />
@@ -1670,17 +1670,17 @@ export function WarehouseWorkbench() {
                 </ul>
               </div>
               <div>
-                <p className="mb-2 text-xs font-semibold text-gray-600 dark:text-slate-400">Metrics</p>
+                <p className="mb-2 text-xs font-semibold text-ink-mute">Metrics</p>
                 <ul className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
                   {[...WAREHOUSE_COLUMNS]
                     .filter((c) => c.group === "metric")
                     .sort((a, b) => a.label.localeCompare(b.label))
                     .map((c) => (
                       <li key={c.id}>
-                        <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-slate-300">
+                        <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
                           <input
                             type="checkbox"
-                            className="rounded border-gray-300 text-cyan-600"
+                            className="rounded border-line accent-white"
                             checked={visibleColSet.has(c.id)}
                             onChange={() => toggleWarehouseColumn(c.id)}
                           />

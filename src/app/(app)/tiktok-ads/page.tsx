@@ -62,13 +62,13 @@ export default function TikTokAdsPage() {
 
   const leftColumn = (
     <div className="space-y-6">
-      <div className="p-6 rounded-2xl bg-white border border-gray-100 shadow-sm dark:bg-[#000000]/50 dark:border-[#2f3336]">
-        <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-4 uppercase tracking-wider">Report Configuration</h3>
+      <div className="p-6 rounded-lg bg-panel border border-line shadow-xs">
+        <h3 className="text-xs font-bold text-ink mb-4 uppercase tracking-wider">Report Configuration</h3>
         
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Ad Account</label>
-            <select className="w-full bg-gray-50 border-none rounded-xl text-sm p-3 focus:ring-cyan-500 dark:bg-[#16181c] dark:text-white">
+            <label className="block text-[10px] font-bold text-ink-mute uppercase mb-2">Ad Account</label>
+            <select className="w-full bg-canvas border border-line rounded-md text-xs p-2.5 focus:border-white focus:outline-none text-ink">
               {tiktokConnections.map((c: any) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -77,30 +77,30 @@ export default function TikTokAdsPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Time Range</label>
+            <label className="block text-[10px] font-bold text-ink-mute uppercase mb-2">Time Range</label>
             <div className="grid grid-cols-2 gap-2">
-              <button className="p-2 text-xs font-bold bg-cyan-50 text-cyan-700 rounded-lg border border-cyan-100">Last 7 Days</button>
-              <button className="p-2 text-xs font-bold bg-white text-gray-500 rounded-lg border border-gray-100 hover:bg-gray-50">Last 30 Days</button>
+              <button className="p-2 text-xs font-semibold bg-white text-black rounded-md shadow-xs">Last 7 Days</button>
+              <button className="p-2 text-xs font-semibold bg-canvas text-ink-mute rounded-md border border-line hover:text-white transition-colors">Last 30 Days</button>
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Metrics</label>
+            <label className="block text-[10px] font-bold text-ink-mute uppercase mb-2">Metrics</label>
             <div className="flex flex-wrap gap-2">
               {['Spend', 'Impressions', 'Clicks', 'Conversions', 'ROAS'].map(m => (
-                <span key={m} className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-[10px] font-bold uppercase">{m}</span>
+                <span key={m} className="px-2 py-1 bg-canvas border border-line text-ink-mute rounded text-[10px] font-mono">{m}</span>
               ))}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="p-6 rounded-2xl bg-blue-50 border border-blue-100 dark:bg-blue-900/20 dark:border-blue-800">
-        <div className="flex items-center gap-2 text-blue-800 dark:text-blue-300 mb-2">
-          <RefreshCw className="w-4 h-4" />
-          <h4 className="text-sm font-bold uppercase tracking-tight">Auto-Sync Status</h4>
+      <div className="p-5 rounded-lg bg-panel border border-line">
+        <div className="flex items-center gap-2 text-ink mb-2">
+          <RefreshCw className="w-3.5 h-3.5" />
+          <h4 className="text-xs font-bold uppercase tracking-wider">Auto-Sync Status</h4>
         </div>
-        <p className="text-xs text-blue-600 dark:text-blue-400 leading-relaxed">
+        <p className="text-xs text-ink-mute leading-relaxed">
           TikTok Ads reports can be scheduled to automatically sync to Google Sheets every 24 hours.
         </p>
       </div>
@@ -114,8 +114,8 @@ export default function TikTokAdsPage() {
       icon={<IntegrationMark src={INTEGRATION_LOGOS.tiktok} alt="TikTok" size="md" />}
       banner={
         tiktokConnections.length === 0 ? (
-          <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300">
-            <AlertCircle className="h-4 w-4" />
+          <div className="mb-4 flex items-center gap-3 rounded-md border border-amber-800/50 bg-amber-950/20 px-4 py-3 text-xs font-medium text-amber-200">
+            <AlertCircle className="h-4 w-4 shrink-0" />
             <span>Connect a TikTok Business account to start generating reports.</span>
             <Link href="/sources" className="ml-auto underline font-bold">Go to Console</Link>
           </div>
@@ -140,9 +140,9 @@ export default function TikTokAdsPage() {
         <div className="flex flex-col h-full">
           {loading ? (
             <div className="flex flex-1 flex-col items-center justify-center p-12 text-center">
-              <Loader2 className="h-10 w-10 text-cyan-500 animate-spin mb-4" />
-              <h4 className="text-lg font-bold text-gray-900 dark:text-white">Fetching TikTok Data</h4>
-              <p className="text-sm text-gray-500 max-w-xs mx-auto">This usually takes 5-10 seconds depending on account size.</p>
+              <Loader2 className="h-8 w-8 text-white animate-spin mb-4" />
+              <h4 className="text-sm font-bold text-ink">Fetching TikTok Data</h4>
+              <p className="text-xs text-ink-mute max-w-xs mx-auto mt-1">This usually takes 5-10 seconds depending on account size.</p>
             </div>
           ) : reportResult ? (
             <div className="p-0 overflow-auto">

@@ -17,6 +17,7 @@ import {
     type PipelineHealthSource,
     type SyncIncident,
 } from "@/components/dashboard/PipelineHealthOverview";
+import { PillarGrid } from "@/components/dashboard/PillarGrid";
 import { trackEvent, trackOnce } from "@/lib/analytics-events";
 
 const WIZARD_DISMISS_KEY = "monstera_setup_wizard_dismissed_v1";
@@ -400,7 +401,14 @@ export function DashboardHomePage() {
 
             <MorningKpis snapshots={snapshots} rows7d={rows7d} sources={sourceHealth} />
 
-            <div className="mt-5">
+            <div className="mt-6">
+                <PillarGrid
+                    connections={connections}
+                    healthyCount={sourceHealth.filter((s) => s.state === "fresh").length}
+                />
+            </div>
+
+            <div className="mt-6">
                 <PipelineHealthOverview
                     sources={sourceHealth}
                     volume={warehouseVolume}

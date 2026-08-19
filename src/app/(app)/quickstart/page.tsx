@@ -62,16 +62,16 @@ export default function QuickStartPage() {
     ];
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-white to-white dark:from-slate-950 dark:via-slate-900 dark:to-slate-900">
+        <div className="min-h-screen bg-canvas">
             {/* Header */}
-            <header className="border-b border-gray-200 bg-white/80 backdrop-blur-sm dark:border-[#2f3336] dark:bg-[#000000]/80">
-                <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
-                    <h1 className="text-xl font-bold text-gray-900 dark:text-white">
+            <header className="border-b border-line bg-panel">
+                <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-6">
+                    <h1 className="text-sm font-bold text-ink">
                         Quick Start
                     </h1>
                     <button
                         onClick={() => router.push("/sources")}
-                        className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300"
+                        className="text-xs text-ink-mute hover:text-white transition-colors"
                     >
                         Skip to dashboard →
                     </button>
@@ -91,34 +91,34 @@ export default function QuickStartPage() {
                                 <div key={s.id} className="flex items-center">
                                     <div
                                         className={cn(
-                                            "flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors",
+                                            "flex h-9 w-9 items-center justify-center rounded-full border transition-colors",
                                             isActive
-                                                ? "border-cyan-600 bg-cyan-600 text-white"
+                                                ? "border-white bg-white text-black font-semibold"
                                                 : isPast
-                                                    ? "border-cyan-600 bg-cyan-50 text-cyan-600 dark:bg-cyan-950/30"
-                                                    : "border-gray-300 bg-white text-gray-400 dark:border-[#2f3336] dark:bg-[#16181c]"
+                                                    ? "border-line bg-panel text-white"
+                                                    : "border-line bg-canvas text-ink-mute"
                                         )}
                                     >
                                         {isPast ? (
-                                            <CheckCircle2 className="h-5 w-5" />
+                                            <CheckCircle2 className="h-4 w-4" />
                                         ) : (
-                                            <Icon className="h-5 w-5" />
+                                            <Icon className="h-4 w-4" />
                                         )}
                                     </div>
                                     <span
                                         className={cn(
-                                            "ml-2 text-sm font-medium",
+                                            "ml-2 text-xs font-semibold",
                                             isActive
-                                                ? "text-cyan-600 dark:text-cyan-400"
+                                                ? "text-white"
                                                 : isPast
-                                                    ? "text-gray-700 dark:text-gray-300"
-                                                    : "text-gray-400 dark:text-gray-500"
+                                                    ? "text-ink"
+                                                    : "text-ink-mute"
                                         )}
                                     >
                                         {s.label}
                                     </span>
                                     {i < steps.length - 1 && (
-                                        <div className="mx-4 h-px w-12 bg-gray-200 dark:bg-[#1d1f23]" />
+                                        <div className="mx-4 h-px w-12 bg-line" />
                                     )}
                                 </div>
                             );
@@ -131,10 +131,10 @@ export default function QuickStartPage() {
                     {step === "source" && (
                         <div className="space-y-6">
                             <div className="text-center">
-                                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                                <h2 className="text-xl font-bold text-ink">
                                     Where does your data come from?
                                 </h2>
-                                <p className="mt-2 text-gray-600 dark:text-gray-400">
+                                <p className="mt-1 text-xs text-ink-mute">
                                     Select your primary e-commerce or ad platform
                                 </p>
                             </div>
@@ -150,23 +150,23 @@ export default function QuickStartPage() {
                                         key={source.id}
                                         onClick={() => handleSourceSelect(source.id)}
                                         className={cn(
-                                            "flex flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all hover:border-cyan-300 hover:shadow-md",
-                                            "border-gray-200 bg-white dark:border-[#2f3336] dark:bg-[#16181c]",
-                                            "hover:bg-cyan-50/50 dark:hover:bg-cyan-950/20"
+                                            "flex flex-col items-center gap-3 rounded-lg border p-5 transition-all hover:border-white/40 shadow-xs",
+                                            "border-line bg-panel",
+                                            "hover:bg-white/[0.04]"
                                         )}
                                     >
                                         <Image
                                             src={logoPathForConnectionProvider(source.id)}
                                             alt={source.name}
-                                            width={48}
-                                            height={48}
-                                            className="h-12 w-12 object-contain"
+                                            width={40}
+                                            height={40}
+                                            className="h-10 w-10 object-contain"
                                         />
                                         <div className="text-center">
-                                            <p className="font-semibold text-gray-900 dark:text-white">
+                                            <p className="text-xs font-semibold text-ink">
                                                 {source.name}
                                             </p>
-                                            <p className="text-xs text-gray-500 capitalize">
+                                            <p className="text-[10px] text-ink-mute capitalize">
                                                 {source.category}
                                             </p>
                                         </div>
@@ -179,10 +179,10 @@ export default function QuickStartPage() {
                     {step === "destination" && (
                         <div className="space-y-6">
                             <div className="text-center">
-                                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                                <h2 className="text-xl font-bold text-ink">
                                     Where should data go?
                                 </h2>
-                                <p className="mt-2 text-gray-600 dark:text-gray-400">
+                                <p className="mt-1 text-xs text-ink-mute">
                                     Choose where you want to analyze your data
                                 </p>
                             </div>
@@ -216,48 +216,48 @@ export default function QuickStartPage() {
                                         disabled={dest.disabled}
                                         onClick={() => !dest.disabled && handleDestinationSelect(dest.id)}
                                         className={cn(
-                                            "flex w-full items-center gap-4 rounded-xl border-2 p-4 text-left transition-all",
+                                            "flex w-full items-center gap-4 rounded-lg border p-4 text-left transition-all",
                                             dest.disabled
-                                                ? "border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed dark:border-[#2f3336] dark:bg-[#16181c]/40"
-                                                : "border-gray-200 bg-white hover:border-cyan-300 dark:border-[#2f3336] dark:bg-[#16181c]",
-                                            dest.recommended && "border-cyan-200 bg-cyan-50/30 dark:border-cyan-800/50 dark:bg-cyan-950/20"
+                                                ? "border-line/40 bg-canvas opacity-50 cursor-not-allowed"
+                                                : "border-line bg-panel hover:border-white/40",
+                                            dest.recommended && "border-white/30"
                                         )}
                                     >
                                         <Image
                                             src={logoPathForConnectionProvider(dest.id === "looker_studio" ? "looker_studio" : "google_sheets")}
                                             alt={dest.name}
-                                            width={40}
-                                            height={40}
-                                            className="h-10 w-10 object-contain"
+                                            width={36}
+                                            height={36}
+                                            className="h-9 w-9 object-contain"
                                         />
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2">
-                                                <p className="font-semibold text-gray-900 dark:text-white">
+                                                <p className="text-xs font-semibold text-ink">
                                                     {dest.name}
                                                 </p>
                                                 {dest.recommended && (
-                                                    <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-medium text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-300">
+                                                    <span className="rounded-full border border-line bg-canvas px-2 py-0.5 text-[10px] font-semibold text-white">
                                                         Recommended
                                                     </span>
                                                 )}
                                                 {dest.disabled && (
-                                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                                    <span className="rounded-full border border-line/40 bg-canvas px-2 py-0.5 text-[10px] font-medium text-ink-mute">
                                                         Coming soon
                                                     </span>
                                                 )}
                                             </div>
-                                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                                            <p className="text-xs text-ink-mute mt-0.5">
                                                 {dest.desc}
                                             </p>
                                         </div>
-                                        <ArrowRight className="h-5 w-5 text-gray-400" />
+                                        <ArrowRight className="h-4 w-4 text-ink-mute" />
                                     </button>
                                 ))}
                             </div>
 
                             <button
                                 onClick={() => setStep("source")}
-                                className="mx-auto block text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                                className="mx-auto block text-xs text-ink-mute hover:text-white transition-colors"
                             >
                                 ← Back to source selection
                             </button>
@@ -267,35 +267,35 @@ export default function QuickStartPage() {
                     {step === "confirm" && (
                         <div className="space-y-6">
                             <div className="text-center">
-                                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                                <h2 className="text-xl font-bold text-ink">
                                     Ready to connect
                                 </h2>
-                                <p className="mt-2 text-gray-600 dark:text-gray-400">
+                                <p className="mt-1 text-xs text-ink-mute">
                                     Connect your marketing source and start pulling normalized metrics into your warehouse
                                 </p>
                             </div>
 
-                            <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-[#2f3336] dark:bg-[#16181c]">
+                            <div className="rounded-lg border border-line bg-panel p-6 shadow-xs">
                                 <div className="flex items-center justify-center gap-4">
                                     {selectedSource && (
                                         <div className="flex flex-col items-center gap-2">
                                             <Image
                                                 src={logoPathForConnectionProvider(selectedSource)}
                                                 alt=""
-                                                width={48}
-                                                height={48}
-                                                className="h-12 w-12 object-contain"
+                                                width={40}
+                                                height={40}
+                                                className="h-10 w-10 object-contain"
                                             />
-                                            <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                            <span className="text-xs font-medium text-ink">
                                                 {SOURCES_CATALOG.find(s => s.id === selectedSource)?.name}
                                             </span>
                                         </div>
                                     )}
                                     
                                     <div className="flex items-center gap-1">
-                                        <div className="h-px w-8 bg-gray-300 dark:bg-[#2f3336]" />
-                                        <ArrowRight className="h-4 w-4 text-gray-400" />
-                                        <div className="h-px w-8 bg-gray-300 dark:bg-[#2f3336]" />
+                                        <div className="h-px w-8 bg-line" />
+                                        <ArrowRight className="h-3.5 w-3.5 text-ink-mute" />
+                                        <div className="h-px w-8 bg-line" />
                                     </div>
                                     
                                     {selectedDestination && (
@@ -303,11 +303,11 @@ export default function QuickStartPage() {
                                             <Image
                                                 src={logoPathForConnectionProvider(selectedDestination === "looker_studio" ? "looker_studio" : "google_sheets")}
                                                 alt=""
-                                                width={48}
-                                                height={48}
-                                                className="h-12 w-12 object-contain"
+                                                width={40}
+                                                height={40}
+                                                className="h-10 w-10 object-contain"
                                             />
-                                            <span className="text-sm font-medium text-gray-900 dark:text-white">
+                                            <span className="text-xs font-medium text-ink">
                                                 {selectedDestination === "looker_studio"
                                                     ? "Looker Studio"
                                                     : "Google Sheets Add-on"}
@@ -316,17 +316,17 @@ export default function QuickStartPage() {
                                     )}
                                 </div>
 
-                                <div className="mt-6 space-y-3 rounded-lg bg-gray-50 p-4 dark:bg-[#1d1f23]/50">
-                                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                                        <CheckCircle2 className="h-4 w-4 text-cyan-600" />
+                                <div className="mt-6 space-y-2.5 rounded-md border border-line bg-canvas p-4">
+                                    <div className="flex items-center gap-2 text-xs text-ink-mute">
+                                        <CheckCircle2 className="h-3.5 w-3.5 text-white shrink-0" />
                                         <span>Data normalized and stored in your private Monstera warehouse</span>
                                     </div>
-                                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                                        <CheckCircle2 className="h-4 w-4 text-cyan-600" />
+                                    <div className="flex items-center gap-2 text-xs text-ink-mute">
+                                        <CheckCircle2 className="h-3.5 w-3.5 text-white shrink-0" />
                                         <span>First data sync completes in 1-2 minutes</span>
                                     </div>
-                                    <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                                        <CheckCircle2 className="h-4 w-4 text-cyan-600" />
+                                    <div className="flex items-center gap-2 text-xs text-ink-mute">
+                                        <CheckCircle2 className="h-3.5 w-3.5 text-white shrink-0" />
                                         <span>Connect unlimited accounts across certified channels</span>
                                     </div>
                                 </div>
@@ -336,28 +336,27 @@ export default function QuickStartPage() {
                                 onClick={handleConnect}
                                 disabled={isConnecting}
                                 className={cn(
-                                    "flex w-full items-center justify-center gap-2 rounded-xl py-4 font-semibold transition-all",
-                                    "bg-cyan-600 text-white hover:bg-cyan-700",
-                                    "dark:bg-cyan-600 dark:hover:bg-cyan-500",
+                                    "flex w-full items-center justify-center gap-2 rounded-md py-3 font-semibold text-xs transition-colors shadow-xs",
+                                    "bg-white text-black hover:bg-neutral-200",
                                     isConnecting && "opacity-70 cursor-not-allowed"
                                 )}
                             >
                                 {isConnecting ? (
                                     <>
-                                        <Loader2 className="h-5 w-5 animate-spin" />
+                                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
                                         Starting connection...
                                     </>
                                 ) : (
                                     <>
                                         Connect Now
-                                        <ArrowRight className="h-5 w-5" />
+                                        <ArrowRight className="h-4 w-4" />
                                     </>
                                 )}
                             </button>
 
                             <button
                                 onClick={() => setStep("destination")}
-                                className="mx-auto block text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                                className="mx-auto block text-xs text-ink-mute hover:text-white transition-colors"
                             >
                                 ← Back
                             </button>

@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 
 /**
- * GlobeLoader — spinning Earth + cyan whirl.
+ * GlobeLoader — spinning monochrome Earth + particle whirl.
  *
  * Drop-in usage:
  *   const [loading, setLoading] = useState(true);
@@ -53,8 +53,6 @@ export interface GlobeLoaderProps {
     visible?: boolean;
     /** Minimum time the loader stays on screen once shown (ms). */
     minVisibleMs?: number;
-    /** Strength of cyan tint (0–100). Higher = more brand cyan, less slate. */
-    cyanIntensity?: number;
     /** Globe rotation speed in degrees/second. */
     spinSpeedDegPerSec?: number;
     /** Stroke weight multiplier for country outlines (0.5 – 2). */
@@ -70,7 +68,6 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
         {
             visible = true,
             minVisibleMs = 700,
-            cyanIntensity = 25,
             spinSpeedDegPerSec = 18,
             globeWeight = 1,
             fullscreen = true,
@@ -84,12 +81,8 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
         const shownAtRef = useRef<number>(0);
 
         // Refs for drawing so prop changes don't tear down rAF
-        const cyanRef = useRef(cyanIntensity);
         const speedRef = useRef(spinSpeedDegPerSec);
         const weightRef = useRef(globeWeight);
-        useEffect(() => {
-            cyanRef.current = cyanIntensity;
-        }, [cyanIntensity]);
         useEffect(() => {
             speedRef.current = spinSpeedDegPerSec;
         }, [spinSpeedDegPerSec]);
@@ -169,24 +162,23 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
 
             const draw = () => {
                 if (!projection) return;
-                const t = Math.max(0, Math.min(1, cyanRef.current / 100));
                 const w = weightRef.current;
-                const landFill = lerp("#cbd5e1", "#a5f3fc", t);
-                const landStroke = lerp("#1e293b", "#0e7490", t);
-                const borderCol = lerp("#334155", "#0891b2", t);
-                const sphereRim = lerp("#475569", "#0891b2", t);
+                const landFill = "#1a1a1a";
+                const landStroke = "#383838";
+                const borderCol = "#222222";
+                const sphereRim = "#444444";
 
                 ctx.clearRect(0, 0, DPR_SIZE, DPR_SIZE);
 
                 ctx.beginPath();
                 path({ type: "Sphere" });
-                ctx.fillStyle = "#ffffff";
+                ctx.fillStyle = "#0a0a0a";
                 ctx.fill();
 
                 // graticule
                 ctx.beginPath();
                 path(window.d3.geoGraticule10());
-                ctx.strokeStyle = "rgba(15, 23, 42, 0.08)";
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
                 ctx.lineWidth = 0.6 * DPR;
                 ctx.stroke();
 
@@ -276,7 +268,7 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
             ? {
                   position: "fixed",
                   inset: 0,
-                  background: "#f8fafc",
+                  background: "#050505",
                   display: "grid",
                   placeItems: "center",
                   zIndex: 9999,
@@ -317,7 +309,7 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
                             inset: 0,
                             borderRadius: "50%",
                             background:
-                                "radial-gradient(circle at center, rgba(237,237,237,0.08) 0%, transparent 62%)",
+                                "radial-gradient(circle at center, rgba(255,255,255,0.06) 0%, transparent 62%)",
                             animation: "mgl-halo 2.4s ease-in-out infinite",
                             zIndex: 1,
                         }}
@@ -349,8 +341,8 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
                                 cx="100"
                                 cy="100"
                                 r="84"
-                                stroke="#0891b2"
-                                strokeOpacity="0.7"
+                                stroke="#8a8a8a"
+                                strokeOpacity="0.5"
                                 strokeWidth="1.2"
                                 strokeDasharray="2 6"
                                 fill="none"
@@ -359,16 +351,16 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
                             <g className="mgl-ring mgl-ring-1">
                                 <path
                                     d="M 100 23 A 77 77 0 0 1 177 100"
-                                    stroke="#0891b2"
-                                    strokeOpacity="0.95"
-                                    strokeWidth="2.4"
+                                    stroke="#ededed"
+                                    strokeOpacity="0.8"
+                                    strokeWidth="2"
                                     strokeLinecap="round"
                                     fill="none"
                                 />
                                 <path
                                     d="M 100 177 A 77 77 0 0 1 23 100"
                                     stroke="#ededed"
-                                    strokeOpacity="0.55"
+                                    strokeOpacity="0.4"
                                     strokeWidth="1.6"
                                     strokeLinecap="round"
                                     fill="none"
@@ -376,7 +368,7 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
                             </g>
 
                             <g className="mgl-particles">
-                                <circle cx="100" cy="8" r="2.2" fill="#0891b2" />
+                                <circle cx="100" cy="8" r="2.2" fill="#ededed" />
                                 <circle cx="192" cy="100" r="1.6" fill="#ededed" />
                                 <circle cx="100" cy="192" r="1.3" fill="#8a8a8a" />
                             </g>

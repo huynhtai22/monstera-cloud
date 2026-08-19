@@ -181,12 +181,12 @@ export default function DataExplorerPage() {
                     <input type="file" accept=".csv" className="hidden" ref={fileInputRef} onChange={handleFileChange} />
 
                     {file && (
-                        <div className="mb-8 flex min-w-[300px] items-center justify-between rounded-xl border border-cyan-100 bg-white p-4 shadow-sm dark:bg-[#16181c]">
+                        <div className="mb-8 flex min-w-[300px] items-center justify-between rounded-lg border border-line bg-canvas p-4 shadow-xs">
                             <div className="flex items-center">
-                                <Table className="mr-3 h-5 w-5 text-cyan-500" />
+                                <Table className="mr-3 h-4 w-4 text-white" />
                                 <div className="text-left">
-                                    <p className="max-w-[220px] truncate text-sm font-semibold text-gray-900 dark:text-white">{file.name}</p>
-                                    <p className="text-xs text-gray-500">
+                                    <p className="max-w-[220px] truncate text-xs font-semibold text-ink">{file.name}</p>
+                                    <p className="text-[11px] text-ink-mute">
                                         {(file.size / (1024 * 1024)).toFixed(2)} MB · ready
                                     </p>
                                 </div>
@@ -195,12 +195,12 @@ export default function DataExplorerPage() {
                     )}
 
                     {!activeWorkspaceId ? (
-                        <p className="text-sm text-amber-700 dark:text-amber-400">Select a workspace from the sidebar.</p>
+                        <p className="text-xs text-amber-400">Select a workspace from the sidebar.</p>
                     ) : !file ? (
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center rounded-xl bg-gray-900 px-6 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-black dark:bg-[#16181c]"
+                            className="flex items-center rounded-md bg-white px-5 py-2.5 text-xs font-semibold text-black shadow-xs transition-colors hover:bg-neutral-200"
                         >
                             Select .csv file
                         </button>
@@ -211,18 +211,18 @@ export default function DataExplorerPage() {
                                 onClick={handleUpload}
                                 disabled={isUploading}
                                 loading={isUploading}
-                                className="rounded-xl px-6 py-3 text-base font-bold shadow-md shadow-cyan-500/20"
+                                className="rounded-md px-6 py-2.5 text-xs font-semibold shadow-xs"
                             >
                                 {isUploading ? (
                                     "Ingesting…"
                                 ) : (
                                     <>
-                                        Upload to data lake <ArrowRight className="ml-2 h-4 w-4" />
+                                        Upload to data lake <ArrowRight className="ml-2 h-3.5 w-3.5" />
                                     </>
                                 )}
                             </PrimaryButton>
                             {uploadError && (
-                                <div className="mt-4 w-full max-w-md rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-600 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+                                <div className="mt-4 w-full max-w-md rounded-md border border-red-900/60 bg-red-950/40 p-3 text-xs text-red-200">
                                     <p className="mb-1 font-semibold">Upload failed</p>
                                     <p className="opacity-90">{uploadError}</p>
                                 </div>
@@ -233,15 +233,15 @@ export default function DataExplorerPage() {
             )}
 
             {tab === "csv" && showCsvGrid && (
-                <div className="flex min-h-[480px] flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white/80 shadow-sm dark:border-[#2f3336] dark:bg-[#000000]/60">
-                    <div className="flex shrink-0 items-center justify-between border-b border-gray-200/80 bg-gray-50/90 px-4 py-3 dark:border-[#2f3336] dark:bg-[#000000]/80">
+                <div className="flex min-h-[480px] flex-col overflow-hidden rounded-lg border border-line bg-panel shadow-xs">
+                    <div className="flex shrink-0 items-center justify-between border-b border-line bg-canvas px-4 py-3">
                         <div className="flex items-center space-x-3">
-                            <div className="rounded-lg bg-cyan-100 p-1.5 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-300">
+                            <div className="rounded-md bg-panel border border-line p-1.5 text-white">
                                 <Database className="h-4 w-4" />
                             </div>
                             <div>
-                                <p className="text-sm font-bold text-gray-900 dark:text-white">Data lake · CSV</p>
-                                <p className="text-xs text-gray-500 dark:text-slate-400">
+                                <p className="text-xs font-bold text-ink">Data lake · CSV</p>
+                                <p className="text-[11px] text-ink-mute">
                                     {datasetStats?.filename} · {datasetStats?.size}
                                 </p>
                             </div>
@@ -249,7 +249,7 @@ export default function DataExplorerPage() {
                         <button
                             type="button"
                             onClick={clearCsv}
-                            className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-200"
+                            className="rounded-md border border-line bg-panel px-3 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.06]"
                         >
                             Clear
                         </button>
@@ -274,7 +274,7 @@ export default function DataExplorerPage() {
                         </div>
                     ) : (
                         <div className="flex flex-1 items-center justify-center py-20">
-                            <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
+                            <Loader2 className="h-8 w-8 animate-spin text-white" />
                         </div>
                     )}
                 </div>

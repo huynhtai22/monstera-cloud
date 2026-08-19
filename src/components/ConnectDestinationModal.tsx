@@ -229,29 +229,29 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                 {destinationId === "looker" ? (
                     <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
                         <div className="mb-4 text-center">
-                            <h4 className="mb-2 text-xl font-bold text-gray-900 dark:text-white">Native Looker Integration</h4>
-                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                            <h4 className="mb-2 text-xl font-bold text-ink">Native Looker Integration</h4>
+                            <p className="text-sm text-ink-mute">
                                 Monstera Cloud acts as a data bridge for Looker Studio. Looker pulls metrics from Monstera using your workspace API key below.
                             </p>
                         </div>
-                        <div className="space-y-4 rounded-xl border border-cyan-100 bg-cyan-50/50 p-5 dark:border-cyan-900/40 dark:bg-cyan-950/20">
+                        <div className="space-y-4 rounded-xl border border-line bg-panel p-5">
                             <div>
-                                <label className="mb-1.5 flex items-center text-sm font-semibold text-gray-900 dark:text-white">
-                                    <Lock className="mr-2 h-4 w-4 text-cyan-600" />
+                                <label className="mb-1.5 flex items-center text-sm font-semibold text-ink">
+                                    <Lock className="mr-2 h-4 w-4 text-ink-mute" />
                                     Your Workspace API Key
                                 </label>
-                                <p className="mb-2 text-xs text-gray-500">
+                                <p className="mb-2 text-xs text-ink-mute">
                                     The full key is never shown here after creation. Open{" "}
                                     <Link
                                         href="/settings?tab=api"
-                                        className="font-semibold text-cyan-700 underline underline-offset-2 hover:text-cyan-800 dark:text-cyan-400 dark:hover:text-cyan-300"
+                                        className="font-semibold text-ink underline underline-offset-2 hover:text-ink-mute"
                                     >
                                         Settings → API
                                     </Link>{" "}
                                     to generate a key and copy it once, then paste it into the Looker Studio connector.
                                 </p>
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-                                    <div className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-600">
+                                    <div className="flex min-w-0 flex-1 overflow-hidden rounded-lg border border-line bg-panel shadow-sm">
                                         <input
                                             type="text"
                                             readOnly
@@ -286,9 +286,9 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                         href: DESTINATION_HELP_PATHS.lookerStudio,
                                     })
                                 }
-                                className="inline-flex items-center text-sm font-medium text-cyan-600 hover:text-cyan-700 dark:text-cyan-400 dark:hover:text-cyan-300"
+                                className="inline-flex items-center text-xs font-semibold text-white hover:text-neutral-300 transition-colors"
                             >
-                                Looker Studio connector guide <ChevronRight className="ml-1 h-4 w-4" />
+                                Looker Studio connector guide <ChevronRight className="ml-1 h-3.5 w-3.5" />
                             </Link>
                         </div>
                     </div>
@@ -298,17 +298,17 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                             {activeConnections.map((conn: any) => (
                                 <div
                                     key={conn.id}
-                                    className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/60 dark:border-slate-800 dark:bg-slate-800/40 px-4 py-3"
+                                    className="flex items-center gap-3 rounded-lg border border-line bg-canvas px-4 py-3"
                                 >
-                                    <CheckCircle2 className="h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400" />
+                                    <CheckCircle2 className="h-4 w-4 shrink-0 text-white" />
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{conn.name}</p>
-                                        <p className="text-xs text-gray-400 dark:text-gray-500">Active · syncing</p>
+                                        <p className="text-xs font-semibold text-ink truncate">{conn.name}</p>
+                                        <p className="text-[10px] text-ink-mute">Active · syncing</p>
                                     </div>
                                     <button
                                         onClick={() => handleDisconnect(conn.id, conn.name)}
                                         disabled={disconnectingId === conn.id}
-                                        className="shrink-0 text-xs text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors disabled:opacity-50 px-1 py-0.5"
+                                        className="shrink-0 text-xs text-ink-mute hover:text-red-400 transition-colors disabled:opacity-50 px-1 py-0.5"
                                         title="Remove account"
                                     >
                                         {disconnectingId === conn.id
@@ -322,7 +322,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
 
                         <button
                             onClick={() => setForceSetup(true)}
-                            className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-primary-ring/25 bg-primary-muted py-3 text-sm font-semibold text-slate-800 hover:bg-primary-muted/80 dark:text-slate-100 transition-colors"
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-panel py-2.5 text-xs font-semibold text-ink hover:bg-white/[0.06] transition-colors"
                         >
                             <Plus className="h-4 w-4" />
                             Add Another Account
@@ -331,28 +331,28 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                 ) : (
                     <>
                         {/* Progress Bar */}
-                        <div className="h-1 w-full bg-gray-100 dark:bg-slate-800 flex">
-                            <div className={`h-full bg-cyan-500 transition-all duration-500 ${step === 1 ? 'w-1/3' : step === 2 ? 'w-2/3' : 'w-full'}`} />
+                        <div className="h-1 w-full bg-canvas border-b border-line flex">
+                            <div className={`h-full bg-white transition-all duration-500 ${step === 1 ? 'w-1/3' : step === 2 ? 'w-2/3' : 'w-full'}`} />
                         </div>
 
                         <div className="flex-1 overflow-y-auto px-6 py-6">
                             {step === 1 && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                                     <div className="text-center mb-6">
-                                        <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Sign in with Google</h4>
-                                        <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">Monstera Cloud needs permission to create and manage spreadsheets in your Google Drive.</p>
+                                        <h4 className="text-lg font-bold text-ink mb-1">Sign in with Google</h4>
+                                        <p className="text-ink-mute text-xs">Monstera Cloud needs permission to create and manage spreadsheets in your Google Drive.</p>
                                     </div>
 
-                                    <div className="bg-cyan-50/50 rounded-xl p-5 border border-cyan-100 space-y-3">
-                                        <p className="font-semibold text-gray-900 dark:text-white text-sm flex items-center">
-                                            <Lock className="w-4 h-4 text-cyan-600 mr-2" />
+                                    <div className="bg-canvas rounded-lg p-5 border border-line space-y-3">
+                                        <p className="font-semibold text-ink text-xs flex items-center">
+                                            <Lock className="w-3.5 h-3.5 text-white mr-2" />
                                             Required Permissions:
                                         </p>
-                                        <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300 dark:text-gray-600 ml-6">
-                                            <li className="flex items-start"><CheckCircle2 className="w-4 h-4 text-cyan-500 mr-2 shrink-0 mt-0.5" /> Create new spreadsheets</li>
-                                            <li className="flex items-start"><CheckCircle2 className="w-4 h-4 text-cyan-500 mr-2 shrink-0 mt-0.5" /> Edit spreadsheets created by Monstera</li>
+                                        <ul className="space-y-2 text-xs text-ink-mute ml-6">
+                                            <li className="flex items-start"><CheckCircle2 className="w-3.5 h-3.5 text-white mr-2 shrink-0 mt-0.5" /> Create new spreadsheets</li>
+                                            <li className="flex items-start"><CheckCircle2 className="w-3.5 h-3.5 text-white mr-2 shrink-0 mt-0.5" /> Edit spreadsheets created by Monstera</li>
                                         </ul>
-                                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-4 italic">* Monstera Cloud cannot read or delete spreadsheets it did not create.</p>
+                                        <p className="text-[10px] text-ink-mute mt-4 italic">* Monstera Cloud cannot read or delete spreadsheets it did not create.</p>
                                     </div>
                                 </div>
                             )}
@@ -360,33 +360,33 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                             {step === 2 && (
                                 <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                                     <div className="mb-4">
-                                        <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Destination Settings</h4>
-                                        <p className="text-gray-500 dark:text-gray-400 dark:text-gray-500 text-sm">Configure how data will be written to your spreadsheet.</p>
+                                        <h4 className="text-base font-bold text-ink mb-1">Destination Settings</h4>
+                                        <p className="text-ink-mute text-xs">Configure how data will be written to your spreadsheet.</p>
                                     </div>
 
-                                    <div className="space-y-5">
+                                    <div className="space-y-4">
                                         <div>
-                                            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5 border-none">Spreadsheet Name</label>
+                                            <label className="block text-xs font-medium text-ink mb-1.5 border-none">Spreadsheet Name</label>
                                             <input
                                                 type="text"
                                                 defaultValue="Monstera Cloud Sync: User Data"
-                                                className="w-full bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 text-gray-900 dark:text-white text-sm rounded-lg focus:ring-primary-ring/40 focus:border-primary-ring block p-2.5 shadow-sm"
+                                                className="w-full bg-canvas border border-line text-ink text-xs rounded-md focus:ring-1 focus:ring-white focus:border-white block p-2.5 shadow-xs"
                                             />
-                                            <p className="text-xs text-gray-500 dark:text-gray-400 dark:text-gray-500 mt-1.5">If a sheet with this name exists, data will be written to a new tab.</p>
+                                            <p className="text-[10px] text-ink-mute mt-1.5">If a sheet with this name exists, data will be written to a new tab.</p>
                                         </div>
 
-                                        <div className="p-4 bg-gray-50 dark:bg-slate-800 rounded-xl border border-gray-100 dark:border-slate-700">
-                                            <label className="block text-sm font-medium text-gray-900 dark:text-white mb-2 flex items-center">
-                                                <Settings2 className="w-4 h-4 mr-1.5 text-gray-500 dark:text-gray-400 dark:text-gray-500" /> Write Mode
+                                        <div className="p-4 bg-canvas rounded-lg border border-line">
+                                            <label className="block text-xs font-medium text-ink mb-2 flex items-center">
+                                                <Settings2 className="w-3.5 h-3.5 mr-1.5 text-ink-mute" /> Write Mode
                                             </label>
                                             <div className="space-y-2">
                                                 <label className="flex items-center space-x-3 cursor-pointer">
-                                                    <input type="radio" name="writemode" className="text-primary focus:ring-primary-ring/40 w-4 h-4" defaultChecked />
-                                                    <span className="text-sm text-gray-700 dark:text-slate-300 font-medium">Append (Add new rows only)</span>
+                                                    <input type="radio" name="writemode" className="accent-white w-4 h-4" defaultChecked />
+                                                    <span className="text-xs text-ink font-medium">Append (Add new rows only)</span>
                                                 </label>
                                                 <label className="flex items-center space-x-3 cursor-pointer">
-                                                    <input type="radio" name="writemode" className="text-primary focus:ring-primary-ring/40 w-4 h-4" />
-                                                    <span className="text-sm text-gray-700 dark:text-slate-300">Upsert (Update existing, add new)</span>
+                                                    <input type="radio" name="writemode" className="accent-white w-4 h-4" />
+                                                    <span className="text-xs text-ink-mute">Upsert (Update existing, add new)</span>
                                                 </label>
                                             </div>
                                         </div>
@@ -396,27 +396,26 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
 
                             {step === 3 && (
                                 <div className="flex flex-col items-center space-y-6 py-6 animate-in zoom-in slide-in-from-bottom-4 duration-500">
-                                    <div className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-cyan-100 bg-cyan-50 text-cyan-500 dark:border-cyan-900/50 dark:bg-cyan-950/40">
-                                        <FileSpreadsheet className="h-10 w-10" />
+                                    <div className="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-panel text-white">
+                                        <FileSpreadsheet className="h-8 w-8" />
                                     </div>
                                     <div className="text-center">
-                                        <h4 className="mb-2 text-2xl font-bold text-gray-900 dark:text-white">Destination linked</h4>
-                                        <p className="mx-auto max-w-md text-sm text-gray-500 dark:text-gray-400">
+                                        <h4 className="mb-2 text-xl font-bold text-ink">Destination linked</h4>
+                                        <p className="mx-auto max-w-md text-xs text-ink-mute">
                                             Google Sheets is ready to receive data from your pipelines. Follow the steps below to install the add-on and run your first sync.
                                         </p>
                                     </div>
                                     <div className="mt-4 flex w-full flex-col gap-4">
                                         <button
                                             onClick={handleClose}
-                                            className="group relative flex h-14 w-full items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-400 font-bold tracking-wide text-white shadow-[0_8px_30px_rgb(16,185,129,0.3)] transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgb(16,185,129,0.5)] active:scale-95"
+                                            className="flex h-12 w-full items-center justify-center rounded-md bg-white text-black font-semibold text-xs transition-colors hover:bg-neutral-200 shadow-xs"
                                         >
-                                            <div className="absolute inset-0 bg-white/20 transition-transform -translate-x-full group-hover:translate-x-full duration-700 ease-out" />
-                                            <CheckCircle2 className="mr-2 h-6 w-6" />
+                                            <CheckCircle2 className="mr-2 h-4 w-4" />
                                             Complete Setup & Close
                                         </button>
                                         <a
                                             href={DESTINATION_HELP_PATHS.docs}
-                                            className="text-center text-xs font-medium text-slate-500 underline underline-offset-2 transition-colors hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                                            className="text-center text-xs font-medium text-ink-mute underline underline-offset-2 transition-colors hover:text-white"
                                         >
                                             Looking for the Google Sheets Add-on?
                                         </a>
@@ -426,7 +425,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                         </div>
                         
                         {/* Footer actions for non-looker */}
-                        <div className="px-6 py-4 border-t border-gray-100 dark:border-slate-700 flex justify-end gap-3">
+                        <div className="px-6 py-4 border-t border-line flex justify-end gap-3">
                             {step < 3 && (
                                 <button
                                     onClick={() => {
@@ -437,7 +436,7 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                         }
                                     }}
                                     disabled={isProcessing}
-                                    className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-colors disabled:opacity-50"
+                                    className="px-4 py-2 text-xs font-medium text-ink-mute hover:text-white transition-colors disabled:opacity-50"
                                 >
                                     {forceSetup && activeConnections.length > 0 ? "Back" : "Cancel"}
                                 </button>
@@ -447,12 +446,12 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                 <button
                                     onClick={handleAuthenticate}
                                     disabled={isProcessing}
-                                    className="px-5 py-2.5 text-sm font-medium text-primary-foreground bg-primary rounded-xl hover:bg-primary-hover transition-all disabled:opacity-70 flex items-center shadow-sm"
+                                    className="px-4 py-2 text-xs font-semibold text-black bg-white rounded-md hover:bg-neutral-200 transition-colors disabled:opacity-70 flex items-center shadow-xs"
                                 >
                                     {isProcessing ? (
-                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Authenticating...</>
+                                        <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Authenticating...</>
                                     ) : (
-                                        <>Continue configuration <ChevronRight className="w-4 h-4 ml-1" /></>
+                                        <>Continue configuration <ChevronRight className="w-3.5 h-3.5 ml-1" /></>
                                     )}
                                 </button>
                             )}
@@ -461,12 +460,12 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
                                 <button
                                     onClick={handleCreateDestination}
                                     disabled={isProcessing}
-                                    className="px-5 py-2.5 text-sm font-bold text-primary-foreground bg-primary rounded-xl hover:bg-primary-hover transition-all disabled:opacity-70 flex items-center shadow-md shadow-cyan-500/20"
+                                    className="px-4 py-2 text-xs font-semibold text-black bg-white rounded-md hover:bg-neutral-200 transition-colors disabled:opacity-70 flex items-center shadow-xs"
                                 >
                                     {isProcessing ? (
-                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+                                        <><Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" /> Saving...</>
                                     ) : (
-                                        <>Save & Authorize Google <CheckCircle2 className="w-4 h-4 ml-2" /></>
+                                        <>Save & Authorize Google <CheckCircle2 className="w-3.5 h-3.5 ml-2" /></>
                                     )}
                                 </button>
                             )}

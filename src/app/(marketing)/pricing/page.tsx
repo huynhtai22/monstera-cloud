@@ -12,141 +12,194 @@ import {
     RefreshCw,
     ChevronDown,
     QrCode,
+    Search,
+    Database,
+    FileSpreadsheet,
+    BarChart2,
+    KeyRound,
+    Clock,
+    Users,
+    Zap,
+    Globe,
+    Shield,
+    Activity,
+    Cpu,
+    ArrowDownToLine,
+    CreditCard,
+    Headphones,
+    Coins,
+    SlidersHorizontal,
+    Workflow,
 } from "lucide-react";
 import { CheckoutButton } from "@/components/CheckoutButton";
 import { VietQrModal } from "@/components/pricing/VietQrModal";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { metaPixelCustom } from "@/lib/meta-pixel";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { PLAN_PRICING, type PlanName } from "@/lib/plan-config";
-
-const PLAN_SOURCES = {
-    starter: [
-        { src: INTEGRATION_LOGOS.meta, alt: "Meta Ads" },
-        { src: INTEGRATION_LOGOS.tiktok, alt: "TikTok Ads" },
-        { src: INTEGRATION_LOGOS.googleAds, alt: "Google Ads" },
-        { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
-    ],
-    pro: [
-        { src: INTEGRATION_LOGOS.meta, alt: "Meta Ads" },
-        { src: INTEGRATION_LOGOS.tiktok, alt: "TikTok Ads" },
-        { src: INTEGRATION_LOGOS.googleAds, alt: "Google Ads" },
-        { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
-    ],
-    enterprise: [
-        { src: INTEGRATION_LOGOS.meta, alt: "Meta Ads" },
-        { src: INTEGRATION_LOGOS.tiktok, alt: "TikTok Ads" },
-        { src: INTEGRATION_LOGOS.googleAds, alt: "Google Ads" },
-        { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
-    ],
-};
 
 export default function PricingPage() {
     const [isAnnual, setIsAnnual] = useState(true);
     const [payCurrency, setPayCurrency] = useState<"VND" | "USD">("USD");
     const [currencyReady, setCurrencyReady] = useState(false);
     const [regionHint, setRegionHint] = useState<string | null>(null);
-
-    // FAQ Accordion state
     const [openFaq, setOpenFaq] = useState<number | null>(null);
+    const [searchQuery, setSearchQuery] = useState("");
 
     // VietQR Modal State
     const [qrModalOpen, setQrModalOpen] = useState(false);
     const [selectedQrPlan, setSelectedQrPlan] = useState<{
-        name: string;
+        name: "starter" | "professional" | "enterprise";
         displayName: string;
         amount: number;
-    }>({
-        name: "starter",
-        displayName: "Starter",
-        amount: 490000,
-    });
+    }>({ name: "professional", displayName: "Agency Pro", amount: 990000 });
 
-    // Auto-detect geo using fast internal edge route (/api/geo)
     useEffect(() => {
-        fetch("/api/geo")
-            .then((r) => r.json())
-            .then((data: { country?: string; city?: string; currency?: string; isVietnam?: boolean }) => {
-                const detectedCurrency = data.currency === "VND" || data.isVietnam ? "VND" : "USD";
-                setPayCurrency(detectedCurrency);
-                const city = data.city && String(data.city).trim();
-                setRegionHint(
-                    city ? city : data.isVietnam ? "Việt Nam (Ưu đãi PPP)" : data.country || null
-                );
-            })
-            .catch(() => {
-                setPayCurrency("USD");
-                setRegionHint(null);
-            })
-            .finally(() => setCurrencyReady(true));
+        let isMounted = true;
+        async function detectGeo() {
+            try {
+                const res = await fetch("/api/geo");
+                if (res.ok) {
+                    const data = await res.json();
+                    if (isMounted && data?.country) {
+                        setRegionHint(data.country);
+                        if (data.country === "VN") {
+                            setPayCurrency("VND");
+                        }
+                    }
+                }
+            } catch {
+                // Fallback gracefully
+            } finally {
+                if (isMounted) setCurrencyReady(true);
+            }
+        }
+        detectGeo();
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
-    const getPlanPriceDisplay = (plan: PlanName) => {
-        const cfg = PLAN_PRICING[plan] || PLAN_PRICING.free;
-        if (payCurrency === "VND") {
-            const amount = isAnnual ? cfg.vndAnnualMonthly : cfg.vndMonthly;
-            const annualTotal = cfg.vndAnnualMonthly * 12;
-            const annualSaving = (cfg.vndMonthly - cfg.vndAnnualMonthly) * 12;
-            return {
-                amount,
-                amountFormatted: amount.toLocaleString("vi-VN"),
-                currencySymbol: "đ",
-                unit: "/tháng",
-                billingNote: isAnnual
-                    ? `Thanh toán 1 năm (tiết kiệm 20%) · ${annualTotal.toLocaleString("vi-VN")} đ/năm`
-                    : "Thanh toán từng tháng",
-                savingBadge: isAnnual ? `Tiết kiệm ${annualSaving.toLocaleString("vi-VN")} đ/năm` : null,
-            };
+    const openVietQr = (planKey: "starter" | "professional" | "enterprise", planDisplayName: string) => {
+        let amount = 990000;
+        if (planKey === "starter") {
+            amount = isAnnual ? PLAN_PRICING.starter.vndAnnualMonthly : PLAN_PRICING.starter.vndMonthly;
+        } else if (planKey === "professional") {
+            amount = isAnnual ? PLAN_PRICING.professional.vndAnnualMonthly : PLAN_PRICING.professional.vndMonthly;
         }
-        const amount = isAnnual ? cfg.usdAnnualMonthly : cfg.usdMonthly;
-        const annualTotal = cfg.usdAnnualMonthly * 12;
-        const annualSaving = (cfg.usdMonthly - cfg.usdAnnualMonthly) * 12;
-        return {
-            amount,
-            amountFormatted: `$${amount}`,
-            currencySymbol: "",
-            unit: "/mo",
-            billingNote: isAnnual
-                ? `Billed annually (save 20%) · $${annualTotal}/year`
-                : "Billed monthly",
-            savingBadge: isAnnual ? `Save $${annualSaving}/year` : null,
-        };
-    };
 
-    const openVietQr = (plan: PlanName, displayName: string) => {
-        const cfg = PLAN_PRICING[plan];
-        const monthlyAmount = isAnnual ? cfg.vndAnnualMonthly : cfg.vndMonthly;
-        const totalAmount = isAnnual ? monthlyAmount * 12 : monthlyAmount;
         setSelectedQrPlan({
-            name: plan,
-            displayName,
-            amount: totalAmount,
+            name: planKey,
+            displayName: planDisplayName,
+            amount: isAnnual ? amount * 12 : amount,
         });
         setQrModalOpen(true);
-        metaPixelCustom("MC_Pricing_VietQR_Open", {
-            plan,
+
+        metaPixelCustom("MC_VietQR_Modal_Opened", {
+            plan: planKey,
             billing_cycle: isAnnual ? "annual" : "monthly",
-            amount: totalAmount,
+            amount_vnd: isAnnual ? amount * 12 : amount,
         });
     };
 
-    const starterPricing = getPlanPriceDisplay("starter");
-    const proPricing = getPlanPriceDisplay("professional");
-    const enterprisePricing = getPlanPriceDisplay("enterprise");
+    const starterPricing = {
+        amountFormatted: payCurrency === "VND" ? (isAnnual ? "390.000" : "490.000") : isAnnual ? "$19" : "$24",
+        currencySymbol: payCurrency === "VND" ? "đ" : "",
+        unit: payCurrency === "VND" ? "/ tháng" : "/ mo .",
+        billingNote: isAnnual ? (payCurrency === "VND" ? "Thanh toán 1 năm (tiết kiệm 20%)" : "Billed annually or $24 monthly") : (payCurrency === "VND" ? "Thanh toán từng tháng" : "Billed monthly"),
+    };
+
+    const proPricing = {
+        amountFormatted: payCurrency === "VND" ? (isAnnual ? "990.000" : "1.290.000") : isAnnual ? "$49" : "$59",
+        currencySymbol: payCurrency === "VND" ? "đ" : "",
+        unit: payCurrency === "VND" ? "/ tháng" : "/ mo .",
+        billingNote: isAnnual ? (payCurrency === "VND" ? "Thanh toán 1 năm (tiết kiệm 20%)" : "Billed annually or $59 monthly") : (payCurrency === "VND" ? "Thanh toán từng tháng" : "Billed monthly"),
+    };
+
+    const enterprisePricing = {
+        amountFormatted: payCurrency === "VND" ? "Liên hệ" : "Custom",
+        currencySymbol: "",
+        unit: "",
+        billingNote: payCurrency === "VND" ? "Hợp đồng doanh nghiệp & SLA riêng" : "Custom annual contract & SLA",
+    };
+
+    const comparisonCategories = useMemo(() => [
+        {
+            title: payCurrency === "VND" ? "Kênh quảng cáo & Thu thập dữ liệu" : "Data Ingestion & Ad Channels",
+            icon: Globe,
+            description: payCurrency === "VND" ? "Kết nối trực tiếp API chính thức không qua trung gian" : "Direct official OAuth APIs with zero intermediate hops",
+            features: [
+                { name: "Meta Ads (Facebook & Instagram)", starter: true, pro: true, enterprise: true },
+                { name: "TikTok Ads & TikTok Shop", starter: true, pro: true, enterprise: true },
+                { name: "Google Ads (Search & PMax)", starter: true, pro: true, enterprise: true },
+                { name: "Shopee Vietnam Open API", starter: true, pro: true, enterprise: true },
+                { name: "Lazada & E-Commerce APIs", starter: false, pro: true, enterprise: true },
+                { name: "Custom REST API / Webhook Sources", starter: false, pro: false, enterprise: true },
+            ],
+        },
+        {
+            title: payCurrency === "VND" ? "Kho dữ liệu & Động cơ chuẩn hóa" : "Data Warehouse & Execution Engine",
+            icon: Database,
+            description: payCurrency === "VND" ? "Chuẩn hóa bảng dữ liệu đa kênh, tối ưu truy vấn tốc độ cao" : "Ultra-fast normalized multi-channel data schemas",
+            features: [
+                { name: "Normalized `ad_insights_daily` Schema", starter: true, pro: true, enterprise: true },
+                { name: "Hourly Campaign Pacing Schema", starter: false, pro: true, enterprise: true },
+                { name: "Maximum Connected Accounts & Shops", starter: "5 accounts", pro: "20 accounts", enterprise: "Unlimited" },
+                { name: "Monthly Warehouse Sync Allowance", starter: "500 runs", pro: "3,000 runs", enterprise: "Custom quota" },
+                { name: "Multi-Tenant Workspace Guard", starter: false, pro: true, enterprise: true },
+                { name: "Dedicated PostgreSQL / BigQuery Warehouse", starter: false, pro: false, enterprise: true },
+            ],
+        },
+        {
+            title: payCurrency === "VND" ? "Kết nối báo cáo & Đầu ra" : "Destinations & Activation",
+            icon: FileSpreadsheet,
+            description: payCurrency === "VND" ? "Xuất dữ liệu tự động vào Google Sheets, Looker Studio và API" : "Live data delivery into Google Sheets, Looker Studio, and APIs",
+            features: [
+                { name: "Google Sheets™ Official Add-on", starter: true, pro: true, enterprise: true },
+                { name: "Looker Studio™ Partner Connector", starter: true, pro: true, enterprise: true },
+                { name: "Automated Daily Scheduled Syncs", starter: true, pro: true, enterprise: true },
+                { name: "Hourly & Nightly Automated Refreshes", starter: false, pro: true, enterprise: true },
+                { name: "Workspace REST API Access", starter: false, pro: true, enterprise: true },
+                { name: "Custom Webhook Trigger Notifications", starter: false, pro: false, enterprise: true },
+            ],
+        },
+        {
+            title: payCurrency === "VND" ? "Bảo mật, Nhóm & Hỗ trợ" : "Security, Team & Support",
+            icon: ShieldCheck,
+            description: payCurrency === "VND" ? "Mã hóa cấp ngân hàng và hỗ trợ kỹ thuật tận tâm" : "Bank-grade token encryption and dedicated technical onboarding",
+            features: [
+                { name: "Encrypted AES-256-GCM Token Vault", starter: true, pro: true, enterprise: true },
+                { name: "Team Member Seats", starter: "1 Admin", pro: "3 Seats", enterprise: "Custom seats" },
+                { name: "VietQR Napas 24/7 Payment & VAT Invoice", starter: true, pro: true, enterprise: true },
+                { name: "1-on-1 Zalo / Telegram Priority Support", starter: false, pro: true, enterprise: true },
+                { name: "99.9% Uptime Enterprise SLA", starter: false, pro: false, enterprise: true },
+                { name: "Dedicated Data Engineering Architect", starter: false, pro: false, enterprise: true },
+            ],
+        },
+    ], [payCurrency]);
+
+    const filteredCategories = useMemo(() => {
+        if (!searchQuery.trim()) return comparisonCategories;
+        const q = searchQuery.toLowerCase();
+        return comparisonCategories.map((cat) => ({
+            ...cat,
+            features: cat.features.filter((f) => f.name.toLowerCase().includes(q)),
+        })).filter((cat) => cat.features.length > 0);
+    }, [comparisonCategories, searchQuery]);
 
     const faqs = [
         {
-            q: payCurrency === "VND" ? "Monstera Cloud có hỗ trợ xuất hóa đơn VAT không?" : "Do you provide corporate VAT invoices and tax documentation?",
+            q: payCurrency === "VND" ? "Tôi có thể thanh toán bằng VietQR và nhận hóa đơn VAT không?" : "Can I pay with VietQR and receive a VAT invoice?",
             a: payCurrency === "VND"
-                ? "Có! Monstera Cloud hỗ trợ xuất hóa đơn điện tử VAT đầy đủ cho doanh nghiệp và Agency tại Việt Nam đối với tất cả các gói dịch vụ (chọn hình thức thanh toán VietQR / Chuyển khoản ngân hàng)."
-                : "Yes, all international transactions processed via Paddle include standard compliant commercial VAT/GST invoices for your company accounting.",
+                ? "Có! Monstera Cloud hỗ trợ thanh toán tức thì qua mã VietQR Napas 24/7 của tất cả các ngân hàng Việt Nam. Sau khi thanh toán, hệ thống tự động kích hoạt và xuất hóa đơn điện tử VAT cho công ty của bạn."
+                : "Yes! For Vietnamese agencies, we support instant VietQR (Napas 24/7) bank transfers and automated electronic VAT invoicing. International customers can pay via Paddle in USD.",
         },
         {
-            q: payCurrency === "VND" ? "Tôi có thể kết nối bao nhiêu tài khoản quảng cáo?" : "How many ad accounts can I connect?",
+            q: payCurrency === "VND" ? "Gói Agency Pro tính phí như thế nào khi tôi quản lý nhiều tài khoản?" : "How does the Agency Pro plan charge for multiple ad accounts?",
             a: payCurrency === "VND"
-                ? "Gói Starter hỗ trợ tới 5 tài khoản quảng cáo & gian hàng. Gói Agency Pro hỗ trợ tới 20 tài khoản (kết hợp tự do giữa Meta, Google, TikTok và Shopee). Gói Enterprise hỗ trợ không giới hạn."
-                : "Starter supports up to 5 accounts, Agency Pro supports up to 20 accounts across Meta, Google, TikTok, and Shopee. Enterprise includes custom unlimited capacity.",
+                ? "Gói Agency Pro có mức phí cố định hàng tháng cho tối đa 20 tài khoản quảng cáo và gian hàng (Meta, Google, TikTok, Shopee). Bạn không phải trả thêm phí ẩn theo ngân sách chạy ads hay số lượng dòng dữ liệu."
+                : "Agency Pro includes a flat monthly rate for up to 20 ad accounts and shops across Meta, Google, TikTok, and Shopee. There are zero surprise overage fees based on ad spend volume.",
         },
         {
             q: payCurrency === "VND" ? "Dữ liệu có được tự động làm mới trong Google Sheets không?" : "Does data automatically refresh in Google Sheets?",
@@ -163,422 +216,473 @@ export default function PricingPage() {
     ];
 
     return (
-        <div className="min-h-screen pt-28 pb-24 bg-canvas font-sans text-ink antialiased selection:bg-accent/20 selection:text-ink">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="min-h-screen pt-28 pb-24 bg-canvas font-sans text-ink antialiased selection:bg-white selection:text-black">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
 
-                {/* ── Top Header Section ────────────────────────────────────────────── */}
-                <div className="text-center max-w-3xl mx-auto pt-6 mb-12">
-                    <div className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-semibold text-ink border border-line bg-panel mb-6">
-                        <Sparkles className="w-3.5 h-3.5 text-accent" />
-                        <span>{payCurrency === "VND" ? "Bảng Giá Minh Bạch · Không Phí Ẩn" : "Transparent Pricing · Zero Hidden Fees"}</span>
-                    </div>
-
-                    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-ink leading-[1.15]">
+                {/* ── Top Header Section (Vercel Style) ─────────────────────────────── */}
+                <div className="text-center max-w-3xl mx-auto pt-6 mb-10">
+                    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-[1.1]">
                         {payCurrency === "VND" ? (
-                            <>
-                                Tự động hóa báo cáo Ads. <br />
-                                <span className="text-accent">
-                                    Tiết kiệm 80% chi phí.
-                                </span>
-                            </>
+                            <>Mở rộng quy mô,<br />kiểm soát chi phí</>
                         ) : (
-                            <>
-                                Unified Ads Reporting. <br />
-                                <span className="text-accent">
-                                    One Flat Subscription.
-                                </span>
-                            </>
+                            <>Scale your marketing,<br />control your costs</>
                         )}
                     </h1>
 
-                    <p className="mt-5 text-base sm:text-lg text-ink-mute font-normal max-w-2xl mx-auto leading-relaxed">
+                    <p className="mt-4 text-sm sm:text-base text-neutral-400 font-normal max-w-xl mx-auto leading-relaxed">
                         {payCurrency === "VND"
-                            ? "Kéo dữ liệu Meta Ads, Google Ads, TikTok Ads và Shopee trực tiếp vào Google Sheets & Looker Studio. Hỗ trợ thanh toán VietQR và xuất hóa đơn VAT."
-                            : "Stream performance data from Meta, Google, TikTok, and Shopee straight into Google Sheets and Looker Studio. No row limits, no complex setups."}
+                            ? "Kho dữ liệu quảng cáo hợp nhất cho Agency. Đồng bộ trực tiếp Meta, TikTok, Google và Shopee vào Google Sheets & Looker Studio."
+                            : "Predictable, flat-rate ad data warehousing. Direct API sync from Meta, TikTok, Google, and Shopee straight into Google Sheets and Looker Studio."}
                     </p>
                 </div>
 
-                {/* ── Control Bar: Billing Cycle & Currency Switcher ─────────────────── */}
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-14">
-                    {/* Billing Toggle */}
-                    <div className="inline-flex p-1 rounded-lg bg-panel border border-line">
+                {/* ── Polished Billing Cycle Toggle ─────────────────────────────────── */}
+                <div className="flex items-center justify-center mb-12">
+                    <div className="inline-flex p-1 rounded-full bg-[#0c0c0c] border border-[#222] shadow-inner">
                         <button
                             type="button"
                             onClick={() => setIsAnnual(false)}
-                            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                            className={`px-4 py-1.5 rounded-full text-xs transition-all duration-150 ${
                                 !isAnnual
-                                    ? "bg-white text-black shadow-xs"
-                                    : "text-ink-mute hover:text-ink"
+                                    ? "bg-white text-black font-semibold shadow-xs"
+                                    : "text-neutral-400 hover:text-white font-medium"
                             }`}
                         >
-                            {payCurrency === "VND" ? "Thanh toán theo tháng" : "Monthly billing"}
+                            {payCurrency === "VND" ? "Theo tháng" : "Monthly"}
                         </button>
                         <button
                             type="button"
                             onClick={() => setIsAnnual(true)}
-                            className={`px-4 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                            className={`px-4 py-1.5 rounded-full text-xs transition-all duration-150 flex items-center gap-1.5 ${
                                 isAnnual
-                                    ? "bg-white text-black shadow-xs"
-                                    : "text-ink-mute hover:text-ink"
+                                    ? "bg-white text-black font-semibold shadow-xs"
+                                    : "text-neutral-400 hover:text-white font-medium"
                             }`}
                         >
-                            <span>{payCurrency === "VND" ? "Thanh toán theo năm" : "Annual billing"}</span>
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-canvas text-accent border border-line">
+                            <span>{payCurrency === "VND" ? "Theo năm" : "Yearly"}</span>
+                            <span
+                                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold tracking-tight ${
+                                    isAnnual
+                                        ? "bg-black text-white"
+                                        : "bg-neutral-800 text-neutral-300 border border-neutral-700"
+                                }`}
+                            >
                                 −20%
                             </span>
                         </button>
                     </div>
-
-                    {/* Currency Selector */}
-                    {currencyReady && (
-                        <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-panel border border-line text-xs">
-                            <button
-                                type="button"
-                                onClick={() => setPayCurrency("VND")}
-                                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-                                    payCurrency === "VND"
-                                        ? "bg-white text-black shadow-xs"
-                                        : "text-ink-mute hover:text-ink"
-                                }`}
-                            >
-                                <span>🇻🇳</span>
-                                <span>VNĐ</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setPayCurrency("USD")}
-                                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1.5 ${
-                                    payCurrency === "USD"
-                                        ? "bg-white text-black shadow-xs"
-                                        : "text-ink-mute hover:text-ink"
-                                }`}
-                            >
-                                <span>🌍</span>
-                                <span>USD ($)</span>
-                            </button>
-                        </div>
-                    )}
                 </div>
 
-                {/* ── Polished 3-Pillar Pricing Grid ─────────────────────────────────── */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto items-stretch">
+                {/* ── 3-Pillar Pricing Cards (Vercel Exact UI) ───────────────────────── */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full items-stretch">
 
-                    {/* ── PILLAR 1: STARTER ────────────────────────────────────────────── */}
-                    <div className="relative rounded-lg p-6 md:p-8 bg-panel border border-line flex flex-col justify-between transition-colors hover:border-[#333]">
-                        <div className="flex flex-col">
-                            {/* Plan Header */}
-                            <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-xl font-bold text-ink tracking-tight">Starter</h3>
-                                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded bg-canvas text-ink-mute border border-line">
-                                    Solo &amp; Freelancer
+                    {/* ── PILLAR 1: STARTER / HOBBY ────────────────────────────────────── */}
+                    <div className="relative rounded-xl p-7 bg-[#0a0a0a] border border-line flex flex-col justify-between transition-all hover:border-[#383838]">
+                        <div>
+                            {/* Plan Title */}
+                            <div className="mb-4">
+                                <h3 className="text-sm font-medium text-white tracking-tight">Starter</h3>
+                            </div>
+
+                            {/* Huge Bold Price Number */}
+                            <div className="mb-4 flex items-baseline">
+                                <span className="text-5xl lg:text-6xl font-bold tracking-tight text-white">
+                                    {starterPricing.amountFormatted}
+                                </span>
+                                {starterPricing.currencySymbol ? (
+                                    <span className="text-2xl font-bold text-neutral-400 ml-1">
+                                        {starterPricing.currencySymbol}
+                                    </span>
+                                ) : null}
+                                <span className="text-xs font-normal text-neutral-400 ml-1.5">
+                                    {starterPricing.unit}
                                 </span>
                             </div>
 
-                            <p className="text-xs text-ink-mute mb-6 leading-relaxed min-h-[36px]">
+                            {/* Plan Description */}
+                            <p className="text-xs text-neutral-400 leading-relaxed mb-6 min-h-[36px]">
                                 {payCurrency === "VND"
-                                    ? "Dành cho Media Buyer cá nhân, nhà bán lẻ và chủ shop tự vận hành báo cáo hàng ngày."
-                                    : "For solo media buyers, indie marketers, and shop owners automating their daily reports."}
+                                    ? "Nền tảng khởi đầu hoàn hảo cho Media Buyer cá nhân và chủ shop tự động hóa báo cáo."
+                                    : "The perfect starting place for solo media buyers and indie shop owners."}
                             </p>
 
-                            {/* Price Hero Section */}
-                            <div className="mb-6 space-y-1.5">
-                                <div className="flex items-baseline gap-1 whitespace-nowrap">
-                                    <span className="text-3xl md:text-4xl font-bold tracking-tight text-ink">
-                                        {starterPricing.amountFormatted}
+                            {/* Feature List with Outlined Icons */}
+                            <ul className="space-y-3 text-xs text-neutral-300 mb-8">
+                                <li className="flex items-center gap-2.5">
+                                    <ArrowDownToLine className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Đồng bộ Meta, Google, TikTok & Shopee"
+                                            : "Import Meta, Google, TikTok & Shopee"}
                                     </span>
-                                    {starterPricing.currencySymbol ? (
-                                        <span className="text-lg md:text-xl font-bold text-ink-mute">
-                                            {starterPricing.currencySymbol}
-                                        </span>
-                                    ) : null}
-                                    <span className="text-sm font-normal text-ink-mute">
-                                        {starterPricing.unit}
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <FileSpreadsheet className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>Google Sheets™ Add-on &amp; Looker Studio</span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Zap className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "500 Lượt làm mới kho dữ liệu / tháng"
+                                            : "500 Warehouse syncs / month"}
                                     </span>
-                                </div>
-                                <p className="text-xs text-ink-mute">
-                                    {starterPricing.billingNote}
-                                </p>
-                            </div>
-
-                            {/* CTA Action Button */}
-                            {payCurrency === "VND" ? (
-                                <button
-                                    onClick={() => openVietQr("starter", "Starter")}
-                                    className="w-full py-3 px-4 rounded-md bg-white hover:bg-neutral-200 text-black font-semibold text-xs transition-colors flex items-center justify-center gap-2 mb-6"
-                                >
-                                    <QrCode className="w-4 h-4 text-emerald-600" />
-                                    <span>Thanh toán VietQR (Napas 24/7)</span>
-                                </button>
-                            ) : (
-                                <CheckoutButton
-                                    plan="starter"
-                                    billingCycle={isAnnual ? "annual" : "monthly"}
-                                    invoiceCurrency={payCurrency}
-                                    metaPixelEvent="MC_Pricing_Starter_Checkout"
-                                    metaPixelParams={{ billing_cycle: isAnnual ? "annual" : "monthly", currency: payCurrency }}
-                                    className="w-full py-3 px-4 rounded-md bg-white hover:bg-neutral-200 text-black font-semibold text-xs transition-colors flex items-center justify-center gap-2 mb-6"
-                                >
-                                    <span>Get Started</span>
-                                    <ArrowRight className="w-4 h-4" />
-                                </CheckoutButton>
-                            )}
-
-                            {/* Channel Badges */}
-                            <div className="pt-4 border-t border-line mb-6">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-mute block mb-3">
-                                    {payCurrency === "VND" ? "Kênh hỗ trợ kết nối" : "Supported Channels"}
-                                </span>
-                                <div className="flex items-center gap-2.5">
-                                    {PLAN_SOURCES.starter.map((s) => (
-                                        <IntegrationMark key={s.alt} src={s.src} alt={s.alt} size="sm" />
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Feature List */}
-                            <div className="space-y-3 pt-2">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-mute block">
-                                    {payCurrency === "VND" ? "Quyền lợi gói Starter" : "What's included"}
-                                </span>
-                                <ul className="space-y-2.5 text-xs text-ink-mute">
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                        <span><strong className="text-ink">1 Tài khoản quản trị</strong> (Google Workspace)</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                        <span><strong className="text-ink">Tối đa 5 Ad Accounts &amp; Shops</strong> (Meta, Google, TikTok, Shopee)</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                        <span><strong className="text-ink">500 Lượt làm mới / tháng</strong></span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                        <span>Google Sheets™ Add-on &amp; Looker Studio</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                        <span>Lịch tự động làm mới hàng ngày</span>
-                                    </li>
-                                </ul>
-                            </div>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Shield className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Tối đa 5 Tài khoản quảng cáo & Shop"
+                                            : "Up to 5 Ad accounts & shop scopes"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Clock className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Tự động làm mới dữ liệu hàng ngày"
+                                            : "Daily automated scheduled refresh"}
+                                    </span>
+                                </li>
+                            </ul>
                         </div>
+
+                        {/* Bottom Pill CTA Button */}
+                        {payCurrency === "VND" ? (
+                            <button
+                                onClick={() => openVietQr("starter", "Starter")}
+                                className="w-full py-2.5 px-4 rounded-full border border-line bg-[#111] hover:bg-[#1c1c1c] text-white text-xs font-medium transition-all flex items-center justify-center gap-2"
+                            >
+                                <QrCode className="w-3.5 h-3.5 text-neutral-300" />
+                                <span>Thanh toán VietQR</span>
+                            </button>
+                        ) : (
+                            <CheckoutButton
+                                plan="starter"
+                                billingCycle={isAnnual ? "annual" : "monthly"}
+                                invoiceCurrency={payCurrency}
+                                metaPixelEvent="MC_Pricing_Starter_Checkout"
+                                metaPixelParams={{ billing_cycle: isAnnual ? "annual" : "monthly", currency: payCurrency }}
+                                className="w-full py-2.5 px-4 rounded-full border border-line bg-[#111] hover:bg-[#1c1c1c] text-white text-xs font-medium transition-all flex items-center justify-center gap-2"
+                            >
+                                <span>Get Started</span>
+                            </CheckoutButton>
+                        )}
                     </div>
 
-                    {/* ── PILLAR 2: AGENCY PRO (Hero / Highlighted Card) ───────────────── */}
-                    <div className="relative rounded-lg p-6 md:p-8 bg-panel border border-accent/40 ring-1 ring-accent/20 flex flex-col justify-between shadow-sm transition-colors hover:border-accent/60">
-                        {/* Top Floating Badge */}
-                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-canvas border border-accent/40 text-accent text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap">
-                            <Sparkles className="w-3 h-3" />
-                            <span>{payCurrency === "VND" ? "✦ Lựa chọn phổ biến nhất" : "✦ Most Popular"}</span>
-                        </div>
-
-                        <div className="flex flex-col">
-                            {/* Plan Header */}
-                            <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-xl font-bold text-ink tracking-tight flex items-center gap-2">
-                                    Agency Pro
-                                </h3>
-                                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded bg-canvas text-accent border border-accent/30">
-                                    Agency &amp; Growth
+                    {/* ── PILLAR 2: AGENCY PRO [POPULAR] ───────────────────────────────── */}
+                    <div className="relative rounded-xl p-7 bg-[#0a0a0a] border border-line flex flex-col justify-between transition-all hover:border-[#444] ring-1 ring-white/10">
+                        <div>
+                            {/* Plan Title & Popular Badge */}
+                            <div className="flex items-center gap-2 mb-4">
+                                <h3 className="text-sm font-medium text-white tracking-tight">Pro</h3>
+                                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-[#222] text-neutral-300 border border-line">
+                                    {payCurrency === "VND" ? "Phổ biến" : "Popular"}
                                 </span>
                             </div>
 
-                            <p className="text-xs text-ink-mute mb-6 leading-relaxed min-h-[36px]">
+                            {/* Huge Bold Price Number */}
+                            <div className="mb-4 flex items-baseline">
+                                <span className="text-5xl lg:text-6xl font-bold tracking-tight text-white">
+                                    {proPricing.amountFormatted}
+                                </span>
+                                {proPricing.currencySymbol ? (
+                                    <span className="text-2xl font-bold text-neutral-400 ml-1">
+                                        {proPricing.currencySymbol}
+                                    </span>
+                                ) : null}
+                                <span className="text-xs font-normal text-neutral-400 ml-1.5">
+                                    {proPricing.unit}
+                                </span>
+                            </div>
+
+                            {/* Plan Description */}
+                            <p className="text-xs text-neutral-400 leading-relaxed mb-6 min-h-[36px]">
                                 {payCurrency === "VND"
-                                    ? "Giải pháp hoàn chỉnh cho Marketing Agency, Team chạy Ads và Enabler quản lý nhiều khách hàng."
-                                    : "Designed for performance agencies and brand enablers managing multi-client ad accounts."}
+                                    ? "Tất cả công cụ cần thiết để vận hành và mở rộng báo cáo agency nhiều khách hàng."
+                                    : "Everything you need to build and scale multi-client agency reporting."}
                             </p>
 
-                            {/* Price Hero Section */}
-                            <div className="mb-6 space-y-1.5">
-                                <div className="flex items-baseline gap-1 whitespace-nowrap">
-                                    <span className="text-3xl md:text-4xl font-bold tracking-tight text-ink">
-                                        {proPricing.amountFormatted}
+                            {/* Subheader */}
+                            <p className="text-xs font-medium text-white mb-3">
+                                {payCurrency === "VND" ? "Bao gồm tất cả tính năng Starter, cộng thêm:" : "All Starter features, plus:"}
+                            </p>
+
+                            {/* Feature List with Outlined Icons */}
+                            <ul className="space-y-3 text-xs text-neutral-300 mb-8">
+                                <li className="flex items-center gap-2.5">
+                                    <Users className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "3 Thành viên nhóm & phân quyền"
+                                            : "Team collaboration & 3 member seats"}
                                     </span>
-                                    {proPricing.currencySymbol ? (
-                                        <span className="text-lg md:text-xl font-bold text-accent">
-                                            {proPricing.currencySymbol}
-                                        </span>
-                                    ) : null}
-                                    <span className="text-sm font-normal text-accent">
-                                        {proPricing.unit}
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Zap className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "3.000 Lượt làm mới dữ liệu ưu tiên"
+                                            : "3,000 Priority warehouse syncs"}
                                     </span>
-                                </div>
-                                <p className="text-xs text-ink-mute">
-                                    {proPricing.billingNote}
-                                </p>
-                            </div>
-
-                            {/* CTA Action Button */}
-                            {payCurrency === "VND" ? (
-                                <button
-                                    onClick={() => openVietQr("professional", "Agency Pro")}
-                                    className="w-full py-3 px-4 rounded-md bg-white hover:bg-neutral-200 text-black font-semibold text-xs transition-colors flex items-center justify-center gap-2 mb-6 shadow-sm"
-                                >
-                                    <QrCode className="w-4 h-4 text-emerald-600" />
-                                    <span>Thanh toán VietQR (Kích hoạt ngay)</span>
-                                </button>
-                            ) : (
-                                <CheckoutButton
-                                    plan="professional"
-                                    billingCycle={isAnnual ? "annual" : "monthly"}
-                                    invoiceCurrency={payCurrency}
-                                    metaPixelEvent="MC_Pricing_Pro_Checkout"
-                                    metaPixelParams={{ billing_cycle: isAnnual ? "annual" : "monthly", currency: payCurrency }}
-                                    className="w-full py-3 px-4 rounded-md bg-white hover:bg-neutral-200 text-black font-semibold text-xs transition-colors flex items-center justify-center gap-2 mb-6 shadow-sm"
-                                >
-                                    <span>Start 14-Day Pilot</span>
-                                    <ArrowRight className="w-4 h-4" />
-                                </CheckoutButton>
-                            )}
-
-                            {/* Channel Badges */}
-                            <div className="pt-4 border-t border-line mb-6">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-mute block mb-3">
-                                    {payCurrency === "VND" ? "Đầy đủ tất cả nền tảng" : "All Platforms Included"}
-                                </span>
-                                <div className="flex items-center gap-2.5">
-                                    {PLAN_SOURCES.pro.map((s) => (
-                                        <IntegrationMark key={s.alt} src={s.src} alt={s.alt} size="sm" />
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Feature List */}
-                            <div className="space-y-3 pt-2">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-accent block">
-                                    {payCurrency === "VND" ? "Bao gồm quyền lợi Starter, cộng thêm:" : "Everything in Starter, plus:"}
-                                </span>
-                                <ul className="space-y-2.5 text-xs text-ink-mute">
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                                        <span><strong className="text-ink">3 Thành viên nhóm</strong> (Thêm user dễ dàng)</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                                        <span><strong className="text-ink">Tối đa 20 Accounts &amp; Shops</strong> (Meta + TikTok + Shopee + Google)</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                                        <span><strong className="text-ink">3.000 Lượt làm mới / tháng</strong> + Băng thông ưu tiên</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                                        <span>Phân quyền Workspace riêng biệt cho từng Client</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                                        <span>Lịch tự động làm mới theo giờ &amp; theo đêm</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                                        <span>Hỗ trợ kỹ thuật 1-1 qua Zalo / Telegram</span>
-                                    </li>
-                                </ul>
-                            </div>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Layers className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Cô lập dữ liệu Workspace từng khách hàng"
+                                            : "Multi-tenant client workspace isolation"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Clock className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Lịch làm mới tự động theo giờ & ban đêm"
+                                            : "Hourly & nightly scheduled syncs"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <SlidersHorizontal className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Tối đa 20 Tài khoản quảng cáo & Shop"
+                                            : "Up to 20 Ad accounts & shop scopes"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Headphones className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Hỗ trợ kỹ thuật 1-1 qua Zalo / Telegram"
+                                            : "1-on-1 Priority support (Zalo / Telegram)"}
+                                    </span>
+                                </li>
+                            </ul>
                         </div>
+
+                        {/* Bottom Pill CTA Button (Solid Stark White) */}
+                        {payCurrency === "VND" ? (
+                            <button
+                                onClick={() => openVietQr("professional", "Agency Pro")}
+                                className="w-full py-2.5 px-4 rounded-full bg-white hover:bg-neutral-200 text-black text-xs font-semibold transition-all flex items-center justify-center gap-2 shadow-xs"
+                            >
+                                <QrCode className="w-3.5 h-3.5 text-black" />
+                                <span>Thanh toán VietQR (Kích hoạt ngay)</span>
+                            </button>
+                        ) : (
+                            <CheckoutButton
+                                plan="professional"
+                                billingCycle={isAnnual ? "annual" : "monthly"}
+                                invoiceCurrency={payCurrency}
+                                metaPixelEvent="MC_Pricing_Pro_Checkout"
+                                metaPixelParams={{ billing_cycle: isAnnual ? "annual" : "monthly", currency: payCurrency }}
+                                className="w-full py-2.5 px-4 rounded-full bg-white hover:bg-neutral-200 text-black text-xs font-semibold transition-all flex items-center justify-center gap-2 shadow-xs"
+                            >
+                                <span>Start a free trial</span>
+                            </CheckoutButton>
+                        )}
                     </div>
 
                     {/* ── PILLAR 3: ENTERPRISE ────────────────────────────────────────── */}
-                    <div className="relative rounded-lg p-6 md:p-8 bg-panel border border-line flex flex-col justify-between transition-colors hover:border-[#333]">
-                        <div className="flex flex-col">
-                            {/* Plan Header */}
-                            <div className="flex items-center justify-between mb-3">
-                                <h3 className="text-xl font-bold text-ink tracking-tight">Enterprise</h3>
-                                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded bg-canvas text-ink-mute border border-line">
-                                    Quy mô lớn
+                    <div className="relative rounded-xl p-7 bg-[#0a0a0a] border border-line flex flex-col justify-between transition-all hover:border-[#383838]">
+                        <div>
+                            {/* Plan Title */}
+                            <div className="mb-4">
+                                <h3 className="text-sm font-medium text-white tracking-tight">Enterprise</h3>
+                            </div>
+
+                            {/* Huge Bold Price Number */}
+                            <div className="mb-4 flex items-baseline">
+                                <span className="text-5xl lg:text-6xl font-bold tracking-tight text-white">
+                                    {enterprisePricing.amountFormatted}
                                 </span>
                             </div>
 
-                            <p className="text-xs text-ink-mute mb-6 leading-relaxed min-h-[36px]">
+                            {/* Plan Description */}
+                            <p className="text-xs text-neutral-400 leading-relaxed mb-6 min-h-[36px]">
                                 {payCurrency === "VND"
-                                    ? "Dành cho Agency lớn, Tập đoàn bán lẻ và doanh nghiệp cần kho dữ liệu BigQuery / PostgreSQL riêng."
-                                    : "For large agencies and brands needing dedicated cloud warehousing, custom integrations, and SLA."}
+                                    ? "Bảo mật nâng cao, kho PostgreSQL / BigQuery riêng, SLA 99.9% và hỗ trợ kỹ thuật chuyên sâu."
+                                    : "Critical security, dedicated PostgreSQL/BigQuery, platform SLAs, and custom support."}
                             </p>
 
-                            {/* Price Hero Section */}
-                            <div className="mb-6 space-y-1.5">
-                                <div className="flex items-baseline gap-1 whitespace-nowrap">
-                                    <span className="text-3xl md:text-4xl font-bold tracking-tight text-ink">
-                                        {enterprisePricing.amountFormatted}
+                            {/* Subheader */}
+                            <p className="text-xs font-medium text-white mb-3">
+                                {payCurrency === "VND" ? "Bao gồm tất cả tính năng Pro, cộng thêm:" : "All Pro features, plus:"}
+                            </p>
+
+                            {/* Feature List with Outlined Icons */}
+                            <ul className="space-y-3 text-xs text-neutral-300 mb-8">
+                                <li className="flex items-center gap-2.5">
+                                    <Lock className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Quản trị phân quyền nâng cao & SSO"
+                                            : "Guest & Team access controls & SSO"}
                                     </span>
-                                    {enterprisePricing.currencySymbol ? (
-                                        <span className="text-lg md:text-xl font-bold text-ink-mute">
-                                            {enterprisePricing.currencySymbol}
-                                        </span>
-                                    ) : null}
-                                    <span className="text-sm font-normal text-ink-mute">
-                                        {enterprisePricing.unit}
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Database className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Kho dữ liệu PostgreSQL / BigQuery riêng"
+                                            : "Dedicated PostgreSQL / BigQuery warehouse"}
                                     </span>
-                                </div>
-                                <p className="text-xs text-ink-mute">
-                                    {enterprisePricing.billingNote}
-                                </p>
-                            </div>
-
-                            {/* CTA Action Button */}
-                            <Link
-                                href="mailto:support@monsteracloud.com?subject=Inquiry%20Enterprise%20Plan%20Monstera%20Cloud"
-                                className="w-full py-3 px-4 rounded-md border border-line bg-canvas hover:bg-[#16181c] text-ink font-semibold text-xs transition-colors flex items-center justify-center gap-2 mb-6"
-                            >
-                                <Building2 className="w-4 h-4 text-ink-mute" />
-                                <span>{payCurrency === "VND" ? "Liên hệ tư vấn Enterprise" : "Contact Sales"}</span>
-                            </Link>
-
-                            {/* Channel Badges */}
-                            <div className="pt-4 border-t border-line mb-6">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-mute block mb-3">
-                                    {payCurrency === "VND" ? "Không giới hạn kênh & tài khoản" : "Unlimited Custom Channels"}
-                                </span>
-                                <div className="flex items-center gap-2.5">
-                                    {PLAN_SOURCES.enterprise.map((s) => (
-                                        <IntegrationMark key={s.alt} src={s.src} alt={s.alt} size="sm" />
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Feature List */}
-                            <div className="space-y-3 pt-2">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-mute block">
-                                    {payCurrency === "VND" ? "Đặc quyền Enterprise" : "Enterprise features"}
-                                </span>
-                                <ul className="space-y-2.5 text-xs text-ink-mute">
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                        <span><strong className="text-ink">Không giới hạn tài khoản &amp; Pipelines</strong></span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                        <span><strong className="text-ink">10+ User Seats</strong> tùy chỉnh theo nhu cầu</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                        <span>Dedicated Database Warehouse (PostgreSQL / BigQuery)</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                        <span>Hợp đồng dịch vụ doanh nghiệp (SLA 99.9%)</span>
-                                    </li>
-                                    <li className="flex items-start gap-2.5">
-                                        <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                        <span>Xuất hóa đơn điện tử VAT hàng tháng</span>
-                                    </li>
-                                </ul>
-                            </div>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Workflow className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Không giới hạn tài khoản & pipeline tùy chỉnh"
+                                            : "Unlimited accounts & custom pipelines"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <ShieldCheck className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Cam kết SLA 99.9% cho doanh nghiệp"
+                                            : "99.9% Enterprise SLA guarantee"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Coins className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Xuất hóa đơn VAT điện tử hàng tháng"
+                                            : "Monthly electronic VAT invoices"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Cpu className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Kỹ sư dữ liệu hỗ trợ triển khai riêng"
+                                            : "Dedicated data engineering architect"}
+                                    </span>
+                                </li>
+                            </ul>
                         </div>
+
+                        {/* Bottom Pill CTA Button */}
+                        <Link
+                            href="mailto:support@monsteracloud.com?subject=Inquiry%20Enterprise%20Plan%20Monstera%20Cloud"
+                            className="w-full py-2.5 px-4 rounded-full border border-line bg-[#111] hover:bg-[#1c1c1c] text-white text-xs font-medium transition-all flex items-center justify-center gap-2"
+                        >
+                            <span>{payCurrency === "VND" ? "Liên hệ tư vấn Enterprise" : "Get a demo"}</span>
+                        </Link>
                     </div>
 
                 </div>
 
-                {/* ── Enterprise Custom Banner ────────────────────────────────────────── */}
-                <div className="mt-16 max-w-4xl mx-auto rounded-lg p-6 bg-panel border border-line flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                {/* ── Full Feature Comparison Matrix (Vercel Screenshot 2 Style) ──────── */}
+                <div className="mt-28 w-full">
+                    {/* Comparison Header Bar */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-line">
+                        <div>
+                            <h2 className="text-xl font-bold tracking-tight text-white">
+                                {payCurrency === "VND" ? "So sánh chi tiết tất cả tính năng" : "Compare all features"}
+                            </h2>
+                            <p className="text-xs text-neutral-400 mt-1">
+                                {payCurrency === "VND"
+                                    ? "Chi tiết thông số kỹ thuật, giới hạn kết nối và quyền lợi từng gói dịch vụ."
+                                    : "Detailed feature breakdown, limits, and technical capabilities across all tiers."}
+                            </p>
+                        </div>
+
+                        {/* Search Feature Input */}
+                        <div className="relative w-full sm:w-64">
+                            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+                            <input
+                                type="text"
+                                placeholder={payCurrency === "VND" ? "Tìm kiếm tính năng..." : "Search feature..."}
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full bg-[#0a0a0a] border border-line rounded-md pl-9 pr-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-neutral-400 transition-colors"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-12 py-4 border-b border-line text-sm font-semibold text-white">
+                        <div className="col-span-6 sm:col-span-6 text-neutral-400 text-xs uppercase tracking-wider font-mono">
+                            {payCurrency === "VND" ? "TÍNH NĂNG" : "FEATURE"}
+                        </div>
+                        <div className="col-span-2 text-center text-xs sm:text-sm">Starter</div>
+                        <div className="col-span-2 text-center text-xs sm:text-sm">Pro</div>
+                        <div className="col-span-2 text-center text-xs sm:text-sm">Enterprise</div>
+                    </div>
+
+                    <div className="divide-y divide-line/60">
+                        {filteredCategories.map((category, catIdx) => {
+                            const CategoryIcon = category.icon;
+                            return (
+                                <div key={catIdx} className="pt-6 pb-4">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <CategoryIcon className="w-4 h-4 text-neutral-400" />
+                                        <h3 className="text-sm font-semibold text-white">{category.title}</h3>
+                                    </div>
+                                    <p className="text-xs text-neutral-500 mb-4">{category.description}</p>
+
+                                    <div className="space-y-0.5">
+                                        {category.features.map((feature, fIdx) => (
+                                            <div
+                                                key={fIdx}
+                                                className="grid grid-cols-12 py-3 px-2 rounded hover:bg-[#0e0e0e] transition-colors items-center text-xs"
+                                            >
+                                                <div className="col-span-6 text-neutral-300 font-normal pr-2">
+                                                    {feature.name}
+                                                </div>
+
+                                                <div className="col-span-2 flex items-center justify-center text-center">
+                                                    {typeof feature.starter === "boolean" ? (
+                                                        feature.starter ? (
+                                                            <Check className="w-3.5 h-3.5 text-neutral-300" />
+                                                        ) : (
+                                                            <span className="text-neutral-700 font-light">—</span>
+                                                        )
+                                                    ) : (
+                                                        <span className="font-mono text-[11px] text-neutral-300">{feature.starter}</span>
+                                                    )}
+                                                </div>
+
+                                                <div className="col-span-2 flex items-center justify-center text-center">
+                                                    {typeof feature.pro === "boolean" ? (
+                                                        feature.pro ? (
+                                                            <Check className="w-3.5 h-3.5 text-white" />
+                                                        ) : (
+                                                            <span className="text-neutral-700 font-light">—</span>
+                                                        )
+                                                    ) : (
+                                                        <span className="font-mono text-[11px] font-medium text-white">{feature.pro}</span>
+                                                    )}
+                                                </div>
+
+                                                <div className="col-span-2 flex items-center justify-center text-center">
+                                                    {typeof feature.enterprise === "boolean" ? (
+                                                        feature.enterprise ? (
+                                                            <Check className="w-3.5 h-3.5 text-neutral-300" />
+                                                        ) : (
+                                                            <span className="text-neutral-700 font-light">—</span>
+                                                        )
+                                                    ) : (
+                                                        <span className="font-mono text-[11px] text-neutral-300">{feature.enterprise}</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                <div className="mt-20 w-full rounded-xl p-6 bg-[#0a0a0a] border border-line flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
                     <div>
-                        <h4 className="font-bold text-sm text-ink">
-                            {payCurrency === "VND" ? "Bạn cần tư vấn giải pháp đo lường dữ liệu riêng?" : "Looking for custom data engineering or bespoke setup?"}
+                        <h4 className="font-bold text-sm text-white">
+                            {payCurrency === "VND" ? "Bạn cần tư vấn kiến trúc dữ liệu riêng?" : "Looking for custom data engineering or bespoke setup?"}
                         </h4>
-                        <p className="text-xs text-ink-mute mt-1">
+                        <p className="text-xs text-neutral-400 mt-1">
                             {payCurrency === "VND"
                                 ? "Đội ngũ kỹ thuật của Monstera Cloud sẵn sàng hỗ trợ setup và đào tạo trực tiếp cho Agency của bạn."
                                 : "Our engineering team provides direct onboarding, custom connector development, and dedicated warehouse support."}
@@ -586,48 +690,46 @@ export default function PricingPage() {
                     </div>
                     <Link
                         href="mailto:support@monsteracloud.com"
-                        className="px-4 py-2 rounded-md bg-canvas border border-line text-xs font-semibold text-ink hover:bg-[#16181c] transition-colors whitespace-nowrap"
+                        className="px-4 py-2 rounded-full bg-[#111] border border-line text-xs font-medium text-white hover:bg-[#1a1a1a] transition-colors whitespace-nowrap"
                     >
                         {payCurrency === "VND" ? "Gặp chuyên gia tư vấn" : "Talk to Sales"}
                     </Link>
                 </div>
 
-                {/* ── Security Trust Grid ────────────────────────────────────────────── */}
-                <div className="mt-20 pt-10 border-t border-line text-center">
-                    <p className="text-xs font-bold uppercase tracking-widest text-ink-mute mb-8">
-                        {payCurrency === "VND" ? "Tiêu chuẩn an toàn & Bảo mật quốc tế" : "Enterprise Security Standards"}
+                <div className="mt-20 pt-10 border-t border-line text-center w-full">
+                    <p className="text-xs font-mono font-semibold uppercase tracking-widest text-neutral-500 mb-8">
+                        {payCurrency === "VND" ? "TIÊU CHUẨN AN TOÀN & BẢO MẬT" : "SECURITY & COMPLIANCE STANDARDS"}
                     </p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto text-xs text-ink-mute">
-                        <div className="flex flex-col items-center p-4 rounded-lg bg-panel border border-line">
-                            <Lock className="w-5 h-5 text-accent mb-2" />
-                            <span className="font-semibold text-ink">AES-256-GCM</span>
-                            <span className="text-[11px] text-ink-mute mt-0.5">Mã hóa dữ liệu 2 lớp</span>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full text-xs text-neutral-400">
+                        <div className="flex flex-col items-center p-4 rounded-xl bg-[#0a0a0a] border border-line">
+                            <Lock className="w-5 h-5 text-white mb-2" />
+                            <span className="font-semibold text-white">AES-256-GCM</span>
+                            <span className="text-[11px] text-neutral-500 mt-0.5">Mã hóa dữ liệu 2 lớp</span>
                         </div>
-                        <div className="flex flex-col items-center p-4 rounded-lg bg-panel border border-line">
-                            <ShieldCheck className="w-5 h-5 text-accent mb-2" />
-                            <span className="font-semibold text-ink">Google OAuth 2.0</span>
-                            <span className="text-[11px] text-ink-mute mt-0.5">Xác thực chính thức</span>
+                        <div className="flex flex-col items-center p-4 rounded-xl bg-[#0a0a0a] border border-line">
+                            <ShieldCheck className="w-5 h-5 text-white mb-2" />
+                            <span className="font-semibold text-white">Google OAuth 2.0</span>
+                            <span className="text-[11px] text-neutral-500 mt-0.5">Xác thực chính thức</span>
                         </div>
-                        <div className="flex flex-col items-center p-4 rounded-lg bg-panel border border-line">
-                            <Layers className="w-5 h-5 text-accent mb-2" />
-                            <span className="font-semibold text-ink">Multi-Tenant</span>
-                            <span className="text-[11px] text-ink-mute mt-0.5">Cô lập dữ liệu client</span>
+                        <div className="flex flex-col items-center p-4 rounded-xl bg-[#0a0a0a] border border-line">
+                            <Layers className="w-5 h-5 text-white mb-2" />
+                            <span className="font-semibold text-white">Multi-Tenant</span>
+                            <span className="text-[11px] text-neutral-500 mt-0.5">Cô lập dữ liệu client</span>
                         </div>
-                        <div className="flex flex-col items-center p-4 rounded-lg bg-panel border border-line">
-                            <RefreshCw className="w-5 h-5 text-accent mb-2" />
-                            <span className="font-semibold text-ink">Napas 24/7 &amp; VAT</span>
-                            <span className="text-[11px] text-ink-mute mt-0.5">Xuất hóa đơn đỏ</span>
+                        <div className="flex flex-col items-center p-4 rounded-xl bg-[#0a0a0a] border border-line">
+                            <RefreshCw className="w-5 h-5 text-white mb-2" />
+                            <span className="font-semibold text-white">Napas 24/7 &amp; VAT</span>
+                            <span className="text-[11px] text-neutral-500 mt-0.5">Xuất hóa đơn đỏ</span>
                         </div>
                     </div>
                 </div>
 
-                {/* ── FAQ Section (Clean Minimalist Accordion) ────────────────────────── */}
-                <div className="mt-24 max-w-3xl mx-auto">
+                <div className="mt-24 max-w-3xl mx-auto w-full">
                     <div className="text-center mb-10">
-                        <h3 className="text-2xl font-bold text-ink">
+                        <h3 className="text-2xl font-bold text-white">
                             {payCurrency === "VND" ? "Câu hỏi thường gặp" : "Frequently Asked Questions"}
                         </h3>
-                        <p className="text-xs text-ink-mute mt-1">
+                        <p className="text-xs text-neutral-400 mt-1">
                             {payCurrency === "VND" ? "Mọi điều bạn cần biết về dịch vụ và thanh toán" : "Everything you need to know about plans and billing"}
                         </p>
                     </div>
@@ -638,18 +740,18 @@ export default function PricingPage() {
                             return (
                                 <div
                                     key={idx}
-                                    className="rounded-lg bg-panel border border-line overflow-hidden transition-colors"
+                                    className="rounded-xl bg-[#0a0a0a] border border-line overflow-hidden transition-colors"
                                 >
                                     <button
                                         type="button"
                                         onClick={() => setOpenFaq(isOpen ? null : idx)}
-                                        className="w-full px-6 py-4 flex items-center justify-between text-left font-medium text-sm text-ink hover:text-white transition-colors"
+                                        className="w-full px-6 py-4 flex items-center justify-between text-left font-medium text-sm text-white hover:text-white transition-colors"
                                     >
                                         <span>{faq.q}</span>
-                                        <ChevronDown className={`w-4 h-4 text-ink-mute transition-transform duration-200 ${isOpen ? "rotate-180 text-ink" : ""}`} />
+                                        <ChevronDown className={`w-4 h-4 text-neutral-500 transition-transform duration-200 ${isOpen ? "rotate-180 text-white" : ""}`} />
                                     </button>
                                     {isOpen && (
-                                        <div className="px-6 pb-4 text-xs text-ink-mute leading-relaxed border-t border-line pt-3">
+                                        <div className="px-6 pb-4 text-xs text-neutral-400 leading-relaxed border-t border-line pt-3">
                                             {faq.a}
                                         </div>
                                     )}

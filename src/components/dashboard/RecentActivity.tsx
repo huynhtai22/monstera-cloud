@@ -46,8 +46,8 @@ export function RecentActivity({
             <div className="stagger-list flex-1 space-y-4 overflow-y-auto pr-1">
                 {isLoading ? (
                     <div className="flex h-full flex-col items-center justify-center py-10 text-center">
-                        <Loader2 className="mb-3 h-6 w-6 animate-spin text-cyan-500" />
-                        <span className="text-sm text-gray-500">Loading activity…</span>
+                        <Loader2 className="mb-3 h-6 w-6 animate-spin text-white" />
+                        <span className="text-sm text-ink-mute">Loading activity…</span>
                     </div>
                 ) : error ? (
                     <div className="flex h-full flex-col items-center justify-center py-10 text-center text-red-500">
@@ -64,10 +64,10 @@ export function RecentActivity({
                             <div key={pipeline.id} className={`stagger-item flex items-start space-x-3 ${isLast ? "opacity-70" : ""}`}>
                                 <div className="relative mt-1 shrink-0">
                                     <div
-                                        className={`h-2.5 w-2.5 rounded-full ${isError ? "bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.1)]" : "bg-cyan-500 shadow-[0_0_0_4px_rgba(6,182,212,0.15)]"}`}
+                                        className={`h-2 w-2 rounded-full ${isError ? "bg-red-500" : "bg-white shadow-[0_0_0_4px_rgba(255,255,255,0.08)]"}`}
                                     />
                                     {!isLast && (
-                                        <div className="absolute bottom-[-10px] left-[5px] top-4 w-px bg-gray-200 dark:bg-[#1d1f23]" />
+                                        <div className="absolute bottom-[-10px] left-[3.5px] top-3.5 w-px bg-line" />
                                     )}
                                 </div>
                                 <div>

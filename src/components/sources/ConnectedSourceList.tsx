@@ -298,12 +298,12 @@ export function ConnectedSourceList(props: {
                           {isError && r.errorMsg ? (
                             <p className="mb-2 text-sm font-medium text-red-700 dark:text-red-300">{r.errorMsg}</p>
                           ) : null}
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
-                            <Link href={`/sources/${r.id}`} className="font-semibold text-cyan-700 hover:underline dark:text-cyan-300">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-ink-mute">
+                            <Link href={`/sources/${r.id}`} className="font-semibold text-white hover:text-neutral-300">
                               Open details
                             </Link>
                             <span>·</span>
-                            <Link href="/explorer" className="font-semibold text-cyan-700 hover:underline dark:text-cyan-300">
+                            <Link href="/explorer" className="font-semibold text-white hover:text-neutral-300">
                               View warehouse data
                             </Link>
                             {!r.pipelineId ? (

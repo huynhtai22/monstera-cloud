@@ -64,7 +64,7 @@ export function MarketingNavbar() {
 
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-line/80 bg-canvas/75 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" title="Monstera — home" className="shrink-0">
           <Logo />
         </Link>
@@ -80,12 +80,6 @@ export function MarketingNavbar() {
           </Link>
         </div>
         <div className="flex items-center gap-3 sm:gap-4">
-          <Link
-            href="/id"
-            className="hidden font-mono text-[10px] uppercase tracking-wider text-ink-mute transition-colors duration-150 hover:text-ink sm:block"
-          >
-            ID
-          </Link>
           {showLangToggle ? <LangToggle lang={lang} setLang={onSetLang} /> : null}
           {isAuthed ? (
             <Link

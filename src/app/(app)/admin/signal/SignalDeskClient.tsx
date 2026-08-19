@@ -24,6 +24,7 @@ import {
   Sparkles,
   Terminal,
   TrendingUp,
+  X,
 } from "lucide-react";
 import { signalApi } from "@/lib/signal-api";
 import type {
@@ -358,7 +359,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-200 dark:border-[#2f3336] pb-6">
         <div>
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-panel text-white">
               <Radio className="h-6 w-6" />
             </div>
             <div>
@@ -366,7 +367,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                 <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
                   Signal Desk
                 </h1>
-                <span className="inline-flex items-center gap-1 rounded-full bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 text-xs font-semibold text-cyan-700 dark:text-cyan-300 ring-1 ring-inset ring-cyan-600/20">
+                <span className="inline-flex items-center gap-1 rounded-full border border-line bg-panel px-2 py-0.5 text-xs font-semibold text-white">
                   <Sparkles className="h-3 w-3" /> Private Engine
                 </span>
               </div>
@@ -450,9 +451,9 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
           <button
             type="button"
             onClick={() => setGlobalError(null)}
-            className="text-xs font-medium underline"
+            className="text-red-500 hover:text-red-700 dark:hover:text-red-200"
           >
-            Dismiss
+            <X className="h-4 w-4" />
           </button>
         </div>
       )}
@@ -462,7 +463,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
         /* ═══════════════════════════════════════════════════════════
            COLLECTION & RESEARCH DETAIL VIEW
            ═══════════════════════════════════════════════════════════ */
-        <div className="space-y-6">
+        <div className="space-y-6 animate-in fade-in duration-300">
           {/* Breadcrumb & Top Actions */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -484,7 +485,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                 type="button"
                 onClick={() => runAnalysis("fast")}
                 disabled={Boolean(operation) || activeCollection.status !== "completed"}
-                className="flex items-center gap-2 rounded-lg bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 text-white px-4 py-2 text-sm font-semibold transition-colors shadow-sm"
+                className="flex items-center gap-2 rounded-lg bg-white text-black hover:bg-neutral-200 disabled:opacity-50 px-4 py-2 text-sm font-semibold transition-colors shadow-sm"
               >
                 {operation === "analysis" ? (
                   <RefreshCw className="h-4 w-4 animate-spin" />
@@ -521,14 +522,14 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                   <span
                     className={`flex items-center gap-1.5 whitespace-nowrap transition-colors ${
                       isActive
-                        ? "text-cyan-600 dark:text-cyan-400 font-bold"
+                        ? "text-white font-bold"
                         : "text-gray-400 dark:text-gray-600"
                     }`}
                   >
                     <span
                       className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${
                         isActive
-                          ? "bg-cyan-500 text-white"
+                          ? "bg-white text-black font-semibold"
                           : "bg-gray-100 dark:bg-gray-800 text-gray-500"
                       }`}
                     >
@@ -543,9 +544,9 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
 
           {/* Operation Status Bar */}
           {operation && (
-            <div className="flex items-center justify-between rounded-xl border border-cyan-200 dark:border-cyan-800/60 bg-cyan-50/70 dark:bg-cyan-950/40 px-5 py-3 text-sm text-cyan-900 dark:text-cyan-200 animate-pulse">
+            <div className="flex items-center justify-between rounded-xl border border-line bg-panel px-5 py-3 text-sm text-ink animate-pulse">
               <div className="flex items-center gap-2.5">
-                <RefreshCw className="h-4 w-4 animate-spin text-cyan-600 dark:text-cyan-400" />
+                <RefreshCw className="h-4 w-4 animate-spin text-white" />
                 <span className="font-semibold">
                   {operation === "analysis"
                     ? "DeepSeek is analyzing research evidence and extracting whitespace opportunities…"
@@ -554,7 +555,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                     : "DeepSeek is scoring draft across 6 multi-dimensional potential metrics…"}
                 </span>
               </div>
-              <span className="text-xs font-mono text-cyan-700 dark:text-cyan-300">
+              <span className="text-xs font-mono text-ink-mute">
                 {elapsed} elapsed
               </span>
             </div>
@@ -572,7 +573,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
             <details className="group rounded-xl border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] p-4 text-sm">
               <summary className="flex items-center justify-between cursor-pointer font-semibold text-gray-700 dark:text-gray-200">
                 <div className="flex items-center gap-2">
-                  <ShieldAlert className="h-4 w-4 text-cyan-500" />
+                  <ShieldAlert className="h-4 w-4 text-white" />
                   <span>Research Quality & Candidate Selection</span>
                 </div>
                 <span className="text-xs font-normal text-gray-400">
@@ -591,7 +592,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                     >
                       <div className="flex items-center justify-between font-medium text-gray-900 dark:text-white">
                         <span>@{p.author_username || "anonymous"}</span>
-                        <span className="text-cyan-600 dark:text-cyan-400 font-bold">
+                        <span className="text-white font-bold">
                           {p.selection_score.toFixed(1)} quality
                         </span>
                       </div>
@@ -607,7 +608,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
           {/* ── Empty State: Not yet analyzed ── */}
           {!activeCollection.analysis ? (
             <div className="rounded-2xl border border-dashed border-gray-300 dark:border-[#2f3336] bg-white dark:bg-[#16181c] p-12 text-center space-y-4">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-line bg-panel text-white">
                 <Compass className="h-6 w-6" />
               </div>
               <div className="max-w-md mx-auto space-y-1">
@@ -624,7 +625,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                 type="button"
                 onClick={() => runAnalysis("fast")}
                 disabled={Boolean(operation)}
-                className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white px-5 py-2.5 text-sm font-semibold shadow-sm transition-colors"
+                className="inline-flex items-center gap-2 rounded-lg bg-white text-black hover:bg-neutral-200 px-5 py-2.5 text-sm font-semibold shadow-sm transition-colors"
               >
                 <Sparkles className="h-4 w-4" /> Run Fast Analysis
               </button>
@@ -634,7 +635,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
             <div className="space-y-8">
               {/* Summary Card */}
               <div className="rounded-xl border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] p-6 space-y-4 shadow-sm">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <BarChart3 className="h-4 w-4" /> Research Summary & White-space Character
                 </div>
                 <p className="text-base text-gray-800 dark:text-gray-200 leading-relaxed font-medium">
@@ -646,7 +647,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                       key={item.label}
                       className="inline-flex items-center gap-1 rounded-md bg-gray-100 dark:bg-[#1d1f23] px-2.5 py-1 text-xs font-medium text-gray-700 dark:text-gray-300"
                     >
-                      <Check className="h-3 w-3 text-cyan-500" /> {item.label}
+                      <Check className="h-3 w-3 text-white" /> {item.label}
                     </span>
                   ))}
                 </div>
@@ -746,7 +747,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 dark:border-gray-800 pb-4">
                     <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-white">
                         Draft Studio
                       </span>
                       <h3 className="text-base font-bold text-gray-900 dark:text-white">
@@ -765,7 +766,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                           }}
                           className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
                             draftDepth === depth
-                              ? "bg-white dark:bg-[#16181c] text-cyan-600 dark:text-cyan-400 shadow-sm"
+                              ? "bg-white text-black shadow-sm"
                               : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
                           }`}
                         >
@@ -827,7 +828,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                         type="button"
                         onClick={scoreDraft}
                         disabled={Boolean(operation)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white px-4 py-2 text-xs font-semibold transition-colors shadow-sm"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-white text-black hover:bg-neutral-200 px-4 py-2 text-xs font-semibold transition-colors shadow-sm"
                       >
                         <Gauge className="h-3.5 w-3.5" />
                         {operation === "score"
@@ -884,7 +885,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                           setSelectedDraft(draft);
                           document.getElementById("draft-workspace")?.scrollIntoView({ behavior: "smooth" });
                         }}
-                        className="text-left rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#1d1f23] p-3 hover:border-cyan-500/50 transition-colors"
+                        className="text-left rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-[#1d1f23] p-3 hover:border-white/40 transition-colors"
                       >
                         <p className="text-xs font-bold text-gray-900 dark:text-white truncate">
                           {idea.title}
@@ -921,7 +922,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                       onClick={() => loadCollection(activeCollection.id, v.version)}
                       className={`px-2.5 py-1 text-xs rounded-md font-semibold transition-colors ${
                         activeCollection.analysis?.version === v.version
-                          ? "bg-cyan-500 text-white"
+                          ? "bg-white text-black font-semibold"
                           : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
                       }`}
                     >
@@ -940,7 +941,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                   >
                     <div className="flex items-center justify-between font-semibold text-gray-900 dark:text-white">
                       <span>{item.source_name}</span>
-                      <span className="text-cyan-600 font-medium">
+                      <span className="text-white font-medium">
                         {Math.round(item.quality_score * 100)}% quality
                       </span>
                     </div>
@@ -953,7 +954,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                         href={item.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-[10px] text-cyan-600 hover:underline"
+                        className="inline-flex items-center gap-1 text-[10px] text-white hover:underline"
                       >
                         Open Source <ExternalLink className="h-2.5 w-2.5" />
                       </a>
@@ -982,7 +983,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                           href={post.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="ml-auto text-cyan-600 hover:underline inline-flex items-center gap-0.5"
+                          className="ml-auto text-white hover:underline inline-flex items-center gap-0.5"
                         >
                           View on X <ExternalLink className="h-2.5 w-2.5" />
                         </a>
@@ -1008,7 +1009,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
             {/* Entry 1: Morning Brief */}
             <div className="flex flex-col justify-between rounded-2xl border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] p-6 shadow-sm space-y-6">
               <div className="space-y-2">
-                <div className="inline-flex items-center gap-1.5 rounded-md bg-cyan-50 dark:bg-cyan-950/60 px-2.5 py-1 text-xs font-semibold text-cyan-700 dark:text-cyan-300">
+                <div className="inline-flex items-center gap-1.5 rounded-md border border-line bg-panel px-2.5 py-1 text-xs font-semibold text-white">
                   <Sparkles className="h-3.5 w-3.5" /> Autonomous Discovery
                 </div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white">
@@ -1025,7 +1026,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                   type="button"
                   onClick={onRunMorningBrief}
                   disabled={briefBusy}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 text-white py-3 text-sm font-semibold transition-colors shadow-sm"
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-white text-black hover:bg-neutral-200 disabled:opacity-50 py-3 text-sm font-semibold transition-colors shadow-sm"
                 >
                   {briefBusy ? (
                     <RefreshCw className="h-4 w-4 animate-spin" />
@@ -1072,7 +1073,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                     value={keyword}
                     onChange={(e) => setKeyword(e.target.value)}
                     placeholder="e.g., local LLMs, AI agents, DuckDB, Next.js 16..."
-                    className="w-full rounded-xl border border-gray-200 dark:border-[#2f3336] bg-gray-50 dark:bg-[#000000] pl-10 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                    className="w-full rounded-xl border border-gray-200 dark:border-[#2f3336] bg-gray-50 dark:bg-[#000000] pl-10 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:border-white focus:outline-none focus:ring-1 focus:ring-white"
                   />
                 </div>
 
@@ -1098,21 +1099,21 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <Radio className="h-5 w-5 text-cyan-500" /> Latest Curator Brief Opportunities
+                    <Radio className="h-5 w-5 text-white" /> Latest Curator Brief Opportunities
                   </h2>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     Cross-referenced opportunities synthesized from current industry discussions.
                   </p>
                 </div>
-                <span className="text-xs font-semibold text-cyan-600 dark:text-cyan-400">
+                <span className="text-xs font-semibold text-white">
                   {statusLabel(brief.status)}
                 </span>
               </div>
 
               {brief.status !== "completed" && brief.status !== "failed" && (
-                <div className="rounded-xl border border-cyan-200 dark:border-cyan-800/60 bg-cyan-50/70 dark:bg-cyan-950/40 p-4 text-sm flex items-center justify-between">
+                <div className="rounded-xl border border-line bg-panel p-4 text-sm flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <RefreshCw className="h-4 w-4 animate-spin text-cyan-600" />
+                    <RefreshCw className="h-4 w-4 animate-spin text-white" />
                     <span>{statusLabel(brief.status)}</span>
                   </div>
                   <span className="text-xs text-gray-500">Autonomous run in progress</span>
@@ -1184,7 +1185,7 @@ export function SignalDeskClient({ userEmail }: { userEmail: string }) {
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-2 text-xs font-semibold text-cyan-600 dark:text-cyan-400">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-white">
                         <span>Open Collection</span>
                         <ChevronRight className="h-4 w-4" />
                       </div>
@@ -1218,10 +1219,10 @@ function OpportunityCard({
   };
 
   return (
-    <div className="flex flex-col justify-between rounded-xl border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] p-5 shadow-sm hover:border-cyan-500/40 transition-all space-y-4">
+    <div className="flex flex-col justify-between rounded-xl border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] p-5 shadow-sm hover:border-white/40 transition-all space-y-4">
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-cyan-600 dark:text-cyan-400 flex items-center gap-2">
+          <span className="text-xs font-bold text-white flex items-center gap-2">
             #{opportunity.rank} Opportunity
             {opportunity.classification && (
               <span className={`rounded-md px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${
@@ -1252,7 +1253,7 @@ function OpportunityCard({
             <span>{opportunity.what_happened}</span>
           </div>
           <div>
-            <strong className="text-cyan-600 dark:text-cyan-400 font-semibold">
+            <strong className="text-white font-semibold">
               Underused angle:{" "}
             </strong>
             <span>{opportunity.underused_angle}</span>
@@ -1299,7 +1300,7 @@ function OpportunityCard({
           type="button"
           onClick={onResearch}
           disabled={busy}
-          className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 text-white py-2 text-xs font-semibold transition-colors shadow-sm"
+          className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-white text-black hover:bg-neutral-200 disabled:opacity-50 py-2 text-xs font-semibold transition-colors shadow-sm"
         >
           {busy ? (
             <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -1339,12 +1340,12 @@ function TrendDiagnosticsCard({
     <div className="rounded-xl border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] p-5 shadow-sm space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <TrendingUp className="h-4 w-4 text-cyan-500" />
+          <TrendingUp className="h-4 w-4 text-white" />
           <h3 className="text-sm font-bold text-gray-900 dark:text-white">
             Cross-Source Trend Signal
           </h3>
         </div>
-        <span className="text-xs font-bold text-cyan-600 dark:text-cyan-400">
+        <span className="text-xs font-bold text-white">
           {trend.trend_confidence.toFixed(1)} / 10 Confidence
         </span>
       </div>
@@ -1399,7 +1400,7 @@ function InsightColumn({
   return (
     <div className="rounded-xl border border-gray-200 dark:border-[#2f3336] bg-white dark:bg-[#16181c] p-4 space-y-3">
       <div className="flex items-center gap-1.5 font-bold text-xs text-gray-800 dark:text-gray-200">
-        <Icon className="h-4 w-4 text-cyan-500" />
+        <Icon className="h-4 w-4 text-white" />
         <span>{title}</span>
       </div>
 
@@ -1445,7 +1446,7 @@ function IdeaCard({
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
               rank === 1
-                ? "bg-cyan-50 text-cyan-700 dark:bg-cyan-950/60 dark:text-cyan-300"
+                ? "border border-line bg-panel text-white"
                 : "bg-gray-100 dark:bg-[#1d1f23] text-gray-600 dark:text-gray-400"
             }`}
           >
@@ -1478,7 +1479,7 @@ function IdeaCard({
           type="button"
           onClick={onWrite}
           disabled={busy}
-          className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 text-white py-2 text-xs font-semibold transition-colors shadow-sm"
+          className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-white text-black hover:bg-neutral-200 disabled:opacity-50 py-2 text-xs font-semibold transition-colors shadow-sm"
         >
           {busy ? (
             <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -1521,7 +1522,7 @@ function ScorePanel({
     <div className="rounded-xl border border-gray-200 dark:border-[#2f3336] bg-gray-50/70 dark:bg-[#000000]/60 p-5 space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200/60 dark:border-gray-800 pb-3">
         <div>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-white">
             Content Potential Evaluation
           </span>
           <h4 className="text-sm font-bold text-gray-900 dark:text-white">

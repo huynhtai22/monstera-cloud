@@ -6,18 +6,18 @@
    bg-primary, hover:bg-primary-hover, text-primary-ring, etc. are emitted.
    ─────────────────────────────────────────────────────────────────────────── */
 @theme {
-  --color-primary: #e8e8e8;
-  --color-primary-foreground: #050505;
+  --color-primary: #ffffff;
+  --color-primary-foreground: #000000;
   --color-primary-muted: #141414;
-  --color-primary-ring: #a3a3a3;
-  --color-primary-hover: #ffffff;
+  --color-primary-ring: #ffffff;
+  --color-primary-hover: #e5e5e5;
   --color-surface-muted: #0a0a0a;
   --color-canvas: #050505;
   --color-panel: #0c0c0c;
   --color-line: #222222;
   --color-ink: #ededed;
   --color-ink-mute: #8a8a8a;
-  --color-accent: #67e8f9;
+  --color-accent: #ffffff;
   --font-sans: ui-sans-serif, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "IBM Plex Mono", Menlo, monospace;
 }
@@ -58,10 +58,10 @@
     --radius-lg: 8px;
 
     /* Shadows — enhanced depth */
-    --shadow-card: 0 6px 18px rgba(2,6,23,0.06);
-    --shadow-elevated: 0 12px 32px rgba(2,6,23,0.08);
-    --shadow-glow: 0 0 24px rgba(8, 145, 178, 0.12);
-    --shadow-soft: 0 4px 12px rgba(2,6,23,0.04);
+    --shadow-card: 0 6px 18px rgba(0,0,0,0.4);
+    --shadow-elevated: 0 12px 32px rgba(0,0,0,0.6);
+    --shadow-glow: 0 0 24px rgba(255, 255, 255, 0.08);
+    --shadow-soft: 0 4px 12px rgba(0,0,0,0.3);
     --shadow-depth: 0 20px 48px rgba(2,6,23,0.12);
 
     /* Animation durations */

@@ -69,9 +69,9 @@ export function AccountScopePanel({
                         ))}
                     </ul>
                 )}
-                <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                <p className="mt-4 text-xs text-ink-mute">
                     Need to change which accounts are used for reporting? Use{" "}
-                    <Link href="/meta-ads" className="font-semibold text-cyan-700 underline hover:no-underline dark:text-cyan-300">
+                    <Link href="/meta-ads" className="font-semibold text-white underline hover:no-underline">
                         Meta Ads tools
                     </Link>{" "}
                     <LineChart className="inline h-3.5 w-3.5 align-text-bottom opacity-70" aria-hidden /> — the sidebar only switches{" "}
@@ -86,38 +86,38 @@ export function AccountScopePanel({
         const mccId = (c.mccId as string | undefined)?.trim();
 
         return (
-            <section className="mb-10 rounded-2xl border border-gray-200/80 bg-white/80 p-6 dark:border-[#2f3336]/60 dark:bg-[#000000]/50">
+            <section className="mb-10 rounded-lg border border-line bg-panel p-6">
                 <div className="mb-4 flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-800 dark:bg-[#16181c] dark:text-slate-100">
-                        <Layers className="h-5 w-5" aria-hidden />
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-canvas border border-line text-white">
+                        <Layers className="h-4 w-4" aria-hidden />
                     </div>
                     <div>
-                        <h2 className="text-lg font-bold text-gray-900 dark:text-white">Google Ads customers (this connection)</h2>
-                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                        <h2 className="text-base font-bold text-ink">Google Ads customers (this connection)</h2>
+                        <p className="mt-1 text-xs text-ink-mute">
                             These are the <strong>accessible customer IDs</strong> from the Google account you used in OAuth
                             (often an MCC user with child accounts). Reporting and sync aggregate from this set.
                         </p>
                     </div>
                 </div>
                 {mccId ? (
-                    <p className="mb-3 text-xs font-medium text-gray-600 dark:text-gray-300">
-                        Manager (MCC) hint: <code className="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-[#16181c]">{mccId}</code>
+                    <p className="mb-3 text-xs font-medium text-ink-mute">
+                        Manager (MCC) hint: <code className="rounded bg-canvas border border-line px-1.5 py-0.5">{mccId}</code>
                     </p>
                 ) : null}
                 {customerIds.length === 0 ? (
-                    <p className="text-sm text-amber-700 dark:text-amber-300">No customer IDs listed yet — try reconnecting.</p>
+                    <p className="text-xs text-amber-400">No customer IDs listed yet — try reconnecting.</p>
                 ) : (
-                    <ul className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50/80 p-3 font-mono text-xs text-gray-800 dark:border-[#2f3336] dark:bg-[#16181c]/50 dark:text-gray-200">
+                    <ul className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-line bg-canvas p-3 font-mono text-xs text-ink">
                         {customerIds.map((id) => (
                             <li key={id}>{id}</li>
                         ))}
                     </ul>
                 )}
-                <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                <p className="mt-4 text-xs text-ink-mute">
                     Pick a specific customer for API / reports in{" "}
                     <Link
                         href="/google-ads"
-                        className="font-semibold text-cyan-700 underline hover:no-underline dark:text-cyan-300"
+                        className="font-semibold text-white underline hover:no-underline"
                     >
                         Google Ads tools
                     </Link>
@@ -131,30 +131,30 @@ export function AccountScopePanel({
         const advertiserIds = (c.advertiserIds as string[] | undefined) ?? [];
 
         return (
-            <section className="mb-10 rounded-2xl border border-gray-200/80 bg-white/80 p-6 dark:border-[#2f3336]/60 dark:bg-[#000000]/50">
+            <section className="mb-10 rounded-lg border border-line bg-panel p-6">
                 <div className="mb-4 flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900/10 text-slate-900 dark:bg-white/10 dark:text-white">
-                        <Layers className="h-5 w-5" aria-hidden />
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-canvas border border-line text-white">
+                        <Layers className="h-4 w-4" aria-hidden />
                     </div>
                     <div>
-                        <h2 className="text-lg font-bold text-gray-900 dark:text-white">TikTok advertisers (this connection)</h2>
-                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                        <h2 className="text-base font-bold text-ink">TikTok advertisers (this connection)</h2>
+                        <p className="mt-1 text-xs text-ink-mute">
                             Advertiser IDs returned for your TikTok Marketing API login. Use{" "}
                             <strong>TikTok Ads tools</strong> to choose which advertiser to query in depth.
                         </p>
                     </div>
                 </div>
                 {advertiserIds.length === 0 ? (
-                    <p className="text-sm text-amber-700 dark:text-amber-300">No advertiser IDs on file — try reconnecting.</p>
+                    <p className="text-xs text-amber-400">No advertiser IDs on file — try reconnecting.</p>
                 ) : (
-                    <ul className="max-h-56 space-y-1.5 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50/80 p-3 font-mono text-xs text-gray-800 dark:border-[#2f3336] dark:bg-[#16181c]/50 dark:text-gray-200">
+                    <ul className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-line bg-canvas p-3 font-mono text-xs text-ink">
                         {advertiserIds.map((id) => (
                             <li key={id}>{id}</li>
                         ))}
                     </ul>
                 )}
-                <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-                    <Link href="/tiktok-ads" className="font-semibold text-cyan-700 underline hover:no-underline dark:text-cyan-300">
+                <p className="mt-4 text-xs text-ink-mute">
+                    <Link href="/tiktok-ads" className="font-semibold text-white underline hover:no-underline">
                         TikTok Ads tools
                     </Link>{" "}
                     — per-advertiser reporting; sidebar = workspace only.

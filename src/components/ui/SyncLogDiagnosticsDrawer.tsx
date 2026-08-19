@@ -236,20 +236,20 @@ ${log.errorMsg || "None"}
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5 dark:border-slate-800/80">
           <div className="flex items-center gap-2.5">
             <span
-              className="h-2 w-2 shrink-0 rounded-full bg-gradient-to-br from-cyan-400 to-teal-500 shadow-[0_0_12px_rgba(34,211,238,0.45)]"
+              className="h-2 w-2 shrink-0 rounded-full bg-white shadow-xs"
               aria-hidden
             />
-            <h2 id="drawer-title" className="text-sm font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+            <h2 id="drawer-title" className="text-xs font-bold uppercase tracking-[0.2em] text-ink-mute">
               Run Diagnostics
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-[#16181c] dark:hover:text-white"
+            className="rounded-md p-1.5 text-ink-mute hover:bg-white/[0.06] hover:text-white"
             aria-label="Close panel"
           >
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
@@ -257,20 +257,20 @@ ${log.errorMsg || "None"}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Main Status Hero */}
           <div className={cn(
-            "rounded-2xl border p-5 relative overflow-hidden",
+            "rounded-lg border p-5 relative overflow-hidden",
             log.status === "success" 
-              ? "border-cyan-100 bg-cyan-50/20 text-cyan-900 dark:border-cyan-950/40 dark:bg-cyan-950/10 dark:text-cyan-100"
-              : "border-red-100 bg-red-50/20 text-red-900 dark:border-red-950/40 dark:bg-red-950/10 dark:text-red-100"
+              ? "border-line bg-canvas text-ink"
+              : "border-red-950/40 bg-red-950/10 text-red-100"
           )}>
             <div className="relative z-10">
               <div className="flex items-center gap-3">
                 {log.status === "success" ? (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">
-                    <CheckCircle2 className="h-6 w-6" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-md bg-panel border border-line text-white">
+                    <CheckCircle2 className="h-5 w-5" />
                   </div>
                 ) : (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
-                    <AlertTriangle className="h-6 w-6" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-md bg-red-500/10 text-red-400">
+                    <AlertTriangle className="h-5 w-5" />
                   </div>
                 )}
                 <div>
@@ -399,7 +399,7 @@ ${log.errorMsg || "None"}
               type="button"
               onClick={handleRetry}
               disabled={retryBusy}
-              className="inline-flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/10"
+              className="inline-flex items-center justify-center gap-2"
             >
               {retryBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               Re-run Sync

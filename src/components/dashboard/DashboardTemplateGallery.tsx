@@ -139,21 +139,21 @@ export function DashboardTemplateGallery({
           </p>
           <button
             onClick={() => router.push("/sources")}
-            className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-cyan-600 hover:text-cyan-700"
+            className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-white hover:text-neutral-300"
           >
             Connect a source
-            <ArrowRight className="h-4 w-4" />
+            <ArrowRight className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
 
       {/* Manual Create Option */}
-      <div className="pt-4 border-t border-gray-200 dark:border-[#2f3336]">
+      <div className="pt-4 border-t border-line">
         <button
           onClick={() => router.push("/console")}
-          className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+          className="flex items-center gap-2 text-xs text-ink-mute hover:text-white transition-colors"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3.5 w-3.5" />
           Start with blank dashboard
         </button>
       </div>
@@ -186,11 +186,11 @@ function TemplateCard({
       onClick={onClick}
       disabled={isCreating}
       className={cn(
-        "relative text-left rounded-xl border p-4 transition-all",
+        "relative text-left rounded-lg border p-4 transition-all",
         isAvailable
-          ? "border-gray-200 bg-white hover:border-cyan-300 hover:shadow-md dark:border-[#2f3336] dark:bg-[#16181c] dark:hover:border-cyan-600"
-          : "border-gray-100 bg-gray-50 opacity-60 dark:border-[#2f3336] dark:bg-[#000000]",
-        isSelected && "ring-2 ring-cyan-500"
+          ? "border-line bg-panel hover:border-white/30 hover:shadow-md"
+          : "border-line/40 bg-canvas opacity-50",
+        isSelected && "border-white ring-1 ring-white"
       )}
     >
       {/* Icon */}
@@ -198,13 +198,13 @@ function TemplateCard({
         <img
           src={template.icon}
           alt=""
-          className="h-10 w-10 object-contain"
+          className="h-9 w-9 object-contain"
           onError={(e) => {
             (e.target as HTMLImageElement).src = "/icons/dashboard.svg";
           }}
         />
         {template.isFeatured && (
-          <span className="flex items-center gap-1 rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-medium text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-300">
+          <span className="flex items-center gap-1 rounded-full bg-canvas border border-line px-2 py-0.5 text-[10px] font-semibold text-white">
             <Sparkles className="h-3 w-3" />
             Featured
           </span>
@@ -212,10 +212,10 @@ function TemplateCard({
       </div>
 
       {/* Content */}
-      <h4 className="mt-3 font-semibold text-gray-900 dark:text-white">
+      <h4 className="mt-3 font-semibold text-ink text-sm">
         {template.name}
       </h4>
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
+      <p className="mt-1 text-xs text-ink-mute line-clamp-2 leading-relaxed">
         {template.description}
       </p>
 
@@ -229,8 +229,8 @@ function TemplateCard({
               className={cn(
                 "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
                 isConnected
-                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300"
-                  : "bg-gray-100 text-gray-500 dark:bg-[#1d1f23] dark:text-gray-400"
+                  ? "bg-canvas text-white border border-line"
+                  : "bg-canvas text-ink-mute border border-line/40"
               )}
             >
               {isConnected && <Check className="h-2.5 w-2.5" />}
@@ -242,7 +242,7 @@ function TemplateCard({
 
       {/* Action Indicator */}
       <div className="mt-3 flex items-center justify-between">
-        <span className="text-xs text-cyan-600 dark:text-cyan-400">
+        <span className="text-xs text-white">
           {isCreating
             ? "Creating..."
             : isAvailable

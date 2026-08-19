@@ -505,7 +505,7 @@ export function ClientsClient() {
                             <button
                                 type="submit"
                                 disabled={saving || !name.trim()}
-                                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-60"
+                                className="rounded-md bg-white hover:bg-neutral-200 px-4 py-2 text-xs font-semibold text-black disabled:opacity-60 transition-colors shadow-xs"
                             >
                                 {saving ? "Saving…" : editingId ? "Save changes" : "Create client"}
                             </button>
@@ -518,31 +518,31 @@ export function ClientsClient() {
                 <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center">
                     <form
                         onSubmit={saveSchedule}
-                        className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl dark:border-[#2f3336] dark:bg-[#000000]"
+                        className="w-full max-w-md rounded-lg border border-line bg-panel p-6 shadow-2xl"
                     >
                         <div className="mb-2 flex items-center justify-between">
-                            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Weekly report schedule</h2>
+                            <h2 className="text-base font-bold text-ink">Weekly report schedule</h2>
                             <button
                                 type="button"
                                 onClick={closeSchedule}
-                                className="rounded-lg p-1 text-gray-500 hover:bg-gray-100 dark:text-slate-400 dark:hover:bg-[#16181c]"
+                                className="rounded-md p-1 text-ink-mute hover:bg-white/[0.06] hover:text-white"
                                 aria-label="Close"
                             >
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
-                        <p className="mb-4 text-xs text-gray-600 dark:text-slate-400">
+                        <p className="mb-4 text-xs text-ink-mute">
                             We’ll email a rolled-up sync summary every Monday at 09:00 UTC.
                         </p>
 
-                        <label className="mb-4 block text-sm font-semibold text-gray-700 dark:text-slate-200">
+                        <label className="mb-4 block text-xs font-semibold text-ink">
                             Recipients (comma-separated)
                             <textarea
                                 value={scheduleRecipients}
                                 onChange={(e) => setScheduleRecipients(e.target.value)}
                                 rows={3}
                                 placeholder="client@brand.com, you@agency.com"
-                                className="mt-1 w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-100"
+                                className="mt-1 w-full resize-none rounded-md border border-line bg-canvas px-3 py-2 text-xs text-ink placeholder:text-ink-mute focus:border-white focus:outline-none"
                             />
                         </label>
 
@@ -550,14 +550,14 @@ export function ClientsClient() {
                             <button
                                 type="button"
                                 onClick={closeSchedule}
-                                className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-200 dark:hover:bg-[#1d1f23]"
+                                className="rounded-md border border-line bg-panel px-4 py-2 text-xs font-semibold text-ink hover:bg-white/[0.06]"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="submit"
                                 disabled={savingSchedule || !scheduleRecipients.trim()}
-                                className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-60"
+                                className="rounded-md bg-white hover:bg-neutral-200 px-4 py-2 text-xs font-semibold text-black disabled:opacity-60 transition-colors shadow-xs"
                             >
                                 {savingSchedule ? "Saving…" : "Save schedule"}
                             </button>

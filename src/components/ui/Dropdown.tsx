@@ -142,7 +142,7 @@ export function Dropdown({
                     "flex h-4 w-4 shrink-0 items-center justify-center rounded",
                     "border transition-colors",
                     value === option.value
-                      ? "border-accent bg-accent text-primary-foreground"
+                      ? "border-white bg-white text-black"
                       : "border-line"
                   )}
                 >
@@ -151,7 +151,7 @@ export function Dropdown({
 
                 {/* Icon */}
                 {option.icon && (
-                  <span className="shrink-0 text-gray-400 dark:text-slate-500">
+                  <span className="shrink-0 text-ink-mute">
                     {option.icon}
                   </span>
                 )}
@@ -162,14 +162,14 @@ export function Dropdown({
                     className={cn(
                       "truncate text-sm",
                       value === option.value
-                        ? "font-medium text-cyan-700 dark:text-cyan-300"
-                        : "text-gray-700 dark:text-slate-300"
+                        ? "font-medium text-white"
+                        : "text-ink-mute"
                     )}
                   >
                     {option.label}
                   </p>
                   {option.description && (
-                    <p className="truncate text-xs text-gray-400 dark:text-slate-500">
+                    <p className="truncate text-xs text-ink-mute">
                       {option.description}
                     </p>
                   )}
@@ -248,24 +248,24 @@ export function MultiDropdown({
         disabled={disabled}
         className={cn(
           "flex w-full h-10 items-center justify-between gap-2 rounded-lg border px-3 transition-all",
-          "bg-white dark:bg-[#000000]",
-          "focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500/50",
+          "bg-panel",
+          "focus:outline-none focus:border-white",
           "disabled:opacity-50 disabled:cursor-not-allowed",
           isOpen
-            ? "border-cyan-500/50 shadow-lg shadow-cyan-500/10"
-            : "border-gray-200 dark:border-[#2f3336] hover:border-gray-300 dark:hover:border-slate-600"
+            ? "border-white shadow-xs"
+            : "border-line hover:border-[#333]"
         )}
       >
         <span
           className={cn(
             "truncate text-sm",
-            values.length > 0 ? "text-gray-900 dark:text-white" : "text-gray-400 dark:text-slate-500"
+            values.length > 0 ? "text-ink" : "text-ink-mute"
           )}
         >
           {displayText}
         </span>
         <ChevronDown
-          className={cn("h-4 w-4 shrink-0 transition-transform", isOpen && "rotate-180")}
+          className={cn("h-4 w-4 shrink-0 transition-transform text-ink-mute", isOpen && "rotate-180")}
         />
       </button>
 
@@ -273,9 +273,7 @@ export function MultiDropdown({
         <div
           className={cn(
             "absolute z-50 mt-1 w-full overflow-hidden rounded-lg border",
-            "bg-white dark:bg-[#000000]",
-            "border-gray-200 dark:border-[#2f3336]",
-            "shadow-xl"
+            "bg-panel border-line shadow-xl"
           )}
         >
           <div className="max-h-60 overflow-y-auto py-1">
@@ -288,8 +286,8 @@ export function MultiDropdown({
                   onClick={() => toggleValue(option.value)}
                   className={cn(
                     "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-                    "hover:bg-gray-50 dark:hover:bg-[#16181c]",
-                    isSelected && "bg-cyan-50 dark:bg-cyan-950/30"
+                    "hover:bg-white/[0.04]",
+                    isSelected && "bg-white/[0.06]"
                   )}
                 >
                   <div
@@ -297,21 +295,21 @@ export function MultiDropdown({
                       "flex h-4 w-4 shrink-0 items-center justify-center rounded",
                       "border transition-colors",
                       isSelected
-                        ? "border-cyan-500 bg-cyan-500 text-white"
-                        : "border-gray-300 dark:border-[#2f3336]"
+                        ? "border-white bg-white text-black"
+                        : "border-line"
                     )}
                   >
                     {isSelected && <Check className="h-3 w-3" />}
                   </div>
                   {option.icon && (
-                    <span className="shrink-0 text-gray-400">{option.icon}</span>
+                    <span className="shrink-0 text-ink-mute">{option.icon}</span>
                   )}
                   <span
                     className={cn(
                       "text-sm",
                       isSelected
-                        ? "font-medium text-cyan-700 dark:text-cyan-300"
-                        : "text-gray-700 dark:text-slate-300"
+                        ? "font-medium text-white"
+                        : "text-ink-mute"
                     )}
                   >
                     {option.label}

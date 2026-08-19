@@ -12,13 +12,12 @@ export default {
             colors: {
                 background: "var(--background)",
                 foreground: "var(--foreground)",
-                /** Brand — semantic aliases over cyan scale */
                 primary: {
-                    DEFAULT: "#0891b2",
-                    foreground: "#ffffff",
-                    muted: "#ecfeff",
-                    ring: "#06b6d4",
-                    hover: "#0e7490",
+                    DEFAULT: "#ffffff",
+                    foreground: "#000000",
+                    muted: "#141414",
+                    ring: "#ffffff",
+                    hover: "#e5e5e5",
                 },
                 surface: {
                     muted: "#f9fafb",

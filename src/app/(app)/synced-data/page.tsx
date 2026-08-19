@@ -338,14 +338,14 @@ export default function SyncedDataPage() {
       {/* Header */}
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">
-            <Database className="h-5 w-5" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-panel text-white">
+            <Database className="h-4 w-4" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+            <h1 className="text-xl font-bold tracking-tight text-ink">
               Synced Data Explorer
             </h1>
-            <p className="text-sm text-gray-500 dark:text-slate-400">
+            <p className="text-xs text-ink-mute">
               View and extract historical data synced from all channels
             </p>
           </div>
@@ -355,20 +355,14 @@ export default function SyncedDataPage() {
       {/* Plan Badge & Limits Info */}
       {limits && (
         <div className="mb-4 flex items-center gap-3">
-          <span className={cn(
-            "inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-medium capitalize",
-            limits.plan === 'free' ? "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" :
-            limits.plan === 'starter' ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" :
-            limits.plan === 'professional' ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" :
-            "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
-          )}>
+          <span className="inline-flex items-center rounded-md border border-line bg-canvas px-2.5 py-1 text-xs font-semibold capitalize text-ink">
             {limits.plan} Plan
           </span>
-          <span className="text-xs text-gray-500 dark:text-slate-400">
+          <span className="text-xs text-ink-mute">
             Max {limits.maxDateRangeDays} days · {limits.maxRowsPerQuery.toLocaleString()} rows/query
           </span>
           {limits.plan === 'free' && (
-            <a href="/pricing" className="text-xs text-cyan-600 hover:text-cyan-700 dark:text-cyan-400">
+            <a href="/pricing" className="text-xs text-white hover:text-neutral-300 underline">
               Upgrade →
             </a>
           )}
@@ -894,14 +888,14 @@ export default function SyncedDataPage() {
           <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 mb-2">
             Try adjusting your filters or run a sync first.
           </p>
-          <p className="text-xs text-gray-500 dark:text-slate-400 mb-4 max-w-md mx-auto leading-relaxed">
-            This view only shows rows already saved in your workspace (<span className="font-medium">CampaignMetric</span>).
+          <p className="text-xs text-ink-mute mb-4 max-w-md mx-auto leading-relaxed">
+            This view only shows rows already saved in your workspace (<span className="font-medium text-ink">CampaignMetric</span>).
             To pull Meta for a date range into storage, open{" "}
-            <Link href="/explorer" className="font-medium text-cyan-600 hover:underline">
+            <Link href="/explorer" className="font-medium text-white hover:underline">
               Data Explorer
             </Link>{" "}
-            → <span className="font-medium">Internal warehouse</span> → Import, or run a sync from{" "}
-            <Link href="/sources" className="font-medium text-cyan-600 hover:underline">
+            → <span className="font-medium text-ink">Internal warehouse</span> → Import, or run a sync from{" "}
+            <Link href="/sources" className="font-medium text-white hover:underline">
               Sources
             </Link>
             .
@@ -949,16 +943,16 @@ export default function SyncedDataPage() {
                   alert('Error checking database: ' + e.message);
                 }
               }}
-              className="text-xs text-cyan-600 hover:text-cyan-700 underline"
+              className="text-xs text-ink-mute hover:text-white underline"
             >
               Check Database (detailed report)
             </button>
             
             <Link
               href="/sources"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-md bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-neutral-200 transition-colors shadow-xs"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" />
               Connect a Data Source
             </Link>
           </div>

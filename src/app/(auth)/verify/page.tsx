@@ -178,7 +178,7 @@ function VerifyContent() {
             </div>
           )}
           {message && (
-            <div className="bg-cyan-50 text-cyan-700 p-3 rounded-md text-sm text-center">
+            <div className="border border-line bg-panel text-ink p-3 rounded-md text-xs text-center">
               {message}
             </div>
           )}

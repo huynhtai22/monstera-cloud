@@ -44,38 +44,38 @@ export function HealthDashboard() {
     <div className="space-y-8">
       {/* 1. Global KPI Header */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="p-6 rounded-2xl border border-white bg-white/50 backdrop-blur-xl shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Portfolio Health</span>
-            <Users className="h-4 w-4 text-gray-400" />
+        <div className="p-5 rounded-lg border border-line bg-panel shadow-xs">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-ink-mute">Portfolio Health</span>
+            <Users className="h-4 w-4 text-ink-mute" />
           </div>
           <div className="flex items-baseline gap-2">
-            <p className="text-3xl font-black text-gray-900">{overall.healthyClients || 0}</p>
-            <p className="text-sm font-medium text-gray-500">/ {overall.totalClients || 0} clients healthy</p>
+            <p className="text-2xl font-bold text-ink">{overall.healthyClients || 0}</p>
+            <p className="text-xs font-medium text-ink-mute">/ {overall.totalClients || 0} clients healthy</p>
           </div>
         </div>
 
-        <div className="p-6 rounded-2xl border border-white bg-white/50 backdrop-blur-xl shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Active Pipeline</span>
-            <Activity className="h-4 w-4 text-cyan-500" />
+        <div className="p-5 rounded-lg border border-line bg-panel shadow-xs">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-ink-mute">Active Pipeline</span>
+            <Activity className="h-4 w-4 text-white" />
           </div>
           <div className="flex items-baseline gap-2">
-            <p className="text-3xl font-black text-gray-900">{(overall.totalConnections || 0)}</p>
-            <p className="text-sm font-medium text-gray-500">streams operational</p>
+            <p className="text-2xl font-bold text-ink">{(overall.totalConnections || 0)}</p>
+            <p className="text-xs font-medium text-ink-mute">streams operational</p>
           </div>
         </div>
 
-        <div className="p-6 rounded-2xl border border-white bg-white/50 backdrop-blur-xl shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Weekly Volume</span>
-            <BarChart3 className="h-4 w-4 text-indigo-500" />
+        <div className="p-5 rounded-lg border border-line bg-panel shadow-xs">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-ink-mute">Weekly Volume</span>
+            <BarChart3 className="h-4 w-4 text-white" />
           </div>
           <div className="flex items-baseline gap-2">
-            <p className="text-3xl font-black text-gray-900">
+            <p className="text-2xl font-bold text-ink">
                 {chartData.reduce((acc: number, curr: any) => acc + curr.count, 0).toLocaleString()}
             </p>
-            <p className="text-sm font-medium text-gray-500">rows ingested</p>
+            <p className="text-xs font-medium text-ink-mute">rows ingested</p>
           </div>
         </div>
       </div>
@@ -86,11 +86,11 @@ export function HealthDashboard() {
         {/* Left: Client Health Grid */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">Client Status Pulse</h3>
+            <h3 className="text-xs font-bold text-ink uppercase tracking-wider">Client Status Pulse</h3>
             {unassignedCount > 0 && (
                 <Link
                     href="/settings?tab=clients"
-                    className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full hover:bg-amber-100 transition-colors"
+                    className="text-[10px] font-semibold text-ink-mute bg-canvas border border-line px-2 py-0.5 rounded hover:text-white transition-colors"
                 >
                     {unassignedCount} unassigned connections
                 </Link>
@@ -99,13 +99,13 @@ export function HealthDashboard() {
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {clientHealth.length === 0 ? (
-                <div className="sm:col-span-2 p-10 border-2 border-dashed border-gray-100 rounded-2xl text-center space-y-3">
-                    <p className="text-sm text-gray-400">
+                <div className="sm:col-span-2 p-8 border border-dashed border-line rounded-lg text-center space-y-3 bg-panel">
+                    <p className="text-xs text-ink-mute">
                         No client groups yet. Create clients and assign connections in Settings to track health by account.
                     </p>
                     <Link
                         href="/settings?tab=clients"
-                        className="inline-flex items-center gap-1 text-sm font-semibold text-cyan-600 hover:text-cyan-700 hover:underline"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-white hover:text-neutral-300 transition-colors"
                     >
                         Open Client Management
                         <ExternalLink className="h-3.5 w-3.5" />
@@ -113,24 +113,24 @@ export function HealthDashboard() {
                 </div>
             ) : (
                 clientHealth.map((client: any) => (
-                    <div key={client.id} className="p-4 rounded-2xl bg-white border border-gray-100 shadow-sm hover:border-cyan-200 transition-all group">
+                    <div key={client.id} className="p-4 rounded-lg bg-panel border border-line shadow-xs hover:border-[#333] transition-colors group">
                         <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex items-center gap-2.5 min-w-0">
                                 <div className={cn(
                                     "h-2 w-2 rounded-full",
-                                    client.status === 'healthy' ? "bg-cyan-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" :
-                                    client.status === 'stale' ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"
+                                    client.status === 'healthy' ? "bg-white shadow-xs" :
+                                    client.status === 'stale' ? "bg-amber-400" : "bg-red-500"
                                 )} />
-                                <span className="font-bold text-gray-900 text-sm truncate">{client.name}</span>
+                                <span className="font-semibold text-ink text-xs truncate">{client.name}</span>
                                 {client.isDemo ? (
-                                  <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">
+                                  <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-ink-mute bg-canvas border border-line px-1.5 py-0.5 rounded">
                                     Demo
                                   </span>
                                 ) : null}
                             </div>
-                            <ChevronRight className="h-4 w-4 text-gray-300 opacity-0 group-hover:opacity-100 transition-all" />
+                            <ChevronRight className="h-3.5 w-3.5 text-ink-mute opacity-0 group-hover:opacity-100 transition-all" />
                         </div>
-                        <div className="flex items-center gap-4 text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
+                        <div className="flex items-center gap-4 text-[10px] font-bold text-ink-mute uppercase tracking-wider">
                             <span className="flex items-center gap-1">
                                 <Database className="h-3 w-3" /> {client.totalConnections} Sources
                             </span>
@@ -146,41 +146,41 @@ export function HealthDashboard() {
         </div>
 
         {/* Right: Throughput Chart */}
-        <div className="p-6 rounded-2xl border border-gray-100 bg-white shadow-sm flex flex-col">
-            <div className="flex items-center justify-between mb-8">
-                <h3 className="text-sm font-black text-gray-900 uppercase tracking-tight">Ingestion Velocity</h3>
-                <Activity className="h-4 w-4 text-cyan-500" />
+        <div className="p-5 rounded-lg border border-line bg-panel shadow-xs flex flex-col">
+            <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xs font-bold text-ink uppercase tracking-wider">Ingestion Velocity</h3>
+                <Activity className="h-4 w-4 text-white" />
             </div>
 
-            <div className="flex-1 flex items-end justify-between gap-1 px-1">
+            <div className="flex-1 flex items-end justify-between gap-1 px-1 min-h-[140px]">
                 {chartData.map((day: any) => (
                     <div key={day.date} className="flex-1 flex flex-col items-center group">
                         <div 
-                            className="w-full bg-cyan-50 group-hover:bg-cyan-500 transition-all rounded-t-sm relative"
-                            style={{ height: `${(day.count / maxRows) * 100}%`, minHeight: '2px' }}
+                            className="w-full bg-canvas border border-line group-hover:bg-white transition-colors rounded-t-sm relative"
+                            style={{ height: `${(day.count / maxRows) * 100}%`, minHeight: '4px' }}
                         >
                             <div
-                                className="pointer-events-none absolute -top-10 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-2 py-1 text-[10px] text-white opacity-0 shadow-xl transition-all group-hover:opacity-100"
+                                className="pointer-events-none absolute -top-8 left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded bg-canvas border border-line px-2 py-1 text-[10px] text-white opacity-0 shadow-xl transition-all group-hover:opacity-100"
                                 aria-hidden
                             >
                                 {day.count.toLocaleString()} rows
                             </div>
                         </div>
-                        <span className="text-[8px] font-bold text-gray-300 mt-3 rotate-[-45deg] origin-top-left">
+                        <span className="text-[8px] font-mono text-ink-mute mt-2 rotate-[-45deg] origin-top-left">
                             {day.date.split('-').slice(1).join('/')}
                         </span>
                     </div>
                 ))}
             </div>
 
-            <div className="mt-6 pt-4 border-t border-gray-50 flex items-center justify-between">
+            <div className="mt-6 pt-4 border-t border-line flex items-center justify-between">
                 <div>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase">Avg. Success Rate</p>
-                    <p className="text-lg font-black text-gray-900">99.98%</p>
+                    <p className="text-[10px] font-bold text-ink-mute uppercase">Avg. Success Rate</p>
+                    <p className="text-base font-bold text-ink">99.98%</p>
                 </div>
                 <div className="text-right">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase">System Status</p>
-                    <p className="text-xs font-bold text-cyan-600">Locked & Active</p>
+                    <p className="text-[10px] font-bold text-ink-mute uppercase">System Status</p>
+                    <p className="text-xs font-semibold text-white">Active</p>
                 </div>
             </div>
         </div>
@@ -188,20 +188,20 @@ export function HealthDashboard() {
       </div>
 
       {/* 3. Credential Audit Banner */}
-      <div className="p-1 rounded-2xl bg-gradient-to-r from-cyan-500 via-indigo-500 to-cyan-500">
-        <div className="bg-white dark:bg-[#000000] rounded-[14px] p-6 flex items-center justify-between">
-            <div className="flex items-center gap-5">
-                <div className="p-3 bg-cyan-50 rounded-2xl">
-                    <ShieldAlert className="h-6 w-6 text-cyan-600" />
+      <div className="rounded-lg border border-line bg-panel p-5">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+                <div className="p-2.5 bg-canvas border border-line rounded-lg text-white">
+                    <ShieldAlert className="h-5 w-5" />
                 </div>
                 <div>
-                    <h4 className="text-sm font-black text-gray-900 dark:text-white uppercase tracking-tight">Infrastructure Auditor</h4>
-                    <p className="text-xs text-gray-500">Scanning {overall.totalConnections || 0} connections for API credential expiration.</p>
+                    <h4 className="text-xs font-bold text-ink uppercase tracking-wider">Infrastructure Auditor</h4>
+                    <p className="text-xs text-ink-mute">Scanning {overall.totalConnections || 0} connections for API credential expiration.</p>
                 </div>
             </div>
             <Link
                 href="/settings?tab=connections"
-                className="inline-flex items-center gap-2 px-6 py-2.5 bg-gray-900 text-white text-xs font-black uppercase tracking-widest rounded-xl hover:scale-105 transition-all shadow-lg active:scale-95"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-white text-black text-xs font-semibold rounded-md hover:bg-neutral-200 transition-colors shadow-xs"
             >
                 Review credentials
                 <ArrowRight className="h-3.5 w-3.5" />

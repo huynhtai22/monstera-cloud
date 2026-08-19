@@ -77,11 +77,11 @@ function RunRow({ run }: { run: RunRecord }) {
     <li
       className={cn(
         "rounded-xl border p-3 text-sm",
-        tone === "success" && "border-emerald-200 bg-emerald-50/50 dark:border-emerald-900/40 dark:bg-emerald-950/20",
-        tone === "partial" && "border-amber-200 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-950/20",
-        tone === "queued" && "border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/40",
-        tone === "running" && "border-cyan-200 bg-cyan-50/60 dark:border-cyan-900/40 dark:bg-cyan-950/20",
-        tone === "failed" && "border-red-200 bg-red-50/60 dark:border-red-900/40 dark:bg-red-950/20",
+        tone === "success" && "border-line bg-panel",
+        tone === "partial" && "border-amber-900/40 bg-amber-950/20 text-amber-200",
+        tone === "queued" && "border-line bg-canvas text-ink-mute",
+        tone === "running" && "border-line bg-canvas text-white",
+        tone === "failed" && "border-red-900/40 bg-red-950/20 text-red-200",
       )}
     >
       <div className="flex items-start justify-between gap-3">

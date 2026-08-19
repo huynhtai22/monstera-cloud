@@ -1,8 +1,8 @@
 "use client";
 
-import { Database, KeyRound, Plug } from "lucide-react";
+import { Database, KeyRound, Plug, ArrowRight, ChevronRight, FileSpreadsheet, BarChart2, ShieldCheck, HardDrive } from "lucide-react";
 import { SectionOverviewCard, type OverviewLineItem } from "@/components/dashboard/SectionOverviewCard";
-import { logoPathForConnectionProvider } from "@/lib/integration-logos";
+import { logoPathForConnectionProvider, INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { timeAgo } from "@/lib/time-format";
 
 type Connection = {
@@ -52,26 +52,22 @@ function prettyProvider(provider: string) {
     return PROVIDER_LABELS[provider] ?? provider.replace(/_/g, " ");
 }
 
-// Note: timeAgo and formatSyncTime now imported from @/lib/time-format
-
 export function PillarGrid({
     connections,
     healthyCount,
 }: PillarGridProps) {
     const sources = connections.filter((c) => c.type === "source");
 
-    const sourceItems: OverviewLineItem[] = sources.slice(0, 3).map((c) => {
+    // 01 · SOURCES LINE ITEMS
+    const sourceItems: OverviewLineItem[] = sources.slice(0, 4).map((c) => {
         const health = healthStatus(c);
-        
-        // P1: Use timezone-aware formatting for last sync
         const timeInfo = timeAgo(c.lastSyncAt, { staleThresholdMins: STALE_MINUTES });
-        const subText = health === "error" 
-            ? "Connection error"
+        const subText = health === "error"
+            ? "Sync error"
             : health === "stale"
-            ? `Last sync ${timeInfo.text ?? "unknown"}`
+            ? `Sync stale · ${timeInfo.text ?? "unknown"}`
             : timeInfo.text ?? "Pending first sync";
-        
-        // P1: Extract account information from name for multi-account sources
+
         const accountHint = c.name?.includes("(")
             ? c.name.split("(")[1]?.replace(")", "")
             : undefined;
@@ -86,59 +82,150 @@ export function PillarGrid({
             status: health === "error" ? "error" : health === "healthy" ? "ok" : "pending",
             accountCount: accountCount && accountCount > 1 ? accountCount : undefined,
             accountHint: accountHint,
+            href: `/sources/${c.id}`,
+            badge: health === "healthy" ? "LIVE" : health === "error" ? "ERROR" : "PENDING",
         };
     });
 
+    // 02 · WAREHOUSE LINE ITEMS
+    const warehouseItems: OverviewLineItem[] = [
+        {
+            id: "ad_insights_daily",
+            label: "ad_insights_daily",
+            sub: "Normalized performance schema",
+            status: healthyCount > 0 ? "ok" : "pending",
+            badge: "DUCKDB / PG",
+            href: "/explorer?table=ad_insights_daily",
+        },
+        {
+            id: "campaign_metrics_hourly",
+            label: "campaign_metrics_hourly",
+            sub: "Hourly pacing & attribution",
+            status: healthyCount > 0 ? "ok" : "pending",
+            badge: "HOURLY",
+            href: "/explorer?table=campaign_metrics_hourly",
+        },
+        {
+            id: "multi_tenant_isolation",
+            label: "Schema Guard & Isolation",
+            sub: "Multi-tenant tenant query guard",
+            status: "ok",
+            badge: "ACTIVE",
+            href: "/reports",
+        },
+    ];
 
+    // 03 · EXPORTS & API LINE ITEMS
+    const exportItems: OverviewLineItem[] = [
+        {
+            id: "dest_google_sheets",
+            label: "Google Sheets™ Add-on",
+            sub: "On-demand pull & hourly refresh",
+            logoSrc: INTEGRATION_LOGOS.googleSheets,
+            status: "ok",
+            badge: "PRIVATE BETA",
+            href: "/exports",
+        },
+        {
+            id: "dest_looker_studio",
+            label: "Looker Studio™ Connector",
+            sub: "Direct warehouse analytics feed",
+            logoSrc: INTEGRATION_LOGOS.looker,
+            status: "ok",
+            badge: "CONNECTOR",
+            href: "/exports",
+        },
+        {
+            id: "dest_workspace_api",
+            label: "Workspace API Keys",
+            sub: "REST warehouse query endpoints",
+            status: "ok",
+            badge: "REST V1",
+            href: "/settings?tab=api",
+        },
+    ];
 
     return (
-        <div className="relative z-10 stagger-list flex flex-col gap-5">
-            <div className="stagger-item min-w-0">
-                <SectionOverviewCard
-                    icon={<Plug className="h-5 w-5" />}
-                    title="Sources"
-                    subtitle="Where data comes from"
-                    accent="emerald"
-                    kpi={{ label: "Connected", value: String(sources.length) }}
-                    items={sourceItems}
-                    emptyHint="No sources connected. Add TikTok, Meta, or Shopee to start syncing."
-                    ctaLabel={sources.length ? "Manage sources" : "Connect a source"}
-                    ctaHref="/sources"
-                />
+        <div className="relative z-10">
+            {/* Header Title with Subtitle */}
+            <div className="mb-4 flex items-center justify-between">
+                <div>
+                    <h2 className="text-sm font-semibold tracking-tight text-ink">
+                        Pipeline Architecture
+                    </h2>
+                    <p className="text-xs text-ink-mute mt-0.5">
+                        End-to-end data flow from advertising channels to warehouse and downstream reporting tools.
+                    </p>
+                </div>
             </div>
 
+            {/* 3-Node Connected Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 relative items-stretch">
+                
+                {/* ── STAGE 01: SOURCES ────────────────────────────────────────────── */}
+                <div className="relative min-w-0">
+                    <SectionOverviewCard
+                        stepNumber="01"
+                        stepLabel="Ingestion"
+                        icon={<Plug className="h-4 w-4" />}
+                        title="Sources"
+                        subtitle="Connected ad networks & channels"
+                        kpi={{ label: "Connected", value: `${sources.length}` }}
+                        items={sourceItems}
+                        emptyHint="No ad sources connected yet."
+                        emptyAction={{ label: "Connect Source", href: "/sources" }}
+                        ctaLabel={sources.length ? "Manage sources" : "Connect a source"}
+                        ctaHref="/sources"
+                    />
+                    
+                    {/* Desktop Connector Stream to Stage 2 */}
+                    <div className="hidden lg:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 h-6 w-6 items-center justify-center rounded-full bg-panel border border-line text-ink-mute shadow-2xs">
+                        <ChevronRight className="h-3.5 w-3.5" />
+                    </div>
+                </div>
 
+                {/* ── STAGE 02: WAREHOUSE ─────────────────────────────────────────── */}
+                <div className="relative min-w-0">
+                    <SectionOverviewCard
+                        stepNumber="02"
+                        stepLabel="Warehouse"
+                        icon={<Database className="h-4 w-4" />}
+                        title="Normalized Tables"
+                        subtitle="Zero-loss data warehouse storage"
+                        emphasis
+                        kpi={
+                            sources.length > 0
+                                ? { label: "Fresh", value: `${healthyCount}/${sources.length}` }
+                                : { label: "Engine", value: "DuckDB" }
+                        }
+                        items={warehouseItems}
+                        emptyHint="Run the first source import to populate the warehouse."
+                        ctaLabel="Open SQL Workbench"
+                        ctaHref="/explorer?tab=warehouse"
+                    />
 
-            <div className="stagger-item min-w-0">
-                <SectionOverviewCard
-                    icon={<Database className="h-5 w-5" />}
-                    title="Warehouse"
-                    subtitle="Imported source freshness"
-                    emphasis
-                    accent="cyan"
-                    kpi={
-                        sources.length > 0
-                            ? { label: "Fresh", value: `${healthyCount}/${sources.length}` }
-                            : undefined
-                    }
-                    items={sourceItems}
-                    emptyHint="Run the first source import to populate the warehouse."
-                    ctaLabel="Open Data Explorer"
-                    ctaHref="/explorer?tab=warehouse"
-                />
-            </div>
+                    {/* Desktop Connector Stream to Stage 3 */}
+                    <div className="hidden lg:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 h-6 w-6 items-center justify-center rounded-full bg-panel border border-line text-ink-mute shadow-2xs">
+                        <ChevronRight className="h-3.5 w-3.5" />
+                    </div>
+                </div>
 
-            <div className="stagger-item min-w-0">
-                <SectionOverviewCard
-                    icon={<KeyRound className="h-5 w-5" />}
-                    title="Exports & API"
-                    subtitle="Sheets, Looker Studio, and API access"
-                    accent="indigo"
-                    items={[]}
-                    emptyHint="Choose this workspace explicitly in Sheets or Looker Studio, or issue a workspace API key."
-                    ctaLabel="Configure access"
-                    ctaHref="/settings?tab=api"
-                />
+                {/* ── STAGE 03: EXPORTS & DESTINATIONS ────────────────────────────── */}
+                <div className="relative min-w-0">
+                    <SectionOverviewCard
+                        stepNumber="03"
+                        stepLabel="Activation"
+                        icon={<KeyRound className="h-4 w-4" />}
+                        title="Exports & Connectors"
+                        subtitle="Google Sheets, Looker Studio & API"
+                        kpi={{ label: "Channels", value: "3 Active" }}
+                        items={exportItems}
+                        emptyHint="Issue a workspace API key or install the Google Sheets Add-on."
+                        ctaLabel="Configure exports"
+                        ctaHref="/exports"
+                    />
+                </div>
+
             </div>
         </div>
     );
