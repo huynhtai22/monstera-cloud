@@ -33,7 +33,7 @@ export function DataFlowExplainer({ variant }: { variant: Variant }) {
             <button
                 type="button"
                 onClick={() => setDismissed(false)}
-                className="mb-6 inline-flex items-center gap-1.5 rounded-lg border border-cyan-200/60 bg-cyan-50/60 px-3 py-1.5 text-xs font-medium text-cyan-700 transition-all hover:bg-cyan-100/80 dark:border-cyan-900/40 dark:bg-cyan-950/30 dark:text-cyan-400 dark:hover:bg-cyan-950/50"
+                className="mb-6 inline-flex items-center gap-1.5 rounded-md border border-line bg-panel px-3 py-1.5 text-xs font-medium text-ink-mute hover:text-ink"
                 aria-label="Show how data moves"
             >
                 <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -47,7 +47,7 @@ export function DataFlowExplainer({ variant }: { variant: Variant }) {
             {/* Header */}
             <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    <Info className="h-3.5 w-3.5 text-cyan-500" aria-hidden />
+                    <Info className="h-3.5 w-3.5 text-ink-mute" aria-hidden />
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                         How data moves
                     </p>
@@ -65,13 +65,13 @@ export function DataFlowExplainer({ variant }: { variant: Variant }) {
             {/* Steps row */}
             <div className="flex items-center gap-2">
                 {/* Step 1 */}
-                <div className="flex min-w-0 flex-1 items-start gap-3 rounded-xl border border-cyan-100 bg-cyan-50/60 p-3 dark:border-cyan-900/40 dark:bg-cyan-950/20">
-                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cyan-500 text-[10px] font-bold text-white">
+                <div className="flex min-w-0 flex-1 items-start gap-3 rounded-md border border-line bg-canvas p-3">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-line bg-panel font-mono text-[10px] font-medium text-ink">
                         1
                     </div>
                     <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                            <Database className="h-3.5 w-3.5 shrink-0 text-cyan-600 dark:text-cyan-400" aria-hidden />
+                            <Database className="h-3.5 w-3.5 shrink-0 text-ink-mute" strokeWidth={1.5} aria-hidden />
                             <p className="text-xs font-semibold text-gray-900 dark:text-white">Sources</p>
                         </div>
                         <p className="mt-1 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
@@ -84,8 +84,8 @@ export function DataFlowExplainer({ variant }: { variant: Variant }) {
 
                 {/* Connector */}
                 <div className="flex shrink-0 flex-col items-center gap-1" aria-hidden>
-                    <div className="h-px w-8 border-t-2 border-dashed border-cyan-300 dark:border-cyan-700" />
-                    <ArrowRight className="h-3.5 w-3.5 text-cyan-400 dark:text-cyan-600" />
+                    <div className="h-px w-8 border-t border-dashed border-line" />
+                    <ArrowRight className="h-3.5 w-3.5 text-ink-mute" strokeWidth={1.5} />
                 </div>
 
                 {/* Step 2 */}
@@ -112,7 +112,7 @@ export function DataFlowExplainer({ variant }: { variant: Variant }) {
                     <>
                         <Unplug className="h-3.5 w-3.5 shrink-0" aria-hidden />
                         Connect sources first on the{" "}
-                        <Link href="/sources" className="font-semibold text-cyan-600 hover:underline dark:text-cyan-400">
+                        <Link href="/sources" className="font-semibold text-ink underline">
                             Sources
                         </Link>{" "}
                         page, then use your data in Sheets or Looker.
@@ -121,7 +121,7 @@ export function DataFlowExplainer({ variant }: { variant: Variant }) {
                     <>
                         <Send className="h-3.5 w-3.5 shrink-0" aria-hidden />
                         After connecting sources, open{" "}
-                        <Link href="/exports" className="font-semibold text-cyan-600 hover:underline dark:text-cyan-400">
+                        <Link href="/exports" className="font-semibold text-ink underline">
                             Exports
                         </Link>{" "}
                         to learn how to pull your data.

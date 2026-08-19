@@ -6,21 +6,27 @@
    bg-primary, hover:bg-primary-hover, text-primary-ring, etc. are emitted.
    ─────────────────────────────────────────────────────────────────────────── */
 @theme {
-  --color-primary: #0891b2;
-  --color-primary-foreground: #ffffff;
-  --color-primary-muted: #ecfeff;
-  --color-primary-ring: #06b6d4;
-  --color-primary-hover: #0e7490;
-  --color-surface-muted: #f9fafb;
+  --color-primary: #e8e8e8;
+  --color-primary-foreground: #050505;
+  --color-primary-muted: #141414;
+  --color-primary-ring: #a3a3a3;
+  --color-primary-hover: #ffffff;
+  --color-surface-muted: #0a0a0a;
+  --color-canvas: #050505;
+  --color-panel: #0c0c0c;
+  --color-line: #222222;
+  --color-ink: #ededed;
+  --color-ink-mute: #8a8a8a;
+  --color-accent: #67e8f9;
+  --font-sans: ui-sans-serif, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "IBM Plex Mono", Menlo, monospace;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-    --background: #f8fafc;
-    /* slate-50 */
-    --foreground: #0f172a;
-    /* slate-900 */
+    --background: #050505;
+    --foreground: #ededed;
 }
 
 /* Design tokens and animation durations (moved from UI system modules) */
@@ -30,13 +36,13 @@
             NOTE: Do not override Tailwind's `--color-*` variables here; Tailwind v4 emits utilities
             like `bg-primary` using `--color-primary` from @theme above.
         */
-        --ui-bg-rgb: 255 255 255;
-        --ui-fg-rgb: 15 23 42;
-        --ui-border-rgb: 226 232 240; /* slate-200 */
-        --ui-muted-bg-rgb: 248 250 252; /* slate-50 */
-        --ui-muted-fg-rgb: 100 116 139; /* slate-500 */
-        --ui-primary-rgb: 8 145 178;
-        --ui-primary-foreground-rgb: 255 255 255;
+        --ui-bg-rgb: 5 5 5;
+        --ui-fg-rgb: 237 237 237;
+        --ui-border-rgb: 34 34 34;
+        --ui-muted-bg-rgb: 12 12 12;
+        --ui-muted-fg-rgb: 138 138 138;
+        --ui-primary-rgb: 232 232 232;
+        --ui-primary-foreground-rgb: 5 5 5;
 
     /* Spacing scale (base 4px) */
     --space-1: 4px;
@@ -46,10 +52,10 @@
     --space-5: 24px;
     --space-card: 20px;
 
-    /* Radii */
-    --radius-sm: 6px;
-    --radius-md: 8px;
-    --radius-lg: 12px;
+    /* Radii — governed, not bubbly */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
 
     /* Shadows — enhanced depth */
     --shadow-card: 0 6px 18px rgba(2,6,23,0.06);
@@ -71,20 +77,112 @@
 }
 
 .dark {
-    --background: #000000; /* Pure black (X reference) */
-    --foreground: #e7e9ea; /* X foreground text */
-
-    /* UI system tokens (RGB triplets) */
-    --ui-bg-rgb: 0 0 0;
-    --ui-fg-rgb: 231 233 234;
-    --ui-border-rgb: 47 51 54; /* X border color #2f3336 */
-    --ui-muted-bg-rgb: 22 24 28; /* X secondary background #16181c */
-    --ui-muted-fg-rgb: 113 118 123; /* X muted text #71767b */
+    --background: #050505;
+    --foreground: #ededed;
+    --ui-bg-rgb: 5 5 5;
+    --ui-fg-rgb: 237 237 237;
+    --ui-border-rgb: 34 34 34;
+    --ui-muted-bg-rgb: 12 12 12;
+    --ui-muted-fg-rgb: 138 138 138;
 }
 
 body {
     color: var(--foreground);
     background: var(--background);
+    font-feature-settings: "ss01" on, "cv11" on;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Marketing / console: faint technical grid */
+.mc-grid {
+    background-color: #050505;
+    background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 64px 64px;
+}
+
+.governed-hover {
+    transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+        background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.governed-hover:hover {
+    border-color: rgba(255, 255, 255, 0.14);
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Console surfaces — hairline panels, no lift/scale */
+.mc-panel {
+    background-color: #0c0c0c;
+    border: 1px solid #222222;
+    border-radius: 8px;
+}
+.mc-dialog {
+    background-color: #0c0c0c;
+    border: 1px solid #222222;
+    border-radius: 8px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+.mc-icon svg,
+.mc-icon {
+    stroke-width: 1.5;
+}
+
+/* Sonner toasts in the console */
+[data-sonner-toaster] [data-sonner-toast] {
+    background: #0c0c0c !important;
+    border: 1px solid #222222 !important;
+    color: #ededed !important;
+    border-radius: 8px !important;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45) !important;
+}
+[data-sonner-toaster] [data-title] {
+    color: #ededed !important;
+    font-weight: 600;
+}
+[data-sonner-toaster] [data-description] {
+    color: #8a8a8a !important;
+}
+
+@keyframes mcScan {
+    0% { transform: translateY(-20%); opacity: 0; }
+    8% { opacity: 1; }
+    92% { opacity: 1; }
+    100% { transform: translateY(100vh); opacity: 0; }
+}
+.mc-scan {
+    pointer-events: none;
+    position: absolute;
+    inset-inline: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.28), transparent);
+    animation: mcScan 14s linear infinite;
+}
+
+.reveal-on {
+    opacity: 1;
+    transform: translateY(0);
+}
+.reveal-off {
+    opacity: 0;
+    transform: translateY(12px);
+}
+.reveal-motion {
+    transition: opacity 500ms cubic-bezier(0.16, 1, 0.3, 1),
+        transform 500ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .governed-hover {
+        transition: none;
+    }
+    .mc-scan,
+    .reveal-motion {
+        animation: none;
+        transition: none;
+        opacity: 1;
+        transform: none;
+    }
 }
 
 /* ── Form controls (checkboxes + date inputs) ───────────────────────────────
@@ -92,26 +190,26 @@ body {
    Applies to native inputs while still allowing per-component overrides. */
 @layer base {
   input[type="checkbox"] {
-    @apply h-4 w-4 rounded-md border border-gray-300 bg-white text-cyan-600 shadow-sm;
-    @apply focus:outline-none focus:ring-2 focus:ring-cyan-500/25 focus:ring-offset-2 focus:ring-offset-white;
+    @apply h-4 w-4 rounded-sm border border-line bg-panel text-accent shadow-none;
+    @apply focus:outline-none focus:ring-1 focus:ring-white/20 focus:ring-offset-0;
     @apply disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .dark input[type="checkbox"] {
-    @apply border-[#2f3336] bg-[#0b0d10] text-cyan-400;
-    @apply focus:ring-cyan-400/25 focus:ring-offset-2 focus:ring-offset-black;
+    @apply border-line bg-canvas text-accent;
+    @apply focus:ring-white/20 focus:ring-offset-0;
   }
 
   /* Date inputs vary per browser; normalize to look like our Input component. */
   input[type="date"] {
-    @apply h-10 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm;
-    @apply focus:outline-none focus:ring-2 focus:ring-cyan-500/25 focus:border-cyan-500;
+    @apply h-10 rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink shadow-none;
+    @apply focus:outline-none focus:border-white/25;
     @apply disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .dark input[type="date"] {
-    @apply border-[#2f3336] bg-[#16181c] text-white;
-    @apply focus:ring-cyan-500/20 focus:border-cyan-500;
+    @apply border-line bg-canvas text-ink;
+    @apply focus:border-white/25;
   }
 }
 
@@ -274,14 +372,14 @@ html.disable-transitions *::after {
     animation: pulseError 1.4s ease-in-out infinite;
 }
 
-/* ── Bento spring hover — reusable utility ───────────────────────────────── */
+/* ── Governed hover — no scale, hairline only ───────────────────────────── */
 .bento-hover {
-    transition: transform 300ms var(--spring, cubic-bezier(0.25,1,0.5,1)),
-                box-shadow 300ms var(--spring, cubic-bezier(0.25,1,0.5,1));
+    transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+                background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .bento-hover:hover {
-    transform: scale(1.02) translateY(-1px);
-    box-shadow: 0 12px 32px rgba(2,6,23,0.10);
+    border-color: rgba(255, 255, 255, 0.14);
+    background-color: rgba(255, 255, 255, 0.03);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -312,21 +410,21 @@ html.disable-transitions *::after {
 */
 .glass-panel {
     position: relative;
-    border-radius: 0.75rem;
-    border: 1px solid rgba(0,0,0,0.08);
-    background: #fff;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    border-radius: 8px;
+    border: 1px solid #222222;
+    background: #0c0c0c;
+    box-shadow: none;
+    transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dark .glass-panel {
-    border-color: rgba(255,255,255,0.08);
-    background: rgba(0, 0, 0, 0.4);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    border-color: #222222;
+    background: #0c0c0c;
+    box-shadow: none;
 }
 
 .dark .glass-panel:hover {
-    border-color: rgba(255,255,255,0.12);
+    border-color: rgba(255, 255, 255, 0.12);
 }
 
 /*
@@ -335,30 +433,28 @@ html.disable-transitions *::after {
 */
 .glass-card {
     position: relative;
-    border-radius: 0.75rem;
-    border: 1px solid rgba(0,0,0,0.08);
-    background: #fff;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-    will-change: transform, box-shadow;
+    border-radius: 8px;
+    border: 1px solid #222222;
+    background: #0c0c0c;
+    box-shadow: none;
+    transition: border-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+                background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-card:hover {
-    border-color: rgba(0,0,0,0.12);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.14);
+    background: #101010;
 }
 
 .dark .glass-card {
-    border-color: rgba(255,255,255,0.08);
-    background: rgba(22, 24, 28, 0.5);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    border-color: #222222;
+    background: #0c0c0c;
+    box-shadow: none;
 }
 
 .dark .glass-card:hover {
-    border-color: rgba(255,255,255,0.14);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.14);
+    background: #101010;
 }
 
 /* Hero section only — kept for marketing pages */

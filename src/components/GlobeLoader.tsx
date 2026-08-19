@@ -317,7 +317,7 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
                             inset: 0,
                             borderRadius: "50%",
                             background:
-                                "radial-gradient(circle at center, rgba(6,182,212,0.14) 0%, transparent 62%)",
+                                "radial-gradient(circle at center, rgba(237,237,237,0.08) 0%, transparent 62%)",
                             animation: "mgl-halo 2.4s ease-in-out infinite",
                             zIndex: 1,
                         }}
@@ -331,9 +331,9 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
                         <svg viewBox="0 0 200 200" style={{ width: "100%", height: "100%", overflow: "visible" }}>
                             <defs>
                                 <linearGradient id="mgl-whirlGrad" x1="0" y1="0" x2="1" y2="0">
-                                    <stop offset="0%" stopColor="#06b6d4" stopOpacity="0" />
-                                    <stop offset="55%" stopColor="#06b6d4" stopOpacity="0.85" />
-                                    <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
+                                    <stop offset="0%" stopColor="#ededed" stopOpacity="0" />
+                                    <stop offset="55%" stopColor="#ededed" stopOpacity="0.7" />
+                                    <stop offset="100%" stopColor="#ededed" stopOpacity="0" />
                                 </linearGradient>
                             </defs>
 
@@ -367,7 +367,7 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
                                 />
                                 <path
                                     d="M 100 177 A 77 77 0 0 1 23 100"
-                                    stroke="#06b6d4"
+                                    stroke="#ededed"
                                     strokeOpacity="0.55"
                                     strokeWidth="1.6"
                                     strokeLinecap="round"
@@ -377,8 +377,8 @@ export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>
 
                             <g className="mgl-particles">
                                 <circle cx="100" cy="8" r="2.2" fill="#0891b2" />
-                                <circle cx="192" cy="100" r="1.6" fill="#06b6d4" />
-                                <circle cx="100" cy="192" r="1.3" fill="#67e8f9" />
+                                <circle cx="192" cy="100" r="1.6" fill="#ededed" />
+                                <circle cx="100" cy="192" r="1.3" fill="#8a8a8a" />
                             </g>
                         </svg>
                     </div>

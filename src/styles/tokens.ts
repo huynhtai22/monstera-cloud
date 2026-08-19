@@ -1,32 +1,25 @@
 /**
- * Design tokens — aligns with Tailwind emerald brand + gray neutrals.
- * Use with `bg-primary`, `text-primary-foreground` via tailwind.config, or import hex for non-Tailwind contexts.
+ * Dark-first product tokens (Vercel / Palantir-adjacent).
+ * Tailwind utilities: bg-canvas, bg-panel, border-line, text-ink, text-ink-mute, text-accent.
  */
 export const tokens = {
+  canvas: "#050505",
+  panel: "#0c0c0c",
+  line: "#222222",
+  ink: "#ededed",
+  inkMute: "#8a8a8a",
+  accent: "#67e8f9",
   primary: {
-    /** emerald-600 — main CTAs, matches sidebar-adjacent brand actions */
-    DEFAULT: "#059669",
-    /** emerald-700 — hover */
-    hover: "#047857",
-    /** emerald-500 — focus rings */
-    ring: "#10b981",
-    /** emerald-50 */
-    muted: "#ecfdf5",
-    foreground: "#ffffff",
-  },
-  neutral: {
-    50: "#f9fafb",
-    100: "#f3f4f6",
-    200: "#e5e7eb",
-    500: "#6b7280",
-    700: "#374151",
-    900: "#111827",
+    DEFAULT: "#e8e8e8",
+    hover: "#ffffff",
+    ring: "#a3a3a3",
+    muted: "#141414",
+    foreground: "#050505",
   },
   radius: {
-    card: "0.75rem", // rounded-xl
-    control: "0.5rem", // rounded-lg
+    card: "0.5rem",
+    control: "0.375rem",
   },
-  /** Shared card chrome for app panels (Tailwind class string). */
   cardClass:
-    "bg-white dark:bg-slate-900/80 border border-gray-200 dark:border-slate-700 rounded-xl",
+    "bg-panel border border-line rounded-lg",
 } as const;

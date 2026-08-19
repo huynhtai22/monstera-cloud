@@ -8,6 +8,7 @@ export { SecondaryButton, secondaryButtonLinkClassName } from "./SecondaryButton
 export { ConfirmDialog } from "./ConfirmDialog";
 export { EmptyState } from "./EmptyState";
 export { PageShell } from "./PageShell";
+export { IntegrationMark } from "./IntegrationMark";
 export { RefreshedAt } from "./RefreshedAt";
 export { SyncLogDiagnosticsDrawer } from "./SyncLogDiagnosticsDrawer";
 

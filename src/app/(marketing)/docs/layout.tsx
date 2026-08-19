@@ -1,6 +1,6 @@
 import React from "react";
 import Link from "next/link";
-import { Terminal, Database, BookOpen, Key, Zap, Settings, Shield } from "lucide-react";
+import { Terminal, Database, BookOpen, Shield } from "lucide-react";
 
 const SIDEBAR_LINKS = [
     {
@@ -10,7 +10,7 @@ const SIDEBAR_LINKS = [
             { label: "Introduction", href: "/docs" },
             { label: "Quickstart", href: "/docs#quickstart" },
             { label: "Architecture", href: "/docs#architecture" },
-        ]
+        ],
     },
     {
         title: "Integrations",
@@ -20,7 +20,7 @@ const SIDEBAR_LINKS = [
             { label: "Destinations", href: "/docs#destinations" },
             { label: "Looker Studio connector", href: "/docs#looker-studio" },
             { label: "Synchronization", href: "/docs#sync" },
-        ]
+        ],
     },
     {
         title: "Core Concepts",
@@ -29,7 +29,7 @@ const SIDEBAR_LINKS = [
             { label: "Pipelines", href: "/docs#pipelines" },
             { label: "Workspaces", href: "/docs#workspaces" },
             { label: "Transformations", href: "/docs#transformations" },
-        ]
+        ],
     },
     {
         title: "Security & API",
@@ -38,8 +38,8 @@ const SIDEBAR_LINKS = [
             { label: "Authentication", href: "/docs#authentication" },
             { label: "API Reference", href: "/docs#api" },
             { label: "Rate Limits", href: "/docs#limits" },
-        ]
-    }
+        ],
+    },
 ];
 
 export default function DocsLayout({
@@ -48,28 +48,24 @@ export default function DocsLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <div className="min-h-screen bg-white text-slate-600 pt-16 flex font-sans">
-            
-            {/* LEFT SIDEBAR (Desktop) */}
-            <aside className="hidden md:flex flex-col w-72 border-r border-gray-100 h-[calc(100vh-4rem)] sticky top-16 overflow-y-auto px-6 py-10 no-scrollbar">
-                
-                <div className="mb-8">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Documentation</p>
-                </div>
-
+        <div className="flex min-h-screen bg-canvas font-sans text-ink-mute">
+            <aside className="no-scrollbar sticky top-14 hidden h-[calc(100vh-3.5rem)] w-64 flex-col overflow-y-auto border-r border-line px-6 py-10 md:flex">
+                <p className="mb-8 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">
+                    Documentation
+                </p>
                 <div className="space-y-8">
-                    {SIDEBAR_LINKS.map((section, idx) => (
-                        <div key={idx}>
-                            <h4 className="flex items-center text-sm font-semibold text-slate-900 mb-3">
-                                <section.icon className="w-4 h-4 mr-2 text-slate-400" />
+                    {SIDEBAR_LINKS.map((section) => (
+                        <div key={section.title}>
+                            <h4 className="mb-3 flex items-center text-[13px] font-semibold text-ink">
+                                <section.icon className="mr-2 h-3.5 w-3.5 text-ink-mute" strokeWidth={1.5} />
                                 {section.title}
                             </h4>
-                            <ul className="space-y-2 border-l border-gray-200 ml-2 pl-4">
-                                {section.links.map((link, jdx) => (
-                                    <li key={jdx}>
-                                        <Link 
-                                            href={link.href} 
-                                            className="text-sm text-slate-400 hover:text-cyan-600 transition-colors block py-1"
+                            <ul className="ml-2 space-y-1 border-l border-line pl-4">
+                                {section.links.map((link) => (
+                                    <li key={link.href}>
+                                        <Link
+                                            href={link.href}
+                                            className="block py-1 text-[13px] text-ink-mute transition-colors duration-150 hover:text-ink"
                                         >
                                             {link.label}
                                         </Link>
@@ -80,12 +76,7 @@ export default function DocsLayout({
                     ))}
                 </div>
             </aside>
-
-            {/* MAIN CONTENT AREA */}
-            <main className="flex-1 max-w-4xl px-4 sm:px-8 py-12 md:py-16 mx-auto w-full">
-                {children}
-            </main>
-
+            <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-12 sm:px-8 md:py-16">{children}</main>
         </div>
     );
 }

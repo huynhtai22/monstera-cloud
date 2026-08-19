@@ -11,7 +11,7 @@ import {
   Loader2,
   Unplug,
 } from "lucide-react";
-import { PrimaryButton } from "@/components/ui";
+import { PrimaryButton, IntegrationMark } from "@/components/ui";
 
 const SYNC_PHRASES = [
   "Fetching campaigns…",
@@ -36,7 +36,7 @@ function useSyncPhrase(active: boolean) {
 export function IntegrationCardSkeleton() {
   return (
     <div
-      className="relative overflow-hidden rounded-2xl border border-white/10 dark:border-white/10 bg-white/5 dark:bg-[#000000]/20 backdrop-blur-md p-5 animate-pulse"
+      className="relative overflow-hidden rounded-lg border border-line bg-panel p-5 animate-pulse"
       aria-hidden
     >
       <div className="flex items-start justify-between mb-4">
@@ -77,36 +77,23 @@ export const IntegrationCard = React.memo(function IntegrationCard({
 
   return (
     <div
-      className={`glass-card bento-hover relative overflow-hidden rounded-2xl p-5 group flex flex-col justify-between
+      className={`glass-card governed-hover relative overflow-hidden rounded-lg p-5 group flex flex-col justify-between
         ${integration.status === "error"
-          ? "!border !border-red-200/70 hover:!border-red-300/80 dark:!border-red-700/40 dark:hover:!border-red-600/60"
+          ? "!border-red-500/40 hover:!border-red-400/60"
           : ""}`}
     >
       <div className="flex items-start justify-between mb-3 relative z-10">
-        <div
-          className={`relative w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 bg-white dark:bg-white overflow-hidden p-2
-            ${integration.status === "error"
-              ? "border-red-400/20 dark:border-red-700/30"
-              : "border-white/10 dark:border-white/10"}`}
-        >
-          <img
-            src={integration.logoSrc}
-            alt={`${integration.name} logo`}
-            width={28}
-            height={28}
-            className="object-contain"
-          />
-        </div>
+        <IntegrationMark src={integration.logoSrc} alt={`${integration.name} logo`} size="lg" />
 
         <div className="flex items-center">
           {integration.status === "connected" && (
-            <div className="flex items-center rounded-md bg-cyan-950/60 px-2 py-1 text-xs font-semibold text-cyan-300 ring-1 ring-cyan-500/30 shadow-[0_0_10px_rgba(34,211,238,0.4)] dark:bg-cyan-950/60 dark:text-cyan-300 dark:ring-cyan-500/30">
-              <CheckCircle2 className="mr-1 h-3.5 w-3.5 text-cyan-400" />
+            <div className="flex items-center rounded border border-line px-2 py-1 text-[11px] font-medium text-accent">
+              <CheckCircle2 className="mr-1 h-3.5 w-3.5" strokeWidth={1.5} />
               Connected
             </div>
           )}
           {integration.status === "syncing" && (
-            <div className="flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-950/70 dark:text-blue-200 dark:ring-1 dark:ring-blue-800/50">
+            <div className="flex items-center rounded-md border border-line px-2 py-1 text-xs font-medium text-ink">
               <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin dark:text-blue-300" />
               Syncing
             </div>
@@ -126,17 +113,17 @@ export const IntegrationCard = React.memo(function IntegrationCard({
             <Link
               href={`/sources/${integration.id}`}
               onClick={(e) => e.stopPropagation()}
-              className="group/title inline-flex max-w-full items-center gap-1 text-base font-semibold tracking-tight text-gray-900 hover:text-cyan-700 dark:text-white dark:hover:text-cyan-300"
+              className="group/title inline-flex max-w-full items-center gap-1 text-base font-semibold tracking-tight text-ink hover:text-white"
             >
               <span className="truncate">{integration.name}</span>
             </Link>
           ) : (
-            <h3 className="text-base font-semibold tracking-tight text-gray-900 dark:text-white">
+            <h3 className="text-base font-semibold tracking-tight text-ink">
               {integration.name}
             </h3>
           )}
         </div>
-        <p className="text-sm leading-relaxed text-gray-500 line-clamp-2 dark:text-slate-300">
+        <p className="text-sm leading-relaxed text-ink-mute line-clamp-2">
           {integration.description}
         </p>
 

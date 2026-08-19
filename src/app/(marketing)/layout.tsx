@@ -37,9 +37,9 @@ export default function MarketingLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <div className="bg-white min-h-screen flex flex-col text-slate-800 selection:bg-cyan-500/20 font-sans">
+        <div className="dark flex min-h-screen flex-col bg-canvas font-sans text-ink selection:bg-white/15">
             <MarketingNavbar />
-            <main className="flex-1">{children}</main>
+            <main className="flex-1 pt-14">{children}</main>
             <MarketingFooter />
         </div>
     );

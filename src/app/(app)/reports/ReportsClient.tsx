@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { FileText, AlertCircle, CheckCircle2, Clock, Database, Bookmark } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock, Database, Bookmark } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
 import { PageShell, SyncLogDiagnosticsDrawer, type SyncLogWithPipeline } from "@/components/ui";
@@ -174,34 +174,24 @@ export function ReportsClient() {
 
     return (
         <PageShell>
-            <div className="relative z-10 mb-8">
-                <div className="mb-2 flex items-center space-x-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white bg-white/50 text-indigo-600 shadow-sm backdrop-blur-md dark:border-[#2f3336]/80 dark:bg-[#16181c]/90 dark:text-indigo-400 dark:ring-1 dark:ring-white/5">
-                        <FileText className="h-5 w-5" />
-                    </div>
-                    <div>
-                        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Sync activity</h1>
-                        {activeWorkspace ? (
-                            <p className="mt-0.5 text-sm font-medium text-gray-600 dark:text-slate-400">
-                                {activeWorkspace.name} · Sync activity
-                            </p>
-                        ) : null}
-                    </div>
+            <div className="relative z-10 mb-5">
+                <div className="mb-3">
+                    <h1 className="text-xl font-semibold tracking-tight text-ink">Sync activity</h1>
+                    <p className="mt-1 max-w-2xl text-sm text-ink-mute">
+                        Failed syncs and row counts for this workspace.
+                    </p>
                 </div>
-                <p className="max-w-2xl text-sm text-gray-600 dark:text-slate-300">
-                    Audit data throughput, investigate failed syncs, and monitor your total rows.
-                </p>
                 {clients.length > 0 ? (
                     <div className="mt-4 flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-slate-400">Client:</span>
+                        <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">Client</span>
                         <button
                             type="button"
                             onClick={() => setClient("")}
                             className={cn(
-                                "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                                "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
                                 clientFilter === ""
-                                    ? "border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-800/50 dark:bg-indigo-950/50 dark:text-indigo-200"
-                                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c]/90 dark:text-slate-200 dark:hover:bg-[#1d1f23]"
+                                    ? "border-line bg-white/[0.06] text-ink"
+                                    : "border-line bg-panel text-ink-mute hover:text-ink"
                             )}
                         >
                             All clients
@@ -212,10 +202,10 @@ export function ReportsClient() {
                                 type="button"
                                 onClick={() => setClient(c.id)}
                                 className={cn(
-                                    "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                                    "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
                                     clientFilter === c.id
-                                        ? "border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-800/50 dark:bg-indigo-950/50 dark:text-indigo-200"
-                                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c]/90 dark:text-slate-200 dark:hover:bg-[#1d1f23]"
+                                        ? "border-line bg-white/[0.06] text-ink"
+                                        : "border-line bg-panel text-ink-mute hover:text-ink"
                                 )}
                             >
                                 {c.name}
@@ -231,10 +221,10 @@ export function ReportsClient() {
                                 type="button"
                                 onClick={() => setSource(c.id)}
                                 className={cn(
-                                    "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                                    "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
                                     sourceFilter === c.id
-                                        ? "border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-800/50 dark:bg-cyan-950/50 dark:text-cyan-200"
-                                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c]/90 dark:text-slate-200 dark:hover:bg-[#1d1f23]"
+                                        ? "border-line bg-white/[0.06] text-ink"
+                                        : "border-line bg-panel text-ink-mute hover:text-ink"
                                 )}
                             >
                                 {c.label}
@@ -263,7 +253,7 @@ export function ReportsClient() {
                         <button
                             type="button"
                             onClick={saveDefaultView}
-                            className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-100 dark:border-cyan-800/50 dark:bg-cyan-950/50 dark:text-cyan-200 dark:hover:bg-cyan-950/80"
+                            className="inline-flex items-center gap-1 rounded-md border border-line bg-panel px-3 py-1.5 text-xs font-medium text-ink hover:bg-white/[0.04]"
                         >
                             <Bookmark className="h-3.5 w-3.5" />
                             Save view
@@ -272,11 +262,11 @@ export function ReportsClient() {
                 </div>
             </div>
 
-            <div className="relative z-10 rounded-3xl border border-gray-200/80 bg-white/60 p-6 shadow-sm backdrop-blur-xl dark:border-[#2f3336]/70 dark:bg-[#16181c]/90 dark:ring-1 dark:ring-white/5">
+            <div className="relative z-10 rounded-lg border border-line bg-panel p-5">
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h2 className="text-lg font-bold text-gray-900 dark:text-white">Sync Logs</h2>
-                        <p className="text-sm text-gray-600 dark:text-slate-400">Last 100 syncs in this workspace.</p>
+                        <h2 className="text-sm font-semibold text-ink">Logs</h2>
+                        <p className="text-xs text-ink-mute">Last 100 syncs in this workspace.</p>
                     </div>
                     <div className="flex items-center gap-2">
                         {(["all", "success", "error"] as const).map((v) => (
@@ -285,10 +275,10 @@ export function ReportsClient() {
                                 type="button"
                                 onClick={() => setStatusFilter(v)}
                                 className={cn(
-                                    "rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
+                                    "rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
                                     statusFilter === v
-                                        ? "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-800/50 dark:bg-cyan-950/50 dark:text-cyan-200"
-                                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/70 dark:text-slate-200 dark:hover:bg-[#1d1f23]"
+                                        ? "border-line bg-white/[0.06] text-ink"
+                                        : "border-line bg-canvas text-ink-mute hover:text-ink"
                                 )}
                             >
                                 {v === "all" ? "All" : v === "success" ? "Success" : "Error"}
@@ -298,7 +288,7 @@ export function ReportsClient() {
                 </div>
 
                 {summary ? (
-                    <div className="mb-4 flex flex-wrap gap-3 rounded-xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-xs dark:border-[#2f3336]/60 dark:bg-[#000000]/50">
+                    <div className="mb-4 flex flex-wrap gap-3 rounded-md border border-line bg-canvas px-4 py-3 text-xs">
                         <span className="font-semibold text-gray-700 dark:text-slate-200">
                             Shown: <span className="text-gray-900 dark:text-white">{summary.shown}</span> syncs
                         </span>
@@ -335,7 +325,7 @@ export function ReportsClient() {
                         primaryAction={
                             <Link
                                 href="/sources"
-                                className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700"
+                                className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
                             >
                                 Go to Sources
                             </Link>

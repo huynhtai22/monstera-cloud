@@ -38,7 +38,7 @@ export function NotificationCenter() {
             return () => cancelAnimationFrame(raf);
         }
         setIsPanelVisible(false);
-        const t = setTimeout(() => setShouldRenderPanel(false), 150);
+        const t = setTimeout(() => setShouldRenderPanel(false), 180);
         return () => clearTimeout(t);
     }, [open]);
 
@@ -83,13 +83,16 @@ export function NotificationCenter() {
             <button
                 type="button"
                 onClick={() => setOpen((v) => !v)}
-                className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-600 shadow-sm transition-colors hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-gray-300 dark:hover:bg-[#1d1f23]"
+                className={cn(
+                    "relative flex h-9 w-9 items-center justify-center rounded-md border border-line bg-panel text-ink-mute transition-colors hover:border-white/20 hover:text-ink",
+                    open && "border-white/20 text-ink"
+                )}
                 aria-expanded={open}
                 aria-label={count ? `Notifications, ${count} issues` : "Notifications"}
             >
-                <Bell className="h-5 w-5" />
+                <Bell className="h-4 w-4" strokeWidth={1.5} />
                 {count > 0 ? (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-sm bg-red-500 px-1 font-mono text-[9px] font-semibold text-white">
                         {count > 9 ? "9+" : count}
                     </span>
                 ) : null}
@@ -97,42 +100,46 @@ export function NotificationCenter() {
 
             {shouldRenderPanel ? (
                 <div className={cn(
-                    "absolute right-0 top-[calc(100%+8px)] z-50 w-[min(100vw-2rem,22rem)] rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-[#2f3336] dark:bg-[#000000]",
-                    "transition-all duration-150 ease-out",
-                    isPanelVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1 pointer-events-none"
+                    "absolute right-0 top-[calc(100%+8px)] z-50 w-[min(100vw-2rem,22rem)] overflow-hidden rounded-lg border border-line bg-panel",
+                    "transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
+                    isPanelVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1.5 pointer-events-none"
                 )}>
-                    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-[#2f3336]">
-                        <span className="text-sm font-bold text-gray-900 dark:text-white">Notifications</span>
-                        <button type="button" onClick={() => setOpen(false)} className="rounded p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-[#16181c]" aria-label="Close">
-                            <X className="h-4 w-4" />
+                    <div className="flex items-center justify-between border-b border-line px-4 py-3">
+                        <div>
+                            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">Inbox</p>
+                            <span className="text-sm font-semibold text-ink">Notifications</span>
+                        </div>
+                        <button type="button" onClick={() => setOpen(false)} className="rounded-md p-1 text-ink-mute hover:bg-white/[0.04] hover:text-ink" aria-label="Close">
+                            <X className="h-4 w-4" strokeWidth={1.5} />
                         </button>
                     </div>
-                    <div className="max-h-[min(70vh,24rem)] overflow-y-auto p-2">
+                    <div className="max-h-[min(70vh,24rem)] overflow-y-auto p-1.5">
                         {items.length === 0 ? (
-                            <p className="px-3 py-8 text-center text-sm text-gray-500 dark:text-gray-400">No issues right now.</p>
+                            <div className="flex flex-col items-center px-3 py-10 text-center">
+                                <CheckCircle2 className="mb-2 h-5 w-5 text-accent" strokeWidth={1.5} />
+                                <p className="text-sm font-medium text-ink">All clear</p>
+                                <p className="mt-1 text-xs text-ink-mute">No failing sources or sync errors right now.</p>
+                            </div>
                         ) : (
-                            <ul className="space-y-1">
+                            <ul className="space-y-0.5">
                                 {items.map((it) => (
                                     <li key={it.id}>
                                         {it.href ? (
                                             <Link
                                                 href={it.href}
                                                 onClick={() => setOpen(false)}
-                                                className={cn(
-                                                    "flex gap-2 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-gray-50 dark:hover:bg-[#16181c]",
-                                                    it.tone === "error" && "hover:bg-red-50/80 dark:hover:bg-red-950/30"
-                                                )}
+                                                className="flex gap-2.5 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-white/[0.04]"
                                             >
-                                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" strokeWidth={1.5} />
                                                 <span>
-                                                    <span className="block text-sm font-semibold text-gray-900 dark:text-white">{it.title}</span>
-                                                    <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{it.detail}</span>
+                                                    <span className="block text-sm font-medium text-ink">{it.title}</span>
+                                                    <span className="mt-0.5 block text-xs leading-relaxed text-ink-mute">{it.detail}</span>
                                                 </span>
                                             </Link>
                                         ) : (
-                                            <div className="flex gap-2 rounded-xl px-3 py-2.5">
-                                                <CheckCircle2 className="h-4 w-4 text-cyan-500" />
-                                                <span className="text-sm text-gray-700 dark:text-gray-300">{it.title}</span>
+                                            <div className="flex gap-2 rounded-md px-3 py-2.5">
+                                                <CheckCircle2 className="h-4 w-4 text-accent" strokeWidth={1.5} />
+                                                <span className="text-sm text-ink">{it.title}</span>
                                             </div>
                                         )}
                                     </li>
@@ -140,9 +147,9 @@ export function NotificationCenter() {
                             </ul>
                         )}
                     </div>
-                    <div className="border-t border-gray-100 px-3 py-2 dark:border-[#2f3336]">
-                        <Link href="/reports" onClick={() => setOpen(false)} className="block text-center text-xs font-semibold text-cyan-700 hover:underline dark:text-cyan-300">
-                            Open Reports & logs
+                    <div className="border-t border-line px-3 py-2.5">
+                        <Link href="/reports" onClick={() => setOpen(false)} className="block text-center font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-ink-mute hover:text-ink">
+                            Open reports
                         </Link>
                     </div>
                 </div>

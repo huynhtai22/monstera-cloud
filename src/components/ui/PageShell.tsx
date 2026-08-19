@@ -13,7 +13,7 @@ export function PageShell({ children, className }: PageShellProps) {
     return (
         <div
             className={cn(
-                "relative w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12 animate-in fade-in duration-300",
+                "relative w-full px-6 py-6 sm:px-8 sm:py-7 lg:px-10 animate-in fade-in duration-300",
                 className
             )}
         >

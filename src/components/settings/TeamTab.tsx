@@ -43,11 +43,11 @@ export function TeamTab({ workspaceId, currentRole }: { workspaceId: string | nu
 
   return (
     <div className="max-w-4xl space-y-6">
-      <div><h3 className="flex items-center text-lg font-semibold"><Users className="mr-2 h-5 w-5 text-cyan-600" />Team</h3><p className="mt-1 text-sm text-slate-500">Invite agency staff. Clients remain records and cannot sign in.</p></div>
-      <form onSubmit={invite} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-[1fr_150px_auto] dark:border-slate-800 dark:bg-slate-900">
-        <input name="email" required type="email" aria-label="Staff email" placeholder="staff@agency.com" className="rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm" />
-        <select name="role" aria-label="Workspace role" className="rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm"><option value="member">Member</option><option value="viewer">Viewer</option>{currentRole === "owner" ? <option value="admin">Admin</option> : null}</select>
-        <button disabled={busy} className="rounded-lg bg-cyan-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Invite"}</button>
+      <div><h3 className="flex items-center text-lg font-semibold text-ink"><Users className="mr-2 h-5 w-5 text-ink-mute" strokeWidth={1.5} />Team</h3><p className="mt-1 text-sm text-ink-mute">Invite agency staff. Clients remain records and cannot sign in.</p></div>
+      <form onSubmit={invite} className="grid gap-3 rounded-lg border border-line bg-canvas p-4 sm:grid-cols-[1fr_150px_auto]">
+        <input name="email" required type="email" aria-label="Staff email" placeholder="staff@agency.com" className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink" />
+        <select name="role" aria-label="Workspace role" className="rounded-md border border-line bg-panel px-3 py-2 text-sm text-ink"><option value="member">Member</option><option value="viewer">Viewer</option>{currentRole === "owner" ? <option value="admin">Admin</option> : null}</select>
+        <button disabled={busy} className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Invite"}</button>
       </form>
       {invitationUrl ? <div className="flex items-center gap-2 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900"><input readOnly className="min-w-0 flex-1 bg-transparent" value={invitationUrl} /><button onClick={() => navigator.clipboard.writeText(invitationUrl)} aria-label="Copy invitation"><Copy className="h-4 w-4" /></button></div> : null}
       <div className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">

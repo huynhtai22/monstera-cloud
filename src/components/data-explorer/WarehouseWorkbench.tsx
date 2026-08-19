@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
-import Image from "next/image";
 import {
   AlertCircle,
   Calendar,
@@ -26,6 +25,7 @@ import { PrimaryButton, SecondaryButton } from "@/components/ui";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { downloadCsv } from "@/lib/export-utils";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import {
   ADS_DIMENSIONS,
   ADS_METRICS,
@@ -77,37 +77,37 @@ const PLATFORM_OPTIONS = [
   {
     value: "meta_ads",
     label: "Meta Ads",
-    icon: <Image alt="" src={INTEGRATION_LOGOS.meta} width={16} height={16} className="h-4 w-4" />,
+    icon: <IntegrationMark src={INTEGRATION_LOGOS.meta} size="sm" />,
   },
   {
     value: "tiktok_business",
     label: "TikTok Ads",
-    icon: <Image alt="" src={INTEGRATION_LOGOS.tiktok} width={16} height={16} className="h-4 w-4" />,
+    icon: <IntegrationMark src={INTEGRATION_LOGOS.tiktok} size="sm" />,
   },
   {
     value: "google_ads",
     label: "Google Ads",
-    icon: <Image alt="" src={INTEGRATION_LOGOS.googleAds} width={16} height={16} className="h-4 w-4" />,
+    icon: <IntegrationMark src={INTEGRATION_LOGOS.googleAds} size="sm" />,
   },
   {
     value: "shopee",
     label: "Shopee",
-    icon: <Image alt="" src={INTEGRATION_LOGOS.shopee} width={16} height={16} className="h-4 w-4" />,
+    icon: <IntegrationMark src={INTEGRATION_LOGOS.shopee} size="sm" />,
   },
   {
     value: "lazada",
     label: "Lazada",
-    icon: <Image alt="" src={INTEGRATION_LOGOS.lazada} width={16} height={16} className="h-4 w-4" />,
+    icon: <IntegrationMark src={INTEGRATION_LOGOS.lazada} size="sm" />,
   },
 ];
 
 const PLATFORM_COLORS: Record<string, string> = {
-  meta_ads: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-  tiktok_ads: "bg-gray-900 text-white dark:bg-gray-800",
-  tiktok_business: "bg-slate-800 text-white dark:bg-[#1d1f23]",
-  google_ads: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
-  shopee: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200",
-  lazada: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200",
+  meta_ads: "border border-line bg-panel text-ink",
+  tiktok_ads: "border border-line bg-panel text-ink",
+  tiktok_business: "border border-line bg-panel text-ink",
+  google_ads: "border border-line bg-panel text-ink",
+  shopee: "border border-line bg-panel text-ink",
+  lazada: "border border-line bg-panel text-ink",
 };
 
 type WarehouseColId =
@@ -377,7 +377,7 @@ function ToggleChip({
       className={cn(
         "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
         active
-          ? "border-cyan-500 bg-cyan-600 text-white shadow-sm dark:border-cyan-400 dark:bg-cyan-600"
+          ? "border-line bg-primary text-primary-foreground"
           : "border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-300",
       )}
     >
@@ -1014,17 +1014,17 @@ export function WarehouseWorkbench() {
   };
 
   const metricPanelCls =
-    "rounded-2xl border border-white/60 bg-white/75 p-5 shadow-[0_24px_80px_-32px_rgba(8,145,178,0.35)] backdrop-blur-md dark:border-[#2f3336]/80 dark:bg-[#000000]/65";
+    "rounded-lg border border-line bg-panel p-5";
 
   return (
-    <div className="flex flex-col gap-8">
-      <section className={cn(metricPanelCls, "border-cyan-200/50 dark:border-cyan-900/40")}>
+    <div className="flex flex-col gap-6">
+      <section className={cn(metricPanelCls, "order-2")}>
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-lg font-bold tracking-tight text-gray-900 dark:text-white">
+            <h2 className="text-lg font-semibold tracking-tight text-ink">
               Refresh warehouse from sources
             </h2>
-            <p className="mt-1 max-w-2xl text-sm text-gray-600 dark:text-slate-400">
+            <p className="mt-1 max-w-2xl text-sm text-ink-mute">
               Pull campaign or marketplace metrics into the warehouse for the date range below. Meta, Google Ads, TikTok Ads, and Shopee
               respect this range. Queued jobs are picked up within about 15 minutes if this request cannot finish in the background.
             </p>
@@ -1036,7 +1036,7 @@ export function WarehouseWorkbench() {
               batchImporting || !activeWorkspaceId || !connections.length || selectedConnIds.size === 0 || dateRangeError != null
             }
             loading={batchImporting}
-            className="rounded-xl px-5 py-2.5 font-semibold shadow-md shadow-cyan-500/20"
+            className="rounded-md px-5 py-2.5 font-semibold"
           >
             <CloudDownload className="mr-2 inline h-4 w-4" />
             Run selected imports
@@ -1044,12 +1044,12 @@ export function WarehouseWorkbench() {
         </div>
 
         {/* Date Range & Quick Presets for Ingestion */}
-        <div className="mb-4 rounded-xl border border-gray-200/80 bg-white/70 p-4 dark:border-[#2f3336] dark:bg-[#000000]/30">
+        <div className="mb-4 rounded-md border border-line bg-canvas p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-slate-300">
-                Sync Date Range:
+              <Calendar className="h-4 w-4 text-ink-mute" strokeWidth={1.5} />
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">
+                Sync date range
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1059,7 +1059,7 @@ export function WarehouseWorkbench() {
                   setStartDate("2026-05-01");
                   setEndDate("2026-05-03");
                 }}
-                className="rounded-lg border border-cyan-300/80 bg-cyan-50/80 px-2.5 py-1 text-xs font-medium text-cyan-800 hover:bg-cyan-100 dark:border-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-300"
+                className="rounded-md border border-line bg-panel px-2.5 py-1 text-xs font-medium text-ink hover:bg-white/[0.04]"
               >
                 May 1–3, 2026 (Live Meta test)
               </button>
@@ -1072,7 +1072,7 @@ export function WarehouseWorkbench() {
                   setStartDate(start.toISOString().split("T")[0]);
                   setEndDate(end.toISOString().split("T")[0]);
                 }}
-                className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-300"
+                className="rounded-md border border-line bg-panel px-2.5 py-1 text-xs font-medium text-ink-mute hover:bg-white/[0.04] hover:text-ink"
               >
                 Last 30 Days
               </button>
@@ -1085,7 +1085,7 @@ export function WarehouseWorkbench() {
                   setStartDate(start.toISOString().split("T")[0]);
                   setEndDate(end.toISOString().split("T")[0]);
                 }}
-                className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-300"
+                className="rounded-md border border-line bg-panel px-2.5 py-1 text-xs font-medium text-ink-mute hover:bg-white/[0.04] hover:text-ink"
               >
                 Last 90 Days
               </button>
@@ -1093,7 +1093,7 @@ export function WarehouseWorkbench() {
           </div>
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-slate-400">Since (Start Date)</label>
+              <label className="mb-1 block text-xs font-medium text-ink-mute">Since (Start Date)</label>
               <Input
                 type="date"
                 value={startDate}
@@ -1102,7 +1102,7 @@ export function WarehouseWorkbench() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-slate-400">Until (End Date)</label>
+              <label className="mb-1 block text-xs font-medium text-ink-mute">Until (End Date)</label>
               <Input
                 type="date"
                 value={endDate}
@@ -1119,11 +1119,11 @@ export function WarehouseWorkbench() {
         {!activeWorkspaceId ? (
           <p className="text-sm text-amber-700 dark:text-amber-400">Pick a workspace in the sidebar.</p>
         ) : connections.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/80 p-4 text-sm dark:border-[#2f3336] dark:bg-[#000000]/40">
-            <p className="text-gray-700 dark:text-slate-300">No ad platform sources linked yet.</p>
+          <div className="rounded-md border border-dashed border-line bg-canvas p-4 text-sm">
+            <p className="text-ink">No ad platform sources linked yet.</p>
             <Link
               href="/sources"
-              className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-cyan-600 hover:underline dark:text-cyan-400"
+              className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-ink hover:underline"
             >
               <Plus className="h-4 w-4" /> Connect Meta, Google Ads, or TikTok
             </Link>
@@ -1133,7 +1133,7 @@ export function WarehouseWorkbench() {
             {connections.map((c) => (
               <li
                 key={c.id}
-                className="rounded-xl border border-gray-200/80 bg-white/60 p-4 dark:border-[#2f3336] dark:bg-[#000000]/40"
+                className="rounded-md border border-line bg-canvas p-4"
               >
                 <label className="flex cursor-pointer items-start gap-3">
                   <input
@@ -1143,16 +1143,16 @@ export function WarehouseWorkbench() {
                     onChange={() => toggleConnImport(c)}
                   />
                   <div className="min-w-0 flex-1">
-                    <span className="font-medium text-gray-900 dark:text-white">{c.name}</span>
-                    <span className="ml-2 text-xs text-gray-500 dark:text-slate-500">
+                    <span className="font-medium text-ink">{c.name}</span>
+                    <span className="ml-2 text-xs text-ink-mute">
                       {PLATFORM_LABELS[c.provider] || c.provider}
                     </span>
                     {selectedConnIds.has(c.id) && c.provider === "meta_ads" && (
-                      <div className="mt-3 border-l-2 border-cyan-400/70 pl-3">
-                        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-slate-400">
+                      <div className="mt-3 border-l-2 border-line pl-3">
+                        <p className="mb-2 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">
                           Meta ad accounts (optional subset)
                         </p>
-                        <p className="mb-2 text-xs text-gray-500 dark:text-slate-500">
+                        <p className="mb-2 text-xs text-ink-mute">
                           Leave unchecked to sync all linked accounts on this connection.
                         </p>
                         <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
@@ -1164,7 +1164,7 @@ export function WarehouseWorkbench() {
                                 onChange={() => toggleMetaAcct(c.id, a.id)}
                                 className="rounded border-gray-300 text-cyan-600"
                               />
-                              <span className="truncate text-gray-700 dark:text-slate-300">{a.name || a.id}</span>
+                              <span className="truncate text-ink">{a.name || a.id}</span>
                             </label>
                           ))}
                           {selectedConnIds.has(c.id) && !(metaAccountsByConn[c.id]?.length) && (
@@ -1185,8 +1185,8 @@ export function WarehouseWorkbench() {
             className={cn(
               "mt-4 rounded-lg border p-3 text-sm",
               jobStatus.tone === "running"
-                ? "border-cyan-200 bg-cyan-50 text-cyan-900 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-200"
-                : "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200",
+                ? "border-line bg-canvas text-ink"
+                : "border-amber-500/30 bg-amber-950/20 text-amber-200",
             )}
           >
             <p className="font-medium">{jobStatus.title}</p>
@@ -1205,16 +1205,18 @@ export function WarehouseWorkbench() {
         )}
       </section>
 
-      <RunsView workspaceId={activeWorkspaceId} title="Recent warehouse runs" />
+      <div className="order-3">
+        <RunsView workspaceId={activeWorkspaceId} title="Recent warehouse runs" />
+      </div>
 
-      <section className={metricPanelCls}>
+      <section className={cn(metricPanelCls, "order-1")}>
         <div className="mb-6 flex flex-wrap items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/15 to-slate-500/10 text-cyan-700 dark:text-cyan-300">
-            <Database className="h-5 w-5" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-md border border-line bg-canvas text-ink">
+            <Database className="h-5 w-5" strokeWidth={1.5} />
           </div>
           <div>
-            <h2 className="text-lg font-bold tracking-tight text-gray-900 dark:text-white">Warehouse metrics</h2>
-            <p className="text-sm text-gray-500 dark:text-slate-400">Query stored CampaignMetric rows for this workspace.</p>
+            <h2 className="text-lg font-semibold tracking-tight text-ink">Warehouse metrics</h2>
+            <p className="text-sm text-ink-mute">Query stored CampaignMetric rows for this workspace.</p>
           </div>
         </div>
 
@@ -1234,7 +1236,7 @@ export function WarehouseWorkbench() {
             >
               {aggLimits.plan} plan
             </span>
-            <span className="text-gray-500 dark:text-slate-500">
+            <span className="text-ink-mute">
               {aggLimits.maxRowsPerQuery.toLocaleString()} rows / query (rewind is unrestricted)
             </span>
           </div>
@@ -1260,29 +1262,29 @@ export function WarehouseWorkbench() {
           </div>
         )}
 
-        <div className="mb-4 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-slate-300">
-          <Filter className="h-4 w-4" />
+        <div className="mb-4 flex items-center gap-2 text-sm font-medium text-ink">
+          <Filter className="h-4 w-4" strokeWidth={1.5} />
           Filters
         </div>
 
         <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-12">
           <div className="md:col-span-2">
-            <label className="mb-1.5 flex items-center text-xs font-medium text-gray-500 dark:text-slate-400">
-              <Calendar className="mr-1 h-3 w-3" />
+            <label className="mb-1.5 flex items-center text-xs font-medium text-ink-mute">
+              <Calendar className="mr-1 h-3 w-3" strokeWidth={1.5} />
               Start
             </label>
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-10" />
           </div>
           <div className="md:col-span-2">
-            <label className="mb-1.5 flex items-center text-xs font-medium text-gray-500 dark:text-slate-400">
-              <Calendar className="mr-1 h-3 w-3" />
+            <label className="mb-1.5 flex items-center text-xs font-medium text-ink-mute">
+              <Calendar className="mr-1 h-3 w-3" strokeWidth={1.5} />
               End
             </label>
             <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="h-10" />
           </div>
           <div className="md:col-span-3">
-            <label className="mb-1.5 flex text-xs font-medium text-gray-500 dark:text-slate-400">
-              <Layers className="mr-1 inline h-3 w-3" />
+            <label className="mb-1.5 flex text-xs font-medium text-ink-mute">
+              <Layers className="mr-1 inline h-3 w-3" strokeWidth={1.5} />
               Platform
             </label>
             <Dropdown
@@ -1324,16 +1326,16 @@ export function WarehouseWorkbench() {
 
         {viewMode === "aggregate" && (
           <>
-            <aside className="mb-6 rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-[#2f3336] dark:bg-[#000000] lg:fixed lg:right-6 lg:top-[140px] lg:mb-0 lg:w-[340px]">
-              <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-[#2f3336]">
+            <aside className="mb-6 rounded-lg border border-line bg-panel lg:fixed lg:right-6 lg:top-[140px] lg:mb-0 lg:w-[340px]">
+              <div className="flex items-center justify-between border-b border-line px-4 py-3">
                 <div>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Customize table</p>
-                  <p className="text-xs text-gray-500 dark:text-slate-400">Breakdowns &amp; metrics</p>
+                  <p className="text-sm font-semibold text-ink">Customize table</p>
+                  <p className="text-xs text-ink-mute">Breakdowns &amp; metrics</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSidebarOpen((v) => !v)}
-                  className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/20 dark:text-slate-200"
+                  className="rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-medium text-ink-mute hover:text-ink"
                 >
                   {sidebarOpen ? "Hide" : "Show"}
                 </button>
@@ -1353,8 +1355,8 @@ export function WarehouseWorkbench() {
                       className={cn(
                         "flex-1 rounded-lg px-3 py-2 text-xs font-semibold",
                         sidebarTab === "breakdowns"
-                          ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-[#16181c] dark:text-slate-200 dark:hover:bg-[#1d1f23]",
+                          ? "bg-primary text-primary-foreground"
+                          : "border border-line bg-canvas text-ink-mute hover:text-ink",
                       )}
                     >
                       Breakdowns
@@ -1365,8 +1367,8 @@ export function WarehouseWorkbench() {
                       className={cn(
                         "flex-1 rounded-lg px-3 py-2 text-xs font-semibold",
                         sidebarTab === "metrics"
-                          ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-[#16181c] dark:text-slate-200 dark:hover:bg-[#1d1f23]",
+                          ? "bg-primary text-primary-foreground"
+                          : "border border-line bg-canvas text-ink-mute hover:text-ink",
                       )}
                     >
                       Metrics
@@ -1640,7 +1642,7 @@ export function WarehouseWorkbench() {
           <details className="group mt-4 rounded-lg border border-gray-200/90 bg-white/70 dark:border-[#2f3336] dark:bg-[#000000]/40">
             <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-medium text-gray-800 marker:hidden dark:text-slate-200 [&::-webkit-details-marker]:hidden">
               <span className="inline-flex items-center gap-2">
-                <ArrowUpDown className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                <ArrowUpDown className="h-4 w-4 text-ink-mute" strokeWidth={1.5} />
                 Columns — dimensions & metrics (alphabetical)
                 <ChevronDown className="ml-1 h-4 w-4 transition-transform [.group[open]_&]:rotate-180" />
               </span>
@@ -1693,7 +1695,7 @@ export function WarehouseWorkbench() {
               <button
                 type="button"
                 onClick={resetWarehouseColumns}
-                className="text-xs font-medium text-cyan-600 hover:underline dark:text-cyan-400"
+                className="text-xs font-medium text-ink hover:underline"
               >
                 Reset columns to default
               </button>
@@ -1716,7 +1718,7 @@ export function WarehouseWorkbench() {
           ] as Array<[string, React.ReactNode]>).map(([k, v]) => (
             <div
               key={k}
-              className="rounded-xl border border-cyan-500/15 bg-gradient-to-br from-white to-cyan-50/40 p-4 dark:border-cyan-500/20 dark:from-slate-900 dark:to-slate-900/70"
+              className="rounded-lg border border-line bg-panel p-4"
             >
               <p className="text-xs text-gray-500 dark:text-slate-400">{k}</p>
               <p className="text-lg font-bold text-gray-900 dark:text-white">{v}</p>
@@ -1727,7 +1729,7 @@ export function WarehouseWorkbench() {
         {viewMode === "aggregate" ? (
           aggregateLoading ? (
             <div className="flex justify-center rounded-xl border border-gray-200/80 py-16 dark:border-[#2f3336]">
-              <RefreshCw className="h-8 w-8 animate-spin text-cyan-500" />
+              <RefreshCw className="h-8 w-8 animate-spin text-ink-mute" />
             </div>
           ) : aggregateError ? (
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900">
@@ -1765,7 +1767,7 @@ export function WarehouseWorkbench() {
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
                     {aggregateRows.slice(0, 200).map((r, idx) => (
-                      <tr key={idx} className="hover:bg-cyan-50/40 dark:hover:bg-[#16181c]/60">
+                      <tr key={idx} className="hover:bg-white/[0.03]">
                         {aggregateColumns.map((c) => {
                           const v = r[c];
                           const isMetric = c.startsWith("metric:");
@@ -1795,7 +1797,7 @@ export function WarehouseWorkbench() {
                 <button
                   type="button"
                   onClick={() => void mutateAggregate()}
-                  className="font-medium text-cyan-700 hover:underline dark:text-cyan-300"
+                  className="font-medium text-ink hover:underline"
                 >
                   Refresh
                 </button>
@@ -1804,7 +1806,7 @@ export function WarehouseWorkbench() {
           )
         ) : isLoading ? (
           <div className="flex justify-center rounded-xl border border-gray-200/80 py-16 dark:border-[#2f3336]">
-            <RefreshCw className="h-8 w-8 animate-spin text-cyan-500" />
+            <RefreshCw className="h-8 w-8 animate-spin text-ink-mute" />
           </div>
         ) : error ? (
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900">
@@ -1819,7 +1821,7 @@ export function WarehouseWorkbench() {
             </p>
             <Link
               href="/sources"
-              className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-cyan-600 hover:underline dark:text-cyan-400"
+              className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-ink hover:underline"
             >
               <Plus className="h-4 w-4" /> Add a source
             </Link>
@@ -1864,7 +1866,7 @@ export function WarehouseWorkbench() {
                           >
                             {col.label}
                             {active ? (
-                              <span className="font-mono text-[10px] text-cyan-600 dark:text-cyan-400">
+                              <span className="font-mono text-[10px] text-ink-mute">
                                 {sortDir === "asc" ? "↑" : "↓"}
                               </span>
                             ) : (
@@ -1880,7 +1882,7 @@ export function WarehouseWorkbench() {
                   {tableDisplayRows.map((m) => (
                     <React.Fragment key={m.id}>
                       <tr
-                        className="cursor-pointer hover:bg-cyan-50/40 dark:hover:bg-[#16181c]/60"
+                        className="cursor-pointer hover:bg-white/[0.03]"
                         onClick={() => toggleRow(m.id)}
                       >
                         {visibleColumnsOrdered.map((col) => (

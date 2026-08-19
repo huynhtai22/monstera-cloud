@@ -13,6 +13,7 @@ import { IntegrationSectionCard } from "@/components/ui/IntegrationSectionCard";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { cn } from "@/lib/utils";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+import { IntegrationMark } from "@/components/ui/IntegrationMark";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -450,7 +451,7 @@ export default function MetaAdsPage() {
       title="Meta Ads"
       description="Campaign and ad set performance from Facebook and Instagram Ads."
       icon={
-        <img src={INTEGRATION_LOGOS.meta} alt="Meta" width={22} height={22} />
+        <IntegrationMark src={INTEGRATION_LOGOS.meta} alt="Meta" size="md" />
       }
       leftColumn={leftColumn}
       primaryAction={

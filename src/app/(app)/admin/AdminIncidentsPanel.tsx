@@ -69,7 +69,7 @@ export function AdminIncidentsPanel() {
           Tickets
         </h2>
         {tickets.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-sm text-slate-500 dark:border-slate-800">
+          <p className="rounded-lg border border-dashed border-line px-4 py-8 text-sm text-ink-mute">
             No tickets yet. Auth failures, exhausted retries, and stale sources open tickets automatically.
           </p>
         ) : (
@@ -77,12 +77,12 @@ export function AdminIncidentsPanel() {
             {tickets.map((ticket) => (
               <li
                 key={ticket.id}
-                className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+                className="rounded-lg border border-line bg-panel p-4"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-slate-900 dark:text-white">{ticket.title}</span>
+                      <span className="font-semibold text-ink">{ticket.title}</span>
                       <Badge status={ticket.status} />
                       {ticket.tag && <span className="font-mono text-[11px] text-slate-500">{ticket.tag}</span>}
                     </div>
@@ -121,7 +121,7 @@ export function AdminIncidentsPanel() {
                 <textarea
                   defaultValue={ticket.notes ?? ""}
                   placeholder="Operator notes…"
-                  className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-950"
+                  className="mt-3 w-full rounded-md border border-line bg-canvas px-3 py-2 text-xs text-ink"
                   rows={2}
                   onBlur={(event) => {
                     if (event.target.value !== (ticket.notes ?? "")) {
@@ -178,8 +178,8 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "red
     slate: "text-slate-800 dark:text-slate-200",
   };
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
+    <div className="rounded-lg border border-line bg-panel p-4">
+      <p className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-ink-mute">{label}</p>
       <p className={`mt-1 text-2xl font-extrabold ${colors[tone]}`}>{value}</p>
     </div>
   );
@@ -188,11 +188,11 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "red
 function Badge({ status }: { status: string }) {
   const style =
     status === "open"
-      ? "bg-red-100 text-red-800"
+      ? "border-red-500/30 text-red-300"
       : status === "acknowledged"
-        ? "bg-amber-100 text-amber-800"
-        : "bg-emerald-100 text-emerald-800";
-  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${style}`}>{status}</span>;
+        ? "border-amber-500/30 text-amber-300"
+        : "border-line text-accent";
+  return <span className={`rounded-md border px-2 py-0.5 font-mono text-[10px] font-medium uppercase ${style}`}>{status}</span>;
 }
 
 function CopyButton({ text }: { text: string }) {

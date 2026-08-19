@@ -1,28 +1,33 @@
 import React from "react";
 
-export function Logo({ className = "w-8 h-8", textClassName = "text-xl font-bold" }: { className?: string, textClassName?: string }) {
+export function Logo({
+  className = "h-7 w-7",
+  textClassName = "text-[15px] font-semibold tracking-tight",
+}: {
+  className?: string;
+  textClassName?: string;
+}) {
   return (
-    <div className="flex items-center gap-2">
-      <div className={`relative flex items-center justify-center rounded-full bg-cyan-600 shadow-sm border border-cyan-500/20 ${className}`}>
-        {/* Animated Circle Logo */}
+    <div className="flex items-center gap-2.5">
+      <div
+        className={`relative flex items-center justify-center rounded-md border border-black/10 bg-black/[0.04] dark:border-line dark:bg-panel ${className}`}
+      >
         <svg
           viewBox="0 0 24 24"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
-          className="w-3/5 h-3/5 text-white"
+          className="h-[55%] w-[55%] text-gray-900 dark:text-ink"
+          aria-hidden
         >
           <path
-            d="M12 4V20M4 12H20"
+            d="M12 5V19M5 12H19"
             stroke="currentColor"
-            strokeWidth="3.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+            strokeWidth="1.5"
+            strokeLinecap="square"
           />
         </svg>
       </div>
-      <span className={`text-gray-900 dark:text-white transition-colors ${textClassName}`}>
-        Monstera Cloud
-      </span>
+      <span className={`text-gray-900 dark:text-ink ${textClassName}`}>Monstera Cloud</span>
     </div>
   );
 }

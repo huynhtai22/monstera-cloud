@@ -193,22 +193,19 @@ export default function SettingsPage() {
 
     return (
         <div className="w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
-            {/* Compact header */}
             <div className="mb-6 flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-md shadow-cyan-500/20">
-                    <Settings2 className="w-4 h-4 text-white" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-md border border-line bg-panel">
+                    <Settings2 className="w-4 h-4 text-ink" strokeWidth={1.5} />
                 </div>
                 <div>
-                    <h1 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Settings</h1>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Workspace, team &amp; billing</p>
+                    <h1 className="text-xl font-semibold text-ink tracking-tight">Settings</h1>
+                    <p className="text-xs text-ink-mute">Workspace, team &amp; billing</p>
                 </div>
             </div>
 
-            {/* Unified bento: sidebar + content in one softened container */}
-            <div className="rounded-2xl border border-slate-200 dark:border-white/10 bg-slate-100/80 dark:bg-[#16181c]/40 shadow-lg backdrop-blur-md">
+            <div className="rounded-lg border border-line bg-panel">
                 <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr]">
-                    {/* Sidebar */}
-                    <div className="rounded-tl-2xl rounded-bl-2xl border-b border-slate-200 dark:border-white/10 bg-white/90 dark:bg-[#000000]/60 px-3 py-4 lg:border-b-0 lg:border-r">
+                    <div className="border-b border-line bg-canvas px-3 py-4 lg:border-b-0 lg:border-r">
                         <nav className="space-y-0.5 lg:sticky lg:top-8">
                             {[
                                 { id: 'workspace', label: 'Workspace', icon: Building2 },
@@ -222,15 +219,13 @@ export default function SettingsPage() {
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id as any)}
                                     className={cn(
-                                        "flex items-center w-full px-3 py-2.5 rounded-lg text-sm transition-all",
-                                        "border-l-2",
+                                        "flex items-center w-full px-3 py-2.5 rounded-md text-sm transition-colors",
                                         activeTab === tab.id
-                                            ? "border-l-cyan-500 bg-cyan-500/10 font-semibold text-cyan-700 dark:text-cyan-300"
-                                            : "border-l-transparent font-medium text-slate-500 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white"
+                                            ? "bg-white/[0.06] font-semibold text-ink"
+                                            : "font-medium text-ink-mute hover:bg-white/[0.04] hover:text-ink"
                                     )}
-                                    style={{ transition: "all 250ms var(--spring, cubic-bezier(0.25,1,0.5,1))" }}
                                 >
-                                    <tab.icon className={cn("w-4 h-4 mr-2.5 shrink-0", activeTab === tab.id ? "text-cyan-600 dark:text-cyan-400" : "text-gray-400")} />
+                                    <tab.icon strokeWidth={1.5} className={cn("w-4 h-4 mr-2.5 shrink-0", activeTab === tab.id ? "text-ink" : "text-ink-mute")} />
                                     {tab.label}
                                 </button>
                             ))}

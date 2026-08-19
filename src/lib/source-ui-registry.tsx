@@ -215,13 +215,13 @@ export function buildSourceAuthUrl(
 /** Get button class for source */
 export function getSourceButtonClass(buttonStyle: string): string {
     const baseClasses =
-        "inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0f172a]";
+        "inline-flex w-full items-center justify-center gap-2 rounded-md px-5 py-3 text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas";
 
     switch (buttonStyle) {
         case "facebook":
             return `${baseClasses} bg-[#1877F2] hover:bg-[#166fe0] text-white`;
         case "google":
-            return `${baseClasses} border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700`;
+            return `${baseClasses} border border-line bg-white text-neutral-900 hover:bg-neutral-100`;
         default:
             return `${baseClasses} bg-primary hover:bg-primary-hover text-primary-foreground`;
     }

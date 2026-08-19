@@ -32,7 +32,7 @@ export function RecentActivity({
     onSync,
 }: RecentActivityProps) {
     return (
-        <div className="flex min-h-[280px] flex-col rounded-3xl border border-gray-200/90 bg-white p-6 shadow-sm ring-1 ring-black/[0.03] dark:border-slate-700/70 dark:bg-slate-900/45 dark:ring-white/[0.05] sm:p-7">
+        <div className="flex min-h-[280px] flex-col rounded-lg border border-line bg-panel p-6 sm:p-7">
             <div className="mb-5 flex flex-col gap-3 border-b border-gray-100 pb-5 dark:border-slate-700/70 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">Recent activity</h2>

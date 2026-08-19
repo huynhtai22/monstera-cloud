@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Logo } from "./Logo";
-import { ArrowRight, SquareTerminal } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { readAppReturnPath } from "@/lib/app-return-path";
 
 const MARKETING_LANG_KEY = "marketing_lang";
@@ -13,103 +13,103 @@ const MARKETING_LANG_KEY = "marketing_lang";
 type Lang = "en" | "vi";
 
 function LangToggle({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
-    return (
-        <div className="inline-flex rounded-full border border-gray-200 overflow-hidden bg-gray-50 p-0.5">
-            {(["en", "vi"] as Lang[]).map((l) => (
-                <button
-                    key={l}
-                    onClick={() => setLang(l)}
-                    className={`px-3 py-1 text-xs font-semibold rounded-full transition-all duration-200 ${
-                        lang === l
-                            ? "bg-white text-slate-900 shadow-sm"
-                            : "text-slate-400 hover:text-slate-600"
-                    }`}
-                >
-                    {l.toUpperCase()}
-                </button>
-            ))}
-        </div>
-    );
+  return (
+    <div className="inline-flex overflow-hidden rounded-md border border-line bg-panel p-0.5">
+      {(["en", "vi"] as Lang[]).map((l) => (
+        <button
+          key={l}
+          type="button"
+          onClick={() => setLang(l)}
+          className={`px-2.5 py-1 font-mono text-[10px] font-medium tracking-wider uppercase transition-colors duration-150 ${
+            lang === l ? "bg-white/[0.08] text-ink" : "text-ink-mute hover:text-ink"
+          }`}
+        >
+          {l}
+        </button>
+      ))}
+    </div>
+  );
 }
 
+const navLink =
+  "text-[13px] text-ink-mute transition-colors duration-150 hover:text-ink";
+
 export function MarketingNavbar() {
-    const { status } = useSession();
-    const pathname = usePathname();
-    const isAuthed = status === "authenticated";
-    const showLangToggle = pathname === "/" || pathname === "/solutions/smes";
-    const [lang, setLang] = useState<Lang>("en");
-    const [consoleHref, setConsoleHref] = useState("/console");
+  const { status } = useSession();
+  const pathname = usePathname();
+  const isAuthed = status === "authenticated";
+  const showLangToggle = pathname === "/" || pathname === "/solutions/smes";
+  const [lang, setLang] = useState<Lang>("en");
+  const [consoleHref, setConsoleHref] = useState("/console");
 
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const saved = window.localStorage.getItem(MARKETING_LANG_KEY);
-        if (saved === "en" || saved === "vi") {
-            setLang(saved);
-        }
-    }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const saved = window.localStorage.getItem(MARKETING_LANG_KEY);
+    if (saved === "en" || saved === "vi") {
+      setLang(saved);
+    }
+  }, []);
 
-    useEffect(() => {
-        setConsoleHref(readAppReturnPath());
-    }, [pathname]);
+  useEffect(() => {
+    setConsoleHref(readAppReturnPath());
+  }, [pathname]);
 
-    const onSetLang = (nextLang: Lang) => {
-        setLang(nextLang);
-        if (typeof window !== "undefined") {
-            window.localStorage.setItem(MARKETING_LANG_KEY, nextLang);
-            window.dispatchEvent(new CustomEvent("marketing-lang-change", { detail: nextLang }));
-        }
-    };
+  const onSetLang = (nextLang: Lang) => {
+    setLang(nextLang);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(MARKETING_LANG_KEY, nextLang);
+      window.dispatchEvent(new CustomEvent("marketing-lang-change", { detail: nextLang }));
+    }
+  };
 
-    return (
-        <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-md border-b border-gray-200/60">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex justify-between items-center h-16">
-                    <div className="flex-shrink-0 flex items-center">
-                        <Link href="/" title="Monstera — home">
-                            <Logo />
-                        </Link>
-                    </div>
-                    <div className="hidden md:flex items-center space-x-8">
-                        <Link href="/solutions/smes" className="text-slate-500 hover:text-slate-900 text-sm font-medium transition-colors">
-                            For SMEs
-                        </Link>
-                        <Link href="/docs" className="text-slate-500 hover:text-slate-900 text-sm font-medium transition-colors">
-                            Docs
-                        </Link>
-                        <Link href="/pricing" className="text-slate-500 hover:text-slate-900 text-sm font-medium transition-colors">
-                            Pricing
-                        </Link>
-                    </div>
-                    <div className="flex items-center space-x-3 sm:space-x-4">
-                        <Link
-                            href="/id"
-                            className="hidden text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-600 sm:block"
-                        >
-                            ID
-                        </Link>
-                        {showLangToggle ? <LangToggle lang={lang} setLang={onSetLang} /> : null}
-                        {isAuthed ? (
-                            <Link
-                                href={consoleHref}
-                                className="inline-flex items-center gap-1.5 text-cyan-600 hover:text-cyan-700 text-sm font-medium transition-colors"
-                            >
-                                <SquareTerminal className="w-4 h-4" />
-                                Console
-                            </Link>
-                        ) : (
-                            <Link href="/login" className="hidden sm:block text-slate-500 hover:text-slate-900 text-sm font-medium transition-colors">
-                                Log in
-                            </Link>
-                        )}
-                        {isAuthed ? null : (
-                            <Link href="/register" className="group inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-cyan-600 hover:bg-cyan-700 rounded-lg shadow-sm hover:shadow-md transition-all">
-                                Start free trial
-                                <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                            </Link>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </nav>
-    );
+  return (
+    <nav className="fixed top-0 z-50 w-full border-b border-line/80 bg-canvas/75 backdrop-blur-md">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
+        <Link href="/" title="Monstera — home" className="shrink-0">
+          <Logo />
+        </Link>
+        <div className="hidden items-center gap-7 md:flex">
+          <Link href="/solutions/agencies" className={navLink}>
+            Agencies
+          </Link>
+          <Link href="/docs" className={navLink}>
+            Docs
+          </Link>
+          <Link href="/pricing" className={navLink}>
+            Pricing
+          </Link>
+        </div>
+        <div className="flex items-center gap-3 sm:gap-4">
+          <Link
+            href="/id"
+            className="hidden font-mono text-[10px] uppercase tracking-wider text-ink-mute transition-colors duration-150 hover:text-ink sm:block"
+          >
+            ID
+          </Link>
+          {showLangToggle ? <LangToggle lang={lang} setLang={onSetLang} /> : null}
+          {isAuthed ? (
+            <Link
+              href={consoleHref}
+              className="inline-flex items-center gap-1.5 text-[13px] text-ink-mute transition-colors duration-150 hover:text-ink"
+            >
+              Console
+            </Link>
+          ) : (
+            <Link href="/login" className={`hidden sm:block ${navLink}`}>
+              Log in
+            </Link>
+          )}
+          {isAuthed ? null : (
+            <Link
+              href="/register"
+              className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground transition-colors duration-150 hover:bg-primary-hover"
+            >
+              Start pilot
+              <ArrowRight className="ml-1.5 h-3.5 w-3.5" strokeWidth={1.5} />
+            </Link>
+          )}
+        </div>
+      </div>
+    </nav>
+  );
 }

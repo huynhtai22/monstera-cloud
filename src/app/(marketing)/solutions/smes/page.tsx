@@ -16,6 +16,7 @@ import {
     RefreshCw,
 } from "lucide-react";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+import { IntegrationMark } from "@/components/ui/IntegrationMark";
 
 // ── Platform toggle data ──────────────────────────────────────────────────────
 
@@ -187,13 +188,13 @@ export default function SMEsSolutionPage() {
                         <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">
                             Official API Partner · Trusted by sellers across Vietnam · Indonesia · Thailand
                         </p>
-                        <div className="flex flex-wrap items-center justify-center gap-6 opacity-50 hover:opacity-70 transition-opacity">
-                            <Image src={INTEGRATION_LOGOS.tiktok}       alt="TikTok Ads"    width={20} height={20} className="h-5 w-auto" />
-                            <Image src={INTEGRATION_LOGOS.meta}         alt="Meta Ads"      width={20} height={20} className="h-5 w-auto" />
-                            <Image src={INTEGRATION_LOGOS.shopee}       alt="Shopee"        width={20} height={20} className="h-5 w-auto" />
-                            <Image src={INTEGRATION_LOGOS.googleAds}    alt="Google Ads"    width={20} height={20} className="h-5 w-auto" />
-                            <Image src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" width={20} height={20} className="h-5 w-auto" />
-                            <Image src={INTEGRATION_LOGOS.looker}       alt="Looker Studio" width={20} height={20} className="h-5 w-auto" />
+                        <div className="flex flex-wrap items-center justify-center gap-3">
+                            <IntegrationMark src={INTEGRATION_LOGOS.tiktok} alt="TikTok Ads" size="sm" />
+                            <IntegrationMark src={INTEGRATION_LOGOS.meta} alt="Meta Ads" size="sm" />
+                            <IntegrationMark src={INTEGRATION_LOGOS.shopee} alt="Shopee" size="sm" />
+                            <IntegrationMark src={INTEGRATION_LOGOS.googleAds} alt="Google Ads" size="sm" />
+                            <IntegrationMark src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" size="sm" />
+                            <IntegrationMark src={INTEGRATION_LOGOS.looker} alt="Looker Studio" size="sm" />
                         </div>
                     </div>
                 </div>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { AlertCircle, CheckCircle2, ChevronDown, Loader2, RefreshCw, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PrimaryButton, SecondaryButton } from "@/components/ui";
+import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui";
 
 type IntegrationRow = {
   id: string;
@@ -127,11 +127,11 @@ export function ConnectedSourceList(props: {
   };
 
   return (
-    <div className="rounded-2xl border border-gray-200/80 bg-white/70 shadow-sm backdrop-blur-md dark:border-[#2f3336]/70 dark:bg-[#000000]/40">
-      <div className="flex flex-col gap-3 border-b border-gray-100 px-4 py-3 dark:border-[#2f3336] sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
-          <span className="font-semibold text-gray-700 dark:text-slate-200">Connected sources</span>
-          <span className="rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-700 dark:bg-[#16181c] dark:text-slate-200">
+    <div className="rounded-lg border border-line bg-panel">
+      <div className="flex flex-col gap-3 border-b border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-ink-mute">
+          <span className="font-medium text-ink">Connected</span>
+          <span className="rounded-md border border-line px-2 py-0.5 font-mono text-[11px] text-ink">
             {rows.length}
           </span>
         </div>
@@ -146,10 +146,10 @@ export function ConnectedSourceList(props: {
               </SecondaryButton>
             </>
           )}
-          <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-2 py-1.5 text-xs dark:border-[#2f3336] dark:bg-[#000000]/50">
-            <span className="text-gray-500 dark:text-slate-400">Sort</span>
+          <div className="flex items-center gap-2 rounded-md border border-line bg-canvas px-2 py-1.5 text-xs">
+            <span className="text-ink-mute">Sort</span>
             <select
-              className="bg-transparent text-xs font-semibold text-gray-800 outline-none dark:text-slate-200"
+              className="bg-transparent text-xs font-medium text-ink outline-none"
               value={sortKey}
               onChange={(e) => setSortKey(e.target.value as SortKey)}
             >
@@ -198,14 +198,11 @@ export function ConnectedSourceList(props: {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white p-1.5 dark:border-[#2f3336] dark:bg-white">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          {r.logoSrc ? <img src={r.logoSrc} alt="" width={22} height={22} className="object-contain" /> : null}
-                        </span>
+                        {r.logoSrc ? <IntegrationMark src={r.logoSrc} size="md" /> : null}
                         <div className="min-w-0">
                           <Link
                             href={`/sources/${r.id}`}
-                            className="block truncate font-semibold text-gray-900 hover:text-cyan-700 dark:text-white dark:hover:text-cyan-300"
+                            className="block truncate font-semibold text-ink hover:text-white"
                           >
                             {r.name}
                           </Link>
@@ -238,8 +235,8 @@ export function ConnectedSourceList(props: {
                           <AlertCircle className="h-3.5 w-3.5" /> Error
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-cyan-950/60 px-2 py-1 text-xs font-semibold text-cyan-300 ring-1 ring-cyan-500/25 dark:bg-cyan-950/60">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-cyan-400" /> Connected
+                        <span className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs font-medium text-ink">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} /> Connected
                         </span>
                       )}
                     </td>
@@ -263,7 +260,7 @@ export function ConnectedSourceList(props: {
                               "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
                               syncBusy
                                 ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-500 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-400"
-                                : "border-cyan-200 bg-cyan-50 text-cyan-900 hover:bg-cyan-100 dark:border-cyan-800/40 dark:bg-cyan-950/30 dark:text-cyan-200 dark:hover:bg-cyan-950/50",
+                                : "border-line bg-canvas text-ink hover:bg-white/[0.04]",
                             )}
                           >
                             {syncBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}

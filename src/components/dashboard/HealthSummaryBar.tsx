@@ -61,13 +61,12 @@ export function HealthSummaryBar() {
     ];
 
     return (
-        <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-gray-200/85 bg-gray-50/50 px-4 py-4 ring-1 ring-black/[0.02] dark:border-slate-700/70 dark:bg-slate-900/35 dark:ring-white/[0.04] sm:px-5 sm:py-5">
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-panel px-4 py-4 sm:px-5 sm:py-5">
             {chips.map((chip, idx) => (
                 <span
                     key={chip.label}
                     className={cn(
-                        "inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-semibold transition-all duration-300",
-                        "hover:shadow-md hover:scale-105 hover:-translate-y-0.5",
+                        "inline-flex items-center gap-2 rounded-md border px-4 py-2 text-xs font-medium",
                         chip.className,
                         "pillar-fade"
                     )}

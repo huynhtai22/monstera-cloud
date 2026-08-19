@@ -49,7 +49,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     const loading = status === 'loading';
     const mobileTitle = useMemo(() => mobileSectionTitle(pathname), [pathname]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const [isDarkMode, setIsDarkMode] = useState(false);
+    const [isDarkMode, setIsDarkMode] = useState(true);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     /** After first client read of localStorage — avoids stripping .dark before preference is restored (e.g. layout remount on route change). */
     const themeReady = useRef(false);
@@ -58,11 +58,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     useLayoutEffect(() => {
         try {
             const s = localStorage.getItem(THEME_STORAGE_KEY);
-            const dark =
-                s === "dark" ? true : s === "light" ? false : window.matchMedia("(prefers-color-scheme: dark)").matches;
+            const dark = s === "light" ? false : true;
             setIsDarkMode(dark);
         } catch {
-            setIsDarkMode(false);
+            setIsDarkMode(true);
         } finally {
             themeReady.current = true;
         }
@@ -107,23 +106,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <WorkspaceSessionSync />
         {/* Mount only while auth is resolving — keeps a fixed z-[9999] layer out of the DOM after load (avoids blocking clicks). */}
         {loading ? <GlobeLoader visible /> : null}
-        <div className="flex min-h-screen font-sans">
+        <div className="flex min-h-screen bg-canvas font-sans text-ink">
             {/* Mobile Header (only visible on small screens) */}
-            <div className="fixed top-0 z-30 flex h-16 w-full items-center justify-between gap-2 border-b border-gray-200 bg-white px-3 dark:border-[#2f3336] dark:bg-[#000000] lg:hidden">
+            <div className="fixed top-0 z-30 flex h-14 w-full items-center justify-between gap-2 border-b border-line bg-canvas px-3 lg:hidden">
                 <div className="flex min-w-0 flex-1 items-center">
                     <button
                         type="button"
                         onClick={() => setIsSidebarOpen(true)}
-                        className="-ml-2 p-2 text-gray-600 dark:text-gray-300"
+                        className="-ml-2 p-2 text-ink-mute hover:text-ink"
                         aria-label="Open menu"
                     >
-                        <Menu className="h-6 w-6" />
+                        <Menu className="h-5 w-5" strokeWidth={1.5} />
                     </button>
                     <div className="ml-1 flex min-w-0 items-baseline gap-2">
-                        <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        <span className="shrink-0 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">
                             Monstera
                         </span>
-                        <span className="truncate text-base font-bold text-gray-900 dark:text-white">{mobileTitle}</span>
+                        <span className="truncate text-sm font-semibold text-ink">{mobileTitle}</span>
                     </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-0.5">
@@ -131,10 +130,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                     <button
                         type="button"
                         onClick={toggleDarkMode}
-                        className="p-2 text-gray-500 dark:text-gray-400"
+                        className="p-2 text-ink-mute hover:text-ink"
                         aria-label={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
                     >
-                        {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                        {isDarkMode ? <Sun className="h-4 w-4" strokeWidth={1.5} /> : <Moon className="h-4 w-4" strokeWidth={1.5} />}
                     </button>
                 </div>
             </div>
@@ -148,14 +147,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 setCollapsed={setSidebarCollapsed}
             />
 
-            <div className={`relative flex min-w-0 flex-1 flex-col bg-gray-50 text-slate-900 dark:bg-[#000000] dark:text-slate-100 ${sidebarCollapsed ? "lg:pl-[68px]" : "lg:pl-64"}`} style={{ transition: "padding-left 220ms cubic-bezier(0.25,0.1,0.25,1)" }}>
-                <div className="h-16 shrink-0 lg:hidden" />
+            <div className={`relative flex min-w-0 flex-1 flex-col bg-canvas text-ink ${sidebarCollapsed ? "lg:pl-[68px]" : "lg:pl-64"}`} style={{ transition: "padding-left 220ms cubic-bezier(0.25,0.1,0.25,1)" }}>
+                <div className="h-14 shrink-0 lg:hidden" />
                 {/* pointer-events-none: sticky bar spans full width above main (z-10); without this, flex “gaps” steal clicks from content scrolling underneath. */}
-                <div className="pointer-events-none z-20 hidden items-center justify-between gap-3 border-b border-gray-200/80 bg-gray-50 px-6 py-2.5 dark:border-[#2f3336]/80 dark:bg-[#000000] lg:sticky lg:top-0 lg:flex">
-                    <nav className="pointer-events-auto flex items-center gap-1 text-sm" aria-label="Breadcrumb">
-                        <span className="font-medium text-gray-400 dark:text-slate-500">Monstera</span>
-                        <ChevronRight className="h-3.5 w-3.5 text-gray-300 dark:text-slate-600" aria-hidden />
-                        <span className="font-medium text-gray-700 dark:text-slate-200">{mobileTitle}</span>
+                <div className="pointer-events-none z-20 hidden items-center justify-between gap-3 border-b border-line bg-canvas/90 px-6 py-2.5 backdrop-blur-md lg:sticky lg:top-0 lg:flex">
+                    <nav className="pointer-events-auto flex items-center gap-1.5 text-sm" aria-label="Breadcrumb">
+                        <span className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">Monstera</span>
+                        <ChevronRight className="h-3.5 w-3.5 text-line" strokeWidth={1.5} aria-hidden />
+                        <span className="font-medium text-ink">{mobileTitle}</span>
                     </nav>
                     <div className="pointer-events-auto">
                         <NotificationCenter />
@@ -172,12 +171,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {isSidebarOpen && (
                 <div
                     aria-hidden
-                    className="fixed inset-0 z-40 bg-gray-900/60 backdrop-blur-sm transition-opacity lg:pointer-events-none lg:hidden"
+                    className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm transition-opacity lg:pointer-events-none lg:hidden"
                     onClick={() => setIsSidebarOpen(false)}
                 />
             )}
 
-            <Toaster richColors closeButton position="top-center" />
+            <Toaster
+                theme={isDarkMode ? "dark" : "light"}
+                closeButton
+                position="top-center"
+                toastOptions={{
+                    className: "mc-dialog !shadow-none",
+                }}
+            />
         </div>
         </KeyboardShortcutsProvider>
     );

@@ -62,13 +62,9 @@ export function MetricCardGrid({ snapshots }: { snapshots: Snapshot[] }) {
                 <div
                     key={c.label}
                     className={cn(
-                        tokens.card,
-                        "group relative overflow-hidden rounded-2xl p-5",
-                        "border border-gray-200/80 dark:border-slate-600/50",
-                        "shadow-sm hover:shadow-md hover:border-cyan-300/60 dark:hover:border-cyan-500/30",
-                        "bg-gradient-to-br from-white to-gray-50/90 dark:from-slate-900/85 dark:to-slate-800/55",
-                        "bento-hover",
-                        "metric-card-enter"
+                        "group relative overflow-hidden rounded-lg p-5",
+                        "border border-line bg-panel",
+                        "governed-hover"
                     )}
                     style={{ animationDelay: `${idx * 80}ms` }}
                 >
@@ -76,11 +72,11 @@ export function MetricCardGrid({ snapshots }: { snapshots: Snapshot[] }) {
                     <div className="absolute inset-0 bg-gradient-to-br from-primary/0 to-primary/0 group-hover:from-primary/5 group-hover:to-primary/2 transition-all duration-300" />
                     
                     <div className="relative z-10">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        <div className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">
                             {c.label}
                         </div>
                         <div className="mt-2 flex items-end justify-between gap-2">
-                            <div className="text-xl font-bold tabular-nums tracking-tight text-gray-900 dark:text-white">
+                            <div className="text-xl font-semibold tabular-nums tracking-tight text-ink">
                                 {c.value}
                             </div>
                             {c.delta ? (

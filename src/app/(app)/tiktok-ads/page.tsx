@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { 
   BarChart3, 
   RefreshCw,
@@ -16,6 +15,7 @@ import { useWorkspaceStore } from '@/store/workspace';
 import { cn } from '@/lib/utils';
 import { IntegrationPageLayout } from '@/components/ui/IntegrationPageLayout';
 import { INTEGRATION_LOGOS } from '@/lib/integration-logos';
+import { IntegrationMark } from '@/components/ui/IntegrationMark';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { secondaryButtonLinkClassName } from '@/components/ui/SecondaryButton';
 
@@ -111,7 +111,7 @@ export default function TikTokAdsPage() {
     <IntegrationPageLayout
       title="TikTok Ads Report"
       description="Pull async ad performance reports from TikTok Business API into your workspace."
-      icon={<Image src={INTEGRATION_LOGOS.tiktok} alt="TikTok" width={22} height={22} />}
+      icon={<IntegrationMark src={INTEGRATION_LOGOS.tiktok} alt="TikTok" size="md" />}
       banner={
         tiktokConnections.length === 0 ? (
           <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-300">

@@ -50,7 +50,7 @@ export function ClientsTab({
             {/* Header */}
             <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
-                    <Briefcase className="w-5 h-5 mr-2 text-cyan-600 dark:text-cyan-400" />
+                    <Briefcase className="w-5 h-5 mr-2 text-ink-mute" strokeWidth={1.5} />
                     Client Management
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -66,7 +66,7 @@ export function ClientsTab({
                             <h4 className="text-sm font-medium text-gray-700 dark:text-slate-300">Your Clients</h4>
                             <button
                                 onClick={() => setIsAddingClient(true)}
-                                className="text-xs font-semibold text-cyan-600 hover:text-cyan-700 flex items-center"
+                                className="text-xs font-medium text-ink-mute hover:text-ink flex items-center"
                             >
                                 <Plus className="w-3.5 h-3.5 mr-1" /> Add Client
                             </button>
@@ -81,9 +81,9 @@ export function ClientsTab({
                                         value={newClientName}
                                         onChange={e => setNewClientName(e.target.value)}
                                         onKeyDown={e => e.key === 'Enter' && handleAddClient()}
-                                        className="px-3 py-1.5 text-xs bg-slate-50 dark:bg-[#000000]/60 border border-slate-200 dark:border-white/10 rounded-lg outline-none focus:ring-2 focus:ring-cyan-500/40 text-gray-900 dark:text-white flex-1 placeholder:text-slate-400"
+                                        className="px-3 py-1.5 text-xs bg-canvas border border-line rounded-md outline-none focus:border-white/25 text-ink flex-1 placeholder:text-ink-mute"
                                     />
-                                    <button onClick={handleAddClient} className="px-3 py-1.5 bg-cyan-600 text-white text-xs font-bold rounded-lg">Add</button>
+                                    <button onClick={handleAddClient} className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-md">Add</button>
                                     <button onClick={() => setIsAddingClient(false)} className="px-3 py-1.5 text-gray-500 text-xs font-medium">Cancel</button>
                                 </div>
                             </div>
@@ -105,7 +105,7 @@ export function ClientsTab({
                                                     onChange={e => setEditClientNameValue(e.target.value)}
                                                     className="px-2 py-1 text-sm bg-slate-50 dark:bg-[#000000]/60 border border-slate-200 dark:border-white/10 rounded-md outline-none text-gray-900 dark:text-white placeholder:text-slate-400 focus:ring-1 focus:ring-cyan-500/40"
                                                 />
-                                                <button onClick={() => handleUpdateClient(client.id)} className="text-xs text-cyan-600 font-bold">Save</button>
+                                                <button onClick={() => handleUpdateClient(client.id)} className="text-xs text-ink font-semibold">Save</button>
                                                 <button onClick={() => setEditingClientId(null)} className="text-xs text-gray-500">Cancel</button>
                                             </div>
                                         ) : (
@@ -113,7 +113,7 @@ export function ClientsTab({
                                                 <h5 className="font-semibold text-gray-900 dark:text-white">{client.name}</h5>
                                                 <button
                                                     onClick={() => { setEditingClientId(client.id); setEditClientNameValue(client.name); }}
-                                                    className="ml-2 p-1 text-gray-400 hover:text-cyan-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    className="ml-2 p-1 text-ink-mute hover:text-ink opacity-0 group-hover:opacity-100 transition-opacity"
                                                 >
                                                     <Plus className="w-3.5 h-3.5 rotate-45" />
                                                 </button>
@@ -167,7 +167,7 @@ export function ClientsTab({
                                 placeholder="Search connections..."
                                 value={unassignedSearch}
                                 onChange={e => setUnassignedSearch(e.target.value)}
-                                className="w-full pl-9 pr-3 py-2 text-xs bg-white dark:bg-[#000000]/60 border border-slate-200 dark:border-white/10 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500/40 text-gray-900 dark:text-white placeholder:text-slate-400"
+                                className="w-full pl-9 pr-3 py-2 text-xs bg-canvas border border-line rounded-md outline-none focus:border-white/25 text-ink placeholder:text-ink-mute"
                             />
                         </div>
 
@@ -175,7 +175,7 @@ export function ClientsTab({
                             {filteredUnassigned.length === 0 ? (
                                 <p className="text-center text-xs text-gray-400 py-8">All clear!</p>
                             ) : filteredUnassigned.map(conn => (
-                                <div key={conn.id} className="group p-3 bg-white dark:bg-[#000000]/40 border border-slate-100 dark:border-white/5 rounded-xl hover:border-cyan-400 dark:hover:border-cyan-400/30 hover:shadow-sm transition-all" style={{ transition: 'all 250ms cubic-bezier(0.25,1,0.5,1)' }}>
+                                <div key={conn.id} className="group p-3 bg-canvas border border-line rounded-md governed-hover">
                                     <div className="flex items-center justify-between mb-2">
                                         <div className="flex items-center">
                                             <Activity className="w-3 h-3 mr-2 text-green-500" />
@@ -189,7 +189,7 @@ export function ClientsTab({
                                             <button
                                                 key={client.id}
                                                 onClick={() => handleAssignClient(conn.id, client.id)}
-                                                className="text-[10px] px-2 py-0.5 bg-slate-50 dark:bg-[#16181c]/60 hover:bg-cyan-50 dark:hover:bg-cyan-500/10 text-slate-500 dark:text-slate-400 hover:text-cyan-700 dark:hover:text-cyan-300 border border-slate-200 dark:border-white/5 hover:border-cyan-300 dark:hover:border-cyan-500/20 rounded-md transition-colors"
+                                                className="text-[10px] px-2 py-0.5 bg-panel text-ink-mute hover:text-ink border border-line rounded-md transition-colors"
                                             >
                                                 + {client.name}
                                             </button>

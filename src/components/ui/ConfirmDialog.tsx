@@ -81,7 +81,7 @@ export function ConfirmDialog({
       <button
         type="button"
         className={cn(
-          "absolute inset-0 bg-black/50 backdrop-blur-sm dark:bg-black/60",
+          "absolute inset-0 bg-black/70 backdrop-blur-[2px]",
           "transition-opacity duration-200 ease-out",
           isVisible ? "opacity-100" : "opacity-0"
         )}
@@ -95,26 +95,26 @@ export function ConfirmDialog({
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-desc"
         className={cn(
-          "relative z-10 w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-[#2f3336] dark:bg-[#000000]",
-          "transition-all duration-[280ms]",
-          isVisible ? "scale-100 opacity-100" : "scale-95 opacity-0"
+          "relative z-10 w-full max-w-md rounded-lg border border-line bg-panel p-6",
+          "transition-[opacity,transform] duration-[280ms] motion-reduce:transition-none",
+          isVisible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
         )}
         style={{ transitionTimingFunction: DIALOG_EASE }}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
-          <h2 id="confirm-dialog-title" className="text-lg font-semibold text-gray-900 dark:text-white">
+          <h2 id="confirm-dialog-title" className="text-lg font-semibold text-ink">
             {title}
           </h2>
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-[#16181c] dark:hover:text-white"
+            className="rounded-md p-1 text-ink-mute hover:bg-white/[0.04] hover:text-ink"
             aria-label={cancelLabel}
           >
             <X className="h-5 w-5" />
           </button>
         </div>
-        <p id="confirm-dialog-desc" className="text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+        <p id="confirm-dialog-desc" className="text-sm leading-relaxed text-ink-mute">
           {description}
         </p>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

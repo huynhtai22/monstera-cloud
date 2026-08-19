@@ -5,7 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import useSWR, { useSWRConfig } from "swr";
 import { toast } from "sonner";
-import { Users, Plus, X, Briefcase, LineChart, DatabaseZap, Calendar, Mail, Trash2, Pencil } from "lucide-react";
+import { Plus, X, Briefcase, LineChart, DatabaseZap, Calendar, Mail, Trash2, Pencil } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
 import { PageShell } from "@/components/ui/PageShell";
@@ -256,28 +256,21 @@ export function ClientsClient() {
 
     return (
         <PageShell>
-            <div className="relative z-10 mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex items-center space-x-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white bg-white/50 text-cyan-600 shadow-sm backdrop-blur-md dark:border-[#2f3336]/80 dark:bg-[#16181c]/90 dark:text-cyan-400 dark:ring-1 dark:ring-white/5">
-                        <Users className="h-5 w-5" />
-                    </div>
-                    <div>
-                        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900 dark:text-white">Clients</h1>
-                        {activeWorkspace ? (
-                            <p className="mt-0.5 text-sm font-medium text-gray-600 dark:text-slate-400">
-                                {activeWorkspace.name} · {clients?.length ?? 0} client{(clients?.length ?? 0) === 1 ? "" : "s"}
-                            </p>
-                        ) : (
-                            <p className="mt-0.5 text-sm font-medium text-gray-600 dark:text-slate-400">Group sources & pipelines by the brand you serve.</p>
-                        )}
-                    </div>
+            <div className="relative z-10 mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <h1 className="text-xl font-semibold tracking-tight text-ink">Clients</h1>
+                    <p className="mt-1 text-sm text-ink-mute">
+                        {activeWorkspace
+                            ? `${clients?.length ?? 0} client${(clients?.length ?? 0) === 1 ? "" : "s"} · group sources by brand`
+                            : "Group sources by the brand you serve."}
+                    </p>
                 </div>
                 <button
                     type="button"
                     onClick={openCreate}
-                    className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700 disabled:opacity-60"
+                    className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover disabled:opacity-60"
                 >
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-4 w-4" strokeWidth={1.5} />
                     New client
                 </button>
             </div>
@@ -297,7 +290,7 @@ export function ClientsClient() {
                         <button
                             type="button"
                             onClick={openCreate}
-                            className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700"
+                            className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
                         >
                             <Plus className="h-4 w-4" />
                             Add a client
@@ -313,7 +306,7 @@ export function ClientsClient() {
                         return (
                             <div
                                 key={c.id}
-                                className="group relative flex flex-col rounded-2xl border border-gray-200/80 bg-white/70 p-5 shadow-sm backdrop-blur-sm transition-all hover:border-cyan-200 hover:shadow-md dark:border-[#2f3336]/70 dark:bg-[#16181c]/90 dark:ring-1 dark:ring-white/5 dark:hover:border-cyan-700/60"
+                                className="group relative flex flex-col rounded-lg border border-line bg-panel p-5 governed-hover"
                             >
                                 <div className="mb-3 flex items-center gap-3">
                                     {c.logoUrl ? (
@@ -326,13 +319,13 @@ export function ClientsClient() {
                                             className="h-10 w-10 rounded-xl object-cover ring-1 ring-gray-200 dark:ring-slate-700"
                                         />
                                     ) : (
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 text-sm font-bold text-cyan-700 ring-1 ring-cyan-100 dark:bg-cyan-950/40 dark:text-cyan-200 dark:ring-cyan-800/40">
+                                        <div className="flex h-10 w-10 items-center justify-center rounded-md border border-line bg-canvas text-sm font-semibold text-ink">
                                             {initials(c.name) || "?"}
                                         </div>
                                     )}
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center gap-2">
-                                            <h3 className="truncate text-base font-bold text-gray-900 dark:text-white">{c.name}</h3>
+                                            <h3 className="truncate text-base font-semibold text-ink">{c.name}</h3>
                                             {c.isDemo ? (
                                                 <span className="inline-flex items-center rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-800 dark:bg-violet-950/80 dark:text-violet-200">
                                                     Demo
@@ -340,23 +333,23 @@ export function ClientsClient() {
                                             ) : null}
                                         </div>
                                         {c.description ? (
-                                            <p className="mt-0.5 truncate text-xs text-gray-600 dark:text-slate-400">{c.description}</p>
+                                            <p className="mt-0.5 truncate text-xs text-ink-mute">{c.description}</p>
                                         ) : (
-                                            <p className="mt-0.5 text-xs italic text-gray-400 dark:text-slate-500">No description</p>
+                                            <p className="mt-0.5 text-xs text-ink-mute">No description</p>
                                         )}
                                     </div>
                                 </div>
 
                                 <div className="mb-4 grid grid-cols-2 gap-2 text-xs">
-                                    <div className="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1.5 dark:bg-[#000000]/60">
-                                        <DatabaseZap className="h-3.5 w-3.5 text-gray-500 dark:text-slate-400" />
-                                        <span className="font-semibold text-gray-900 dark:text-white">{connectionCount}</span>
-                                        <span className="text-gray-500 dark:text-slate-400">source{connectionCount === 1 ? "" : "s"}</span>
+                                    <div className="flex items-center gap-1.5 rounded-md border border-line bg-canvas px-2.5 py-1.5">
+                                        <DatabaseZap className="h-3.5 w-3.5 text-ink-mute" strokeWidth={1.5} />
+                                        <span className="font-semibold text-ink">{connectionCount}</span>
+                                        <span className="text-ink-mute">source{connectionCount === 1 ? "" : "s"}</span>
                                     </div>
-                                    <div className="flex items-center gap-1.5 rounded-lg bg-gray-50 px-2.5 py-1.5 dark:bg-[#000000]/60">
-                                        <LineChart className="h-3.5 w-3.5 text-gray-500 dark:text-slate-400" />
-                                        <span className="font-semibold text-gray-900 dark:text-white">{pipelineCount}</span>
-                                        <span className="text-gray-500 dark:text-slate-400">pipeline{pipelineCount === 1 ? "" : "s"}</span>
+                                    <div className="flex items-center gap-1.5 rounded-md border border-line bg-canvas px-2.5 py-1.5">
+                                        <LineChart className="h-3.5 w-3.5 text-ink-mute" strokeWidth={1.5} />
+                                        <span className="font-semibold text-ink">{pipelineCount}</span>
+                                        <span className="text-ink-mute">pipeline{pipelineCount === 1 ? "" : "s"}</span>
                                     </div>
                                 </div>
 
@@ -390,7 +383,7 @@ export function ClientsClient() {
                                             <button
                                                 type="button"
                                                 onClick={() => openScheduleFor(c.id)}
-                                                className="inline-flex items-center gap-1 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-xs font-semibold text-cyan-800 hover:bg-cyan-100 dark:border-cyan-800/50 dark:bg-cyan-950/50 dark:text-cyan-200 dark:hover:bg-cyan-950/80"
+                                                className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-medium text-ink hover:bg-white/[0.04]"
                                             >
                                                 <Mail className="h-3.5 w-3.5" />
                                                 {schedule ? "Edit schedule" : "Schedule email"}

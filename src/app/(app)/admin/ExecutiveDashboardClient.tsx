@@ -120,55 +120,53 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50/50 dark:bg-slate-950 p-4 sm:p-8 lg:p-10 font-sans text-slate-900 dark:text-slate-100 antialiased space-y-8">
-            {/* ── Top Header Bar ────────────────────────────────────────────── */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-800">
+        <div className="min-h-screen bg-canvas p-4 sm:p-8 lg:p-10 font-sans text-ink antialiased space-y-8">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-line">
                 <div>
                     <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
+                        <span className="px-2.5 py-0.5 rounded-md text-[10px] font-medium uppercase tracking-[0.14em] bg-panel text-ink-mute border border-line font-mono">
                             Executive Ops &amp; Finance
                         </span>
-                        <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-medium bg-panel text-ink border border-line font-mono">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
                             <span>DB Ping: {data?.dbHealth.latencyMs ?? "--"}ms</span>
                         </div>
                     </div>
-                    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-950 dark:text-white">
+                    <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-ink">
                         Admin portal
                     </h1>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    <p className="text-xs text-ink-mute mt-1">
                         Incidents, tickets, and finance for {userEmail}.
                     </p>
-                    <div className="mt-3 inline-flex rounded-xl border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-slate-800 dark:bg-slate-900">
+                    <div className="mt-3 inline-flex rounded-md border border-line bg-panel p-1 text-xs font-medium">
                         <button
                             type="button"
                             onClick={() => setTab("incidents")}
-                            className={`rounded-lg px-3 py-1.5 ${tab === "incidents" ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "text-slate-500"}`}
+                            className={`rounded-md px-3 py-1.5 ${tab === "incidents" ? "bg-primary text-primary-foreground" : "text-ink-mute hover:text-ink"}`}
                         >
                             Incidents
                         </button>
                         <button
                             type="button"
                             onClick={() => setTab("finance")}
-                            className={`rounded-lg px-3 py-1.5 ${tab === "finance" ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "text-slate-500"}`}
+                            className={`rounded-md px-3 py-1.5 ${tab === "finance" ? "bg-primary text-primary-foreground" : "text-ink-mute hover:text-ink"}`}
                         >
                             Finance
                         </button>
                     </div>
                 </div>
 
-                {/* Controls: Timeframe Filter & Refresh */}
                 <div className="flex items-center gap-3">
-                    <div className="inline-flex p-1 rounded-xl bg-slate-200/70 dark:bg-slate-800/80 border border-slate-300/60 dark:border-slate-700 text-xs font-semibold">
+                    <div className="inline-flex p-1 rounded-md bg-panel border border-line text-xs font-medium">
                         {(["7d", "30d", "90d", "all"] as const).map((tf) => (
                             <button
                                 key={tf}
                                 type="button"
                                 onClick={() => setTimeframe(tf)}
-                                className={`px-3 py-1.5 rounded-lg transition-all ${
+                                className={`px-3 py-1.5 rounded-md transition-colors ${
                                     timeframe === tf
-                                        ? "bg-white dark:bg-slate-900 text-slate-950 dark:text-white shadow-2xs font-bold"
-                                        : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                                        ? "bg-white/[0.06] text-ink font-semibold"
+                                        : "text-ink-mute hover:text-ink"
                                 }`}
                             >
                                 {tf === "7d" ? "7 Ngày" : tf === "30d" ? "30 Ngày" : tf === "90d" ? "90 Ngày" : "Tất Cả"}
@@ -179,10 +177,10 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                     <button
                         type="button"
                         onClick={loadMetrics}
-                        className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 shadow-2xs transition-all"
+                        className="p-2.5 rounded-md bg-panel border border-line hover:bg-white/[0.04] text-ink-mute hover:text-ink transition-colors"
                         title="Làm mới dữ liệu"
                     >
-                        <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-cyan-600" : ""}`} />
+                        <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-accent" : ""}`} strokeWidth={1.5} />
                     </button>
                 </div>
             </div>
@@ -202,7 +200,7 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
                     {/* Card 1: MRR */}
-                    <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+                    <div className="p-6 rounded-lg bg-panel border border-line space-y-2">
                         <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
                             <span>MRR (Doanh thu tháng)</span>
                             <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
@@ -225,7 +223,7 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                     </div>
 
                     {/* Card 2: Realized VietQR Cash-In */}
-                    <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+                    <div className="p-6 rounded-lg bg-panel border border-line space-y-2">
                         <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
                             <span>Thực Thu VietQR (Cash-In)</span>
                             <div className="p-2 rounded-xl bg-cyan-50 dark:bg-cyan-950/60 text-cyan-600 dark:text-cyan-400">
@@ -244,7 +242,7 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                     </div>
 
                     {/* Card 3: Paying Workspaces */}
-                    <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+                    <div className="p-6 rounded-lg bg-panel border border-line space-y-2">
                         <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
                             <span>Khách Hàng Trả Phí</span>
                             <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400">
@@ -264,7 +262,7 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                     </div>
 
                     {/* Card 4: Net Growth Rate */}
-                    <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-2">
+                    <div className="p-6 rounded-lg bg-panel border border-line space-y-2">
                         <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
                             <span>Tăng Trưởng Workspace</span>
                             <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
@@ -301,7 +299,7 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
             {/* ── SECTION 2: USERS & CHURN TELEMETRY (USER-LEAVE) ───────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* User & Churn Breakdown */}
-                <div className="p-6 md:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+                <div className="p-6 md:p-8 rounded-lg bg-panel border border-line space-y-6">
                     <div className="flex items-center justify-between">
                         <h3 className="font-bold text-sm uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
                             <Users className="w-4 h-4 text-cyan-600" />
@@ -342,7 +340,7 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                 </div>
 
                 {/* Plan Distribution Breakdown */}
-                <div className="p-6 md:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-5 lg:col-span-2">
+                <div className="p-6 md:p-8 rounded-lg bg-panel border border-line space-y-5 lg:col-span-2">
                     <h3 className="font-bold text-sm uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-2">
                         <Layers className="w-4 h-4 text-indigo-600" />
                         <span>Phân Bổ Gói Đăng Ký (Plan Tier Distribution)</span>
@@ -385,7 +383,7 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
             </div>
 
             {/* ── SECTION 3: LIVE TRANSACTIONS & APPROVAL LEDGER ────────────── */}
-            <div className="p-6 md:p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+            <div className="p-6 md:p-8 rounded-lg bg-panel border border-line space-y-4">
                 <div className="flex items-center justify-between">
                     <div>
                         <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">

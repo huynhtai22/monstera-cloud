@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { X, AlertCircle, RefreshCw, CheckCircle2, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
-import { PrimaryButton, SecondaryButton } from "@/components/ui";
+import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui";
 import { useMounted } from "@/hooks/useMounted";
 
 interface FixConnectionModalProps {
@@ -203,7 +203,7 @@ export function FixConnectionModal({
             {/* Backdrop */}
             <div
                 className={cn(
-                    "absolute inset-0 bg-black/50 backdrop-blur-sm",
+                    "absolute inset-0 bg-black/70 backdrop-blur-[2px]",
                     "transition-opacity duration-200 ease-out",
                     isVisible ? "opacity-100" : "opacity-0"
                 )}
@@ -213,25 +213,26 @@ export function FixConnectionModal({
             {/* Modal */}
             <div
                 className={cn(
-                    "relative w-full max-w-md rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-[#2f3336] dark:bg-[#000000]",
-                    "transition-all duration-[280ms]",
-                    isVisible ? "scale-100 opacity-100" : "scale-95 opacity-0"
+                    "relative w-full max-w-md overflow-hidden rounded-lg border border-line bg-panel",
+                    "transition-[opacity,transform] duration-[280ms] motion-reduce:transition-none",
+                    isVisible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
                 )}
                 style={{ transitionTimingFunction: DIALOG_EASE }}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-[#2f3336]">
+                <div className="h-[2px] w-full bg-amber-400/80" />
+                <div className="flex items-center justify-between border-b border-line px-6 py-4">
                     <div className="flex items-center gap-3">
-                        <img src={logo} alt="" className="h-6 w-6 object-contain" />
-                        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        <IntegrationMark src={logo} size="md" />
+                        <h2 className="text-lg font-semibold text-ink">
                             Fix Connection
                         </h2>
                     </div>
                     <button
                         onClick={handleClose}
-                        className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-[#16181c] dark:hover:text-gray-300"
+                        className="rounded-md p-1 text-ink-mute hover:bg-white/[0.04] hover:text-ink"
                     >
-                        <X className="h-5 w-5" />
+                        <X className="h-5 w-5" strokeWidth={1.5} />
                     </button>
                 </div>
 
@@ -241,21 +242,21 @@ export function FixConnectionModal({
                         <div className="space-y-4">
                             {/* Error icon */}
                             <div className="flex items-start gap-4">
-                                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-red-500/30 bg-red-950/40">
                                     <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
                                 </div>
                                 <div>
-                                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                                    <h3 className="font-semibold text-ink">
                                         {diagnosis.title}
                                     </h3>
-                                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                                    <p className="mt-1 text-sm text-ink-mute">
                                         {diagnosis.description}
                                     </p>
                                 </div>
                             </div>
 
                             {/* Info box */}
-                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-950/30">
+                            <div className="rounded-md border border-amber-500/30 bg-amber-950/20 p-4">
                                 <p className="text-sm text-amber-800 dark:text-amber-200">
                                     <span className="font-medium">What will happen:</span>{" "}
                                     {diagnosis.action} Your existing data and pipelines will be preserved.
@@ -263,9 +264,9 @@ export function FixConnectionModal({
                             </div>
 
                             {/* Connection details */}
-                            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-[#2f3336] dark:bg-[#16181c]/50">
-                                <p className="text-xs text-gray-500 dark:text-gray-400">Connection</p>
-                                <p className="font-medium text-gray-900 dark:text-white">{connection.name}</p>
+                            <div className="rounded-md border border-line bg-canvas p-3">
+                                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-mute">Connection</p>
+                                <p className="font-medium text-ink">{connection.name}</p>
                                 {connection.lastSync && connection.lastSync !== "Never" && (
                                     <p className="text-xs text-gray-500 dark:text-gray-400">
                                         Last successful sync: {connection.lastSync}
@@ -284,7 +285,7 @@ export function FixConnectionModal({
                     {step === "reconnect" && (
                         <div className="py-8 text-center">
                             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center">
-                                <RefreshCw className="h-10 w-10 animate-spin text-cyan-600 dark:text-cyan-400" />
+                                <RefreshCw className="h-8 w-8 animate-spin text-accent" strokeWidth={1.5} />
                             </div>
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                                 Waiting for authorization...

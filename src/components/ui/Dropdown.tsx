@@ -66,7 +66,7 @@ export function Dropdown({
   return (
     <div ref={containerRef} className={cn("relative", className)}>
       {label && (
-        <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-slate-400">
+        <label className="mb-1.5 block text-xs font-medium text-ink-mute">
           {label}
         </label>
       )}
@@ -77,26 +77,26 @@ export function Dropdown({
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
         className={cn(
-          "flex w-full items-center justify-between gap-2 rounded-lg border transition-all duration-200",
-          "bg-white dark:bg-[#000000]",
-          "focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500/50",
+          "flex w-full items-center justify-between gap-2 rounded-md border transition-colors duration-200",
+          "bg-panel",
+          "focus:outline-none focus:border-white/25",
           "disabled:opacity-50 disabled:cursor-not-allowed",
           isOpen
-            ? "border-cyan-500/50 shadow-lg shadow-cyan-500/10"
-            : "border-gray-200 dark:border-[#2f3336] hover:border-gray-300 dark:hover:border-slate-600",
+            ? "border-white/25"
+            : "border-line hover:border-white/20",
           sizeClasses[size]
         )}
       >
         <div className="flex items-center gap-2 min-w-0">
           {selectedOption?.icon && (
-            <span className="shrink-0 text-gray-400 dark:text-slate-500">
+            <span className="shrink-0 text-ink-mute">
               {selectedOption.icon}
             </span>
           )}
           <span
             className={cn(
               "truncate",
-              selectedOption ? "text-gray-900 dark:text-white" : "text-gray-400 dark:text-slate-500"
+              selectedOption ? "text-ink" : "text-ink-mute"
             )}
           >
             {selectedOption?.label || placeholder}
@@ -107,7 +107,7 @@ export function Dropdown({
             "shrink-0 transition-transform duration-200",
             size === "sm" ? "h-3.5 w-3.5" : size === "lg" ? "h-5 w-5" : "h-4 w-4",
             isOpen && "rotate-180",
-            "text-gray-400 dark:text-slate-500"
+            "text-ink-mute"
           )}
         />
       </button>
@@ -116,11 +116,8 @@ export function Dropdown({
       {isOpen && (
         <div
           className={cn(
-            "absolute z-50 mt-1 w-full overflow-hidden rounded-lg border",
-            "bg-white dark:bg-[#000000]",
-            "border-gray-200 dark:border-[#2f3336]",
-            "shadow-xl shadow-black/10 dark:shadow-black/30",
-            "animate-in fade-in zoom-in-95 duration-100"
+            "absolute z-50 mt-1 w-full overflow-hidden rounded-md border",
+            "bg-panel border-line"
           )}
         >
           <div className="max-h-60 overflow-y-auto py-1">
@@ -134,9 +131,9 @@ export function Dropdown({
                 }}
                 className={cn(
                   "flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors",
-                  "hover:bg-gray-50 dark:hover:bg-[#16181c]",
-                  value === option.value && "bg-cyan-50 dark:bg-cyan-950/30",
-                  index !== options.length - 1 && "border-b border-gray-100 dark:border-[#2f3336]"
+                  "hover:bg-white/[0.04]",
+                  value === option.value && "bg-white/[0.06]",
+                  index !== options.length - 1 && "border-b border-line"
                 )}
               >
                 {/* Selection indicator */}
@@ -145,8 +142,8 @@ export function Dropdown({
                     "flex h-4 w-4 shrink-0 items-center justify-center rounded",
                     "border transition-colors",
                     value === option.value
-                      ? "border-cyan-500 bg-cyan-500 text-white"
-                      : "border-gray-300 dark:border-[#2f3336]"
+                      ? "border-accent bg-accent text-primary-foreground"
+                      : "border-line"
                   )}
                 >
                   {value === option.value && <Check className="h-3 w-3" />}
@@ -240,7 +237,7 @@ export function MultiDropdown({
   return (
     <div ref={containerRef} className={cn("relative", className)}>
       {label && (
-        <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-slate-400">
+        <label className="mb-1.5 block text-xs font-medium text-ink-mute">
           {label}
         </label>
       )}

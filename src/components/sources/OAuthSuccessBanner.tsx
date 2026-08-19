@@ -19,14 +19,14 @@ export function OAuthSuccessBanner({
 }: OAuthSuccessBannerProps) {
   return (
     <div
-      className={`mb-6 rounded-xl border px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+      className={`mb-6 rounded-lg border px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
         limit
-          ? "border-amber-200/80 bg-amber-50/90 dark:border-amber-900/50 dark:bg-amber-950/30"
-          : "border-cyan-200/80 bg-cyan-50/90 dark:border-cyan-900/50 dark:bg-cyan-950/30"
+          ? "border-amber-500/30 bg-amber-950/20"
+          : "border-line bg-panel"
       }`}
       role="status"
     >
-      <div className="text-sm text-gray-800 dark:text-cyan-50/95">
+      <div className="text-sm text-ink">
         <span className="font-semibold">Connected successfully.</span>{" "}
         {pipelineReady ? (
           <>
@@ -36,7 +36,7 @@ export function OAuthSuccessBanner({
             open{" "}
             <Link
               href="/reports"
-              className="font-medium text-cyan-700 underline dark:text-cyan-300"
+              className="font-medium text-accent underline"
             >
               Reports
             </Link>{" "}
@@ -48,7 +48,7 @@ export function OAuthSuccessBanner({
             in the Dashboard to start syncing data.{" "}
             <Link
               href="/console"
-              className="font-medium text-cyan-700 underline dark:text-cyan-300"
+              className="font-medium text-accent underline"
             >
               Go to Dashboard
             </Link>
@@ -72,7 +72,7 @@ export function OAuthSuccessBanner({
       <button
         type="button"
         onClick={onDismiss}
-        className="shrink-0 text-xs font-semibold text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+        className="shrink-0 text-xs font-medium text-ink-mute hover:text-ink"
       >
         Dismiss
       </button>

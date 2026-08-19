@@ -133,62 +133,47 @@ export default function DataExplorerPage() {
 
     return (
         <PageShell className="max-w-7xl">
-            <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-200/50 bg-gradient-to-br from-cyan-500/20 to-white text-cyan-700 shadow-sm dark:border-cyan-900/40 dark:from-cyan-900/30 dark:to-slate-900 dark:text-cyan-300">
-                        <Database className="h-6 w-6" />
-                    </div>
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-                            Data explorer
-                        </h1>
-                        <p className="mt-2 max-w-2xl text-base text-gray-600 dark:text-slate-400">
-                            Import from connected ad platforms into the workspace warehouse (Meta, Google Ads, TikTok), query stored campaign
-                            metrics, or upload temporary CSV datasets for quick analysis.
-                        </p>
-                    </div>
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                    <h1 className="text-xl font-semibold tracking-tight text-ink">Data explorer</h1>
+                    <p className="mt-1 max-w-2xl text-sm text-ink-mute">
+                        Query warehouse campaign metrics. Import from connected sources when you need a fresh range.
+                    </p>
                 </div>
-            </div>
-
-            <div className="mb-8 flex shrink-0 flex-wrap gap-2 border-b border-gray-200/80 pb-4 dark:border-[#2f3336]/80">
-                <button
-                    type="button"
-                    onClick={() => setTab("warehouse")}
-                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
-                        tab === "warehouse"
-                            ? "bg-cyan-600 text-white shadow-md shadow-cyan-500/25"
-                            : "border border-gray-200 bg-white/80 text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/50 dark:text-slate-200 dark:hover:bg-[#16181c]"
-                    }`}
-                >
-                    <Database className="h-4 w-4" />
-                    Warehouse &amp; metrics
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setTab("csv")}
-                    className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all ${
-                        tab === "csv"
-                            ? "bg-cyan-600 text-white shadow-md shadow-cyan-500/25"
-                            : "border border-gray-200 bg-white/80 text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/50 dark:text-slate-200 dark:hover:bg-[#16181c]"
-                    }`}
-                >
-                    <UploadCloud className="h-4 w-4" />
-                    CSV upload
-                </button>
+                <div className="flex gap-1 rounded-md border border-line p-0.5">
+                    <button
+                        type="button"
+                        onClick={() => setTab("warehouse")}
+                        className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium ${
+                            tab === "warehouse" ? "bg-white/[0.06] text-ink" : "text-ink-mute hover:text-ink"
+                        }`}
+                    >
+                        <Database className="h-3.5 w-3.5" strokeWidth={1.5} />
+                        Warehouse
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setTab("csv")}
+                        className={`inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium ${
+                            tab === "csv" ? "bg-white/[0.06] text-ink" : "text-ink-mute hover:text-ink"
+                        }`}
+                    >
+                        <UploadCloud className="h-3.5 w-3.5" strokeWidth={1.5} />
+                        CSV
+                    </button>
+                </div>
             </div>
 
             {tab === "warehouse" && <WarehouseWorkbench />}
 
             {tab === "csv" && !showCsvGrid && (
-                <div className="group relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-gray-200/90 bg-white/50 p-8 text-center backdrop-blur-xl dark:border-[#2f3336] dark:bg-[#000000]/40">
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-cyan-500/10 to-transparent" />
-
-                    <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border-4 border-cyan-100 bg-cyan-50 transition-transform duration-500 group-hover:scale-105 dark:border-cyan-900/60 dark:bg-cyan-950/40">
-                        <UploadCloud className="h-10 w-10 text-cyan-500" />
+                <div className="group relative flex min-h-[420px] flex-col items-center justify-center overflow-hidden rounded-lg border border-dashed border-line bg-panel p-8 text-center">
+                    <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-md border border-line bg-canvas">
+                        <UploadCloud className="h-6 w-6 text-ink" strokeWidth={1.5} />
                     </div>
 
-                    <h3 className="mb-2 text-xl font-bold text-gray-900 dark:text-white">Upload raw CSV</h3>
-                    <p className="mb-8 max-w-md text-sm text-gray-500 dark:text-slate-400">
+                    <h3 className="mb-2 text-xl font-semibold text-ink">Upload raw CSV</h3>
+                    <p className="mb-8 max-w-md text-sm text-ink-mute">
                         Stream large .csv files into the temporary data lake — ideal for ad-hoc extracts. Use the warehouse tab for synced ad
                         platform metrics stored in CampaignMetric.
                     </p>

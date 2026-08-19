@@ -153,17 +153,17 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
 
     return (
         <div
-            className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-slate-200 bg-slate-50 shadow-[4px_0_24px_rgba(0,0,0,0.02)] dark:border-[#2f3336]/90 dark:bg-[#000000] dark:shadow-[4px_0_32px_rgba(0,0,0,0.7)] lg:translate-x-0 ${collapsed ? "w-[68px]" : "w-64"} ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
+            className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-line bg-canvas lg:translate-x-0 ${collapsed ? "w-[68px]" : "w-64"} ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
             style={{ transition: "width 220ms cubic-bezier(0.25,0.1,0.25,1), transform 300ms ease-in-out" }}
         >
-            <div ref={workspaceRef} className={`relative z-20 border-b border-gray-200/60 dark:border-[#2f3336] ${collapsed ? "px-2 py-4" : "px-4 py-5"}`}>
+            <div ref={workspaceRef} className={`relative z-20 border-b border-line ${collapsed ? "px-2 py-4" : "px-3 py-4"}`}>
                 <button
                     type="button"
                     onClick={() => collapsed ? toggleCollapsed() : setIsWorkspaceOpen(!isWorkspaceOpen)}
                     aria-expanded={isWorkspaceOpen}
                     aria-controls="workspace-menu"
                     aria-haspopup="menu"
-                    className={`group flex w-full items-center rounded-xl border border-gray-200 bg-white shadow-sm transition-all hover:border-cyan-500/30 hover:shadow-md dark:border-[#2f3336] dark:bg-[#16181c] dark:hover:border-cyan-500/50 ${collapsed ? "justify-center p-2" : "justify-between px-3 py-2"}`}
+                    className={`group flex w-full items-center rounded-lg border border-line bg-panel governed-hover ${collapsed ? "justify-center p-2" : "justify-between px-3 py-2"}`}
                     title={collapsed ? (activeWorkspace?.name || "Workspace") : undefined}
                 >
                     <div className={`flex items-center ${collapsed ? "justify-center" : ""}`}>
@@ -173,20 +173,20 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                         {!collapsed && (
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                    <span className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">
                                         Workspace
                                     </span>
                                     {(activeWorkspace as { demoMockMode?: boolean } | null)?.demoMockMode ? (
                                         <span
-                                            className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-800 dark:bg-violet-950/80 dark:text-violet-200"
+                                            className="inline-flex items-center gap-1 rounded border border-line bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9px] font-medium uppercase tracking-wide text-ink-mute"
                                             title="Demo / mock data is enabled for this workspace"
                                         >
-                                            <span className="h-1.5 w-1.5 rounded-full bg-violet-500 dark:bg-violet-400" />
+                                            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
                                             Demo
                                         </span>
                                     ) : null}
                                 </div>
-                                <div className="truncate text-sm font-bold text-gray-900 dark:text-white">
+                                <div className="truncate text-sm font-semibold text-ink">
                                     {activeWorkspace?.name || "No Workspace"}
                                 </div>
                             </div>
@@ -194,7 +194,8 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                     </div>
                     {!collapsed && (
                         <ChevronDown
-                            className={`h-4 w-4 text-gray-400 transition-transform group-hover:text-cyan-600 dark:text-gray-500 dark:group-hover:text-cyan-600 ${isWorkspaceOpen ? "rotate-180" : ""}`}
+                            className={`h-4 w-4 text-ink-mute transition-transform ${isWorkspaceOpen ? "rotate-180" : ""}`}
+                            strokeWidth={1.5}
                         />
                     )}
                 </button>
@@ -202,9 +203,9 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                 {isWorkspaceOpen && Array.isArray(workspaces) && (
                     <div
                         id="workspace-menu"
-                        className="mt-2 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white p-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200 dark:border-[#2f3336] dark:bg-[#16181c]"
+                        className="mt-2 max-h-72 overflow-y-auto rounded-lg border border-line bg-panel p-1.5"
                     >
-                        <div className="mb-1 px-2 py-1 text-xs font-bold uppercase text-gray-400 dark:text-gray-500">
+                        <div className="mb-1 px-2 py-1 font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">
                             Your Workspaces
                         </div>
 
@@ -216,44 +217,44 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                                     setActiveWorkspaceId(ws.id);
                                     setIsWorkspaceOpen(false);
                                 }}
-                                className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:text-white dark:hover:bg-[#1d1f23]"
+                                className="flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm font-medium text-ink governed-hover"
                             >
                                 <div className="flex items-center">
-                                    <div className="mr-2 flex h-6 w-6 items-center justify-center rounded bg-cyan-100 text-xs font-bold text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-400">
+                                    <div className="mr-2 flex h-6 w-6 items-center justify-center rounded border border-line bg-white/[0.04] font-mono text-[11px] font-medium text-ink">
                                         {ws.name.charAt(0).toUpperCase()}
                                     </div>
                                     {ws.name}
                                 </div>
-                                {activeWorkspaceId === ws.id ? <Check className="h-4 w-4 text-cyan-600" /> : null}
+                                {activeWorkspaceId === ws.id ? <Check className="h-4 w-4 text-accent" strokeWidth={1.5} /> : null}
                             </button>
                         ))}
 
-                        <div className="my-1 h-px bg-gray-100 dark:bg-[#1d1f23]" />
-                        <p className="px-2 py-2 text-xs text-gray-500 dark:text-gray-400">Pilot workspaces are created by a Monstera operator.</p>
+                        <div className="my-1 h-px bg-line" />
+                        <p className="px-2 py-2 text-xs text-ink-mute">Pilot workspaces are created by a Monstera operator.</p>
                     </div>
                 )}
             </div>
 
-            <div className={`border-b border-gray-200/60 dark:border-[#2f3336] ${collapsed ? "px-2 py-2" : "px-4 py-2"}`}>
+            <div className={`border-b border-line ${collapsed ? "px-2 py-2" : "px-3 py-2"}`}>
                 <Link
                     href="/"
-                    className={`flex items-center rounded-lg py-2 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-50 hover:text-cyan-700 dark:text-slate-400 dark:hover:bg-[#16181c]/80 dark:hover:text-cyan-300 ${collapsed ? "justify-center px-0" : "gap-2 px-3"}`}
+                    className={`flex items-center rounded-md py-2 text-xs font-medium text-ink-mute transition-colors hover:bg-white/[0.04] hover:text-ink ${collapsed ? "justify-center px-0" : "gap-2 px-3"}`}
                     title={collapsed ? "Website" : undefined}
                 >
-                    <Globe className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+                    <Globe className="h-4 w-4 shrink-0" strokeWidth={1.5} aria-hidden />
                     {!collapsed && "Website"}
                 </Link>
             </div>
 
-            <nav className={`flex-1 overflow-y-auto py-4 ${collapsed ? "space-y-1 px-2" : "space-y-6 px-4"}`} aria-label="Main">
+            <nav className={`flex-1 overflow-y-auto py-4 ${collapsed ? "space-y-1 px-2" : "space-y-6 px-3"}`} aria-label="Main">
                 {navGroups.map((group) => (
                     <div key={group.label}>
                         {!collapsed && (
-                            <div className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-slate-500">
+                            <div className="mb-2 px-3 font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-ink-mute">
                                 {group.label}
                             </div>
                         )}
-                        <div className="space-y-1">
+                        <div className="space-y-0.5">
                             {group.items.map((item) => {
                                 const isActive = navIsActive(pathname, item.href);
                                 return (
@@ -266,13 +267,14 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                                         }}
                                         aria-current={isActive ? "page" : undefined}
                                         title={collapsed ? item.name : undefined}
-                                        className={`group flex items-center rounded-lg py-2 text-sm font-medium transition-all ${collapsed ? "justify-center px-0" : "px-3"} ${isActive
-                                            ? "bg-cyan-50 text-cyan-800 dark:bg-cyan-950/55 dark:text-cyan-100 dark:ring-1 dark:ring-cyan-700/50"
-                                            : "text-gray-600 hover:bg-gray-50/80 hover:text-gray-900 dark:text-slate-300 dark:hover:bg-[#16181c] dark:hover:text-white"
+                                        className={`group flex items-center rounded-md py-2 text-sm font-medium transition-colors ${collapsed ? "justify-center px-0" : "px-3"} ${isActive
+                                            ? "bg-white/[0.06] text-ink"
+                                            : "text-ink-mute hover:bg-white/[0.04] hover:text-ink"
                                             }`}
                                     >
                                         <item.icon
-                                            className={`h-[18px] w-[18px] shrink-0 transition-colors ${collapsed ? "" : "mr-3"} ${isActive ? "text-cyan-600 dark:text-cyan-300" : "text-gray-400 group-hover:text-gray-500 dark:text-slate-500 dark:group-hover:text-slate-300"}`}
+                                            strokeWidth={1.5}
+                                            className={`h-[18px] w-[18px] shrink-0 ${collapsed ? "" : "mr-3"} ${isActive ? "text-ink" : "text-ink-mute group-hover:text-ink"}`}
                                         />
                                         {!collapsed && item.name}
                                     </Link>
@@ -284,21 +286,21 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
             </nav>
 
             {/* Collapse toggle — desktop only, integrated row */}
-            <div className={`hidden lg:block border-t border-gray-200/60 dark:border-[#2f3336] ${collapsed ? "px-2 py-2" : "px-4 py-2"}`}>
+            <div className={`hidden lg:block border-t border-line ${collapsed ? "px-2 py-2" : "px-3 py-2"}`}>
                 <button
                     type="button"
                     onClick={toggleCollapsed}
-                    className={`group flex w-full items-center rounded-lg py-2 text-xs font-medium text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-slate-500 dark:hover:bg-[#16181c] dark:hover:text-slate-300 ${collapsed ? "justify-center px-0" : "gap-2 px-3"}`}
+                    className={`group flex w-full items-center rounded-md py-2 text-xs font-medium text-ink-mute transition-colors hover:bg-white/[0.04] hover:text-ink ${collapsed ? "justify-center px-0" : "gap-2 px-3"}`}
                     title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                 >
                     {collapsed
-                        ? <ChevronRight className="w-4 h-4 shrink-0" />
-                        : <><ChevronLeft className="w-4 h-4 shrink-0" /><span>Collapse</span></>
+                        ? <ChevronRight className="w-4 h-4 shrink-0" strokeWidth={1.5} />
+                        : <><ChevronLeft className="w-4 h-4 shrink-0" strokeWidth={1.5} /><span>Collapse</span></>
                     }
                 </button>
             </div>
 
-            <div className={`border-t border-gray-200/60 dark:border-[#2f3336] space-y-2 bg-white/50 dark:bg-[#000000] overflow-visible relative z-30 ${collapsed ? "p-2" : "p-4"}`} ref={profileRef}>
+            <div className={`border-t border-line space-y-2 bg-canvas overflow-visible relative z-30 ${collapsed ? "p-2" : "p-3"}`} ref={profileRef}>
                 <div className={`space-y-1 mb-4 hidden lg:block`}>
                     <a
                         href="/docs"
@@ -306,18 +308,18 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                         rel="noopener noreferrer"
                         aria-label="Help and documentation"
                         onClick={() => trackEvent("help_opened", { location: "sidebar" })}
-                        className={`flex items-center w-full py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#16181c] hover:text-gray-900 dark:hover:text-white transition-colors group ${collapsed ? "justify-center px-0" : "px-3"}`}
+                        className={`flex items-center w-full py-2 rounded-md text-sm font-medium text-ink-mute hover:bg-white/[0.04] hover:text-ink transition-colors group ${collapsed ? "justify-center px-0" : "px-3"}`}
                         title={collapsed ? "Help & docs" : undefined}
                     >
-                        <HelpCircle className={`w-[18px] h-[18px] shrink-0 text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400 ${collapsed ? "" : "mr-3"}`} />
+                        <HelpCircle strokeWidth={1.5} className={`w-[18px] h-[18px] shrink-0 ${collapsed ? "" : "mr-3"}`} />
                         {!collapsed && <>Help &amp; docs</>}
                     </a>
                     <button
                         onClick={toggleDarkMode}
-                        className={`flex items-center w-full py-2 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-[#16181c] hover:text-gray-900 dark:hover:text-white transition-colors group ${collapsed ? "justify-center px-0" : "px-3"}`}
+                        className={`flex items-center w-full py-2 rounded-md text-sm font-medium text-ink-mute hover:bg-white/[0.04] hover:text-ink transition-colors group ${collapsed ? "justify-center px-0" : "px-3"}`}
                         title={collapsed ? (isDarkMode ? "Light Mode" : "Dark Mode") : undefined}
                     >
-                        {isDarkMode ? <Sun className={`w-[18px] h-[18px] shrink-0 text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400 ${collapsed ? "" : "mr-3"}`} /> : <Moon className={`w-[18px] h-[18px] shrink-0 text-gray-400 dark:text-gray-500 group-hover:text-gray-500 dark:group-hover:text-gray-400 ${collapsed ? "" : "mr-3"}`} />}
+                        {isDarkMode ? <Sun strokeWidth={1.5} className={`w-[18px] h-[18px] shrink-0 ${collapsed ? "" : "mr-3"}`} /> : <Moon strokeWidth={1.5} className={`w-[18px] h-[18px] shrink-0 ${collapsed ? "" : "mr-3"}`} />}
                         {!collapsed && (isDarkMode ? 'Light Mode' : 'Dark Mode')}
                     </button>
                 </div>
@@ -326,30 +328,30 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                     {isProfileOpen && (
                         <div
                             id="profile-menu"
-                            className="absolute bottom-[calc(100%+8px)] left-0 w-full bg-white dark:bg-[#16181c] border border-gray-200 dark:border-[#2f3336] rounded-xl shadow-lg p-2 animate-in fade-in slide-in-from-bottom-2 duration-200 z-50"
+                            className="absolute bottom-[calc(100%+8px)] left-0 w-full bg-panel border border-line rounded-lg p-1.5 z-50"
                         >
-                            <Link href="/settings" onClick={() => { setIsOpen?.(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1d1f23] rounded-lg transition-colors">
-                                <Settings className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" /> Settings
+                            <Link href="/settings" onClick={() => { setIsOpen?.(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-ink hover:bg-white/[0.04] rounded-md transition-colors">
+                                <Settings className="w-4 h-4 mr-2 text-ink-mute" strokeWidth={1.5} /> Settings
                             </Link>
-                            <Link href="/settings" onClick={() => { setIsOpen?.(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1d1f23] rounded-lg transition-colors">
-                                <KeyRound className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" /> API Keys
+                            <Link href="/settings" onClick={() => { setIsOpen?.(false); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-ink hover:bg-white/[0.04] rounded-md transition-colors">
+                                <KeyRound className="w-4 h-4 mr-2 text-ink-mute" strokeWidth={1.5} /> API Keys
                             </Link>
 
                             <div className="lg:hidden">
-                                <div className="h-px bg-gray-100 dark:bg-[#1d1f23] my-1"></div>
-                                <button onClick={() => { toggleDarkMode?.(); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-[#1d1f23] rounded-lg transition-colors">
-                                    {isDarkMode ? <Sun className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" /> : <Moon className="w-4 h-4 mr-2 text-gray-400 dark:text-gray-500" />}
+                                <div className="h-px bg-line my-1"></div>
+                                <button onClick={() => { toggleDarkMode?.(); setIsProfileOpen(false); }} className="flex items-center w-full px-3 py-2 text-sm font-medium text-ink hover:bg-white/[0.04] rounded-md transition-colors">
+                                    {isDarkMode ? <Sun className="w-4 h-4 mr-2 text-ink-mute" strokeWidth={1.5} /> : <Moon className="w-4 h-4 mr-2 text-ink-mute" strokeWidth={1.5} />}
                                     {isDarkMode ? 'Light Mode' : 'Dark Mode'}
                                 </button>
                             </div>
 
-                            <div className="h-px bg-gray-100 dark:bg-[#1d1f23] my-1"></div>
+                            <div className="h-px bg-line my-1"></div>
                             <button
                                 type="button"
                                 onClick={() => signOut({ callbackUrl: "/login" })}
-                                className="flex items-center w-full px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                className="flex items-center w-full px-3 py-2 text-sm font-medium text-red-400 hover:bg-red-950/30 rounded-md transition-colors"
                             >
-                                <LogOut className="w-4 h-4 mr-2" /> Log out
+                                <LogOut className="w-4 h-4 mr-2" strokeWidth={1.5} /> Log out
                             </button>
                         </div>
                     )}
@@ -360,24 +362,24 @@ export function Sidebar({ isOpen = false, setIsOpen, isDarkMode, toggleDarkMode,
                         aria-controls="profile-menu"
                         aria-haspopup="menu"
                         title={collapsed ? (session?.user?.name || "User") : undefined}
-                        className={`flex items-center w-full bg-white dark:bg-[#16181c] rounded-xl border border-gray-200 dark:border-[#2f3336] shadow-sm hover:border-gray-300 dark:hover:border-gray-600 transition-colors ${collapsed ? "justify-center p-1.5" : "justify-between p-2"}`}
+                        className={`flex items-center w-full bg-panel rounded-lg border border-line governed-hover ${collapsed ? "justify-center p-1.5" : "justify-between p-2"}`}
                     >
                         <div className={`flex items-center ${collapsed ? "justify-center" : "flex-1"}`}>
-                            <div className={`${collapsed ? "w-8 h-8 text-xs" : "w-9 h-9 text-sm mr-3"} rounded-lg bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-400 font-bold flex items-center justify-center shadow-inner border border-indigo-200 dark:border-indigo-800`}>
+                            <div className={`${collapsed ? "w-8 h-8 text-xs" : "w-9 h-9 text-sm mr-3"} rounded-md bg-white/[0.04] text-ink font-semibold flex items-center justify-center border border-line`}>
                                 {session?.user?.name ? session.user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : 'U'}
                             </div>
                             {!collapsed && (
                                 <div className="text-left w-24">
-                                    <div className="text-sm font-bold text-gray-900 dark:text-white leading-tight truncate">
+                                    <div className="text-sm font-semibold text-ink leading-tight truncate">
                                         {session?.user?.name || "User"}
                                     </div>
-                                    <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                                    <div className="text-[10px] text-ink-mute truncate">
                                         {session?.user?.email || "No email"}
                                     </div>
                                 </div>
                             )}
                         </div>
-                        {!collapsed && <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} />}
+                        {!collapsed && <ChevronDown className={`w-4 h-4 text-ink-mute shrink-0 transition-transform ${isProfileOpen ? 'rotate-180' : ''}`} strokeWidth={1.5} />}
                     </button>
                 </div>
             </div>

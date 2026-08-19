@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { X, Loader2, CheckCircle2, ChevronRight, Settings2, FileSpreadsheet, Lock, Plus } from "lucide-react";
@@ -10,6 +9,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { signIn } from "next-auth/react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { trackEvent } from "@/lib/analytics-events";
 
 import { DESTINATION_HELP_PATHS } from "@/lib/destination-help-urls";
@@ -198,15 +198,11 @@ export function ConnectDestinationModal({ isOpen, destinationId, onClose }: Conn
 
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-700 flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-                        <Image
-                            src={destinationId === 'looker' ? INTEGRATION_LOGOS.looker : INTEGRATION_LOGOS.googleSheets}
-                            alt={destinationId === 'looker' ? 'Looker Studio' : 'Google Sheets™'}
-                            width={22}
-                            height={22}
-                            className="object-contain"
-                        />
-                    </div>
+                    <IntegrationMark
+                        src={destinationId === 'looker' ? INTEGRATION_LOGOS.looker : INTEGRATION_LOGOS.googleSheets}
+                        alt={destinationId === 'looker' ? 'Looker Studio' : 'Google Sheets™'}
+                        size="md"
+                    />
                     <div className="flex-1 min-w-0">
                         <h3 className="text-sm font-bold text-gray-900 dark:text-white">
                             {destinationId === 'looker' ? 'Looker Studio™' : 'Google Sheets™'}

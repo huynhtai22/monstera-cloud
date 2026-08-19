@@ -1,12 +1,12 @@
 "use client";
 
 import React from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { Send, ChevronRight, Lock, Settings2, FlaskConical } from "lucide-react";
 import useSWR from "swr";
 import { useWorkspaceStore } from "@/store/workspace";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { DESTINATION_HELP_PATHS } from "@/lib/destination-help-urls";
 import { trackEvent } from "@/lib/analytics-events";
 
@@ -76,9 +76,7 @@ export default function ExportsPage() {
                 <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-[#2f3336] dark:bg-[#16181c]/50">
                     <div className="p-6">
                         <div className="flex items-center gap-4 mb-4">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 p-2 shadow-sm dark:border-[#2f3336] dark:bg-white">
-                                <Image src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" width={32} height={32} />
-                            </div>
+                            <IntegrationMark src={INTEGRATION_LOGOS.googleSheets} alt="Google Sheets" size="lg" />
                             <div>
                                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">Google Sheets Add-on</h2>
                                 <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center">
@@ -119,9 +117,7 @@ export default function ExportsPage() {
                 <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-[#2f3336] dark:bg-[#16181c]/50">
                     <div className="p-6">
                         <div className="flex items-center gap-4 mb-4">
-                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 p-2 shadow-sm dark:border-[#2f3336] dark:bg-white">
-                                <Image src={INTEGRATION_LOGOS.looker} alt="Looker Studio" width={32} height={32} />
-                            </div>
+                            <IntegrationMark src={INTEGRATION_LOGOS.looker} alt="Looker Studio" size="lg" />
                             <div>
                                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">Looker Studio Connector</h2>
                                 <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400 flex items-center">

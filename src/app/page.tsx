@@ -4,9 +4,9 @@ import { MarketingFooter } from "@/components/MarketingFooter";
 
 export default function Home() {
     return (
-        <div className="dark flex min-h-screen flex-col bg-[#09090b] font-sans text-slate-200 selection:bg-cyan-500/30">
+        <div className="dark flex min-h-screen flex-col bg-canvas font-sans text-ink selection:bg-white/15">
             <MarketingNavbar />
-            <main className="flex-1">
+            <main className="flex-1 pt-14">
                 <MarketingHomePage />
             </main>
             <MarketingFooter />

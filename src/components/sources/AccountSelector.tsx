@@ -100,7 +100,7 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
         <div className="flex items-center gap-2 text-sm text-gray-500">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-cyan-500 border-t-transparent" />
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-ink" />
           Loading accounts...
         </div>
       </div>
@@ -125,7 +125,7 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
         className="flex w-full items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-[#16181c]/50"
       >
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-100 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400">
+          <div className="flex h-10 w-10 items-center justify-center rounded-md border border-line bg-panel text-ink">
             {config.icon}
           </div>
           <div>
@@ -156,7 +156,7 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
                   const allSelected = accounts.map((a) => ({ ...a, selected: true }));
                   mutate({ ...data, accounts: allSelected }, false);
                 }}
-                className="text-xs text-cyan-600 hover:text-cyan-700 dark:text-cyan-400"
+                className="text-xs text-ink-mute hover:text-ink"
               >
                 Select all
               </button>
@@ -187,7 +187,7 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
                   className={cn(
                     "flex h-5 w-5 items-center justify-center rounded border transition-colors",
                     account.selected
-                      ? "border-cyan-500 bg-cyan-500 text-white"
+                      ? "border-ink bg-primary text-primary-foreground"
                       : "border-gray-300 bg-white dark:border-[#2f3336] dark:bg-[#16181c]"
                   )}
                   onClick={() => toggleAccount(account.id)}
@@ -216,7 +216,7 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
             <button
               onClick={saveSelection}
               disabled={saving}
-              className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:opacity-50"
+              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
             >
               {saving ? "Saving..." : "Save Selection"}
             </button>

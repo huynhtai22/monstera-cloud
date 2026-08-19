@@ -18,6 +18,7 @@ import { VietQrModal } from "@/components/pricing/VietQrModal";
 import { useState, useEffect } from "react";
 import { metaPixelCustom } from "@/lib/meta-pixel";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { PLAN_PRICING, type PlanName } from "@/lib/plan-config";
 
 const PLAN_SOURCES = {
@@ -329,9 +330,7 @@ export default function PricingPage() {
                                 </span>
                                 <div className="flex items-center gap-2.5">
                                     {PLAN_SOURCES.starter.map((s) => (
-                                        <div key={s.alt} className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center p-1.5" title={s.alt}>
-                                            <img src={s.src} alt={s.alt} className="w-full h-full object-contain" />
-                                        </div>
+                                        <IntegrationMark key={s.alt} src={s.src} alt={s.alt} size="sm" />
                                     ))}
                                 </div>
                             </div>
@@ -437,14 +436,12 @@ export default function PricingPage() {
 
                             {/* Channel Badges */}
                             <div className="pt-4 border-t border-cyan-100 dark:border-cyan-900/60 mb-6">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 block mb-3">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-mute block mb-3">
                                     {payCurrency === "VND" ? "Đầy đủ tất cả nền tảng" : "All Platforms Included"}
                                 </span>
                                 <div className="flex items-center gap-2.5">
                                     {PLAN_SOURCES.pro.map((s) => (
-                                        <div key={s.alt} className="w-8 h-8 rounded-lg bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-200 dark:border-cyan-800 flex items-center justify-center p-1.5" title={s.alt}>
-                                            <img src={s.src} alt={s.alt} className="w-full h-full object-contain" />
-                                        </div>
+                                        <IntegrationMark key={s.alt} src={s.src} alt={s.alt} size="sm" />
                                     ))}
                                 </div>
                             </div>
@@ -537,9 +534,7 @@ export default function PricingPage() {
                                 </span>
                                 <div className="flex items-center gap-2.5">
                                     {PLAN_SOURCES.enterprise.map((s) => (
-                                        <div key={s.alt} className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center p-1.5" title={s.alt}>
-                                            <img src={s.src} alt={s.alt} className="w-full h-full object-contain" />
-                                        </div>
+                                        <IntegrationMark key={s.alt} src={s.src} alt={s.alt} size="sm" />
                                     ))}
                                 </div>
                             </div>
