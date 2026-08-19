@@ -14,6 +14,7 @@ export async function sendAgencyAlert(opts: {
     pipelineName: string;
     errorMsg: string;
     clientId?: string | null;
+    actionHint?: string;
 }) {
     const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
     const ws = await prisma.workspace.findUnique({
@@ -37,12 +38,12 @@ export async function sendAgencyAlert(opts: {
     const message = `
 🚨 *Monstera Sync Failure*
 
-*Pipeline:* ${opts.pipelineName}
+*Source:* ${opts.pipelineName}
 *Client:* ${clientName}
-*Workspace:* ${opts.workspaceId}
-*Error:* ${opts.errorMsg.slice(0, 200)}
+*Workspace:* \`${opts.workspaceId}\`
+*Error:* ${opts.errorMsg.slice(0, 280)}
 
-_Action Required: Check API credentials in dashboard._
+_${opts.actionHint || "Open Data Explorer → Recent runs and copy IDs for support."}_
     `.trim();
 
     try {

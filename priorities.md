@@ -53,9 +53,9 @@ This file is the **source of truth** for what we optimize first. Technical const
 
 ### Target checklist
 
-- **Single “runs” view** — Per-pipeline list of recent syncs with sort/filter by status and time (surface `SyncLog` in UI or link to detail).
-- **Copy-pasteable diagnostics** — Pipeline id, workspace id, last error snippet for support and logs.
-- **Failure taxonomy** — Tag errors in code or in messages (auth / quota / validation / destination) for faster fixes.
+- **Single “runs” view** — Data Explorer, Sources, and source setup show warehouse jobs + pipeline logs via `GET /api/runs` (`src/components/runs/RunsView.tsx`).
+- **Copy-pasteable diagnostics** — Each row copies workspace/run/connection/pipeline ids and the error tag.
+- **Failure taxonomy** — Tags `[auth]` / `[quota]` / `[network]` / `[source]` / `[destination]` with reconnect vs retry vs wait-quota. Telegram/email only for auth, exhausted retries, and stale > 26h.
 
 ### Code anchors
 

@@ -16,6 +16,7 @@ import { upsertSourceConnection } from "@/lib/connection-upsert";
 import { consumeOAuthAttempt, oauthAttemptCookieName } from "@/lib/oauth-attempt";
 import { requireWorkspaceAccess } from "@/lib/rbac";
 import { assertWorkspaceProviderEnabled, ProviderAccessError } from "@/lib/workspace-provider-access";
+import { emitMonitor } from "@/lib/observability/monitors";
 
 export const dynamic = "force-dynamic";
 
@@ -160,6 +161,10 @@ export async function GET(request: NextRequest) {
         return response;
         
     } catch (error) {
+        emitMonitor("oauth_failure", {
+            provider: providerId || "unknown",
+            code: error instanceof OAuthError ? error.code : "oauth_failed",
+        });
         logger.error("[OAuth Callback] Error:", error);
         
         const errorParams = new URLSearchParams({

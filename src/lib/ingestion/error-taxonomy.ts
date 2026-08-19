@@ -87,3 +87,29 @@ export function classifyIngestionError(error: unknown): ClassifiedError {
 export function formatLogError(classified: ClassifiedError): string {
   return `${classified.tag} ${classified.message}`.trim().slice(0, 4000);
 }
+
+export type IngestionNextAction = "reconnect" | "retry" | "wait_quota" | "none";
+
+export function nextActionForError(classified: ClassifiedError | null | undefined): IngestionNextAction {
+  if (!classified) return "none";
+  if (classified.kind === "auth") return "reconnect";
+  if (classified.kind === "quota") return "wait_quota";
+  if (classified.kind === "unknown") return "retry";
+  if (classified.kind === "network" || classified.kind === "source" || classified.kind === "destination") {
+    return "retry";
+  }
+  return "retry";
+}
+
+export function describeNextAction(action: IngestionNextAction): string {
+  switch (action) {
+    case "reconnect":
+      return "Reconnect the source — credentials look expired.";
+    case "wait_quota":
+      return "Wait for quota, then retry.";
+    case "retry":
+      return "Retry the import.";
+    default:
+      return "";
+  }
+}

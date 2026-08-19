@@ -34,6 +34,7 @@ import {
   getDefaultAdsExplorerSelection,
 } from "@/lib/ads-field-registry";
 import { describeImportJob, type ImportJobStatusView } from "@/lib/ingestion/import-job-status";
+import { RunsView } from "@/components/runs/RunsView";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -1130,6 +1131,8 @@ export function WarehouseWorkbench() {
           </div>
         )}
       </section>
+
+      <RunsView workspaceId={activeWorkspaceId} title="Recent warehouse runs" />
 
       <section className={metricPanelCls}>
         <div className="mb-6 flex flex-wrap items-center gap-3">

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { AdminIncidentsPanel } from "./AdminIncidentsPanel";
 import {
     TrendingUp,
     Users,
@@ -79,6 +80,7 @@ interface MetricData {
 }
 
 export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
+    const [tab, setTab] = useState<"incidents" | "finance">("incidents");
     const [timeframe, setTimeframe] = useState<"7d" | "30d" | "90d" | "all">("30d");
     const [data, setData] = useState<MetricData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -132,11 +134,27 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                         </div>
                     </div>
                     <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-950 dark:text-white">
-                        Trung Tâm Giám Sát Tài Chính &amp; Cơ Sở Dữ Liệu
+                        Admin portal
                     </h1>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                        Theo dõi dòng tiền (Money-in), người dùng mới, tỷ lệ churn và sức khỏe hạ tầng Monstera Cloud.
+                        Incidents, tickets, and finance for {userEmail}.
                     </p>
+                    <div className="mt-3 inline-flex rounded-xl border border-slate-200 bg-white p-1 text-xs font-semibold dark:border-slate-800 dark:bg-slate-900">
+                        <button
+                            type="button"
+                            onClick={() => setTab("incidents")}
+                            className={`rounded-lg px-3 py-1.5 ${tab === "incidents" ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "text-slate-500"}`}
+                        >
+                            Incidents
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setTab("finance")}
+                            className={`rounded-lg px-3 py-1.5 ${tab === "finance" ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900" : "text-slate-500"}`}
+                        >
+                            Finance
+                        </button>
+                    </div>
                 </div>
 
                 {/* Controls: Timeframe Filter & Refresh */}
@@ -169,6 +187,10 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                 </div>
             </div>
 
+            {tab === "incidents" && <AdminIncidentsPanel />}
+
+            {tab === "finance" && (
+            <>
             {/* ── SECTION 1: FINANCE & REVENUE (MONEY-IN) ───────────────────── */}
             <div>
                 <div className="flex items-center gap-2 mb-4">
@@ -506,6 +528,8 @@ export function ExecutiveDashboardClient({ userEmail }: { userEmail: string }) {
                     </div>
                 </div>
             </div>
+            </>
+            )}
         </div>
     );
 }

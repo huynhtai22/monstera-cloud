@@ -13,6 +13,7 @@ import { trackEvent } from "@/lib/analytics-events";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { getSourceUIConfig } from "@/lib/source-ui-registry";
 import { useWorkspaceStore } from "@/store/workspace";
+import { RunsView } from "@/components/runs/RunsView";
 
 type ConnectionDetailPayload = {
     connection: {
@@ -211,6 +212,7 @@ function SourceSetupPageContent() {
                         <Link href="/settings?tab=api" className="inline-flex w-full items-center justify-center rounded-lg border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:text-gray-300">Set up Sheets, Looker, or API access</Link>
                     </div>
                 )}
+                <RunsView workspaceId={connection?.workspaceId || activeWorkspaceId} connectionId={connection?.id} title="This source’s runs" />
             </div>
         </PageShell>
     );

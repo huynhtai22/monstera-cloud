@@ -5,8 +5,8 @@ import { authOptions } from "@/lib/auth";
 import { ExecutiveDashboardClient } from "./ExecutiveDashboardClient";
 
 export const metadata: Metadata = {
-    title: "Executive Finance & Operations Dashboard – Monstera Cloud",
-    description: "Internal executive dashboard for monitoring money-in, user growth, churn rate, and database health.",
+    title: "Admin portal – Monstera Cloud",
+    description: "Incidents, support tickets, and finance for platform operators.",
 };
 
 export default async function AdminDashboardPage() {

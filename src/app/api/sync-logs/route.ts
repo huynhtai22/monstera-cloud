@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 /**
  * GET /api/sync-logs?workspaceId=...&status=success|error
@@ -20,6 +21,19 @@ export async function GET(req: Request) {
 
   if (!workspaceId) {
     return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
+  }
+
+  try {
+    await requireWorkspaceAccess({
+      userId: session.user.id,
+      workspaceId,
+      minimumRole: "viewer",
+      operation: "list_sync_logs",
+    });
+  } catch (error) {
+    const rbac = toRbacResponse(error);
+    if (rbac) return rbac;
+    throw error;
   }
 
   const where: any = {

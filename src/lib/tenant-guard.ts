@@ -12,6 +12,7 @@ export const TENANT_GUARDED_MODELS = new Set([
   "CampaignMetric",
   "WarehouseImportJob",
   "ApiKey",
+  "SupportTicket",
 ]);
 
 const LIST_OR_BULK_OPS = new Set([

@@ -131,6 +131,7 @@ model Workspace {
   invitations         WorkspaceInvitation[]
   oauthAttempts       OAuthAttempt[]
   auditEvents         AuditEvent[]
+  supportTickets      SupportTicket[]
 }
 
 model Client {
@@ -760,4 +761,28 @@ model WarehouseImportJob {
   @@index([workspaceId, status])
   @@index([status, scheduledAt])
   @@index([status, leaseExpiresAt])
+}
+
+model SupportTicket {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  status         String    @default("open")
+  reason         String
+  title          String
+  tag            String?
+  errorMsg       String?
+  runId          String?
+  connectionId   String?
+  pipelineId     String?
+  notes          String?
+  fingerprint    String
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([workspaceId, status])
+  @@index([workspaceId, fingerprint])
 }

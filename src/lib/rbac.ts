@@ -11,6 +11,7 @@
 import prisma from "@/lib/prisma";
 import type { WorkspaceRole as PrismaWorkspaceRole } from "@prisma/client";
 import { logger } from "@/lib/logger";
+import { emitMonitor } from "@/lib/observability/monitors";
 
 export type WorkspaceRole = PrismaWorkspaceRole;
 
@@ -187,6 +188,11 @@ export async function requireWorkspaceAccess(
             workspaceId: input.workspaceId,
             operation: input.operation,
             currentRole: membership?.role ?? null,
+            requiredRole: input.minimumRole,
+        });
+        emitMonitor("tenant_authz_denied", {
+            workspaceId: input.workspaceId,
+            operation: input.operation,
             requiredRole: input.minimumRole,
         });
     }

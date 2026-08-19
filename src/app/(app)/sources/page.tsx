@@ -19,7 +19,7 @@ import { RefreshedAt } from "@/components/ui/RefreshedAt";
 import { SecondaryButton, primaryButtonLinkClassName } from "@/components/ui";
 import { ConnectedSourceCard } from "@/components/sources/ConnectedSourceCard";
 import { IntegrationCard, IntegrationCardSkeleton } from "@/components/sources/IntegrationCard";
-import { RecentSyncsSection } from "@/components/sources/RecentSyncsSection";
+import { RunsView } from "@/components/runs/RunsView";
 import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
 import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
 
@@ -414,12 +414,6 @@ export default function SourcesPage() {
         setActiveFilter('available');
         firstRunFilterAppliedRef.current = true;
     }, [isLoading, workspaces, activeWorkspaceId, connectedSourceCount]);
-
-    const { data: recentLogsData } = useSWR(
-        activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}` : null,
-        fetcher
-    );
-    const recentLogs = (recentLogsData?.logs ?? []).slice(0, 5) as Array<any>;
 
     /** Certified connectors plus any uncertified ones explicitly enabled for this workspace. */
     const catalogIntegrations = useMemo(() => {
@@ -991,7 +985,7 @@ export default function SourcesPage() {
 
             {/* Recent Syncs — #6: only for returning users with actual logs (first-time duplicate removed) */}
             {connectedSourceCount > 0 && (
-                <RecentSyncsSection logs={recentLogs} />
+                <RunsView workspaceId={activeWorkspaceId} title="Recent runs" />
             )}
 
             <ConfirmDialog

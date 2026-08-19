@@ -8,7 +8,9 @@ import { sendSyncFailureEmail } from "@/lib/mail";
 import { runEtlPipeline } from "@/etl/runner";
 import type { EtlProvider } from "@/etl/types";
 import { sendAgencyAlert } from "@/lib/alerts";
-import { classifyIngestionError, formatLogError } from "@/lib/ingestion/error-taxonomy";
+import { classifyIngestionError, describeNextAction, formatLogError } from "@/lib/ingestion/error-taxonomy";
+import { shouldNotifyIngestionFailure } from "@/lib/ingestion/alert-policy";
+import { upsertOpenTicket } from "@/lib/support-ticket";
 import { markConnectionsSyncedOk, markConnectionsSyncError } from "@/lib/ingestion/connection-sync-state";
 import { logger } from "@/lib/logger";
 import { requireWorkspaceAccess, RbacError } from "@/lib/rbac";
@@ -269,7 +271,8 @@ export async function POST(req: Request, context: { params: any }) {
         const logLine = formatLogError(classified);
         const durationMs = Date.now() - syncStartTime;
 
-        if (notifyEmail) {
+        const notify = shouldNotifyIngestionFailure({ classified });
+        if (notify.notify && notifyEmail) {
             await sendSyncFailureEmail(
                 notifyEmail,
                 pipelineNameForNotify ?? "Pipeline",
@@ -277,12 +280,22 @@ export async function POST(req: Request, context: { params: any }) {
             ).catch(() => {});
         }
 
-        if (activePipeline) {
+        if (notify.notify && activePipeline) {
+            await upsertOpenTicket({
+                workspaceId: activePipeline.workspaceId,
+                reason: notify.reason === "auth" ? "auth" : "exhausted_retries",
+                title: `${activePipeline.name} ${notify.reason === "auth" ? "auth failure" : "sync failed"}`,
+                tag: classified.tag,
+                errorMsg: classified.message,
+                pipelineId: activePipeline.id,
+                connectionId: activePipeline.sourceConnectionId,
+            }).catch(() => {});
             await sendAgencyAlert({
                 workspaceId: activePipeline.workspaceId,
                 pipelineName: activePipeline.name,
                 errorMsg: logLine,
                 clientId: activePipeline.clientId,
+                actionHint: describeNextAction(notify.action),
             }).catch(() => {});
         }
 
