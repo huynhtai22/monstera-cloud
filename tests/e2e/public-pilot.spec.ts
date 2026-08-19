@@ -15,7 +15,7 @@ test("version endpoint exposes an uncached release identity", async ({ request }
   expect(response.ok()).toBeTruthy();
   expect(response.headers()["cache-control"]).toContain("no-store");
   await expect(response.json()).resolves.toMatchObject({
-    schemaVersion: "20260818000000_harden_idempotency_and_schema_checks",
+    schemaVersion: "20260819000000_support_tickets",
   });
 });
 
@@ -28,6 +28,9 @@ test("cron and disabled production integrations fail closed", async ({ request }
 
   const runs = await request.get("/api/runs?workspaceId=ws_x");
   expect(runs.status()).toBe(401);
+
+  const incidents = await request.get("/api/admin/incidents");
+  expect([401, 403]).toContain(incidents.status());
 
   const stripe = await request.post("/api/stripe/webhook", { data: {} });
   expect(stripe.status()).toBe(404);
