@@ -1043,6 +1043,79 @@ export function WarehouseWorkbench() {
           </PrimaryButton>
         </div>
 
+        {/* Date Range & Quick Presets for Ingestion */}
+        <div className="mb-4 rounded-xl border border-gray-200/80 bg-white/70 p-4 dark:border-[#2f3336] dark:bg-[#000000]/30">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-700 dark:text-slate-300">
+                Sync Date Range:
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setStartDate("2026-05-01");
+                  setEndDate("2026-05-03");
+                }}
+                className="rounded-lg border border-cyan-300/80 bg-cyan-50/80 px-2.5 py-1 text-xs font-medium text-cyan-800 hover:bg-cyan-100 dark:border-cyan-800 dark:bg-cyan-950/50 dark:text-cyan-300"
+              >
+                May 1–3, 2026 (Live Meta test)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const end = new Date();
+                  const start = new Date();
+                  start.setDate(start.getDate() - 30);
+                  setStartDate(start.toISOString().split("T")[0]);
+                  setEndDate(end.toISOString().split("T")[0]);
+                }}
+                className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-300"
+              >
+                Last 30 Days
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const end = new Date();
+                  const start = new Date();
+                  start.setDate(start.getDate() - 90);
+                  setStartDate(start.toISOString().split("T")[0]);
+                  setEndDate(end.toISOString().split("T")[0]);
+                }}
+                className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-300"
+              >
+                Last 90 Days
+              </button>
+            </div>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-slate-400">Since (Start Date)</label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-9 w-full text-xs"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-slate-400">Until (End Date)</label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-9 w-full text-xs"
+              />
+            </div>
+          </div>
+          {dateRangeError && (
+            <p className="mt-2 text-xs text-rose-600 dark:text-rose-400">{dateRangeError}</p>
+          )}
+        </div>
+
         {!activeWorkspaceId ? (
           <p className="text-sm text-amber-700 dark:text-amber-400">Pick a workspace in the sidebar.</p>
         ) : connections.length === 0 ? (

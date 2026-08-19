@@ -286,6 +286,25 @@ async function metaFetch(
 
 // ── Meta Insights (reporting) client ────────────────────────────────────────
 
+export function filterFieldsForLevel(fields: string[], level: MetaInsightsLevel): string[] {
+  return fields.filter((field) => {
+    if (level === 'account') {
+      if (['campaign_id', 'campaign_name', 'adset_id', 'adset_name', 'ad_id', 'ad_name'].includes(field)) {
+        return false;
+      }
+    } else if (level === 'campaign') {
+      if (['adset_id', 'adset_name', 'ad_id', 'ad_name'].includes(field)) {
+        return false;
+      }
+    } else if (level === 'adset') {
+      if (['ad_id', 'ad_name'].includes(field)) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
 export class MetaReportClient {
   /**
    * Synchronous insights call — works well for short date ranges.
@@ -299,10 +318,11 @@ export class MetaReportClient {
     let afterCursor: string | null = null;
 
     const cleanAdAccountId = String(params.adAccountId).replace(/^act_/, "");
+    const validFields = filterFieldsForLevel(params.fields, params.level);
     do {
       const url = new URL(`${META_GRAPH_BASE}/act_${cleanAdAccountId}/insights`);
       url.searchParams.set('access_token', accessToken);
-      url.searchParams.set('fields', params.fields.join(','));
+      url.searchParams.set('fields', validFields.join(','));
       url.searchParams.set('level', params.level);
       url.searchParams.set('limit', String(params.limit ?? 500));
 
@@ -341,11 +361,12 @@ export class MetaReportClient {
     params: MetaInsightsParams,
   ): Promise<string> {
     const cleanAdAccountId = String(params.adAccountId).replace(/^act_/, "");
+    const validFields = filterFieldsForLevel(params.fields, params.level);
     const url = new URL(`${META_GRAPH_BASE}/act_${cleanAdAccountId}/insights`);
 
     const body = new URLSearchParams();
     body.set('access_token', accessToken);
-    body.set('fields', params.fields.join(','));
+    body.set('fields', validFields.join(','));
     body.set('level', params.level);
     body.set('limit', String(params.limit ?? 500));
 
