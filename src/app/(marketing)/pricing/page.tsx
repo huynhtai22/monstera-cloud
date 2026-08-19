@@ -1,7 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { Check, CheckCircle2, Shield, ShieldCheck, Zap, MapPin, QrCode, CreditCard } from "lucide-react";
+import {
+    Check,
+    CheckCircle2,
+    ShieldCheck,
+    Zap,
+    MapPin,
+    QrCode,
+    Sparkles,
+    ArrowRight,
+    HelpCircle,
+    Building2,
+    Lock,
+    RefreshCw,
+    Layers,
+    ChevronDown,
+} from "lucide-react";
 import { CheckoutButton } from "@/components/CheckoutButton";
 import { VietQrModal } from "@/components/pricing/VietQrModal";
 import { MarketingTrustSecuritySection } from "@/components/marketing/MarketingTrustSecuritySection";
@@ -11,67 +26,34 @@ import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { PLAN_PRICING, type PlanName } from "@/lib/plan-config";
 
 const PLAN_SOURCES = {
-    free: [
-        { src: INTEGRATION_LOGOS.tiktok, alt: "TikTok Ads" },
-        { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
-    ],
     starter: [
-        { src: INTEGRATION_LOGOS.tiktok, alt: "TikTok Ads" },
-        { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
         { src: INTEGRATION_LOGOS.meta, alt: "Meta Ads" },
+        { src: INTEGRATION_LOGOS.tiktok, alt: "TikTok Ads" },
         { src: INTEGRATION_LOGOS.googleAds, alt: "Google Ads" },
+        { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
     ],
     pro: [
-        { src: INTEGRATION_LOGOS.tiktok, alt: "TikTok Ads" },
-        { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
         { src: INTEGRATION_LOGOS.meta, alt: "Meta Ads" },
+        { src: INTEGRATION_LOGOS.tiktok, alt: "TikTok Ads" },
         { src: INTEGRATION_LOGOS.googleAds, alt: "Google Ads" },
+        { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
+    ],
+    enterprise: [
+        { src: INTEGRATION_LOGOS.meta, alt: "Meta Ads" },
+        { src: INTEGRATION_LOGOS.tiktok, alt: "TikTok Ads" },
+        { src: INTEGRATION_LOGOS.googleAds, alt: "Google Ads" },
+        { src: INTEGRATION_LOGOS.shopee, alt: "Shopee" },
     ],
 };
-
-const PLAN_DESTINATIONS = [
-    { src: INTEGRATION_LOGOS.googleSheets, alt: "Google Sheets" },
-    { src: INTEGRATION_LOGOS.looker, alt: "Looker Studio" },
-];
-
-function PlatformBadges({ sources, showDestinations = true }: { sources: { src: string; alt: string }[]; showDestinations?: boolean }) {
-    return (
-        <div className="mb-5">
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-2">Sources</p>
-            <div className="flex items-center gap-2 mb-3">
-                {sources.map(({ src, alt }) => (
-                    <img key={alt} src={src} alt={alt} title={alt} className="w-5 h-5 object-contain opacity-70 hover:opacity-100 transition-opacity" />
-                ))}
-                {sources.length < 5 && <span className="text-[10px] text-slate-300">+ more coming</span>}
-            </div>
-            {showDestinations && (
-                <>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold mb-2">Destinations</p>
-                    <div className="flex items-center gap-2">
-                        {PLAN_DESTINATIONS.map(({ src, alt }) => (
-                            <img key={alt} src={src} alt={alt} title={alt} className="w-5 h-5 object-contain opacity-70 hover:opacity-100 transition-opacity" />
-                        ))}
-                    </div>
-                </>
-            )}
-        </div>
-    );
-}
-
-function FeatureItem({ children, accent = false }: { children: React.ReactNode; accent?: boolean }) {
-    return (
-        <li className="flex items-start gap-2 text-xs text-slate-600">
-            <CheckCircle2 className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${accent ? "text-cyan-500" : "text-slate-400"}`} />
-            <span>{children}</span>
-        </li>
-    );
-}
 
 export default function PricingPage() {
     const [isAnnual, setIsAnnual] = useState(true);
     const [payCurrency, setPayCurrency] = useState<"VND" | "USD">("USD");
     const [currencyReady, setCurrencyReady] = useState(false);
     const [regionHint, setRegionHint] = useState<string | null>(null);
+
+    // FAQ Accordion state
+    const [openFaq, setOpenFaq] = useState<number | null>(null);
 
     // VietQR Modal State
     const [qrModalOpen, setQrModalOpen] = useState(false);
@@ -94,7 +76,7 @@ export default function PricingPage() {
                 setPayCurrency(detectedCurrency);
                 const city = data.city && String(data.city).trim();
                 setRegionHint(
-                    city ? city : data.isVietnam ? "Việt Nam (Ưu đãi nội địa)" : data.country || null
+                    city ? city : data.isVietnam ? "Việt Nam (Ưu đãi PPP)" : data.country || null
                 );
             })
             .catch(() => {
@@ -111,14 +93,18 @@ export default function PricingPage() {
             return {
                 amount,
                 text: `${amount.toLocaleString("vi-VN")} đ`,
-                saving: isAnnual ? `${((cfg.vndMonthly - cfg.vndAnnualMonthly) * 12).toLocaleString("vi-VN")} đ` : null,
+                unit: "/tháng",
+                billingNote: isAnnual ? "thanh toán 1 năm (tiết kiệm 20%)" : "thanh toán từng tháng",
+                saving: isAnnual ? `tiết kiệm ${((cfg.vndMonthly - cfg.vndAnnualMonthly) * 12).toLocaleString("vi-VN")} đ / năm` : null,
             };
         }
         const amount = isAnnual ? cfg.usdAnnualMonthly : cfg.usdMonthly;
         return {
             amount,
             text: `$${amount}`,
-            saving: isAnnual ? `$${(cfg.usdMonthly - cfg.usdAnnualMonthly) * 12}` : null,
+            unit: "/mo",
+            billingNote: isAnnual ? "billed annually (save 20%)" : "billed monthly",
+            saving: isAnnual ? `save $${(cfg.usdMonthly - cfg.usdAnnualMonthly) * 12} / year` : null,
         };
     };
 
@@ -141,281 +127,529 @@ export default function PricingPage() {
 
     const starterPricing = getPlanPriceDisplay("starter");
     const proPricing = getPlanPriceDisplay("professional");
-    const priceClass = "transition-all duration-300";
+    const enterprisePricing = getPlanPriceDisplay("enterprise");
+
+    const faqs = [
+        {
+            q: payCurrency === "VND" ? "Monstera Cloud có hỗ trợ xuất hóa đơn VAT không?" : "Do you provide corporate VAT invoices and tax documentation?",
+            a: payCurrency === "VND"
+                ? "Có! Monstera Cloud hỗ trợ xuất hóa đơn điện tử VAT đầy đủ cho doanh nghiệp và Agency tại Việt Nam đối với tất cả các gói dịch vụ (chọn hình thức thanh toán VietQR / Chuyển khoản ngân hàng)."
+                : "Yes, all international transactions processed via Paddle include standard compliant commercial VAT/GST invoices for your company accounting.",
+        },
+        {
+            q: payCurrency === "VND" ? "Tôi có thể kết nối bao nhiêu tài khoản quảng cáo?" : "How many ad accounts can I connect?",
+            a: payCurrency === "VND"
+                ? "Gói Starter hỗ trợ tới 5 tài khoản quảng cáo & gian hàng. Gói Agency Pro hỗ trợ tới 20 tài khoản (kết hợp tự do giữa Meta, Google, TikTok và Shopee). Gói Enterprise hỗ trợ không giới hạn."
+                : "Starter supports up to 5 accounts, Agency Pro supports up to 20 accounts across Meta, Google, TikTok, and Shopee. Enterprise includes custom unlimited capacity.",
+        },
+        {
+            q: payCurrency === "VND" ? "Dữ liệu có được tự động làm mới trong Google Sheets không?" : "Does data automatically refresh in Google Sheets?",
+            a: payCurrency === "VND"
+                ? "Có! Add-on của Monstera Cloud cho phép bạn thiết lập lịch tự động làm mới hàng ngày hoặc hàng giờ. Mỗi sáng khi bạn mở Google Sheet, toàn bộ số liệu chi tiêu và doanh thu đã sẵn sàng."
+                : "Yes! The Monstera Cloud Google Sheets Add-on supports automated scheduled refreshes (hourly and daily) so your reports are always up to date when you open them.",
+        },
+        {
+            q: payCurrency === "VND" ? "Chính sách dùng thử và hủy dịch vụ như thế nào?" : "What is the trial and cancellation policy?",
+            a: payCurrency === "VND"
+                ? "Tất cả khách hàng được trải nghiệm 14 ngày đầy đủ tính năng. Bạn có thể nâng cấp, hạ cấp hoặc hủy gói bất kỳ lúc nào mà không có ràng buộc."
+                : "You can start with our 14-day full pilot trial. You can upgrade, downgrade, or cancel your subscription at any time without lock-in.",
+        },
+    ];
 
     return (
-        <div className="min-h-screen pt-32 pb-24 bg-white font-sans">
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="min-h-screen pt-28 pb-24 bg-gradient-to-b from-slate-50/70 via-white to-slate-50/70 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 font-sans text-slate-900 dark:text-slate-100 antialiased selection:bg-cyan-500 selection:text-white">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-                {/* Header */}
-                <div className="text-center mb-14">
-                    <div className="inline-flex items-center rounded-full px-3 py-1 text-xs font-bold text-cyan-600 border border-cyan-200 bg-cyan-50 tracking-widest uppercase mb-5">
-                        Bảng Giá &amp; Gói Dịch Vụ
+                {/* ── Top Header Section (Minimalist & Punchy) ────────────────────────── */}
+                <div className="text-center max-w-3xl mx-auto pt-6 mb-12">
+                    <div className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/60 bg-cyan-50 dark:bg-cyan-950/40 backdrop-blur-xs mb-6 shadow-2xs">
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                        <span>{payCurrency === "VND" ? "Bảng Giá Minh Bạch · Không Phí Ẩn" : "Transparent Pricing · Zero Hidden Fees"}</span>
                     </div>
-                    <h1 className="text-slate-900 text-4xl md:text-5xl font-extrabold leading-tight tracking-tight">
-                        {payCurrency === "VND"
-                            ? "Một mức giá phẳng. Đầy đủ nền tảng. Không giới hạn số dòng."
-                            : "One flat price. Every platform. No permanent row caps."}
+
+                    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-950 dark:text-white leading-[1.15]">
+                        {payCurrency === "VND" ? (
+                            <>
+                                Tự động hóa báo cáo Ads. <br />
+                                <span className="bg-gradient-to-r from-cyan-600 via-teal-600 to-emerald-600 bg-clip-text text-transparent">
+                                    Tiết kiệm 80% chi phí.
+                                </span>
+                            </>
+                        ) : (
+                            <>
+                                Unified Ads Reporting. <br />
+                                <span className="bg-gradient-to-r from-cyan-600 via-teal-600 to-emerald-600 bg-clip-text text-transparent">
+                                    One Flat Subscription.
+                                </span>
+                            </>
+                        )}
                     </h1>
-                    <p className="text-slate-500 text-lg max-w-xl mx-auto mt-4">
+
+                    <p className="mt-5 text-base sm:text-lg text-slate-600 dark:text-slate-400 font-normal max-w-2xl mx-auto leading-relaxed">
                         {payCurrency === "VND"
-                            ? "Tiết kiệm 80% chi phí so với Supermetrics. Hỗ trợ thanh toán VietQR & Xuất hóa đơn VAT đầy đủ."
-                            : "Most teams save $2,400/year vs Supermetrics on Pro. Cancel anytime."}
+                            ? "Kéo dữ liệu Meta Ads, Google Ads, TikTok Ads và Shopee trực tiếp vào Google Sheets & Looker Studio. Hỗ trợ thanh toán VietQR và xuất hóa đơn VAT."
+                            : "Stream performance data from Meta, Google, TikTok, and Shopee straight into Google Sheets and Looker Studio. No row limits, no complex setups."}
                     </p>
                 </div>
 
-                {/* Billing Toggle & Currency Switcher */}
-                <div className="flex flex-col items-center gap-3 mb-8">
-                    <div className="flex p-1 bg-slate-100 border border-gray-200 rounded-lg w-[240px] text-sm font-medium">
+                {/* ── Control Bar: Billing Cycle & Currency Switcher ─────────────────── */}
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-14">
+                    {/* Billing Toggle (Pill style like Claude / OpenAI) */}
+                    <div className="inline-flex p-1 rounded-full bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
                         <button
+                            type="button"
                             onClick={() => setIsAnnual(false)}
-                            className={`flex h-9 flex-1 items-center justify-center rounded-md transition-all ${
-                                !isAnnual ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                            className={`px-5 py-2 rounded-full text-xs font-semibold transition-all duration-200 ${
+                                !isAnnual
+                                    ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
+                                    : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                             }`}
                         >
-                            {payCurrency === "VND" ? "Theo tháng" : "Monthly"}
+                            {payCurrency === "VND" ? "Thanh toán theo tháng" : "Monthly billing"}
                         </button>
                         <button
+                            type="button"
                             onClick={() => setIsAnnual(true)}
-                            className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md transition-all ${
-                                isAnnual ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                            className={`px-5 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 ${
+                                isAnnual
+                                    ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
+                                    : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                             }`}
                         >
-                            {payCurrency === "VND" ? "Theo năm" : "Annual"}
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-600 font-bold border border-cyan-200">
+                            <span>{payCurrency === "VND" ? "Thanh toán theo năm" : "Annual billing"}</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                                 −20%
                             </span>
                         </button>
                     </div>
 
-                    {/* Currency Switcher Bar */}
+                    {/* Currency Selector */}
                     {currencyReady && (
-                        <div className="flex items-center gap-2 text-xs bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-full">
-                            <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                            {regionHint && <span className="text-slate-600 font-semibold">{regionHint}</span>}
-                            <span className="text-slate-300">·</span>
-                            <span className="text-slate-500">Tiền tệ:</span>
-                            <div className="inline-flex rounded-md p-0.5 bg-slate-200/70 text-slate-700">
-                                <button
-                                    type="button"
-                                    onClick={() => setPayCurrency("VND")}
-                                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
-                                        payCurrency === "VND" ? "bg-white text-emerald-700 shadow-xs" : "text-slate-500 hover:text-slate-900"
-                                    }`}
-                                >
-                                    🇻🇳 VNĐ
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setPayCurrency("USD")}
-                                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
-                                        payCurrency === "USD" ? "bg-white text-blue-700 shadow-xs" : "text-slate-500 hover:text-slate-900"
-                                    }`}
-                                >
-                                    🌍 USD
-                                </button>
-                            </div>
+                        <div className="inline-flex items-center gap-1 p-1 rounded-full bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 text-xs shadow-2xs">
+                            <button
+                                type="button"
+                                onClick={() => setPayCurrency("VND")}
+                                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+                                    payCurrency === "VND"
+                                        ? "bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-xs"
+                                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                }`}
+                            >
+                                <span>🇻🇳</span>
+                                <span>VNĐ</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setPayCurrency("USD")}
+                                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+                                    payCurrency === "USD"
+                                        ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-xs"
+                                        : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                }`}
+                            >
+                                <span>🌍</span>
+                                <span>USD ($)</span>
+                            </button>
                         </div>
                     )}
                 </div>
 
-                {/* Pricing Cards */}
-                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-start">
+                {/* ── Modern 3-Pillar Pricing Grid (ChatGPT / Claude Inspired) ─────────── */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch max-w-6xl mx-auto">
 
-                    {/* Free Tier */}
-                    <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col hover:border-gray-300 transition-colors shadow-sm">
-                        <div className="mb-4">
-                            <h3 className="text-slate-900 text-lg font-bold">Free Trial</h3>
-                            <p className="text-slate-400 text-sm mt-0.5">Không cần thẻ tín dụng</p>
-                        </div>
-                        <div className={`mb-5 ${priceClass}`}>
-                            <span className="text-4xl font-extrabold text-slate-900">
-                                {payCurrency === "VND" ? "0 đ" : "$0"}
-                            </span>
-                            <p className="text-slate-400 text-xs mt-1">miễn phí trải nghiệm</p>
-                        </div>
-                        <Link
-                            href="/sources"
-                            onClick={() =>
-                                metaPixelCustom("MC_Pricing_Free_GetStarted", {
-                                    plan: "free",
-                                    billing_cycle: isAnnual ? "annual" : "monthly",
-                                    currency: payCurrency,
-                                })
-                            }
-                            className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold text-center hover:bg-slate-800 transition-colors mb-6"
-                        >
-                            Bắt đầu miễn phí
-                        </Link>
-                        <PlatformBadges sources={PLAN_SOURCES.free} />
-                        <div className="border-t border-gray-100 pt-4 flex-1">
-                            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest mb-3">Tính năng bao gồm</p>
-                            <ul className="space-y-2">
-                                <FeatureItem>2 kết nối ad accounts</FeatureItem>
-                                <FeatureItem>Đồng bộ dữ liệu hàng ngày</FeatureItem>
-                                <FeatureItem>Lịch sử báo cáo 14 ngày</FeatureItem>
-                                <FeatureItem>Kết nối TikTok Ads &amp; Shopee</FeatureItem>
-                                <FeatureItem>Google Sheets™ Add-on</FeatureItem>
-                            </ul>
-                        </div>
-                    </div>
-
-                    {/* Starter Tier */}
-                    <div className="bg-white border border-gray-200 rounded-2xl p-6 flex flex-col hover:border-gray-300 transition-colors shadow-sm">
-                        <div className="mb-4">
-                            <h3 className="text-slate-900 text-lg font-bold">Starter</h3>
-                            <p className="text-slate-400 text-sm mt-0.5">Solo Media Buyer &amp; Chủ Shop</p>
-                        </div>
-                        <div className={`mb-5 ${priceClass}`}>
-                            <span className="text-4xl font-extrabold text-slate-900">
-                                {starterPricing.text}
-                            </span>
-                            <p className="text-slate-400 text-xs mt-1">
-                                1 tài khoản quản trị / tháng
-                                {starterPricing.saving && (
-                                    <span className="text-cyan-600 ml-1 block sm:inline">· tiết kiệm {starterPricing.saving}/năm</span>
-                                )}
-                            </p>
-                        </div>
-
-                        {/* Payment Button: VietQR if VND, Paddle Checkout if USD */}
-                        {payCurrency === "VND" ? (
-                            <button
-                                onClick={() => openVietQr("starter", "Starter")}
-                                className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold text-center hover:bg-emerald-700 transition-all mb-2 flex items-center justify-center gap-2 shadow-sm"
-                            >
-                                <QrCode className="w-4 h-4" />
-                                Thanh toán VietQR (Napas 24/7)
-                            </button>
-                        ) : (
-                            <CheckoutButton
-                                plan="starter"
-                                billingCycle={isAnnual ? "annual" : "monthly"}
-                                invoiceCurrency={payCurrency}
-                                metaPixelEvent="MC_Pricing_Starter_Checkout"
-                                metaPixelParams={{
-                                    billing_cycle: isAnnual ? "annual" : "monthly",
-                                    currency: payCurrency,
-                                }}
-                                className="w-full py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold text-center hover:bg-slate-800 transition-colors mb-2"
-                            >
-                                Get Starter
-                            </CheckoutButton>
-                        )}
-
-                        <p className="text-slate-400 text-[10px] text-center mb-6">
-                            Bao gồm 14 ngày dùng thử đầy đủ tính năng
-                        </p>
-                        <PlatformBadges sources={PLAN_SOURCES.starter} />
-                        <div className="border-t border-gray-100 pt-4 flex-1">
-                            <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-widest mb-3">Tính năng gói Starter</p>
-                            <ul className="space-y-2">
-                                <FeatureItem><strong>1 User Seat</strong> (Google Account)</FeatureItem>
-                                <FeatureItem><strong>Tối đa 5 Accounts &amp; Shops</strong> (Meta, Google, TikTok, Shopee)</FeatureItem>
-                                <FeatureItem><strong>500 Lần truy vấn / tháng</strong></FeatureItem>
-                                <FeatureItem>Google Sheets™ Add-on &amp; Looker Studio</FeatureItem>
-                                <FeatureItem>Tự động cập nhật số liệu mỗi ngày</FeatureItem>
-                                <FeatureItem>Hỗ trợ qua Zalo &amp; Email</FeatureItem>
-                            </ul>
-                        </div>
-                    </div>
-
-                    {/* Agency Pro — Hero Card */}
-                    <div className="relative bg-white border-2 border-cyan-500 rounded-2xl p-8 flex flex-col shadow-xl shadow-cyan-500/10 ring-1 ring-cyan-500/20">
-                        <div className="mb-4">
-                            <div className="flex items-center gap-2.5">
-                                <h3 className="text-slate-900 text-xl font-bold">Agency Pro</h3>
-                                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-700 border border-cyan-200 uppercase tracking-wider">
-                                    Khuyên dùng
+                    {/* ── PILLAR 1: STARTER ────────────────────────────────────────────── */}
+                    <div className="relative rounded-3xl p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-300 shadow-sm hover:shadow-md">
+                        <div>
+                            {/* Plan Header */}
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Starter</h3>
+                                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                    Solo &amp; Freelancer
                                 </span>
                             </div>
-                            <p className="text-cyan-600 text-sm mt-0.5">Lựa chọn số 1 cho Agency &amp; Brand Enabler</p>
-                        </div>
-                        <div className={`mb-5 ${priceClass}`}>
-                            <span className="text-5xl font-extrabold text-slate-900">
-                                {proPricing.text}
-                            </span>
-                            <p className="text-slate-500 text-xs mt-1">
-                                3 thành viên quản trị / tháng
-                                {proPricing.saving && (
-                                    <span className="text-cyan-600 ml-1 block sm:inline">· tiết kiệm {proPricing.saving}/năm</span>
-                                )}
+
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+                                {payCurrency === "VND"
+                                    ? "Dành cho Media Buyer cá nhân, nhà bán lẻ và chủ shop tự vận hành báo cáo hàng ngày."
+                                    : "For solo media buyers, indie marketers, and shop owners automating their daily reports."}
                             </p>
+
+                            {/* Price */}
+                            <div className="mb-6">
+                                <div className="flex items-baseline gap-1.5">
+                                    <span className="text-4xl sm:text-5xl font-extrabold text-slate-950 dark:text-white tracking-tight">
+                                        {starterPricing.text}
+                                    </span>
+                                    <span className="text-xs font-semibold text-slate-400">{starterPricing.unit}</span>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-1.5">
+                                    {starterPricing.billingNote}
+                                    {starterPricing.saving && (
+                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium block sm:inline sm:ml-1">
+                                            ({starterPricing.saving})
+                                        </span>
+                                    )}
+                                </p>
+                            </div>
+
+                            {/* CTA Action Button */}
+                            {payCurrency === "VND" ? (
+                                <button
+                                    onClick={() => openVietQr("starter", "Starter")}
+                                    className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2 mb-6"
+                                >
+                                    <QrCode className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
+                                    <span>Thanh toán VietQR (Napas 24/7)</span>
+                                </button>
+                            ) : (
+                                <CheckoutButton
+                                    plan="starter"
+                                    billingCycle={isAnnual ? "annual" : "monthly"}
+                                    invoiceCurrency={payCurrency}
+                                    metaPixelEvent="MC_Pricing_Starter_Checkout"
+                                    metaPixelParams={{ billing_cycle: isAnnual ? "annual" : "monthly", currency: payCurrency }}
+                                    className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2 mb-6"
+                                >
+                                    <span>Get Started</span>
+                                    <ArrowRight className="w-4 h-4" />
+                                </CheckoutButton>
+                            )}
+
+                            {/* Channel Badges */}
+                            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mb-6">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2.5">
+                                    {payCurrency === "VND" ? "Kênh hỗ trợ kết nối" : "Supported Channels"}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    {PLAN_SOURCES.starter.map((s) => (
+                                        <div key={s.alt} className="w-7 h-7 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center p-1" title={s.alt}>
+                                            <img src={s.src} alt={s.alt} className="w-4 h-4 object-contain" />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Feature List */}
+                            <div className="space-y-3 pt-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                    {payCurrency === "VND" ? "Quyền lợi gói Starter" : "What's included"}
+                                </span>
+                                <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <span><strong>1 Tài khoản quản trị</strong> (Google Workspace)</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <span><strong>Tối đa 5 Ad Accounts &amp; Shops</strong> (Meta, Google, TikTok, Shopee)</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <span><strong>500 Lượt làm mới / tháng</strong></span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <span>Google Sheets™ Add-on &amp; Looker Studio</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <span>Lịch tự động làm mới hàng ngày</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── PILLAR 2: AGENCY PRO (Hero / Highlighted Card) ───────────────── */}
+                    <div className="relative rounded-3xl p-8 bg-white dark:bg-slate-900 border-2 border-cyan-500 dark:border-cyan-500 flex flex-col justify-between shadow-2xl shadow-cyan-500/10 ring-1 ring-cyan-500/30 scale-100 lg:-translate-y-2 transition-all duration-300">
+                        {/* Top Floating Badge */}
+                        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-gradient-to-r from-cyan-600 to-emerald-600 text-white text-[11px] font-extrabold uppercase tracking-wider shadow-md flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>{payCurrency === "VND" ? "Lựa chọn phổ biến nhất" : "Most Popular"}</span>
                         </div>
 
-                        {/* Payment Button: VietQR if VND, Paddle Checkout if USD */}
-                        {payCurrency === "VND" ? (
-                            <button
-                                onClick={() => openVietQr("professional", "Agency Pro")}
-                                className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-sm font-bold text-center transition-all mb-1 shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2"
-                            >
-                                <QrCode className="w-4 h-4" />
-                                Thanh toán VietQR (Kích hoạt ngay)
-                            </button>
-                        ) : (
-                            <CheckoutButton
-                                plan="professional"
-                                billingCycle={isAnnual ? "annual" : "monthly"}
-                                invoiceCurrency={payCurrency}
-                                metaPixelEvent="MC_Pricing_Pro_Checkout"
-                                metaPixelParams={{
-                                    billing_cycle: isAnnual ? "annual" : "monthly",
-                                    currency: payCurrency,
-                                }}
-                                className="w-full py-3 rounded-xl bg-cyan-600 text-white text-sm font-bold text-center hover:bg-cyan-700 transition-colors mb-1 shadow-lg shadow-cyan-600/20"
-                            >
-                                Start Agency Pilot
-                            </CheckoutButton>
-                        )}
+                        <div>
+                            {/* Plan Header */}
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                    Agency Pro
+                                </h3>
+                                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-cyan-50 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
+                                    Agency &amp; Growth
+                                </span>
+                            </div>
 
-                        <p className="text-slate-400 text-[10px] text-center mb-6">
-                            14 ngày dùng thử Agency Pilot miễn phí · Hỗ trợ xuất hóa đơn VAT
-                        </p>
-                        <PlatformBadges sources={PLAN_SOURCES.pro} />
-                        <div className="border-t border-cyan-200 pt-4 flex-1">
-                            <p className="text-cyan-600/70 text-[10px] font-semibold uppercase tracking-widest mb-3">Tất cả quyền lợi Starter, cộng thêm</p>
-                            <ul className="space-y-2">
-                                <FeatureItem accent><strong>3 Thành viên nhóm</strong> (Thêm user dễ dàng)</FeatureItem>
-                                <FeatureItem accent><strong>Tối đa 20 Accounts &amp; Gian hàng Shopee</strong></FeatureItem>
-                                <FeatureItem accent><strong>3.000 Lần truy vấn / tháng</strong> + Băng thông ưu tiên</FeatureItem>
-                                <FeatureItem accent>Full Sàn Đông Nam Á (Shopee, Lazada, TikTok Shop)</FeatureItem>
-                                <FeatureItem accent>Phân quyền workspace theo từng khách hàng</FeatureItem>
-                                <FeatureItem accent>Tự động cập nhật số liệu theo giờ &amp; theo đêm</FeatureItem>
-                                <FeatureItem accent>Hỗ trợ kỹ thuật 1-1 qua Zalo &amp; Telegram</FeatureItem>
-                            </ul>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+                                {payCurrency === "VND"
+                                    ? "Giải pháp hoàn chỉnh cho Marketing Agency, Team chạy Ads và Enabler quản lý nhiều khách hàng."
+                                    : "Designed for performance agencies and brand enablers managing multi-client ad accounts."}
+                            </p>
+
+                            {/* Price */}
+                            <div className="mb-6">
+                                <div className="flex items-baseline gap-1.5">
+                                    <span className="text-4xl sm:text-5xl font-extrabold text-slate-950 dark:text-white tracking-tight">
+                                        {proPricing.text}
+                                    </span>
+                                    <span className="text-xs font-semibold text-cyan-600 dark:text-cyan-400">{proPricing.unit}</span>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-1.5">
+                                    {proPricing.billingNote}
+                                    {proPricing.saving && (
+                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold block sm:inline sm:ml-1">
+                                            ({proPricing.saving})
+                                        </span>
+                                    )}
+                                </p>
+                            </div>
+
+                            {/* CTA Action Button */}
+                            {payCurrency === "VND" ? (
+                                <button
+                                    onClick={() => openVietQr("professional", "Agency Pro")}
+                                    className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-700 hover:to-cyan-700 text-white font-bold text-xs shadow-lg shadow-cyan-600/25 transition-all flex items-center justify-center gap-2 mb-6"
+                                >
+                                    <QrCode className="w-4 h-4" />
+                                    <span>Thanh toán VietQR (Kích hoạt ngay)</span>
+                                </button>
+                            ) : (
+                                <CheckoutButton
+                                    plan="professional"
+                                    billingCycle={isAnnual ? "annual" : "monthly"}
+                                    invoiceCurrency={payCurrency}
+                                    metaPixelEvent="MC_Pricing_Pro_Checkout"
+                                    metaPixelParams={{ billing_cycle: isAnnual ? "annual" : "monthly", currency: payCurrency }}
+                                    className="w-full py-3.5 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs shadow-lg shadow-cyan-600/25 transition-all flex items-center justify-center gap-2 mb-6"
+                                >
+                                    <span>Start 14-Day Pilot</span>
+                                    <ArrowRight className="w-4 h-4" />
+                                </CheckoutButton>
+                            )}
+
+                            {/* Channel Badges */}
+                            <div className="pt-4 border-t border-cyan-100 dark:border-cyan-900/60 mb-6">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 block mb-2.5">
+                                    {payCurrency === "VND" ? "Đầy đủ tất cả nền tảng" : "All Platforms Included"}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    {PLAN_SOURCES.pro.map((s) => (
+                                        <div key={s.alt} className="w-7 h-7 rounded-lg bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-200 dark:border-cyan-800 flex items-center justify-center p-1" title={s.alt}>
+                                            <img src={s.src} alt={s.alt} className="w-4 h-4 object-contain" />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Feature List */}
+                            <div className="space-y-3 pt-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 block">
+                                    {payCurrency === "VND" ? "Bao gồm quyền lợi Starter, cộng thêm:" : "Everything in Starter, plus:"}
+                                </span>
+                                <ul className="space-y-2.5 text-xs text-slate-700 dark:text-slate-200">
+                                    <li className="flex items-start gap-2.5 font-medium">
+                                        <Check className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
+                                        <span><strong>3 Thành viên nhóm</strong> (Thêm user dễ dàng)</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5 font-medium">
+                                        <Check className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
+                                        <span><strong>Tối đa 20 Accounts &amp; Shops</strong> (Meta + TikTok + Shopee + Google)</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5 font-medium">
+                                        <Check className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
+                                        <span><strong>3.000 Lượt làm mới / tháng</strong> + Băng thông ưu tiên</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
+                                        <span>Phân quyền Workspace riêng biệt cho từng Client</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
+                                        <span>Lịch tự động làm mới theo giờ &amp; theo đêm</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-cyan-500 shrink-0 mt-0.5" />
+                                        <span>Hỗ trợ kỹ thuật 1-1 qua Zalo / Telegram</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── PILLAR 3: ENTERPRISE ────────────────────────────────────────── */}
+                    <div className="relative rounded-3xl p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-300 shadow-sm hover:shadow-md">
+                        <div>
+                            {/* Plan Header */}
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Enterprise</h3>
+                                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                    Quy mô lớn
+                                </span>
+                            </div>
+
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+                                {payCurrency === "VND"
+                                    ? "Dành cho Agency lớn, Tập đoàn bán lẻ và doanh nghiệp cần kho dữ liệu BigQuery / PostgreSQL riêng."
+                                    : "For large agencies and brands needing dedicated cloud warehousing, custom integrations, and SLA."}
+                            </p>
+
+                            {/* Price */}
+                            <div className="mb-6">
+                                <div className="flex items-baseline gap-1.5">
+                                    <span className="text-4xl sm:text-5xl font-extrabold text-slate-950 dark:text-white tracking-tight">
+                                        {enterprisePricing.text}
+                                    </span>
+                                    <span className="text-xs font-semibold text-slate-400">{enterprisePricing.unit}</span>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-1.5">
+                                    {enterprisePricing.billingNote}
+                                    {enterprisePricing.saving && (
+                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium block sm:inline sm:ml-1">
+                                            ({enterprisePricing.saving})
+                                        </span>
+                                    )}
+                                </p>
+                            </div>
+
+                            {/* CTA Action Button */}
+                            <Link
+                                href="mailto:support@monsteracloud.com?subject=Inquiry%20Enterprise%20Plan%20Monstera%20Cloud"
+                                className="w-full py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold text-xs transition-all flex items-center justify-center gap-2 mb-6"
+                            >
+                                <Building2 className="w-4 h-4 text-slate-500" />
+                                <span>{payCurrency === "VND" ? "Liên hệ tư vấn Enterprise" : "Contact Sales"}</span>
+                            </Link>
+
+                            {/* Channel Badges */}
+                            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mb-6">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2.5">
+                                    {payCurrency === "VND" ? "Không giới hạn kênh & tài khoản" : "Unlimited Custom Channels"}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    {PLAN_SOURCES.enterprise.map((s) => (
+                                        <div key={s.alt} className="w-7 h-7 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center p-1" title={s.alt}>
+                                            <img src={s.src} alt={s.alt} className="w-4 h-4 object-contain" />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Feature List */}
+                            <div className="space-y-3 pt-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                                    {payCurrency === "VND" ? "Đặc quyền Enterprise" : "Enterprise features"}
+                                </span>
+                                <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <span><strong>Không giới hạn tài khoản &amp; Pipelines</strong></span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <span><strong>10+ User Seats</strong> tùy chỉnh theo nhu cầu</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <span>Dedicated Database Warehouse (PostgreSQL / BigQuery)</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <span>Hợp đồng dịch vụ doanh nghiệp (SLA 99.9%)</span>
+                                    </li>
+                                    <li className="flex items-start gap-2.5">
+                                        <Check className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                                        <span>Xuất hóa đơn điện tử VAT hàng tháng</span>
+                                    </li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
 
                 </div>
 
-                {/* Enterprise Contact Link */}
-                <p className="mt-12 text-center text-sm text-slate-500">
-                    Bạn cần quản lý trên 50+ tài khoản quảng cáo hoặc xuất hóa đơn VAT doanh nghiệp?{" "}
+                {/* ── Enterprise Custom Banner ────────────────────────────────────────── */}
+                <div className="mt-16 max-w-4xl mx-auto rounded-2xl p-6 bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                    <div>
+                        <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                            {payCurrency === "VND" ? "Bạn cần tư vấn giải pháp đo lường dữ liệu riêng?" : "Looking for custom data engineering or bespoke setup?"}
+                        </h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            {payCurrency === "VND"
+                                ? "Đội ngũ kỹ thuật của Monstera Cloud sẵn sàng hỗ trợ setup và đào tạo trực tiếp cho Agency của bạn."
+                                : "Our engineering team provides direct onboarding, custom connector development, and dedicated warehouse support."}
+                        </p>
+                    </div>
                     <Link
                         href="mailto:support@monsteracloud.com"
-                        className="text-cyan-600 hover:text-cyan-700 underline underline-offset-2 font-semibold"
+                        className="px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-slate-50 shadow-2xs whitespace-nowrap"
                     >
-                        Liên hệ tư vấn gói Enterprise
+                        {payCurrency === "VND" ? "Gặp chuyên gia tư vấn" : "Talk to Sales"}
                     </Link>
-                </p>
+                </div>
 
-                {/* Security and Trust Badges */}
-                <div className="mt-14 text-center">
-                    <p className="text-slate-400 text-xs uppercase tracking-widest font-semibold mb-5">Tiêu chuẩn an toàn &amp; Bảo mật</p>
-                    <div className="flex flex-wrap justify-center gap-x-8 gap-y-3 text-slate-500 text-sm">
-                        {[
-                            "Mã hóa bảo mật AES-256-GCM",
-                            "Chuẩn xác thực Google OAuth 2.0",
-                            "Google Sheets™ Add-on chính thức",
-                            "Looker Studio Connector",
-                            "Cô lập dữ liệu đa người dùng (Multi-tenant)",
-                            "Hỗ trợ Napas 24/7 & Hóa đơn VAT",
-                        ].map((item) => (
-                            <span key={item} className="flex items-center gap-2">
-                                <Check className="w-3.5 h-3.5 text-cyan-500" />
-                                {item}
-                            </span>
-                        ))}
+                {/* ── Security Trust Grid ────────────────────────────────────────────── */}
+                <div className="mt-20 pt-10 border-t border-slate-200 dark:border-slate-800 text-center">
+                    <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-8">
+                        {payCurrency === "VND" ? "Tiêu chuẩn an toàn & Bảo mật quốc tế" : "Enterprise Security Standards"}
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto text-xs text-slate-600 dark:text-slate-400">
+                        <div className="flex flex-col items-center p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
+                            <Lock className="w-5 h-5 text-cyan-600 mb-2" />
+                            <span className="font-bold text-slate-900 dark:text-white">AES-256-GCM</span>
+                            <span className="text-[11px] text-slate-400 mt-0.5">Mã hóa dữ liệu 2 lớp</span>
+                        </div>
+                        <div className="flex flex-col items-center p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
+                            <ShieldCheck className="w-5 h-5 text-cyan-600 mb-2" />
+                            <span className="font-bold text-slate-900 dark:text-white">Google OAuth 2.0</span>
+                            <span className="text-[11px] text-slate-400 mt-0.5">Xác thực chính thức</span>
+                        </div>
+                        <div className="flex flex-col items-center p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
+                            <Layers className="w-5 h-5 text-cyan-600 mb-2" />
+                            <span className="font-bold text-slate-900 dark:text-white">Multi-Tenant</span>
+                            <span className="text-[11px] text-slate-400 mt-0.5">Cô lập dữ liệu client</span>
+                        </div>
+                        <div className="flex flex-col items-center p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
+                            <RefreshCw className="w-5 h-5 text-cyan-600 mb-2" />
+                            <span className="font-bold text-slate-900 dark:text-white">Napas 24/7 &amp; VAT</span>
+                            <span className="text-[11px] text-slate-400 mt-0.5">Xuất hóa đơn đỏ</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* ── FAQ Section (Clean Minimalist Accordion) ────────────────────────── */}
+                <div className="mt-24 max-w-3xl mx-auto">
+                    <div className="text-center mb-10">
+                        <h3 className="text-2xl font-bold text-slate-900 dark:text-white">
+                            {payCurrency === "VND" ? "Câu hỏi thường gặp" : "Frequently Asked Questions"}
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-1">
+                            {payCurrency === "VND" ? "Mọi điều bạn cần biết về dịch vụ và thanh toán" : "Everything you need to know about plans and billing"}
+                        </p>
+                    </div>
+
+                    <div className="space-y-3">
+                        {faqs.map((faq, idx) => {
+                            const isOpen = openFaq === idx;
+                            return (
+                                <div
+                                    key={idx}
+                                    className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => setOpenFaq(isOpen ? null : idx)}
+                                        className="w-full px-6 py-4 flex items-center justify-between text-left font-semibold text-sm text-slate-900 dark:text-white hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors"
+                                    >
+                                        <span>{faq.q}</span>
+                                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180 text-cyan-600" : ""}`} />
+                                    </button>
+                                    {isOpen && (
+                                        <div className="px-6 pb-4 text-xs text-slate-600 dark:text-slate-300 leading-relaxed border-t border-slate-100 dark:border-slate-800 pt-3 animate-in fade-in duration-150">
+                                            {faq.a}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 
