@@ -3,23 +3,18 @@
 import Link from "next/link";
 import {
     Check,
-    CheckCircle2,
-    ShieldCheck,
-    Zap,
-    MapPin,
-    QrCode,
     Sparkles,
     ArrowRight,
-    HelpCircle,
     Building2,
     Lock,
-    RefreshCw,
+    ShieldCheck,
     Layers,
+    RefreshCw,
     ChevronDown,
+    QrCode,
 } from "lucide-react";
 import { CheckoutButton } from "@/components/CheckoutButton";
 import { VietQrModal } from "@/components/pricing/VietQrModal";
-import { MarketingTrustSecuritySection } from "@/components/marketing/MarketingTrustSecuritySection";
 import { useState, useEffect } from "react";
 import { metaPixelCustom } from "@/lib/meta-pixel";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
@@ -90,21 +85,31 @@ export default function PricingPage() {
         const cfg = PLAN_PRICING[plan] || PLAN_PRICING.free;
         if (payCurrency === "VND") {
             const amount = isAnnual ? cfg.vndAnnualMonthly : cfg.vndMonthly;
+            const annualTotal = cfg.vndAnnualMonthly * 12;
+            const annualSaving = (cfg.vndMonthly - cfg.vndAnnualMonthly) * 12;
             return {
                 amount,
-                text: `${amount.toLocaleString("vi-VN")} đ`,
+                amountFormatted: amount.toLocaleString("vi-VN"),
+                currencySymbol: "đ",
                 unit: "/tháng",
-                billingNote: isAnnual ? "thanh toán 1 năm (tiết kiệm 20%)" : "thanh toán từng tháng",
-                saving: isAnnual ? `tiết kiệm ${((cfg.vndMonthly - cfg.vndAnnualMonthly) * 12).toLocaleString("vi-VN")} đ / năm` : null,
+                billingNote: isAnnual
+                    ? `Thanh toán 1 năm (tiết kiệm 20%) · ${annualTotal.toLocaleString("vi-VN")} đ/năm`
+                    : "Thanh toán từng tháng",
+                savingBadge: isAnnual ? `Tiết kiệm ${annualSaving.toLocaleString("vi-VN")} đ/năm` : null,
             };
         }
         const amount = isAnnual ? cfg.usdAnnualMonthly : cfg.usdMonthly;
+        const annualTotal = cfg.usdAnnualMonthly * 12;
+        const annualSaving = (cfg.usdMonthly - cfg.usdAnnualMonthly) * 12;
         return {
             amount,
-            text: `$${amount}`,
+            amountFormatted: `$${amount}`,
+            currencySymbol: "",
             unit: "/mo",
-            billingNote: isAnnual ? "billed annually (save 20%)" : "billed monthly",
-            saving: isAnnual ? `save $${(cfg.usdMonthly - cfg.usdAnnualMonthly) * 12} / year` : null,
+            billingNote: isAnnual
+                ? `Billed annually (save 20%) · $${annualTotal}/year`
+                : "Billed monthly",
+            savingBadge: isAnnual ? `Save $${annualSaving}/year` : null,
         };
     };
 
@@ -160,9 +165,9 @@ export default function PricingPage() {
         <div className="min-h-screen pt-28 pb-24 bg-gradient-to-b from-slate-50/70 via-white to-slate-50/70 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 font-sans text-slate-900 dark:text-slate-100 antialiased selection:bg-cyan-500 selection:text-white">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
-                {/* ── Top Header Section (Minimalist & Punchy) ────────────────────────── */}
+                {/* ── Top Header Section ────────────────────────────────────────────── */}
                 <div className="text-center max-w-3xl mx-auto pt-6 mb-12">
-                    <div className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/60 bg-cyan-50 dark:bg-cyan-950/40 backdrop-blur-xs mb-6 shadow-2xs">
+                    <div className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-semibold text-cyan-800 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/60 bg-cyan-50 dark:bg-cyan-950/40 backdrop-blur-xs mb-6 shadow-2xs">
                         <Sparkles className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
                         <span>{payCurrency === "VND" ? "Bảng Giá Minh Bạch · Không Phí Ẩn" : "Transparent Pricing · Zero Hidden Fees"}</span>
                     </div>
@@ -229,7 +234,7 @@ export default function PricingPage() {
                             <button
                                 type="button"
                                 onClick={() => setPayCurrency("VND")}
-                                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+                                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
                                     payCurrency === "VND"
                                         ? "bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 shadow-xs"
                                         : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
@@ -241,7 +246,7 @@ export default function PricingPage() {
                             <button
                                 type="button"
                                 onClick={() => setPayCurrency("USD")}
-                                className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
+                                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-200 flex items-center gap-1.5 ${
                                     payCurrency === "USD"
                                         ? "bg-white dark:bg-slate-900 text-blue-700 dark:text-blue-300 shadow-xs"
                                         : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
@@ -254,41 +259,43 @@ export default function PricingPage() {
                     )}
                 </div>
 
-                {/* ── Modern 3-Pillar Pricing Grid (ChatGPT / Claude Inspired) ─────────── */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch max-w-6xl mx-auto">
+                {/* ── Polished 3-Pillar Pricing Grid (Spacious, Clean, Elevated) ───────── */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto items-stretch">
 
                     {/* ── PILLAR 1: STARTER ────────────────────────────────────────────── */}
-                    <div className="relative rounded-3xl p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-300 shadow-sm hover:shadow-md">
-                        <div>
+                    <div className="relative rounded-3xl p-6 md:p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between transition-all duration-300 ease-out hover:-translate-y-2 hover:shadow-2xl shadow-sm">
+                        <div className="flex flex-col">
                             {/* Plan Header */}
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Starter</h3>
-                                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Starter</h3>
+                                <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                                     Solo &amp; Freelancer
                                 </span>
                             </div>
 
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed min-h-[36px]">
                                 {payCurrency === "VND"
                                     ? "Dành cho Media Buyer cá nhân, nhà bán lẻ và chủ shop tự vận hành báo cáo hàng ngày."
                                     : "For solo media buyers, indie marketers, and shop owners automating their daily reports."}
                             </p>
 
-                            {/* Price */}
-                            <div className="mb-6">
-                                <div className="flex items-baseline gap-1.5">
-                                    <span className="text-4xl sm:text-5xl font-extrabold text-slate-950 dark:text-white tracking-tight">
-                                        {starterPricing.text}
+                            {/* Price Hero Section with whitespace-nowrap & inline symbol */}
+                            <div className="mb-6 space-y-1.5">
+                                <div className="flex items-baseline gap-1 whitespace-nowrap">
+                                    <span className="text-3xl md:text-4xl font-bold tracking-tight text-slate-950 dark:text-white">
+                                        {starterPricing.amountFormatted}
                                     </span>
-                                    <span className="text-xs font-semibold text-slate-400">{starterPricing.unit}</span>
-                                </div>
-                                <p className="text-xs text-slate-500 mt-1.5">
-                                    {starterPricing.billingNote}
-                                    {starterPricing.saving && (
-                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium block sm:inline sm:ml-1">
-                                            ({starterPricing.saving})
+                                    {starterPricing.currencySymbol ? (
+                                        <span className="text-lg md:text-xl font-bold text-slate-700 dark:text-slate-300">
+                                            {starterPricing.currencySymbol}
                                         </span>
-                                    )}
+                                    ) : null}
+                                    <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
+                                        {starterPricing.unit}
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    {starterPricing.billingNote}
                                 </p>
                             </div>
 
@@ -296,7 +303,7 @@ export default function PricingPage() {
                             {payCurrency === "VND" ? (
                                 <button
                                     onClick={() => openVietQr("starter", "Starter")}
-                                    className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2 mb-6"
+                                    className="w-full py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2 mb-6"
                                 >
                                     <QrCode className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
                                     <span>Thanh toán VietQR (Napas 24/7)</span>
@@ -308,7 +315,7 @@ export default function PricingPage() {
                                     invoiceCurrency={payCurrency}
                                     metaPixelEvent="MC_Pricing_Starter_Checkout"
                                     metaPixelParams={{ billing_cycle: isAnnual ? "annual" : "monthly", currency: payCurrency }}
-                                    className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2 mb-6"
+                                    className="w-full py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-bold text-xs shadow-sm transition-all flex items-center justify-center gap-2 mb-6"
                                 >
                                     <span>Get Started</span>
                                     <ArrowRight className="w-4 h-4" />
@@ -317,13 +324,13 @@ export default function PricingPage() {
 
                             {/* Channel Badges */}
                             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mb-6">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2.5">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-3">
                                     {payCurrency === "VND" ? "Kênh hỗ trợ kết nối" : "Supported Channels"}
                                 </span>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2.5">
                                     {PLAN_SOURCES.starter.map((s) => (
-                                        <div key={s.alt} className="w-7 h-7 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center p-1" title={s.alt}>
-                                            <img src={s.src} alt={s.alt} className="w-4 h-4 object-contain" />
+                                        <div key={s.alt} className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center p-1.5" title={s.alt}>
+                                            <img src={s.src} alt={s.alt} className="w-full h-full object-contain" />
                                         </div>
                                     ))}
                                 </div>
@@ -361,45 +368,47 @@ export default function PricingPage() {
                     </div>
 
                     {/* ── PILLAR 2: AGENCY PRO (Hero / Highlighted Card) ───────────────── */}
-                    <div className="relative rounded-3xl p-8 bg-white dark:bg-slate-900 border-2 border-cyan-500 dark:border-cyan-500 flex flex-col justify-between shadow-2xl shadow-cyan-500/10 ring-1 ring-cyan-500/30 scale-100 lg:-translate-y-2 transition-all duration-300">
+                    <div className="relative rounded-3xl p-6 md:p-8 bg-white dark:bg-slate-900 border-2 border-cyan-500 dark:border-cyan-500 flex flex-col justify-between shadow-2xl shadow-cyan-500/10 ring-1 ring-cyan-500/30 transition-all duration-300 ease-out hover:-translate-y-2 hover:shadow-2xl">
                         {/* Top Floating Badge */}
-                        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-gradient-to-r from-cyan-600 to-emerald-600 text-white text-[11px] font-extrabold uppercase tracking-wider shadow-md flex items-center gap-1.5">
+                        <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-cyan-600 to-emerald-600 text-white text-[11px] font-extrabold uppercase tracking-wider shadow-md flex items-center gap-1.5 whitespace-nowrap">
                             <Sparkles className="w-3.5 h-3.5" />
-                            <span>{payCurrency === "VND" ? "Lựa chọn phổ biến nhất" : "Most Popular"}</span>
+                            <span>{payCurrency === "VND" ? "✦ Lựa chọn phổ biến nhất" : "✦ Most Popular"}</span>
                         </div>
 
-                        <div>
+                        <div className="flex flex-col">
                             {/* Plan Header */}
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
                                     Agency Pro
                                 </h3>
-                                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-cyan-50 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
+                                <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-cyan-50 dark:bg-cyan-950/80 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
                                     Agency &amp; Growth
                                 </span>
                             </div>
 
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed min-h-[36px]">
                                 {payCurrency === "VND"
                                     ? "Giải pháp hoàn chỉnh cho Marketing Agency, Team chạy Ads và Enabler quản lý nhiều khách hàng."
                                     : "Designed for performance agencies and brand enablers managing multi-client ad accounts."}
                             </p>
 
-                            {/* Price */}
-                            <div className="mb-6">
-                                <div className="flex items-baseline gap-1.5">
-                                    <span className="text-4xl sm:text-5xl font-extrabold text-slate-950 dark:text-white tracking-tight">
-                                        {proPricing.text}
+                            {/* Price Hero Section with whitespace-nowrap & inline symbol */}
+                            <div className="mb-6 space-y-1.5">
+                                <div className="flex items-baseline gap-1 whitespace-nowrap">
+                                    <span className="text-3xl md:text-4xl font-bold tracking-tight text-slate-950 dark:text-white">
+                                        {proPricing.amountFormatted}
                                     </span>
-                                    <span className="text-xs font-semibold text-cyan-600 dark:text-cyan-400">{proPricing.unit}</span>
-                                </div>
-                                <p className="text-xs text-slate-500 mt-1.5">
-                                    {proPricing.billingNote}
-                                    {proPricing.saving && (
-                                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold block sm:inline sm:ml-1">
-                                            ({proPricing.saving})
+                                    {proPricing.currencySymbol ? (
+                                        <span className="text-lg md:text-xl font-bold text-cyan-600 dark:text-cyan-400">
+                                            {proPricing.currencySymbol}
                                         </span>
-                                    )}
+                                    ) : null}
+                                    <span className="text-sm font-normal text-cyan-600 dark:text-cyan-400">
+                                        {proPricing.unit}
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    {proPricing.billingNote}
                                 </p>
                             </div>
 
@@ -428,13 +437,13 @@ export default function PricingPage() {
 
                             {/* Channel Badges */}
                             <div className="pt-4 border-t border-cyan-100 dark:border-cyan-900/60 mb-6">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 block mb-2.5">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 block mb-3">
                                     {payCurrency === "VND" ? "Đầy đủ tất cả nền tảng" : "All Platforms Included"}
                                 </span>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2.5">
                                     {PLAN_SOURCES.pro.map((s) => (
-                                        <div key={s.alt} className="w-7 h-7 rounded-lg bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-200 dark:border-cyan-800 flex items-center justify-center p-1" title={s.alt}>
-                                            <img src={s.src} alt={s.alt} className="w-4 h-4 object-contain" />
+                                        <div key={s.alt} className="w-8 h-8 rounded-lg bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-200 dark:border-cyan-800 flex items-center justify-center p-1.5" title={s.alt}>
+                                            <img src={s.src} alt={s.alt} className="w-full h-full object-contain" />
                                         </div>
                                     ))}
                                 </div>
@@ -476,44 +485,46 @@ export default function PricingPage() {
                     </div>
 
                     {/* ── PILLAR 3: ENTERPRISE ────────────────────────────────────────── */}
-                    <div className="relative rounded-3xl p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between hover:border-slate-300 dark:hover:border-slate-700 transition-all duration-300 shadow-sm hover:shadow-md">
-                        <div>
+                    <div className="relative rounded-3xl p-6 md:p-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between transition-all duration-300 ease-out hover:-translate-y-2 hover:shadow-2xl shadow-sm">
+                        <div className="flex flex-col">
                             {/* Plan Header */}
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Enterprise</h3>
-                                <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                            <div className="flex items-center justify-between mb-3">
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Enterprise</h3>
+                                <span className="text-[11px] font-semibold px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                                     Quy mô lớn
                                 </span>
                             </div>
 
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 leading-relaxed min-h-[36px]">
                                 {payCurrency === "VND"
                                     ? "Dành cho Agency lớn, Tập đoàn bán lẻ và doanh nghiệp cần kho dữ liệu BigQuery / PostgreSQL riêng."
                                     : "For large agencies and brands needing dedicated cloud warehousing, custom integrations, and SLA."}
                             </p>
 
-                            {/* Price */}
-                            <div className="mb-6">
-                                <div className="flex items-baseline gap-1.5">
-                                    <span className="text-4xl sm:text-5xl font-extrabold text-slate-950 dark:text-white tracking-tight">
-                                        {enterprisePricing.text}
+                            {/* Price Hero Section with whitespace-nowrap & inline symbol */}
+                            <div className="mb-6 space-y-1.5">
+                                <div className="flex items-baseline gap-1 whitespace-nowrap">
+                                    <span className="text-3xl md:text-4xl font-bold tracking-tight text-slate-950 dark:text-white">
+                                        {enterprisePricing.amountFormatted}
                                     </span>
-                                    <span className="text-xs font-semibold text-slate-400">{enterprisePricing.unit}</span>
-                                </div>
-                                <p className="text-xs text-slate-500 mt-1.5">
-                                    {enterprisePricing.billingNote}
-                                    {enterprisePricing.saving && (
-                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium block sm:inline sm:ml-1">
-                                            ({enterprisePricing.saving})
+                                    {enterprisePricing.currencySymbol ? (
+                                        <span className="text-lg md:text-xl font-bold text-slate-700 dark:text-slate-300">
+                                            {enterprisePricing.currencySymbol}
                                         </span>
-                                    )}
+                                    ) : null}
+                                    <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
+                                        {enterprisePricing.unit}
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    {enterprisePricing.billingNote}
                                 </p>
                             </div>
 
                             {/* CTA Action Button */}
                             <Link
                                 href="mailto:support@monsteracloud.com?subject=Inquiry%20Enterprise%20Plan%20Monstera%20Cloud"
-                                className="w-full py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold text-xs transition-all flex items-center justify-center gap-2 mb-6"
+                                className="w-full py-3.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold text-xs transition-all flex items-center justify-center gap-2 mb-6 shadow-2xs"
                             >
                                 <Building2 className="w-4 h-4 text-slate-500" />
                                 <span>{payCurrency === "VND" ? "Liên hệ tư vấn Enterprise" : "Contact Sales"}</span>
@@ -521,13 +532,13 @@ export default function PricingPage() {
 
                             {/* Channel Badges */}
                             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mb-6">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2.5">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-3">
                                     {payCurrency === "VND" ? "Không giới hạn kênh & tài khoản" : "Unlimited Custom Channels"}
                                 </span>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2.5">
                                     {PLAN_SOURCES.enterprise.map((s) => (
-                                        <div key={s.alt} className="w-7 h-7 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center p-1" title={s.alt}>
-                                            <img src={s.src} alt={s.alt} className="w-4 h-4 object-contain" />
+                                        <div key={s.alt} className="w-8 h-8 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center p-1.5" title={s.alt}>
+                                            <img src={s.src} alt={s.alt} className="w-full h-full object-contain" />
                                         </div>
                                     ))}
                                 </div>
