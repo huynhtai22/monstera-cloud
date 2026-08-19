@@ -220,14 +220,20 @@ async function syncMetaAds(opts: {
 
   // 4. Filter to selected if specified (normalized matching without act_ prefix issues)
   const selectedIds: string[] = extraFields.selectedAdAccountIds || credentials.selectedAdAccountIds;
-  if (selectedIds?.length > 0 && adAccounts?.length > 0) {
-    const normSelected = new Set(selectedIds.map((s) => String(s).replace(/^act_/, "").trim()));
-    const filtered = adAccounts.filter((acc: any) => {
-      const normId = String(acc.id).replace(/^act_/, "").trim();
-      return normSelected.has(normId) || selectedIds.includes(acc.id);
-    });
-    if (filtered.length > 0) {
-      adAccounts = filtered;
+  if (selectedIds?.length > 0) {
+    if (adAccounts?.length > 0) {
+      const normSelected = new Set(selectedIds.map((s) => String(s).replace(/^act_/, "").trim()));
+      const filtered = adAccounts.filter((acc: any) => {
+        const normId = String(acc.id).replace(/^act_/, "").trim();
+        return normSelected.has(normId) || selectedIds.includes(acc.id);
+      });
+      if (filtered.length > 0) {
+        adAccounts = filtered;
+      } else {
+        adAccounts = selectedIds.map((id) => ({ id, name: id }));
+      }
+    } else {
+      adAccounts = selectedIds.map((id) => ({ id, name: id }));
     }
     logger.info(`[syncMetaAds] Filtered to ${adAccounts.length} selected accounts`);
   }

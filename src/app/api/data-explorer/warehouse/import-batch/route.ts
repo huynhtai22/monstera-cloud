@@ -22,6 +22,8 @@ import {
   type BatchImportJobResult,
 } from "@/lib/warehouse-import-job";
 import { runPostWarehouseRefreshQualityChecks } from "@/lib/observability/data-quality";
+import { emitMonitor } from "@/lib/observability/monitors";
+import { notifyWarehouseJobIfNeeded } from "@/lib/ingestion/notify-run";
 
 const MAX_CONCURRENT_JOBS_PER_WORKSPACE = 5;
 const MAX_ITEMS_PER_REQUEST = 50;
@@ -131,57 +133,37 @@ export async function processBatchItems(opts: {
         remoteAccountId: conn.remoteAccountId,
       };
 
-      if (syncFn) {
-        const sync = await syncRunner({
-          workspaceId,
-          connectionId: conn.id,
-          provider: conn.provider,
-          credentials,
-          since,
-          until,
-          userPlan: plan,
-        });
-        results.push({
-          connectionId: conn.id,
-          provider: conn.provider,
-          adAccountId: item.adAccountId,
-          ok: sync.success,
-          rowsIngested: sync.rowsIngested,
-          error: sync.error,
-        });
-      } else if (conn.provider === "meta_ads" && item.adAccountId) {
-        const metaRes = await syncMetaInsightsIntoWarehouse({
-          workspaceId,
-          connectionId: conn.id,
-          adAccountId: item.adAccountId,
-          userPlan: plan,
-          since,
-          until,
-        });
+      const itemCreds = {
+        ...credentials,
+        ...(item.adAccountId ? { selectedAdAccountIds: [item.adAccountId] } : {}),
+      };
 
-        results.push({
-          connectionId: conn.id,
-          provider: conn.provider,
-          adAccountId: item.adAccountId,
-          ok: true,
-          upserted: metaRes.upserted,
-        });
-      } else {
-        const sync = await syncConnectionData({
+      const sync = await syncRunner({
+        workspaceId,
+        connectionId: conn.id,
+        provider: conn.provider,
+        credentials: itemCreds,
+        since,
+        until,
+        userPlan: plan,
+      });
+
+      results.push({
+        connectionId: conn.id,
+        provider: conn.provider,
+        adAccountId: item.adAccountId,
+        ok: sync.success,
+        rowsIngested: sync.rowsIngested,
+        upserted: sync.rowsIngested,
+        error: sync.error,
+      });
+
+      if (sync.success && !conn.lastSyncAt) {
+        emitMonitor("time_to_first_row", {
           workspaceId,
           connectionId: conn.id,
           provider: conn.provider,
-          credentials,
-          since,
-          until,
-          userPlan: plan,
-        });
-        results.push({
-          connectionId: conn.id,
-          provider: conn.provider,
-          ok: sync.success,
-          rowsIngested: sync.rowsIngested,
-          error: sync.error,
+          rows: sync.rowsIngested ?? 0,
         });
       }
     } catch (e: unknown) {
@@ -292,7 +274,8 @@ export async function runDurableImportWorker(
     const errorMsg = err instanceof Error ? err.message : "Batch job execution failed";
     logger.error(`[warehouse/import-batch] Durable job ${jobId} failed:`, err);
     try {
-      await failImportJob(jobId, leaseId, errorMsg);
+      const failed = await failImportJob(jobId, leaseId, errorMsg);
+      await notifyWarehouseJobIfNeeded(failed).catch(() => {});
     } catch {
       // Lease may have been lost during fail update
     }

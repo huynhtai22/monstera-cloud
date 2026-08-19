@@ -59,10 +59,10 @@ export function buildBreakdownHash(row: MetaInsightsRow, breakdowns: string[]): 
  */
 function resolveEntityId(row: MetaInsightsRow, level: string, accountId: string): string {
   switch (level) {
-    case 'ad':      return String(row.ad_id      ?? row.id ?? '');
-    case 'adset':   return String(row.adset_id   ?? row.id ?? '');
+    case 'ad':      return String(row.ad_id      ?? row.id ?? row.ad_name ?? 'unknown_ad');
+    case 'adset':   return String(row.adset_id   ?? row.id ?? row.adset_name ?? 'unknown_adset');
     case 'account': return accountId;
-    default:        return String(row.campaign_id ?? row.id ?? '');
+    default:        return String(row.campaign_id ?? row.id ?? row.campaign_name ?? 'unknown_campaign');
   }
 }
 

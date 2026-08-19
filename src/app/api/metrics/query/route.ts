@@ -82,7 +82,7 @@ export async function GET(req: Request) {
   const endDate = endDateStr ? new Date(endDateStr) : null;
 
   // Validate date range inputs
-  if (!startDate || !endDate) {
+  if (!startDate || !endDate || !startDateStr || !endDateStr) {
     return NextResponse.json(
       { error: "startDate and endDate are required" },
       { status: 400 }
@@ -128,9 +128,18 @@ export async function GET(req: Request) {
     // Build where clause with proper typing
     const where: MetricWhereClause = { workspaceId };
 
+    const startOfRange = new Date(startDateStr);
+    if (!startDateStr.includes("T")) {
+      startOfRange.setUTCHours(0, 0, 0, 0);
+    }
+    const endOfRange = new Date(endDateStr);
+    if (!endDateStr.includes("T")) {
+      endOfRange.setUTCHours(23, 59, 59, 999);
+    }
+
     where.date = {
-      gte: startDate,
-      lte: endDate,
+      gte: startOfRange,
+      lte: endOfRange,
     };
 
     if (platformsParam) {

@@ -414,9 +414,13 @@ export const metaReportClient = new MetaReportClient();
 // ── Default metrics and breakdowns ──────────────────────────────────────────
 
 export const META_DEFAULT_FIELDS = [
+  'campaign_id',
   'campaign_name',
+  'adset_id',
   'adset_name',
+  'ad_id',
   'ad_name',
+  'account_id',
   'spend',
   'impressions',
   'reach',
