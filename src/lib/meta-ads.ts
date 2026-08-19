@@ -284,7 +284,14 @@ async function metaFetch(
   throw new Error('Meta API: max retries exceeded after rate-limit backoff');
 }
 
-// ── Meta Insights (reporting) client ────────────────────────────────────────
+export class MetaOAuthRevokedError extends Error {
+  code: number;
+  constructor(message: string, code = 190) {
+    super(`Meta OAuth Revoked (Error ${code}): ${message}`);
+    this.name = "MetaOAuthRevokedError";
+    this.code = code;
+  }
+}
 
 export function filterFieldsForLevel(fields: string[], level: MetaInsightsLevel): string[] {
   return fields.filter((field) => {
@@ -343,7 +350,12 @@ export class MetaReportClient {
         error?: { message: string; code: number };
       };
 
-      if (json.error) throw new Error(`Meta Insights error ${json.error.code}: ${json.error.message}`);
+      if (json.error) {
+        if (json.error.code === 190) {
+          throw new MetaOAuthRevokedError(json.error.message, json.error.code);
+        }
+        throw new Error(`Meta Insights error ${json.error.code}: ${json.error.message}`);
+      }
 
       allRows.push(...(json.data ?? []));
       afterCursor = json.paging?.next ? (json.paging.cursors?.after ?? null) : null;

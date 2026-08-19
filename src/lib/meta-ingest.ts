@@ -112,7 +112,9 @@ function extractRevenue(row: MetaInsightsRow): number {
   const purchase = actionValues.find(
     (a) =>
       a.action_type === 'purchase' ||
-      a.action_type === 'offsite_conversion.fb_pixel_purchase',
+      a.action_type === 'offsite_conversion.fb_pixel_purchase' ||
+      a.action_type === 'omni_purchase' ||
+      a.action_type === 'web_in_store_purchase',
   );
   if (!purchase) return 0;
   const v = parseFloat(purchase.value ?? '');

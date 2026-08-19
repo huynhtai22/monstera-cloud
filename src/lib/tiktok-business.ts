@@ -206,13 +206,9 @@ export class TikTokReportClient {
   }
 
   /**
-   * Step 3 — Once COMPLETED, download rows from the returned URL.
-   * TikTok returns NDJSON (one JSON object per line) or CSV depending on export type.
+   * Parse NDJSON (one JSON object per line) or CSV report text.
    */
-  async downloadRows(downloadUrl: string): Promise<ReportRow[]> {
-    const res = await fetch(downloadUrl);
-    if (!res.ok) throw new Error(`TikTok report download failed: ${res.status}`);
-    const text = await res.text();
+  parseReportText(text: string): ReportRow[] {
     const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
     if (!lines.length) return [];
 
@@ -282,6 +278,17 @@ export class TikTokReportClient {
     }
 
     return rows;
+  }
+
+  /**
+   * Step 3 — Once COMPLETED, download rows from the returned URL.
+   * TikTok returns NDJSON (one JSON object per line) or CSV depending on export type.
+   */
+  async downloadRows(downloadUrl: string): Promise<ReportRow[]> {
+    const res = await fetch(downloadUrl);
+    if (!res.ok) throw new Error(`TikTok report download failed: ${res.status}`);
+    const text = await res.text();
+    return this.parseReportText(text);
   }
 
   /**

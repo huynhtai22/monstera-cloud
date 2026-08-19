@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import {
   metaAdsClient,
   metaReportClient,
+  MetaOAuthRevokedError,
   type MetaInsightsRow,
   type MetaAction,
 } from "@/lib/meta-ads";
@@ -10,6 +11,7 @@ import { getPlanLimits } from "@/lib/plan-config";
 import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";
+import { upsertOpenTicket } from "@/lib/support-ticket";
 
 /** Campaign-level daily insights fields mapped into CampaignMetric */
 const META_WAREHOUSE_FIELDS = [
@@ -22,6 +24,7 @@ const META_WAREHOUSE_FIELDS = [
   "cpc",
   "ctr",
   "actions",
+  "action_values",
   "purchase_roas",
   "date_start",
   "date_stop",
@@ -59,13 +62,34 @@ function parseConversions(actions: unknown): number | null {
       t === "purchase" ||
       t === "offsite_conversion.fb_pixel_purchase" ||
       t === "omni_purchase" ||
-      t === "web_in_store_purchase"
+      t === "web_in_store_purchase" ||
+      t === "lead" ||
+      t === "offsite_conversion.fb_pixel_lead"
     ) {
       sum += num(a.value);
       any = true;
     }
   }
   return any ? sum : null;
+}
+
+function parseRevenue(actionValues: unknown): number {
+  if (!Array.isArray(actionValues)) return 0;
+  for (const raw of actionValues) {
+    if (typeof raw !== "object" || !raw) continue;
+    const a = raw as MetaAction;
+    const t = a.action_type;
+    if (
+      t === "purchase" ||
+      t === "offsite_conversion.fb_pixel_purchase" ||
+      t === "omni_purchase" ||
+      t === "web_in_store_purchase"
+    ) {
+      const v = num(a.value);
+      if (v > 0) return v;
+    }
+  }
+  return 0;
 }
 
 function parseRoas(purchaseRoas: unknown): number | null {
@@ -131,7 +155,15 @@ export async function syncMetaInsightsIntoWarehouse(
   }
 
   const range = { since: params.since, until: params.until };
-  const accessToken = await getValidOAuthToken(conn);
+  let accessToken: string;
+  try {
+    accessToken = await getValidOAuthToken(conn);
+  } catch (err: any) {
+    if (err instanceof MetaOAuthRevokedError || err?.message?.includes("190")) {
+      await handleMetaRevocation(conn, params.workspaceId, err.message);
+    }
+    throw err;
+  }
 
   if (accountIds.length === 0 && accessToken) {
     try {
@@ -139,8 +171,11 @@ export async function syncMetaInsightsIntoWarehouse(
       if (apiAccounts && apiAccounts.length > 0) {
         accountIds = apiAccounts.map((a) => a.id);
       }
-    } catch {
-      /* ignore */
+    } catch (err: any) {
+      if (err instanceof MetaOAuthRevokedError || err?.message?.includes("190")) {
+        await handleMetaRevocation(conn, params.workspaceId, err.message);
+        throw err;
+      }
     }
   }
 
@@ -154,13 +189,21 @@ export async function syncMetaInsightsIntoWarehouse(
   for (const rawAct of accountIds) {
     acctCount += 1;
     const apiId = normalizeMetaAdAccountIdForApi(rawAct);
-    const rows = await metaReportClient.getInsights(accessToken, {
-      adAccountId: apiId,
-      fields: [...META_WAREHOUSE_FIELDS],
-      level: "campaign",
-      timeRange: { since: range.since, until: range.until },
-      timeIncrement: 1,
-    });
+    let rows: MetaInsightsRow[] = [];
+    try {
+      rows = await metaReportClient.getInsights(accessToken, {
+        adAccountId: apiId,
+        fields: [...META_WAREHOUSE_FIELDS],
+        level: "campaign",
+        timeRange: { since: range.since, until: range.until },
+        timeIncrement: 1,
+      });
+    } catch (err: any) {
+      if (err instanceof MetaOAuthRevokedError || err?.message?.includes("190")) {
+        await handleMetaRevocation(conn, params.workspaceId, err.message);
+      }
+      throw err;
+    }
 
     const currency = accountCurrency(creds, rawAct);
     const accountIdStored = rawAct.startsWith("act_")
@@ -186,6 +229,25 @@ export async function syncMetaInsightsIntoWarehouse(
   }
 
   return { upserted: total, accounts: acctCount };
+}
+
+async function handleMetaRevocation(
+  conn: { id: string; name?: string | null; remoteAccountId?: string | null },
+  workspaceId: string,
+  errorMsg: string,
+) {
+  await prisma.connection.update({
+    where: { id: conn.id },
+    data: { status: "disconnected" },
+  });
+  await upsertOpenTicket({
+    workspaceId,
+    reason: "auth",
+    title: `Meta Ads authorization revoked (Account: ${conn.name || conn.remoteAccountId || conn.id})`,
+    errorMsg,
+    connectionId: conn.id,
+    tag: "meta_ads_error_190",
+  });
 }
 
 async function upsertOneRow(opts: {
@@ -224,6 +286,7 @@ async function upsertOneRow(opts: {
   const cpc = nullableFloat(row.cpc) ?? 0;
   const ctr = nullableFloat(row.ctr) ?? 0;
   const conversions = parseConversions(row.actions) ?? 0;
+  const revenue = parseRevenue(row.action_values);
   const roas = parseRoas(row.purchase_roas) ?? 0;
 
   const rawPayload = {
@@ -250,7 +313,7 @@ async function upsertOneRow(opts: {
     cpc,
     ctr,
     conversions,
-    revenue: 0,
+    revenue,
     roas,
     currency: opts.currency,
     rawData: rawPayload,
