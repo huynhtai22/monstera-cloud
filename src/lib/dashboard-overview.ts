@@ -510,11 +510,8 @@ export async function getWorkspaceDashboardOverview(
     recentActivity.push({
       id: `log-${log.id}`,
       type: log.status === "success" ? "sync_success" : "sync_error",
-      title: `${log.pipeline.name} sync ${log.status === "success" ? "completed" : "failed"}`,
-      description:
-        log.status === "success"
-          ? `${log.rowsSynced ?? 0} rows imported · ${log.durationMs}ms`
-          : "Sync failed to extract data",
+      title: log.pipeline.name,
+      description: log.status === "success" ? "Sync completed" : "Sync failed",
       timestamp: log.createdAt.toISOString(),
       status: log.status === "success" ? "success" : "error",
     });
@@ -525,10 +522,7 @@ export async function getWorkspaceDashboardOverview(
       id: `import-${latestImportJob.id}`,
       type: "warehouse_refresh",
       title: "Warehouse batch refresh",
-      description:
-        latestImportJob.status === "completed"
-          ? `Completed · ~${latestImportJob.approximateRows} rows`
-          : `Status: ${latestImportJob.status}`,
+      description: latestImportJob.status === "completed" ? "Refresh completed" : "Refresh in progress",
       timestamp: (latestImportJob.finishedAt || latestImportJob.createdAt).toISOString(),
       status: latestImportJob.status === "completed" ? "success" : "info",
     });
@@ -538,8 +532,8 @@ export async function getWorkspaceDashboardOverview(
     recentActivity.push({
       id: `looker-${lJob.id}`,
       type: "looker_query",
-      title: "Looker Studio query served",
-      description: lJob.rowCount ? `${lJob.rowCount} rows transferred` : "Warehouse query executed",
+      title: "Looker Studio query",
+      description: "Query served",
       timestamp: (lJob.finishedAt || lJob.createdAt).toISOString(),
       status: lJob.status === "done" ? "success" : "info",
     });

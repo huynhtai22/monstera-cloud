@@ -146,7 +146,7 @@ export function DashboardHomePage() {
     <PageShell>
       <div className="space-y-6">
         {/* ── 1. Header ──────────────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-3 border-b border-line pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 border-b border-line pb-5 mb-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-ink">Dashboard</h1>
             <p className="mt-0.5 text-xs text-ink-mute">
@@ -546,10 +546,10 @@ export function DashboardHomePage() {
               {recentActivity.length > 0 ? (
                 <div className="mt-2.5 space-y-2">
                   {recentActivity.map((act) => (
-                    <div key={act.id} className="flex items-start gap-2 text-xs">
+                    <div key={act.id} className="flex items-start gap-2.5 text-xs py-0.5">
                       <div
                         className={cn(
-                          "mt-1 h-1.5 w-1.5 shrink-0 rounded-full",
+                          "mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full",
                           act.status === "success" && "bg-emerald-400",
                           act.status === "error" && "bg-amber-400",
                           act.status === "info" && "bg-sky-400"
@@ -557,11 +557,10 @@ export function DashboardHomePage() {
                       />
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-medium text-ink truncate">{act.title}</p>
-                        <p className="text-[10px] text-ink-mute truncate">{act.description}</p>
+                        <p className="text-[11px] text-ink-mute truncate">
+                          {act.description} · {new Date(act.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </p>
                       </div>
-                      <span className="shrink-0 font-mono text-[10px] text-neutral-500">
-                        {new Date(act.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </span>
                     </div>
                   ))}
                 </div>
