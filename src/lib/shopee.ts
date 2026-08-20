@@ -305,7 +305,7 @@ function logShopeeShopApiFailure(
     msg.includes("error_sign")
   ) {
     hintParts.push(
-      "Signature/env mismatch: confirm SHOPEE_PARTNER_ID/KEY match the environment, use sandbox host with sandbox keys, and api_path in sign matches the request path."
+      "Signature/env mismatch: confirm SHOPEE_PARTNER_ID/KEY match the Open Platform app (e.g. Ads Service) and environment (sandbox test keys + SHOPEE_SANDBOX), use sandbox host with sandbox keys, api_path in sign matches the request path, and reconnect if you rotated keys or switched apps."
     );
   }
   if (
