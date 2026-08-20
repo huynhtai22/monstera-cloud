@@ -87,7 +87,16 @@ export async function queryWarehouse(input: WarehouseQueryInput) {
   ]);
 
   const hasMore = foundRows.length > take;
-  const rows = hasMore ? foundRows.slice(0, take) : foundRows;
+  // `fencingToken` is an internal BigInt used only to protect writes from stale
+  // workers. It is not a warehouse dimension or metric, and BigInt cannot be
+  // serialized in a JSON response. Omit it at the query boundary so one Meta
+  // import cannot make the entire warehouse read API return 500.
+  const visibleRows = hasMore ? foundRows.slice(0, take) : foundRows;
+  const rows = visibleRows.map((row) => {
+    const { fencingToken, ...visibleRow } = row;
+    void fencingToken;
+    return visibleRow;
+  });
   const last = rows.at(-1);
   const lastSyncAt = lastSyncAggregate._max.lastSyncAt;
   const asOf = asOfAggregate._max.pulledAt;
