@@ -800,7 +800,7 @@ export function WarehouseWorkbench() {
               return hasData ? opt : { ...opt, description: "No data yet" };
             })}
             placeholder="All platforms"
-            className="min-w-[150px]"
+            className="w-[220px] min-w-[220px] max-w-full"
           />
         </div>
         {warehousedAccounts.length > 0 && (
