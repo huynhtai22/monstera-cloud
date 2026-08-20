@@ -195,7 +195,7 @@ export function SignaturePipeline() {
 
             <div className="mt-4 pt-3 border-t border-line/60 flex items-center justify-between text-[11px] text-ink-mute">
               <span>Sync frequency</span>
-              <span className="font-mono text-ink">Hourly / Daily</span>
+              <span className="font-mono text-ink">Manual / Nightly</span>
             </div>
           </div>
 
@@ -249,7 +249,7 @@ export function SignaturePipeline() {
 
             <div className="mt-4 pt-3 border-t border-line/60 flex items-center justify-between text-[11px] text-ink-mute">
               <span>Timezone &amp; currency</span>
-              <span className="font-mono text-ink">Reconciled</span>
+              <span className="font-mono text-ink">Currency-aware</span>
             </div>
           </div>
 
@@ -295,8 +295,8 @@ export function SignaturePipeline() {
                   <span className="font-mono text-ink">Workspace Fenced</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-ink-mute">Query Speed:</span>
-                  <span className="font-mono text-emerald-400">&lt; 35ms indexed</span>
+                  <span className="text-ink-mute">Query access:</span>
+                  <span className="font-mono text-emerald-400">Workspace scoped</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-ink-mute">Encryption:</span>

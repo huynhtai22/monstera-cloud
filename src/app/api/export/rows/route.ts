@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { shopeeDataClient } from "@/lib/shopee";
-import { safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { resolveApiKey } from "@/lib/api-key-security";
+import { warehouseAdsCsvRows, warehouseRetailOrdersCsvRows } from "@/lib/warehouse-csv-export";
 
 /**
  * GET /api/export/rows
@@ -14,7 +13,7 @@ import { resolveApiKey } from "@/lib/api-key-security";
  * Query Params:
  *   sourceId (optional): Connection ID to pull from
  * 
- * Purpose: Used by Google Sheets Add-on to pull flattened, live data arrays.
+ * Purpose: Used by Google Sheets Add-on to pull flattened warehouse data arrays.
  */
 export async function GET(request: Request) {
     try {
@@ -66,66 +65,25 @@ export async function GET(request: Request) {
         }
 
         const provider = sourceConnection.provider;
-        const sourceCreds = JSON.parse(safeDecrypt(sourceConnection.credentials));
-
-        // rows: array-of-arrays, first row is headers
-        const rows: any[][] = [];
+        let rows: Array<Array<string | number>>;
 
         if (provider === "shopee") {
-            const headers = ["Order ID", "Customer Name", "Status", "Total Amount", "Currency", "Item Count", "Created At"];
-            rows.push(headers);
-
-            // Pull live data if OAuth creds exist
-            if (sourceCreds.access_token && sourceCreds.shop_id) {
-                logger.info("[EXPORT API] Pulling live Shopee data via extension request...");
-                try {
-                    const timeTo = Math.floor(Date.now() / 1000);
-                    const timeFrom = timeTo - (14 * 24 * 60 * 60);
-                    const opts = { accessToken: sourceCreds.access_token, shopId: Number(sourceCreds.shop_id) };
-
-                    const shopeeData = await shopeeDataClient.getOrderList(opts, timeFrom, timeTo);
-
-                    if (shopeeData.response && shopeeData.response.order_list) {
-                        shopeeData.response.order_list.forEach((o: any) => {
-                            rows.push([
-                                o.order_sn,
-                                "Hidden (Live API)",
-                                o.order_status,
-                                o.total_amount,
-                                o.currency || "Local",
-                                1,
-                                new Date(o.create_time * 1000).toISOString()
-                            ]);
-                        });
-                    }
-                } catch (liveErr) {
-                    logger.error("[EXPORT API] Live pull failed.", liveErr);
-                }
-            }
+            const orders = await prisma.retailOrder.findMany({
+                where: { workspaceId, connectionId: sourceConnection.id },
+                orderBy: { createdAt: "desc" },
+                take: 10000,
+                select: { orderId: true, platform: true, grossRevenue: true, netRevenue: true, currency: true, createdAtIso: true },
+            });
+            rows = warehouseRetailOrdersCsvRows(orders);
 
         } else if (provider === "meta_ads" || provider === "google_ads" || provider === "tiktok_business") {
-            const headers = ["Date", "Campaign", "Impressions", "Clicks", "Spend", "CPC", "CTR", "Conversions", "ROAS"];
-            rows.push(headers);
-
             const metrics = await prisma.campaignMetric.findMany({
-                where: { connectionId: sourceConnection.id },
+                where: { workspaceId, connectionId: sourceConnection.id },
                 orderBy: { date: "desc" },
                 take: 10000,
+                select: { date: true, campaignName: true, impressions: true, clicks: true, spend: true, cpc: true, ctr: true, conversions: true, revenue: true, roas: true, currency: true },
             });
-
-            metrics.forEach((m: any) => {
-                rows.push([
-                    new Date(m.date).toISOString().split("T")[0],
-                    m.campaignName,
-                    m.impressions,
-                    m.clicks,
-                    m.spend,
-                    m.cpc,
-                    m.ctr,
-                    m.conversions,
-                    m.roas,
-                ]);
-            });
+            rows = warehouseAdsCsvRows(metrics);
         } else {
             return NextResponse.json(
                 { error: `Unsupported source provider: ${provider}` },

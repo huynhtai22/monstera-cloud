@@ -127,11 +127,11 @@ export default function PricingPage() {
             description: payCurrency === "VND" ? "Chuẩn hóa bảng dữ liệu đa kênh, tối ưu truy vấn tốc độ cao" : "Ultra-fast normalized multi-channel data schemas",
             features: [
                 { name: "Normalized ad_insights_daily Schema", starter: true, pro: true, enterprise: true },
-                { name: "Hourly Campaign Pacing Schema", starter: false, pro: true, enterprise: true },
+                { name: "Campaign pacing schema", starter: false, pro: true, enterprise: true },
                 { name: "Maximum Connected Accounts & Shops", starter: "5 accounts", pro: "20 accounts", enterprise: "Unlimited" },
                 { name: "Monthly Warehouse Sync Allowance", starter: "500 runs", pro: "3,000 runs", enterprise: "Custom quota" },
                 { name: "Multi-Tenant Workspace Guard", starter: false, pro: true, enterprise: true },
-                { name: "Dedicated PostgreSQL / BigQuery Warehouse", starter: false, pro: false, enterprise: true },
+                { name: "Dedicated warehouse support", starter: false, pro: false, enterprise: true },
             ],
         },
         {
@@ -142,7 +142,7 @@ export default function PricingPage() {
                 { name: "Google Sheets™ Official Add-on", starter: true, pro: true, enterprise: true },
                 { name: "Looker Studio™ Partner Connector", starter: true, pro: true, enterprise: true },
                 { name: "Automated Daily Scheduled Syncs", starter: true, pro: true, enterprise: true },
-                { name: "Hourly & Nightly Automated Refreshes", starter: false, pro: true, enterprise: true },
+                { name: "Manual & nightly warehouse refreshes", starter: false, pro: true, enterprise: true },
                 { name: "Workspace REST API Access", starter: false, pro: true, enterprise: true },
                 { name: "Custom Webhook Trigger Notifications", starter: false, pro: false, enterprise: true },
             ],
@@ -381,8 +381,8 @@ export default function PricingPage() {
                                     <Clock className="w-4 h-4 text-ink-mute shrink-0" />
                                     <span>
                                         {payCurrency === "VND"
-                                            ? "Lịch làm mới tự động theo giờ & ban đêm"
-                                            : "Hourly & nightly scheduled syncs"}
+                                            ? "Làm mới kho dữ liệu thủ công và hàng đêm"
+                                            : "Manual & nightly warehouse refreshes"}
                                     </span>
                                 </li>
                                 <li className="flex items-center gap-2.5">
@@ -450,8 +450,8 @@ export default function PricingPage() {
 
                             <p className="text-xs text-ink-mute leading-relaxed mb-6 min-h-[34px]">
                                 {payCurrency === "VND"
-                                    ? "Bảo mật nâng cao, kho PostgreSQL / BigQuery riêng, SLA 99.9% và hỗ trợ kỹ thuật chuyên sâu."
-                                    : "Dedicated PostgreSQL / BigQuery warehouse, platform SLAs, and custom pipelines."}
+                                    ? "Bảo mật nâng cao, hỗ trợ kho dữ liệu riêng và hỗ trợ kỹ thuật chuyên sâu."
+                                    : "Dedicated warehouse support and custom pipeline guidance."}
                             </p>
 
                             {/* Decision-led bullets */}
@@ -468,8 +468,8 @@ export default function PricingPage() {
                                     <Database className="w-4 h-4 text-ink-mute shrink-0" />
                                     <span>
                                         {payCurrency === "VND"
-                                            ? "Kho dữ liệu PostgreSQL / BigQuery riêng"
-                                            : "Dedicated PostgreSQL / BigQuery warehouse"}
+                                            ? "Hỗ trợ kho dữ liệu riêng"
+                                            : "Dedicated warehouse support"}
                                     </span>
                                 </li>
                                 <li className="flex items-center gap-2.5">

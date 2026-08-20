@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import { prismaBase } from "@/lib/prisma";
 import { ShopeeClient } from "@/lib/shopee";
 import { isShopeeSandboxEnabled } from "@/lib/shopee-env";
 import {
@@ -12,7 +12,6 @@ import {
 import { encrypt, safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { requireCronSecret } from "@/lib/request-auth";
-import { withSystemScope } from "@/lib/tenant-guard";
 
 export async function GET(request: Request) {
   try {
@@ -21,14 +20,13 @@ export async function GET(request: Request) {
 
     logger.info("[CRON: SHOPEE REFRESH] Fleet token refresh starting…");
 
-    const connections = await withSystemScope(() =>
-      prisma.connection.findMany({
-        where: {
-          provider: "shopee",
-          status: "connected",
-        },
-      }),
-    );
+    // Fleet enumeration is a trusted, cron-authenticated server operation. Do not route
+    // this query through the request-scoped guard: AsyncLocalStorage context can be lost
+    // inside Prisma's extension boundary in production. `prismaBase` is explicit and this
+    // route never accepts a caller-provided workspace ID.
+    const connections = await prismaBase.connection.findMany({
+      where: { provider: "shopee", status: "connected" },
+    });
 
     const now = Date.now();
     const shopeeClient = new ShopeeClient();
@@ -72,7 +70,7 @@ export async function GET(request: Request) {
           sandbox: isSandbox,
         });
 
-        await prisma.connection.update({
+        await prismaBase.connection.update({
           where: { id: conn.id },
           data: {
             credentials: encrypt(
@@ -83,6 +81,16 @@ export async function GET(request: Request) {
           },
         });
 
+        await prismaBase.auditEvent.create({
+          data: {
+            workspaceId: conn.workspaceId,
+            action: "system.shopee_token_refreshed",
+            resource: "connection",
+            resourceId: conn.id,
+            metadata: { provider: "shopee" },
+          },
+        });
+
         refreshedCount++;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -90,6 +98,15 @@ export async function GET(request: Request) {
           `[CRON: SHOPEE REFRESH] Failed for connection ${conn.id}:`,
           message
         );
+        await prismaBase.auditEvent.create({
+          data: {
+            workspaceId: conn.workspaceId,
+            action: "system.shopee_token_refresh_failed",
+            resource: "connection",
+            resourceId: conn.id,
+            metadata: { provider: "shopee", error: message.slice(0, 500) },
+          },
+        });
         failedCount++;
       }
     }

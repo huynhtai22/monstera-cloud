@@ -79,7 +79,7 @@ export default function TemplatesPage() {
                         </div>
                         <h3 className="text-base font-bold text-ink mb-2">11.11 Mega-Campaign Tracker</h3>
                         <p className="text-xs text-ink-mute mb-6 flex-1 leading-relaxed">
-                            Concept preview for GMV surge tracking. Real-time ROAS and spend tracking across multiple regional ad channels.
+                            Concept preview for GMV surge tracking with warehouse-backed ROAS and spend reporting across regional ad channels.
                         </p>
                         <div className="pt-5 border-t border-line mt-auto">
                             <div className="text-[11px] font-bold text-ink-mute uppercase tracking-wider mb-3">

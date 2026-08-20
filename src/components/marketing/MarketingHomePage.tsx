@@ -42,7 +42,7 @@ const COPY = {
           description: "Eliminate repetitive Monday morning CSV exports, broken VLOOKUPs, and currency reconciliation across dozens of client ad accounts.",
           icon: Clock,
           proof: [
-            "Automated nightly & hourly background refreshes",
+            "Manual and nightly warehouse refreshes",
             "Cross-platform spend and conversion harmonization",
             "Zero manual copy-paste spreadsheet glue",
           ],
