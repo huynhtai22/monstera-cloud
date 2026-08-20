@@ -6,24 +6,21 @@ export function LogoMark({
   className?: string;
 }) {
   return (
-    <div
-      className={`relative flex items-center justify-center rounded-md border border-black/10 bg-black/[0.04] dark:border-line dark:bg-panel ${className}`}
+    <svg
+      viewBox="0 0 32 32"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden
     >
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        className="h-[55%] w-[55%] text-gray-900 dark:text-ink"
-        aria-hidden
-      >
-        <path
-          d="M12 5V19M5 12H19"
-          stroke="currentColor"
-          strokeWidth="1.75"
-          strokeLinecap="square"
-        />
-      </svg>
-    </div>
+      <rect x="1.5" y="1.5" width="29" height="29" rx="6.5" fill="#0C0C0C" stroke="#2B2B2B" strokeWidth="1.5" />
+      <path
+        d="M16 8V24M8 16H24"
+        stroke="#EDEDED"
+        strokeWidth="2.5"
+        strokeLinecap="square"
+      />
+    </svg>
   );
 }
 
