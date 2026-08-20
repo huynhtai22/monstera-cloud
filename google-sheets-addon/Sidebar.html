@@ -4,77 +4,57 @@
   <base target="_top">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Google Sans', -apple-system, sans-serif; font-size: 13px; color: #1f2937; padding: 16px; background: #fff; }
-
-    .loading { text-align: center; padding: 48px 0; color: #6b7280; }
-    .spinner { display: inline-block; width: 22px; height: 22px; border: 3px solid #e5e7eb; border-top-color: #06b6d4; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    :root { color-scheme: dark; }
+    body { min-height: 100vh; background: #0c0c0c; color: #ededed; font-family: 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 13px; padding: 14px; }
+    .loading { color: #969696; padding: 58px 0; text-align: center; }
+    .spinner { animation: spin 0.6s linear infinite; border: 3px solid #2b2b2b; border-radius: 50%; border-top-color: #ededed; display: inline-block; height: 22px; width: 22px; }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    .error-box   { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-bottom: 12px; }
-    .success-box { background: #f0fdfa; border: 1px solid #99f6e4; color: #134e4a; border-radius: 8px; padding: 10px 12px; font-size: 12px; margin-bottom: 12px; }
-
-    .logo-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-    .logo-dot  { width: 24px; height: 24px; background: #06b6d4; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .logo-dot svg { width: 14px; height: 14px; fill: #fff; }
-    h2 { font-size: 15px; font-weight: 700; }
-    .subtitle { color: #6b7280; font-size: 11px; margin-bottom: 18px; }
-
-    label { display: block; font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 4px; margin-top: 12px; text-transform: uppercase; letter-spacing: 0.3px; }
-    select, input[type="date"], input[type="text"] {
-      width: 100%; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px;
-      color: #1f2937; background: #fff; outline: none; transition: border-color 0.15s;
-    }
-    select:focus, input:focus { border-color: #06b6d4; box-shadow: 0 0 0 2px rgba(6,182,212,0.15); }
+    .error-box { background: #2b1111; border: 1px solid #733333; border-radius: 8px; color: #ffb4b4; font-size: 12px; line-height: 1.45; margin-bottom: 12px; padding: 10px 12px; }
+    .success-box { background: #0f2419; border: 1px solid #245c39; border-radius: 8px; color: #a7f3c1; font-size: 12px; line-height: 1.45; margin-bottom: 12px; padding: 10px 12px; }
+    .brand-header { border-bottom: 1px solid #242424; margin-bottom: 14px; padding: 6px 4px 18px; }
+    .logo-row { align-items: center; display: flex; gap: 9px; }
+    .logo-mark { flex-shrink: 0; height: 28px; width: 28px; }
+    .eyebrow, .section-heading { color: #8d8d8d; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; font-weight: 600; letter-spacing: 0.14em; line-height: 1; text-transform: uppercase; }
+    .eyebrow { margin-bottom: 4px; }
+    h2 { font-size: 15px; font-weight: 650; letter-spacing: -0.15px; line-height: 1; }
+    .subtitle { color: #999; font-size: 11px; line-height: 1.45; margin: 9px 0 0 37px; }
+    .section { background: #111; border: 1px solid #292929; border-radius: 10px; margin-top: 10px; padding: 12px; }
+    .section-heading { margin-bottom: 10px; }
+    label { color: #969696; display: block; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; margin: 11px 0 5px; text-transform: uppercase; }
+    .section > label:first-of-type { margin-top: 0; }
+    select, input[type="date"], input[type="text"] { background: #0c0c0c; border: 1px solid #313131; border-radius: 6px; color: #ededed; font-size: 12px; height: 34px; outline: none; padding: 7px 9px; transition: border-color 0.15s, box-shadow 0.15s; width: 100%; }
+    select:focus, input:focus { border-color: #a8a8a8; box-shadow: 0 0 0 2px rgba(237,237,237,0.12); }
     .row { display: flex; gap: 8px; }
     .row > div { flex: 1; }
-
-    .btn { width: 100%; padding: 10px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
-           cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
-           transition: all 0.15s; margin-top: 14px; }
-    .btn-primary  { background: #0891b2; color: #fff; }
-    .btn-primary:hover  { background: #0e7490; }
-    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-    /* User badge */
-    .user-badge { display: flex; align-items: center; gap: 8px; background: #f0fdfa; border: 1px solid #99f6e4;
-                  border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; }
-    .user-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
+    .btn { align-items: center; border: none; border-radius: 7px; cursor: pointer; display: flex; font-size: 12px; font-weight: 650; gap: 6px; justify-content: center; margin-top: 12px; min-height: 38px; padding: 10px; transition: transform 0.15s, background 0.15s; width: 100%; }
+    .btn-primary { background: #ededed; color: #111; }
+    .btn-primary:hover { background: #fff; transform: translateY(-1px); }
+    .btn-primary:disabled { cursor: not-allowed; opacity: 0.5; }
+    .user-badge { align-items: center; background: #111; border: 1px solid #292929; border-radius: 8px; display: flex; gap: 8px; margin-bottom: 10px; padding: 9px 10px; }
+    .user-badge .dot { background: #38d47d; border-radius: 50%; box-shadow: 0 0 0 3px rgba(56,212,125,0.11); flex-shrink: 0; height: 7px; width: 7px; }
     .user-badge-info { flex: 1; min-width: 0; }
-    .user-badge-name  { font-size: 12px; font-weight: 600; color: #134e4a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .user-badge-plan  { font-size: 10px; color: #6b7280; margin-top: 1px; text-transform: capitalize; }
-
-    /* No account screen */
+    .user-badge-name { color: #ededed; font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .user-badge-plan { color: #898989; font-size: 10px; margin-top: 2px; text-transform: capitalize; }
     #noAccountScreen { padding: 8px 0; }
-    #noAccountScreen p { font-size: 12px; color: #6b7280; line-height: 1.6; margin-bottom: 14px; }
-    #noAccountScreen a { color: #0891b2; font-weight: 600; text-decoration: none; }
-
-    .divider { height: 1px; background: #e5e7eb; margin: 16px 0; }
-
-    .refresh-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-    .refresh-row select { flex: 1; }
-    .btn-set { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 8px;
-               font-size: 11px; font-weight: 600; padding: 8px 12px; cursor: pointer; white-space: nowrap; }
-    .btn-set:hover { background: #e5e7eb; }
-
-    .schedule-pill { font-size: 11px; color: #0891b2; margin-top: 6px; }
-    .tip-box { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 8px; padding: 8px 10px; font-size: 11px; margin-top: 8px; line-height: 1.5; }
-
-    /* Account selector */
-    #accountSection { margin-top: 12px; }
-    .account-list { border: 1px solid #d1d5db; border-radius: 8px; max-height: 140px; overflow-y: auto; margin-top: 4px; }
-    .account-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid #f3f4f6; cursor: pointer; }
+    #noAccountScreen > p { color: #a0a0a0; font-size: 12px; line-height: 1.6; margin-bottom: 14px; }
+    #noAccountScreen a { color: #ededed; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+    .tip-box { background: #171717; border: 1px solid #303030; border-radius: 7px; color: #999; font-size: 10px; line-height: 1.5; margin-top: 8px; padding: 8px 9px; }
+    .platform-columns { color: #777; font-size: 10px; line-height: 1.6; margin-top: 5px; }
+    #accountSection { margin-top: 11px; }
+    .account-list { background: #0c0c0c; border: 1px solid #313131; border-radius: 6px; margin-top: 5px; max-height: 140px; overflow-y: auto; }
+    .account-item { align-items: center; border-bottom: 1px solid #242424; cursor: pointer; display: flex; gap: 8px; padding: 8px 9px; }
     .account-item:last-child { border-bottom: none; }
-    .account-item:hover { background: #f9fafb; }
-    .account-item input[type="checkbox"] { width: 14px; height: 14px; accent-color: #0891b2; cursor: pointer; flex-shrink: 0; }
-    .account-item-name { font-size: 12px; color: #374151; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .account-item-id   { font-size: 10px; color: #9ca3af; flex-shrink: 0; }
-    .account-loading   { padding: 10px; text-align: center; font-size: 11px; color: #9ca3af; }
+    .account-item:hover { background: #171717; }
+    .account-item input[type="checkbox"] { accent-color: #ededed; cursor: pointer; flex-shrink: 0; height: 14px; width: 14px; }
+    .account-item-name { color: #d9d9d9; flex: 1; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .account-item-id { color: #777; flex-shrink: 0; font-size: 10px; }
+    .account-loading { color: #7f7f7f; font-size: 10px; padding: 11px; text-align: center; }
     .account-select-all { display: flex; justify-content: flex-end; margin-top: 4px; }
-    .account-select-all button { background: none; border: none; font-size: 10px; color: #0891b2; cursor: pointer; padding: 0; }
+    .account-select-all button { background: none; border: none; color: #bdbdbd; cursor: pointer; font-size: 10px; padding: 0; }
     .account-select-all button:hover { text-decoration: underline; }
-
-    .footer { text-align: center; color: #9ca3af; font-size: 10px; margin-top: 20px; }
-    .footer a { color: #6b7280; text-decoration: none; }
+    .destination-note { color: #777; font-size: 10px; line-height: 1.45; margin-top: 7px; }
+    .footer { color: #707070; font-size: 10px; margin-top: 16px; padding-bottom: 2px; text-align: center; }
+    .footer a { color: #a4a4a4; text-decoration: none; }
   </style>
 </head>
 <body>
@@ -82,18 +62,18 @@
 <!-- ── Loading ── -->
 <div id="loading" class="loading">
   <div class="spinner"></div>
-  <p style="margin-top:10px;font-size:12px;color:#6b7280">Signing you in…</p>
+  <p style="margin-top:10px;font-size:12px;color:#969696">Connecting your workspace…</p>
 </div>
 
 <!-- ── No Account ── -->
 <div id="noAccountScreen" style="display:none">
-  <div class="logo-row">
-    <div class="logo-dot">
-      <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  <div class="brand-header">
+    <div class="logo-row">
+      <svg class="logo-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="29" height="29" rx="6.5" fill="#0C0C0C" stroke="#2B2B2B" stroke-width="1.5"/><path d="M16 8V24M8 16H24" stroke="#EDEDED" stroke-width="2.5" stroke-linecap="square"/></svg>
+      <div><p class="eyebrow">SHEETS CONNECTOR</p><h2>Monstera Cloud</h2></div>
     </div>
-    <h2>Monstera Cloud</h2>
+    <p class="subtitle">Pull governed performance data into this sheet.</p>
   </div>
-  <p class="subtitle">Google Sheets™ Data Connector</p>
 
   <div class="error-box" id="noAccountMsg"></div>
 
@@ -105,13 +85,13 @@
 
 <!-- ── Main App ── -->
 <div id="app" style="display:none">
-  <div class="logo-row">
-    <div class="logo-dot">
-      <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+  <div class="brand-header">
+    <div class="logo-row">
+      <svg class="logo-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="1.5" y="1.5" width="29" height="29" rx="6.5" fill="#0C0C0C" stroke="#2B2B2B" stroke-width="1.5"/><path d="M16 8V24M8 16H24" stroke="#EDEDED" stroke-width="2.5" stroke-linecap="square"/></svg>
+      <div><p class="eyebrow">SHEETS CONNECTOR</p><h2>Monstera Cloud</h2></div>
     </div>
-    <h2>Monstera Cloud</h2>
+    <p class="subtitle">Warehouse data, ready for this sheet.</p>
   </div>
-  <p class="subtitle">Pull ad data directly into this sheet</p>
 
   <!-- Authenticated user badge -->
   <div class="user-badge">
@@ -125,7 +105,9 @@
   <div id="appError"   class="error-box"   style="display:none"></div>
   <div id="appSuccess" class="success-box" style="display:none"></div>
 
-  <label for="workspace">Agency workspace</label>
+  <div class="section">
+  <div class="section-heading">1 · Data context</div>
+  <label for="workspace">Workspace</label>
   <select id="workspace" onchange="handleWorkspaceChange()">
     <option value="">Select a workspace…</option>
   </select>
@@ -142,7 +124,7 @@
   <div id="platformTip" class="tip-box">
     💡 Use one platform per sheet tab for full platform-specific metrics. "All Platforms" shows common columns only.
   </div>
-  <div id="platformColumns" style="font-size:10px;color:#6b7280;margin-top:4px;line-height:1.6;"></div>
+  <div id="platformColumns" class="platform-columns"></div>
 
   <!-- Account selector — hidden until a specific platform is chosen -->
   <div id="accountSection" style="display:none">
@@ -154,7 +136,10 @@
       <div class="account-loading">Loading accounts…</div>
     </div>
   </div>
+  </div>
 
+  <div class="section">
+  <div class="section-heading">2 · Report setup</div>
   <label>Report Level</label>
   <select id="reportLevel">
     <option value="adset">Ad Set / Ad Group</option>
@@ -179,15 +164,20 @@
     <div><label>Start Date</label><input type="date" id="startDate" onchange="document.getElementById('timeframe').value='custom'" /></div>
     <div><label>End Date</label><input type="date" id="endDate" onchange="document.getElementById('timeframe').value='custom'" /></div>
   </div>
+  </div>
 
+  <div class="section">
+  <div class="section-heading">3 · Sheet destination</div>
   <label>Write to Cell</label>
   <input type="text" id="targetCell" value="A1" style="width:80px" maxlength="10" />
+  <p class="destination-note">Existing content in the destination range will be replaced.</p>
 
   <button class="btn btn-primary" id="runBtn" onclick="handleRun()">
-    ▶ &nbsp;Get Data
+    Get data
   </button>
+  </div>
 
-  <p class="tip-box">Warehouse data refreshes nightly or when an agency member uses Refresh now. Sheet pulls are manual during the private pilot.</p>
+  <p class="tip-box">Warehouse data refreshes nightly or when a workspace member selects Refresh warehouse in Monstera Cloud.</p>
 </div>
 
 <div class="footer">
@@ -390,17 +380,17 @@
     }
     var btn = document.getElementById('runBtn');
     btn.disabled = true;
-    btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px;border-top-color:#fff"></div>&nbsp; Fetching…';
+    btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px;border-top-color:#111"></div>&nbsp; Fetching…';
 
     google.script.run
       .withSuccessHandler(function(result) {
         btn.disabled = false;
-        btn.innerHTML = '▶ &nbsp;Get Data';
+        btn.textContent = 'Get data';
         showAppSuccess(result);
       })
       .withFailureHandler(function(err) {
         btn.disabled = false;
-        btn.innerHTML = '▶ &nbsp;Get Data';
+        btn.textContent = 'Get data';
         showAppError(err.message || 'Something went wrong. Try again.');
       })
       .pullData(params);

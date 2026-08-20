@@ -1,6 +1,6 @@
 /**
  * Monstera Cloud — Google Sheets™ Editor Add-on
- * Version: 3.0.0
+ * Version: 3.1.0
  *
  * Auth   : Google identity token (ScriptApp.getIdentityToken)
  *          No API key required — user is identified by their Google account.
@@ -170,7 +170,7 @@ function onInstall(e) {
 
 function showSidebar() {
   var html = HtmlService.createHtmlOutputFromFile('Sidebar')
-    .setTitle('Monstera Cloud')
+    .setTitle('Monstera Cloud — Sheets Connector')
     .setWidth(340);
   SpreadsheetApp.getUi().showSidebar(html);
 }
