@@ -278,7 +278,12 @@ export default function SourceDetailPage() {
                         Status
                     </div>
                     <div className="mt-2 flex items-center gap-2">
-                        {connection.status === "connected" ? (
+                        {connection.lastError?.startsWith("[partial]") ? (
+                            <>
+                                <AlertCircle className="h-4 w-4 text-amber-400" />
+                                <span className="font-semibold text-xs text-amber-200">Partial sync</span>
+                            </>
+                        ) : connection.status === "connected" ? (
                             <>
                                 <CheckCircle2 className="h-4 w-4 text-white" />
                                 <span className="font-semibold text-xs text-ink">Connected</span>
@@ -297,7 +302,7 @@ export default function SourceDetailPage() {
                 <div className="rounded-lg border border-line bg-panel p-4 shadow-xs">
                     <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-ink-mute">
                         <Clock className="h-3.5 w-3.5" />
-                        Last sync (connection)
+                        Last fully successful sync
                     </div>
                     <p className="mt-2 text-xs font-semibold text-ink">
                         {connection.lastSyncAt ? new Date(connection.lastSyncAt).toLocaleString() : "—"}

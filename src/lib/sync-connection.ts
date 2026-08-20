@@ -30,8 +30,15 @@ import { googleAdsReportClient } from "@/lib/google-ads";
 import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
 
 // TikTok imports
-import { tiktokReportClient } from "@/lib/tiktok-business";
+import { tiktokReportClient, type CreateReportTaskParams } from "@/lib/tiktok-business";
 import { ingestTiktokRows } from "@/lib/ad-platform-ingest";
+import {
+  type SyncChildResult,
+  type SyncResult,
+  isRetryableSyncError,
+  makeFailedSyncResult,
+  summarizeSyncOutcome,
+} from "@/lib/sync-outcome";
 
 export interface SyncOptions {
   connectionId: string;
@@ -48,18 +55,18 @@ export interface SyncOptions {
   userPlan?: string;
 }
 
-interface SyncResult {
-  success: boolean;
-  rowsIngested: number;
-  error?: string;
-}
-
 export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult> {
   const { connectionId, provider, credentials, workspaceId } = opts;
   const plan = opts.userPlan ?? "free";
 
   logger.info(`[syncConnectionData] Starting sync for ${provider} connection ${connectionId} in workspace ${workspaceId}`);
-  logger.info(`[syncConnectionData] Credentials keys:`, Object.keys(credentials || {}));
+  logger.info(`[syncConnectionData] Starting requested sync scope`, {
+    provider,
+    connectionId,
+    workspaceId,
+    since: opts.since ?? null,
+    until: opts.until ?? null,
+  });
 
   try {
     if (provider === "meta_ads") {
@@ -102,7 +109,9 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
         ...range,
       });
       if (!orders.success) {
-        return orders;
+        const result = makeFailedSyncResult(orders.error ?? "Shopee orders sync failed");
+        await persistConnectionSyncOutcome(connectionId, result);
+        return result;
       }
 
       const ads = await syncShopeeAdsWarehouseMetrics({
@@ -117,27 +126,60 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
         );
       }
 
-      return {
-        success: true,
-        rowsIngested: orders.rowsIngested + ads.rowsIngested,
-      };
+      // Shopee Ads is explicitly best-effort until Partner Center enables the
+      // Ads API. The requested warehouse scope here is the order rollup; do not
+      // turn an optional unavailable endpoint into a misleading partial result.
+      const children: SyncChildResult[] = [
+        { id: "orders", kind: "connection", ok: true, rowsIngested: orders.rowsIngested },
+      ];
+      const summary = summarizeSyncOutcome(children);
+      await persistConnectionSyncOutcome(connectionId, summary);
+      return { ...summary, children };
     } else if (provider === "lazada") {
       const r = defaultRollingRange(plan);
-      return await syncLazadaWarehouseMetrics({
+      const result = await syncLazadaWarehouseMetrics({
         connectionId,
         workspaceId,
         userPlan: plan,
         since: opts.since ?? r.since,
         until: opts.until ?? r.until,
       });
+      const children: SyncChildResult[] = [{ id: "orders", kind: "connection", ok: result.success, rowsIngested: result.rowsIngested, error: result.error, retryable: !result.success && isRetryableSyncError(result.error) }];
+      const summary = summarizeSyncOutcome(children);
+      await persistConnectionSyncOutcome(connectionId, summary);
+      return { ...summary, children };
     } else {
       logger.error(`[syncConnectionData] Unsupported provider: ${provider}`);
-      return { success: false, rowsIngested: 0, error: `Unsupported provider: ${provider}` };
+      const result = makeFailedSyncResult(`Unsupported provider: ${provider}`, false);
+      await persistConnectionSyncOutcome(connectionId, result);
+      return result;
     }
   } catch (error: any) {
     logger.error(`[syncConnectionData] Sync failed for ${provider}:`, error);
-    return { success: false, rowsIngested: 0, error: error.message };
+    const result = makeFailedSyncResult(error instanceof Error ? error.message : "Sync failed");
+    try {
+      await persistConnectionSyncOutcome(connectionId, result);
+    } catch (persistError) {
+      logger.error("[syncConnectionData] Failed to persist failed sync outcome", persistError);
+    }
+    return result;
   }
+}
+
+/** `lastSyncAt` is the last fully successful requested sync, never a partial attempt. */
+async function persistConnectionSyncOutcome(
+  connectionId: string,
+  outcome: Pick<SyncResult, "outcome" | "error">,
+): Promise<void> {
+  const lastError = outcome.outcome === "success"
+    ? null
+    : `[${outcome.outcome}] ${outcome.error ?? "One or more requested accounts did not sync"}`.slice(0, 1900);
+  await prisma.connection.update({
+    where: { id: connectionId },
+    data: outcome.outcome === "success"
+      ? { lastSyncAt: new Date(), lastError, status: "connected" }
+      : { lastError },
+  });
 }
 
 function defaultRollingRange(plan: string): { since: string; until: string } {
@@ -173,12 +215,16 @@ async function syncMetaAds(opts: {
     });
   } catch (err: any) {
     logger.error(`[syncMetaAds] Token refresh failed:`, err);
-    return { success: false, rowsIngested: 0, error: `Token failed: ${err.message}` };
+    const result = makeFailedSyncResult(`Token failed: ${err.message}`, false);
+    await persistConnectionSyncOutcome(connectionId, result);
+    return result;
   }
 
   if (!accessToken) {
     logger.error(`[syncMetaAds] No access token returned`);
-    return { success: false, rowsIngested: 0, error: "Failed to get valid token" };
+    const result = makeFailedSyncResult("Failed to get valid token", false);
+    await persistConnectionSyncOutcome(connectionId, result);
+    return result;
   }
   logger.info(`[syncMetaAds] Got access token`);
 
@@ -254,12 +300,13 @@ async function syncMetaAds(opts: {
 
   if (!adAccounts?.length) {
     logger.error(`[syncMetaAds] No ad accounts found to sync`);
-    return { success: false, rowsIngested: 0, error: "No ad accounts selected or found on connection" };
+    const result = makeFailedSyncResult("No ad accounts selected or found on connection", false);
+    await persistConnectionSyncOutcome(connectionId, result);
+    return result;
   }
 
   const jobId = `pipeline-${Date.now()}`;
-  let totalRows = 0;
-  const accountErrors: string[] = [];
+  const children: SyncChildResult[] = [];
 
   logger.info(`[syncMetaAds] Starting sync for ${adAccounts.length} accounts`);
 
@@ -278,6 +325,7 @@ async function syncMetaAds(opts: {
 
     if (!lockResult.acquired) {
       logger.warn(`[syncMetaAds] Could not acquire lock for ${accountId}`);
+      children.push({ id: String(accountId), kind: "ad_account", ok: false, error: "Another sync is already processing this ad account", retryable: true });
       continue;
     }
 
@@ -322,7 +370,7 @@ async function syncMetaAds(opts: {
         });
 
         logger.info(`[syncMetaAds] Ingested ${result.upserted} rows, failed: ${result.failed}`);
-        totalRows += result.upserted;
+        children.push({ id: String(accountId), kind: "ad_account", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
 
         // Earlier warehouse refreshes stored Meta results at campaign level.
         // Once a complete ad-level replacement is written, remove only those
@@ -345,29 +393,23 @@ async function syncMetaAds(opts: {
         }
       } else {
         logger.info(`[syncMetaAds] No rows to ingest for ${accountId}`);
+        children.push({ id: String(accountId), kind: "ad_account", ok: true, rowsIngested: 0 });
       }
 
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: true });
     } catch (error: any) {
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: false });
       const msg = error instanceof Error ? error.message : String(error);
-      accountErrors.push(`${accountId}: ${msg}`);
+      children.push({ id: String(accountId), kind: "ad_account", ok: false, error: msg, retryable: isRetryableSyncError(error) });
       logger.error(`[syncMetaAds] Failed for account ${accountId}:`, error);
       // Continue with next account
     }
   }
 
-  // Update connection sync time
-  await prisma.connection.update({
-    where: { id: connectionId },
-    data: { lastSyncAt: new Date() },
-  });
-
-  if (totalRows === 0 && accountErrors.length > 0) {
-    return { success: false, rowsIngested: 0, error: accountErrors.join("; ") };
-  }
-
-  return { success: true, rowsIngested: totalRows };
+  const summary = summarizeSyncOutcome(children);
+  await persistConnectionSyncOutcome(connectionId, summary);
+  logger.info("[syncMetaAds] Sync outcome", { connectionId, outcome: summary.outcome, targets: children.length, failedTargets: children.filter((child) => !child.ok).map((child) => child.id), rowsIngested: summary.rowsIngested });
+  return { ...summary, children };
 }
 
 async function syncGoogleAds(opts: {
@@ -389,11 +431,15 @@ async function syncGoogleAds(opts: {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to get valid token";
-    return { success: false, rowsIngested: 0, error: msg };
+    const result = makeFailedSyncResult(msg, false);
+    await persistConnectionSyncOutcome(connectionId, result);
+    return result;
   }
 
   if (!accessToken) {
-    return { success: false, rowsIngested: 0, error: "Failed to get valid token" };
+    const result = makeFailedSyncResult("Failed to get valid token", false);
+    await persistConnectionSyncOutcome(connectionId, result);
+    return result;
   }
 
   // Google stores customerIds in extraFields
@@ -424,7 +470,9 @@ async function syncGoogleAds(opts: {
   }
 
   if (!customerIds.length) {
-    return { success: false, rowsIngested: 0, error: "No customer accounts selected or found on connection" };
+    const result = makeFailedSyncResult("No customer accounts selected or found on connection", false);
+    await persistConnectionSyncOutcome(connectionId, result);
+    return result;
   }
 
   const dateSpec =
@@ -435,8 +483,7 @@ async function syncGoogleAds(opts: {
   logger.info(`[syncGoogleAds] dateSpec="${dateSpec}" rootCustomers=${customerIds.length}`);
 
   const jobId = `pipeline-${Date.now()}`;
-  let totalRows = 0;
-  const failures: Array<{ customerId: string; error: string }> = [];
+  const children: SyncChildResult[] = [];
 
   // ── Step 1: Resolve MCC hierarchy ──────────────────────────────────────────
   // listAccessibleCustomers returns ALL accessible accounts including MCC parent
@@ -460,6 +507,13 @@ async function syncGoogleAds(opts: {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      if (isRetryableSyncError(err)) {
+        // A quota/network failure while expanding an MCC means its child scope
+        // is unknown; never substitute a zero-row root query for completion.
+        children.push({ id: String(rootId), kind: "customer", ok: false, error: `Could not resolve customer hierarchy: ${msg}`, retryable: true });
+        logger.warn(`[syncGoogleAds] Deferring root=${rootId} after retryable hierarchy failure: ${msg}`);
+        continue;
+      }
       logger.warn(`[syncGoogleAds] Could not resolve hierarchy for root=${rootId}: ${msg} — trying direct query`);
       // Fallback: treat root as leaf with itself as login-customer-id
       if (!seenLeafIds.has(rootId)) {
@@ -485,7 +539,10 @@ async function syncGoogleAds(opts: {
 
       logger.info(`[syncGoogleAds] customerId=${customerId} returned ${rows.length} campaign rows`);
 
-      if (rows.length === 0) continue;
+      if (rows.length === 0) {
+        children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0 });
+        continue;
+      }
 
       // Log first row to diagnose key mapping
       logger.info(`[syncGoogleAds] sample row keys: ${Object.keys(rows[0]).join(", ")}`);
@@ -530,7 +587,10 @@ async function syncGoogleAds(opts: {
         logger.warn(`[syncGoogleAds] Skipped ${skipped} rows with missing date for customerId=${customerId}`);
       }
 
-      if (validRows.length === 0) continue;
+      if (validRows.length === 0) {
+        children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0 });
+        continue;
+      }
 
       const result = await ingestGoogleAdsRows(validRows, {
         workspaceId,
@@ -541,35 +601,18 @@ async function syncGoogleAds(opts: {
       });
 
       logger.info(`[syncGoogleAds] customerId=${customerId} upserted=${result.upserted} failed=${result.failed}`);
-      totalRows += result.upserted;
+      children.push({ id: customerId, kind: "customer", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google Ads sync failed";
-      failures.push({ customerId, error: msg });
+      children.push({ id: customerId, kind: "customer", ok: false, error: msg, retryable: isRetryableSyncError(error) });
       logger.error(`[syncGoogleAds] Failed for customerId=${customerId}: ${msg}`);
     }
   }
 
-  await prisma.connection.update({
-    where: { id: connectionId },
-    data: { lastSyncAt: new Date() },
-  });
-
-  logger.info(`[syncGoogleAds] Done. totalRows=${totalRows} failures=${failures.length}/${leafAccounts.length}`);
-
-  if (totalRows === 0 && failures.length > 0 && leafAccounts.length > 0) {
-    const head = failures.slice(0, 2).map((f) => `${f.customerId}: ${f.error}`).join(" | ");
-    const extra = failures.length > 2 ? ` (+${failures.length - 2} more)` : "";
-    return {
-      success: false,
-      rowsIngested: 0,
-      error: `Google Ads import failed. ${head}${extra}`,
-    };
-  }
-
-  if (failures.length > 0) {
-    logger.warn(`[syncGoogleAds] Partial failures: ${failures.length}/${leafAccounts.length}`);
-  }
-  return { success: true, rowsIngested: totalRows };
+  const summary = summarizeSyncOutcome(children);
+  await persistConnectionSyncOutcome(connectionId, summary);
+  logger.info("[syncGoogleAds] Sync outcome", { connectionId, outcome: summary.outcome, targets: children.length, failedTargets: children.filter((child) => !child.ok).map((child) => child.id), rowsIngested: summary.rowsIngested });
+  return { ...summary, children };
 }
 
 async function syncTikTok(opts: {
@@ -582,14 +625,23 @@ async function syncTikTok(opts: {
 }): Promise<SyncResult> {
   const { connectionId, credentials, workspaceId } = opts;
 
-  const accessToken = await getValidOAuthToken({
-    id: connectionId,
-    credentials: encrypt(JSON.stringify(credentials)),
-    provider: "tiktok_business",
-  });
+  let accessToken: string;
+  try {
+    accessToken = await getValidOAuthToken({
+      id: connectionId,
+      credentials: encrypt(JSON.stringify(credentials)),
+      provider: "tiktok_business",
+    });
+  } catch (error) {
+    const result = makeFailedSyncResult(error instanceof Error ? error.message : "Failed to get valid token", false);
+    await persistConnectionSyncOutcome(connectionId, result);
+    return result;
+  }
 
   if (!accessToken) {
-    return { success: false, rowsIngested: 0, error: "Failed to get valid token" };
+    const result = makeFailedSyncResult("Failed to get valid token", false);
+    await persistConnectionSyncOutcome(connectionId, result);
+    return result;
   }
 
   // TikTok stores advertiserIds in extraFields
@@ -620,11 +672,13 @@ async function syncTikTok(opts: {
   }
 
   if (!advertiserIds.length) {
-    return { success: false, rowsIngested: 0, error: "No advertisers selected or found on connection" };
+    const result = makeFailedSyncResult("No advertisers selected or found on connection", false);
+    await persistConnectionSyncOutcome(connectionId, result);
+    return result;
   }
 
   const jobId = `pipeline-${Date.now()}`;
-  let totalRows = 0;
+  const children: SyncChildResult[] = [];
 
   let endDate: string;
   let startDate: string;
@@ -638,7 +692,7 @@ async function syncTikTok(opts: {
 
   for (const advertiserId of advertiserIds) {
     try {
-      const taskId = await tiktokReportClient.createTask(accessToken, {
+      const taskParams: CreateReportTaskParams = {
         advertiser_id: advertiserId,
         report_type: "BASIC",
         data_level: "AUCTION_CAMPAIGN",
@@ -647,18 +701,29 @@ async function syncTikTok(opts: {
         start_date: startDate,
         end_date: endDate,
         page_size: 1000,
-      }, credentials.sandbox === true);
+      };
+
+      if (credentials.sandbox === true) {
+        const rows = await tiktokReportClient.getSyncReport(accessToken, taskParams);
+        const result = rows.length > 0
+          ? await ingestTiktokRows(rows, { workspaceId, connectionId, accountId: advertiserId, accountName: `Advertiser ${advertiserId}`, syncJobId: jobId })
+          : { upserted: 0, failed: 0 };
+        children.push({ id: String(advertiserId), kind: "advertiser", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+        continue;
+      }
+
+      const taskId = await tiktokReportClient.createTask(accessToken, taskParams, false);
 
       // Poll for completion
       let status = await tiktokReportClient.checkTask(accessToken, advertiserId, taskId, credentials.sandbox === true);
       let attempts = 0;
-      while (status.status !== "COMPLETED" && status.status !== "FAILED" && attempts < 10) {
+      while (!isTikTokReportTerminal(status.status) && attempts < 10) {
         await new Promise((r) => setTimeout(r, 3000));
         status = await tiktokReportClient.checkTask(accessToken, advertiserId, taskId, credentials.sandbox === true);
         attempts++;
       }
 
-      if (status.status === "COMPLETED" && status.url) {
+      if (isTikTokReportSuccess(status.status) && status.url) {
         const rows = await tiktokReportClient.downloadRows(status.url);
 
         if (rows.length > 0) {
@@ -670,18 +735,35 @@ async function syncTikTok(opts: {
             syncJobId: jobId,
           });
 
-          totalRows += result.upserted;
+          children.push({ id: String(advertiserId), kind: "advertiser", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+        } else {
+          children.push({ id: String(advertiserId), kind: "advertiser", ok: true, rowsIngested: 0 });
         }
+      } else if (isTikTokReportSuccess(status.status)) {
+        throw new Error(`TikTok report task ${taskId} completed without a download URL`);
+      } else if (isTikTokReportTerminal(status.status)) {
+        throw new Error(`TikTok report task ${taskId} ended with status ${status.status}`);
+      } else {
+        throw new Error(`TikTok report task ${taskId} did not complete before the bounded polling window elapsed (status ${status.status})`);
       }
     } catch (error) {
       logger.error(`[TikTok Sync] Failed for advertiser ${advertiserId}:`, error);
+      const message = error instanceof Error ? error.message : "TikTok sync failed";
+      children.push({ id: String(advertiserId), kind: "advertiser", ok: false, error: message, retryable: isRetryableSyncError(error) || /did not complete before/i.test(message) });
     }
   }
 
-  await prisma.connection.update({
-    where: { id: connectionId },
-    data: { lastSyncAt: new Date() },
-  });
+  const summary = summarizeSyncOutcome(children);
+  await persistConnectionSyncOutcome(connectionId, summary);
+  logger.info("[syncTikTok] Sync outcome", { connectionId, outcome: summary.outcome, targets: children.length, failedTargets: children.filter((child) => !child.ok).map((child) => child.id), rowsIngested: summary.rowsIngested });
+  return { ...summary, children };
+}
 
-  return { success: true, rowsIngested: totalRows };
+function isTikTokReportSuccess(status: string): boolean {
+  // v1.3 uses SUCCESS; COMPLETED remains accepted for older task responses.
+  return status === "SUCCESS" || status === "COMPLETED";
+}
+
+function isTikTokReportTerminal(status: string): boolean {
+  return isTikTokReportSuccess(status) || status === "FAILED" || status === "CANCELED";
 }

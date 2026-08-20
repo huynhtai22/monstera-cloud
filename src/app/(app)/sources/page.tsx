@@ -171,7 +171,7 @@ export default function SourcesPage() {
             // DEBUG: Always show response for now
             console.log('[DirectSync] Response:', { status: res.status, ok: res.ok, data });
             
-            if (res.ok) {
+            if (res.ok && data.outcome === "success") {
                 toast.success(
                     <span>
                         Synced {data.rowsIngested || 0} rows to Data Explorer.
@@ -180,6 +180,8 @@ export default function SourcesPage() {
                         </a>
                     </span>
                 );
+            } else if (res.ok && data.outcome === "partial") {
+                toast.warning(`Partial sync: ${data.rowsIngested || 0} rows were written, but ${data.failedTargets?.join(", ") || "one or more provider accounts"} failed. Last fully successful sync was not advanced.`);
             } else if (data.code === 'SYNC_ACTIVE' || data.error?.includes('already queued') || data.error?.includes('running')) {
                 // Show option to force unlock
                 toast.error(
@@ -489,7 +491,7 @@ export default function SourcesPage() {
                     catalogId,
                     name: conn.name,
                     description: desc,
-                    status: conn.status === "connected" ? "connected" : "error",
+                    status: conn.lastError?.startsWith("[partial]") ? "partial" : conn.status === "connected" ? "connected" : "error",
                     errorMsg: conn.lastError || undefined,
                     lastSync: conn.lastSyncAt
                         ? new Date(conn.lastSyncAt).toLocaleString()

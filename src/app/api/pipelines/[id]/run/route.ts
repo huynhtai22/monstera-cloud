@@ -185,7 +185,16 @@ export async function POST(req: Request, context: { params: any }) {
                     workspaceId: pipeline.workspaceId,
                     userPlan: workspacePlan,
                 });
-                logger.info(`[Pipeline Run] Pre-sync complete for ${provider}:`, JSON.stringify(syncResult));
+                logger.info("[Pipeline Run] Pre-sync outcome", {
+                    provider,
+                    connectionId: pipeline.sourceConnectionId,
+                    outcome: syncResult.outcome,
+                    rowsIngested: syncResult.rowsIngested,
+                    failedTargets: syncResult.children.filter((child) => !child.ok).map((child) => child.id),
+                });
+                if (syncResult.outcome !== "success") {
+                    throw new Error(`Pre-sync ${syncResult.outcome}: ${syncResult.error || "one or more requested provider accounts did not complete"}`);
+                }
             } catch (syncErr: unknown) {
                 logger.error(`[Pipeline Run] Pre-sync failed for ${provider}:`, syncErr);
                 throw syncErr;

@@ -113,7 +113,92 @@ export const tiktokBusinessClient = new TikTokBusinessClient();
 
 export type ReportType = 'BASIC' | 'AUDIENCE' | 'PLAYABLE_MATERIAL' | 'CATALOG';
 export type DataLevel = 'AUCTION_ADVERTISER' | 'AUCTION_CAMPAIGN' | 'AUCTION_ADGROUP' | 'AUCTION_AD';
-export type ReportTaskStatus = 'INIT' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+export type ReportTaskStatus = 'INIT' | 'QUEUING' | 'PROCESSING' | 'RUNNING' | 'SUCCESS' | 'COMPLETED' | 'FAILED' | 'CANCELED';
+
+export class TikTokProviderError extends Error {
+  constructor(
+    message: string,
+    readonly retryable: boolean,
+    readonly status?: number,
+  ) {
+    super(message);
+    this.name = "TikTokProviderError";
+  }
+}
+
+/** TikTok quotas are endpoint/app-specific; never assume one global QPS value. */
+export function isTikTokRetryableFailure(status: number, code: unknown, message: unknown): boolean {
+  return status === 429 || status >= 500 || /rate[ _-]?limit|quota|throttl|too many|temporar|timeout/i.test(`${code ?? ""} ${message ?? ""}`);
+}
+
+function retryAfterMs(value: string | null): number | null {
+  if (!value) return null;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null;
+}
+
+/**
+ * Retry non-JSON report assets (the async report download URL) with the same
+ * bounded quota/server policy used by the JSON task endpoints.
+ */
+async function fetchTikTokResponse(url: string, init: RequestInit = {}): Promise<Response> {
+  const maxAttempts = 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(url, init);
+    } catch (error) {
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+        continue;
+      }
+      throw new TikTokProviderError(error instanceof Error ? error.message : "TikTok request failed", true);
+    }
+
+    if (response.ok) return response;
+
+    const body = await response.clone().json().catch(() => ({})) as Record<string, unknown>;
+    const message = String(body.message ?? `TikTok request failed with HTTP ${response.status}`);
+    const retryable = isTikTokRetryableFailure(response.status, body.code, message);
+    if (!retryable || attempt === maxAttempts - 1) {
+      throw new TikTokProviderError(`TikTok API error ${body.code ?? response.status}: ${message}`, retryable, response.status);
+    }
+
+    const delay = retryAfterMs(response.headers.get("retry-after")) ?? (500 * 2 ** attempt + Math.floor(Math.random() * 200));
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+  throw new TikTokProviderError("TikTok request failed", true);
+}
+
+async function fetchTikTokJson(url: string, init: RequestInit): Promise<Record<string, unknown>> {
+  const maxAttempts = 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(url, init);
+    } catch (error) {
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+        continue;
+      }
+      throw new TikTokProviderError(error instanceof Error ? error.message : "TikTok request failed", true);
+    }
+
+    const json = await response.json().catch(() => ({})) as Record<string, unknown>;
+    const failed = !response.ok || json.code !== 0;
+    if (!failed) return json;
+
+    const message = String(json.message ?? `TikTok request failed with HTTP ${response.status}`);
+    const retryable = isTikTokRetryableFailure(response.status, json.code, message);
+    if (!retryable || attempt === maxAttempts - 1) {
+      throw new TikTokProviderError(`TikTok API error ${json.code ?? response.status}: ${message}`, retryable, response.status);
+    }
+
+    const delay = retryAfterMs(response.headers.get("retry-after")) ?? (500 * 2 ** attempt + Math.floor(Math.random() * 200));
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+  throw new TikTokProviderError("TikTok request failed", true);
+}
 
 export interface CreateReportTaskParams {
   advertiser_id: string;
@@ -154,7 +239,7 @@ export class TikTokReportClient {
    */
   async createTask(accessToken: string, params: CreateReportTaskParams, sandbox = false): Promise<string> {
     const base = this.getBase(sandbox);
-    const res = await fetch(`${base}/report/task/create/`, {
+    const json = await fetchTikTokJson(`${base}/report/task/create/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -174,11 +259,6 @@ export class TikTokReportClient {
       }),
     });
 
-    const json = (await res.json()) as Record<string, unknown>;
-    if ((json.code as number) !== 0) {
-      throw new Error(`TikTok createTask error ${json.code}: ${json.message}`);
-    }
-
     const data = json.data as Record<string, unknown>;
     return data.task_id as string;
   }
@@ -192,14 +272,9 @@ export class TikTokReportClient {
     url.searchParams.set('advertiser_id', advertiser_id);
     url.searchParams.set('task_id', task_id);
 
-    const res = await fetch(url.toString(), {
+    const json = await fetchTikTokJson(url.toString(), {
       headers: { 'Access-Token': accessToken },
     });
-
-    const json = (await res.json()) as Record<string, unknown>;
-    if ((json.code as number) !== 0) {
-      throw new Error(`TikTok checkTask error ${json.code}: ${json.message}`);
-    }
 
     const data = json.data as Record<string, unknown>;
     return data as unknown as ReportTaskStatus_Response;
@@ -281,12 +356,11 @@ export class TikTokReportClient {
   }
 
   /**
-   * Step 3 — Once COMPLETED, download rows from the returned URL.
+   * Step 3 — Once SUCCESS, download rows from the returned URL.
    * TikTok returns NDJSON (one JSON object per line) or CSV depending on export type.
    */
   async downloadRows(downloadUrl: string): Promise<ReportRow[]> {
-    const res = await fetch(downloadUrl);
-    if (!res.ok) throw new Error(`TikTok report download failed: ${res.status}`);
+    const res = await fetchTikTokResponse(downloadUrl);
     const text = await res.text();
     return this.parseReportText(text);
   }
@@ -317,14 +391,9 @@ export class TikTokReportClient {
       url.searchParams.set('page', String(page));
       url.searchParams.set('page_size', String(pageSize));
 
-      const res = await fetch(url.toString(), {
+      const json = await fetchTikTokJson(url.toString(), {
         headers: { 'Access-Token': accessToken },
       });
-
-      const json = (await res.json()) as Record<string, unknown>;
-      if ((json.code as number) !== 0) {
-        throw new Error(`TikTok getSyncReport error ${json.code}: ${json.message}`);
-      }
 
       const data = json.data as Record<string, unknown>;
       const list = (data.list as ReportRow[]) ?? [];

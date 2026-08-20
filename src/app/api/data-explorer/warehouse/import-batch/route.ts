@@ -6,7 +6,6 @@ import { safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { syncConnectionData } from "@/lib/sync-connection";
-import { syncMetaInsightsIntoWarehouse } from "@/lib/ingestion/meta-campaign-metrics";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { listEnabledWorkspaceProviders } from "@/lib/workspace-provider-access";
 import { clampTimeRangeToPlanMaxDays, getPlanLimits } from "@/lib/plan-config";
@@ -15,6 +14,7 @@ import {
   claimImportJob,
   updateImportJobProgress,
   completeImportJob,
+  retryPartialImportJob,
   failImportJob,
   heartbeatImportJob,
   LeaseLostError,
@@ -30,6 +30,7 @@ const MAX_ITEMS_PER_REQUEST = 50;
 
 const ItemSchema = z.object({
   connectionId: z.string().min(1, "connectionId is required"),
+  accountId: z.string().optional(),
   adAccountId: z.string().optional(),
 });
 
@@ -133,10 +134,17 @@ export async function processBatchItems(opts: {
         remoteAccountId: conn.remoteAccountId,
       };
 
-      const itemCreds = {
-        ...credentials,
-        ...(item.adAccountId ? { selectedAdAccountIds: [item.adAccountId] } : {}),
-      };
+      const targetAccountId = item.accountId ?? item.adAccountId;
+      const providerTargetCredentials = targetAccountId
+        ? conn.provider === "meta_ads"
+          ? { selectedAdAccountIds: [targetAccountId] }
+          : conn.provider === "google_ads"
+            ? { selectedCustomerIds: [targetAccountId] }
+            : conn.provider === "tiktok_business"
+              ? { selectedAdvertiserIds: [targetAccountId] }
+              : {}
+        : {};
+      const itemCreds = { ...credentials, ...providerTargetCredentials };
 
       const sync = await syncRunner({
         workspaceId,
@@ -147,18 +155,31 @@ export async function processBatchItems(opts: {
         until,
         userPlan: plan,
       });
+      // Keep the worker tolerant of older test doubles / extension providers while
+      // first-party sync providers always return the full outcome contract.
+      const syncOutcome = sync.outcome ?? (sync.success ? "success" : "failed");
+      const syncChildren = sync.children ?? [{ id: "connection", kind: "connection", ok: sync.success, error: sync.error, retryable: false }];
 
       results.push({
         connectionId: conn.id,
         provider: conn.provider,
+        outcome: syncOutcome,
+        accountId: targetAccountId,
         adAccountId: item.adAccountId,
         ok: sync.success,
         rowsIngested: sync.rowsIngested,
         upserted: sync.rowsIngested,
         error: sync.error,
+        retryable: syncChildren.some((child) => !child.ok && child.retryable),
+        retryItems: syncChildren
+          .filter((child) => !child.ok && child.retryable)
+          .map((child) => ({
+            connectionId: conn.id,
+            ...(child.kind === "connection" ? {} : { accountId: child.id }),
+          })),
       });
 
-      if (sync.success && !conn.lastSyncAt) {
+      if (syncOutcome === "success" && !conn.lastSyncAt) {
         emitMonitor("time_to_first_row", {
           workspaceId,
           connectionId: conn.id,
@@ -261,7 +282,36 @@ export async function runDurableImportWorker(
       0
     );
 
-    await completeImportJob(jobId, leaseId, results, totalUpserts);
+    const retryItems = results.flatMap((result) => result.retryable ? (result.retryItems ?? []) : []);
+    const failedResults = results.filter((result) => !result.ok);
+    if (failedResults.length > 0 && retryItems.length > 0) {
+      const requeued = await retryPartialImportJob(
+        jobId,
+        leaseId,
+        dedupeRetryItems(retryItems),
+        results,
+        totalUpserts,
+        `Partial import: ${failedResults.length}/${results.length} requested source scope(s) failed. Retrying only retryable failed targets.`,
+      );
+      await notifyWarehouseJobIfNeeded(requeued).catch(() => {});
+      return;
+    }
+
+    const outcome = failedResults.length === 0
+      ? "completed"
+      : failedResults.length === results.length
+        ? "failed"
+        : "partial";
+    await completeImportJob(
+      jobId,
+      leaseId,
+      results,
+      totalUpserts,
+      outcome,
+      failedResults.length > 0
+        ? `${outcome === "failed" ? "Import failed" : "Partial import"}: ${failedResults.length}/${results.length} requested source scope(s) failed. ${failedResults.map((result) => result.error).filter(Boolean).slice(0, 2).join(" | ")}`
+        : undefined,
+    );
 
     logger.info(
       `[warehouse/import-batch] Durable job ${jobId} finished: ${okCount}/${results.length} succeeded`
@@ -284,6 +334,16 @@ export async function runDurableImportWorker(
       clearInterval(heartbeatTimer);
     }
   }
+}
+
+function dedupeRetryItems(items: BatchImportItem[]): BatchImportItem[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = `${item.connectionId}:${item.accountId ?? item.adAccountId ?? "connection"}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /**
@@ -363,10 +423,10 @@ export async function POST(req: Request) {
     );
   }
 
-  // Deduplicate items: unique (connectionId, adAccountId)
+  // Deduplicate items: unique requested connection/account scope.
   const itemMap = new Map<string, BatchImportItem>();
   for (const item of rawItems) {
-    const key = `${item.connectionId}:${item.adAccountId ?? ""}`;
+    const key = `${item.connectionId}:${item.accountId ?? item.adAccountId ?? ""}`;
     if (!itemMap.has(key)) {
       itemMap.set(key, item);
     }
