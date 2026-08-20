@@ -79,7 +79,7 @@
 
   <p>
     Create a free account at <a href="https://monsteracloud.com/register" target="_blank">monsteracloud.com</a>,
-    connect your ad platforms (Meta Ads, Google Ads, TikTok Ads), then reopen this sidebar.
+    connect your ad platforms (Meta Ads, Google Ads™, TikTok Ads), then reopen this sidebar.
   </p>
 </div>
 
@@ -114,9 +114,9 @@
 
   <label>Platform</label>
   <select id="platform" onchange="handlePlatformChange()">
-    <option value="">All Platforms (Blended)</option>
+    <option value="">All Platforms (Common Fields)</option>
     <option value="meta_ads">Meta Ads</option>
-    <option value="google_ads">Google Ads</option>
+    <option value="google_ads">Google Ads™</option>
     <option value="tiktok_business">TikTok Ads</option>
     <option value="shopee">Shopee Ads & Store</option>
     <option value="lazada">Lazada</option>
@@ -177,18 +177,18 @@
   </button>
   </div>
 
-  <p class="tip-box">Warehouse data refreshes nightly or when a workspace member selects Refresh warehouse in Monstera Cloud.</p>
+  <p class="tip-box">Warehouse data refreshes on a schedule or when a workspace member selects Refresh warehouse in Monstera Cloud.</p>
 </div>
 
 <div class="footer">
-  <p>Monstera Cloud · <a href="https://monsteracloud.com" target="_blank">monsteracloud.com</a></p>
+  <p>Monstera Cloud · <a href="https://monsteracloud.com" target="_blank">monsteracloud.com</a> · <a href="https://monsteracloud.com/support" target="_blank">Support</a></p>
 </div>
 
 <script>
   var PLATFORM_COLUMNS = {
     '':               { label: 'All Platforms', cols: 'date, platform, accountName, campaignName, adsetName, spend, impressions, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' },
     'meta_ads':       { label: 'Meta Ads',      cols: 'date, accountName, campaignName, adsetName, spend, impressions, reach, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' },
-    'google_ads':     { label: 'Google Ads',    cols: 'date, accountName, campaignName, adsetName, spend, impressions, clicks, ctr, cpc, conversions, revenue, roas, currency' },
+    'google_ads':     { label: 'Google Ads™',   cols: 'date, accountName, campaignName, adsetName, spend, impressions, clicks, ctr, cpc, conversions, revenue, roas, currency' },
     'tiktok_business':{ label: 'TikTok Ads',   cols: 'date, accountName, campaignName, adsetName, spend, impressions, reach, clicks, ctr, cpc, cpm, conversions, revenue, roas, currency' },
     'shopee':         { label: 'Shopee Ads & Store', cols: 'date, accountName, campaignName, spend, impressions, clicks, ctr, cpc, conversions, revenue, roas, currency' },
     'lazada':         { label: 'Lazada',        cols: 'date, accountName, campaignName, spend, impressions, clicks, conversions, revenue, roas, currency' }
@@ -374,8 +374,8 @@
       showAppError('Select an agency workspace.');
       return;
     }
-    if (!params.startDate || !params.endDate) {
-      showAppError('Please select start and end dates.');
+    if (!isIsoDate(params.startDate) || !isIsoDate(params.endDate)) {
+      showAppError('Please select valid start and end dates.');
       return;
     }
     var btn = document.getElementById('runBtn');
@@ -386,7 +386,11 @@
       .withSuccessHandler(function(result) {
         btn.disabled = false;
         btn.textContent = 'Get data';
-        showAppSuccess(result);
+        if (result === 'No rows found for the selected filters.') {
+          showAppError(result);
+        } else {
+          showAppSuccess(result);
+        }
       })
       .withFailureHandler(function(err) {
         btn.disabled = false;
@@ -410,6 +414,9 @@
   function hideAppMessages() {
     document.getElementById('appError').style.display = 'none';
     document.getElementById('appSuccess').style.display = 'none';
+  }
+  function isIsoDate(value) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(value || '');
   }
   function escapeHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

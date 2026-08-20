@@ -7,11 +7,11 @@
  * Backend: /api/looker-studio (shared with Looker Studio connector)
  *
  * Scopes (must match appsscript.json, Marketplace SDK, and OAuth consent screen):
+ *   openid
+ *   https://www.googleapis.com/auth/userinfo.email
  *   https://www.googleapis.com/auth/spreadsheets.currentonly
  *   https://www.googleapis.com/auth/script.external_request
  *   https://www.googleapis.com/auth/script.container.ui
- *   https://www.googleapis.com/auth/script.scriptapp
- *   https://www.googleapis.com/auth/userinfo.email
  */
 
 var BASE_URL         = 'https://monsteracloud.com';
@@ -19,6 +19,7 @@ var API_ENDPOINT     = BASE_URL + '/api/looker-studio';
 var AUTH_ENDPOINT    = BASE_URL + '/api/addon/auth';
 var ACCOUNTS_ENDPOINT = BASE_URL + '/api/addon/accounts';
 var CACHE_TTL_SECONDS = 600;
+var EMPTY_RESULT_MESSAGE = 'No rows found for the selected filters.';
 
 // ── Platform-specific column sets ─────────────────────────────────────────────
 
@@ -134,7 +135,7 @@ function onHomepage(e) {
         )
         .addWidget(
           CardService.newTextParagraph()
-            .setText('Pull Meta Ads, Google Ads, and TikTok Ads performance data directly into your spreadsheet.')
+            .setText('Pull Meta Ads, Google Ads™, and TikTok Ads performance data directly into your spreadsheet.')
         )
         .addWidget(
           CardService.newTextButton()
@@ -186,7 +187,7 @@ function pullData(params) {
   var endDate     = params.endDate     || getToday();
   var platform    = params.platform    || null;
   var reportLevel = params.reportLevel || 'adset';
-  var accountIds  = params.accountIds  || [];
+  var accountIds  = normalizeAccountIds(params.accountIds);
   var targetCell  = params.targetCell  || 'A1';
   var workspaceId = params.workspaceId || '';
   if (!workspaceId) throw new Error('Select an agency workspace first.');
@@ -203,12 +204,27 @@ function pullData(params) {
   var url = API_ENDPOINT + '?' + qp.join('&');
 
   var cache = CacheService.getUserCache();
-  var cacheKey = 'sheets_' + workspaceId + '_' + startDate + '_' + endDate + '_' + (platform || 'all') + '_' + reportLevel;
+  var accountSelection = accountIds.length ? accountIds.join(',') : 'all';
+  var cacheKey = 'sheets_' + workspaceId + '_' + startDate + '_' + endDate + '_' + (platform || 'all') + '_' + reportLevel + '_' + accountSelection;
   var responseData = null;
+  var fromCache = false;
+
+  logQueryDiagnostics('request', {
+    workspaceId: workspaceId,
+    platform: platform || 'all',
+    reportLevel: reportLevel,
+    startDate: startDate,
+    endDate: endDate,
+    accountIds: accountIds
+  });
 
   var cached = cache.get(cacheKey);
   if (cached) {
-    try { responseData = JSON.parse(cached); } catch(e) { responseData = null; }
+    try {
+      responseData = JSON.parse(cached);
+      fromCache = !!(responseData && Array.isArray(responseData.data) && responseData.data.length > 0);
+      if (!fromCache) responseData = null;
+    } catch(e) { responseData = null; }
   }
 
   if (!responseData) {
@@ -232,15 +248,37 @@ function pullData(params) {
       throw new Error('Unexpected response from Monstera Cloud.');
     }
 
-    try { cache.put(cacheKey, body, CACHE_TTL_SECONDS); } catch(e) {}
+    if (Array.isArray(responseData.data) && responseData.data.length > 0) {
+      try { cache.put(cacheKey, body, CACHE_TTL_SECONDS); } catch(e) {}
+    }
   }
 
   if (!responseData.data || !Array.isArray(responseData.data)) {
-    return 'No data returned for the selected filters. Try a wider date range.';
+    logQueryDiagnostics('response', {
+      workspaceId: workspaceId,
+      platform: platform || 'all',
+      reportLevel: reportLevel,
+      startDate: startDate,
+      endDate: endDate,
+      accountIds: accountIds,
+      returnedRowCount: 0,
+      fromCache: fromCache
+    });
+    return EMPTY_RESULT_MESSAGE;
   }
 
   var data = responseData.data;
-  if (data.length === 0) return 'No rows found for the selected filters.';
+  logQueryDiagnostics('response', {
+    workspaceId: workspaceId,
+    platform: platform || 'all',
+    reportLevel: reportLevel,
+    startDate: startDate,
+    endDate: endDate,
+    accountIds: accountIds,
+    returnedRowCount: data.length,
+    fromCache: fromCache
+  });
+  if (data.length === 0) return EMPTY_RESULT_MESSAGE;
 
   var headers = getFieldOrder(platform).filter(function(f) { return data[0].hasOwnProperty(f); });
 
@@ -330,7 +368,7 @@ function pullDataToSheet(sheet, params, token) {
   var endDate     = params.endDate     || getToday();
   var platform    = params.platform    || null;
   var reportLevel = params.reportLevel || 'adset';
-  var accountIds  = params.accountIds  || [];
+  var accountIds  = normalizeAccountIds(params.accountIds);
   var targetCell  = params.targetCell  || 'A1';
   var workspaceId = params.workspaceId || '';
   if (!workspaceId) return;
@@ -384,19 +422,23 @@ function pullDataToSheet(sheet, params, token) {
   for (var i = 0; i < headers.length; i++) { sheet.autoResizeColumn(startCol + i); }
 }
 
-function setupRefreshTrigger(intervalHours) {
-  ScriptApp.getProjectTriggers().forEach(function(trigger) {
-    if (trigger.getHandlerFunction() === 'refreshAllSheets') ScriptApp.deleteTrigger(trigger);
-  });
-  return { success: true, message: 'Scheduled sheet refresh is unavailable during the private pilot.' };
+function normalizeAccountIds(accountIds) {
+  if (!Array.isArray(accountIds)) return [];
+  var seen = {};
+  return accountIds.slice()
+    .map(function(id) { return String(id).trim(); })
+    .filter(function(id) {
+      if (!id || seen[id]) return false;
+      seen[id] = true;
+      return true;
+    })
+    .sort();
 }
 
-function getRefreshSchedule() {
-  var triggers = ScriptApp.getProjectTriggers();
-  for (var i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === 'refreshAllSheets') return { active: true };
-  }
-  return { active: false };
+function logQueryDiagnostics(eventName, details) {
+  // Deliberately limited to filter metadata and row counts; never log tokens,
+  // cookies, OAuth credentials, or response bodies.
+  console.log('[Monstera Sheets] ' + eventName + ' ' + JSON.stringify(details));
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
