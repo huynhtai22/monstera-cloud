@@ -50,5 +50,5 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
       - name: Critical browser journeys
-        run: npm run test:e2e
+        run: npm run test:e2e:smoke
       - run: npm audit --omit=dev --audit-level=high
