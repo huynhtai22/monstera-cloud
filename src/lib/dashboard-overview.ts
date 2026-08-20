@@ -2,6 +2,7 @@ import prisma from "@/lib/prisma";
 import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { logger } from "@/lib/logger";
+import { aggregateCurrencySafe } from "@/lib/currency-safe-aggregation";
 
 export interface DashboardSourceItem {
   id: string;
@@ -90,12 +91,16 @@ export interface DashboardOverviewDTO {
     dataThroughDate: string | null;
     lastRefreshAt: string | null;
     metrics7d: {
-      spend: number;
       impressions: number;
       clicks: number;
       conversions: number;
-      revenue: number;
-      roas: number;
+      mixedCurrency: boolean;
+      byCurrency: Array<{
+        currency: string;
+        spend: number;
+        revenue: number;
+        roas: number;
+      }>;
     };
   };
   destinationsList: DashboardDestinationItem[];
@@ -236,7 +241,7 @@ export async function getWorkspaceDashboardOverview(
     connections,
     _pipelines,
     warehouseAgg,
-    warehouse7dAgg,
+    warehouse7dByCurrency,
     retailOrdersCount,
     latestSyncJob,
     latestImportJob,
@@ -267,8 +272,9 @@ export async function getWorkspaceDashboardOverview(
     }),
 
     // 4. 7-day Warehouse Metrics
-    prisma.campaignMetric.aggregate({
+    prisma.campaignMetric.groupBy({
       where: { workspaceId, date: { gte: sevenDaysAgo } },
+      by: ["currency"],
       _sum: {
         spend: true,
         impressions: true,
@@ -276,7 +282,7 @@ export async function getWorkspaceDashboardOverview(
         conversions: true,
         revenue: true,
       },
-      _count: { id: true },
+      _count: { _all: true },
     }),
 
     // 5. Retail Orders
@@ -444,7 +450,7 @@ export async function getWorkspaceDashboardOverview(
   const maxMetricDate = warehouseAgg._max.date;
   const maxPulledAt = warehouseAgg._max.pulledAt;
   const totalWarehouseRows = warehouseAgg._count.id + retailOrdersCount;
-  const rows7d = warehouse7dAgg._count.id;
+  const rows7d = warehouse7dByCurrency.reduce((sum, row) => sum + (row._count._all ?? 0), 0);
 
   let warehouseStatus: DashboardOverviewDTO["summaryCards"]["warehouse"]["status"] = "never";
   if (latestImportJob?.status === "running" || latestSyncJob?.status === "running") {
@@ -495,13 +501,19 @@ export async function getWorkspaceDashboardOverview(
 
   const activeDestinations = ["Sheets", "Looker Studio", "REST API"];
 
-  // 7-day KPI snapshot
-  const sumSpend = warehouse7dAgg._sum.spend ?? 0;
-  const sumImpressions = warehouse7dAgg._sum.impressions ?? 0;
-  const sumClicks = warehouse7dAgg._sum.clicks ?? 0;
-  const sumConversions = warehouse7dAgg._sum.conversions ?? 0;
-  const sumRevenue = warehouse7dAgg._sum.revenue ?? 0;
-  const roas7d = sumSpend > 0 ? sumRevenue / sumSpend : 0;
+  // 7-day KPI snapshot — currency-safe: never blend monetary values across currencies
+  const metrics7dRows = warehouse7dByCurrency.map((g) => ({
+    currency: g.currency,
+    spend: g._sum.spend ?? 0,
+    revenue: g._sum.revenue ?? 0,
+    impressions: g._sum.impressions ?? 0,
+    clicks: g._sum.clicks ?? 0,
+    conversions: g._sum.conversions ?? 0,
+  }));
+  const kpi7d = aggregateCurrencySafe(metrics7dRows);
+  const sumImpressions = kpi7d.impressions;
+  const sumClicks = kpi7d.clicks;
+  const sumConversions = kpi7d.conversions;
 
   // Recent Activity Feed
   const recentActivity: DashboardActivityItem[] = [];
@@ -611,12 +623,16 @@ export async function getWorkspaceDashboardOverview(
       dataThroughDate: formatDateCoverage(maxMetricDate),
       lastRefreshAt: formatRelativeTime(maxPulledAt),
       metrics7d: {
-        spend: sumSpend,
         impressions: sumImpressions,
         clicks: sumClicks,
         conversions: sumConversions,
-        revenue: sumRevenue,
-        roas: roas7d,
+        mixedCurrency: kpi7d.mixedCurrency,
+        byCurrency: kpi7d.byCurrency.map((b) => ({
+          currency: b.currency,
+          spend: b.spend,
+          revenue: b.revenue,
+          roas: b.roas,
+        })),
       },
     },
     destinationsList,

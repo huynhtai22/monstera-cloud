@@ -35,11 +35,21 @@ function formatCompactNumber(n: number): string {
   return n.toLocaleString();
 }
 
-function formatCurrency(n: number): string {
-  if (!Number.isFinite(n) || n === 0) return "$0";
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}k`;
-  return `$${Math.round(n).toLocaleString()}`;
+function formatCurrency(n: number, currency?: string | null): string {
+  if (!Number.isFinite(n) || n === 0) return currency ? `0 ${currency}` : "$0";
+  const c = (currency ?? "USD").trim().toUpperCase();
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: c,
+      maximumFractionDigits: c === "VND" ? 0 : 2,
+      notation: n >= 1_000_000 ? "compact" : "standard",
+    }).format(n);
+  } catch {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M ${c}`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k ${c}`;
+    return `${Math.round(n).toLocaleString()} ${c}`;
+  }
 }
 
 export function DashboardHomePage() {
@@ -464,7 +474,14 @@ export function DashboardHomePage() {
                 <div className="rounded border border-line bg-canvas p-2.5">
                   <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-mute">7d Spend</p>
                   <p className="mt-1 text-sm font-semibold tabular-nums text-ink">
-                    {warehouseSnapshot?.metrics7d?.spend ? formatCurrency(warehouseSnapshot.metrics7d.spend) : "$0"}
+                    {warehouseSnapshot?.metrics7d?.byCurrency?.length
+                      ? warehouseSnapshot.metrics7d.mixedCurrency
+                        ? warehouseSnapshot.metrics7d.byCurrency
+                            .slice(0, 2)
+                            .map((b) => formatCurrency(b.spend, b.currency))
+                            .join(" · ")
+                        : formatCurrency(warehouseSnapshot.metrics7d.byCurrency[0]?.spend ?? 0, warehouseSnapshot.metrics7d.byCurrency[0]?.currency)
+                      : "$0"}
                   </p>
                 </div>
                 <div className="rounded border border-line bg-canvas p-2.5">
@@ -482,7 +499,11 @@ export function DashboardHomePage() {
                 <div className="rounded border border-line bg-canvas p-2.5">
                   <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-mute">7d ROAS</p>
                   <p className="mt-1 text-sm font-semibold tabular-nums text-ink">
-                    {warehouseSnapshot?.metrics7d?.roas ? `${warehouseSnapshot.metrics7d.roas.toFixed(2)}×` : "—"}
+                    {warehouseSnapshot?.metrics7d?.mixedCurrency
+                      ? <span className="text-ink-mute text-[11px]">Multi-currency</span>
+                      : warehouseSnapshot?.metrics7d?.byCurrency?.[0]?.roas
+                        ? `${warehouseSnapshot.metrics7d.byCurrency[0].roas.toFixed(2)}×`
+                        : "—"}
                   </p>
                 </div>
               </div>

@@ -32,15 +32,21 @@ export async function upsertSourceConnection(
     input: UpsertConnectionInput
 ) {
     const credentialString = encrypt(JSON.stringify(input.credentials));
+    const identity = {
+        workspaceId: input.workspaceId,
+        provider: input.provider,
+        remoteAccountId: input.remoteAccountId,
+    };
+
+    const existing = await prisma.connection.findUnique({
+        where: { workspaceId_provider_remoteAccountId: identity },
+        select: { id: true },
+    });
 
     // Use Prisma upsert with the composite unique key.
     const connection = await prisma.connection.upsert({
         where: {
-            workspaceId_provider_remoteAccountId: {
-                workspaceId: input.workspaceId,
-                provider: input.provider,
-                remoteAccountId: input.remoteAccountId,
-            },
+            workspaceId_provider_remoteAccountId: identity,
         },
         update: {
             name: input.name,
@@ -58,13 +64,15 @@ export async function upsertSourceConnection(
             remoteAccountId: input.remoteAccountId,
             credentials: credentialString,
             status: input.status ?? "connected",
+            lastError: null,
             ...(input.clientId ? { clientId: input.clientId } : {}),
         },
     });
 
+    const created = !existing;
     logger.info(
-        `[CONNECTION_UPSERT] ${input.provider} for workspace ${input.workspaceId}: ${connection.createdAt === connection.updatedAt ? 'created' : 'updated'} (id=${connection.id})`
+        `[CONNECTION_UPSERT] ${input.provider} for workspace ${input.workspaceId}: ${created ? "created" : "updated"} (id=${connection.id})`
     );
 
-    return connection;
+    return Object.assign(connection, { created });
 }

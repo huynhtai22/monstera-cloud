@@ -17,6 +17,10 @@ import { consumeOAuthAttempt, oauthAttemptCookieName } from "@/lib/oauth-attempt
 import { requireWorkspaceAccess } from "@/lib/rbac";
 import { assertWorkspaceProviderEnabled, ProviderAccessError } from "@/lib/workspace-provider-access";
 import { emitMonitor } from "@/lib/observability/monitors";
+import { enqueueOauthWarehouseBackfill } from "@/lib/oauth-warehouse-backfill";
+import { after } from "next/server";
+import { claimImportJob } from "@/lib/warehouse-import-job";
+import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
 
 export const dynamic = "force-dynamic";
 
@@ -100,9 +104,15 @@ export async function GET(request: NextRequest) {
             metadata: { workspaceId, userId },
         });
         
-        // P1: Handle reconnection flow - preserve existing pipelines
+        // P1: Handle reconnection flow - preserve existing pipelines and warehouse rows
         if (reconnectConnectionId) {
-            // Update existing connection with new credentials
+            const existing = await prisma.connection.findFirst({
+                where: { id: reconnectConnectionId, workspaceId, provider: providerId },
+                select: { id: true, workspaceId: true, lastSyncAt: true },
+            });
+            if (!existing) {
+                throw new OAuthError("invalid_state", "Reconnect target does not match this workspace and provider", providerId);
+            }
             const updated = await prisma.connection.updateMany({
                 where: { id: reconnectConnectionId, workspaceId, provider: providerId },
                 data: {
@@ -111,6 +121,7 @@ export async function GET(request: NextRequest) {
                         ...metadata.extraFields,
                     })),
                     status: "connected",
+                    lastError: null,
                     name: metadata.name, // Update name if account changed
                     updatedAt: new Date(),
                 },
@@ -119,6 +130,29 @@ export async function GET(request: NextRequest) {
                 throw new OAuthError("invalid_state", "Reconnect target does not match this workspace and provider", providerId);
             }
             await prisma.auditEvent.create({ data: { workspaceId, actorUserId: userId, action: "connection.reconnected", resource: "connection", resourceId: reconnectConnectionId, metadata: { provider: providerId } } });
+
+            try {
+                const { job } = await enqueueOauthWarehouseBackfill({
+                    workspaceId,
+                    userId,
+                    connectionId: existing.id,
+                    connectionWorkspaceId: existing.workspaceId,
+                    kind: "catchup",
+                    lastSyncAt: existing.lastSyncAt,
+                });
+                after(async () => {
+                    try {
+                        const claim = await claimImportJob(job.id);
+                        if (claim.claimed && claim.leaseId) {
+                            await runDurableImportWorker(job.id, claim.leaseId);
+                        }
+                    } catch (err) {
+                        logger.error("[OAuth Callback] catch-up worker error", err);
+                    }
+                });
+            } catch (err) {
+                logger.warn("[OAuth Callback] catch-up enqueue failed", err);
+            }
             
             // Redirect to sources page with success message
             const successParams = new URLSearchParams({
@@ -148,6 +182,29 @@ export async function GET(request: NextRequest) {
             status: "connected",
         });
         await prisma.auditEvent.create({ data: { workspaceId, actorUserId: userId, action: "connection.connected", resource: "connection", resourceId: connection.id, metadata: { provider: providerId } } });
+
+        try {
+            const { job } = await enqueueOauthWarehouseBackfill({
+                workspaceId,
+                userId,
+                connectionId: connection.id,
+                connectionWorkspaceId: connection.workspaceId,
+                kind: connection.created ? "initial" : "catchup",
+                lastSyncAt: connection.lastSyncAt,
+            });
+            after(async () => {
+                try {
+                    const claim = await claimImportJob(job.id);
+                    if (claim.claimed && claim.leaseId) {
+                        await runDurableImportWorker(job.id, claim.leaseId);
+                    }
+                } catch (err) {
+                    logger.error("[OAuth Callback] initial backfill worker error", err);
+                }
+            });
+        } catch (err) {
+            logger.warn("[OAuth Callback] warehouse backfill enqueue failed", err);
+        }
 
         // Redirect to explicit setup flow (replaces auto-pipeline creation)
         // User chooses destination or skips if using add-on/Looker

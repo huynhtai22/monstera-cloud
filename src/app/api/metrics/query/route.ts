@@ -12,6 +12,10 @@ import {
 import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-cache";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { queryWarehouse } from "@/lib/warehouse-query";
+import {
+  aggregationNeedsCurrencyDimension,
+  aggregateCurrencySafe,
+} from "@/lib/currency-safe-aggregation";
 
 /**
  * GET /api/metrics/query?workspaceId=...&startDate=...&endDate=...&platform=...&cursor=...
@@ -178,12 +182,17 @@ export async function GET(req: Request) {
         ...ADS_CALCULATED_METRICS.map((m) => m.id),
       ]);
 
-      const dimensions = (dimIds.length ? dimIds : ["date", "platform"]).filter((id) =>
+      // Dimensions map directly to DB fields; ignore any that lack backing storage.
+      let dimensions = (dimIds.length ? dimIds : ["date", "platform"]).filter((id) =>
         allowedDimIds.has(id),
       );
       const metrics = (metricIds.length ? metricIds : ["spend", "impressions"]).filter((id) =>
         allowedMetricIds.has(id),
       );
+
+      if (aggregationNeedsCurrencyDimension(dimensions, metrics) && allowedDimIds.has("currency")) {
+        dimensions = [...dimensions, "currency"];
+      }
 
       if (dimensions.length === 0) {
         return NextResponse.json(
@@ -377,16 +386,7 @@ export async function GET(req: Request) {
     const nextCursor = warehouseResult.pagination.nextCursor;
 
     // Aggregation for the current page only (fast)
-    const pageTotals = metrics.reduce(
-      (acc, m) => ({
-        impressions: acc.impressions + (m.impressions || 0),
-        clicks: acc.clicks + (m.clicks || 0),
-        spend: acc.spend + (m.spend || 0),
-        conversions: acc.conversions + (m.conversions || 0),
-        revenue: acc.revenue + (m.revenue || 0),
-      }),
-      { impressions: 0, clicks: 0, spend: 0, conversions: 0, revenue: 0 }
-    );
+    const pageTotals = aggregateCurrencySafe(metrics);
 
     const responseData = {
       metrics,
