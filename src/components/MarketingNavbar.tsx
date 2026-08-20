@@ -12,8 +12,6 @@ import {
   Database,
   Download,
   LayoutTemplate,
-  Users,
-  TrendingUp,
   Menu,
   X,
 } from "lucide-react";
@@ -70,21 +68,6 @@ const PRODUCT_LINKS = [
   },
 ];
 
-const SOLUTIONS_LINKS = [
-  {
-    name: "For Marketing Agencies",
-    description: "Multi-client workspace isolation and automated client reporting standups.",
-    href: "/solutions/agencies",
-    icon: Users,
-  },
-  {
-    name: "For Performance Teams",
-    description: "Cross-channel spend reconciliation, ROAS tracking, and zero spreadsheet glue.",
-    href: "/solutions/smes",
-    icon: TrendingUp,
-  },
-];
-
 export function MarketingNavbar() {
   const { status } = useSession();
   const pathname = usePathname();
@@ -92,7 +75,7 @@ export function MarketingNavbar() {
   const showLangToggle = pathname === "/" || pathname === "/solutions/smes";
   const [lang, setLang] = useState<Lang>("en");
   const [consoleHref, setConsoleHref] = useState("/console");
-  const [activeDropdown, setActiveDropdown] = useState<"product" | "solutions" | null>(null);
+  const [activeDropdown, setActiveDropdown] = useState<"product" | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
 
@@ -211,58 +194,8 @@ export function MarketingNavbar() {
             )}
           </div>
 
-          {/* Solutions Dropdown */}
-          <div
-            className="relative"
-            onMouseEnter={() => setActiveDropdown("solutions")}
-            onMouseLeave={() => setActiveDropdown(null)}
-          >
-            <button
-              type="button"
-              onClick={() => setActiveDropdown(activeDropdown === "solutions" ? null : "solutions")}
-              className={cn(
-                "inline-flex items-center gap-1 text-[13px] font-medium transition-colors duration-150",
-                activeDropdown === "solutions" ? "text-ink" : "text-ink-mute hover:text-ink"
-              )}
-            >
-              Solutions
-              <ChevronDown
-                className={cn(
-                  "h-3.5 w-3.5 text-ink-mute transition-transform duration-150",
-                  activeDropdown === "solutions" && "rotate-180 text-ink"
-                )}
-              />
-            </button>
-
-            {activeDropdown === "solutions" && (
-              <div className="absolute left-1/2 top-full -translate-x-1/2 pt-2 animate-in fade-in-0 duration-150">
-                <div className="w-[340px] rounded-lg border border-line bg-panel p-2 shadow-xl">
-                  <div className="space-y-1">
-                    {SOLUTIONS_LINKS.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <Link
-                          key={item.name}
-                          href={item.href}
-                          className="flex items-start gap-3 rounded-md p-2.5 transition-colors hover:bg-white/[0.04]"
-                        >
-                          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line bg-canvas text-ink">
-                            <Icon className="h-3.5 w-3.5" />
-                          </div>
-                          <div>
-                            <div className="text-[13px] font-medium text-ink">{item.name}</div>
-                            <div className="text-xs leading-snug text-ink-mute mt-0.5">
-                              {item.description}
-                            </div>
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <Link href="/#architecture" className="text-[13px] font-medium text-ink-mute transition-colors duration-150 hover:text-ink">Integrations</Link>
+          <Link href="/#security" className="text-[13px] font-medium text-ink-mute transition-colors duration-150 hover:text-ink">Security</Link>
 
           <Link
             href="/pricing"
@@ -303,7 +236,7 @@ export function MarketingNavbar() {
               href="/register"
               className="inline-flex items-center justify-center rounded-md bg-white px-3.5 py-1.5 text-[13px] font-semibold text-neutral-950 shadow-xs transition-colors hover:bg-neutral-200"
             >
-              Start pilot
+              Start free
               <ArrowRight className="ml-1.5 h-3.5 w-3.5" strokeWidth={2} />
             </Link>
           )}
@@ -337,20 +270,9 @@ export function MarketingNavbar() {
               ))}
             </div>
 
-            <div className="space-y-2 border-t border-line pt-3">
-              <p className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">Solutions</p>
-              {SOLUTIONS_LINKS.map((item) => (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className="block py-1 text-[13px] text-ink hover:text-white"
-                >
-                  {item.name}
-                </Link>
-              ))}
-            </div>
-
             <div className="flex flex-col gap-2 border-t border-line pt-3">
+              <Link href="/#architecture" className="py-1 text-[13px] text-ink">Integrations</Link>
+              <Link href="/#security" className="py-1 text-[13px] text-ink">Security</Link>
               <Link href="/pricing" className="py-1 text-[13px] text-ink">
                 Pricing
               </Link>

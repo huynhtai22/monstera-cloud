@@ -1,18 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  ArrowRight,
-  Shield,
-  Lock,
-  Eye,
-  CheckCircle2,
-  ShieldCheck,
-  FileSpreadsheet,
-  Clock,
-} from "lucide-react";
+import { ArrowRight, CheckCircle2, Database, Eye, FileSpreadsheet, Lock, ShieldCheck, Sparkles } from "lucide-react";
+import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
+import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { SignaturePipeline } from "./SignaturePipeline";
+import { MarketingScrollReveal } from "./MarketingScrollReveal";
 
 const MARKETING_LANG_KEY = "marketing_lang";
 type Lang = "en" | "vi";
@@ -20,493 +14,158 @@ type Lang = "en" | "vi";
 const COPY = {
   en: {
     hero: {
-      eyebrow: "Continuous Marketing Data Engine",
-      h1: ["Turn ad & marketplace data", "into client-ready reporting."],
-      sub: "Monstera Cloud gives performance marketing agencies one unified warehouse to connect, normalize, and automate reporting across Meta, Google Ads, TikTok, and Shopee — with zero spreadsheet maintenance.",
-      cta: "Start 14-day agency pilot",
-      ctaSecondary: "See how it works",
-      trust: [
-        { icon: Shield, text: "Multi-tenant workspace isolation" },
-        { icon: Lock, text: "Read-only OAuth 2.0 · AES-256 encrypted" },
-        { icon: Eye, text: "Google Sheets™ & Looker Studio™ delivery" },
-      ],
+      eyebrow: "Marketing data, made usable",
+      title: ["Your ad data, cleaned", "and ready to report."],
+      description: "Connect Meta, Google Ads, TikTok, and Shopee. Monstera normalizes your marketing data and keeps a reporting warehouse ready for the tools your team already uses.",
+      primary: "Start free",
+      secondary: "See how it works",
     },
+    trust: [
+      { icon: Eye, label: "Read-only provider access where available" },
+      { icon: Lock, label: "Credentials encrypted at rest" },
+      { icon: ShieldCheck, label: "Workspace-scoped data" },
+      { icon: Sparkles, label: "On-demand and scheduled syncs" },
+    ],
+    providers: { label: "Connect the platforms already in your reporting mix" },
     outcomes: {
-      eyebrow: "Customer Outcomes",
-      title: "Why performance agencies choose Monstera",
-      sub: "Eliminate manual data engineering so your media team can focus on client growth and strategy.",
+      eyebrow: "What changes",
+      title: "Less reporting maintenance. More confidence in the numbers.",
+      description: "Monstera gives your team a consistent starting point for analysis—without asking everyone to change the way they already report.",
       items: [
-        {
-          number: "01",
-          title: "Stop rebuilding client reporting every week",
-          description: "Eliminate repetitive Monday morning CSV exports, broken VLOOKUPs, and currency reconciliation across dozens of client ad accounts.",
-          icon: Clock,
-          proof: [
-            "Manual and nightly warehouse refreshes",
-            "Cross-platform spend and conversion harmonization",
-            "Zero manual copy-paste spreadsheet glue",
-          ],
-        },
-        {
-          number: "02",
-          title: "Keep every client workspace strictly isolated",
-          description: "Built from the ground up for agencies managing multiple client brands. Strict multi-tenant database partitioning ensures zero cross-client data leakage.",
-          icon: ShieldCheck,
-          proof: [
-            "Logical database fencing per client workspace",
-            "Independent OAuth credentials encrypted with AES-256-GCM",
-            "Granular role-based member scopes (Admin, Member, Viewer)",
-          ],
-        },
-        {
-          number: "03",
-          title: "Deliver directly into existing client workflows",
-          description: "No need to force clients onto proprietary BI dashboards. Push clean, normalized data into the Google Sheets and Looker Studio templates they already trust.",
-          icon: FileSpreadsheet,
-          proof: [
-            "Official Google Sheets™ automated sync add-on",
-            "Live Looker Studio™ certified community connector",
-            "Programmatic REST API & high-speed CSV exports",
-          ],
-        },
+        { title: "One reporting structure", description: "Platform metrics are mapped into a consistent warehouse so campaigns can be reviewed together.", points: ["Consistent dimensions and metrics", "Currency-aware records", "Historical data stays organized"], icon: Database },
+        { title: "Data that is ready when you are", description: "Refresh a selected window when you need it, or keep your reporting data up to date with scheduled syncs.", points: ["Visible source and sync status", "Freshness is easy to inspect", "Retryable work is handled deliberately"], icon: CheckCircle2 },
+        { title: "Keep the tools your team knows", description: "Explore, export, or deliver prepared data into the reporting workflows that already support your decisions.", points: ["Warehouse explorer", "CSV and API export", "Google Sheets and Looker Studio workflows"], icon: FileSpreadsheet },
       ],
     },
-    timeCompare: {
-      eyebrow: "Agency Efficiency",
-      heading: "Where does your agency's time go?",
-      sub: "Every week, manual client reporting steals billable hours from media strategy and growth.",
-      steps: [
-        { task: "Export CSVs across 8+ client ad accounts", time: "45 min" },
-        { task: "Reconcile currency, ROAS & attribution drift", time: "85 min" },
-        { task: "Format client slide decks & Google Sheets", time: "60 min" },
-        { task: "Repeat for every client next week", time: "Repeat" },
-      ],
-      total: "3h 10min",
-      unit: "/client /week",
-      after: {
-        label: "With Monstera Cloud",
-        total: "0 min",
-        unit: "/week",
-        setup: "5 min one-time workspace setup",
-        tagline: "Automated client dashboards that update themselves every day.",
-      },
-    },
-    infrastructure: {
-      eyebrow: "Security & Reliability",
-      title: "Infrastructure guarantees built for client data",
-      sub: "Enterprise-grade isolation and strict compliance ensure your agency and client datasets remain confidential.",
-      features: [
-        {
-          title: "Tenant Isolation",
-          desc: "Every workspace is logically isolated at the database layer. No cross-client data bleeding.",
-        },
-        {
-          title: "Read-Only OAuth",
-          desc: "Monstera cannot edit, publish, pause, or modify client ad campaigns. Read-only telemetry only.",
-        },
-        {
-          title: "AES-256 Encryption",
-          desc: "All OAuth access tokens and sensitive refresh credentials are encrypted at rest with AES-256-GCM.",
-        },
-        {
-          title: "Singapore Region Posture",
-          desc: "Low-latency regional hosting optimized for Southeast Asia (VN, SG, MY, ID, TH) and global APIs.",
-        },
+    audiences: {
+      eyebrow: "Built for the people close to performance",
+      title: "A clearer handoff from platform data to reporting.",
+      items: [
+        ["Marketing teams", "Bring channel data into one dependable reporting foundation."],
+        ["Agencies", "Keep client workspaces distinct while making recurring reporting easier to run."],
+        ["Operators & founders", "See the reporting picture without rebuilding data flows from scratch."],
       ],
     },
-    finalCta: {
-      heading: "Your reporting stack shouldn't need maintenance.",
-      sub: "Connect your client sources once. Monstera keeps the warehouse clean and client dashboards reporting-ready.",
-      primaryBtn: "Start 14-day agency pilot",
-      secondaryBtn: "View documentation",
-      trust: "No credit card required · Read-only OAuth · 5-minute setup",
+    security: {
+      eyebrow: "Security without the theatre",
+      title: "Clear boundaries for the data you connect.",
+      items: [
+        ["Authorize, don’t share", "Where a provider supports OAuth, you authorize Monstera through that provider instead of sharing a password."],
+        ["Read-only by design", "Advertising integrations request the access needed to retrieve reporting data; they do not edit campaigns."],
+        ["Credentials protected", "Connected credentials are encrypted at rest, and data is scoped to its workspace."],
+        ["You stay in control", "Connections can be reviewed, disconnected, and re-authorized from the product."],
+      ],
+    },
+    cta: {
+      title: "Make reporting the easy part of your marketing stack.",
+      description: "Connect your sources once, then keep the data ready for the next question your team needs to answer.",
+      primary: "Start free",
+      secondary: "Read the docs",
+      note: "No credit card required · Connect only the sources you choose",
     },
   },
   vi: {
     hero: {
-      eyebrow: "Động Cơ Dữ Liệu Marketing Tự Động",
-      h1: ["Biến dữ liệu quảng cáo & sàn", "thành báo cáo khách hàng tự động."],
-      sub: "Monstera Cloud cung cấp cho agency một kho dữ liệu hợp nhất để kết nối, chuẩn hóa và tự động hóa báo cáo trên Meta, Google Ads, TikTok và Shopee — không còn dọn dẹp bảng tính thủ công.",
-      cta: "Bắt đầu dùng thử 14 ngày",
-      ctaSecondary: "Xem cách hoạt động",
-      trust: [
-        { icon: Shield, text: "Tách biệt Workspace đa khách hàng" },
-        { icon: Lock, text: "OAuth 2.0 chỉ đọc · Mã hóa AES-256" },
-        { icon: Eye, text: "Đẩy thẳng Google Sheets™ & Looker Studio™" },
-      ],
+      eyebrow: "Dữ liệu marketing, sẵn sàng để sử dụng",
+      title: ["Dữ liệu quảng cáo được làm sạch", "và sẵn sàng cho báo cáo."],
+      description: "Kết nối Meta, Google Ads, TikTok và Shopee. Monstera chuẩn hóa dữ liệu marketing và duy trì kho dữ liệu báo cáo sẵn sàng cho các công cụ team bạn đang dùng.",
+      primary: "Bắt đầu miễn phí",
+      secondary: "Xem cách hoạt động",
     },
+    trust: [
+      { icon: Eye, label: "Quyền truy cập chỉ đọc khi nền tảng hỗ trợ" },
+      { icon: Lock, label: "Thông tin xác thực được mã hóa khi lưu trữ" },
+      { icon: ShieldCheck, label: "Dữ liệu được phân tách theo workspace" },
+      { icon: Sparkles, label: "Đồng bộ theo yêu cầu hoặc theo lịch" },
+    ],
+    providers: { label: "Kết nối các nền tảng đã có trong báo cáo của bạn" },
     outcomes: {
-      eyebrow: "Giá Trị Cho Khách Hàng",
-      title: "Vì sao các agency lựa chọn Monstera Cloud",
-      sub: "Loại bỏ hoàn toàn công việc kỹ thuật thủ công để đội ngũ media tập trung vào chiến lược tăng trưởng.",
+      eyebrow: "Điều gì thay đổi",
+      title: "Ít công bảo trì báo cáo hơn. Tin tưởng số liệu hơn.",
+      description: "Monstera tạo một điểm bắt đầu nhất quán để phân tích mà không buộc mọi người phải thay đổi cách họ đang báo cáo.",
       items: [
-        {
-          number: "01",
-          title: "Không còn làm lại báo cáo thủ công mỗi tuần",
-          description: "Chấm dứt thói quen tải CSV sáng thứ Hai, sửa lỗi hàm tính toán và đối chiếu lệch số trên hàng chục tài khoản khách hàng.",
-          icon: Clock,
-          proof: [
-            "Đồng bộ tự động định kỳ hàng giờ và ban đêm",
-            "Chuẩn hóa chi phí và lượt chuyển đổi đa kênh",
-            "Không còn thao tác copy-paste bảng tính thủ công",
-          ],
-        },
-        {
-          number: "02",
-          title: "Bảo mật và cách ly tuyệt đối từng Workspace",
-          description: "Thiết kế chuẩn mực cho agency quản lý nhiều thương hiệu. Phân vùng cơ sở dữ liệu riêng biệt đảm bảo không rò rỉ dữ liệu chéo.",
-          icon: ShieldCheck,
-          proof: [
-            "Cách ly logic ở tầng cơ sở dữ liệu cho mỗi khách hàng",
-            "Mã hóa token xác thực OAuth bằng chuẩn AES-256-GCM",
-            "Phân quyền thành viên chặt chẽ (Admin, Member, Viewer)",
-          ],
-        },
-        {
-          number: "03",
-          title: "Đưa dữ liệu vào thẳng công cụ team đang dùng",
-          description: "Không bắt buộc khách hàng học công cụ mới. Đẩy số liệu sạch vào Google Sheets và Looker Studio quen thuộc.",
-          icon: FileSpreadsheet,
-          proof: [
-            "Add-on tự động đồng bộ trên Google Sheets™",
-            "Looker Studio™ Community Connector chính thức",
-            "Hỗ trợ xuất file CSV và API tốc độ cao",
-          ],
-        },
+        { title: "Một cấu trúc cho báo cáo", description: "Số liệu từ các nền tảng được ánh xạ vào một kho dữ liệu thống nhất để có thể xem chiến dịch cùng nhau.", points: ["Dimension và metric nhất quán", "Bản ghi có nhận biết tiền tệ", "Dữ liệu lịch sử được tổ chức gọn gàng"], icon: Database },
+        { title: "Dữ liệu sẵn sàng khi bạn cần", description: "Làm mới khoảng thời gian đã chọn khi cần hoặc duy trì dữ liệu báo cáo theo lịch đồng bộ.", points: ["Thấy rõ trạng thái nguồn và đồng bộ", "Dễ kiểm tra độ mới của dữ liệu", "Công việc có thể thử lại được xử lý có chủ đích"], icon: CheckCircle2 },
+        { title: "Giữ công cụ team đã quen dùng", description: "Khám phá, xuất hoặc đưa dữ liệu đã chuẩn bị vào luồng báo cáo đang hỗ trợ các quyết định của team.", points: ["Warehouse explorer", "Xuất CSV và API", "Luồng Google Sheets và Looker Studio"], icon: FileSpreadsheet },
       ],
     },
-    timeCompare: {
-      eyebrow: "Hiệu Quả Cho Agency",
-      heading: "Thời gian của agency đang đi đâu?",
-      sub: "Mỗi tuần, việc làm báo cáo khách hàng thủ công lấy đi hàng giờ chiến lược của team.",
-      steps: [
-        { task: "Xuất CSV từ 8+ tài khoản quảng cáo khách hàng", time: "45 phút" },
-        { task: "Quy đổi tỷ giá, ROAS & đối chiếu lệch số", time: "85 phút" },
-        { task: "Định dạng slide báo cáo & Google Sheets", time: "60 phút" },
-        { task: "Lặp lại cho từng khách hàng tuần sau", time: "Lặp lại" },
-      ],
-      total: "3h 10min",
-      unit: "/khách hàng /tuần",
-      after: {
-        label: "Với Monstera Cloud",
-        total: "0 phút",
-        unit: "/tuần",
-        setup: "5 phút cài đặt Workspace một lần",
-        tagline: "Dashboard khách hàng tự động cập nhật mỗi ngày.",
-      },
-    },
-    infrastructure: {
-      eyebrow: "Bảo Mật & Độ Tin Cậy",
-      title: "Cam kết hạ tầng chuẩn doanh nghiệp",
-      sub: "Đảm bảo tính bảo mật và cách ly tuyệt đối giữa các thương hiệu khách hàng trong agency.",
-      features: [
-        {
-          title: "Cách ly đa khách hàng",
-          desc: "Mỗi Workspace được phân tách ở tầng cơ sở dữ liệu. Không thể rò rỉ dữ liệu chéo.",
-        },
-        {
-          title: "OAuth chỉ đọc",
-          desc: "Monstera không thể chỉnh sửa, bật tắt hay can thiệp vào chiến dịch quảng cáo.",
-        },
-        {
-          title: "Mã hóa AES-256",
-          desc: "Mọi token xác thực OAuth được mã hóa ở trạng thái nghỉ với chuẩn AES-256-GCM.",
-        },
-        {
-          title: "Hạ tầng khu vực Singapore",
-          desc: "Độ trễ thấp tối ưu cho khu vực Đông Nam Á và kết nối API quốc tế ổn định.",
-        },
+    audiences: {
+      eyebrow: "Dành cho những người sát với hiệu quả marketing",
+      title: "Bàn giao rõ ràng hơn từ dữ liệu nền tảng đến báo cáo.",
+      items: [
+        ["Marketing teams", "Đưa dữ liệu kênh về một nền tảng báo cáo đáng tin cậy."],
+        ["Agencies", "Giữ workspace khách hàng tách biệt và vận hành báo cáo định kỳ dễ hơn."],
+        ["Operators & founders", "Nắm bức tranh báo cáo mà không cần tự xây lại luồng dữ liệu."],
       ],
     },
-    finalCta: {
-      heading: "Hệ thống báo cáo của bạn không nên tốn công bảo trì.",
-      sub: "Kết nối nguồn dữ liệu một lần. Monstera giữ kho dữ liệu luôn sạch và báo cáo luôn sẵn sàng.",
-      primaryBtn: "Bắt đầu dùng thử 14 ngày",
-      secondaryBtn: "Xem tài liệu hướng dẫn",
-      trust: "Không cần thẻ tín dụng · OAuth chỉ đọc · Cài đặt 5 phút",
+    security: {
+      eyebrow: "Bảo mật rõ ràng, không phô trương",
+      title: "Ranh giới minh bạch cho dữ liệu bạn kết nối.",
+      items: [
+        ["Ủy quyền, không chia sẻ", "Khi nền tảng hỗ trợ OAuth, bạn cấp quyền Monstera qua nền tảng đó thay vì chia sẻ mật khẩu."],
+        ["Thiết kế chỉ đọc", "Các tích hợp quảng cáo chỉ yêu cầu quyền cần thiết để lấy dữ liệu báo cáo; không chỉnh sửa chiến dịch."],
+        ["Thông tin xác thực được bảo vệ", "Thông tin xác thực đã kết nối được mã hóa khi lưu trữ và dữ liệu được phân tách theo workspace."],
+        ["Bạn luôn kiểm soát", "Kết nối có thể được xem lại, ngắt và cấp quyền lại ngay trong sản phẩm."],
+      ],
+    },
+    cta: {
+      title: "Hãy để báo cáo trở thành phần dễ nhất trong marketing stack.",
+      description: "Kết nối nguồn dữ liệu một lần, sau đó giữ dữ liệu sẵn sàng cho câu hỏi tiếp theo của team.",
+      primary: "Bắt đầu miễn phí",
+      secondary: "Đọc tài liệu",
+      note: "Không cần thẻ tín dụng · Chỉ kết nối các nguồn bạn chọn",
     },
   },
 } as const;
+
+const PROVIDERS = [
+  { name: "Meta Ads", logo: INTEGRATION_LOGOS.meta },
+  { name: "Google Ads", logo: INTEGRATION_LOGOS.googleAds },
+  { name: "TikTok Ads", logo: INTEGRATION_LOGOS.tiktok },
+  { name: "Shopee", logo: INTEGRATION_LOGOS.shopee },
+];
 
 export default function MarketingHomePage() {
   const [lang, setLang] = useState<Lang>("en");
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
     const saved = window.localStorage.getItem(MARKETING_LANG_KEY);
     if (saved === "en" || saved === "vi") setLang(saved);
-
-    const onLangChange = (e: CustomEvent<Lang>) => {
-      setLang(e.detail);
-    };
-    window.addEventListener("marketing-lang-change" as any, onLangChange as any);
-    return () => window.removeEventListener("marketing-lang-change" as any, onLangChange as any);
+    const onLangChange = (event: Event) => setLang((event as CustomEvent<Lang>).detail);
+    window.addEventListener("marketing-lang-change", onLangChange);
+    return () => window.removeEventListener("marketing-lang-change", onLangChange);
   }, []);
 
   const t = COPY[lang];
 
   return (
-    <div className="space-y-28 sm:space-y-36 pb-20">
-      {/* ── 1. HERO SECTION ── */}
-      <section className="relative pt-12 sm:pt-20 px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-4xl text-center">
-          {/* Eyebrow badge */}
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 font-mono text-[11px] font-medium text-ink-mute">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            <span>{t.hero.eyebrow}</span>
-          </div>
-
-          {/* Main Headline — Adjusted second line contrast */}
-          <h1 className="text-4xl font-semibold tracking-tight text-ink sm:text-5xl lg:text-6xl sm:leading-[1.1]">
-            <span className="block">{t.hero.h1[0]}</span>
-            <span className="block text-neutral-300 mt-1">{t.hero.h1[1]}</span>
-          </h1>
-
-          {/* Subtitle */}
-          <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-ink-mute sm:text-lg">
-            {t.hero.sub}
-          </p>
-
-          {/* CTAs */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
-            <Link
-              href="/register"
-              className="inline-flex items-center justify-center rounded-md bg-white px-5 py-3 text-sm font-semibold text-neutral-950 shadow-xs transition-colors hover:bg-neutral-200"
-            >
-              {t.hero.cta}
-              <ArrowRight className="ml-2 h-4 w-4" strokeWidth={2} />
-            </Link>
-            <a
-              href="#pipeline"
-              className="inline-flex items-center justify-center rounded-md border border-line bg-panel px-5 py-3 text-sm font-medium text-ink transition-colors hover:bg-white/[0.04]"
-            >
-              {t.hero.ctaSecondary}
-            </a>
-          </div>
-
-          {/* Trust Guarantees */}
-          <div className="mt-12 flex flex-wrap items-center justify-center gap-6 text-xs text-ink-mute">
-            {t.hero.trust.map((item, idx) => {
-              const Icon = item.icon;
-              return (
-                <div key={idx} className="flex items-center gap-2">
-                  <Icon className="h-4 w-4 text-ink-mute" strokeWidth={1.5} />
-                  <span>{item.text}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 2. SIGNATURE INTERACTIVE PIPELINE VISUAL ── */}
-      <section id="pipeline" className="px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
-            <div>
-              <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-ink-mute">
-                Product Architecture
-              </p>
-              <h2 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl mt-1">
-                Connect → Normalize → Warehouse → Deliver
-              </h2>
-            </div>
-            <p className="text-xs text-ink-mute max-w-md">
-              A continuous ETL engine bridging disparate advertising APIs directly into clean client reporting.
-            </p>
-          </div>
-
-          <SignaturePipeline />
-        </div>
-      </section>
-
-      {/* ── 3. THREE OUTCOME-LED VALUE SECTIONS ── */}
-      <section className="px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="mb-12 max-w-2xl">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-ink-mute">
-              {t.outcomes.eyebrow}
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-              {t.outcomes.title}
-            </h2>
-            <p className="mt-3 text-sm text-ink-mute leading-relaxed">
-              {t.outcomes.sub}
-            </p>
-          </div>
-
-          {/* 3 Outcome Cards */}
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            {t.outcomes.items.map((item) => {
-              const Icon = item.icon;
-              return (
-                <div
-                  key={item.number}
-                  className="flex flex-col justify-between rounded-xl border border-line bg-panel p-6 sm:p-7 space-y-6 transition-colors hover:border-white/20"
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="font-mono text-xs font-semibold text-ink-mute">
-                        {item.number}
-                      </span>
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-canvas text-ink">
-                        <Icon className="h-4 w-4" strokeWidth={1.5} />
-                      </div>
-                    </div>
-
-                    <h3 className="text-base font-semibold text-ink leading-snug mb-3">
-                      {item.title}
-                    </h3>
-                    <p className="text-xs leading-relaxed text-ink-mute mb-5">
-                      {item.description}
-                    </p>
-                  </div>
-
-                  <div className="border-t border-line pt-4 space-y-2">
-                    {item.proof.map((p, idx) => (
-                      <div key={idx} className="flex items-start gap-2 text-xs text-ink-mute">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                        <span>{p}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 4. AGENCY EFFICIENCY / ROI MATRIX ── */}
-      <section className="px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-5xl rounded-xl border border-line bg-panel p-6 sm:p-10">
-          <div className="mb-8 text-center max-w-xl mx-auto">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-ink-mute mb-2">
-              {t.timeCompare.eyebrow}
-            </p>
-            <h2 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-              {t.timeCompare.heading}
-            </h2>
-            <p className="mt-2 text-sm text-ink-mute">
-              {t.timeCompare.sub}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            {/* Manual Reporting Column */}
-            <div className="rounded-lg border border-line/80 bg-canvas p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-line pb-3">
-                <span className="text-xs font-semibold text-ink-mute uppercase tracking-wider">
-                  Manual Spreadsheets
-                </span>
-                <span className="font-mono text-sm font-bold text-red-400">
-                  {t.timeCompare.total} <span className="text-[10px] font-normal text-ink-mute">{t.timeCompare.unit}</span>
-                </span>
-              </div>
-              <div className="space-y-3">
-                {t.timeCompare.steps.map((step, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-xs">
-                    <span className="text-ink-mute">{step.task}</span>
-                    <span className="font-mono text-ink text-[11px] shrink-0 ml-2">{step.time}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Monstera Cloud Column */}
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/10 p-5 space-y-4 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between border-b border-emerald-500/20 pb-3">
-                  <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
-                    {t.timeCompare.after.label}
-                  </span>
-                  <span className="font-mono text-sm font-bold text-emerald-400">
-                    {t.timeCompare.after.total} <span className="text-[10px] font-normal text-ink-mute">{t.timeCompare.after.unit}</span>
-                  </span>
-                </div>
-                <div className="mt-4 space-y-2 text-xs">
-                  <p className="text-ink font-medium leading-relaxed">
-                    {t.timeCompare.after.tagline}
-                  </p>
-                  <p className="text-ink-mute text-[11px]">
-                    {t.timeCompare.after.setup}
-                  </p>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-line">
-                <Link
-                  href="/register"
-                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-white py-2 text-xs font-semibold text-neutral-900 hover:bg-neutral-200 transition-colors"
-                >
-                  Reclaim your agency hours <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── 5. SECURITY & INFRASTRUCTURE GUARANTEES ── */}
-      <section className="px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="mb-10 text-center max-w-xl mx-auto">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-ink-mute mb-2">
-              {t.infrastructure.eyebrow}
-            </p>
-            <h2 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">
-              {t.infrastructure.title}
-            </h2>
-            <p className="mt-2 text-sm text-ink-mute">
-              {t.infrastructure.sub}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {t.infrastructure.features.map((feat, idx) => (
-              <div key={idx} className="rounded-lg border border-line bg-panel p-5 space-y-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-md border border-line bg-canvas text-ink mb-3">
-                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" strokeWidth={1.5} />
-                </div>
-                <h3 className="text-sm font-semibold text-ink">{feat.title}</h3>
-                <p className="text-xs leading-relaxed text-ink-mute">{feat.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── 6. FINAL MARKETING CTA ── */}
-      <section className="px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-4xl rounded-2xl border border-line bg-panel p-8 sm:p-12 text-center">
-          <h2 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
-            {t.finalCta.heading}
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-ink-mute sm:text-base">
-            {t.finalCta.sub}
-          </p>
-
+    <div className="overflow-x-clip pb-20">
+      <section className="relative isolate px-4 pb-20 pt-16 sm:px-6 sm:pb-28 sm:pt-24 lg:px-8">
+        <div aria-hidden className="absolute inset-x-0 top-0 -z-10 h-[32rem] bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.075),transparent_62%)]" />
+        <MarketingScrollReveal className="mx-auto max-w-4xl text-center">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-line bg-panel/80 px-3 py-1 font-mono text-[11px] font-medium text-ink-mute"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />{t.hero.eyebrow}</div>
+          <h1 className="text-balance text-4xl font-semibold tracking-[-0.045em] text-ink sm:text-6xl lg:text-7xl lg:leading-[1.02]"><span className="block">{t.hero.title[0]}</span><span className="mt-1 block text-neutral-400">{t.hero.title[1]}</span></h1>
+          <p className="mx-auto mt-6 max-w-2xl text-pretty text-base leading-relaxed text-ink-mute sm:text-lg">{t.hero.description}</p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <Link
-              href="/register"
-              className="inline-flex items-center justify-center rounded-md bg-white px-5 py-2.5 text-sm font-semibold text-neutral-950 shadow-xs hover:bg-neutral-200 transition-colors"
-            >
-              {t.finalCta.primaryBtn}
-              <ArrowRight className="ml-2 h-4 w-4" strokeWidth={2} />
-            </Link>
-            <Link
-              href="/docs"
-              className="inline-flex items-center justify-center rounded-md border border-line bg-canvas px-5 py-2.5 text-sm font-medium text-ink hover:bg-white/[0.04] transition-colors"
-            >
-              {t.finalCta.secondaryBtn}
-            </Link>
+            <Link href="/register" className="inline-flex items-center justify-center rounded-md bg-white px-5 py-3 text-sm font-semibold text-neutral-950 transition-colors hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-canvas">{t.hero.primary}<ArrowRight className="ml-2 h-4 w-4" aria-hidden /></Link>
+            <a href="#architecture" className="inline-flex items-center justify-center rounded-md border border-line bg-panel px-5 py-3 text-sm font-medium text-ink transition-colors hover:border-white/25 hover:bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-canvas">{t.hero.secondary}</a>
           </div>
-
-          <p className="mt-6 font-mono text-[11px] text-ink-mute">
-            {t.finalCta.trust}
-          </p>
-        </div>
+        </MarketingScrollReveal>
       </section>
+
+      <section aria-label="Trust signals" className="border-y border-line bg-panel/35 px-4 py-5 sm:px-6 lg:px-8"><MarketingScrollReveal className="mx-auto grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-4">{t.trust.map(({ icon: Icon, label }) => <div key={label} className="flex items-center gap-2.5 px-2 text-xs leading-snug text-ink-mute"><Icon className="h-4 w-4 shrink-0 text-ink" strokeWidth={1.5} aria-hidden /><span>{label}</span></div>)}</MarketingScrollReveal></section>
+
+      <section className="px-4 py-16 sm:px-6 sm:py-20 lg:px-8"><MarketingScrollReveal className="mx-auto max-w-6xl"><p className="mb-6 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-mute">{t.providers.label}</p><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{PROVIDERS.map((provider) => <div key={provider.name} className="flex h-16 items-center justify-center gap-3 rounded-lg border border-line bg-panel px-4"><IntegrationMark src={provider.logo} alt="" size="sm" /><span className="text-sm font-medium text-ink">{provider.name}</span></div>)}</div></MarketingScrollReveal></section>
+
+      <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-8"><div className="mx-auto max-w-6xl"><MarketingScrollReveal className="max-w-2xl"><p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-mute">{t.outcomes.eyebrow}</p><h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{t.outcomes.title}</h2><p className="mt-4 text-base leading-relaxed text-ink-mute">{t.outcomes.description}</p></MarketingScrollReveal><div className="mt-10 grid gap-4 md:grid-cols-3">{t.outcomes.items.map((item, index) => { const Icon = item.icon; return <MarketingScrollReveal key={item.title} delay={index * 70} className="h-full"><article className="flex h-full flex-col rounded-xl border border-line bg-panel p-6 transition-colors hover:border-white/20"><div className="mb-8 flex items-center justify-between"><span className="font-mono text-xs text-ink-mute">0{index + 1}</span><span className="flex h-8 w-8 items-center justify-center rounded-md border border-line bg-canvas"><Icon className="h-4 w-4 text-ink" strokeWidth={1.5} aria-hidden /></span></div><h3 className="text-lg font-semibold text-ink">{item.title}</h3><p className="mt-3 text-sm leading-relaxed text-ink-mute">{item.description}</p><ul className="mt-6 space-y-2 border-t border-line pt-5 text-xs leading-relaxed text-ink-mute">{item.points.map((point) => <li key={point} className="flex gap-2"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" aria-hidden />{point}</li>)}</ul></article></MarketingScrollReveal>; })}</div></div></section>
+
+      <section id="architecture" className="scroll-mt-20 border-y border-line bg-panel/30 px-4 py-20 sm:px-6 sm:py-28 lg:px-8"><div className="mx-auto max-w-6xl"><MarketingScrollReveal className="mb-10 grid gap-4 md:grid-cols-[1fr_auto] md:items-end"><div><p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-mute">How it works</p><h2 className="mt-3 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">Connect → Normalize → Warehouse → Deliver</h2></div><p className="max-w-md text-sm leading-relaxed text-ink-mute">Start with the platform account. The reporting-ready structure is the result—not the burden your team has to manage.</p></MarketingScrollReveal><MarketingScrollReveal><SignaturePipeline /></MarketingScrollReveal></div></section>
+
+      <section className="px-4 py-20 sm:px-6 sm:py-28 lg:px-8"><div className="mx-auto max-w-6xl"><MarketingScrollReveal className="max-w-2xl"><p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-mute">{t.audiences.eyebrow}</p><h2 className="mt-3 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{t.audiences.title}</h2></MarketingScrollReveal><div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-3">{t.audiences.items.map(([title, description], index) => <MarketingScrollReveal key={title} delay={index * 70} className="bg-panel"><article className="min-h-40 p-6"><span className="font-mono text-[11px] text-ink-mute">0{index + 1}</span><h3 className="mt-6 text-lg font-semibold text-ink">{title}</h3><p className="mt-2 text-sm leading-relaxed text-ink-mute">{description}</p></article></MarketingScrollReveal>)}</div></div></section>
+
+      <section id="security" className="scroll-mt-20 border-y border-line bg-panel/30 px-4 py-20 sm:px-6 sm:py-28 lg:px-8"><div className="mx-auto max-w-6xl"><MarketingScrollReveal className="max-w-2xl"><p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-mute">{t.security.eyebrow}</p><h2 className="mt-3 text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{t.security.title}</h2></MarketingScrollReveal><div className="mt-10 grid gap-4 sm:grid-cols-2">{t.security.items.map(([title, description], index) => <MarketingScrollReveal key={title} delay={index * 70}><article className="rounded-lg border border-line bg-canvas p-6"><span className="font-mono text-[11px] text-emerald-400">0{index + 1}</span><h3 className="mt-5 text-base font-semibold text-ink">{title}</h3><p className="mt-2 max-w-xl text-sm leading-relaxed text-ink-mute">{description}</p></article></MarketingScrollReveal>)}</div></div></section>
+
+      <section className="px-4 py-20 sm:px-6 sm:py-28 lg:px-8"><MarketingScrollReveal className="mx-auto max-w-4xl rounded-2xl border border-line bg-panel px-6 py-12 text-center sm:px-12"><h2 className="text-balance text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{t.cta.title}</h2><p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-ink-mute">{t.cta.description}</p><div className="mt-8 flex flex-wrap justify-center gap-3"><Link href="/register" className="inline-flex items-center justify-center rounded-md bg-white px-5 py-3 text-sm font-semibold text-neutral-950 transition-colors hover:bg-neutral-200">{t.cta.primary}<ArrowRight className="ml-2 h-4 w-4" aria-hidden /></Link><Link href="/docs" className="inline-flex items-center justify-center rounded-md border border-line bg-canvas px-5 py-3 text-sm font-medium text-ink transition-colors hover:border-white/25 hover:bg-white/[0.04]">{t.cta.secondary}</Link></div><p className="mt-6 font-mono text-[11px] text-ink-mute">{t.cta.note}</p></MarketingScrollReveal></section>
     </div>
   );
 }
