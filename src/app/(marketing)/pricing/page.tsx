@@ -193,7 +193,7 @@ export default function PricingPage() {
                     <p className="mt-4 text-sm sm:text-base text-ink-mute font-normal max-w-xl mx-auto leading-relaxed">
                         {payCurrency === "VND"
                             ? "Kho dữ liệu quảng cáo hợp nhất cho Agency. Đồng bộ trực tiếp Meta, TikTok, Google và Shopee vào Google Sheets & Looker Studio."
-                            : "Direct API sync from Meta, TikTok, Google, and Shopee straight into isolated PostgreSQL storage, Google Sheets, and Looker Studio."}
+                            : "Monstera stores normalized reporting data in isolated PostgreSQL workspaces, then makes it available to Google Sheets and Looker Studio."}
                     </p>
                 </div>
 
