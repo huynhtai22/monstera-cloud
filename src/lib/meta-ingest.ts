@@ -162,7 +162,7 @@ async function processChunk(
           conversions:  extractConversions(row),
           revenue:      extractRevenue(row),
           roas:         extractPurchaseRoas(row),
-          currency:     opts.currency || 'USD',
+          currency:     opts.currency,
           rawData:      row,
         };
 

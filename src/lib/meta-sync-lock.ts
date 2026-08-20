@@ -224,7 +224,9 @@ export async function upsertMetaMetric(params: {
   // Fencing check — reject stale workers before any DB write
   await assertMetaSyncLease({ scope: lockScope, leaseId, fencingToken });
 
-  const safeCurrency = metrics.currency?.trim() || 'USD';
+  // Currency must come from the provider. Guessing USD corrupts monetary
+  // reporting for accounts whose source currency is VND (or any other ISO code).
+  const safeCurrency = metrics.currency?.trim() || null;
   const safeCampaignId = campaignId?.trim() || entityId?.trim() || 'unknown_campaign';
   const safeCampaignName = campaignName?.trim() || safeCampaignId;
   const safeEntityId = entityId?.trim() || safeCampaignId;

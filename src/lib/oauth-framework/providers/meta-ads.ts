@@ -55,6 +55,7 @@ export class MetaAdsOAuthAdapter implements OAuthProviderAdapter {
                 adAccounts: accounts.map((a) => ({
                     id: a.id,
                     name: a.name,
+                    currency: a.currency,
                 })),
             },
         };

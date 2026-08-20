@@ -73,7 +73,9 @@ export async function upsertCampaignMetric(
     syncJobId,
   } = payload;
 
-  const safeCurrency = currency?.trim() || 'USD';
+  // Do not manufacture a USD label when a provider did not supply currency.
+  // Monetary rows must remain unlabelled until their real source currency is known.
+  const safeCurrency = currency?.trim() || null;
   const safeCampaignId = campaignId?.trim() || entityId?.trim() || 'unknown_campaign';
   const safeCampaignName = campaignName?.trim() || safeCampaignId;
   const safeEntityId = entityId?.trim() || safeCampaignId;
@@ -288,7 +290,7 @@ export async function ingestTiktokRows(
       const conversions = parseFloat(String(metrics.conversion ?? metrics.conversions ?? 0));
       const revenue = parseFloat(String(metrics.revenue ?? metrics.conversion_value ?? 0));
       const roas = parseFloat(String(metrics.roas ?? 0));
-      const currency = String(metrics.currency ?? 'USD');
+      const currency = typeof metrics.currency === 'string' ? metrics.currency : undefined;
 
       await upsertCampaignMetric({
         workspaceId: opts.workspaceId,

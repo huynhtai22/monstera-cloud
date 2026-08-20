@@ -50,9 +50,9 @@ export async function GET(req: Request) {
     creds.adAccounts?.map((a) => ({
       id: a.id,
       name: a.name ?? a.id,
-      currency: a.currency ?? "USD",
+      currency: a.currency ?? null,
     })) ??
-    (creds.adAccountIds ?? []).map((id) => ({ id, name: id, currency: "USD" }));
+    (creds.adAccountIds ?? []).map((id) => ({ id, name: id, currency: null }));
 
   return NextResponse.json({ connectionId: conn.id, connectionName: conn.name, accounts });
 }

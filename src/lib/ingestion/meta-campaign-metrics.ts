@@ -101,10 +101,10 @@ function parseRoas(purchaseRoas: unknown): number | null {
 function accountCurrency(
   creds: { adAccounts?: Array<{ id: string; currency?: string }> },
   actId: string,
-): string {
+): string | undefined {
   const idNorm = actId.startsWith("act_") ? actId : `act_${actId}`;
   const hit = creds.adAccounts?.find((a) => a.id === idNorm || a.id === actId);
-  return hit?.currency?.trim() || "USD";
+  return hit?.currency?.trim() || undefined;
 }
 
 export interface SyncMetaWarehouseParams {
@@ -257,7 +257,7 @@ async function upsertOneRow(opts: {
   platform: string;
   accountId: string;
   accountName: string | null;
-  currency: string;
+  currency?: string;
 }): Promise<boolean> {
   const { row } = opts;
   const dateStr = row.date_start ?? row.date_stop;

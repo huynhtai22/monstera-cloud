@@ -204,14 +204,28 @@ async function syncMetaAds(opts: {
     }
   }
 
-  // 3. Fallback: query Meta Graph API dynamically using the valid accessToken
-  if ((!adAccounts || adAccounts.length === 0) && accessToken) {
+  // 3. Resolve currencies from Meta itself. Older connections were saved before
+  // currency was included in OAuth metadata; never label their source amounts
+  // as USD merely because the field is absent.
+  if ((!adAccounts || adAccounts.length === 0 || adAccounts.some((account: any) => !account.currency)) && accessToken) {
     try {
       logger.info(`[syncMetaAds] Querying Meta Graph API dynamically for accessible ad accounts`);
       const apiAccounts = await metaAdsClient.getAdAccounts(accessToken);
       if (apiAccounts && apiAccounts.length > 0) {
-        adAccounts = apiAccounts.map((a: any) => ({ id: a.id, name: a.name || a.id }));
-        logger.info(`[syncMetaAds] Dynamically discovered ${adAccounts.length} Meta ad accounts from Graph API`);
+        const byId = new Map(
+          apiAccounts.map((account) => [String(account.id).replace(/^act_/, ""), account]),
+        );
+        adAccounts = adAccounts?.length
+          ? adAccounts.map((account: any) => {
+              const fresh = byId.get(String(account.id).replace(/^act_/, ""));
+              return {
+                ...account,
+                name: account.name || fresh?.name || account.id,
+                currency: account.currency || fresh?.currency,
+              };
+            })
+          : apiAccounts.map((a) => ({ id: a.id, name: a.name || a.id, currency: a.currency }));
+        logger.info(`[syncMetaAds] Resolved currency metadata for ${adAccounts.length} Meta ad accounts`);
       }
     } catch (apiErr) {
       logger.warn(`[syncMetaAds] Dynamic Meta API ad account discovery failed:`, apiErr);
@@ -290,9 +304,8 @@ async function syncMetaAds(opts: {
 
       if (rows.length > 0) {
         // Ingest to CampaignMetric
-        const currency = account.currency || 
-          credentials.adAccounts?.find((a: any) => a.id === accountId || a.id === `act_${accountId}`)?.currency || 
-          "USD";
+        const currency = account.currency ||
+          credentials.adAccounts?.find((a: any) => a.id === accountId || a.id === `act_${accountId}`)?.currency;
 
         const result = await ingestMetaRows({
           workspaceId,
