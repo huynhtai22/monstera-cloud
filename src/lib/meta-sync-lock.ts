@@ -206,6 +206,7 @@ export async function upsertMetaMetric(params: {
   campaignId?: string;
   campaignName?: string;
   adsetId?: string;
+  adsetName?: string;
   adId?: string;
   date: Date;
   breakdownHash: string;
@@ -217,7 +218,7 @@ export async function upsertMetaMetric(params: {
 }): Promise<void> {
   const {
     workspaceId, connectionId, accountId, accountName,
-    level, entityId, campaignId, campaignName, adsetId, adId,
+    level, entityId, campaignId, campaignName, adsetId, adsetName, adId,
     date, breakdownHash, metrics, syncJobId, lockScope, leaseId, fencingToken,
   } = params;
 
@@ -265,7 +266,7 @@ export async function upsertMetaMetric(params: {
       campaignId: safeCampaignId,
       campaignName: safeCampaignName,
       adsetId: adsetId ?? '',
-      adsetName: null,
+      adsetName: adsetName ?? null,
       adId: adId ?? '',
       date,
       breakdownHash: safeBreakdownHash,
@@ -290,6 +291,7 @@ export async function upsertMetaMetric(params: {
       campaignId: safeCampaignId,
       campaignName: safeCampaignName,
       adsetId: adsetId ?? '',
+      adsetName: adsetName ?? null,
       adId: adId ?? '',
       impressions: safeImpressions,
       clicks: safeClicks,

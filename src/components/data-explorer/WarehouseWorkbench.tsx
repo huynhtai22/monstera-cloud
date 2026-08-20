@@ -20,7 +20,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { Input } from "@/components/ui/Input";
 import { SecondaryButton } from "@/components/ui";
 import { Dropdown } from "@/components/ui/Dropdown";
-import { downloadCsv } from "@/lib/export-utils";
+import { downloadCsv, downloadExcel } from "@/lib/export-utils";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { RefreshWarehouseModal } from "./RefreshWarehouseModal";
@@ -36,6 +36,8 @@ interface MetricRow {
   campaignName: string;
   adsetId: string;
   adsetName: string;
+  adId: string;
+  adName: string;
   date: string;
   impressions: number;
   clicks: number;
@@ -103,6 +105,7 @@ type WarehouseColId =
   | "account"
   | "campaign"
   | "adset"
+  | "ad"
   | "currency"
   | "impressions"
   | "clicks"
@@ -125,6 +128,7 @@ type ColumnDef = {
 const WAREHOUSE_COLUMNS: ColumnDef[] = [
   { id: "account", label: "Account", group: "dimension", defaultOn: true },
   { id: "adset", label: "Ad set", group: "dimension", defaultOn: false },
+  { id: "ad", label: "Ad", group: "dimension", defaultOn: false },
   { id: "campaign", label: "Campaign", group: "dimension", defaultOn: true },
   { id: "currency", label: "Currency", group: "dimension", defaultOn: false },
   { id: "date", label: "Date", group: "dimension", defaultOn: true },
@@ -150,6 +154,8 @@ function rowSearchBlob(m: MetricRow): string {
     m.campaignId,
     m.adsetName,
     m.adsetId,
+    m.adName,
+    m.adId,
     m.currency,
     String(m.impressions ?? ""),
     String(m.clicks ?? ""),
@@ -176,6 +182,8 @@ function getSortValue(m: MetricRow, id: WarehouseColId): number | string {
       return (m.campaignName || m.campaignId || "").toLowerCase();
     case "adset":
       return (m.adsetName || m.adsetId || "").toLowerCase();
+    case "ad":
+      return (m.adName || m.adId || "").toLowerCase();
     case "currency":
       return (m.currency || "").toLowerCase();
     case "impressions":
@@ -244,6 +252,8 @@ function formatExportCell(m: MetricRow, id: WarehouseColId, ctrFmt: (row: Metric
       return m.campaignName || m.campaignId;
     case "adset":
       return m.adsetName || m.adsetId || "-";
+    case "ad":
+      return m.adName || m.adId || "-";
     case "currency":
       return m.currency || "-";
     case "impressions":
@@ -306,6 +316,8 @@ function renderWarehouseTableCell(
       return wrap(m.campaignName || m.campaignId);
     case "adset":
       return wrap(m.adsetName || m.adsetId || "—");
+    case "ad":
+      return wrap(m.adName || m.adId || "—");
     case "currency":
       return wrap(m.currency || "—");
     case "impressions":
@@ -388,6 +400,8 @@ export function WarehouseWorkbench() {
   const [visibleColIds, setVisibleColIds] = useState<WarehouseColId[]>(() =>
     WAREHOUSE_COLUMNS.filter((c) => c.defaultOn).map((c) => c.id),
   );
+  const [columnWidths, setColumnWidths] = useState<Partial<Record<WarehouseColId, number>>>({});
+  const [draggedColumn, setDraggedColumn] = useState<WarehouseColId | null>(null);
   const [sortColumn, setSortColumn] = useState<WarehouseColId>("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [rowSearch, setRowSearch] = useState("");
@@ -399,6 +413,23 @@ export function WarehouseWorkbench() {
     setEndDate(end.toISOString().split("T")[0]);
     setStartDate(start.toISOString().split("T")[0]);
   }, []);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("monstera:warehouse-columns");
+      if (!saved) return;
+      const value = JSON.parse(saved) as { order?: WarehouseColId[]; widths?: Partial<Record<WarehouseColId, number>> };
+      if (value.order?.length) {
+        const valid = value.order.filter((id) => WAREHOUSE_COLUMNS.some((col) => col.id === id));
+        if (valid.length) setVisibleColIds(valid);
+      }
+      if (value.widths) setColumnWidths(value.widths);
+    } catch { /* use defaults */ }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("monstera:warehouse-columns", JSON.stringify({ order: visibleColIds, widths: columnWidths }));
+  }, [visibleColIds, columnWidths]);
 
   const platformsUrl = useMemo(() => {
     if (!activeWorkspaceId) return null;
@@ -470,11 +501,11 @@ export function WarehouseWorkbench() {
   const metrics = allMetrics;
   const summary = data?.summary;
 
-  const visibleColSet = useMemo(() => new Set(visibleColIds), [visibleColIds]);
   const visibleColumnsOrdered = useMemo(
-    () => WAREHOUSE_COLUMNS.filter((c) => visibleColSet.has(c.id)),
-    [visibleColSet],
+    () => visibleColIds.map((id) => WAREHOUSE_COLUMNS.find((c) => c.id === id)).filter(Boolean) as ColumnDef[],
+    [visibleColIds],
   );
+  const visibleColSet = useMemo(() => new Set(visibleColIds), [visibleColIds]);
 
   const processedRows = useMemo(() => {
     let rows = metrics;
@@ -601,7 +632,7 @@ export function WarehouseWorkbench() {
     return `${pct.toFixed(2)}%`;
   };
 
-  const handleExport = () => {
+  const handleExport = (format: "csv" | "excel" = "csv") => {
     if (!processedRows.length) return;
     const cols = visibleColumnsOrdered.length ? visibleColumnsOrdered : WAREHOUSE_COLUMNS;
     const rows = processedRows.map((m) => {
@@ -611,7 +642,8 @@ export function WarehouseWorkbench() {
       }
       return o;
     });
-    downloadCsv(rows, "warehouse-export");
+    if (format === "excel") downloadExcel(rows, "warehouse-export");
+    else downloadCsv(rows, "warehouse-export");
   };
 
   const toggleRow = (id: string) => {
@@ -627,15 +659,37 @@ export function WarehouseWorkbench() {
         if (prev.length <= 1) return prev;
         return prev.filter((x) => x !== id);
       }
-      return [...prev, id].sort(
-        (a, b) =>
-          WAREHOUSE_COLUMNS.findIndex((c) => c.id === a) - WAREHOUSE_COLUMNS.findIndex((c) => c.id === b),
-      );
+      return [...prev, id];
     });
   };
 
   const resetWarehouseColumns = () => {
     setVisibleColIds(WAREHOUSE_COLUMNS.filter((c) => c.defaultOn).map((c) => c.id));
+    setColumnWidths({});
+  };
+
+  const reorderColumn = (from: WarehouseColId, to: WarehouseColId) => {
+    if (from === to) return;
+    setVisibleColIds((current) => {
+      const next = [...current];
+      const fromIndex = next.indexOf(from);
+      const toIndex = next.indexOf(to);
+      if (fromIndex < 0 || toIndex < 0) return current;
+      next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, from);
+      return next;
+    });
+  };
+
+  const startResize = (id: WarehouseColId, startX: number) => {
+    const startWidth = columnWidths[id] ?? (WAREHOUSE_COLUMNS.find((c) => c.id === id)?.group === "metric" ? 112 : 160);
+    const onMove = (event: MouseEvent) => setColumnWidths((current) => ({ ...current, [id]: Math.max(88, Math.min(420, startWidth + event.clientX - startX)) }));
+    const onEnd = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onEnd);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onEnd);
   };
 
   const onSortHeaderClick = (id: WarehouseColId) => {
@@ -703,15 +757,15 @@ export function WarehouseWorkbench() {
             <RefreshCw className="h-3.5 w-3.5" />
             Refresh warehouse
           </button>
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={!processedRows.length}
-            className="inline-flex items-center gap-1.5 rounded-md border border-line bg-panel px-3.5 py-2 text-xs font-medium text-ink transition-colors hover:bg-white/[0.04] disabled:opacity-50"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Export
-          </button>
+          <details className="group relative">
+            <summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-md border border-line bg-panel px-3.5 text-xs font-medium text-ink transition-colors hover:bg-white/[0.04] [&::-webkit-details-marker]:hidden">
+              <Download className="h-3.5 w-3.5" /> Export <ChevronDown className="h-3 w-3" />
+            </summary>
+            <div className="absolute right-0 top-[calc(100%+4px)] z-30 w-36 rounded-md border border-line bg-panel p-1 shadow-xl">
+              <button type="button" onClick={() => handleExport("csv")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-2 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">CSV</button>
+              <button type="button" onClick={() => handleExport("excel")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-2 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">Excel (.xlsx)</button>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -880,15 +934,15 @@ export function WarehouseWorkbench() {
                 </div>
               </div>
             </details>
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={!processedRows.length}
-              className="flex h-8 items-center gap-1.5 rounded-md border border-line bg-canvas px-2.5 text-xs font-medium text-ink-mute hover:text-ink disabled:opacity-50"
-            >
-              <Download className="h-3.5 w-3.5" strokeWidth={1.5} />
-              Export CSV
-            </button>
+            <details className="group relative">
+              <summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-md border border-line bg-canvas px-2.5 text-xs font-medium text-ink-mute hover:text-ink [&::-webkit-details-marker]:hidden">
+                <Download className="h-3.5 w-3.5" strokeWidth={1.5} /> Export <ChevronDown className="h-3 w-3" />
+              </summary>
+              <div className="absolute right-0 top-[calc(100%+4px)] z-30 w-36 rounded-md border border-line bg-panel p-1 shadow-xl">
+                <button type="button" onClick={() => handleExport("csv")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-2 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">CSV</button>
+                <button type="button" onClick={() => handleExport("excel")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-2 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">Excel (.xlsx)</button>
+              </div>
+            </details>
           </div>
         </div>
 
@@ -953,6 +1007,11 @@ export function WarehouseWorkbench() {
           <div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
+                <colgroup>
+                  {visibleColumnsOrdered.map((col) => (
+                    <col key={col.id} style={{ width: columnWidths[col.id] ?? (col.group === "metric" ? 112 : 160) }} />
+                  ))}
+                </colgroup>
                 <thead className="bg-canvas/80">
                   <tr>
                     {visibleColumnsOrdered.map((col) => {
@@ -960,8 +1019,16 @@ export function WarehouseWorkbench() {
                       return (
                         <th
                           key={col.id}
+                          draggable
+                          onDragStart={() => setDraggedColumn(col.id)}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={() => {
+                            if (draggedColumn) reorderColumn(draggedColumn, col.id);
+                            setDraggedColumn(null);
+                          }}
+                          onDragEnd={() => setDraggedColumn(null)}
                           className={cn(
-                            "select-none px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-mute",
+                            "relative select-none px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-mute",
                             col.group === "metric" ? "text-right" : "text-left",
                           )}
                         >
@@ -982,6 +1049,16 @@ export function WarehouseWorkbench() {
                               <ArrowUpDown className="h-3 w-3 shrink-0 opacity-30" aria-hidden />
                             )}
                           </button>
+                          <span
+                            role="separator"
+                            aria-label={`Resize ${col.label} column`}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              startResize(col.id, event.clientX);
+                            }}
+                            className="absolute inset-y-1 right-0 w-2 cursor-col-resize touch-none before:absolute before:inset-y-1 before:left-1/2 before:w-px before:bg-transparent hover:before:bg-white/40"
+                          />
                         </th>
                       );
                     })}

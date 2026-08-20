@@ -289,7 +289,7 @@ async function syncMetaAds(opts: {
       const insightsQuery: any = {
         adAccountId: accountId.replace("act_", ""),
         fields: META_DEFAULT_FIELDS,
-        level: "campaign",
+        level: "ad",
         timeIncrement: 1,
       };
 
@@ -313,7 +313,7 @@ async function syncMetaAds(opts: {
           accountId,
           accountName,
           currency,
-          level: "campaign",
+          level: "ad",
           rows,
           syncJobId: jobId,
           lockScope: lock.scope,
@@ -323,6 +323,26 @@ async function syncMetaAds(opts: {
 
         logger.info(`[syncMetaAds] Ingested ${result.upserted} rows, failed: ${result.failed}`);
         totalRows += result.upserted;
+
+        // Earlier warehouse refreshes stored Meta results at campaign level.
+        // Once a complete ad-level replacement is written, remove only those
+        // legacy aggregates in the refreshed window so totals are not doubled.
+        if (result.failed === 0 && since && until) {
+          const startDate = new Date(`${since}T00:00:00.000Z`);
+          const endDate = new Date(`${until}T23:59:59.999Z`);
+          if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
+            await prisma.campaignMetric.deleteMany({
+              where: {
+                workspaceId,
+                connectionId,
+                accountId,
+                platform: "meta_ads",
+                level: "campaign",
+                date: { gte: startDate, lte: endDate },
+              },
+            });
+          }
+        }
       } else {
         logger.info(`[syncMetaAds] No rows to ingest for ${accountId}`);
       }

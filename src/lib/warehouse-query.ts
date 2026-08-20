@@ -39,6 +39,18 @@ function encodeCursor(row: { date: Date; id: string }): string {
   return encodeURIComponent(`${row.date.toISOString()}|${row.id}`);
 }
 
+function adNameFromRawData(rawData: string | null): string | null {
+  if (!rawData) return null;
+  try {
+    const parsed: unknown = JSON.parse(rawData);
+    if (!parsed || typeof parsed !== "object") return null;
+    const adName = (parsed as Record<string, unknown>).ad_name;
+    return typeof adName === "string" && adName.trim() ? adName : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function queryWarehouse(input: WarehouseQueryInput) {
   const take = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), HARD_LIMIT);
   const where: Prisma.CampaignMetricWhereInput = { workspaceId: input.workspaceId };
@@ -95,7 +107,10 @@ export async function queryWarehouse(input: WarehouseQueryInput) {
   const rows = visibleRows.map((row) => {
     const { fencingToken, ...visibleRow } = row;
     void fencingToken;
-    return visibleRow;
+    // `ad_name` is a Meta source field retained in rawData. Deriving it here
+    // keeps existing production schema compatible while exposing the ad
+    // dimension alongside the normalized ad set fields.
+    return { ...visibleRow, adName: adNameFromRawData(visibleRow.rawData) };
   });
   const last = rows.at(-1);
   const lastSyncAt = lastSyncAggregate._max.lastSyncAt;

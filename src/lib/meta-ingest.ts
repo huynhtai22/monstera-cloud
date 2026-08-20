@@ -149,6 +149,7 @@ async function processChunk(
         const campaignId  = String(row.campaign_id ?? '');
         const campaignName = String(row.campaign_name ?? '');
         const adsetId     = String(row.adset_id ?? '');
+        const adsetName   = String(row.adset_name ?? '');
         const adId        = String(row.ad_id ?? '');
         const breakdownHash = buildBreakdownHash(row, opts.breakdowns ?? []);
 
@@ -176,6 +177,7 @@ async function processChunk(
           campaignId,
           campaignName,
           adsetId,
+          adsetName,
           adId,
           date,
           breakdownHash,
