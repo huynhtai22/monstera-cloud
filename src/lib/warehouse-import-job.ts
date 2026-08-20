@@ -5,17 +5,23 @@ import { logger } from "@/lib/logger";
 
 export interface BatchImportItem {
   connectionId: string;
+  /** A provider account selected for a targeted retry (Meta remains backwards-compatible). */
+  accountId?: string;
   adAccountId?: string;
 }
 
 export interface BatchImportJobResult {
   connectionId: string;
   provider: string;
+  outcome?: "success" | "partial" | "failed";
+  accountId?: string;
   adAccountId?: string;
   ok: boolean;
   rowsIngested?: number;
   upserted?: number;
   error?: string;
+  retryable?: boolean;
+  retryItems?: BatchImportItem[];
 }
 
 export interface BatchImportJobState {
@@ -29,7 +35,7 @@ export interface BatchImportJobState {
   totalItems: number;
   completedItems: number;
   approximateRows: number;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "completed" | "partial" | "failed";
   retryCount: number;
   maxRetries: number;
   scheduledAt: string;
@@ -379,7 +385,9 @@ export async function completeImportJob(
   jobId: string,
   leaseId: string,
   results: BatchImportJobResult[],
-  approximateRows: number
+  approximateRows: number,
+  outcome: "completed" | "partial" | "failed" = "completed",
+  errorMsg?: string,
 ): Promise<BatchImportJobState> {
   const now = new Date();
 
@@ -391,11 +399,12 @@ export async function completeImportJob(
       leaseExpiresAt: { gte: now },
     },
     data: {
-      status: "completed",
+      status: outcome,
       results: results as any,
       completedItems: results.length,
       approximateRows,
       finishedAt: now,
+      errorMsg: errorMsg ?? null,
       leaseId: null,
       leaseExpiresAt: null,
       updatedAt: now,
@@ -415,6 +424,71 @@ export async function completeImportJob(
     await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
   } catch {}
 
+  return state;
+}
+
+/**
+ * Requeues only retryable failed provider/account targets. Successful targets
+ * are intentionally omitted, avoiding duplicate API pulls and upserts.
+ */
+export async function retryPartialImportJob(
+  jobId: string,
+  leaseId: string,
+  retryItems: BatchImportItem[],
+  results: BatchImportJobResult[],
+  approximateRows: number,
+  errorMsg: string,
+): Promise<BatchImportJobState> {
+  const now = new Date();
+  const current = await prisma.warehouseImportJob.findFirst({
+    where: { id: jobId, leaseId, status: "running", leaseExpiresAt: { gte: now } },
+    select: { retryCount: true, maxRetries: true },
+  });
+  if (!current) throw new LeaseLostError(jobId, leaseId);
+
+  if (current.retryCount >= current.maxRetries || retryItems.length === 0) {
+    return completeImportJob(
+      jobId,
+      leaseId,
+      results,
+      approximateRows,
+      results.length > 0 && results.every((result) => !result.ok) ? "failed" : "partial",
+      errorMsg,
+    );
+  }
+
+  const delayMs = computeBackoffMs(current.retryCount);
+  const updated = await prisma.warehouseImportJob.updateMany({
+    where: { id: jobId, leaseId, status: "running", leaseExpiresAt: { gte: now } },
+    data: {
+      status: "queued",
+      items: retryItems as any,
+      totalItems: retryItems.length,
+      completedItems: 0,
+      retryCount: current.retryCount + 1,
+      scheduledAt: new Date(Date.now() + delayMs),
+      startedAt: null,
+      leaseId: null,
+      leaseExpiresAt: null,
+      heartbeatAt: now,
+      results: results as any,
+      approximateRows,
+      errorMsg,
+      updatedAt: now,
+    },
+  });
+  if (updated.count === 0) throw new LeaseLostError(jobId, leaseId);
+
+  logger.warn("[warehouse/import] Requeued retryable failed targets", {
+    jobId,
+    retryCount: current.retryCount + 1,
+    retryTargetCount: retryItems.length,
+    delayMs,
+  });
+  const job = await prisma.warehouseImportJob.findUnique({ where: { id: jobId } });
+  if (!job) throw new LeaseLostError(jobId, leaseId);
+  const state = toState(job);
+  try { await getRedis().set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS }); } catch {}
   return state;
 }
 

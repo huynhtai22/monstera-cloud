@@ -736,7 +736,7 @@ model WarehouseImportJob {
   since          String
   until          String
   items          Json      // BatchImportItem[]
-  status         String    @default("queued") // queued | running | completed | failed
+  status         String    @default("queued") // queued | running | completed | partial | failed
   totalItems     Int       @default(0)
   completedItems Int       @default(0)
   approximateRows Int      @default(0)

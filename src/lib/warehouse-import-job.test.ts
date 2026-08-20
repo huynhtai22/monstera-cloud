@@ -7,6 +7,7 @@ import {
   heartbeatImportJob,
   updateImportJobProgress,
   completeImportJob,
+  retryPartialImportJob,
   failImportJob,
   getImportJob,
   LeaseLostError,
@@ -363,5 +364,41 @@ describe("Warehouse Import Job State Manager & Concurrency Fencing", () => {
     const finalFail = await failImportJob(jobId, claim4.leaseId!, "Permanent auth failure");
     assert.equal(finalFail.status, "failed");
     assert.equal(finalFail.errorMsg, "Permanent auth failure");
+  });
+
+  it("PARTIAL RETRY: requeues only failed account targets and preserves a non-completed state", async () => {
+    const jobId = "partial_targeted_retry_job";
+    await createImportJob({
+      id: jobId,
+      workspaceId: "ws-1",
+      userId: "user-1",
+      since: "2026-01-01",
+      until: "2026-01-10",
+      items: [{ connectionId: "conn-1" }],
+    });
+    const claim = await claimImportJob(jobId);
+    const requeued = await retryPartialImportJob(
+      jobId,
+      claim.leaseId!,
+      [{ connectionId: "conn-1", accountId: "failed-account" }],
+      [{ connectionId: "conn-1", provider: "meta_ads", outcome: "partial", ok: false, retryable: true }],
+      10,
+      "Partial import: failed-account was rate limited",
+    );
+    assert.equal(requeued.status, "queued");
+    assert.equal(requeued.retryCount, 1);
+    assert.deepEqual(requeued.items, [{ connectionId: "conn-1", accountId: "failed-account" }]);
+
+    const retryClaim = await claimImportJob(jobId);
+    const partial = await completeImportJob(
+      jobId,
+      retryClaim.leaseId!,
+      [{ connectionId: "conn-1", provider: "meta_ads", outcome: "partial", ok: false, error: "permission denied" }],
+      10,
+      "partial",
+      "Partial import: permission denied",
+    );
+    assert.equal(partial.status, "partial");
+    assert.match(partial.errorMsg ?? "", /permission denied/);
   });
 });

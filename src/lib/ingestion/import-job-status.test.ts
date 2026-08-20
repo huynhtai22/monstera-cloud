@@ -35,11 +35,22 @@ describe("import job status copy", () => {
     assert.match(view.detail, /retry 1\/3/);
   });
 
+  it("does not present a partial import as finished", () => {
+    const view = describeImportJob({
+      status: "partial",
+      completedItems: 1,
+      totalItems: 2,
+      errorMsg: "Partial import: advertiser 123 was rate limited",
+    });
+    assert.equal(view.tone, "partial");
+    assert.match(view.title, /partial/i);
+    assert.match(view.detail, /rate limited/i);
+  });
+
   it("formats compact ages", () => {
     const now = Date.parse("2026-08-19T12:00:00.000Z");
     assert.equal(formatAge("2026-08-19T11:59:50.000Z", now), "10s ago");
     assert.equal(formatAge(null, now), null);
   });
 });
-
 

@@ -16,6 +16,40 @@ const GOOGLE_ADS_BASE = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSI
 const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
+export class GoogleAdsProviderError extends Error {
+  constructor(message: string, readonly retryable: boolean, readonly status?: number) {
+    super(message);
+    this.name = "GoogleAdsProviderError";
+  }
+}
+
+export function isGoogleAdsRetryableFailure(status: number, message: string): boolean {
+  return status === 429 || status >= 500 || /resource[_ ]exhausted|rate[_ ]exceeded|quota|temporar|timeout/i.test(message);
+}
+
+async function fetchGoogleAds(url: string, init: RequestInit): Promise<Response> {
+  const maxAttempts = 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const response = await fetch(url, init);
+      if (response.ok) return response;
+      const detail = (await response.clone().text()).slice(0, 1000);
+      const retryable = isGoogleAdsRetryableFailure(response.status, detail);
+      if (!retryable || attempt === maxAttempts - 1) {
+        throw new GoogleAdsProviderError(`Google Ads request failed ${response.status}: ${detail}`, retryable, response.status);
+      }
+    } catch (error) {
+      if (error instanceof GoogleAdsProviderError && !error.retryable) throw error;
+      if (attempt === maxAttempts - 1) {
+        if (error instanceof GoogleAdsProviderError) throw error;
+        throw new GoogleAdsProviderError(error instanceof Error ? error.message : "Google Ads request failed", true);
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt + Math.floor(Math.random() * 200)));
+  }
+  throw new GoogleAdsProviderError("Google Ads request failed", true);
+}
+
 function clientId(): string {
   return (process.env.GOOGLE_ADS_CLIENT_ID || '').trim();
 }
@@ -155,7 +189,7 @@ export class GoogleAdsOAuthClient {
     const devToken = developerToken();
     if (!devToken) throw new Error('GOOGLE_ADS_DEVELOPER_TOKEN not configured');
 
-    const res = await fetch(
+    const res = await fetchGoogleAds(
       `${GOOGLE_ADS_BASE}/customers:listAccessibleCustomers`,
       {
         headers: {
@@ -212,7 +246,7 @@ export class GoogleAdsReportClient {
       headers['login-customer-id'] = mccId.replace(/-/g, '');
     }
 
-    const res = await fetch(
+    const res = await fetchGoogleAds(
       `${GOOGLE_ADS_BASE}/customers/${cleanCustomerId}/googleAds:searchStream`,
       {
         method: 'POST',
@@ -220,11 +254,6 @@ export class GoogleAdsReportClient {
         body: JSON.stringify({ query: gaql }),
       }
     );
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Google Ads searchStream error ${res.status}: ${errText}`);
-    }
 
     const text = await res.text();
 
@@ -280,18 +309,22 @@ export class GoogleAdsReportClient {
       'login-customer-id': cleanId,
     };
 
-    const res = await fetch(
+    let res: Response;
+    try {
+      res = await fetchGoogleAds(
       `${GOOGLE_ADS_BASE}/customers/${cleanId}/googleAds:searchStream`,
       {
         method: 'POST',
         headers,
         body: JSON.stringify({ query: gaql }),
       }
-    );
-
-    if (!res.ok) {
-      // Non-manager accounts return an error on customer_client — treat as leaf
-      return [{ customerId: cleanId, mccId: cleanId, isManager: false, descriptiveName: `Customer ${cleanId}` }];
+      );
+    } catch (error) {
+      // Non-manager accounts reject customer_client; preserve the intentional leaf fallback.
+      if (error instanceof GoogleAdsProviderError && error.status && error.status < 500 && !error.retryable) {
+        return [{ customerId: cleanId, mccId: cleanId, isManager: false, descriptiveName: `Customer ${cleanId}` }];
+      }
+      throw error;
     }
 
     const text = await res.text();

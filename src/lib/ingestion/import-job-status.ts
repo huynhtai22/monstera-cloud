@@ -1,4 +1,4 @@
-export type ImportJobTone = "queued" | "running" | "completed" | "failed";
+export type ImportJobTone = "queued" | "running" | "completed" | "partial" | "failed";
 
 export type ImportJobStatusInput = {
   status: string;
@@ -53,6 +53,14 @@ export function describeImportJob(
       tone: "completed",
       title: "Import finished",
       detail: `${completed}/${total || completed} source(s) refreshed (~${rows.toLocaleString()} rows).`,
+    };
+  }
+
+  if (job.status === "partial") {
+    return {
+      tone: "partial",
+      title: "Import partially completed",
+      detail: (job.errorMsg || `${completed}/${total || completed} source(s) completed; review failed provider or account scopes before treating this refresh as complete.`).slice(0, 400),
     };
   }
 

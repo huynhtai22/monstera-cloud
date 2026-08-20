@@ -53,6 +53,7 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
   const isDisconnecting = busyActions.has(integration.id);
   const isBusy = busyActions.size > 0;
   const isError = integration.status === "error";
+  const isPartial = integration.status === "partial";
   const syncPhrase = useSyncPhrase(isSyncing);
 
   // Detect token/auth expiry to show better CTA
@@ -95,6 +96,11 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
               <AlertCircle className="mr-1 h-3.5 w-3.5 dark:text-red-400" />
               Error
             </div>
+          ) : isPartial ? (
+            <div className="flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/70 dark:text-amber-200 dark:ring-1 dark:ring-amber-800/50">
+              <AlertCircle className="mr-1 h-3.5 w-3.5 dark:text-amber-400" />
+              Partial sync
+            </div>
           ) : isStale ? (
             <div className="flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/70 dark:text-amber-200 dark:ring-1 dark:ring-amber-800/50">
               <AlertCircle className="mr-1 h-3.5 w-3.5 dark:text-amber-400" />
@@ -136,7 +142,7 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
         {!isError && (
           <>
             <p className="mt-2 text-xs font-medium text-gray-500 dark:text-slate-300">
-              Last synced:{" "}
+              Last fully synced:{" "}
               <span
                 className={
                   isStale
@@ -147,6 +153,9 @@ export const ConnectedSourceCard = React.memo(function ConnectedSourceCard({
                 {integration.lastSync}
               </span>
             </p>
+            {isPartial && integration.errorMsg ? (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-300 line-clamp-2">{integration.errorMsg.replace(/^\[partial\]\s*/i, "")}</p>
+            ) : null}
           </>
         )}
 

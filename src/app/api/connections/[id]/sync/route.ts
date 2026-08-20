@@ -98,15 +98,27 @@ export async function POST(
       userPlan: connection.workspace.plan,
     });
 
+    if (syncResult.outcome === "partial") {
+      return NextResponse.json({
+        success: false,
+        outcome: "partial",
+        rowsIngested: syncResult.rowsIngested,
+        failedTargets: syncResult.children.filter((child) => !child.ok).map((child) => child.id),
+        error: syncResult.error || "One or more requested provider accounts failed to sync",
+        code: "SYNC_PARTIAL",
+      }, { status: 207 });
+    }
+
     if (!syncResult.success) {
       return NextResponse.json(
-        { error: syncResult.error || "Sync failed", code: "SYNC_FAILED" },
+        { error: syncResult.error || "Sync failed", code: "SYNC_FAILED", outcome: "failed" },
         { status: 400 }
       );
     }
 
     return NextResponse.json({
       success: true,
+      outcome: "success",
       rowsIngested: syncResult.rowsIngested,
       message: `Synced ${syncResult.rowsIngested} rows from ${connection.name || connection.provider}`,
     });
