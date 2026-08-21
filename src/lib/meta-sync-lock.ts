@@ -60,7 +60,7 @@ export async function acquireMetaSyncLock(params: {
   return prisma.$transaction(async (tx) => {
     // ── 1. Advisory transaction lock (short; auto-released when tx commits) ──
     const rows = await tx.$queryRawUnsafe<Array<{ locked: boolean }>>(
-      `SELECT pg_try_advisory_xact_lock(advisory_lock_key($1)) AS locked`,
+      `SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS locked`,
       scope,
     );
 
@@ -327,7 +327,7 @@ export async function releaseMetaSyncLock(params: {
 
   await prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRawUnsafe<Array<{ locked: boolean }>>(
-      `SELECT pg_try_advisory_xact_lock(advisory_lock_key($1)) AS locked`,
+      `SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS locked`,
       scope,
     );
 
