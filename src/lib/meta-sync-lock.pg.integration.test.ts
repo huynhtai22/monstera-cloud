@@ -21,7 +21,6 @@ import {
 describe("PostgreSQL integration: meta sync lock / fencing", () => {
     let db: PrismaClient | null = null;
     let isDbAvailable = false;
-      isDbAvailable = false;
     const suffix = `${Date.now()}-${process.pid}`;
     const ids = {
         owner: `lock-owner-${suffix}`,

@@ -14,7 +14,6 @@ import {
 describe("PostgreSQL Integration: Real Database Atomicity & Concurrency Fencing", () => {
   let prisma: PrismaClient | null = null;
   let isDbAvailable = false;
-      isDbAvailable = false;
 
   const testWorkspace1 = "ws_pg_test_1";
   const testWorkspace2 = "ws_pg_test_2";

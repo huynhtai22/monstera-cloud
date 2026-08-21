@@ -18,7 +18,6 @@ import { upsertSourceConnection } from "./connection-upsert";
 describe("PostgreSQL integration: disconnect retention & purge fencing", () => {
     let prisma: PrismaClient | null = null;
     let isDbAvailable = false;
-      isDbAvailable = false;
     const suffix = `${Date.now()}-${process.pid}`;
     const ids = {
         owner: `dc-owner-${suffix}`,

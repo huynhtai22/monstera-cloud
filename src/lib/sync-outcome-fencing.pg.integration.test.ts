@@ -16,7 +16,6 @@ import { syncConnectionData, persistConnectionSyncOutcome } from "./sync-connect
 describe("PostgreSQL integration: sync outcome lease fencing", () => {
     let db: PrismaClient | null = null;
     let isDbAvailable = false;
-      isDbAvailable = false;
     const suffix = `${Date.now()}-${process.pid}`;
     const ids = { owner: `fence-owner-${suffix}`, ws: `fence-ws-${suffix}` };
     let conn: { id: string };
