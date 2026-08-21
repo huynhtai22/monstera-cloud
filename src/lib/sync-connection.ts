@@ -11,6 +11,7 @@ import {
   getPlanLimits,
   clampGoogleAdsDatePeriodForPlan,
 } from "@/lib/plan-config";
+import { computeStaleRowStats } from "@/lib/provider-row-reconciliation";
 import {
   syncShopeeWarehouseMetrics,
   syncLazadaWarehouseMetrics,
@@ -373,6 +374,27 @@ async function syncMetaAds(opts: {
 
         logger.info(`[syncMetaAds] Ingested ${result.upserted} rows, failed: ${result.failed}`);
         children.push({ id: String(accountId), kind: "ad_account", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+
+        // Stale-row detection (observability only, rows always retained).
+        // Only a fully-successful ingest over an explicit window is "provably
+        // complete": failed rows or a preset window would make provider-absence
+        // ambiguous, and comparison must never run on ambiguous data.
+        if (result.failed === 0 && since && until) {
+          try {
+            await computeStaleRowStats({
+              workspaceId,
+              connectionId,
+              accountId: String(accountId),
+              level: "ad",
+              since: new Date(`${since}T00:00:00.000Z`),
+              until: new Date(`${until}T23:59:59.999Z`),
+              providerEntityIds: rows.map((row: any) => String(row.ad_id ?? row.id ?? "")).filter(Boolean),
+              fetchComplete: true,
+            });
+          } catch (reconErr) {
+            logger.warn("[syncMetaAds] Stale-row detection failed (non-fatal):", reconErr);
+          }
+        }
 
         // Earlier warehouse refreshes stored Meta results at campaign level.
         // Once a complete ad-level replacement is written, remove only those
