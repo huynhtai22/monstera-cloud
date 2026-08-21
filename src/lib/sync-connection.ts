@@ -19,14 +19,22 @@ import { syncShopeeAdsWarehouseMetrics } from "@/lib/sync-shopee-ads-warehouse";
 
 // Meta imports
 import { ingestMetaRows } from "@/lib/meta-ingest";
+import { MetaOAuthRevokedError } from "@/lib/meta-ads";
+import { handleMetaRevocation } from "@/lib/ingestion/meta-campaign-metrics";
 import { metaAdsClient, metaReportClient, META_DEFAULT_FIELDS } from "@/lib/meta-ads";
 import {
   acquireMetaSyncLock,
   releaseMetaSyncLock,
 } from "@/lib/meta-sync-lock";
+import {
+  acquireConnectionSyncLease,
+  assertConnectionSyncLease,
+  releaseConnectionSyncLease,
+  type ConnectionLease,
+} from "@/lib/connection-sync-lease";
 
 // Google imports
-import { googleAdsReportClient } from "@/lib/google-ads";
+import { googleAdsReportClient, isGoogleAdsDeveloperTokenBlocked } from "@/lib/google-ads";
 import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
 
 // TikTok imports
@@ -60,6 +68,37 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
   const plan = opts.userPlan ?? "free";
 
   logger.info(`[syncConnectionData] Starting sync for ${provider} connection ${connectionId} in workspace ${workspaceId}`);
+
+  // Connection-level lease: serialize all execution paths (manual sync, cron
+  // warehouse-refresh, batch import, OAuth backfill) per connection. A lease
+  // refusal is not a sync outcome of this connection — it means another worker
+  // owns the connection, so we return retryable WITHOUT persisting state that
+  // could overwrite the owner's outcome.
+  const leaseAttempt = await acquireConnectionSyncLease({ provider, workspaceId, connectionId });
+  if (!leaseAttempt.acquired) {
+    logger.warn(`[syncConnectionData] ${leaseAttempt.reason} lease for ${provider} connection ${connectionId}; deferring`);
+    return makeFailedSyncResult(
+      leaseAttempt.reason === "active"
+        ? "Another sync is already running for this connection"
+        : "Connection lease contention; retry shortly",
+      true,
+    );
+  }
+  const lease = leaseAttempt.lease;
+
+  try {
+    const result = await syncConnectionDataInner(opts, lease);
+    await releaseConnectionSyncLease(lease, result.outcome !== "failed");
+    return result;
+  } catch (error: any) {
+    await releaseConnectionSyncLease(lease, false);
+    throw error;
+  }
+}
+
+async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease): Promise<SyncResult> {
+  const { connectionId, provider, credentials, workspaceId } = opts;
+  const plan = opts.userPlan ?? "free";
   logger.info(`[syncConnectionData] Starting requested sync scope`, {
     provider,
     connectionId,
@@ -77,6 +116,7 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
         since: opts.since,
         until: opts.until,
         userPlan: plan,
+        lease,
       });
     } else if (provider === "google_ads") {
       return await syncGoogleAds({
@@ -86,6 +126,7 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
         since: opts.since,
         until: opts.until,
         userPlan: plan,
+        lease,
       });
     } else if (provider === "tiktok_business") {
       return await syncTikTok({
@@ -95,6 +136,7 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
         since: opts.since,
         until: opts.until,
         userPlan: plan,
+        lease,
       });
     } else if (provider === "shopee") {
       const r = defaultRollingRange(plan);
@@ -110,7 +152,7 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
       });
       if (!orders.success) {
         const result = makeFailedSyncResult(orders.error ?? "Shopee orders sync failed");
-        await persistConnectionSyncOutcome(connectionId, result);
+        await persistConnectionSyncOutcome(connectionId, result, lease);
         return result;
       }
 
@@ -133,7 +175,7 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
         { id: "orders", kind: "connection", ok: true, rowsIngested: orders.rowsIngested },
       ];
       const summary = summarizeSyncOutcome(children);
-      await persistConnectionSyncOutcome(connectionId, summary);
+      await persistConnectionSyncOutcome(connectionId, summary, lease);
       return { ...summary, children };
     } else if (provider === "lazada") {
       const r = defaultRollingRange(plan);
@@ -146,19 +188,19 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
       });
       const children: SyncChildResult[] = [{ id: "orders", kind: "connection", ok: result.success, rowsIngested: result.rowsIngested, error: result.error, retryable: !result.success && isRetryableSyncError(result.error) }];
       const summary = summarizeSyncOutcome(children);
-      await persistConnectionSyncOutcome(connectionId, summary);
+      await persistConnectionSyncOutcome(connectionId, summary, lease);
       return { ...summary, children };
     } else {
       logger.error(`[syncConnectionData] Unsupported provider: ${provider}`);
       const result = makeFailedSyncResult(`Unsupported provider: ${provider}`, false);
-      await persistConnectionSyncOutcome(connectionId, result);
+      await persistConnectionSyncOutcome(connectionId, result, lease);
       return result;
     }
   } catch (error: any) {
     logger.error(`[syncConnectionData] Sync failed for ${provider}:`, error);
     const result = makeFailedSyncResult(error instanceof Error ? error.message : "Sync failed");
     try {
-      await persistConnectionSyncOutcome(connectionId, result);
+      await persistConnectionSyncOutcome(connectionId, result, lease);
     } catch (persistError) {
       logger.error("[syncConnectionData] Failed to persist failed sync outcome", persistError);
     }
@@ -166,11 +208,27 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
   }
 }
 
-/** `lastSyncAt` is the last fully successful requested sync, never a partial attempt. */
-async function persistConnectionSyncOutcome(
+/**
+ * `lastSyncAt` is the last fully successful requested sync, never a partial attempt.
+ * The write is lease-fenced: a worker whose connection lease was stolen must not
+ * advance lastSyncAt, mark the connection healthy, or overwrite the newer
+ * owner's error state.
+ */
+export async function persistConnectionSyncOutcome(
   connectionId: string,
   outcome: Pick<SyncResult, "outcome" | "error">,
+  lease?: ConnectionLease,
 ): Promise<void> {
+  if (lease) {
+    try {
+      await assertConnectionSyncLease(lease);
+    } catch {
+      logger.warn(
+        `[syncConnectionData] Stale worker refusing to persist ${outcome.outcome} outcome for ${connectionId}`
+      );
+      return;
+    }
+  }
   const lastError = outcome.outcome === "success"
     ? null
     : `[${outcome.outcome}] ${outcome.error ?? "One or more requested accounts did not sync"}`.slice(0, 1900);
@@ -198,11 +256,12 @@ async function syncMetaAds(opts: {
   connectionId: string;
   credentials: any;
   workspaceId: string;
+  lease: ConnectionLease;
   since?: string;
   until?: string;
   userPlan?: string;
 }): Promise<SyncResult> {
-  const { connectionId, credentials, workspaceId, since, until } = opts;
+  const { connectionId, credentials, workspaceId, since, until, lease } = opts;
   
   logger.info(`[syncMetaAds] Starting. range=${since ?? "none"}..${until ?? "none"} adAccounts:`, credentials.adAccounts?.length || 0, 
     'adAccountIds:', credentials.adAccountIds?.length || 0);
@@ -218,14 +277,14 @@ async function syncMetaAds(opts: {
   } catch (err: any) {
     logger.error(`[syncMetaAds] Token refresh failed:`, err);
     const result = makeFailedSyncResult(`Token failed: ${err.message}`, false);
-    await persistConnectionSyncOutcome(connectionId, result);
+    await persistConnectionSyncOutcome(connectionId, result, lease);
     return result;
   }
 
   if (!accessToken) {
     logger.error(`[syncMetaAds] No access token returned`);
     const result = makeFailedSyncResult("Failed to get valid token", false);
-    await persistConnectionSyncOutcome(connectionId, result);
+    await persistConnectionSyncOutcome(connectionId, result, lease);
     return result;
   }
   logger.info(`[syncMetaAds] Got access token`);
@@ -303,7 +362,7 @@ async function syncMetaAds(opts: {
   if (!adAccounts?.length) {
     logger.error(`[syncMetaAds] No ad accounts found to sync`);
     const result = makeFailedSyncResult("No ad accounts selected or found on connection", false);
-    await persistConnectionSyncOutcome(connectionId, result);
+    await persistConnectionSyncOutcome(connectionId, result, lease);
     return result;
   }
 
@@ -402,6 +461,18 @@ async function syncMetaAds(opts: {
     } catch (error: any) {
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: false });
       const msg = error instanceof Error ? error.message : String(error);
+      if (error instanceof MetaOAuthRevokedError) {
+        // OAuth revoked: a permanent connection-auth condition, not a per-account
+        // failure. Route to the established revocation handler (disconnect +
+        // ticket) so the connection does not look healthy and retrying stops.
+        try {
+          await handleMetaRevocation({ id: connectionId, name: accountName, remoteAccountId: accountId }, workspaceId, msg);
+        } catch (revErr) {
+          logger.error("[syncMetaAds] handleMetaRevocation failed:", revErr);
+        }
+        children.push({ id: String(accountId), kind: "ad_account", ok: false, error: `Meta authorization revoked — reconnect required. (${msg})`, retryable: false });
+        break; // token is revoked: remaining accounts share the same fate
+      }
       children.push({ id: String(accountId), kind: "ad_account", ok: false, error: msg, retryable: isRetryableSyncError(error) });
       logger.error(`[syncMetaAds] Failed for account ${accountId}:`, error);
       // Continue with next account
@@ -409,7 +480,7 @@ async function syncMetaAds(opts: {
   }
 
   const summary = summarizeSyncOutcome(children);
-  await persistConnectionSyncOutcome(connectionId, summary);
+  await persistConnectionSyncOutcome(connectionId, summary, lease);
   logger.info("[syncMetaAds] Sync outcome", { connectionId, outcome: summary.outcome, targets: children.length, failedTargets: children.filter((child) => !child.ok).map((child) => child.id), rowsIngested: summary.rowsIngested });
   return { ...summary, children };
 }
@@ -418,11 +489,12 @@ async function syncGoogleAds(opts: {
   connectionId: string;
   credentials: any;
   workspaceId: string;
+  lease: ConnectionLease;
   since?: string;
   until?: string;
   userPlan: string;
 }): Promise<SyncResult> {
-  const { connectionId, credentials, workspaceId, userPlan } = opts;
+  const { connectionId, credentials, workspaceId, userPlan, lease } = opts;
 
   let accessToken: string;
   try {
@@ -434,13 +506,13 @@ async function syncGoogleAds(opts: {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to get valid token";
     const result = makeFailedSyncResult(msg, false);
-    await persistConnectionSyncOutcome(connectionId, result);
+    await persistConnectionSyncOutcome(connectionId, result, lease);
     return result;
   }
 
   if (!accessToken) {
     const result = makeFailedSyncResult("Failed to get valid token", false);
-    await persistConnectionSyncOutcome(connectionId, result);
+    await persistConnectionSyncOutcome(connectionId, result, lease);
     return result;
   }
 
@@ -473,7 +545,7 @@ async function syncGoogleAds(opts: {
 
   if (!customerIds.length) {
     const result = makeFailedSyncResult("No customer accounts selected or found on connection", false);
-    await persistConnectionSyncOutcome(connectionId, result);
+    await persistConnectionSyncOutcome(connectionId, result, lease);
     return result;
   }
 
@@ -509,6 +581,17 @@ async function syncGoogleAds(opts: {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      if (isGoogleAdsDeveloperTokenBlocked(err)) {
+        // Application-level blocker: the developer token is not approved for
+        // this account. Every leaf query would fail identically — never mask
+        // it as per-account errors via the leaf fallback below.
+        const result = makeFailedSyncResult(
+          `Google Ads developer token is not approved for this account (DEVELOPER_TOKEN_NOT_APPROVED). This blocks all Google Ads syncing until the token is approved in the Google Ads API Center — no account-level action will fix it.`,
+          false,
+        );
+        await persistConnectionSyncOutcome(connectionId, result, lease);
+        return result;
+      }
       if (isRetryableSyncError(err)) {
         // A quota/network failure while expanding an MCC means its child scope
         // is unknown; never substitute a zero-row root query for completion.
@@ -606,13 +689,17 @@ async function syncGoogleAds(opts: {
       children.push({ id: customerId, kind: "customer", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google Ads sync failed";
+      if (isGoogleAdsDeveloperTokenBlocked(error)) {
+        children.push({ id: customerId, kind: "customer", ok: false, error: "Google Ads developer token not approved — syncing is blocked at the application level.", retryable: false });
+        break; // every remaining customer fails identically
+      }
       children.push({ id: customerId, kind: "customer", ok: false, error: msg, retryable: isRetryableSyncError(error) });
       logger.error(`[syncGoogleAds] Failed for customerId=${customerId}: ${msg}`);
     }
   }
 
   const summary = summarizeSyncOutcome(children);
-  await persistConnectionSyncOutcome(connectionId, summary);
+  await persistConnectionSyncOutcome(connectionId, summary, lease);
   logger.info("[syncGoogleAds] Sync outcome", { connectionId, outcome: summary.outcome, targets: children.length, failedTargets: children.filter((child) => !child.ok).map((child) => child.id), rowsIngested: summary.rowsIngested });
   return { ...summary, children };
 }
@@ -621,11 +708,12 @@ async function syncTikTok(opts: {
   connectionId: string;
   credentials: any;
   workspaceId: string;
+  lease: ConnectionLease;
   since?: string;
   until?: string;
   userPlan: string;
 }): Promise<SyncResult> {
-  const { connectionId, credentials, workspaceId } = opts;
+  const { connectionId, credentials, workspaceId, lease } = opts;
 
   let accessToken: string;
   try {
@@ -636,13 +724,13 @@ async function syncTikTok(opts: {
     });
   } catch (error) {
     const result = makeFailedSyncResult(error instanceof Error ? error.message : "Failed to get valid token", false);
-    await persistConnectionSyncOutcome(connectionId, result);
+    await persistConnectionSyncOutcome(connectionId, result, lease);
     return result;
   }
 
   if (!accessToken) {
     const result = makeFailedSyncResult("Failed to get valid token", false);
-    await persistConnectionSyncOutcome(connectionId, result);
+    await persistConnectionSyncOutcome(connectionId, result, lease);
     return result;
   }
 
@@ -675,7 +763,7 @@ async function syncTikTok(opts: {
 
   if (!advertiserIds.length) {
     const result = makeFailedSyncResult("No advertisers selected or found on connection", false);
-    await persistConnectionSyncOutcome(connectionId, result);
+    await persistConnectionSyncOutcome(connectionId, result, lease);
     return result;
   }
 
@@ -756,7 +844,7 @@ async function syncTikTok(opts: {
   }
 
   const summary = summarizeSyncOutcome(children);
-  await persistConnectionSyncOutcome(connectionId, summary);
+  await persistConnectionSyncOutcome(connectionId, summary, lease);
   logger.info("[syncTikTok] Sync outcome", { connectionId, outcome: summary.outcome, targets: children.length, failedTargets: children.filter((child) => !child.ok).map((child) => child.id), rowsIngested: summary.rowsIngested });
   return { ...summary, children };
 }

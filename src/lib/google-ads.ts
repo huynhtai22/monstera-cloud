@@ -17,10 +17,19 @@ const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 export class GoogleAdsProviderError extends Error {
-  constructor(message: string, readonly retryable: boolean, readonly status?: number) {
+  constructor(message: string, readonly retryable: boolean, readonly status?: number, readonly code?: string) {
     super(message);
     this.name = "GoogleAdsProviderError";
   }
+}
+
+/** Application-level developer-token blocker (structured, not a leaf-account failure). */
+export const GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED = "DEVELOPER_TOKEN_NOT_APPROVED";
+
+export function isGoogleAdsDeveloperTokenBlocked(error: unknown): boolean {
+  if (error instanceof GoogleAdsProviderError && error.code === GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED) return true;
+  // Fallback for legacy/wrapped errors carrying the provider constant.
+  return /DEVELOPER_TOKEN_NOT_APPROVED/i.test(error instanceof Error ? error.message : String(error ?? ""));
 }
 
 export function isGoogleAdsRetryableFailure(status: number, message: string): boolean {
@@ -36,7 +45,10 @@ async function fetchGoogleAds(url: string, init: RequestInit): Promise<Response>
       const detail = (await response.clone().text()).slice(0, 1000);
       const retryable = isGoogleAdsRetryableFailure(response.status, detail);
       if (!retryable || attempt === maxAttempts - 1) {
-        throw new GoogleAdsProviderError(`Google Ads request failed ${response.status}: ${detail}`, retryable, response.status);
+        const code = detail.includes(GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED)
+          ? GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED
+          : undefined;
+        throw new GoogleAdsProviderError(`Google Ads request failed ${response.status}: ${detail}`, retryable, response.status, code);
       }
     } catch (error) {
       if (error instanceof GoogleAdsProviderError && !error.retryable) throw error;
