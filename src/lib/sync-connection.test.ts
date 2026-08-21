@@ -33,6 +33,10 @@ async function withSyncHarness<T>(
       updates.push(args);
       return args;
     },
+    updateMany: async (args: { data: Record<string, unknown> }) => {
+      updates.push(args);
+      return { count: args.data && Object.keys(args.data).length >= 0 ? 1 : 0 };
+    },
   };
   try {
     return await run(updates);
