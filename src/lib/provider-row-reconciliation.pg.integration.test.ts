@@ -24,18 +24,19 @@ describe("PostgreSQL integration: provider stale-row reconciliation (observabili
             db = new PrismaClient();
             await db.$connect();
             await db.$queryRaw`SELECT 1`;
-            await db.user.create({ data: { id: ids.owner, email: `rec-${suffix}@example.test`, name: "Rec Owner" } });
-            await db.workspace.createMany({
+            const dbc = db;
+            await dbc.user.create({ data: { id: ids.owner, email: `rec-${suffix}@example.test`, name: "Rec Owner" } });
+            await dbc.workspace.createMany({
                 data: [
                     { id: ids.wsA, name: "Rec A", slug: `rec-a-${suffix}`, ownerId: ids.owner, plan: "pilot" },
                     { id: ids.wsB, name: "Rec B", slug: `rec-b-${suffix}`, ownerId: ids.owner, plan: "pilot" },
                 ],
             });
-            connA = await db.connection.create({ data: { workspaceId: ids.wsA, name: "rA", type: "source", provider: "meta_ads", credentials: "t", remoteAccountId: `rec-a-${suffix}` } });
-            connB = await db.connection.create({ data: { workspaceId: ids.wsB, name: "rB", type: "source", provider: "meta_ads", credentials: "t", remoteAccountId: `rec-b-${suffix}` } });
+            connA = await dbc.connection.create({ data: { workspaceId: ids.wsA, name: "rA", type: "source", provider: "meta_ads", credentials: "t", remoteAccountId: `rec-a-${suffix}` } });
+            connB = await dbc.connection.create({ data: { workspaceId: ids.wsB, name: "rB", type: "source", provider: "meta_ads", credentials: "t", remoteAccountId: `rec-b-${suffix}` } });
 
             const mk = (connectionId: string, entityId: string, date = new Date("2026-08-02T00:00:00.000Z")) =>
-                db.campaignMetric.create({
+                dbc.campaignMetric.create({
                     data: {
                         workspaceId: ids.wsA === (connectionId === connA.id ? ids.wsA : ids.wsB) ? (connectionId === connA.id ? ids.wsA : ids.wsB) : ids.wsA,
                         connectionId,
@@ -54,11 +55,11 @@ describe("PostgreSQL integration: provider stale-row reconciliation (observabili
             await mk(connA.id, "ad2");
             await mk(connA.id, "ad3");
             // Different level — must be ignored by an ad-level comparison.
-            await db.campaignMetric.create({
+            await dbc.campaignMetric.create({
                 data: { workspaceId: ids.wsA, connectionId: connA.id, platform: "meta_ads", accountId: "act_1", level: "campaign", entityId: "campX", campaignId: "campX", date: new Date("2026-08-02T00:00:00.000Z"), breakdownHash: "none" },
             });
             // Workspace B: same account id, different tenant.
-            await db.campaignMetric.create({
+            await dbc.campaignMetric.create({
                 data: { workspaceId: ids.wsB, connectionId: connB.id, platform: "meta_ads", accountId: "act_1", level: "ad", entityId: "adB1", campaignId: "c1", date: new Date("2026-08-02T00:00:00.000Z"), breakdownHash: "none" },
             });
             isDbAvailable = true;
