@@ -157,6 +157,10 @@ describe("PostgreSQL integration: disconnect retention & purge fencing", () => {
     after(async () => {
         if (!prisma) return;
         try {
+            // Retained-by-design CampaignMetric rows reference the workspaces;
+            // they must be removed before the workspaces (FK is RESTRICT) or
+            // teardown itself fails (seen as a suite-level CI failure).
+            await prisma.campaignMetric.deleteMany({ where: { workspaceId: { in: [ids.workspaceA, ids.workspaceB] } } });
             await prisma.workspace.deleteMany({ where: { id: { in: [ids.workspaceA, ids.workspaceB] } } });
             await prisma.user.deleteMany({ where: { id: { in: [ids.owner, ids.intruder] } } });
         } finally {
