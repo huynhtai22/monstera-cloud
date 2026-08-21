@@ -1,13 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fulfillVietQrPayment } from "@/lib/vietqr-gateway";
 import { logger } from "@/lib/logger";
+import { extractSepaySignature, verifySepaySignature } from "./verify-signature";
 
+/**
+ * SePay bank-transfer webhook → VietQR order fulfillment.
+ *
+ * Security: the RAW body is HMAC-SHA256-verified against SEPAY_WEBHOOK_SECRET
+ * BEFORE any fulfillment runs (fail closed on missing secret/signature), and the
+ * transferred amount must cover the order amount (validated inside
+ * fulfillVietQrPayment). Non-matching events return 200 so SePay does not
+ * retry unrelated transactions; invalid signatures return 401.
+ */
 export async function POST(req: NextRequest) {
+    let rawBody: string;
     try {
-        const body = await req.json();
-        logger.info("[SEPAY WEBHOOK] Received transaction event", body);
+        rawBody = await req.text();
+    } catch {
+        return NextResponse.json({ error: "Unreadable body" }, { status: 400 });
+    }
 
-        // SePay payload: { id: 1234, gateway: "Techcombank", transactionDate: "...", accountNo: "...", content: "MC184920 ...", transferAmount: 1190000, ... }
+    const signature = extractSepaySignature(req);
+    if (!verifySepaySignature(rawBody, signature, process.env.SEPAY_WEBHOOK_SECRET)) {
+        logger.warn("[SEPAY WEBHOOK] Rejected event with missing/invalid signature");
+        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+
+    try {
+        const body = JSON.parse(rawBody);
+        logger.info("[SEPAY WEBHOOK] Received verified transaction event");
+
+        // SePay payload: { id, gateway, transactionDate, accountNo, content: "MC184920 ...", transferAmount, ... }
         const { content, transferAmount } = body;
 
         if (content && typeof content === "string") {
@@ -21,6 +44,7 @@ export async function POST(req: NextRequest) {
                     logger.info(`[SEPAY WEBHOOK] Upgraded workspace for order ${orderCode}`);
                     return NextResponse.json({ success: true, message: result.message });
                 }
+                logger.warn(`[SEPAY WEBHOOK] Did not fulfill order ${orderCode}: ${result.message}`);
             }
         }
 

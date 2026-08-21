@@ -1,10 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { getVietQrOrder } from "@/lib/vietqr-gateway";
+import { isPlatformAdminEmail } from "@/lib/admin-auth";
+import prisma from "@/lib/prisma";
 
+/**
+ * Order status lookup. Orders contain plan/amount/paidAt details, so access is
+ * limited to: platform admins, members of the order's workspace, or the user
+ * whose email created the order. Previously this leaked any order's details
+ * without authentication.
+ */
 export async function GET(
     req: NextRequest,
     { params }: { params: Promise<{ orderCode: string }> }
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     try {
         const { orderCode } = await params;
         const codeNum = parseInt(orderCode, 10);
@@ -15,6 +30,24 @@ export async function GET(
         const order = await getVietQrOrder(codeNum);
         if (!order) {
             return NextResponse.json({ error: "Order not found" }, { status: 404 });
+        }
+
+        const isAdmin = isPlatformAdminEmail(session.user.email);
+        if (!isAdmin) {
+            let allowed = false;
+            if (order.workspaceId) {
+                const membership = await prisma.workspaceMember.findFirst({
+                    where: { workspaceId: order.workspaceId, userId: session.user.id },
+                    select: { id: true },
+                });
+                allowed = Boolean(membership);
+            }
+            if (!allowed && order.userEmail) {
+                allowed = order.userEmail.trim().toLowerCase() === (session.user.email ?? "").trim().toLowerCase();
+            }
+            if (!allowed) {
+                return NextResponse.json({ error: "Access denied" }, { status: 403 });
+            }
         }
 
         return NextResponse.json({
