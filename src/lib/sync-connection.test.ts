@@ -24,6 +24,8 @@ async function withSyncHarness<T>(
 ): Promise<T> {
   const originalFetch = globalThis.fetch;
   const originalConnection = (prisma as any).connection;
+  const originalTransaction = (prisma as any).$transaction;
+  const originalSyncLock = (prisma as any).syncLock;
   const originalKey = process.env.ENCRYPTION_KEY;
   const updates: Array<{ data: Record<string, unknown> }> = [];
   process.env.ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
@@ -38,11 +40,34 @@ async function withSyncHarness<T>(
       return { count: args.data && Object.keys(args.data).length >= 0 ? 1 : 0 };
     },
   };
+  // Connection-lease stubs: acquire always wins, and the lease stays valid so
+  // fenced outcome persistence is exercised through the real code path.
+  const validLease = {
+    leaseId: "test-lease",
+    fencingToken: BigInt(1),
+    status: "running",
+    leaseExpiresAt: new Date(Date.now() + 20 * 60 * 1000),
+  };
+  (prisma as any).$transaction = async (fn: any) =>
+    fn({
+      $queryRawUnsafe: async () => [{ locked: true }],
+      syncLock: {
+        findUnique: async () => null,
+        upsert: async (args: any) => ({ ...args.update, ...validLease }),
+        updateMany: async () => ({ count: 1 }),
+      },
+    });
+  (prisma as any).syncLock = {
+    findUnique: async () => ({ ...validLease }),
+    updateMany: async () => ({ count: 1 }),
+  };
   try {
     return await run(updates);
   } finally {
     globalThis.fetch = originalFetch;
     (prisma as any).connection = originalConnection;
+    (prisma as any).$transaction = originalTransaction;
+    (prisma as any).syncLock = originalSyncLock;
     if (originalKey === undefined) delete process.env.ENCRYPTION_KEY;
     else process.env.ENCRYPTION_KEY = originalKey;
   }
