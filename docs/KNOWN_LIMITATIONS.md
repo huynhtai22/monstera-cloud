@@ -180,10 +180,12 @@ An agency may eventually want output ordered as Account 1 → Account 3 → Acco
 
 Do not add custom account ordering before Marketplace approval unless pilot users demonstrate a clear recurring need.
 
-### 15. Source disconnect no longer deletes historical warehouse data (fixed)
+## Resolved
 
-**Status:** Fixed — disconnect is now non-destructive; permanent deletion is a separate explicit operation
-**Priority:** Resolved (previously P1)
+### 15. Source disconnect no longer deletes historical warehouse data
+
+**Status:** Resolved — 2026-08-22
+**Priority:** Previously P1
 
 **Disconnect** (`DELETE /api/connections/[id]`, `src/lib/connection-lifecycle.ts`):
 
@@ -201,7 +203,14 @@ Sync-outcome writers are guarded so an in-flight sync that races with Disconnect
 
 **Reconnect** reuses the same `Connection` row via the `workspaceId + provider + remoteAccountId` identity upsert (`src/lib/connection-upsert.ts`), so retained metrics keep their `connectionId` and the deterministic unique key prevents duplicates on the next sync.
 
-Regression coverage: `src/lib/connection-lifecycle.test.ts`.
+Regression coverage: `src/lib/connection-lifecycle.test.ts` and `src/lib/connection-lifecycle.pg.integration.test.ts`.
+
+**Release evidence:**
+
+- Merge SHA: `3f0f908c599116d56e71a5a724e9de485674c2db`.
+- Production `/api/version` SHA: `3f0f908c599116d56e71a5a724e9de485674c2db`.
+- Real PostgreSQL 16 retention, isolation, fencing, reconnect, and rollback coverage passed in CI.
+- CI passed with 139 tests passed and 0 skipped.
 
 **Historical note — observed production evidence 2026-08-21:** before this fix, a Google Ads disconnect deleted the connection's `CampaignMetric` rows, and the history could not be re-synced while the developer token was pending production approval.
 
