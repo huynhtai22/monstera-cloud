@@ -7,6 +7,7 @@ import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/go
 import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-cache";
 import { hashApiKey, resolveApiKey } from "@/lib/api-key-security";
 import { queryWarehouse } from "@/lib/warehouse-query";
+import { orderRowsByExplicitAccounts } from "@/lib/warehouse-row-ordering";
 
 const UPSTASH_AVAILABLE = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 
@@ -258,7 +259,11 @@ export async function GET(req: NextRequest) {
       includeTotalCount: includeCount,
     });
 
-    const formattedData = result.rows.map((m) => ({
+    // Business-defined row order: explicit account selection order first,
+    // deterministic (platform/account/date/campaign) fallback otherwise.
+    const orderedRows = orderRowsByExplicitAccounts(result.rows, accountIdParams);
+
+    const formattedData = orderedRows.map((m) => ({
       date: m.date.toISOString().split("T")[0].replace(/-/g, ""),
       platform: m.platform,
       accountId: m.accountId,

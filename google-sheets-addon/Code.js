@@ -424,6 +424,8 @@ function pullDataToSheet(sheet, params, token) {
 
 function normalizeAccountIds(accountIds) {
   if (!Array.isArray(accountIds)) return [];
+  // Preserve the user's selection order (the server orders rows by this
+  // sequence); dedupe only. Do NOT sort alphabetically here.
   var seen = {};
   return accountIds.slice()
     .map(function(id) { return String(id).trim(); })
@@ -431,8 +433,7 @@ function normalizeAccountIds(accountIds) {
       if (!id || seen[id]) return false;
       seen[id] = true;
       return true;
-    })
-    .sort();
+    });
 }
 
 function logQueryDiagnostics(eventName, details) {
