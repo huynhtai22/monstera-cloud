@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { MARKETPLACE_BUCKETING_TIMEZONE, resolveShopTimezoneOffsetMinutes } from "@/lib/sync-marketplace-warehouse";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getValidShopeeCreds, shopeeDataClient } from "@/lib/shopee";
@@ -35,7 +36,15 @@ export async function GET(request: Request) {
       shopId: creds.shop_id,
       sandbox: creds.sandbox === true,
     });
-    return NextResponse.json(data);
+    // Truthfulness: marketplace reporting is bucketed on UTC days. Surface the
+    // bucketing timezone (and the shop's own offset when the provider exposes
+    // one) so non-UTC shops can see why near-midnight orders may land on a
+    // neighboring reporting date. Bucketing itself intentionally stays UTC.
+    return NextResponse.json({
+      ...data,
+      monsteraBucketingTimezone: MARKETPLACE_BUCKETING_TIMEZONE,
+      monsteraShopTimezoneOffsetMinutes: resolveShopTimezoneOffsetMinutes(data),
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

@@ -25,6 +25,51 @@ function dayKeyFromUnixSeconds(t: number): string {
   return new Date(t * 1000).toISOString().slice(0, 10);
 }
 
+/**
+ * KNOWN LIMITATION (§6 Shopee timezone bucketing) — Marketplace order rollups
+ * are bucketed on the UTC calendar day. Switching to shop-local bucketing
+ * mid-flight would re-bucket existing orders into neighboring days and, because
+ * `date` is part of the deterministic CampaignMetric unique key, create
+ * duplicate rows (double counting). Until a scoped migration with explicit
+ * reconciliation exists, bucketing stays UTC and the limitation is SURFACED,
+ * not silently assumed.
+ */
+export const MARKETPLACE_BUCKETING_TIMEZONE = "UTC" as const;
+
+/**
+ * Best-effort extraction of a shop's UTC offset (minutes) from a Shopee
+ * `get_shop_info` payload. Shopee does not guarantee a timezone field, so
+ * `null` means "unknown" — callers must surface the UTC limitation, never
+ * guess an offset.
+ */
+export function resolveShopTimezoneOffsetMinutes(shopInfo: unknown): number | null {
+  if (!shopInfo || typeof shopInfo !== "object") return null;
+  const info = shopInfo as Record<string, unknown>;
+  // Numeric GMT offset, accepted ONLY in unambiguous hours form (|v| ≤ 14).
+  // Larger values could be minutes or garbage — the never-guess rule rejects them.
+  for (const key of ["gmt_offset", "gmtOffset", "utc_offset", "utcOffset"]) {
+    const raw = info[key];
+    if (typeof raw === "number" && Number.isFinite(raw) && raw >= -14 && raw <= 14) {
+      return Math.round(raw * 60);
+    }
+  }
+  // IANA-style identifiers: truthfully detect ONLY whole-hour offsets we can
+  // map without a tz database dependency.
+  for (const key of ["timezone", "time_zone", "tz"]) {
+    const raw = info[key];
+    if (typeof raw !== "string") continue;
+    const match = raw.match(/^UTC([+-])(\d{1,2})(?::(\d{2}))?$/i);
+    if (match) {
+      const sign = match[1] === "-" ? -1 : 1;
+      const hours = Number(match[2]);
+      const minutes = Number(match[3] ?? 0);
+      const total = sign * (hours * 60 + minutes);
+      if (total >= -14 * 60 && total <= 14 * 60) return total;
+    }
+  }
+  return null;
+}
+
 /** Pull Shopee orders in range, aggregate by UTC calendar day → CampaignMetric. */
 export async function syncShopeeWarehouseMetrics(opts: {
   connectionId: string;
