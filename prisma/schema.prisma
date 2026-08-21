@@ -110,6 +110,7 @@ model Workspace {
   clients              Client[]
   connections          Connection[]
   pipelines            Pipeline[]
+  accountHealth        ProviderAccountHealth[]
   members              WorkspaceMember[]
   apiKeys              ApiKey[]
   campaignMetrics      CampaignMetric[]
@@ -245,6 +246,7 @@ model Connection {
   sourcePipelines      Pipeline[]       @relation("SourceConnection")
   campaignMetrics      CampaignMetric[]
   orders               RetailOrder[]
+  accountHealth        ProviderAccountHealth[]
 
   @@unique([workspaceId, provider, remoteAccountId])
 }
@@ -704,6 +706,29 @@ model LookerJob {
 /// PostgreSQL advisory-lock-backed sync ownership table.
 /// Prevents two concurrent workers from syncing the same Meta ad account.
 /// Scope key: meta_ads:{workspaceId}:{connectionId}:{adAccountId}
+// Durable per-provider-account health: quarantine/reconnect state for child
+// accounts so permanently broken accounts stop consuming sync attempts while
+// healthy siblings continue.
+model ProviderAccountHealth {
+  id                  String    @id @default(cuid())
+  workspaceId         String
+  connectionId        String
+  provider            String
+  accountId           String
+  status              String    @default("healthy") // healthy | degraded | quarantined | reconnect_required
+  consecutiveFailures Int       @default(0)
+  lastError           String?
+  lastErrorAt         DateTime?
+  lastSuccessAt       DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection          Connection @relation(fields: [connectionId], references: [id])
+
+  @@unique([connectionId, accountId])
+  @@index([workspaceId, provider, status])
+}
+
 model SyncLock {
   scope        String @id // deterministic scope string
   provider     String

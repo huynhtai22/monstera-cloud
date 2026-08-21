@@ -16,6 +16,8 @@ export interface SyncChildResult {
   rowsIngested?: number;
   error?: string;
   retryable?: boolean;
+  /** Account intentionally not attempted (quarantined / reconnect required). */
+  skipped?: string;
 }
 
 export interface SyncResult {

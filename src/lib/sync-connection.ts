@@ -32,6 +32,7 @@ import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
 // TikTok imports
 import { tiktokReportClient, type CreateReportTaskParams } from "@/lib/tiktok-business";
 import { ingestTiktokRows } from "@/lib/ad-platform-ingest";
+import { recordAccountOutcome, getSkippedAccountIds } from "@/lib/provider-account-health";
 import {
   type SyncChildResult,
   type SyncResult,
@@ -312,9 +313,18 @@ async function syncMetaAds(opts: {
 
   logger.info(`[syncMetaAds] Starting sync for ${adAccounts.length} accounts`);
 
+  const skippedAccounts = await getSkippedAccountIds(connectionId);
+
   for (const account of adAccounts) {
     const accountId = account.id;
     const accountName = account.name;
+
+    if (skippedAccounts.has(accountId)) {
+      logger.info(`[syncMetaAds] Skipping quarantined/reconnect-required account ${accountId}`);
+      children.push({ id: String(accountId), kind: "ad_account", ok: true, rowsIngested: 0, skipped: "account_health" });
+      continue;
+    }
+
     logger.info(`[syncMetaAds] Processing account ${accountId}`);
 
     // Acquire sync lock
@@ -373,6 +383,7 @@ async function syncMetaAds(opts: {
 
         logger.info(`[syncMetaAds] Ingested ${result.upserted} rows, failed: ${result.failed}`);
         children.push({ id: String(accountId), kind: "ad_account", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+        await recordAccountOutcome({ workspaceId, connectionId, provider: "meta_ads", accountId: String(accountId), ok: result.failed === 0, retryable: result.failed > 0, error: result.failed ? `${result.failed} row(s) could not be written` : undefined });
 
         // Earlier warehouse refreshes stored Meta results at campaign level.
         // Once a complete ad-level replacement is written, remove only those
@@ -402,7 +413,13 @@ async function syncMetaAds(opts: {
     } catch (error: any) {
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: false });
       const msg = error instanceof Error ? error.message : String(error);
-      children.push({ id: String(accountId), kind: "ad_account", ok: false, error: msg, retryable: isRetryableSyncError(error) });
+      const metaRetryable = isRetryableSyncError(error);
+      children.push({ id: String(accountId), kind: "ad_account", ok: false, error: msg, retryable: metaRetryable });
+      await recordAccountOutcome({
+        workspaceId, connectionId, provider: "meta_ads", accountId: String(accountId),
+        ok: false, retryable: metaRetryable, error: msg,
+        authFailure: /error validating access token|token.*revoked|code 190|oauthexception/i.test(msg),
+      });
       logger.error(`[syncMetaAds] Failed for account ${accountId}:`, error);
       // Continue with next account
     }
@@ -528,7 +545,13 @@ async function syncGoogleAds(opts: {
   logger.info(`[syncGoogleAds] Total leaf accounts to query: ${leafAccounts.length}`);
 
   // ── Step 2: Query each leaf account ────────────────────────────────────────
+  const skippedCustomers = await getSkippedAccountIds(connectionId);
   for (const { customerId, mccId, descriptiveName } of leafAccounts) {
+    if (skippedCustomers.has(customerId)) {
+      logger.info(`[syncGoogleAds] Skipping quarantined/reconnect-required customer ${customerId}`);
+      children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0, skipped: "account_health" });
+      continue;
+    }
     try {
       logger.info(`[syncGoogleAds] Fetching campaigns for customerId=${customerId} login-customer-id=${mccId} (${descriptiveName})`);
 
@@ -604,9 +627,16 @@ async function syncGoogleAds(opts: {
 
       logger.info(`[syncGoogleAds] customerId=${customerId} upserted=${result.upserted} failed=${result.failed}`);
       children.push({ id: customerId, kind: "customer", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+      await recordAccountOutcome({ workspaceId, connectionId, provider: "google_ads", accountId: customerId, ok: result.failed === 0, retryable: result.failed > 0, error: result.failed ? `${result.failed} row(s) could not be written` : undefined });
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google Ads sync failed";
-      children.push({ id: customerId, kind: "customer", ok: false, error: msg, retryable: isRetryableSyncError(error) });
+      const gRetryable = isRetryableSyncError(error);
+      children.push({ id: customerId, kind: "customer", ok: false, error: msg, retryable: gRetryable });
+      await recordAccountOutcome({
+        workspaceId, connectionId, provider: "google_ads", accountId: customerId,
+        ok: false, retryable: gRetryable, error: msg,
+        authFailure: /developer.?token|unauthorized|permission.*denied/i.test(msg),
+      });
       logger.error(`[syncGoogleAds] Failed for customerId=${customerId}: ${msg}`);
     }
   }
@@ -692,7 +722,13 @@ async function syncTikTok(opts: {
     startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   }
 
+  const skippedAdvertisers = await getSkippedAccountIds(connectionId);
   for (const advertiserId of advertiserIds) {
+    if (skippedAdvertisers.has(String(advertiserId))) {
+      logger.info(`[syncTikTok] Skipping quarantined/reconnect-required advertiser ${advertiserId}`);
+      children.push({ id: String(advertiserId), kind: "advertiser", ok: true, rowsIngested: 0, skipped: "account_health" });
+      continue;
+    }
     try {
       const taskParams: CreateReportTaskParams = {
         advertiser_id: advertiserId,
@@ -711,6 +747,7 @@ async function syncTikTok(opts: {
           ? await ingestTiktokRows(rows, { workspaceId, connectionId, accountId: advertiserId, accountName: `Advertiser ${advertiserId}`, syncJobId: jobId })
           : { upserted: 0, failed: 0 };
         children.push({ id: String(advertiserId), kind: "advertiser", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+        await recordAccountOutcome({ workspaceId, connectionId, provider: "tiktok_business", accountId: String(advertiserId), ok: result.failed === 0, retryable: result.failed > 0, error: result.failed ? `${result.failed} row(s) could not be written` : undefined });
         continue;
       }
 
@@ -751,7 +788,13 @@ async function syncTikTok(opts: {
     } catch (error) {
       logger.error(`[TikTok Sync] Failed for advertiser ${advertiserId}:`, error);
       const message = error instanceof Error ? error.message : "TikTok sync failed";
-      children.push({ id: String(advertiserId), kind: "advertiser", ok: false, error: message, retryable: isRetryableSyncError(error) || /did not complete before/i.test(message) });
+      const ttRetryable = isRetryableSyncError(error) || /did not complete before/i.test(message);
+      children.push({ id: String(advertiserId), kind: "advertiser", ok: false, error: message, retryable: ttRetryable });
+      await recordAccountOutcome({
+        workspaceId, connectionId, provider: "tiktok_business", accountId: String(advertiserId),
+        ok: false, retryable: ttRetryable, error: message,
+        authFailure: /token|auth|unauthorized/i.test(message),
+      });
     }
   }
 
