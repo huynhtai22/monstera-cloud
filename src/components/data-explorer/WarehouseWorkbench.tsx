@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
+import { resolveDataThrough, resolveWarehouseEmptyState } from "@/lib/warehouse-truth";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -720,11 +721,16 @@ export function WarehouseWorkbench() {
     if (warehousedAccounts.length > 0) {
       parts.push(`${warehousedAccounts.length} account${warehousedAccounts.length === 1 ? "" : "s"}`);
     }
-    if (endDate) {
-      parts.push(`Data through ${formatDateDisplay(endDate)}`);
+    // Truthfulness: "Data through" is the latest ACTUAL warehouse data date
+    // (workspace-wide MAX(metric date)), never the selected range end.
+    const dataThrough = resolveDataThrough(summary?.dateRange?.latest ?? null);
+    if (dataThrough) {
+      parts.push(`Data through ${formatDateDisplay(dataThrough)}`);
+    } else if (endDate) {
+      parts.push("No warehouse data yet");
     }
     return parts.length > 0 ? parts.join(" · ") : "Ready";
-  }, [availablePlatforms.length, warehousedAccounts.length, endDate]);
+  }, [availablePlatforms.length, warehousedAccounts.length, endDate, summary?.dateRange?.latest]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -958,7 +964,7 @@ export function WarehouseWorkbench() {
               Failed to load warehouse data. Please try refreshing.
             </div>
           </div>
-        ) : metrics.length === 0 ? (
+        ) : metrics.length === 0 && resolveWarehouseEmptyState(metrics.length, summary?.dateRange?.latest ?? null) === "no-data" ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Database className="mb-3 h-8 w-8 text-ink-mute" strokeWidth={1.5} />
             <p className="text-sm font-medium text-ink">No warehouse data yet</p>

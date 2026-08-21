@@ -267,6 +267,10 @@ export function ConnectedSourceList(props: {
                         <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-semibold text-red-800 dark:bg-red-950/70 dark:text-red-200">
                           <AlertCircle className="h-3.5 w-3.5" /> Error
                         </span>
+                      ) : r.status === "partial" ? (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-950/70 dark:text-amber-200">
+                          <AlertCircle className="h-3.5 w-3.5" /> Partial
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs font-medium text-ink">
                           <CheckCircle2 className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} /> Connected

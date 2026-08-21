@@ -20,6 +20,7 @@ import { SecondaryButton, primaryButtonLinkClassName, IntegrationMark } from "@/
 import { IntegrationCard, IntegrationCardSkeleton } from "@/components/sources/IntegrationCard";
 import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
 import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
+import { countSourceHealthStatuses } from "@/lib/source-health";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin" });
@@ -544,15 +545,7 @@ export default function SourcesPage() {
     }, [workspaces, activeWorkspaceId]);
 
     const filterStats = useMemo(() => {
-        let connected = 0;
-        let needsAttention = 0;
-        let available = 0;
-        for (const i of filteredIntegrations as Array<{ status: string }>) {
-            if (i.status === "available") available += 1;
-            else if (i.status === "error") needsAttention += 1;
-            else connected += 1;
-        }
-        return { connected, needsAttention, available };
+        return countSourceHealthStatuses(filteredIntegrations as Array<{ status: string }>);
     }, [filteredIntegrations]);
 
     // Error State (e.g. 500, expired session edge case, rate limit)
@@ -790,6 +783,12 @@ export default function SourcesPage() {
                         <span className="inline-flex items-center gap-1.5 rounded-md border border-red-500/30 px-2 py-1 text-[11px] text-red-300">
                             <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
                             {filterStats.needsAttention} need attention
+                        </span>
+                    )}
+                    {!isLoading && filterStats.partial > 0 && (
+                        <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 px-2 py-1 text-[11px] text-amber-300">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                            {filterStats.partial} partial sync{filterStats.partial === 1 ? "" : "s"}
                         </span>
                     )}
                 </div>
