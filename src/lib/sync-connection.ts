@@ -174,8 +174,10 @@ async function persistConnectionSyncOutcome(
   const lastError = outcome.outcome === "success"
     ? null
     : `[${outcome.outcome}] ${outcome.error ?? "One or more requested accounts did not sync"}`.slice(0, 1900);
-  await prisma.connection.update({
-    where: { id: connectionId },
+  // Never resurrect a disconnected connection: a sync that raced with Disconnect
+  // must not flip status back to "connected".
+  await prisma.connection.updateMany({
+    where: { id: connectionId, status: { not: "disconnected" } },
     data: outcome.outcome === "success"
       ? { lastSyncAt: new Date(), lastError, status: "connected" }
       : { lastError },

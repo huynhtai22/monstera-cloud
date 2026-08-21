@@ -491,8 +491,17 @@ export default function SourcesPage() {
                     catalogId,
                     name: conn.name,
                     description: desc,
-                    status: conn.lastError?.startsWith("[partial]") ? "partial" : conn.status === "connected" ? "connected" : "error",
-                    errorMsg: conn.lastError || undefined,
+                    status: conn.status === "disconnected"
+                        ? "error"
+                        : conn.lastError?.startsWith("[partial]")
+                          ? "partial"
+                          : conn.status === "connected"
+                            ? "connected"
+                            : "error",
+                    // "auth" wording makes the row show the Reconnect CTA; historical data is retained.
+                    errorMsg: conn.status === "disconnected"
+                        ? "Disconnected — warehouse history retained. Re-authenticate to resume syncing."
+                        : conn.lastError || undefined,
                     lastSync: conn.lastSyncAt
                         ? new Date(conn.lastSyncAt).toLocaleString()
                         : relatedPipeline?.lastSyncedAt

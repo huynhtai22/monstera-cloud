@@ -79,6 +79,14 @@ function endOfUtcDayInclusive(startUtcMidnight: Date): Date {
   return new Date(startUtcMidnight.getTime() + 24 * 60 * 60 * 1000 - 1);
 }
 
+function normalizeMetaAccountIds(accountIds: string[]): string[] {
+  return [...new Set(accountIds.flatMap((accountId) => {
+    const trimmed = accountId.trim();
+    const bare = trimmed.replace(/^act_/, "");
+    return trimmed ? [trimmed, bare, `act_${bare}`] : [];
+  }))];
+}
+
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get("authorization");
@@ -191,7 +199,10 @@ export async function GET(req: NextRequest) {
             : platformRaw;
 
     // Get all accountId parameters (supports multiple: ?accountId=123&accountId=456)
-    const accountIdParams = req.nextUrl.searchParams.getAll("accountId");
+    const accountIdParams = req.nextUrl.searchParams.getAll("accountId").map((id) => id.trim()).filter(Boolean);
+    const warehouseAccountIds = platform === "meta_ads"
+      ? normalizeMetaAccountIds(accountIdParams)
+      : accountIdParams;
 
     const limitParam = parseInt(req.nextUrl.searchParams.get("limit") || "0", 10) || 0;
     const limit = Math.min(limitParam > 0 ? limitParam : 10000, MAX_ROWS_PER_REQUEST);
@@ -199,7 +210,7 @@ export async function GET(req: NextRequest) {
     const includeCount = req.nextUrl.searchParams.get("includeCount") === "1";
 
     // Check cache early
-    const cacheKey = generateCacheKey("looker", {
+    const cacheKey = generateCacheKey("looker-v2", {
       workspaceId,
       search: req.nextUrl.search,
     });
@@ -241,7 +252,7 @@ export async function GET(req: NextRequest) {
       startDate,
       endDate,
       platforms: platform && platform !== "all" ? [platform] : undefined,
-      accountIds: accountIdParams.length ? accountIdParams : undefined,
+      accountIds: warehouseAccountIds.length ? warehouseAccountIds : undefined,
       cursor: cursorParam,
       limit,
       includeTotalCount: includeCount,
@@ -279,8 +290,22 @@ export async function GET(req: NextRequest) {
     if (result.pagination.nextCursor) resObj.nextCursor = result.pagination.nextCursor;
     if (typeof result.totalCount === "number") resObj.totalRows = result.totalCount;
 
-    // Cache the Looker Studio page for 15 minutes
-    await setCachedQuery(cacheKey, resObj, 900);
+    const queryDiagnostics = {
+      workspaceId,
+      platform: platform ?? "all",
+      reportLevel: req.nextUrl.searchParams.get("reportLevel") ?? "adset",
+      startDate: startDateParam,
+      endDate: endDateParam,
+      accountIds: accountIdParams,
+      returnedRowCount: formattedData.length,
+    };
+    logger.info("[LOOKER_STUDIO_QUERY]", queryDiagnostics);
+    if (formattedData.length === 0) logger.warn("[LOOKER_STUDIO_QUERY_EMPTY]", queryDiagnostics);
+
+    // Empty responses are often transient immediately after a warehouse refresh.
+    // Keep only useful pages in the server cache; the Sheets add-on has its own
+    // 10-minute user-cache for the same non-empty response type.
+    if (formattedData.length > 0) await setCachedQuery(cacheKey, resObj, 900);
 
     return NextResponse.json(resObj);
   } catch (error: unknown) {

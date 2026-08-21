@@ -39,11 +39,11 @@ Canonical list is `oauthScopes` in `**appsscript.json`** in this folder. Copy th
 ### Scopes to paste (5)
 
 ```
+openid
+https://www.googleapis.com/auth/userinfo.email
 https://www.googleapis.com/auth/spreadsheets.currentonly
 https://www.googleapis.com/auth/script.external_request
 https://www.googleapis.com/auth/script.container.ui
-https://www.googleapis.com/auth/userinfo.email
-https://www.googleapis.com/auth/script.scriptapp
 ```
 
 ### Same GCP project
@@ -63,10 +63,10 @@ Complete **before** resubmitting the Marketplace listing.
 1. **OAuth consent screen:** App domain, authorized domains, privacy policy URL, support email, and **all** scopes listed.
 2. For each sensitive/restricted scope, add clear **justifications** (examples):
   - **spreadsheets.currentonly** — Read/write the **current** spreadsheet to write connector output the user requests.
+  - **openid** — Issue a Google identity token so the add-on can identify the signed-in Monstera Cloud user.
   - **userinfo.email** — Map Google identity to the Monstera Cloud account and subscription.
   - **script.external_request** — Call Monstera backend APIs.
   - **script.container.ui** — Sidebar UI in Sheets.
-  - **script.scriptapp** — Runtime / OAuth token access for the add-on.
 3. **Submit for verification**; complete any demo/video steps.
 4. Watch for mail from `**api-oauth-dev-verification-reply+...@google.com`** and reply promptly.
 
@@ -101,4 +101,3 @@ Until the listing is **approved**:
 3. Phase 3 (verification)
 4. Phase 4 (site / README / external pages)
 5. Phase 5 (resubmit)
-

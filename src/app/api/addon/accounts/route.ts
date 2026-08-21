@@ -68,7 +68,9 @@ export async function GET(req: NextRequest) {
           connectionId: conn.id,
           connectionName: conn.name,
           platform: conn.provider,
-          accountId: a.id.replace(/^act_/, ''),
+          // Return the same identifier persisted by the current Meta sync path.
+          // The warehouse query uses this value as an exact accountId filter.
+          accountId: a.id,
           accountName: a.name ?? a.id,
         }));
       }

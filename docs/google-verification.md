@@ -28,7 +28,7 @@ This document prepares OAuth verification for a 2-project setup:
 
 | File | Location | Current scope/userinfo use | Purpose |
 |---|---|---|---|
-| `google-sheets-addon/appsscript.json` | `oauthScopes` | `spreadsheets.currentonly`, `script.external_request`, `script.container.ui`, `userinfo.email`, `script.scriptapp` | Required scopes for Sheets editor add-on UI, outbound API calls, and identity email mapping. |
+| `google-sheets-addon/appsscript.json` | `oauthScopes` | `openid`, `userinfo.email`, `spreadsheets.currentonly`, `script.external_request`, `script.container.ui` | Required scopes for Sheets editor add-on UI, outbound API calls, and identity token/email mapping. |
 | `google-sheets-addon/Code.js` | scope comment block | same as above (documented) | Developer-facing scope checklist for the Sheets add-on code. |
 | `scripts/looker-studio-connector/appsscript.json` | `oauthScopes` | `script.external_request`, `userinfo.email`, `openid` | Required scopes for Looker Studio connector auth + backend API calls. |
 | `scripts/looker-studio-connector/Code.js` | OAuth2 `.setScope(...)` | `openid email` | OAuth flow to obtain ID token / identity for connector auth. |
@@ -61,11 +61,11 @@ Do **not** add Sheets or Drive scopes to GCP A sign-in.
 
 ### Google Sheets add-on scopes
 
+- `openid`
+- `https://www.googleapis.com/auth/userinfo.email`
 - `https://www.googleapis.com/auth/spreadsheets.currentonly`
 - `https://www.googleapis.com/auth/script.external_request`
 - `https://www.googleapis.com/auth/script.container.ui`
-- `https://www.googleapis.com/auth/userinfo.email`
-- `https://www.googleapis.com/auth/script.scriptapp`
 
 ### Looker Studio connector scopes (Apps Script project)
 
@@ -180,9 +180,9 @@ Monstera Cloud provides Google Workspace add-ons/connectors (Google Sheets add-o
 
 Sheets add-on scopes:
 - spreadsheets.currentonly: write requested report output into the active spreadsheet chosen by the user.
-- script.container.ui / script.scriptapp: render and run the add-on UI/actions inside Google Sheets.
+- script.container.ui: render the add-on UI/actions inside Google Sheets.
 - script.external_request: call Monstera Cloud backend APIs to fetch connected ad-platform metrics.
-- userinfo.email: identify the Google user and map to an existing Monstera account.
+- openid + userinfo.email: issue and validate a Google identity token, then map the Google user to an existing Monstera account.
 
 Looker Studio connector scopes:
 - openid + userinfo.email: authenticate connector users and map identity to Monstera workspace access.
@@ -229,4 +229,3 @@ We request only the minimum scopes needed for these add-on/connector flows.
 4. Finish authorization and connect data.
 5. Display a report using returned fields/metrics.
 6. Explain that scopes are only for connector authentication and API fetch.
-
