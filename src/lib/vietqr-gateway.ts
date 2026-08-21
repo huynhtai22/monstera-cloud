@@ -135,6 +135,16 @@ export async function listRecentVietQrOrders(limit = 20): Promise<VietQrOrder[]>
 }
 
 /**
+ * A bank transfer may exceed the order amount (overpayment), but must never be
+ * less — underpayment must not fulfill (upgrade) an order.
+ */
+export function isTransferAmountValid(orderAmount: number, transferAmount: unknown): boolean {
+    if (transferAmount === undefined || transferAmount === null) return true; // manual/admin-verified path
+    const paid = Number(transferAmount);
+    return Number.isFinite(paid) && paid >= orderAmount;
+}
+
+/**
  * Fulfill payment: Upgrades workspace & user subscription in database
  */
 export async function fulfillVietQrPayment(orderCode: number, transactionDetails?: Record<string, unknown>): Promise<{ success: boolean; message: string }> {
@@ -145,6 +155,13 @@ export async function fulfillVietQrPayment(orderCode: number, transactionDetails
 
     if (order.status === "PAID") {
         return { success: true, message: `Order ${orderCode} was already fulfilled` };
+    }
+
+    if (!isTransferAmountValid(order.amount, transactionDetails?.transferAmount)) {
+        return {
+            success: false,
+            message: `Order ${orderCode} underpaid: expected >= ${order.amount}, received ${String(transactionDetails?.transferAmount)}`,
+        };
     }
 
     // Mark as PAID
