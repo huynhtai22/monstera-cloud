@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertCiDatabaseReachable } from "./pg-test-discipline";
 import { after, before, describe, it } from "node:test";
 import { PrismaClient } from "@prisma/client";
 import prisma from "@/lib/prisma";
@@ -20,6 +21,7 @@ import {
 describe("PostgreSQL integration: meta sync lock / fencing", () => {
     let db: PrismaClient | null = null;
     let isDbAvailable = false;
+      isDbAvailable = false;
     const suffix = `${Date.now()}-${process.pid}`;
     const ids = {
         owner: `lock-owner-${suffix}`,
@@ -31,7 +33,10 @@ describe("PostgreSQL integration: meta sync lock / fencing", () => {
     const scopes: string[] = [];
 
     before(async () => {
-        if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) return;
+        if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) {
+      assertCiDatabaseReachable();
+      return;
+    }
         try {
             db = new PrismaClient();
             await db.$connect();
@@ -54,6 +59,7 @@ describe("PostgreSQL integration: meta sync lock / fencing", () => {
             });
             isDbAvailable = true;
         } catch {
+            assertCiDatabaseReachable();
             isDbAvailable = false;
         }
     });

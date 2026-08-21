@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertCiDatabaseReachable } from "./pg-test-discipline";
 import { after, before, describe, it } from "node:test";
 import { PrismaClient } from "@prisma/client";
 import {
@@ -17,6 +18,7 @@ import { upsertSourceConnection } from "./connection-upsert";
 describe("PostgreSQL integration: disconnect retention & purge fencing", () => {
     let prisma: PrismaClient | null = null;
     let isDbAvailable = false;
+      isDbAvailable = false;
     const suffix = `${Date.now()}-${process.pid}`;
     const ids = {
         owner: `dc-owner-${suffix}`,
@@ -34,7 +36,10 @@ describe("PostgreSQL integration: disconnect retention & purge fencing", () => {
     let metricIdB: string;
 
     before(async () => {
-        if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) return;
+        if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) {
+      assertCiDatabaseReachable();
+      return;
+    }
         process.env.ENCRYPTION_KEY =
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
         try {
@@ -144,6 +149,7 @@ describe("PostgreSQL integration: disconnect retention & purge fencing", () => {
 
             isDbAvailable = true;
         } catch {
+            assertCiDatabaseReachable();
             isDbAvailable = false;
         }
     });

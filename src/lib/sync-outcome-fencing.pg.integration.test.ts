@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertCiDatabaseReachable } from "./pg-test-discipline";
 import { after, before, describe, it } from "node:test";
 import { PrismaClient } from "@prisma/client";
 import {
@@ -15,6 +16,7 @@ import { syncConnectionData, persistConnectionSyncOutcome } from "./sync-connect
 describe("PostgreSQL integration: sync outcome lease fencing", () => {
     let db: PrismaClient | null = null;
     let isDbAvailable = false;
+      isDbAvailable = false;
     const suffix = `${Date.now()}-${process.pid}`;
     const ids = { owner: `fence-owner-${suffix}`, ws: `fence-ws-${suffix}` };
     let conn: { id: string };
@@ -22,7 +24,10 @@ describe("PostgreSQL integration: sync outcome lease fencing", () => {
     const scopes: string[] = [];
 
     before(async () => {
-        if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) return;
+        if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) {
+      assertCiDatabaseReachable();
+      return;
+    }
         try {
             db = new PrismaClient();
             await db.$connect();
@@ -37,6 +42,7 @@ describe("PostgreSQL integration: sync outcome lease fencing", () => {
             });
             isDbAvailable = true;
         } catch {
+            assertCiDatabaseReachable();
             isDbAvailable = false;
         }
     });
