@@ -231,7 +231,7 @@ export async function syncMetaInsightsIntoWarehouse(
   return { upserted: total, accounts: acctCount };
 }
 
-async function handleMetaRevocation(
+export async function handleMetaRevocation(
   conn: { id: string; name?: string | null; remoteAccountId?: string | null },
   workspaceId: string,
   errorMsg: string,

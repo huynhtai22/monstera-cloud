@@ -19,6 +19,8 @@ import { syncShopeeAdsWarehouseMetrics } from "@/lib/sync-shopee-ads-warehouse";
 
 // Meta imports
 import { ingestMetaRows } from "@/lib/meta-ingest";
+import { MetaOAuthRevokedError } from "@/lib/meta-ads";
+import { handleMetaRevocation } from "@/lib/ingestion/meta-campaign-metrics";
 import { metaAdsClient, metaReportClient, META_DEFAULT_FIELDS } from "@/lib/meta-ads";
 import {
   acquireMetaSyncLock,
@@ -32,7 +34,7 @@ import {
 } from "@/lib/connection-sync-lease";
 
 // Google imports
-import { googleAdsReportClient } from "@/lib/google-ads";
+import { googleAdsReportClient, isGoogleAdsDeveloperTokenBlocked } from "@/lib/google-ads";
 import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
 
 // TikTok imports
@@ -459,6 +461,18 @@ async function syncMetaAds(opts: {
     } catch (error: any) {
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: false });
       const msg = error instanceof Error ? error.message : String(error);
+      if (error instanceof MetaOAuthRevokedError) {
+        // OAuth revoked: a permanent connection-auth condition, not a per-account
+        // failure. Route to the established revocation handler (disconnect +
+        // ticket) so the connection does not look healthy and retrying stops.
+        try {
+          await handleMetaRevocation({ id: connectionId, name: accountName, remoteAccountId: accountId }, workspaceId, msg);
+        } catch (revErr) {
+          logger.error("[syncMetaAds] handleMetaRevocation failed:", revErr);
+        }
+        children.push({ id: String(accountId), kind: "ad_account", ok: false, error: `Meta authorization revoked — reconnect required. (${msg})`, retryable: false });
+        break; // token is revoked: remaining accounts share the same fate
+      }
       children.push({ id: String(accountId), kind: "ad_account", ok: false, error: msg, retryable: isRetryableSyncError(error) });
       logger.error(`[syncMetaAds] Failed for account ${accountId}:`, error);
       // Continue with next account
@@ -567,6 +581,17 @@ async function syncGoogleAds(opts: {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      if (isGoogleAdsDeveloperTokenBlocked(err)) {
+        // Application-level blocker: the developer token is not approved for
+        // this account. Every leaf query would fail identically — never mask
+        // it as per-account errors via the leaf fallback below.
+        const result = makeFailedSyncResult(
+          `Google Ads developer token is not approved for this account (DEVELOPER_TOKEN_NOT_APPROVED). This blocks all Google Ads syncing until the token is approved in the Google Ads API Center — no account-level action will fix it.`,
+          false,
+        );
+        await persistConnectionSyncOutcome(connectionId, result, lease);
+        return result;
+      }
       if (isRetryableSyncError(err)) {
         // A quota/network failure while expanding an MCC means its child scope
         // is unknown; never substitute a zero-row root query for completion.
@@ -664,6 +689,10 @@ async function syncGoogleAds(opts: {
       children.push({ id: customerId, kind: "customer", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google Ads sync failed";
+      if (isGoogleAdsDeveloperTokenBlocked(error)) {
+        children.push({ id: customerId, kind: "customer", ok: false, error: "Google Ads developer token not approved — syncing is blocked at the application level.", retryable: false });
+        break; // every remaining customer fails identically
+      }
       children.push({ id: customerId, kind: "customer", ok: false, error: msg, retryable: isRetryableSyncError(error) });
       logger.error(`[syncGoogleAds] Failed for customerId=${customerId}: ${msg}`);
     }

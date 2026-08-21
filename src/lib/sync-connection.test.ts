@@ -61,6 +61,12 @@ async function withSyncHarness<T>(
     findUnique: async () => ({ ...validLease }),
     updateMany: async () => ({ count: 1 }),
   };
+  const originalSupportTicket = (prisma as any).supportTicket;
+  (prisma as any).supportTicket = {
+    findFirst: async () => null,
+    create: async (args: any) => ({ id: "ticket-1", ...args.data }),
+    update: async (args: any) => args,
+  };
   try {
     return await run(updates);
   } finally {
@@ -68,6 +74,7 @@ async function withSyncHarness<T>(
     (prisma as any).connection = originalConnection;
     (prisma as any).$transaction = originalTransaction;
     (prisma as any).syncLock = originalSyncLock;
+    (prisma as any).supportTicket = originalSupportTicket;
     if (originalKey === undefined) delete process.env.ENCRYPTION_KEY;
     else process.env.ENCRYPTION_KEY = originalKey;
   }
@@ -139,6 +146,32 @@ describe("provider HTTP failures preserve sync correctness", () => {
       assert.equal(failedDownloadAttempts, 3);
       assert.equal("lastSyncAt" in updates[0].data, false);
       assert.match(String(updates[0].data.lastError), /^\[partial\]/);
+    }));
+  });
+
+  it("Meta Error 190 revokes the connection via the established handler instead of retrying per account", async () => {
+    await withFastRetries(() => withSyncHarness((async (input) => {
+      const url = String(input);
+      if (url.includes("/insights")) {
+        return new Response(JSON.stringify({ error: { message: "Error validating access token: session has been revoked", code: 190, type: "OAuthException" } }), { status: 400 });
+      }
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }) as typeof fetch, async (updates) => {
+      const result = await syncConnectionData({
+        connectionId: "meta-connection",
+        provider: "meta_ads",
+        credentials: { ...freshCredentials, adAccounts: [{ id: "act_111", name: "Revoked Account" }, { id: "act_222", name: "Second Account" }] },
+        workspaceId: "workspace-1",
+        userPlan: "pilot",
+      });
+      assert.equal(result.outcome, "failed");
+      const revokedChild = result.children.find((c) => c.id === "act_111");
+      assert.ok(revokedChild);
+      assert.equal(revokedChild.retryable, false, "revoked OAuth must never retry");
+      assert.match(revokedChild.error ?? "", /reconnect required/i);
+      assert.equal(result.children.length, 1, "remaining accounts are skipped once the token is known revoked");
+      const disconnect = updates.find((u) => u.data && (u.data as any).status === "disconnected");
+      assert.ok(disconnect, "handleMetaRevocation must disconnect the connection");
     }));
   });
 });

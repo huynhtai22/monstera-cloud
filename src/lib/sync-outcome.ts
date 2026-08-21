@@ -27,7 +27,21 @@ export interface SyncResult {
   children: SyncChildResult[];
 }
 
+/**
+ * Retry classification. Structured provider information wins (an explicit
+ * `retryable` flag, or a provider error code/status); the legacy message regex
+ * remains only as a fallback for unstructured errors. Auth-revoked conditions
+ * are never retryable.
+ */
 export function isRetryableSyncError(error: unknown): boolean {
+  if (error && typeof error === "object") {
+    const err = error as { retryable?: unknown; authRevoked?: unknown; code?: unknown; status?: unknown };
+    if (err.authRevoked === true) return false;
+    if (typeof err.retryable === "boolean") return err.retryable;
+    if (err.code === 190) return false; // Meta OAuth revoked — permanent auth condition
+    if (err.status === 401 || err.status === 403) return false; // structured auth/permission failure
+    if (err.status === 429 || (typeof err.status === "number" && err.status >= 500)) return true;
+  }
   const message = error instanceof Error ? error.message : String(error ?? "");
   return /\b(17|32|429|613|80004|5\d\d|rate[ _-]?limit|quota|throttl|resource[_ ]exhausted|temporar|timeout|timed out|econnreset|fetch failed|network)\b/i.test(message);
 }
