@@ -1,6 +1,18 @@
 /**
- * Verify a Google ID token using Google's tokeninfo endpoint, with optional
- * audience/issuer validation.
+ * Verify a Google ID token using Google's tokeninfo endpoint.
+ *
+ * Security invariants (all fail closed):
+ * - `aud` must be a non-empty string that EXACTLY equals one configured,
+ *   allowlisted OAuth client ID. There are deliberately no suffix, substring,
+ *   wildcard, or "looks like a Google client ID" fallbacks: a token minted for
+ *   any other application must never authenticate here (cross-client
+ *   substitution).
+ * - If no audience allowlist resolves (GOOGLE_ID_TOKEN_AUDIENCES empty and no
+ *   documented fallback client IDs configured), verification fails.
+ * - `iss` must be present and exactly equal to an allowed issuer
+ *   (default: `accounts.google.com` or `https://accounts.google.com`).
+ * - `exp` must be present, numeric, and strictly in the future.
+ * - A verified, non-empty `email` claim is required.
  *
  * Note: tokeninfo is network-dependent; for higher assurance you can migrate
  * to local JWT validation against Google's JWKS later.
@@ -23,13 +35,17 @@ function splitCsvEnv(name: string): string[] {
     .filter(Boolean);
 }
 
-/** Resolve acceptable audiences from env. */
+/**
+ * Resolve acceptable audiences from env. An empty result means "no audiences
+ * configured"; verifyGoogleIdToken fails closed in that case.
+ */
 export function getGoogleIdTokenAudienceAllowlist(): string[] {
   // Preferred: explicitly define allowlist in production
   const explicit = splitCsvEnv("GOOGLE_ID_TOKEN_AUDIENCES");
   if (explicit.length > 0) return explicit;
 
-  // Fallbacks: accept known client IDs if present
+  // Documented fallbacks: accept these client IDs only as exact, non-empty
+  // values. The verifier performs exact matching and rejects when none resolve.
   const fallback = [
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_ADS_CLIENT_ID,
@@ -42,10 +58,20 @@ export function getGoogleIdTokenAudienceAllowlist(): string[] {
   return fallback;
 }
 
+/** Coerce tokeninfo's `exp` (number or numeric string) into seconds, else null. */
+function parseNumericClaim(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 export async function verifyGoogleIdToken(idToken: string, opts?: {
-  /** Acceptable OAuth client IDs (audiences). If provided, aud must match. */
+  /** Acceptable OAuth client IDs (audiences). `aud` must match one exactly. Falls back to env allowlist; fails closed when empty. */
   audiences?: string[];
-  /** Acceptable issuers. Defaults to Google accounts issuers. */
+  /** Acceptable issuers. Defaults to the canonical Google accounts issuers. */
   issuers?: string[];
 }): Promise<GoogleIdTokenVerification | null> {
   try {
@@ -53,39 +79,41 @@ export async function verifyGoogleIdToken(idToken: string, opts?: {
       `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
     );
     if (!res.ok) return null;
-    const data = (await res.json()) as Record<string, unknown>;
+    const data = (await res.json()) as unknown;
+    if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+    const claims = data as Record<string, unknown>;
 
-    const email = data.email;
-    const emailVerified = data.email_verified;
-    const exp = data.exp;
-    const aud = data.aud;
-    const iss = data.iss;
+    const email = claims.email;
+    const emailVerified = claims.email_verified;
+    const exp = parseNumericClaim(claims.exp);
+    const aud = claims.aud;
+    const iss = claims.iss;
 
     if (typeof email !== "string" || !email) return null;
     if (String(emailVerified) !== "true") return null;
-    if (exp && Number(exp) * 1000 < Date.now()) return null;
 
+    // `exp` is mandatory and must be strictly in the future.
+    if (exp === null || exp * 1000 <= Date.now()) return null;
+
+    // `iss` is mandatory and must exactly match an allowed issuer.
+    if (typeof iss !== "string" || !iss) return null;
     const issuers = (opts?.issuers ?? []).length
       ? new Set(opts!.issuers)
       : DEFAULT_ISSUERS;
-    if (typeof iss === "string" && iss && !issuers.has(iss)) return null;
+    if (!issuers.has(iss)) return null;
 
-    const audiences = opts?.audiences ?? [];
-    if (audiences.length > 0) {
-      const isExplicitMatch = typeof aud === "string" && audiences.includes(aud);
-      const isGoogleClient = typeof aud === "string" && (aud.endsWith(".apps.googleusercontent.com") || aud.includes("googleusercontent.com"));
-      if (!isExplicitMatch && !isGoogleClient) {
-        return null;
-      }
-    }
+    // Exact-match audience allowlisting, mandatory. Never infer acceptance
+    // from the shape of the client ID.
+    const audiences = (
+      opts?.audiences !== undefined ? opts.audiences : getGoogleIdTokenAudienceAllowlist()
+    )
+      .map((a) => (typeof a === "string" ? a.trim() : ""))
+      .filter(Boolean);
+    if (audiences.length === 0) return null;
+    if (typeof aud !== "string" || !aud || !audiences.includes(aud)) return null;
 
-    return {
-      email,
-      aud: typeof aud === "string" ? aud : undefined,
-      iss: typeof iss === "string" ? iss : undefined,
-    };
+    return { email, aud, iss };
   } catch {
     return null;
   }
 }
-
