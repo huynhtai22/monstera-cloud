@@ -40,6 +40,9 @@ export async function GET(
 
         const pipelines = await prisma.pipeline.findMany({
             where: {
+                // Explicit workspace scope: membership was validated above via
+                // connection.workspaceId, and Pipeline is tenant-guarded.
+                workspaceId: connection.workspaceId,
                 OR: [{ sourceConnectionId: connectionId }, { destinationConnectionId: connectionId }],
             },
             include: {

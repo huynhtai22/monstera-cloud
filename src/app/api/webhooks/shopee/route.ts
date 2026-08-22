@@ -154,14 +154,17 @@ export async function POST(request: Request) {
                 
                 for (const conn of connections) {
                     // Delete associated pipelines first to avoid foreign key issues
-                    await prisma.pipeline.deleteMany({
-                        where: { sourceConnectionId: conn.id }
-                    });
-                    
+                    // Webhook-driven cleanup crosses workspaces by design — narrow system scope.
+                    await withSystemScope(() =>
+                        prisma.pipeline.deleteMany({
+                            where: { sourceConnectionId: conn.id }
+                        })
+                    );
+
                     await prisma.connection.delete({
                         where: { id: conn.id }
                     });
-                    
+
                     logger.info(`[SHOPEE WEBHOOK] Deleted connection ${conn.id} for shop ${shopId}`);
                 }
                 

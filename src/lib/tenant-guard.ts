@@ -7,12 +7,45 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * nested filter). Fleet cron/webhooks wrap work in withSystemScope().
  */
 
+/**
+ * Models guarded because they carry a DIRECT, NON-NULL `workspaceId` column,
+ * so workspace scope can be enforced correctly at the application layer.
+ *
+ * Deliberately NOT guarded yet (future RLS / architecture decision):
+ * - SyncJob, SyncLog, SyncLogDetail, TransformationRule: owned indirectly via
+ *   `pipelineId → Pipeline.workspaceId`. Nested `where.pipeline.workspaceId`
+ *   filters satisfy the checker, but fleet cron claims these rows globally by
+ *   status/priority, so every call site must be migrated first.
+ * - SyncCheckpoint: has `pipelineId` but NO Prisma relation declared, so a
+ *   nested ownership filter cannot even be expressed.
+ * - WorkspaceInvitation: nullable workspaceId (pre-provisioning invitations).
+ * - WorkspaceMember: membership join queried by userId during auth.
+ * - SyncLock: system lease infra keyed by provider scope string.
+ * - DashboardTemplate, SchemaVersion: global platform catalogs.
+ * - User/Account/Session/VerificationToken/PasswordResetToken: identity tables.
+ */
 export const TENANT_GUARDED_MODELS = new Set([
+  // Existing guards
   "Connection",
   "CampaignMetric",
   "WarehouseImportJob",
   "ApiKey",
   "SupportTicket",
+  // Coverage extension (audit 2026-08): direct non-null workspaceId owners
+  "Client",
+  "Pipeline",
+  "RetailOrder",
+  "AuditEvent",
+  "OAuthAttempt",
+  "AttributionSnapshot",
+  "DataQualityRule",
+  "DataQualityViolation",
+  "UserDashboard",
+  "LookerJob",
+  // No call sites today; guarded so future code cannot regress silently
+  "UtmMappingRule",
+  "AttributionTouch",
+  "ReportSchedule",
 ]);
 
 const LIST_OR_BULK_OPS = new Set([
