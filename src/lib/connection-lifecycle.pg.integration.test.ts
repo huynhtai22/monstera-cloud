@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertCiDatabaseReachable } from "./pg-test-discipline";
 import { after, before, describe, it } from "node:test";
 import { PrismaClient } from "@prisma/client";
 import {
@@ -34,7 +35,10 @@ describe("PostgreSQL integration: disconnect retention & purge fencing", () => {
     let metricIdB: string;
 
     before(async () => {
-        if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) return;
+        if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) {
+      assertCiDatabaseReachable();
+      return;
+    }
         process.env.ENCRYPTION_KEY =
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
         try {
@@ -144,6 +148,7 @@ describe("PostgreSQL integration: disconnect retention & purge fencing", () => {
 
             isDbAvailable = true;
         } catch {
+            assertCiDatabaseReachable();
             isDbAvailable = false;
         }
     });
@@ -151,6 +156,10 @@ describe("PostgreSQL integration: disconnect retention & purge fencing", () => {
     after(async () => {
         if (!prisma) return;
         try {
+            // Retained-by-design CampaignMetric rows reference the workspaces;
+            // they must be removed before the workspaces (FK is RESTRICT) or
+            // teardown itself fails (seen as a suite-level CI failure).
+            await prisma.campaignMetric.deleteMany({ where: { workspaceId: { in: [ids.workspaceA, ids.workspaceB] } } });
             await prisma.workspace.deleteMany({ where: { id: { in: [ids.workspaceA, ids.workspaceB] } } });
             await prisma.user.deleteMany({ where: { id: { in: [ids.owner, ids.intruder] } } });
         } finally {
