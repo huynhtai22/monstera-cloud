@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
-import { apiRatelimit } from "@/lib/ratelimit";
+import {
+  classifyApiRoute,
+  enforceRequestLimit,
+  type EnforceOptions,
+} from "@/lib/request-rate-limit-policy";
+import { classifyPageAccess } from "@/lib/page-access-policy";
 import { safeCallbackUrl } from "@/lib/safe-callback-url";
 import {
   pathnameNeedsAgencyRewrite,
@@ -9,202 +14,180 @@ import {
   stripAgencyPath,
 } from "@/lib/agency-host";
 
-/** Logged-in app surfaces (must match routes under `src/app/(app)/`). */
-const APP_AUTH_SEGMENTS = [
-  "console",
-  "sources",
-  "settings",
-  "reports",
-  "explorer",
-  "synced-data",
-  "clients",
-  "exports",
-  "transformations",
-  "internal-templates",
-  "overview",
-  "quickstart",
-  "ops",
-  "admin",
-  "meta-ads",
-  "shopee",
-  "google-ads",
-  "tiktok-ads",
-  "pilot-admin",
-] as const;
+/**
+ * Edge proxy (Next.js middleware).
+ *
+ * Responsibilities are split across dedicated policy modules:
+ * - Page authentication: src/lib/page-access-policy.ts — DENY-BY-DEFAULT.
+ *   Everything not explicitly public requires a session JWT. Browser page
+ *   auth never touches Upstash, so an upstream limiter outage cannot take
+ *   pages down.
+ * - API rate limiting: src/lib/request-rate-limit-policy.ts — route classes
+ *   with per-class limits, identity tiers, and documented failure policies.
+ *
+ * Static assets (anything whose last URL segment has a file extension) pass
+ * straight through; the broad matcher below keeps this cheap instead of
+ * enumerating every asset pattern.
+ */
 
-function pathnameNeedsAppAuth(pathname: string): boolean {
-  return APP_AUTH_SEGMENTS.some(
-    (seg) => pathname === `/${seg}` || pathname.startsWith(`/${seg}/`)
-  );
+function looksLikeStaticAsset(pathname: string): boolean {
+  const lastSegment = pathname.split("/").pop() ?? "";
+  return /\.[a-zA-Z0-9]+$/.test(lastSegment);
 }
 
-export async function proxy(request: NextRequest) {
-  const pathname = request.nextUrl.pathname;
-  const host = request.headers.get("host") ?? "";
+// Add CORS headers for /api/v1/sheets/* routes (called by Google Apps Script add-on)
+// OWASP Fix: Use specific origin instead of wildcard (*) for security compliance
+const SHEET_ADDON_ALLOWED_ORIGINS = [
+  'https://monsteracloud.com',
+  'https://www.monsteracloud.com',
+  // Google Apps Script origins - required for Sheets add-on functionality
+  'https://script.google.com',
+  'https://script.googleusercontent.com',
+];
 
-  const agencySlug =
-    !pathname.startsWith("/agencies/")
-      ? resolveAgencySlugFromHost(host)
-      : null;
-  const shouldAgencyRewrite = Boolean(
-    agencySlug && pathnameNeedsAgencyRewrite(pathname),
-  );
+function sheetAddonAllowedOrigin(request: NextRequest): string {
+  const origin = request.headers.get('origin') || 'https://monsteracloud.com';
+  return SHEET_ADDON_ALLOWED_ORIGINS.includes(origin) ? origin : 'https://monsteracloud.com';
+}
 
-  const authCheckPath = pathname.startsWith("/agencies/")
-    ? stripAgencyPath(pathname)
-    : pathname;
+function sheetAddonPreflightResponse(allowedOrigin: string): Response {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': allowedOrigin,
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Max-Age': '86400',
+      'Vary': 'Origin',
+    },
+  });
+}
 
-  // Global rate limit for all /api/* routes (excluding add-on endpoints)
-  // Uses Upstash if configured; otherwise no-op.
-  if (
-    apiRatelimit &&
-    request.nextUrl.pathname.startsWith("/api/") &&
-    !request.nextUrl.pathname.startsWith("/api/webhooks/") &&
-    !request.nextUrl.pathname.startsWith("/api/v1/sheets") &&
-    !request.nextUrl.pathname.startsWith("/api/looker-studio")
-  ) {
-    const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      "unknown";
+function withSheetAddonCors(response: Response, allowedOrigin: string): Response {
+  response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
+  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  response.headers.set('Vary', 'Origin');
+  return response;
+}
 
-    try {
-      const result = await Promise.race([
-        apiRatelimit.limit(ip),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("ratelimit timeout")), 3000)
-        ),
-      ]);
+/** Injectable session verifier contract (tests stub this; defaults to NextAuth JWT). */
+export type SessionTokenVerifier = (args: {
+  req: NextRequest;
+  secret?: string;
+}) => Promise<unknown>;
 
-      if (!result.success) {
-        const res = NextResponse.json(
-          { error: "Too Many Requests" },
-          { status: 429 }
-        );
-        if (result.reset) {
-          res.headers.set("x-ratelimit-reset", String(result.reset));
-        }
-        res.headers.set("x-ratelimit-limit", String(result.limit));
-        res.headers.set("x-ratelimit-remaining", String(result.remaining));
-        return res;
+type ProxyDeps = {
+  /** Injectable session verifier (defaults to next-auth JWT cookie lookup). */
+  getSessionToken?: SessionTokenVerifier;
+  /** Injectable enforcement options (fake limiters, production flag, timeouts). */
+  enforceOptions?: EnforceOptions;
+};
+
+function createProxy(deps: ProxyDeps = {}) {
+  const verifySessionToken: SessionTokenVerifier =
+    deps.getSessionToken ??
+    (({ req }) => getToken({ req, secret: process.env.NEXTAUTH_SECRET }));
+
+  return async function proxy(request: NextRequest): Promise<Response> {
+    const pathname = request.nextUrl.pathname;
+    const host = request.headers.get("host") ?? "";
+
+    /* ----------------------------- API pipeline ----------------------------- */
+    if (pathname.startsWith("/api/")) {
+      // CORS preflight must never be throttled or rejected by limiter outages.
+      const routeClass = classifyApiRoute(pathname);
+      if (routeClass === "external-sheets" && request.method === "OPTIONS") {
+        return sheetAddonPreflightResponse(sheetAddonAllowedOrigin(request));
       }
-    } catch {
-      // Upstash Redis unavailable — skip rate limiting, don't block requests
-      console.warn("[middleware] Rate limiter unavailable, skipping");
-    }
-  }
 
-  // Add CORS headers for /api/v1/sheets/* routes (called by Google Apps Script add-on)
-  // OWASP Fix: Use specific origin instead of wildcard (*) for security compliance
-  const ALLOWED_ORIGINS = [
-    'https://monsteracloud.com',
-    'https://www.monsteracloud.com',
-    // Google Apps Script origins - required for Sheets add-on functionality
-    'https://script.google.com',
-    'https://script.googleusercontent.com',
-  ];
-  
-  if (request.nextUrl.pathname.startsWith('/api/v1/sheets')) {
-    const origin = request.headers.get('origin') || 'https://monsteracloud.com';
-    const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : 'https://monsteracloud.com';
-    
-    if (request.method === 'OPTIONS') {
-      return new NextResponse(null, {
-        status: 200,
-        headers: {
-          'Access-Control-Allow-Origin': allowedOrigin,
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          'Access-Control-Max-Age': '86400',
-          'Vary': 'Origin',
-        },
-      });
+      const enforcement = await enforceRequestLimit(request, pathname, deps.enforceOptions);
+      if (
+        enforcement.outcome === "blocked" ||
+        enforcement.outcome === "failed-closed" ||
+        enforcement.outcome === "fallback-blocked"
+      ) {
+        return enforcement.response;
+      }
+
+      const response = NextResponse.next();
+      if (routeClass === "external-sheets") {
+        withSheetAddonCors(response, sheetAddonAllowedOrigin(request));
+      }
+      return response;
     }
 
-    const response = NextResponse.next();
-    response.headers.set('Access-Control-Allow-Origin', allowedOrigin);
-    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    response.headers.set('Vary', 'Origin');
-    return response;
-  }
-
-  // Require a session JWT for in-app pages (otherwise /api/workspaces returns 401 and the UI looks "broken").
-  if (pathnameNeedsAppAuth(authCheckPath)) {
-    const token = await getToken({
-      req: request,
-      secret: process.env.NEXTAUTH_SECRET,
-    });
-    if (!token) {
-      const login = new URL("/login", request.url);
-      const nextPath =
-        authCheckPath +
-        (request.nextUrl.search || "");
-      login.searchParams.set(
-        "callbackUrl",
-        safeCallbackUrl(nextPath, "/console")
-      );
-      return NextResponse.redirect(login);
+    /* ---------------------------- Page pipeline ----------------------------- */
+    if (looksLikeStaticAsset(pathname)) {
+      return NextResponse.next();
     }
-  }
 
-  if (shouldAgencyRewrite && agencySlug) {
-    const url = request.nextUrl.clone();
-    const suffix = pathname === "/" ? "/console" : pathname;
-    url.pathname = `/agencies/${agencySlug}${suffix}`;
-    const res = NextResponse.rewrite(url);
-    res.headers.set("x-monstera-agency-slug", agencySlug);
-    return res;
-  }
+    const agencySlug =
+      !pathname.startsWith("/agencies/")
+        ? resolveAgencySlugFromHost(host)
+        : null;
+    const shouldAgencyRewrite = Boolean(
+      agencySlug && pathnameNeedsAgencyRewrite(pathname),
+    );
 
-  return NextResponse.next();
+    const authCheckPath = pathname.startsWith("/agencies/")
+      ? stripAgencyPath(pathname)
+      : pathname;
+
+    // Deny-by-default: any page not explicitly public needs a session JWT.
+    if (classifyPageAccess(authCheckPath) === "authenticated") {
+      const token = await verifySessionToken({ req: request });
+      if (!token) {
+        const login = new URL("/login", request.url);
+        const nextPath =
+          authCheckPath +
+          (request.nextUrl.search || "");
+        login.searchParams.set(
+          "callbackUrl",
+          safeCallbackUrl(nextPath, "/console")
+        );
+        return NextResponse.redirect(login);
+      }
+    }
+
+    if (shouldAgencyRewrite && agencySlug) {
+      const url = request.nextUrl.clone();
+      const suffix = pathname === "/" ? "/console" : pathname;
+      url.pathname = `/agencies/${agencySlug}${suffix}`;
+      const res = NextResponse.rewrite(url);
+      res.headers.set("x-monstera-agency-slug", agencySlug);
+      return res;
+    }
+
+    return NextResponse.next();
+  };
 }
 
-// Must be static strings for Turbopack / Next.js to parse at compile time (no spread from arrays).
+/** Production entry point. */
+export const proxy = createProxy();
+
+/** Test seam: build a proxy with injected session/rate-limit dependencies. */
+export function __createProxyForTests(deps: ProxyDeps): (request: NextRequest) => Promise<Response> {
+  return createProxy(deps);
+}
+
+// Matcher notes:
+// - `/api/*` except `/api/auth/*`: NextAuth internals (OAuth callbacks, session,
+//   CSRF) must NOT be intercepted — doing so breaks Google sign-in.
+// - The five credential endpoints under /api/auth/* ARE matched explicitly so
+//   they get the dedicated `credential` limiter class.
+// - Pages use a deny-by-default catch-all (minus _next assets and common
+//   top-level metadata files). Remaining static files are passed through in
+//   code via looksLikeStaticAsset(). New application routes therefore require
+//   a session automatically.
 export const config = {
-  // Exclude /api/auth/* — NextAuth handles its own OAuth callbacks and session
-  // cookies there; custom middleware intercepting those routes breaks Google sign-in.
   matcher: [
     "/api/((?!auth/).*)",
-    "/api/v1/sheets/:path*",
-    "/sources",
-    "/sources/:path*",
-    "/settings",
-    "/settings/:path*",
-    "/reports",
-    "/reports/:path*",
-    "/explorer",
-    "/explorer/:path*",
-    "/synced-data",
-    "/synced-data/:path*",
-    "/clients",
-    "/clients/:path*",
-    "/exports",
-    "/exports/:path*",
-    "/transformations",
-    "/transformations/:path*",
-    "/internal-templates",
-    "/internal-templates/:path*",
-    "/console",
-    "/console/:path*",
-    "/agencies",
-    "/agencies/:path*",
-    "/overview",
-    "/overview/:path*",
-    "/quickstart",
-    "/quickstart/:path*",
-    "/ops",
-    "/ops/:path*",
-    "/admin",
-    "/admin/:path*",
-    "/meta-ads",
-    "/meta-ads/:path*",
-    "/shopee",
-    "/shopee/:path*",
-    "/google-ads",
-    "/google-ads/:path*",
-    "/tiktok-ads",
-    "/tiktok-ads/:path*",
-    "/pilot-admin",
-    "/pilot-admin/:path*",
+    "/api/auth/forgot-password",
+    "/api/auth/register",
+    "/api/auth/resend-otp",
+    "/api/auth/reset-password",
+    "/api/auth/verify",
+    "/((?!api/|_next/|favicon.ico|robots.txt|sitemap.xml|manifest.json).*)",
   ],
 };
