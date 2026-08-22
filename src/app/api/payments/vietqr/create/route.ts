@@ -1,21 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
 import { createVietQrOrder } from "@/lib/vietqr-gateway";
 import { type PlanName } from "@/lib/plan-config";
+import { authOptions } from "@/lib/auth";
+import { confirmPayOSWebhook } from "@/lib/payos";
+import { getRedis } from "@/lib/redis";
+
+async function ensurePayOSWebhook(webhookUrl: string): Promise<void> {
+    const key = "payos_confirmed_webhook_url";
+    try {
+        const redis = getRedis();
+        if (await redis.get(key) === webhookUrl) return;
+        await confirmPayOSWebhook(webhookUrl);
+        await redis.set(key, webhookUrl, { ex: 60 * 60 * 24 * 30 });
+    } catch (error) {
+        // Confirmation is deliberately required before checkout. If Redis is
+        // unavailable, retry confirmation rather than assuming PayOS is wired.
+        if (error instanceof Error && error.message.startsWith("PayOS")) throw error;
+        await confirmPayOSWebhook(webhookUrl);
+    }
+}
 
 export async function POST(req: NextRequest) {
     try {
+        const session = await getServerSession(authOptions);
+        if (!session?.user?.id || !session.user.email) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
         const body = await req.json();
-        const { plan, billingCycle = "monthly", userEmail, workspaceId } = body;
+        const { plan, billingCycle = "monthly" } = body;
 
         if (!plan || !["starter", "professional", "enterprise"].includes(plan)) {
             return NextResponse.json({ error: "Invalid plan specified" }, { status: 400 });
         }
 
+        const origin = (process.env.NEXTAUTH_URL?.replace(/\/$/, "") || new URL(req.url).origin).replace(/\/$/, "");
+        await ensurePayOSWebhook(`${origin}/api/webhooks/payos`);
         const order = await createVietQrOrder({
             plan: plan as PlanName,
             billingCycle: billingCycle === "annual" ? "annual" : "monthly",
-            userEmail,
-            workspaceId,
+            userEmail: session.user.email,
+            returnUrl: `${origin}/pricing?payment=success`,
+            cancelUrl: `${origin}/pricing?payment=cancelled`,
         });
 
         return NextResponse.json({

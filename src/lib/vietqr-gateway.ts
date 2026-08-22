@@ -7,11 +7,11 @@
  * 3. SePay.vn Bank Balance Webhook Receiver
  */
 
-import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { getRedis } from "@/lib/redis";
 import { logger } from "@/lib/logger";
 import { PLAN_PRICING, type PlanName } from "@/lib/plan-config";
+import { createPayOSPaymentLink, verifyPayOSData } from "@/lib/payos";
 
 export interface VietQrOrder {
     orderCode: number;
@@ -28,6 +28,8 @@ export interface VietQrOrder {
     accountNo: string;
     accountName: string;
     qrUrl: string;
+    checkoutUrl?: string;
+    paymentLinkId?: string;
 }
 
 // Bank Default Settings (Configurable via Environment Variables)
@@ -55,19 +57,23 @@ export async function createVietQrOrder(opts: {
     billingCycle: "monthly" | "annual";
     userEmail?: string;
     workspaceId?: string;
+    returnUrl: string;
+    cancelUrl: string;
 }): Promise<VietQrOrder> {
     const orderCode = generateOrderCode();
     const cfg = PLAN_PRICING[opts.plan] || PLAN_PRICING.free;
     const monthlyPrice = opts.billingCycle === "annual" ? cfg.vndAnnualMonthly : cfg.vndMonthly;
     const totalAmount = opts.billingCycle === "annual" ? monthlyPrice * 12 : monthlyPrice;
 
-    const bank = getBankConfig();
     const memo = `MC${orderCode}`;
-
-    // Standard Napas 24/7 VietQR API format (img.vietqr.io)
-    const qrUrl = `https://img.vietqr.io/image/${bank.bankId}-${bank.accountNo}-compact2.png?amount=${totalAmount}&addInfo=${encodeURIComponent(
-        memo
-    )}&accountName=${encodeURIComponent(bank.accountName)}`;
+    const paymentLink = await createPayOSPaymentLink({
+        orderCode,
+        amount: totalAmount,
+        description: memo,
+        returnUrl: opts.returnUrl,
+        cancelUrl: opts.cancelUrl,
+        buyerEmail: opts.userEmail,
+    });
 
     const order: VietQrOrder = {
         orderCode,
@@ -79,10 +85,12 @@ export async function createVietQrOrder(opts: {
         userEmail: opts.userEmail,
         workspaceId: opts.workspaceId,
         createdAt: Date.now(),
-        bankName: bank.bankName,
-        accountNo: bank.accountNo,
-        accountName: bank.accountName,
-        qrUrl,
+        bankName: "PayOS",
+        accountNo: "",
+        accountName: "",
+        qrUrl: "",
+        checkoutUrl: paymentLink.checkoutUrl,
+        paymentLinkId: paymentLink.paymentLinkId,
     };
 
     // Store order in Redis with 24-hour TTL (86400s)
@@ -157,10 +165,11 @@ export async function fulfillVietQrPayment(orderCode: number, transactionDetails
         return { success: true, message: `Order ${orderCode} was already fulfilled` };
     }
 
-    if (!isTransferAmountValid(order.amount, transactionDetails?.transferAmount)) {
+    const transferredAmount = transactionDetails?.amount ?? transactionDetails?.transferAmount;
+    if (!isTransferAmountValid(order.amount, transferredAmount)) {
         return {
             success: false,
-            message: `Order ${orderCode} underpaid: expected >= ${order.amount}, received ${String(transactionDetails?.transferAmount)}`,
+            message: `Order ${orderCode} underpaid: expected >= ${order.amount}, received ${String(transferredAmount)}`,
         };
     }
 
@@ -235,16 +244,5 @@ export async function fulfillVietQrPayment(orderCode: number, transactionDetails
  * PayOS Webhook Checksum Verification (HMAC-SHA256)
  */
 export function verifyPayOSWebhook(data: Record<string, unknown>, signature: string): boolean {
-    const checksumKey = process.env.PAYOS_CHECKSUM_KEY;
-    if (!checksumKey) return true; // If not set in development, bypass
-
-    try {
-        // Sort keys alphabetically and construct query string format
-        const sortedKeys = Object.keys(data).sort();
-        const dataStr = sortedKeys.map((k) => `${k}=${data[k]}`).join("&");
-        const hmac = crypto.createHmac("sha256", checksumKey).update(dataStr).digest("hex");
-        return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
-    } catch {
-        return false;
-    }
+    return verifyPayOSData(data, signature);
 }

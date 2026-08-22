@@ -5,22 +5,22 @@ import { logger } from "@/lib/logger";
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        logger.info("[PAYOS WEBHOOK] Received event", body);
-
-        // PayOS payload structure: { code: "00", desc: "success", data: { orderCode: 123456, amount: 1190000, description: "MC123456", ... }, signature: "..." }
-        const { code, data, signature } = body;
-
-        if (signature && data) {
-            const isValid = verifyPayOSWebhook(data, signature);
-            if (!isValid) {
-                logger.warn("[PAYOS WEBHOOK] Invalid signature detected", { signature });
-                return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
-            }
+        if (!body || typeof body !== "object") {
+            return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
         }
 
-        if (code === "00" && data && data.orderCode) {
-            const orderCode = Number(data.orderCode);
-            const result = await fulfillVietQrPayment(orderCode, data);
+        const { code, success, data, signature } = body as Record<string, unknown>;
+        if (!data || typeof data !== "object" || !verifyPayOSWebhook(data as Record<string, unknown>, String(signature ?? ""))) {
+            logger.warn("[PAYOS WEBHOOK] Rejected event with missing or invalid signature");
+            return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+        }
+
+        const payment = data as Record<string, unknown>;
+        logger.info("[PAYOS WEBHOOK] Received verified event", { code, success, orderCode: payment.orderCode });
+
+        if (code === "00" && success === true && payment.orderCode) {
+            const orderCode = Number(payment.orderCode);
+            const result = await fulfillVietQrPayment(orderCode, payment);
 
             if (result.success) {
                 logger.info(`[PAYOS WEBHOOK] Successfully processed payment for order ${orderCode}`);

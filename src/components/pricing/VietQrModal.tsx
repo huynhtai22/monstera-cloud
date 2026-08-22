@@ -29,6 +29,7 @@ export function VietQrModal({
     const [orderCode, setOrderCode] = useState<number | null>(null);
     const [memo, setMemo] = useState<string>("");
     const [qrUrl, setQrUrl] = useState<string>("");
+    const [checkoutUrl, setCheckoutUrl] = useState<string>("");
     const [isPaid, setIsPaid] = useState(false);
     const [notified, setNotified] = useState(false);
 
@@ -41,6 +42,7 @@ export function VietQrModal({
         if (!isOpen) {
             setIsPaid(false);
             setOrderCode(null);
+            setCheckoutUrl("");
             setNotified(false);
             return;
         }
@@ -61,11 +63,18 @@ export function VietQrModal({
                     setOrderCode(data.order.orderCode);
                     setMemo(data.order.memo);
                     setQrUrl(data.order.qrUrl);
+                    setCheckoutUrl(data.order.checkoutUrl || "");
                 }
             })
             .catch((err) => console.error("Error creating VietQR order", err))
             .finally(() => setLoadingOrder(false));
     }, [isOpen, planName, billingCycle, userEmail]);
+
+    // PayOS owns the secure checkout page. Subscription activation still waits
+    // for the separately verified PayOS webhook after the customer pays.
+    useEffect(() => {
+        if (checkoutUrl) window.location.assign(checkoutUrl);
+    }, [checkoutUrl]);
 
     // 2. Poll for payment status every 3 seconds
     useEffect(() => {
@@ -104,7 +113,7 @@ export function VietQrModal({
                         </div>
                         <div>
                             <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2 text-base">
-                                Cổng thanh toán VietQR (Napas 24/7)
+                                Thanh toán PayOS (Napas 24/7)
                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 font-bold">
                                     Tự động 24/7
                                 </span>
@@ -156,7 +165,7 @@ export function VietQrModal({
                                 {loadingOrder || !qrUrl ? (
                                     <div className="w-56 h-56 flex flex-col items-center justify-center gap-2 text-slate-400">
                                         <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
-                                        <span className="text-xs">Đang tạo mã VietQR...</span>
+                                        <span className="text-xs">Đang chuyển đến trang thanh toán PayOS...</span>
                                     </div>
                                 ) : (
                                     <img
