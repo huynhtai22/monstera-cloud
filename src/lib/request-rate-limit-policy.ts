@@ -59,6 +59,16 @@ type ClassPolicy = {
   prefix: string;
   /** Behavior when the shared limiter cannot be reached or is not configured. */
   onFailure: "fail-open" | "fail-closed-in-production" | "bounded-fallback";
+  /**
+   * Coarse outer IP gate applied BEFORE the primary identity check for
+   * external data surfaces. Without it an attacker could rotate arbitrary
+   * bearer values from one address and evade the fingerprint-only limit,
+   * because fingerprints are computed before authentication. The ceiling is
+   * deliberately several times the per-token limit so legitimate shared-NAT
+   * teams are not blocked, while total requests per address stay bounded.
+   * Both tiers must pass for the request to proceed.
+   */
+  outerIp?: { limit: number; windowSeconds: number; prefix: string };
 };
 
 export const ROUTE_CLASS_POLICIES: Record<RateLimitRouteClass, ClassPolicy> = {
@@ -71,11 +81,31 @@ export const ROUTE_CLASS_POLICIES: Record<RateLimitRouteClass, ClassPolicy> = {
   // in-process bounded fallback guarantees there is NEVER an unlimited path.
   webhook: { limit: 600, windowSeconds: 60, prefix: "monstera:ratelimit:webhook", onFailure: "bounded-fallback" },
   // Sheets add-on JSON API (Google ID-token authenticated warehouse reads).
-  "external-sheets": { limit: 120, windowSeconds: 60, prefix: "monstera:ratelimit:sheets", onFailure: "fail-closed-in-production" },
+  // 120/min per token fingerprint, plus a coarse 600/min per-IP outer gate.
+  "external-sheets": {
+    limit: 120,
+    windowSeconds: 60,
+    prefix: "monstera:ratelimit:sheets",
+    onFailure: "fail-closed-in-production",
+    outerIp: { limit: 600, windowSeconds: 60, prefix: "monstera:ratelimit:sheets-ip" },
+  },
   // Add-on auth/accounts routes (same client surface as sheets).
-  "external-addon": { limit: 120, windowSeconds: 60, prefix: "monstera:ratelimit:addon", onFailure: "fail-closed-in-production" },
+  "external-addon": {
+    limit: 120,
+    windowSeconds: 60,
+    prefix: "monstera:ratelimit:addon",
+    onFailure: "fail-closed-in-production",
+    outerIp: { limit: 600, windowSeconds: 60, prefix: "monstera:ratelimit:addon-ip" },
+  },
   // Looker Studio connector (API-key / Google ID-token authenticated reads).
-  "external-looker": { limit: 60, windowSeconds: 60, prefix: "monstera:ratelimit:looker", onFailure: "fail-closed-in-production" },
+  // 60/min per key fingerprint, plus a coarse 300/min per-IP outer gate.
+  "external-looker": {
+    limit: 60,
+    windowSeconds: 60,
+    prefix: "monstera:ratelimit:looker",
+    onFailure: "fail-closed-in-production",
+    outerIp: { limit: 300, windowSeconds: 60, prefix: "monstera:ratelimit:looker-ip" },
+  },
 };
 
 const CREDENTIAL_PATHS = new Set([
@@ -151,8 +181,12 @@ export async function resolveLimiterIdentity(
 /* Shared limiter construction (Upstash)                               */
 /* ------------------------------------------------------------------ */
 
+/** Registry slot: a route class (primary tier) or its `:ip` outer gate. */
+export type LimiterSlotKey = RateLimitRouteClass | `${RateLimitRouteClass}:ip`;
+export type LimiterRegistry = Partial<Record<LimiterSlotKey, SharedLimiter | undefined>>;
+
 type GlobalLimiterCache = typeof globalThis & {
-  __monsteraProxyLimiters?: Partial<Record<RateLimitRouteClass, SharedLimiter>>;
+  __monsteraProxyLimiters?: LimiterRegistry;
 };
 const globalCache = globalThis as GlobalLimiterCache;
 
@@ -160,21 +194,35 @@ function upstashConfigured(): boolean {
   return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
 }
 
-/** Build (once per runtime instance) one Upstash limiter per route class. */
-export function buildSharedLimiters(): Partial<Record<RateLimitRouteClass, SharedLimiter>> {
+function makeUpstashLimiter(limit: number, windowSeconds: number, prefix: string): SharedLimiter {
+  return new Ratelimit({
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(limit, `${windowSeconds} s`),
+    analytics: false,
+    prefix,
+  });
+}
+
+/**
+ * Build (once per runtime instance) Upstash limiters for every class plus the
+ * coarse outer-IP gates of the external data surfaces.
+ */
+export function buildSharedLimiters(): LimiterRegistry {
   if (globalCache.__monsteraProxyLimiters) return globalCache.__monsteraProxyLimiters;
-  const built: Partial<Record<RateLimitRouteClass, SharedLimiter>> = {};
+  const built: LimiterRegistry = {};
   if (upstashConfigured()) {
     for (const [routeClass, policy] of Object.entries(ROUTE_CLASS_POLICIES) as [
       RateLimitRouteClass,
       ClassPolicy,
     ][]) {
-      built[routeClass] = new Ratelimit({
-        redis: Redis.fromEnv(),
-        limiter: Ratelimit.slidingWindow(policy.limit, `${policy.windowSeconds} s`),
-        analytics: false,
-        prefix: policy.prefix,
-      });
+      built[routeClass] = makeUpstashLimiter(policy.limit, policy.windowSeconds, policy.prefix);
+      if (policy.outerIp) {
+        built[`${routeClass}:ip` as LimiterSlotKey] = makeUpstashLimiter(
+          policy.outerIp.limit,
+          policy.outerIp.windowSeconds,
+          policy.outerIp.prefix,
+        );
+      }
     }
   }
   globalCache.__monsteraProxyLimiters = built;
@@ -243,6 +291,7 @@ function rateLimitedResponse(input: {
   retryAfterSeconds: number;
   decision?: RateLimitDecision;
   status?: 429 | 503;
+  tier?: string;
 }): Response {
   const status = input.status ?? 429;
   const body = {
@@ -257,6 +306,7 @@ function rateLimitedResponse(input: {
     headers: { "content-type": "application/json" },
   });
   res.headers.set("retry-after", String(input.retryAfterSeconds));
+  if (input.tier) res.headers.set("x-ratelimit-tier", input.tier);
   if (input.decision?.limit !== undefined) {
     res.headers.set("x-ratelimit-limit", String(input.decision.limit));
     res.headers.set("x-ratelimit-remaining", String(input.decision.remaining ?? 0));
@@ -279,8 +329,12 @@ function rateLimitedResponse(input: {
 export type EnforceOptions = {
   /** Overrides classification (used by tests / callers that already classified). */
   routeClass?: RateLimitRouteClass;
-  /** Injectable limiter registry; defaults to Upstash-backed shared limiters. */
-  limiters?: Partial<Record<RateLimitRouteClass, SharedLimiter | undefined>>;
+  /**
+   * Injectable limiter registry; defaults to Upstash-backed shared limiters.
+   * Slots are keyed by route class for the primary (identity) tier and by
+   * `${routeClass}:ip` for the coarse outer-IP tier of external data classes.
+   */
+  limiters?: LimiterRegistry;
   /** Injectable production flag; defaults to NODE_ENV === "production". */
   isProduction?: boolean;
   /** Limiter call timeout in ms. */
@@ -303,9 +357,119 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   }
 }
 
+type TierCheck = {
+  slotKey: LimiterSlotKey;
+  limiter: SharedLimiter | undefined;
+  bucketPrefix: string;
+  identityKey: string;
+  identityKind: LimiterIdentity["kind"] | "outer-ip";
+  limit: number;
+  windowSeconds: number;
+};
+
 /**
- * Enforce the policy for one request. Purely decisional: callers turn the
+ * Enforce one tier of a class policy.
+ *
+ * Returns `{ outcome: "allowed" }` (with the limiter decision when one was
+ * made) when the request may proceed to the next tier, or a terminal outcome
+ * (`blocked` / `failed-closed` / `failed-open` / `fallback-blocked`) that the
+ * caller must surface immediately. Failure behavior follows the class policy
+ * so an Upstash outage never becomes unlimited access on guarded surfaces.
+ */
+async function enforceTier(
+  routeClass: RateLimitRouteClass,
+  policy: ClassPolicy,
+  tier: TierCheck,
+  isProduction: boolean,
+  timeoutMs: number,
+): Promise<EnforcementOutcome> {
+  const blockedResponse = (decision: RateLimitDecision): EnforcementOutcome => ({
+    outcome: "blocked",
+    response: rateLimitedResponse({
+      routeClass,
+      retryAfterSeconds:
+        decision.reset !== undefined
+          ? Math.max(1, decision.reset - Math.ceil(Date.now() / 1000))
+          : tier.windowSeconds,
+      decision,
+      tier: tier.identityKind,
+    }),
+  });
+
+  const localFallback = (mode: string): EnforcementOutcome => {
+    const decision = localFallbackLimit(`${tier.bucketPrefix}:${tier.identityKey}`, tier.limit, tier.windowSeconds);
+    if (!decision.success) {
+      emitRateLimitEvent({ event: "blocked", routeClass, identityKind: tier.identityKind, mode });
+      return {
+        outcome: "fallback-blocked",
+        response: rateLimitedResponse({ routeClass, retryAfterSeconds: tier.windowSeconds, decision, tier: tier.identityKind }),
+      };
+    }
+    return { outcome: "allowed" };
+  };
+
+  const limiter = tier.limiter;
+  if (!limiter) {
+    // No shared limiter configured — never unlimited on guarded surfaces.
+    switch (policy.onFailure) {
+      case "fail-closed-in-production":
+        if (isProduction) {
+          emitRateLimitEvent({ event: "limiter_missing_fail_closed", routeClass, env: "production", tier: tier.identityKind });
+          return {
+            outcome: "failed-closed",
+            response: rateLimitedResponse({ routeClass, retryAfterSeconds: 30, status: 503 }),
+          };
+        }
+        return localFallback("local-dev");
+      case "bounded-fallback":
+        return localFallback("local-fallback");
+      default:
+        // internal-api / credential without Upstash: legacy no-op.
+        return { outcome: "allowed" };
+    }
+  }
+
+  try {
+    const decision = await withTimeout(limiter.limit(tier.identityKey), timeoutMs);
+    if (!decision.success) {
+      emitRateLimitEvent({ event: "blocked", routeClass, identityKind: tier.identityKind });
+      return blockedResponse(decision);
+    }
+    return { outcome: "allowed", decision };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown";
+    switch (policy.onFailure) {
+      case "fail-open": {
+        emitRateLimitEvent({ event: "limiter_error_fail_open", routeClass, message, tier: tier.identityKind });
+        return { outcome: "failed-open" };
+      }
+      case "fail-closed-in-production": {
+        if (isProduction) {
+          emitRateLimitEvent({ event: "limiter_error_fail_closed", routeClass, env: "production", message, tier: tier.identityKind });
+          return {
+            outcome: "failed-closed",
+            response: rateLimitedResponse({ routeClass, retryAfterSeconds: 30, status: 503 }),
+          };
+        }
+        emitRateLimitEvent({ event: "limiter_error_fallback_local", routeClass, env: "development", message, tier: tier.identityKind });
+        return localFallback("error-fallback");
+      }
+      case "bounded-fallback":
+      default: {
+        emitRateLimitEvent({ event: "limiter_error_fallback_bounded", routeClass, message, tier: tier.identityKind });
+        return localFallback("bounded-fallback");
+      }
+    }
+  }
+}
+
+/**
+ * Enforce the full policy for one request. Purely decisional: callers turn the
  * returned outcome into control flow. Never throws.
+ *
+ * External data classes run TWO gates and both must pass:
+ * 1. the coarse outer-IP gate (bounds bearer/API-key rotation from one address)
+ * 2. the per-credential fingerprint gate
  */
 export async function enforceRequestLimit(
   request: Request,
@@ -318,101 +482,43 @@ export async function enforceRequestLimit(
   const policy = ROUTE_CLASS_POLICIES[routeClass];
   const isProduction = options.isProduction ?? process.env.NODE_ENV === "production";
   const registry = options.limiters ?? buildSharedLimiters();
-  const sharedLimiter = registry[routeClass];
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  if (!sharedLimiter) {
-    // No shared limiter configured (Upstash env absent) — never unlimited.
-    if (policy.onFailure === "fail-closed-in-production") {
-      if (isProduction) {
-        emitRateLimitEvent({ event: "limiter_missing_fail_closed", routeClass, env: "production" });
-        return {
-          outcome: "failed-closed",
-          response: rateLimitedResponse({ routeClass, retryAfterSeconds: 30, status: 503 }),
-        };
-      }
-      const identity = await resolveLimiterIdentity(request, routeClass);
-      const decision = localFallbackLimit(`${policy.prefix}:${identity.key}`, policy.limit, policy.windowSeconds);
-      if (!decision.success) {
-        emitRateLimitEvent({ event: "blocked", routeClass, identityKind: identity.kind, mode: "local-dev" });
-        return {
-          outcome: "fallback-blocked",
-          response: rateLimitedResponse({ routeClass, retryAfterSeconds: policy.windowSeconds, decision }),
-        };
-      }
-      return { outcome: "allowed" }; // dev/test stay usable without Upstash
-    }
-    if (policy.onFailure === "bounded-fallback") {
-      const identity = await resolveLimiterIdentity(request, routeClass);
-      const decision = localFallbackLimit(`${policy.prefix}:${identity.key}`, policy.limit, policy.windowSeconds);
-      if (!decision.success) {
-        emitRateLimitEvent({ event: "blocked", routeClass, identityKind: identity.kind, mode: "local-fallback" });
-        return {
-          outcome: "fallback-blocked",
-          response: rateLimitedResponse({ routeClass, retryAfterSeconds: policy.windowSeconds, decision }),
-        };
-      }
-      return { outcome: "allowed" };
-    }
-    // internal-api / credential without Upstash: preserve legacy no-op behavior.
-    return { outcome: "allowed" };
+  if (policy.outerIp) {
+    const ipIdentity: LimiterIdentity = { key: requestIp(request), kind: "ip" };
+    const outerResult = await enforceTier(
+      routeClass,
+      policy,
+      {
+        slotKey: `${routeClass}:ip`,
+        limiter: registry[`${routeClass}:ip`],
+        bucketPrefix: policy.outerIp.prefix,
+        identityKey: ipIdentity.key,
+        identityKind: "outer-ip",
+        limit: policy.outerIp.limit,
+        windowSeconds: policy.outerIp.windowSeconds,
+      },
+      isProduction,
+      timeoutMs,
+    );
+    if (outerResult.outcome !== "allowed") return outerResult;
   }
 
   const identity = await resolveLimiterIdentity(request, routeClass);
-  try {
-    const decision = await withTimeout(sharedLimiter.limit(identity.key), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-    if (!decision.success) {
-      emitRateLimitEvent({ event: "blocked", routeClass, identityKind: identity.kind });
-      return {
-        outcome: "blocked",
-        response: rateLimitedResponse({
-          routeClass,
-          retryAfterSeconds:
-            decision.reset !== undefined
-              ? Math.max(1, decision.reset - Math.ceil(Date.now() / 1000))
-              : policy.windowSeconds,
-          decision,
-        }),
-      };
-    }
-    return { outcome: "allowed", decision };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "unknown";
-    switch (policy.onFailure) {
-      case "fail-open": {
-        emitRateLimitEvent({ event: "limiter_error_fail_open", routeClass, message });
-        return { outcome: "failed-open" };
-      }
-      case "fail-closed-in-production": {
-        if (isProduction) {
-          emitRateLimitEvent({ event: "limiter_error_fail_closed", routeClass, env: "production", message });
-          return {
-            outcome: "failed-closed",
-            response: rateLimitedResponse({ routeClass, retryAfterSeconds: 30, status: 503 }),
-          };
-        }
-        emitRateLimitEvent({ event: "limiter_error_fallback_local", routeClass, env: "development", message });
-        const decision = localFallbackLimit(`${policy.prefix}:${identity.key}`, policy.limit, policy.windowSeconds);
-        if (!decision.success) {
-          return {
-            outcome: "fallback-blocked",
-            response: rateLimitedResponse({ routeClass, retryAfterSeconds: policy.windowSeconds, decision }),
-          };
-        }
-        return { outcome: "allowed" };
-      }
-      case "bounded-fallback":
-      default: {
-        emitRateLimitEvent({ event: "limiter_error_fallback_bounded", routeClass, message });
-        const decision = localFallbackLimit(`${policy.prefix}:${identity.key}`, policy.limit, policy.windowSeconds);
-        if (!decision.success) {
-          emitRateLimitEvent({ event: "blocked", routeClass, identityKind: identity.kind, mode: "bounded-fallback" });
-          return {
-            outcome: "fallback-blocked",
-            response: rateLimitedResponse({ routeClass, retryAfterSeconds: policy.windowSeconds, decision }),
-          };
-        }
-        return { outcome: "allowed" };
-      }
-    }
-  }
+  const primaryResult = await enforceTier(
+    routeClass,
+    policy,
+    {
+      slotKey: routeClass,
+      limiter: registry[routeClass],
+      bucketPrefix: policy.prefix,
+      identityKey: identity.key,
+      identityKind: identity.kind,
+      limit: policy.limit,
+      windowSeconds: policy.windowSeconds,
+    },
+    isProduction,
+    timeoutMs,
+  );
+  return primaryResult;
 }

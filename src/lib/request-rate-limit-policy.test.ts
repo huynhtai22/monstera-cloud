@@ -23,6 +23,26 @@ function limiterFrom(impl: () => Promise<RateLimitDecision>): SharedLimiter {
   return { limit: impl };
 }
 
+/** Shared limiter with per-key counters — deterministic multi-call behavior. */
+function countingSharedLimiter(limit: number): SharedLimiter & { counts: Map<string, number> } {
+  const counts = new Map<string, number>();
+  return Object.assign(
+    {
+      limit: async (key: string) => {
+        const n = (counts.get(key) ?? 0) + 1;
+        counts.set(key, n);
+        return {
+          success: n <= limit,
+          limit,
+          remaining: Math.max(0, limit - n),
+          reset: Math.ceil(Date.now() / 1000) + 60,
+        };
+      },
+    },
+    { counts },
+  );
+}
+
 const OK_LIMITER = limiterFrom(async () => okDecision());
 const DENY_LIMITER = limiterFrom(async () => denyDecision());
 const THROWING_LIMITER = limiterFrom(async () => {
@@ -149,19 +169,24 @@ describe("enforcement failure policies", () => {
   }
 
   it("allows requests under a healthy shared limiter", async () => {
+    const decision = okDecision();
+    const limiter = limiterFrom(async () => decision);
     const result = await enforceRequestLimit(
       apiRequest("/api/workspaces", uniqueIp("ok")),
       "/api/workspaces",
-      { limiters: { "internal-api": OK_LIMITER }, isProduction: true },
+      { limiters: { "internal-api": limiter }, isProduction: true },
     );
-    assert.deepEqual(result, { outcome: "allowed", decision: okDecision() });
+    assert.deepEqual(result, { outcome: "allowed", decision });
   });
 
   it("returns structured 429 with Retry-After and rate-limit metadata when blocked", async () => {
     const res = await enforceRequestLimit(
       apiRequest("/api/looker-studio", uniqueIp("deny")),
       "/api/looker-studio",
-      { limiters: { "external-looker": DENY_LIMITER }, isProduction: true },
+      {
+        limiters: { "external-looker": DENY_LIMITER, "external-looker:ip": OK_LIMITER },
+        isProduction: true,
+      },
     );
     assert.equal(res.outcome, "blocked");
     const response = (res as { response: Response }).response;
@@ -257,6 +282,120 @@ describe("enforcement failure policies", () => {
     }
     assert.equal(allowed, policy.limit, "fallback must allow exactly the class limit");
     assert.equal(blockedAt, policy.limit, "fallback must block beyond the class limit");
+  });
+
+  it("same valid token repeatedly hits the fingerprint limit while the IP gate still has headroom", async () => {
+    const policy = ROUTE_CLASS_POLICIES["external-sheets"];
+    const headers = {
+      authorization: "Bearer steady-valid-token",
+      ...uniqueIp("steady"),
+    };
+    let allowed = 0;
+    let tierHeader = "";
+    for (let i = 0; i < policy.limit + 5; i++) {
+      const result = await enforceRequestLimit(
+        apiRequest("/api/v1/sheets/query", headers),
+        "/api/v1/sheets/query",
+        { limiters: { "external-sheets": THROWING_LIMITER, "external-sheets:ip": OK_LIMITER }, isProduction: false },
+      );
+      if (result.outcome === "allowed") {
+        allowed += 1;
+        continue;
+      }
+      assert.equal(result.outcome, "fallback-blocked");
+      tierHeader =
+        (result as { response: Response }).response.headers.get("x-ratelimit-tier") ?? "";
+      break;
+    }
+    assert.equal(allowed, policy.limit, "per-token fingerprint gate must bind at its own ceiling");
+    assert.equal(tierHeader, "token-fingerprint");
+  });
+
+  it("hundreds of distinct fake bearer values from one IP hit the outer IP limit", async () => {
+    const policy = ROUTE_CLASS_POLICIES["external-looker"];
+    const primary = countingSharedLimiter(policy.limit);
+    const outer = countingSharedLimiter(policy.outerIp!.limit);
+    const ipHeaders = uniqueIp("rotation");
+    let allowed = 0;
+    let blockedResponse: Response | undefined;
+    const totalAttempts = policy.outerIp!.limit + 25;
+    for (let i = 0; i < totalAttempts; i++) {
+      const result = await enforceRequestLimit(
+        apiRequest("/api/looker-studio", {
+          authorization: `Bearer rotated-fake-key-${i}`,
+          ...ipHeaders,
+        }),
+        "/api/looker-studio",
+        {
+          limiters: { "external-looker": primary, "external-looker:ip": outer },
+          isProduction: true,
+        },
+      );
+      if (result.outcome === "allowed") {
+        allowed += 1;
+        continue;
+      }
+      blockedResponse = (result as { response: Response }).response;
+      break;
+    }
+    assert.equal(allowed, policy.outerIp!.limit, "outer IP gate must allow exactly its ceiling under rotation");
+    assert.ok(blockedResponse, "outer IP gate must eventually block token rotation");
+    assert.equal(blockedResponse!.status, 429);
+    assert.equal(blockedResponse!.headers.get("x-ratelimit-limit"), String(policy.outerIp!.limit));
+    assert.equal(blockedResponse!.headers.get("x-ratelimit-tier"), "outer-ip");
+    const body = (await blockedResponse!.json()) as { code?: string };
+    assert.equal(body.code, "rate_limited");
+  });
+
+  it("different IPs remain independently limited", async () => {
+    const policy = ROUTE_CLASS_POLICIES["external-looker"];
+    const primary = countingSharedLimiter(policy.limit);
+    const outer = countingSharedLimiter(policy.outerIp!.limit);
+    const registry = {
+      "external-looker": primary,
+      "external-looker:ip": outer,
+    };
+    let tokenCounter = 0;
+    const exhaustIp = async (ip: string): Promise<void> => {
+      for (let i = 0; i < policy.outerIp!.limit + 3; i++) {
+        await enforceRequestLimit(
+          apiRequest("/api/looker-studio", {
+            authorization: `Bearer key-${ip}-${i}`,
+            "x-forwarded-for": ip,
+          }),
+          "/api/looker-studio",
+          { limiters: registry, isProduction: true },
+        );
+      }
+    };
+    await exhaustIp("203.0.113.10");
+    // A different address starts with a clean outer-IP budget.
+    const freshResult = await enforceRequestLimit(
+      apiRequest("/api/looker-studio", {
+        authorization: `Bearer key-fresh-${tokenCounter++}`,
+        "x-forwarded-for": "198.51.100.77",
+      }),
+      "/api/looker-studio",
+      { limiters: registry, isProduction: true },
+    );
+    assert.equal(freshResult.outcome, "allowed");
+    // And its own budget is enforced separately.
+    let freshBlocked = false;
+    for (let i = 0; i < policy.outerIp!.limit + 3; i++) {
+      const result = await enforceRequestLimit(
+        apiRequest("/api/looker-studio", {
+          authorization: `Bearer key-second-${i}`,
+          "x-forwarded-for": "198.51.100.77",
+        }),
+        "/api/looker-studio",
+        { limiters: registry, isProduction: true },
+      );
+      if (result.outcome === "blocked") {
+        freshBlocked = true;
+        break;
+      }
+    }
+    assert.ok(freshBlocked, "second IP must be bounded by its own budget");
   });
 
   it("without any configured limiter in production, external reads fail closed but internal stays open", async () => {

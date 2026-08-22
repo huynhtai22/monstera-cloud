@@ -174,7 +174,10 @@ describe("proxy API pipeline", () => {
 
   it("answers Sheets add-on CORS preflights before any rate limiting", async () => {
     const proxy = __createProxyForTests({
-      enforceOptions: { limiters: { "external-sheets": denyLimiter() }, isProduction: true },
+      enforceOptions: {
+        limiters: { "external-sheets": denyLimiter(), "external-sheets:ip": denyLimiter() },
+        isProduction: true,
+      },
     });
     const res = await proxy(
       apiRequest("/api/v1/sheets/query", {
@@ -189,7 +192,10 @@ describe("proxy API pipeline", () => {
 
   it("passes Sheets add-on requests through with scoped CORS headers", async () => {
     const proxy = __createProxyForTests({
-      enforceOptions: { limiters: { "external-sheets": okLimiter() }, isProduction: true },
+      enforceOptions: {
+        limiters: { "external-sheets": okLimiter(), "external-sheets:ip": okLimiter() },
+        isProduction: true,
+      },
     });
     const allowed = await proxy(
       apiRequest("/api/v1/sheets/query", {
@@ -245,13 +251,30 @@ describe("proxy API pipeline", () => {
 
   it("fails closed with retryable 503 when Looker hits a production limiter outage", async () => {
     const proxy = __createProxyForTests({
-      enforceOptions: { limiters: { "external-looker": throwingLimiter() }, isProduction: true },
+      enforceOptions: {
+        limiters: { "external-looker": throwingLimiter(), "external-looker:ip": throwingLimiter() },
+        isProduction: true,
+      },
     });
     const res = await proxy(apiRequest("/api/looker-studio", {
       headers: { authorization: "Bearer key_123" },
     }));
     assert.equal(res.status, 503);
     assert.equal(res.headers.get("retry-after"), "30");
+  });
+
+  it("keeps valid Looker requests flowing when both identity tiers are healthy", async () => {
+    const proxy = __createProxyForTests({
+      enforceOptions: {
+        limiters: { "external-looker": okLimiter(), "external-looker:ip": okLimiter() },
+        isProduction: true,
+      },
+    });
+    const res = await proxy(apiRequest("/api/looker-studio", {
+      headers: { authorization: "Bearer valid_looker_key" },
+    }));
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("retry-after"), null);
   });
 
   it("applies the credential class to password/reset endpoints", async () => {
