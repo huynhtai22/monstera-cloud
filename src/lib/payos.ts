@@ -25,14 +25,14 @@ function requiredConfig(): PayOSConfig {
   const apiKey = process.env.PAYOS_API_KEY?.trim();
   const checksumKey = process.env.PAYOS_CHECKSUM_KEY?.trim();
   if (!clientId || !apiKey || !checksumKey) {
-    throw new Error("PayOS is not configured. Set PAYOS_CLIENT_ID, PAYOS_API_KEY, and PAYOS_CHECKSUM_KEY.");
+    throw new Error("PayOS is not configured.");
   }
   return { clientId, apiKey, checksumKey };
 }
 
 function requiredChecksumKey(): string {
   const checksumKey = process.env.PAYOS_CHECKSUM_KEY?.trim();
-  if (!checksumKey) throw new Error("PayOS is not configured. Set PAYOS_CHECKSUM_KEY.");
+  if (!checksumKey) throw new Error("PayOS is not configured.");
   return checksumKey;
 }
 

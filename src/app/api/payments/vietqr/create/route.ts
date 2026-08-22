@@ -48,7 +48,8 @@ export async function POST(req: NextRequest) {
             success: true,
             order,
         });
-    } catch (err: any) {
-        return NextResponse.json({ error: err.message || "Failed to create QR order" }, { status: 500 });
+    } catch (err) {
+        console.error("[PAYOS] Failed to create checkout", err);
+        return NextResponse.json({ error: "Unable to start payment checkout" }, { status: 503 });
     }
 }

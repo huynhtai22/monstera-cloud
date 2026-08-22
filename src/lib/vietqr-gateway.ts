@@ -1,10 +1,5 @@
 /**
- * Monstera Cloud - Domestic Vietnamese QR Payment Gateway (VietQR / PayOS / SePay)
- *
- * Supports:
- * 1. 100% In-House Direct VietQR (Napas 24/7 with manual / BD 1-click confirmation)
- * 2. PayOS.vn Open Banking API & Webhooks (Zero fees, automated 24/7)
- * 3. SePay.vn Bank Balance Webhook Receiver
+ * Payment order and fulfillment support for the PayOS hosted checkout.
  */
 
 import prisma from "@/lib/prisma";
@@ -30,16 +25,6 @@ export interface VietQrOrder {
     qrUrl: string;
     checkoutUrl?: string;
     paymentLinkId?: string;
-}
-
-// Bank Default Settings (Configurable via Environment Variables)
-export function getBankConfig() {
-    return {
-        bankId: (process.env.VIETQR_BANK_ID || "TCB").trim(), // TCB, VCB, MB, ACB, VPB, etc.
-        bankName: (process.env.VIETQR_BANK_NAME || "Techcombank").trim(),
-        accountNo: (process.env.VIETQR_ACCOUNT_NO || "19036348292019").trim(),
-        accountName: (process.env.VIETQR_ACCOUNT_NAME || "HUYNH CAM TAI").trim(),
-    };
 }
 
 /**
