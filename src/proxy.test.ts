@@ -180,7 +180,7 @@ describe("proxy API pipeline", () => {
       },
     });
     const res = await proxy(
-      apiRequest("/api/v1/sheets/query", {
+      apiRequest("/api/v1/sheets/auth", {
         method: "OPTIONS",
         headers: { origin: "https://script.google.com" },
       }),

@@ -3,6 +3,17 @@ import prisma from '@/lib/prisma';
 import { logger } from "@/lib/logger";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
 
+function invalidTokenResponse() {
+  return NextResponse.json(
+    { error: 'invalid_token', message: 'Google token is invalid or expired. Please reopen the add-on.' },
+    { status: 401 },
+  );
+}
+
+function invalidRequestResponse(message: string) {
+  return NextResponse.json({ error: 'invalid_request', message }, { status: 400 });
+}
+
 /**
  * POST /api/v1/sheets/auth
  * Body: { googleToken }
@@ -12,20 +23,28 @@ import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/go
  * No API key, no login — the token comes from ScriptApp.getOAuthToken().
  */
 export async function POST(req: Request) {
+  let body: unknown;
   try {
-    const { googleToken } = await req.json();
-    if (!googleToken) {
-      return NextResponse.json({ error: 'Missing Google token' }, { status: 400 });
-    }
+    body = await req.json();
+  } catch {
+    return invalidRequestResponse('Request body must be valid JSON.');
+  }
 
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return invalidRequestResponse('Request body must be a JSON object.');
+  }
+
+  const googleToken = (body as Record<string, unknown>).googleToken;
+  if (typeof googleToken !== 'string' || googleToken.trim() === '') {
+    return invalidTokenResponse();
+  }
+
+  try {
     const verification = await verifyGoogleIdToken(googleToken, {
       audiences: getGoogleIdTokenAudienceAllowlist(),
     });
     if (!verification) {
-      return NextResponse.json(
-        { error: 'invalid_token', message: 'Google token is invalid or expired. Please reopen the add-on.' },
-        { status: 401 },
-      );
+      return invalidTokenResponse();
     }
 
     // Find user in our DB
