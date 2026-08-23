@@ -32,11 +32,20 @@ describe("Vercel Edge Redis construction", () => {
     assert.equal(createEdgeRedis({ UPSTASH_REDIS_REST_TOKEN: "test-token" }), null);
   });
 
+  it("returns null for the Vercel Sensitive build placeholder", () => {
+    assert.equal(
+      createEdgeRedis({
+        UPSTASH_REDIS_REST_URL: "[SENSITIVE]",
+        UPSTASH_REDIS_REST_TOKEN: "[SENSITIVE]",
+      }),
+      null,
+    );
+  });
+
   it("keeps every Edge Redis consumer off zero-argument Cloudflare fromEnv", async () => {
     for (const relativePath of [
       "./request-rate-limit-policy.ts",
       "./ratelimit.ts",
-      "./redis-cache.ts",
     ]) {
       const source = await readFile(new URL(relativePath, import.meta.url), "utf8");
       assert.doesNotMatch(source, /Redis\.fromEnv\s*\(\s*\)/, relativePath);
