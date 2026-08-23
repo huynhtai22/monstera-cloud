@@ -286,6 +286,106 @@ function emitRateLimitEvent(fields: Record<string, unknown>): void {
   console.warn(JSON.stringify({ scope: "ratelimit", ts: new Date().toISOString(), ...fields }));
 }
 
+export type ExternalLimiterFailureCategory =
+  | "missing_runtime_env"
+  | "timeout"
+  | "network"
+  | "http_401"
+  | "http_403"
+  | "http_429"
+  | "http_5xx"
+  | "unknown";
+
+type RuntimeLimiterEnvShape = {
+  runtimeUrlPresent: boolean;
+  runtimeTokenPresent: boolean;
+};
+
+function runtimeLimiterEnvShape(): RuntimeLimiterEnvShape {
+  return {
+    runtimeUrlPresent: Boolean(process.env.UPSTASH_REDIS_REST_URL),
+    runtimeTokenPresent: Boolean(process.env.UPSTASH_REDIS_REST_TOKEN),
+  };
+}
+
+function errorClassificationText(error: unknown): string {
+  if (!error || typeof error !== "object") return String(error ?? "").toLowerCase();
+  const value = error as {
+    name?: unknown;
+    message?: unknown;
+    code?: unknown;
+    cause?: { name?: unknown; message?: unknown; code?: unknown };
+  };
+  return [
+    value.name,
+    value.message,
+    value.code,
+    value.cause?.name,
+    value.cause?.message,
+    value.cause?.code,
+  ].map((part) => String(part ?? "")).join(" ").toLowerCase();
+}
+
+function errorHttpStatus(error: unknown, text: string): number | undefined {
+  if (error && typeof error === "object") {
+    const value = error as { status?: unknown; statusCode?: unknown; response?: { status?: unknown } };
+    for (const candidate of [value.status, value.statusCode, value.response?.status]) {
+      if (typeof candidate === "number" && Number.isInteger(candidate)) return candidate;
+    }
+  }
+  if (/\b401\b|unauthori[sz]ed/.test(text)) return 401;
+  if (/\b403\b|forbidden/.test(text)) return 403;
+  if (/\b429\b|too many requests/.test(text)) return 429;
+  const serverStatus = /\b(5\d{2})\b/.exec(text);
+  return serverStatus ? Number(serverStatus[1]) : undefined;
+}
+
+/** Classifies an external limiter failure without returning or logging error data. */
+export function classifyExternalLimiterFailure(
+  error: unknown,
+  runtimeEnv: RuntimeLimiterEnvShape,
+): ExternalLimiterFailureCategory {
+  if (!runtimeEnv.runtimeUrlPresent || !runtimeEnv.runtimeTokenPresent) {
+    return "missing_runtime_env";
+  }
+
+  const text = errorClassificationText(error);
+  if (/timeout|timed out|aborterror|aborted/.test(text)) return "timeout";
+
+  const status = errorHttpStatus(error, text);
+  if (status === 401) return "http_401";
+  if (status === 403) return "http_403";
+  if (status === 429) return "http_429";
+  if (status !== undefined && status >= 500 && status <= 599) return "http_5xx";
+
+  if (
+    /enotfound|eai_again|econnrefused|econnreset|enetunreach|ehostunreach|fetch failed|networkerror|network error|socket hang up/.test(text)
+  ) {
+    return "network";
+  }
+  return "unknown";
+}
+
+function isExternalRouteClass(routeClass: RateLimitRouteClass): boolean {
+  return routeClass === "external-sheets" || routeClass === "external-addon" || routeClass === "external-looker";
+}
+
+function emitExternalLimiterFailure(
+  routeClass: RateLimitRouteClass,
+  limiterTier: TierCheck["identityKind"],
+  error: unknown,
+): void {
+  const runtimeEnv = runtimeLimiterEnvShape();
+  // Deliberately allowlisted payload: never add error objects, messages,
+  // headers, request identifiers, credentials, or network locations here.
+  console.warn(JSON.stringify({
+    routeClass,
+    limiterTier,
+    ...runtimeEnv,
+    failureCategory: classifyExternalLimiterFailure(error, runtimeEnv),
+  }));
+}
+
 function rateLimitedResponse(input: {
   routeClass: RateLimitRouteClass;
   retryAfterSeconds: number;
@@ -414,7 +514,11 @@ async function enforceTier(
     switch (policy.onFailure) {
       case "fail-closed-in-production":
         if (isProduction) {
-          emitRateLimitEvent({ event: "limiter_missing_fail_closed", routeClass, env: "production", tier: tier.identityKind });
+          if (isExternalRouteClass(routeClass)) {
+            emitExternalLimiterFailure(routeClass, tier.identityKind, undefined);
+          } else {
+            emitRateLimitEvent({ event: "limiter_missing_fail_closed", routeClass, env: "production", tier: tier.identityKind });
+          }
           return {
             outcome: "failed-closed",
             response: rateLimitedResponse({ routeClass, retryAfterSeconds: 30, status: 503 }),
@@ -438,6 +542,8 @@ async function enforceTier(
     return { outcome: "allowed", decision };
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
+    const externalFailure = isExternalRouteClass(routeClass);
+    if (externalFailure) emitExternalLimiterFailure(routeClass, tier.identityKind, err);
     switch (policy.onFailure) {
       case "fail-open": {
         emitRateLimitEvent({ event: "limiter_error_fail_open", routeClass, message, tier: tier.identityKind });
@@ -445,13 +551,17 @@ async function enforceTier(
       }
       case "fail-closed-in-production": {
         if (isProduction) {
-          emitRateLimitEvent({ event: "limiter_error_fail_closed", routeClass, env: "production", message, tier: tier.identityKind });
+          if (!externalFailure) {
+            emitRateLimitEvent({ event: "limiter_error_fail_closed", routeClass, env: "production", message, tier: tier.identityKind });
+          }
           return {
             outcome: "failed-closed",
             response: rateLimitedResponse({ routeClass, retryAfterSeconds: 30, status: 503 }),
           };
         }
-        emitRateLimitEvent({ event: "limiter_error_fallback_local", routeClass, env: "development", message, tier: tier.identityKind });
+        if (!externalFailure) {
+          emitRateLimitEvent({ event: "limiter_error_fallback_local", routeClass, env: "development", message, tier: tier.identityKind });
+        }
         return localFallback("error-fallback");
       }
       case "bounded-fallback":

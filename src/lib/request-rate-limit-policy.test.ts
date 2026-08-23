@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import {
+  classifyExternalLimiterFailure,
   classifyApiRoute,
   enforceRequestLimit,
   resolveLimiterIdentity,
@@ -49,6 +50,11 @@ const THROWING_LIMITER = limiterFrom(async () => {
   throw new Error("upstash connection refused");
 });
 const HANGING_LIMITER = limiterFrom(() => new Promise<RateLimitDecision>(() => {}));
+
+const RUNTIME_ENV_PRESENT = {
+  runtimeUrlPresent: true,
+  runtimeTokenPresent: true,
+};
 
 function apiRequest(pathname: string, headers: Record<string, string> = {}, method = "GET"): Request {
   return new Request(`https://app.example.test${pathname}`, { method, headers });
@@ -148,6 +154,76 @@ describe("limiter identity tiers", () => {
   });
 });
 
+describe("external limiter failure diagnostics", () => {
+  it("classifies every allowlisted failure category", () => {
+    assert.equal(
+      classifyExternalLimiterFailure(new Error("anything"), {
+        runtimeUrlPresent: false,
+        runtimeTokenPresent: true,
+      }),
+      "missing_runtime_env",
+    );
+    assert.equal(classifyExternalLimiterFailure(new Error("ratelimit timeout"), RUNTIME_ENV_PRESENT), "timeout");
+    assert.equal(
+      classifyExternalLimiterFailure(Object.assign(new TypeError("fetch failed"), { cause: { code: "ENOTFOUND" } }), RUNTIME_ENV_PRESENT),
+      "network",
+    );
+    for (const [status, category] of [
+      [401, "http_401"],
+      [403, "http_403"],
+      [429, "http_429"],
+      [500, "http_5xx"],
+      [503, "http_5xx"],
+    ] as const) {
+      assert.equal(classifyExternalLimiterFailure({ status }, RUNTIME_ENV_PRESENT), category);
+    }
+    assert.equal(classifyExternalLimiterFailure(new Error("unclassified failure"), RUNTIME_ENV_PRESENT), "unknown");
+  });
+
+  it("logs only the safe schema even when an error contains secret-shaped data", async () => {
+    const secretUrl = "https://secret-host.upstash.io";
+    const secretToken = "secret-token-that-must-never-appear";
+    const secretIp = "203.0.113.99";
+    const savedUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const savedToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = secretUrl;
+    process.env.UPSTASH_REDIS_REST_TOKEN = secretToken;
+    const messages: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { messages.push(args.map(String).join(" ")); };
+    try {
+      const limiter = limiterFrom(async () => {
+        throw new Error(`401 ${secretUrl} Bearer ${secretToken} x-forwarded-for=${secretIp}`);
+      });
+      const result = await enforceRequestLimit(
+        apiRequest("/api/v1/sheets/auth", { "x-forwarded-for": secretIp }),
+        "/api/v1/sheets/auth",
+        { limiters: { "external-sheets:ip": limiter }, isProduction: true },
+      );
+      assert.equal(result.outcome, "failed-closed");
+    } finally {
+      console.warn = originalWarn;
+      if (savedUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = savedUrl;
+      if (savedToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = savedToken;
+    }
+
+    assert.equal(messages.length, 1);
+    const serialized = messages[0];
+    for (const forbidden of [secretUrl, secretToken, secretIp, "Bearer", "x-forwarded-for", "stack"]) {
+      assert.equal(serialized.includes(forbidden), false, forbidden);
+    }
+    assert.deepEqual(JSON.parse(serialized), {
+      routeClass: "external-sheets",
+      limiterTier: "outer-ip",
+      runtimeUrlPresent: true,
+      runtimeTokenPresent: true,
+      failureCategory: "http_401",
+    });
+  });
+});
+
 describe("enforcement failure policies", () => {
   let savedEnv: Record<string, string | undefined>;
   beforeEach(() => {
@@ -232,8 +308,12 @@ describe("enforcement failure policies", () => {
       const response = (result as { response: Response }).response;
       assert.equal(response.status, 503);
       assert.equal(response.headers.get("retry-after"), "30");
-      const body = (await response.json()) as { code?: string };
-      assert.equal(body.code, "limiter_unavailable");
+      assert.deepEqual(await response.json(), {
+        error: "Rate limiter temporarily unavailable, retry shortly",
+        code: "limiter_unavailable",
+        routeClass,
+        retryAfterSeconds: 30,
+      });
     }
   });
 
