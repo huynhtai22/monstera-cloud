@@ -65,16 +65,16 @@ export async function GET(req: Request) {
   // Enqueue due pipelines for a ~4-hour cadence (respects plan cooldowns).
   // This keeps the queue filled even if nothing explicitly enqueues jobs elsewhere.
   // Fleet sweep across all workspaces — requires the explicit system scope.
-  const pipelines = await withSystemScope(() =>
-    prisma.pipeline.findMany({
+  const pipelines = await withSystemScope(async () => {
+    return await prisma.pipeline.findMany({
       where: { status: "active" },
       select: {
         id: true,
         lastSyncedAt: true,
         workspace: { select: { ownerId: true, plan: true } },
       },
-    }),
-  );
+    });
+  });
 
   const pipelineIds = pipelines.map((p) => p.id);
   const pipelinesWithPendingJobs = pipelineIds.length > 0

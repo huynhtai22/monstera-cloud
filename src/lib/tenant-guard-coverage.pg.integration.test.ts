@@ -180,15 +180,17 @@ describe("PostgreSQL integration: tenant-guard coverage", () => {
 
     it("preserves fleet system-worker semantics through explicit withSystemScope", async () => {
         if (!dbAvailable) return;
-        const fleetPipelines = await withSystemScope(() => prisma.pipeline.findMany({}));
+        const fleetPipelines = await withSystemScope(async () => {
+            return await prisma.pipeline.findMany({});
+        });
         assert.ok(Array.isArray(fleetPipelines));
 
-        const fleetBulk = await withSystemScope(() =>
-            prisma.pipeline.updateMany({
+        const fleetBulk = await withSystemScope(async () => {
+            return await prisma.pipeline.updateMany({
                 where: { id: `no-such-${suffix}` },
                 data: { healthStatus: "stale" },
-            }),
-        );
+            });
+        });
         assert.equal(fleetBulk.count, 0);
 
         // System scope is bounded to the callback — it does not leak outwards.

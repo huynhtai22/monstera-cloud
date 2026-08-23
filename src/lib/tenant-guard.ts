@@ -100,10 +100,18 @@ function nodeHasWorkspaceScope(node: unknown, depth = 0): boolean {
     const workspace = record.workspace as Record<string, unknown>;
     if (isNonEmptyString(workspace.id) || isNonEmptyString(workspace.workspaceId)) return true;
     if ("members" in workspace) return true;
-    if (workspace.is && nodeHasWorkspaceScope(workspace.is, depth + 1)) return true;
+    if (workspace.is && typeof workspace.is === "object") {
+      const relationTarget = workspace.is as Record<string, unknown>;
+      if (isNonEmptyString(relationTarget.id) || isNonEmptyString(relationTarget.workspaceId)) return true;
+      if (nodeHasWorkspaceScope(relationTarget, depth + 1)) return true;
+    }
   }
 
-  if (record.pipeline && nodeHasWorkspaceScope(record.pipeline, depth + 1)) return true;
+  if (record.pipeline && typeof record.pipeline === "object") {
+    const pipeline = record.pipeline as Record<string, unknown>;
+    const pipelineNode = pipeline.is ?? pipeline;
+    if (nodeHasWorkspaceScope(pipelineNode, depth + 1)) return true;
+  }
 
   if (Array.isArray(record.AND) && record.AND.some((item) => nodeHasWorkspaceScope(item, depth + 1))) {
     return true;
