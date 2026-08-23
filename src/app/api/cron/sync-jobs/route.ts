@@ -6,6 +6,7 @@ import { logger } from "@/lib/logger";
 import { requireCronSecret } from "@/lib/request-auth";
 import { isPilotMode } from "@/lib/pilot-mode";
 import { evaluateStaleHealth } from "@/lib/ingestion/stale-health";
+import { withSystemScope } from "@/lib/tenant-guard";
 
 /**
  * GET /api/cron/sync-jobs
@@ -63,13 +64,16 @@ export async function GET(req: Request) {
 
   // Enqueue due pipelines for a ~4-hour cadence (respects plan cooldowns).
   // This keeps the queue filled even if nothing explicitly enqueues jobs elsewhere.
-  const pipelines = await prisma.pipeline.findMany({
-    where: { status: "active" },
-    select: {
-      id: true,
-      lastSyncedAt: true,
-      workspace: { select: { ownerId: true, plan: true } },
-    },
+  // Fleet sweep across all workspaces — requires the explicit system scope.
+  const pipelines = await withSystemScope(async () => {
+    return await prisma.pipeline.findMany({
+      where: { status: "active" },
+      select: {
+        id: true,
+        lastSyncedAt: true,
+        workspace: { select: { ownerId: true, plan: true } },
+      },
+    });
   });
 
   const pipelineIds = pipelines.map((p) => p.id);
