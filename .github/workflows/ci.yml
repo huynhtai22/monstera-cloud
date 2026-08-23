@@ -49,6 +49,11 @@ jobs:
       - run: npm run build
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
-      - name: Critical browser journeys
-        run: npm run test:e2e:smoke
+      - name: Full browser QA journeys (isolated e2e database)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -c 'CREATE DATABASE monstera_e2e'
+          npx prisma migrate deploy
+          npm run test:e2e
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
       - run: npm audit --omit=dev --audit-level=high
