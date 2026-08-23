@@ -16,8 +16,8 @@
 
 | Step | Action | Expected (factual) | Result |
 |------|--------|-------------------|--------|
-| A1 | Open `https://monsteracloud.com` | Page loads; nav shows **Log in**, **Start free trial** | |
-| A2 | Click **Log in** | URL is `/login`; heading **Welcome back**; **Continue with Google** visible | |
+| A1 | Open `https://monsteracloud.com` | Page loads; nav shows **Log in**, **Start free** | |
+| A2 | Click **Log in** | URL is `/login`; heading **Log in to Monstera Cloud**; **Continue with Google** visible | |
 | A3 | Wrong password submit | Red message: **Invalid email or password** | |
 | A4 | Sign in with **valid** credentials (email or Google) | Redirect to **`/console`** (unless `callbackUrl` is set—then that path) | |
 | A5 | Open `/login` again while signed in | Brief spinner, then redirect away from login (session recognized) | |
