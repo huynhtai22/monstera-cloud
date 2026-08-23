@@ -1,5 +1,5 @@
 import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
+import { createNodeRedis } from "./node-redis";
 
 type LocalBucket = { count: number; resetsAt: number };
 const globalBuckets = globalThis as typeof globalThis & { __monsteraAuthBuckets?: Map<string, LocalBucket> };
@@ -23,9 +23,10 @@ export async function allowAuthAttempt(input: {
   windowSeconds: number;
 }): Promise<boolean> {
   const key = `${input.action}:${requestIp(input.request)}:${input.identity?.trim().toLowerCase() || "anonymous"}`;
-  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+  const redis = createNodeRedis();
+  if (redis) {
     const limiter = new Ratelimit({
-      redis: Redis.fromEnv(),
+      redis,
       limiter: Ratelimit.slidingWindow(input.limit, `${input.windowSeconds} s`),
       prefix: "monstera:auth",
       analytics: false,
