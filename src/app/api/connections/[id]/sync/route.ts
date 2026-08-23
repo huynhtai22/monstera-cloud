@@ -89,12 +89,21 @@ export async function POST(
       safeDecrypt(connection.credentials)
     ) as Record<string, unknown>;
 
-    // Force unlock: clear any existing locks before starting
+    // Force unlock: expire any existing leases before starting. Rows are kept
+    // (status flipped + expiry zeroed) so fencingToken stays monotonic across
+    // unlock generations; the next claim increments it rather than restarting.
     if (force && connection.provider === "meta_ads") {
       logger.info(`[Sync Route] Force unlock requested for connection ${connectionId}`);
       const scopePrefix = `meta_ads:${connection.workspaceId}:${connectionId}:`;
       try {
-        await prisma.$executeRaw`DELETE FROM "SyncLock" WHERE scope LIKE ${scopePrefix + '%'}`;
+        await prisma.syncLock.updateMany({
+          where: { scope: { startsWith: scopePrefix } },
+          data: {
+            status: "released",
+            heartbeatAt: new Date(),
+            leaseExpiresAt: new Date(0),
+          },
+        });
       } catch (lockErr) {
         logger.warn(`[Sync Route] Failed to clear locks during force unlock:`, lockErr);
       }

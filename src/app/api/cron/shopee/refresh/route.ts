@@ -12,6 +12,10 @@ import {
 import { encrypt, safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { requireCronSecret } from "@/lib/request-auth";
+import {
+  acquireConnectionSyncLease,
+  releaseConnectionSyncLease,
+} from "@/lib/connection-sync-lease";
 
 export async function GET(request: Request) {
   try {
@@ -54,44 +58,68 @@ export async function GET(request: Request) {
 
         logger.info(`[CRON: SHOPEE REFRESH] Refreshing connection ${conn.id}`);
 
-        const isSandbox =
-          creds.sandbox === true || isShopeeSandboxEnabled();
-        const newTokenData = await shopeeClient.refreshAccessToken(
-          creds.refresh_token,
-          creds.shop_id,
-          isSandbox
-        );
-
-        const updated = normalizeStoredShopeeCreds({
-          access_token: newTokenData.access_token,
-          refresh_token: newTokenData.refresh_token,
-          expire_in: newTokenData.expire_in ?? SHOPEE_DEFAULT_EXPIRE_IN_SEC,
-          shop_id: creds.shop_id,
-          sandbox: isSandbox,
+        // Shopee refresh tokens are effectively single-use: two overlapping
+        // workers (cron vs cron, or cron vs in-flight sync) must not both call
+        // the token endpoint. The connection lease also avoids swapping
+        // credentials underneath an active sync.
+        const leaseAttempt = await acquireConnectionSyncLease({
+          provider: "shopee",
+          workspaceId: conn.workspaceId,
+          connectionId: conn.id,
+          jobId: "fleet-token-refresh",
         });
+        if (!leaseAttempt.acquired) {
+          logger.info(
+            `[CRON: SHOPEE REFRESH] Skip ${conn.id}: connection busy (${leaseAttempt.reason}); next cycle will retry`
+          );
+          continue;
+        }
+        const lease = leaseAttempt.lease;
+        let refreshSucceeded = false;
 
-        await prismaBase.connection.update({
-          where: { id: conn.id },
-          data: {
-            credentials: encrypt(
-              JSON.stringify(
-                serializeShopeeStoredCreds(updated, { markTokenFresh: true })
-              )
-            ),
-          },
-        });
+        try {
+          const isSandbox =
+            creds.sandbox === true || isShopeeSandboxEnabled();
+          const newTokenData = await shopeeClient.refreshAccessToken(
+            creds.refresh_token,
+            creds.shop_id,
+            isSandbox
+          );
 
-        await prismaBase.auditEvent.create({
-          data: {
-            workspaceId: conn.workspaceId,
-            action: "system.shopee_token_refreshed",
-            resource: "connection",
-            resourceId: conn.id,
-            metadata: { provider: "shopee" },
-          },
-        });
+          const updated = normalizeStoredShopeeCreds({
+            access_token: newTokenData.access_token,
+            refresh_token: newTokenData.refresh_token,
+            expire_in: newTokenData.expire_in ?? SHOPEE_DEFAULT_EXPIRE_IN_SEC,
+            shop_id: creds.shop_id,
+            sandbox: isSandbox,
+          });
 
-        refreshedCount++;
+          await prismaBase.connection.update({
+            where: { id: conn.id },
+            data: {
+              credentials: encrypt(
+                JSON.stringify(
+                  serializeShopeeStoredCreds(updated, { markTokenFresh: true })
+                )
+              ),
+            },
+          });
+
+          await prismaBase.auditEvent.create({
+            data: {
+              workspaceId: conn.workspaceId,
+              action: "system.shopee_token_refreshed",
+              resource: "connection",
+              resourceId: conn.id,
+              metadata: { provider: "shopee" },
+            },
+          });
+
+          refreshedCount++;
+          refreshSucceeded = true;
+        } finally {
+          await releaseConnectionSyncLease(lease, refreshSucceeded);
+        }
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         logger.error(
