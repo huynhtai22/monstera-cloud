@@ -1,12 +1,17 @@
 /**
  * Generic ad platform ingestion for CampaignMetric.
- * 
- * Unlike Meta which has complex distributed locking, this uses simple upserts
- * for Google Ads and TikTok manual syncs.
+ *
+ * Callers inside a connection-sync lease pass `lease` so rows are stamped with
+ * lockScope/fencingToken evidence and the loop heartbeats + self-aborts when
+ * the lease is lost. Callers without a lease keep the legacy unfenced behavior.
  */
 
 import prisma from '@/lib/prisma';
 import { logger } from '@/lib/logger';
+import {
+  heartbeatConnectionSyncLease,
+  type ConnectionLease,
+} from '@/lib/connection-sync-lease';
 
 export interface CampaignMetricPayload {
   workspaceId: string;
@@ -35,11 +40,15 @@ export interface CampaignMetricPayload {
   currency?: string;
   rawData?: unknown;
   syncJobId?: string;
+  /** When present, the row is stamped with lease evidence and ingestion is fenced. */
+  lease?: ConnectionLease;
 }
 
 /**
  * Upsert a campaign metric row.
- * Simple version without distributed locking (used for Google Ads, TikTok).
+ * Pass `lease` to stamp lease evidence (lockScope + fencingToken) onto the row;
+ * without it the write is unfenced (legacy behavior for callers outside a
+ * connection-lease scope).
  */
 export async function upsertCampaignMetric(
   payload: CampaignMetricPayload
@@ -71,6 +80,7 @@ export async function upsertCampaignMetric(
     currency,
     rawData,
     syncJobId,
+    lease,
   } = payload;
 
   // Do not manufacture a USD label when a provider did not supply currency.
@@ -131,6 +141,8 @@ export async function upsertCampaignMetric(
       rawData: rawData ? JSON.stringify(rawData) : null,
       syncJobId: syncJobId ?? null,
       pulledAt: new Date(),
+      lockScope: lease?.scope ?? null,
+      fencingToken: lease?.fencingToken ?? null,
     },
     update: {
       accountName: accountName ?? null,
@@ -152,8 +164,32 @@ export async function upsertCampaignMetric(
       rawData: rawData ? JSON.stringify(rawData) : null,
       syncJobId: syncJobId ?? null,
       pulledAt: new Date(),
+      lockScope: lease?.scope ?? null,
+      fencingToken: lease?.fencingToken ?? null,
     },
   });
+}
+
+const FENCED_HEARTBEAT_INTERVAL_ROWS = 100;
+
+/**
+ * Shared row-loop for fenced ingestion: heartbeats the connection lease every
+ * FENCED_HEARTBEAT_INTERVAL_ROWS so a worker that lost its lease (expiry +
+ * steal) stops writing rows instead of continuing as a zombie generation.
+ * Returns false when the lease was lost mid-loop.
+ */
+async function fencedHeartbeat(
+  lease: ConnectionLease | undefined,
+  processedRows: number,
+): Promise<boolean> {
+  if (!lease || processedRows % FENCED_HEARTBEAT_INTERVAL_ROWS !== 0) return true;
+  try {
+    await heartbeatConnectionSyncLease(lease);
+    return true;
+  } catch (error) {
+    logger.warn('[AD_INGEST] Lease lost during ingestion; aborting remaining rows', error);
+    return false;
+  }
 }
 
 /**
@@ -182,12 +218,25 @@ export async function ingestGoogleAdsRows(
     accountId: string;
     accountName?: string;
     syncJobId: string;
+    lease?: ConnectionLease;
   }
 ): Promise<{ upserted: number; failed: number }> {
   let upserted = 0;
   let failed = 0;
 
+  if (opts.lease) {
+    try {
+      await heartbeatConnectionSyncLease(opts.lease);
+    } catch {
+      return { upserted: 0, failed: rows.length };
+    }
+  }
+
   for (const row of rows) {
+    if (!(await fencedHeartbeat(opts.lease, upserted + failed))) {
+      failed += rows.length - upserted - failed;
+      break;
+    }
     try {
       if (!row.date || !row.campaign_id) {
         failed++;
@@ -224,6 +273,7 @@ export async function ingestGoogleAdsRows(
         currency: row.currency,
         rawData: row.raw,
         syncJobId: opts.syncJobId,
+        lease: opts.lease,
       });
 
       upserted++;
@@ -251,12 +301,25 @@ export async function ingestTiktokRows(
     accountId: string;
     accountName?: string;
     syncJobId: string;
+    lease?: ConnectionLease;
   }
 ): Promise<{ upserted: number; failed: number }> {
   let upserted = 0;
   let failed = 0;
 
+  if (opts.lease) {
+    try {
+      await heartbeatConnectionSyncLease(opts.lease);
+    } catch {
+      return { upserted: 0, failed: rows.length };
+    }
+  }
+
   for (const row of rows) {
+    if (!(await fencedHeartbeat(opts.lease, upserted + failed))) {
+      failed += rows.length - upserted - failed;
+      break;
+    }
     try {
       const dims = row.dimensions || {};
       const metrics = row.metrics || {};
@@ -316,6 +379,7 @@ export async function ingestTiktokRows(
         currency,
         rawData: row.raw ?? { dimensions: dims, metrics },
         syncJobId: opts.syncJobId,
+        lease: opts.lease,
       });
 
       upserted++;

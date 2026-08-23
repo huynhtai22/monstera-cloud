@@ -11,19 +11,22 @@ Production-capable architecture, suitable for controlled pilot use, with documen
 
 ### 1. Overlapping connection sync protection
 
-**Status:** P1 / pending hardening
+**Status:** Implemented (2026-08-24, PR pending merge at time of writing) — verified by real-PostgreSQL concurrency suites.
 
-Manual, cron, retry, pipeline, or warehouse-triggered syncs may overlap for the same connection unless the PostgreSQL-backed connection lease/fencing implementation is completed and verified.
+Connection-scoped PostgreSQL lease with fencing token is implemented in `src/lib/connection-sync-lease.ts` (advisory xact lock + `SyncLock` lease row + monotonic `fencingToken`, 20-minute lease with heartbeat renewal). All execution paths (manual sync, cron warehouse refresh, batch import, OAuth backfill, pipeline pre-sync) funnel through `syncConnectionData`, which acquires the lease and fences outcome persistence.
 
-**Planned:**
+Coverage as of this hardening pass:
 
-- Connection-scoped PostgreSQL lease.
-- Fencing generation/token.
-- Owner-safe release.
-- Expired lease recovery.
-- Real PostgreSQL concurrency verification.
+- Outcome persistence (`lastSyncAt`/`lastError`/`status`) is lease-fenced everywhere, including pipeline runs, which now hold source + destination leases across ETL.
+- Row-level ingestion is fenced for all providers: Meta per-ad-account leases, and Google Ads / TikTok / Shopee / Lazada via `upsertCampaignMetric` lease stamping + heartbeat self-abort.
+- Shopee fleet token refresh holds the connection lease (refresh tokens are single-use; overlapping refreshes are skipped until the next cycle).
+- Admin force-unlock expires lease rows instead of deleting them, preserving `fencingToken` monotonicity.
 
-Do before broad GA.
+**Remaining notes (accepted):**
+
+- `WarehouseImportJob` uses leaseId + expiry CAS fencing without a monotonic token column (safe; less forensic detail).
+- A non-fenced `lastError` write remains on the warehouse-refresh error path (best-effort diagnostics write).
+- Stale-worker protection is application-layer enforcement, not PostgreSQL RLS.
 
 ### 2. Deleted / missing provider row reconciliation
 

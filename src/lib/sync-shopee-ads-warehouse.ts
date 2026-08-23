@@ -7,6 +7,7 @@
 import { logger } from "@/lib/logger";
 import { getValidShopeeCreds, shopeeAdsClient } from "@/lib/shopee";
 import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";
+import { heartbeatConnectionSyncLease, type ConnectionLease } from "@/lib/connection-sync-lease";
 import {
   mapShopeeRowToCampaignMetricPayload,
   parseShopeeAdsRowDate,
@@ -35,13 +36,19 @@ function isBenignAdsFailure(message: string): boolean {
 }
 
 async function upsertPayloadsInChunks(
-  payloads: Awaited<ReturnType<typeof mapShopeeRowToCampaignMetricPayload>>[]
+  payloads: Awaited<ReturnType<typeof mapShopeeRowToCampaignMetricPayload>>[],
+  lease?: ConnectionLease
 ): Promise<number> {
   const valid = payloads.filter((p): p is NonNullable<typeof p> => p != null);
   let upserted = 0;
   for (let i = 0; i < valid.length; i += UPSERT_CHUNK_SIZE) {
+    if (lease) {
+      await heartbeatConnectionSyncLease(lease);
+    }
     const chunk = valid.slice(i, i + UPSERT_CHUNK_SIZE);
-    await Promise.all(chunk.map((payload) => upsertCampaignMetric(payload)));
+    await Promise.all(
+      chunk.map((payload) => upsertCampaignMetric({ ...payload, lease }))
+    );
     upserted += chunk.length;
   }
   return upserted;
@@ -57,6 +64,7 @@ export async function syncShopeeAdsWarehouseMetrics(opts: {
   userPlan: string;
   since: string;
   until: string;
+  lease?: ConnectionLease;
 }): Promise<MarketplaceSyncResult> {
   if (isShopeeAdsSyncDisabled()) {
     logger.info("[syncShopeeAdsWarehouse] Skipped (SHOPEE_ADS_SYNC disabled)");
@@ -156,7 +164,7 @@ export async function syncShopeeAdsWarehouseMetrics(opts: {
       return { success: true, rowsIngested: 0 };
     }
 
-    const upserted = await upsertPayloadsInChunks(payloads);
+    const upserted = await upsertPayloadsInChunks(payloads, opts.lease);
 
     logger.info(
       `[syncShopeeAdsWarehouse] ${upserted} granular rows for ${connectionId}`,

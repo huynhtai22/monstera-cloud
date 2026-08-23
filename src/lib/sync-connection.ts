@@ -148,6 +148,7 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
         connectionId,
         workspaceId,
         userPlan: plan,
+        lease,
         ...range,
       });
       if (!orders.success) {
@@ -160,6 +161,7 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
         connectionId,
         workspaceId,
         userPlan: plan,
+        lease,
         ...range,
       });
       if (!ads.success) {
@@ -183,6 +185,7 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
         connectionId,
         workspaceId,
         userPlan: plan,
+        lease,
         since: opts.since ?? r.since,
         until: opts.until ?? r.until,
       });
@@ -683,6 +686,7 @@ async function syncGoogleAds(opts: {
         accountId: customerId,
         accountName: descriptiveName,
         syncJobId: jobId,
+        lease,
       });
 
       logger.info(`[syncGoogleAds] customerId=${customerId} upserted=${result.upserted} failed=${result.failed}`);
@@ -796,7 +800,7 @@ async function syncTikTok(opts: {
       if (credentials.sandbox === true) {
         const rows = await tiktokReportClient.getSyncReport(accessToken, taskParams);
         const result = rows.length > 0
-          ? await ingestTiktokRows(rows, { workspaceId, connectionId, accountId: advertiserId, accountName: `Advertiser ${advertiserId}`, syncJobId: jobId })
+          ? await ingestTiktokRows(rows, { workspaceId, connectionId, accountId: advertiserId, accountName: `Advertiser ${advertiserId}`, syncJobId: jobId, lease })
           : { upserted: 0, failed: 0 };
         children.push({ id: String(advertiserId), kind: "advertiser", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
         continue;
@@ -823,6 +827,7 @@ async function syncTikTok(opts: {
             accountId: advertiserId,
             accountName: `Advertiser ${advertiserId}`,
             syncJobId: jobId,
+            lease,
           });
 
           children.push({ id: String(advertiserId), kind: "advertiser", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });

@@ -7,6 +7,7 @@ import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getValidShopeeCreds, shopeeDataClient } from "@/lib/shopee";
 import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";
+import { heartbeatConnectionSyncLease, type ConnectionLease } from "@/lib/connection-sync-lease";
 import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { lazadaOrdersGet } from "@/lib/lazada";
@@ -32,6 +33,7 @@ export async function syncShopeeWarehouseMetrics(opts: {
   userPlan: string;
   since: string;
   until: string;
+  lease?: ConnectionLease;
 }): Promise<MarketplaceSyncResult> {
   const { connectionId, workspaceId } = opts;
   const { since, until } = opts;
@@ -51,6 +53,9 @@ export async function syncShopeeWarehouseMetrics(opts: {
     let cursor = "";
 
     for (;;) {
+      if (opts.lease) {
+        await heartbeatConnectionSyncLease(opts.lease);
+      }
       const listData = await shopeeDataClient.getOrderList(
         apiOpts,
         rangeStart,
@@ -128,6 +133,7 @@ export async function syncShopeeWarehouseMetrics(opts: {
         currency: undefined,
         rawData: { source: "shopee_order_rollup", day: dayStr },
         syncJobId: jobId,
+        lease: opts.lease,
       });
       upserted += 1;
     }
@@ -153,6 +159,7 @@ export async function syncLazadaWarehouseMetrics(opts: {
   userPlan: string;
   since: string;
   until: string;
+  lease?: ConnectionLease;
 }): Promise<MarketplaceSyncResult> {
   const { connectionId, workspaceId } = opts;
   const range = { since: opts.since, until: opts.until };
@@ -190,6 +197,9 @@ export async function syncLazadaWarehouseMetrics(opts: {
     const pageSize = 100;
 
     for (;;) {
+      if (opts.lease) {
+        await heartbeatConnectionSyncLease(opts.lease);
+      }
       const page = await lazadaOrdersGet(accessToken, {
         created_after: createdAfter,
         created_before: createdBefore,
@@ -263,6 +273,7 @@ export async function syncLazadaWarehouseMetrics(opts: {
         currency: undefined,
         rawData: { source: "lazada_order_rollup", day: dayStr },
         syncJobId: jobId,
+        lease: opts.lease,
       });
       upserted += 1;
     }

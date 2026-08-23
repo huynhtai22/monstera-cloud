@@ -113,6 +113,32 @@ export async function assertConnectionSyncLease(lease: ConnectionLease): Promise
   }
 }
 
+/**
+ * Extend the caller's lease and prove continued ownership in one atomic write.
+ * Throws when the lease expired or was stolen, so long-running phases
+ * (marketplace pagination, ad-platform row ingestion) can self-abort before
+ * writing data on behalf of a dead generation.
+ */
+export async function heartbeatConnectionSyncLease(lease: ConnectionLease): Promise<void> {
+  const updated = await (prisma as any).syncLock.updateMany({
+    where: {
+      scope: lease.scope,
+      leaseId: lease.leaseId,
+      status: "running",
+      leaseExpiresAt: { gt: new Date() },
+    },
+    data: {
+      heartbeatAt: new Date(),
+      leaseExpiresAt: new Date(Date.now() + LEASE_DURATION_MS),
+    },
+  });
+  if (updated.count !== 1) {
+    throw new Error(
+      `[SYNC_LEASE] Lease lost for scope=${lease.scope}. Aborting current phase.`,
+    );
+  }
+}
+
 export async function releaseConnectionSyncLease(
   lease: ConnectionLease,
   success: boolean,
