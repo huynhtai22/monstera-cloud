@@ -27,9 +27,7 @@
  */
 
 import { Ratelimit } from "@upstash/ratelimit";
-// Edge runtime: force the fetch-based Redis client so Next.js does not bundle
-// the Node.js entrypoint (mirrors src/lib/ratelimit.ts).
-import { Redis } from "@upstash/redis/cloudflare";
+import { createEdgeRedis, type EdgeRedisClient } from "./edge-redis";
 
 export type RateLimitRouteClass =
   | "internal-api"
@@ -190,13 +188,14 @@ type GlobalLimiterCache = typeof globalThis & {
 };
 const globalCache = globalThis as GlobalLimiterCache;
 
-function upstashConfigured(): boolean {
-  return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
-}
-
-function makeUpstashLimiter(limit: number, windowSeconds: number, prefix: string): SharedLimiter {
+function makeUpstashLimiter(
+  redis: EdgeRedisClient,
+  limit: number,
+  windowSeconds: number,
+  prefix: string,
+): SharedLimiter {
   return new Ratelimit({
-    redis: Redis.fromEnv(),
+    redis,
     limiter: Ratelimit.slidingWindow(limit, `${windowSeconds} s`),
     analytics: false,
     prefix,
@@ -210,14 +209,16 @@ function makeUpstashLimiter(limit: number, windowSeconds: number, prefix: string
 export function buildSharedLimiters(): LimiterRegistry {
   if (globalCache.__monsteraProxyLimiters) return globalCache.__monsteraProxyLimiters;
   const built: LimiterRegistry = {};
-  if (upstashConfigured()) {
+  const redis = createEdgeRedis();
+  if (redis) {
     for (const [routeClass, policy] of Object.entries(ROUTE_CLASS_POLICIES) as [
       RateLimitRouteClass,
       ClassPolicy,
     ][]) {
-      built[routeClass] = makeUpstashLimiter(policy.limit, policy.windowSeconds, policy.prefix);
+      built[routeClass] = makeUpstashLimiter(redis, policy.limit, policy.windowSeconds, policy.prefix);
       if (policy.outerIp) {
         built[`${routeClass}:ip` as LimiterSlotKey] = makeUpstashLimiter(
+          redis,
           policy.outerIp.limit,
           policy.outerIp.windowSeconds,
           policy.outerIp.prefix,

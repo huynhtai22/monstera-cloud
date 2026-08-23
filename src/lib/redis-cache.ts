@@ -1,11 +1,8 @@
-import { Redis } from "@upstash/redis/cloudflare";
 import crypto from "crypto";
+import { createEdgeRedis } from "./edge-redis";
 
 // Use edge-friendly import for Redis, falling back to null if disabled
-export const redisCacheClient =
-  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
-    ? Redis.fromEnv()
-    : null;
+export const redisCacheClient = createEdgeRedis();
 
 /**
  * Generate a deterministic SHA-256 cache key from a prefix and any serializable parameters.
