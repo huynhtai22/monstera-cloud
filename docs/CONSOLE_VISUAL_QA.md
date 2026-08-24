@@ -54,6 +54,11 @@ than leaving people to infer whether anything is happening.
 - Confirm a disconnected or invalid authorization reads **Needs attention** and
   offers **Reconnect**; its explanation must state that existing warehouse
   history is retained.
+- Complete a direct or pipeline sync and confirm an in-page outcome remains
+  visible until dismissed, with a safe link to Warehouse or Sync activity.
+- Exercise a partial, blocked, cooldown, and failed sync response. Each must
+  explain whether data was written or retained, never display raw response
+  payloads, and never suggest forcing an active lease from the console.
 
 ## Acceptance criteria
 

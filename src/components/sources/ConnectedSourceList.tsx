@@ -72,7 +72,7 @@ export function ConnectedSourceList(props: {
   rows: IntegrationRow[];
   busyActions: Set<string>;
   onSync: (pipelineId: string, integrationId: string) => void;
-  onDirectSync: (connectionId: string, provider: string) => void;
+  onDirectSync: (connectionId: string) => void;
   onDisconnect: (connectionId: string, displayName: string) => void;
   onFixConnection: (integration: any) => void;
 }) {
@@ -131,7 +131,7 @@ export function ConnectedSourceList(props: {
         return;
       }
       if (canDirectSync(r.provider)) {
-        onDirectSync(r.id, r.provider!);
+        onDirectSync(r.id);
         return;
       }
       toast.error(
