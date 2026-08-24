@@ -19,7 +19,7 @@
     "db:migrate:prepare": "node scripts/prepare-deploy-migrations.mjs",
     "test:shopee-ads": "tsx --test src/lib/shopee-ads-mapper.test.ts",
     "postinstall": "prisma generate",
-    "deploy:prod": "npx vercel deploy --prod --yes",
+    "deploy:prod": "node scripts/deploy-production.mjs",
     "create-smoke-user": "tsx scripts/create-smoke-test-account.ts",
     "create-smoke-user:pro": "SMOKE_PLAN=professional tsx scripts/create-smoke-test-account.ts",
     "reset-smoke-plan": "tsx scripts/reset-smoke-test-plan.ts",
