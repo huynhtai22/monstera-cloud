@@ -21,20 +21,12 @@ test.describe("Agency-First User Flow & Usability", () => {
   test("Registration form input validation", async ({ page }) => {
     await page.goto("/register");
 
-    // Form heading & pilot badge check
+    // Form heading and the supported email-registration inputs.
     await expect(page.getByText("Create your account")).toBeVisible();
-    await expect(page.getByText("14-Day Agency Pilot")).toBeVisible();
-
-    // Verify input fields exist and are visible
-    const nameInput = page.locator('input[name="name"], input#name, input[type="text"]').first();
-    const emailInput = page.locator('input[type="email"]');
-    const passwordInput = page.locator('input#password');
-    const confirmPasswordInput = page.locator('input#confirmPassword');
-
-    await expect(nameInput).toBeVisible();
-    await expect(emailInput).toBeVisible();
-    await expect(passwordInput).toBeVisible();
-    await expect(confirmPasswordInput).toBeVisible();
+    await expect(page.locator('input[name="name"]')).toBeVisible();
+    await expect(page.locator('input[name="email"]')).toBeVisible();
+    await expect(page.locator('input[name="password"]')).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create Account" })).toBeVisible();
   });
 
   test("Complete agency login and console navigation flow", async ({ page }) => {

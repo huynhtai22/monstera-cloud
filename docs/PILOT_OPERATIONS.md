@@ -22,6 +22,11 @@ Do not promise import recovery faster than that interval.
 
 ## Required monitors
 
+Operational readiness requires timestamped production evidence under
+[OPERATIONS_ACCEPTANCE.md](./OPERATIONS_ACCEPTANCE.md); this list describes
+what to observe but is not itself proof of alert delivery, restore readiness,
+or retention ownership.
+
 - OAuth attempts by provider and failure code, especially invalid/reused state.
 - First import completion and time-to-first-row.
 - Queued/running job age and exhausted retries.

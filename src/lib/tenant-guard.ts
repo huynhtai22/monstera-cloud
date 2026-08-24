@@ -20,6 +20,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
  *   nested ownership filter cannot even be expressed.
  * - WorkspaceInvitation: nullable workspaceId (pre-provisioning invitations).
  * - WorkspaceMember: membership join queried by userId during auth.
+ * - WorkspaceProviderAccess: provider entitlements are checked through a
+ *   workspace-authorized route before access is granted.
  * - SyncLock: system lease infra keyed by provider scope string.
  * - DashboardTemplate, SchemaVersion: global platform catalogs.
  * - User/Account/Session/VerificationToken/PasswordResetToken: identity tables.
@@ -47,6 +49,17 @@ export const TENANT_GUARDED_MODELS = new Set([
   "AttributionTouch",
   "ReportSchedule",
 ]);
+
+/**
+ * Direct workspace-owned models that intentionally use a different access
+ * pattern. Keep this explicit: the schema coverage test rejects any new model
+ * with a required workspaceId unless it is guarded or documented here.
+ */
+export const TENANT_GUARD_EXEMPTIONS: Readonly<Record<string, string>> = {
+  WorkspaceMember: "Membership joins are queried by user ID during authentication.",
+  WorkspaceProviderAccess: "Provider entitlements are accessed through workspace-authorized routes.",
+  SyncLock: "System lease infrastructure is keyed by provider scope.",
+};
 
 const LIST_OR_BULK_OPS = new Set([
   "findMany",
