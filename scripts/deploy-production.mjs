@@ -4,13 +4,16 @@ function git(args) {
   return execFileSync("git", args, { encoding: "utf8" }).trim();
 }
 
-const commitSha = git(["rev-parse", "HEAD"]);
-const originMainSha = git(["rev-parse", "origin/main"]);
 const dirtyFiles = git(["status", "--porcelain"]);
 
 if (dirtyFiles) {
   throw new Error("Refusing a production deployment from a dirty worktree. Commit or stash changes first.");
 }
+
+execFileSync("git", ["fetch", "--quiet", "origin", "main"], { stdio: "inherit" });
+
+const commitSha = git(["rev-parse", "HEAD"]);
+const originMainSha = git(["rev-parse", "origin/main"]);
 
 if (commitSha !== originMainSha) {
   throw new Error(
@@ -26,7 +29,7 @@ const result = spawnSync(
     "--prod",
     "--yes",
     "--build-env",
-    `GIT_COMMIT_SHA=${commitSha}`,
+    `RELEASE_COMMIT_SHA=${commitSha}`,
     "--meta",
     "githubDeployment=1",
     "--meta",
@@ -36,7 +39,7 @@ const result = spawnSync(
   ],
   {
     stdio: "inherit",
-    env: { ...process.env, GIT_COMMIT_SHA: commitSha },
+    env: { ...process.env, RELEASE_COMMIT_SHA: commitSha },
   },
 );
 

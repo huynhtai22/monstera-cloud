@@ -8,9 +8,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   env: {
     BUILD_TIME: process.env.BUILD_TIME || new Date().toISOString(),
-    // This value is the immutable release stamp consumed by /api/version.
-    // Production workflows must set GIT_COMMIT_SHA explicitly before building.
-    GIT_COMMIT_SHA: process.env.GIT_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || "development",
+    // This value is the trusted, immutable release stamp consumed by
+    // /api/version. Do not fall back to provider metadata here: production
+    // release workflows must set RELEASE_COMMIT_SHA explicitly.
+    RELEASE_COMMIT_SHA: process.env.RELEASE_COMMIT_SHA || "development",
   },
   // Pin workspace root explicitly so Next.js/Turbopack doesn't get confused
   // by a stale package-lock.json sitting in a parent directory.

@@ -5,9 +5,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const releaseIdentity = resolveReleaseIdentity({
-    // GIT_COMMIT_SHA is stamped into the Next.js build. Prefer it over runtime
-    // provider metadata, which can be stale on deployments created by the CLI.
-    buildCommitSha: process.env.GIT_COMMIT_SHA,
+    // RELEASE_COMMIT_SHA is set only by trusted production release paths and
+    // stamped into the build. Provider metadata remains an explicit fallback.
+    buildCommitSha: process.env.RELEASE_COMMIT_SHA,
     vercelCommitSha: process.env.VERCEL_GIT_COMMIT_SHA,
   });
 

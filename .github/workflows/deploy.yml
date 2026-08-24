@@ -44,7 +44,7 @@ jobs:
 
       - name: Build project
         env:
-          GIT_COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
