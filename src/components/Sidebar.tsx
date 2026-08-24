@@ -166,13 +166,10 @@ export function Sidebar({
         <aside
             aria-label="Application sidebar"
             className={cn(
-                "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-line bg-canvas overflow-x-hidden select-none motion-reduce:transition-none lg:translate-x-0",
+                "fixed inset-y-0 left-0 z-50 flex flex-col overflow-x-hidden border-r border-line bg-canvas transition-[width,transform] duration-[240ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] select-none motion-reduce:transition-none lg:translate-x-0",
                 collapsed ? "w-[68px]" : "w-64",
                 isOpen ? "translate-x-0" : "-translate-x-full"
             )}
-            style={{
-                transition: "width 240ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1)",
-            }}
         >
             {/* ── 1. Workspace Control ────────────────────────────────────────── */}
             <div ref={workspaceRef} className="relative z-20 border-b border-line px-3.5 py-3.5">
@@ -191,7 +188,7 @@ export function Sidebar({
 
                     <div
                         className={cn(
-                            "flex flex-1 items-center justify-between min-w-0 pr-2.5 transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.2,0.8,0.2,1)]",
+                            "flex min-w-0 flex-1 items-center justify-between pr-2.5 transition-[opacity,transform] duration-180 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none",
                             collapsed ? "opacity-0 -translate-x-2 pointer-events-none w-0 pr-0" : "opacity-100 translate-x-0"
                         )}
                     >
