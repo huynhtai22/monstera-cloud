@@ -1,0 +1,67 @@
+name: Synthetic external checks
+
+# Black-box probes against the production alias from outside Vercel, so an
+# outage (e.g. the August 2026 Upstash limiter failure) is detected by a
+# failing scheduled run instead of by a user. Complements the internal
+# pilot-cron worker; triage procedures live in docs/INCIDENT_RUNBOOK.md.
+on:
+  schedule:
+    - cron: "7-59/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Probe production surface
+        env:
+          SYNTHETIC_BASE_URL: ${{ vars.CRON_BASE_URL }}
+        run: |
+          set -euo pipefail
+          BASE="${SYNTHETIC_BASE_URL:-https://monsteracloud.com}"
+          BASE="${BASE%/}"
+          fail=0
+          check() {
+            local name="$1" expect="$2" actual="$3"
+            if [ "${actual}" = "${expect}" ]; then
+              echo "PASS ${name}: HTTP ${actual}"
+            else
+              echo "::error::FAIL ${name}: expected HTTP ${expect}, got ${actual} — see docs/INCIDENT_RUNBOOK.md"
+              fail=1
+            fi
+          }
+
+          # 1. Version endpoint: alive, uncached, reporting a commit.
+          code=$(curl -sS -o /tmp/synthetic-version -w "%{http_code}" --max-time 20 "${BASE}/api/version" || echo "000")
+          check "version endpoint" "200" "${code}"
+          if [ "${code}" = "200" ]; then
+            grep -q "commitSha" /tmp/synthetic-version || { echo "::error::FAIL version payload missing commitSha"; fail=1; }
+            cc=$(curl -sI --max-time 20 "${BASE}/api/version" | tr -d '\r' | grep -i '^cache-control:' | head -1)
+            echo "${cc}" | grep -qi "no-store" || { echo "::error::FAIL version endpoint must be uncached (no-store), got: ${cc:-none}"; fail=1; }
+          fi
+
+          # 2. Limiter health proxy: auth must be evaluated (401), never a
+          #    limiter 503. This is the Upstash outage detector.
+          code=$(curl -sS -o /tmp/synthetic-limiter -w "%{http_code}" --max-time 20 "${BASE}/api/looker-studio" || echo "000")
+          check "looker-studio limiter path (401 expected)" "401" "${code}"
+
+          # 3. Auth gate: protected console redirects when signed out.
+          code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "${BASE}/console" || echo "000")
+          case "${code}" in 301|302|303|307|308) code="redirect" ;; esac
+          check "console auth gate (3xx expected)" "redirect" "${code}"
+
+          # 4. Cron stays fail-closed without a secret.
+          code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "${BASE}/api/cron/master" || echo "000")
+          check "cron fail-closed (401 expected)" "401" "${code}"
+
+          # 5. Homepage serves with the security header set applied.
+          headers=$(curl -sI --max-time 20 "${BASE}/")
+          code=$(echo "${headers}" | head -1 | awk '{print $2}')
+          check "homepage" "200" "${code}"
+          echo "${headers}" | grep -qi "^content-security-policy:" || { echo "::error::FAIL homepage missing Content-Security-Policy"; fail=1; }
+          echo "${headers}" | grep -qi "^strict-transport-security:" || { echo "::error::FAIL homepage missing HSTS"; fail=1; }
+
+          exit "${fail}"
