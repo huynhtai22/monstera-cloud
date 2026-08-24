@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AlertCircle, CheckCircle2, Clock3, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export type SyncOutcomeNotice = {
+export type SourceOutcomeNotice = {
   kind: "success" | "partial" | "blocked" | "cooldown" | "error";
   title: string;
   detail: string;
@@ -42,11 +42,11 @@ const OUTCOME_STYLE = {
   },
 } as const;
 
-export function SyncOutcomeBanner({
+export function SourceOutcomeBanner({
   notice,
   onDismiss,
 }: {
-  notice: SyncOutcomeNotice;
+  notice: SourceOutcomeNotice;
   onDismiss: () => void;
 }) {
   const style = OUTCOME_STYLE[notice.kind];
@@ -81,7 +81,7 @@ export function SyncOutcomeBanner({
         type="button"
         onClick={onDismiss}
         className="rounded p-1 text-ink-mute transition-colors hover:bg-black/10 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
-        aria-label="Dismiss sync outcome"
+        aria-label="Dismiss source outcome"
       >
         <X className="h-4 w-4" aria-hidden="true" />
       </button>
