@@ -54,7 +54,7 @@ export function OAuthSuccessBanner({
           ) : limit ? (
             <>Sync limit reached. <Link href="/settings" className="font-medium text-amber-200 underline">Manage in Settings</Link> or upgrade.</>  
           ) : (
-            <>Authorization is ready. Manage this source and run its first sync from Connected sources.</>
+            <>Authorization is ready. Manage this source and run a sync from Connected sources when you want updated data.</>
           )}
         </p>
       </div>

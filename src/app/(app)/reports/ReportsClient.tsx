@@ -186,6 +186,7 @@ export function ReportsClient() {
 
     const activeSourceLabel = REPORTS_SOURCE_CHIPS.find((chip) => chip.id === sourceFilter)?.label ?? "All sources";
     const activeClientLabel = clients.find((client) => client.id === clientFilter)?.name ?? "All clients";
+    const activeStatusLabel = statusFilter === "all" ? "any status" : `${statusFilter === "success" ? "Success" : "Error"} status`;
     const hasActiveFilters = Boolean(sourceFilter || clientFilter || dateFrom || dateTo || statusFilter !== "all");
 
     return (
@@ -380,7 +381,7 @@ export function ReportsClient() {
                     <EmptyState
                         icon={<Search className="h-12 w-12" />}
                         title="No pipeline runs match this view"
-                        description={`No destination pipeline runs match ${activeSourceLabel}, ${activeClientLabel}${dateFrom || dateTo ? ", and the selected date range" : ""}.`}
+                        description={`No destination pipeline runs match ${activeSourceLabel}, ${activeClientLabel}, and ${activeStatusLabel}${dateFrom || dateTo ? " in the selected date range" : ""}.`}
                         primaryAction={hasActiveFilters ? (
                             <button
                                 type="button"
