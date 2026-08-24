@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildDashboardDestinations,
+  isDashboardImportOutcomeCurrent,
   latestValidDate,
   resolveDashboardSourceState,
   resolveDashboardWarehouseStatus,
@@ -94,12 +95,18 @@ describe("dashboard warehouse truth", () => {
   });
 
   it("does not let an older failed batch override a newer successful pull", () => {
+    const latestImportAt = new Date("2026-08-24T10:00:00.000Z");
+    const lastPulledAt = new Date("2026-08-24T12:00:00.000Z");
+    assert.equal(
+      isDashboardImportOutcomeCurrent({ latestImportAt, lastPulledAt }),
+      false,
+    );
     assert.equal(
       resolveDashboardWarehouseStatus({
         latestImportStatus: "failed",
-        latestImportAt: new Date("2026-08-24T10:00:00.000Z"),
+        latestImportAt,
         latestSyncStatus: "done",
-        lastPulledAt: new Date("2026-08-24T12:00:00.000Z"),
+        lastPulledAt,
         staleBefore,
       }),
       "fresh",

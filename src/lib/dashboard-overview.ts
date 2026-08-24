@@ -156,6 +156,16 @@ export function resolveDashboardSourceState(input: {
   return input.lastSyncAt < input.staleBefore ? "stale" : "fresh";
 }
 
+export function isDashboardImportOutcomeCurrent(input: {
+  latestImportAt?: Date | null;
+  lastPulledAt: Date | null;
+}): boolean {
+  return Boolean(
+    input.latestImportAt &&
+      (!input.lastPulledAt || input.latestImportAt >= input.lastPulledAt),
+  );
+}
+
 export function resolveDashboardWarehouseStatus(input: {
   latestImportStatus?: string | null;
   latestImportAt?: Date | null;
@@ -166,10 +176,7 @@ export function resolveDashboardWarehouseStatus(input: {
   if (input.latestImportStatus === "running" || input.latestSyncStatus === "running") {
     return "refreshing";
   }
-  const importOutcomeIsCurrent = Boolean(
-    input.latestImportAt &&
-      (!input.lastPulledAt || input.latestImportAt >= input.lastPulledAt),
-  );
+  const importOutcomeIsCurrent = isDashboardImportOutcomeCurrent(input);
   if (importOutcomeIsCurrent && input.latestImportStatus === "failed") return "failed";
   if (importOutcomeIsCurrent && input.latestImportStatus === "partial") return "partial";
   if (!input.lastPulledAt) return "never";
@@ -693,7 +700,25 @@ export async function getWorkspaceDashboardOverview(
     });
   }
 
-  if (latestImportJob?.status === "failed" || latestImportJob?.status === "partial") {
+  // Warehouse Freshness
+  const latestWarehouseDataDate = latestValidDate([
+    warehouseAgg._max.date,
+    retailOrdersAgg._max.createdAtIso,
+  ]);
+  const latestWarehousePullAt = latestValidDate([
+    warehouseAgg._max.pulledAt,
+    retailOrdersAgg._max.pulledAt,
+  ]);
+  const totalWarehouseRows = warehouseAgg._count.id + retailOrdersAgg._count._all;
+  const rows7d = warehouse7dByCurrency.reduce((sum, row) => sum + (row._count._all ?? 0), 0);
+  const latestImportAt = latestImportJob
+    ? latestImportJob.finishedAt || latestImportJob.updatedAt || latestImportJob.createdAt
+    : null;
+
+  if (
+    (latestImportJob?.status === "failed" || latestImportJob?.status === "partial") &&
+    isDashboardImportOutcomeCurrent({ latestImportAt, lastPulledAt: latestWarehousePullAt })
+  ) {
     const partial = latestImportJob.status === "partial";
     needsAttention.push({
       id: `import-${latestImportJob.status}-${latestImportJob.id}`,
@@ -708,23 +733,9 @@ export async function getWorkspaceDashboardOverview(
     });
   }
 
-  // Warehouse Freshness
-  const latestWarehouseDataDate = latestValidDate([
-    warehouseAgg._max.date,
-    retailOrdersAgg._max.createdAtIso,
-  ]);
-  const latestWarehousePullAt = latestValidDate([
-    warehouseAgg._max.pulledAt,
-    retailOrdersAgg._max.pulledAt,
-  ]);
-  const totalWarehouseRows = warehouseAgg._count.id + retailOrdersAgg._count._all;
-  const rows7d = warehouse7dByCurrency.reduce((sum, row) => sum + (row._count._all ?? 0), 0);
-
   const warehouseStatus = resolveDashboardWarehouseStatus({
     latestImportStatus: latestImportJob?.status,
-    latestImportAt: latestImportJob
-      ? latestImportJob.finishedAt || latestImportJob.updatedAt || latestImportJob.createdAt
-      : null,
+    latestImportAt,
     latestSyncStatus: latestSyncJob?.status,
     lastPulledAt: latestWarehousePullAt,
     staleBefore: oneDayAgo,
