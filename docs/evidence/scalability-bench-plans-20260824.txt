@@ -1,0 +1,92 @@
+
+=== Q1 warehouse page (big ws, newest-first, LIMIT 1001) (48ms total for 1 run, 48ms avg) ===
+Limit  (cost=35580.75..35697.54 rows=1001 width=309) (actual time=20.461..23.290 rows=1001 loops=1)
+  ->  Gather Merge  (cost=35580.75..43540.30 rows=68220 width=309) (actual time=20.459..23.213 rows=1001 loops=1)
+        Workers Planned: 2
+        Workers Launched: 2
+        ->  Sort  (cost=34580.72..34666.00 rows=34110 width=309) (actual time=16.928..16.955 rows=495 loops=3)
+              Sort Key: date DESC, id DESC
+              Sort Method: top-N heapsort  Memory: 315kB
+              Worker 0:  Sort Method: top-N heapsort  Memory: 320kB
+              Worker 1:  Sort Method: top-N heapsort  Memory: 323kB
+              ->  Parallel Bitmap Heap Scan on "CampaignMetric"  (cost=1162.88..32710.26 rows=34110 width=309) (actual time=1.302..8.526 rows=26400 loops=3)
+                    Recheck Cond: ("workspaceId" = 'bw_1'::text)
+                    Heap Blocks: exact=916
+                    ->  Bitmap Index Scan on "CampaignMetric_workspaceId_accountId_date_idx"  (cost=0.00..1142.41 rows=81865 width=0) (actual time=3.246..3.247 rows=79200 loops=1)
+                          Index Cond: ("workspaceId" = 'bw_1'::text)
+Planning Time: 1.525 ms
+Execution Time: 23.546 ms
+
+=== Q1b warehouse page ranged + platform filter (mid ws) (5ms total for 1 run, 5ms avg) ===
+Limit  (cost=12900.05..12902.55 rows=1001 width=309) (actual time=3.139..3.236 rows=1001 loops=1)
+  ->  Sort  (cost=12900.05..12911.65 rows=4641 width=309) (actual time=3.138..3.180 rows=1001 loops=1)
+        Sort Key: date DESC, id DESC
+        Sort Method: top-N heapsort  Memory: 312kB
+        ->  Bitmap Heap Scan on "CampaignMetric"  (cost=92.05..12645.56 rows=4641 width=309) (actual time=0.211..1.140 rows=4380 loops=1)
+              Recheck Cond: (("workspaceId" = 'bw_12'::text) AND (platform = ANY ('{meta_ads,google_ads}'::text[])) AND (date >= (CURRENT_DATE - '30 days'::interval)))
+              Heap Blocks: exact=292
+              ->  Bitmap Index Scan on "CampaignMetric_workspaceId_platform_date_idx"  (cost=0.00..90.89 rows=4641 width=0) (actual time=0.179..0.179 rows=4380 loops=1)
+                    Index Cond: (("workspaceId" = 'bw_12'::text) AND (platform = ANY ('{meta_ads,google_ads}'::text[])) AND (date >= (CURRENT_DATE - '30 days'::interval)))
+Planning Time: 0.144 ms
+Execution Time: 3.322 ms
+
+=== Q2 count with filters (big ws) (9ms total for 1 run, 9ms avg) ===
+Aggregate  (cost=2370.29..2370.30 rows=1 width=8) (actual time=7.758..7.758 rows=1 loops=1)
+  ->  Index Only Scan using "CampaignMetric_workspaceId_accountId_date_idx" on "CampaignMetric"  (cost=0.43..2165.65 rows=81857 width=0) (actual time=0.020..4.865 rows=79200 loops=1)
+        Index Cond: (("workspaceId" = 'bw_1'::text) AND (date <= CURRENT_DATE))
+        Heap Fetches: 0
+Planning Time: 0.102 ms
+Execution Time: 7.773 ms
+
+=== Q3 asOf aggregate MAX(pulledAt) (big ws) (25ms total for 1 run, 25ms avg) ===
+Aggregate  (cost=33511.86..33511.87 rows=1 width=8) (actual time=22.500..22.501 rows=1 loops=1)
+  ->  Bitmap Heap Scan on "CampaignMetric"  (cost=1162.88..33307.19 rows=81865 width=8) (actual time=1.640..10.729 rows=79200 loops=1)
+        Recheck Cond: ("workspaceId" = 'bw_1'::text)
+        Heap Blocks: exact=2931
+        ->  Bitmap Index Scan on "CampaignMetric_workspaceId_accountId_date_idx"  (cost=0.00..1142.41 rows=81865 width=0) (actual time=1.347..1.347 rows=79200 loops=1)
+              Index Cond: ("workspaceId" = 'bw_1'::text)
+Planning Time: 0.080 ms
+Execution Time: 22.522 ms
+
+=== Q4 dashboard 7d currency groupBy (mid ws) (2ms total for 1 run, 2ms avg) ===
+HashAggregate  (cost=6051.75..6051.77 rows=2 width=52) (actual time=0.980..0.980 rows=3 loops=1)
+  Group Key: currency
+  Batches: 1  Memory Usage: 24kB
+  ->  Bitmap Heap Scan on "CampaignMetric"  (cost=672.50..6022.98 rows=1644 width=36) (actual time=0.484..0.654 rows=1540 loops=1)
+        Recheck Cond: (("workspaceId" = 'bw_12'::text) AND (date >= (CURRENT_DATE - '7 days'::interval)))
+        Heap Blocks: exact=70
+        ->  Bitmap Index Scan on "CampaignMetric_workspaceId_accountId_date_idx"  (cost=0.00..672.09 rows=1644 width=0) (actual time=0.476..0.476 rows=1540 loops=1)
+              Index Cond: (("workspaceId" = 'bw_12'::text) AND (date >= (CURRENT_DATE - '7 days'::interval)))
+Planning Time: 0.152 ms
+Execution Time: 0.998 ms
+
+=== Q5 explorer campaign groupBy ordered (big ws) (27ms total for 1 run, 27ms avg) ===
+Limit  (cost=34300.88..34303.38 rows=1000 width=31) (actual time=24.971..25.048 rows=1000 loops=1)
+  ->  Sort  (cost=34300.88..34307.63 rows=2700 width=31) (actual time=24.970..25.000 rows=1000 loops=1)
+        Sort Key: date DESC
+        Sort Method: top-N heapsort  Memory: 169kB
+        ->  HashAggregate  (cost=34125.84..34152.84 rows=2700 width=31) (actual time=24.245..24.480 rows=2700 loops=1)
+              Group Key: date, "campaignId"
+              Batches: 1  Memory Usage: 369kB
+              ->  Bitmap Heap Scan on "CampaignMetric"  (cost=1162.88..33307.19 rows=81865 width=27) (actual time=1.555..9.448 rows=79200 loops=1)
+                    Recheck Cond: ("workspaceId" = 'bw_1'::text)
+                    Heap Blocks: exact=2931
+                    ->  Bitmap Index Scan on "CampaignMetric_workspaceId_accountId_date_idx"  (cost=0.00..1142.41 rows=81865 width=0) (actual time=1.290..1.291 rows=79200 loops=1)
+                          Index Cond: ("workspaceId" = 'bw_1'::text)
+Planning Time: 0.194 ms
+Execution Time: 25.102 ms
+
+=== Q6 upsert x200 (hot conflict row): 115ms total, 0.57ms avg ===
+
+=== Q7 cross-tenant isolation under load (nonexistent workspace) (1ms total for 1 run, 1ms avg) ===
+Limit  (cost=8.45..8.46 rows=1 width=309) (actual time=0.071..0.071 rows=0 loops=1)
+  ->  Sort  (cost=8.45..8.46 rows=1 width=309) (actual time=0.070..0.070 rows=0 loops=1)
+        Sort Key: date DESC
+        Sort Method: quicksort  Memory: 25kB
+        ->  Index Scan using "CampaignMetric_workspaceId_platform_accountId_date_idx" on "CampaignMetric"  (cost=0.43..8.44 rows=1 width=309) (actual time=0.044..0.044 rows=0 loops=1)
+              Index Cond: ("workspaceId" = 'bw_missing'::text)
+Planning Time: 0.087 ms
+Execution Time: 0.088 ms
+distribution: bw_1 -> 79201 rows
+distribution: bw_2 -> 79200 rows
+distribution: bw_3 -> 79200 rows
