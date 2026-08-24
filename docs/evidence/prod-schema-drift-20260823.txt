@@ -1,0 +1,69 @@
+
+[+] Added tables
+  - ReportSchedule
+  - DataQualityViolation
+  - SyncLogDetail
+  - SchemaVersion
+  - DashboardTemplate
+  - UserDashboard
+
+[*] Changed the `CampaignMetric` table
+  [-] Removed unique index on columns (connectionId, accountId, date, level, campaignId, breakdownHash)
+  [*] Altered column `campaignId` (default changed from `None` to `Some(Value(String("")))`)
+  [*] Altered column `campaignName` (default changed from `None` to `Some(Value(String("")))`)
+  [*] Altered column `adsetId` (default changed from `None` to `Some(Value(String("")))`)
+  [*] Altered column `reach` (changed from Nullable to Required, default changed from `None` to `Some(Value(Int(0)))`)
+  [*] Altered column `cpc` (changed from Nullable to Required, default changed from `None` to `Some(Value(Float(BigDecimal("0"))))`)
+  [*] Altered column `ctr` (changed from Nullable to Required, default changed from `None` to `Some(Value(Float(BigDecimal("0"))))`)
+  [*] Altered column `conversions` (changed from Nullable to Required, default changed from `None` to `Some(Value(Float(BigDecimal("0"))))`)
+  [*] Altered column `revenue` (changed from Nullable to Required, default changed from `None` to `Some(Value(Float(BigDecimal("0"))))`)
+  [*] Altered column `roas` (changed from Nullable to Required, default changed from `None` to `Some(Value(Float(BigDecimal("0"))))`)
+  [*] Altered column `currency` (changed from Required to Nullable, default changed from `Some(Value(String("USD")))` to `None`)
+  [*] Altered column `breakdownHash` (default changed from `Some(Value(String("")))` to `Some(Value(String("none")))`)
+  [+] Added index on columns (workspaceId, accountId, date)
+  [+] Added index on columns (workspaceId, platform, accountId, date)
+  [*] Renamed index `CampaignMetric_connectionId_accountId_level_entityId_date_break` to `CampaignMetric_connectionId_accountId_level_entityId_date_b_key`
+
+[*] Changed the `Connection` table
+  [*] Altered column `remoteAccountId` (changed from Nullable to Required)
+
+[*] Changed the `DashboardTemplate` table
+  [+] Added unique index on columns (slug)
+
+[*] Changed the `DataQualityRule` table
+  [+] Added index on columns (workspaceId, enabled)
+  [+] Added index on columns (pipelineId, enabled)
+  [+] Added foreign key on columns (workspaceId)
+
+[*] Changed the `DataQualityViolation` table
+  [+] Added index on columns (workspaceId, status)
+  [+] Added index on columns (ruleId, createdAt)
+  [+] Added index on columns (createdAt)
+  [+] Added foreign key on columns (ruleId)
+  [+] Added foreign key on columns (workspaceId)
+
+[*] Changed the `ReportSchedule` table
+  [+] Added index on columns (workspaceId)
+  [+] Added index on columns (clientId)
+
+[*] Changed the `SchemaVersion` table
+  [+] Added index on columns (provider, discoveredAt)
+  [+] Added unique index on columns (connectionId, version)
+
+[*] Changed the `SyncCheckpoint` table
+  [-] Removed foreign key on columns (pipelineId)
+
+[*] Changed the `SyncLock` table
+  [*] Altered column `fencingToken` (default changed from `Some(Value(Int(1)))` to `None`)
+  [*] Altered column `heartbeatAt` (type changed)
+  [*] Altered column `leaseExpiresAt` (type changed)
+  [*] Altered column `createdAt` (type changed)
+  [*] Altered column `updatedAt` (default changed from `Some(Now)` to `None`, type changed)
+
+[*] Changed the `SyncLogDetail` table
+  [+] Added index on columns (syncLogId, stage)
+  [+] Added index on columns (createdAt)
+
+[*] Changed the `UserDashboard` table
+  [+] Added index on columns (workspaceId, isDefault)
+  [+] Added foreign key on columns (workspaceId)

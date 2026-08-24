@@ -217,6 +217,28 @@ Regression coverage: `src/lib/connection-lifecycle.test.ts` and `src/lib/connect
 
 **Historical note — observed production evidence 2026-08-21:** before this fix, a Google Ads disconnect deleted the connection's `CampaignMetric` rows, and the history could not be re-synced while the developer token was pending production approval.
 
+## Production schema drift vs `prisma/schema.prisma` — ACCEPTED for pilot (2026-08-23)
+
+**Status:** Accepted limitation, documented per audit gap 11. Revisit before GA.
+
+The live production database diverges from the migration-produced schema in ways that predate the current baseline (`_prisma_migrations` carries 15 resolved/NULL baselining entries). Verified by owner-executed read-only `prisma migrate diff` on 2026-08-23; full inventory preserved at [evidence/prod-schema-drift-20260823.txt](./evidence/prod-schema-drift-20260823.txt).
+
+**Inventory:** 6 tables absent (`ReportSchedule`, `UserDashboard`, `DataQualityViolation`, `SchemaVersion`, `DashboardTemplate`, `SyncLogDetail`) · 17 altered columns (mostly defaults/nullability on `CampaignMetric`; `Connection.remoteAccountId`; `SyncLock` timestamp types) · 14 index/FK differences (including the functional equivalent of the CampaignMetric unique key under legacy Postgres naming, and a missing `SyncCheckpoint.pipelineId` FK).
+
+**Why accepted:**
+
+- The absent tables have no pilot call sites; every app-critical path is exercised daily against the columns that do exist.
+- The drifted `CampaignMetric` unique constraint is functionally present under a different name — deterministic upserts and lease fencing operate correctly.
+- Production, CI's fresh-migrated database, and the 2026-08-23 restore drill all behave identically where it counts; the 2026-08-23 restore drill proved backup copies are app-compatible.
+
+**Known consequence:** CI's drift gate compares only *fresh* databases, so this drift is invisible there. Any migration touching the drifted tables/columns must be hand-checked against production shape first.
+
+**Forced re-baseline triggers (any one of these):**
+
+1. Before broad GA.
+2. Any new feature that reads/writes one of the 6 absent tables or the drifted columns.
+3. A migration that fails against production due to this drift.
+
 ## Pilot rule
 
 These limitations do **not** block the current controlled pilot unless one causes:
