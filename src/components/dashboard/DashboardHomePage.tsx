@@ -53,6 +53,41 @@ function formatCurrency(n: number, currency?: string | null): string {
   }
 }
 
+function DashboardSkeleton() {
+  return (
+    <PageShell>
+      <section aria-busy="true" aria-label="Loading dashboard" className="space-y-6">
+        <p className="sr-only" role="status">Loading your workspace dashboard</p>
+        <div className="flex items-center justify-between border-b border-line pb-4">
+          <div className="space-y-2">
+            <div className="h-5 w-28 rounded bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+            <div className="h-3 w-56 rounded bg-panel/80 motion-safe:animate-pulse motion-reduce:animate-none" />
+          </div>
+          <div className="h-8 w-24 rounded-md bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="rounded-lg border border-line bg-panel p-3.5">
+              <div className="h-3 w-16 rounded bg-canvas motion-safe:animate-pulse motion-reduce:animate-none" />
+              <div className="mt-3 h-5 w-24 rounded bg-canvas motion-safe:animate-pulse motion-reduce:animate-none" />
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="space-y-6 lg:col-span-7">
+            <div className="h-56 rounded-lg border border-line bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+            <div className="h-40 rounded-lg border border-line bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+          </div>
+          <div className="space-y-6 lg:col-span-5">
+            <div className="h-44 rounded-lg border border-line bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+            <div className="h-52 rounded-lg border border-line bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+          </div>
+        </div>
+      </section>
+    </PageShell>
+  );
+}
+
 export function DashboardHomePage() {
   const { workspaceId, isLoading: workspaceLoading } = useResolvedWorkspaceId();
   const [expandedRawErrorId, setExpandedRawErrorId] = useState<string | null>(null);
@@ -113,34 +148,7 @@ export function DashboardHomePage() {
 
   // ── Loading Skeleton ────────────────────────────────────────────────────────
   if (isLoading) {
-    return (
-      <PageShell>
-        <div className="space-y-6 animate-pulse">
-          <div className="flex items-center justify-between border-b border-line pb-4">
-            <div className="space-y-1.5">
-              <div className="h-5 w-28 rounded bg-panel" />
-              <div className="h-3.5 w-56 rounded bg-panel" />
-            </div>
-            <div className="h-8 w-24 rounded bg-panel" />
-          </div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-20 rounded-lg border border-line bg-panel p-3.5" />
-            ))}
-          </div>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-            <div className="space-y-6 lg:col-span-7">
-              <div className="h-56 rounded-lg border border-line bg-panel" />
-              <div className="h-40 rounded-lg border border-line bg-panel" />
-            </div>
-            <div className="space-y-6 lg:col-span-5">
-              <div className="h-44 rounded-lg border border-line bg-panel" />
-              <div className="h-52 rounded-lg border border-line bg-panel" />
-            </div>
-          </div>
-        </div>
-      </PageShell>
-    );
+    return <DashboardSkeleton />;
   }
 
   // ── Error State ─────────────────────────────────────────────────────────────
