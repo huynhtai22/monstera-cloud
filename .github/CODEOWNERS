@@ -3,21 +3,29 @@
 # Format: <file pattern>  <GitHub username or team>
 
 # ── Default: you review everything ──────────────────────────────────────────
-*                           @huynhtai22s
+*                           @huynhtai22
 
 # ── Auth & security → assign to whoever owns auth (e.g. Claude / you) ───────
-src/lib/auth.ts             @huynhtai22s
-src/middleware.ts           @huynhtai22s
-src/app/api/auth/**         @huynhtai22s
+src/lib/auth.ts             @huynhtai22
+src/middleware.ts           @huynhtai22
+src/app/api/auth/**         @huynhtai22
 
 # ── Database schema → high risk, always needs your eyes ─────────────────────
-prisma/schema.prisma        @huynhtai22s
-prisma/migrations/**        @huynhtai22s
+prisma/schema.prisma        @huynhtai22
+prisma/migrations/**        @huynhtai22
+src/lib/tenant-guard.ts     @huynhtai22
+src/lib/tenant-guard-schema.test.ts @huynhtai22
 
 # ── UI pages → lower risk, can be reviewed by any agent ─────────────────────
-src/app/(app)/**            @huynhtai22s
-src/app/(marketing)/**      @huynhtai22s
-src/components/**           @huynhtai22s
+src/app/(app)/**            @huynhtai22
+src/app/(marketing)/**      @huynhtai22
+src/components/**           @huynhtai22
 
 # ── API routes → medium risk ─────────────────────────────────────────────────
-src/app/api/**              @huynhtai22s
+src/app/api/**              @huynhtai22
+
+# ── Release governance and destructive operations ───────────────────────────
+.github/workflows/**        @huynhtai22
+docs/OPERATIONS_ACCEPTANCE.md @huynhtai22
+docs/RELEASE_GOVERNANCE.md  @huynhtai22
+scripts/*retention*         @huynhtai22
