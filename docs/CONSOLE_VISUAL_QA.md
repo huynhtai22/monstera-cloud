@@ -25,6 +25,12 @@ than leaving people to infer whether anything is happening.
   keyboard focus does not move unexpectedly.
 - Force a summary-request error and confirm the retry state says that source
   and warehouse data are safe.
+- Confirm the header identifies the active workspace, source/account scope,
+  warehouse state, data-through date, and last successful sync when available.
+- Confirm source readiness distinguishes **Healthy**, **Connected — not
+  synced**, **Stale**, **Syncing**, and **Needs attention**.
+- Confirm a never-imported workspace says **Not synced** rather than showing a
+  dash or implying that the warehouse is empty because data was deleted.
 
 ### Warehouse
 
