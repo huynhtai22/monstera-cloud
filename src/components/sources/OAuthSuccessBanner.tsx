@@ -48,13 +48,13 @@ export function OAuthSuccessBanner({
         </div>
         <p className="mt-1.5 text-sm text-ink-mute">
           {pipelineReady ? (
-            <>Your first sync is queued. Use <span className="font-medium text-ink">Sync Now</span> to pull data, or open <Link href="/reports" className="font-medium text-ink underline">Reports</Link> for activity.</>
+            <>Authorization is ready. <Link href="#connected-sources" className="font-medium text-ink underline">Run the first sync</Link> from Connected sources to pull data, then use <Link href="/reports" className="font-medium text-ink underline">Sync activity</Link> to confirm destination pipeline runs.</>
           ) : needsDestination ? (
-            <>To start syncing, create a pipeline in the <Link href="/console" className="font-medium text-ink underline">Dashboard</Link>.</>
+            <>Authorization is ready. Create a destination pipeline in the <Link href="/console" className="font-medium text-ink underline">Dashboard</Link> before syncing.</>
           ) : limit ? (
             <>Sync limit reached. <Link href="/settings" className="font-medium text-amber-200 underline">Manage in Settings</Link> or upgrade.</>  
           ) : (
-            <>You can manage this source in the Connected tab.</>
+            <>Authorization is ready. Manage this source and run its first sync from Connected sources.</>
           )}
         </p>
       </div>

@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { ReportsClient } from "./ReportsClient";
 import { PageShell } from "@/components/ui/PageShell";
+import { SyncActivityPageSkeleton } from "@/components/reports/SyncActivityLoadingState";
 
 /**
  * Server Component shell so `useSearchParams` inside ReportsClient is behind Suspense
@@ -11,7 +12,7 @@ export default function ReportsPage() {
         <Suspense
             fallback={
                 <PageShell>
-                    <div className="py-16 text-center text-sm text-gray-500 dark:text-gray-400">Loading reports…</div>
+                    <SyncActivityPageSkeleton />
                 </PageShell>
             }
         >
