@@ -18,6 +18,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { FixConnectionModal } from "@/components/FixConnectionModal";
+import { SetupWizard } from "./SetupWizard";
 import type { DashboardOverviewDTO } from "@/lib/dashboard-overview";
 import { cn } from "@/lib/utils";
 
@@ -77,6 +78,7 @@ export function DashboardHomePage() {
   );
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [wizardDismissed, setWizardDismissed] = useState(false);
   const handleManualRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -85,6 +87,27 @@ export function DashboardHomePage() {
       setIsRefreshing(false);
     }
   }, [mutate]);
+
+  React.useEffect(() => {
+    if (!workspaceId) return;
+    try {
+      setWizardDismissed(
+        localStorage.getItem(`monstera_setup_wizard_dismissed_${workspaceId}`) === "1",
+      );
+    } catch {
+      /* storage blocked — wizard stays visible */
+    }
+  }, [workspaceId]);
+
+  const handleWizardDismiss = useCallback(() => {
+    setWizardDismissed(true);
+    if (!workspaceId) return;
+    try {
+      localStorage.setItem(`monstera_setup_wizard_dismissed_${workspaceId}`, "1");
+    } catch {
+      /* ignore */
+    }
+  }, [workspaceId]);
 
   const isLoading = workspaceLoading || (dataLoading && !overview);
 
@@ -200,6 +223,15 @@ export function DashboardHomePage() {
             </Link>
           </div>
         </div>
+
+        {/* ── 1b. Onboarding setup wizard ───────────────────────────────────── */}
+        {!wizardDismissed && (
+          <SetupWizard
+            hasSource={(summaryCards?.sources?.total ?? 0) > 0}
+            hasSuccessfulSync={(sourcesList ?? []).some((s) => s.lastSyncAt)}
+            onDismiss={handleWizardDismiss}
+          />
+        )}
 
         {/* ── 2. Top Summary Cards (4 Clean Operational Pillars) ──────────────── */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
