@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { disconnectConnection } from "@/lib/connection-lifecycle";
 import { sanitizeConnectionCredentials } from "@/lib/sanitize-connection-credentials";
 import { logger } from "@/lib/logger";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
@@ -39,6 +40,9 @@ export async function GET(
 
         const pipelines = await prisma.pipeline.findMany({
             where: {
+                // Explicit workspace scope: membership was validated above via
+                // connection.workspaceId, and Pipeline is tenant-guarded.
+                workspaceId: connection.workspaceId,
                 OR: [{ sourceConnectionId: connectionId }, { destinationConnectionId: connectionId }],
             },
             include: {
@@ -80,8 +84,16 @@ export async function GET(
 }
 
 /**
- * DELETE — remove a connection from the workspace (revokes Monstera's stored OAuth tokens
- * and credentials for this link). Also removes pipelines that reference this connection.
+ * DELETE — disconnect a source without deleting historical warehouse data.
+ *
+ * Disconnect semantics (see docs/KNOWN_LIMITATIONS.md §15):
+ *   - stops future syncs (status = "disconnected"; sync routes and cron filters gate on it)
+ *   - revokes Monstera's stored OAuth tokens / credentials for this link
+ *   - pauses pipelines referencing this connection (rows + sync logs retained)
+ *   - RETAINS all CampaignMetric history for the connection
+ *
+ * Permanent deletion of retained warehouse data is a separate explicit operation:
+ * DELETE /api/connections/[id]/purge.
  * Users may still revoke the app in Meta / Google / TikTok account settings separately.
  */
 export async function DELETE(
@@ -117,28 +129,13 @@ export async function DELETE(
             operation: "delete_connection",
         });
 
-        await prisma.$transaction(async (tx) => {
-            await tx.pipeline.deleteMany({
-                where: {
-                    workspaceId: connection.workspaceId,
-                    OR: [
-                        { sourceConnectionId: connectionId },
-                        { destinationConnectionId: connectionId },
-                    ],
-                },
-            });
-            await tx.campaignMetric.deleteMany({
-                where: { connectionId, workspaceId: connection.workspaceId },
-            });
-            const deleted = await tx.connection.deleteMany({
-                where: { id: connectionId, workspaceId: connection.workspaceId },
-            });
-            if (deleted.count !== 1) throw new Error("Connection was changed before deletion");
-        });
+        await prisma.$transaction((tx) =>
+            disconnectConnection(tx, { connectionId, workspaceId: connection.workspaceId })
+        );
 
         return NextResponse.json({
             ok: true,
-            message: `Disconnected ${connection.name}. You can reconnect this ${connection.type} anytime.`,
+            message: `Disconnected ${connection.name}. Historical warehouse data is retained; permanently delete it from the source settings if needed.`,
         });
     } catch (error) {
         const rbac = toRbacResponse(error);

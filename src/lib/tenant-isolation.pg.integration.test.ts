@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertCiDatabaseReachable } from "./pg-test-discipline";
 import { after, before, describe, it } from "node:test";
 import { PrismaClient } from "@prisma/client";
 import { RbacError, requireWorkspaceAccess } from "./rbac";
@@ -34,7 +35,10 @@ describe("PostgreSQL integration: tenant isolation safety gate", () => {
   } | null = null;
 
   before(async () => {
-    if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) return;
+    if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) {
+      assertCiDatabaseReachable();
+      return;
+    }
 
     try {
       prisma = new PrismaClient();
@@ -130,6 +134,7 @@ describe("PostgreSQL integration: tenant isolation safety gate", () => {
       };
       isDbAvailable = true;
     } catch {
+      assertCiDatabaseReachable();
       isDbAvailable = false;
     }
   });

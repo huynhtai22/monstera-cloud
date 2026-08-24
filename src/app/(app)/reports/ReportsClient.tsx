@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, Clock, Database, Bookmark } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock, Database, Bookmark, Info, RefreshCw, Search } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
 import { PageShell, SyncLogDiagnosticsDrawer, type SyncLogWithPipeline } from "@/components/ui";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { REPORTS_SOURCE_CHIPS, pipelineMatchesSourceFilter } from "@/lib/reports-source-filters";
+import { SyncActivityTableSkeleton } from "@/components/reports/SyncActivityLoadingState";
 
 const REPORTS_VIEW_STORAGE = "monstera_reports_view_v1";
 
@@ -80,7 +81,7 @@ export function ReportsClient() {
 
     const statusQuery = statusFilter === "all" ? "" : `&status=${statusFilter}`;
     const clientQuery = clientFilter ? `&clientId=${encodeURIComponent(clientFilter)}` : "";
-    const { data, error, isLoading } = useSWR(
+    const { data, error, isLoading, isValidating, mutate: retryLogs } = useSWR(
         activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}${statusQuery}${clientQuery}` : null,
         fetcher
     );
@@ -150,7 +151,7 @@ export function ReportsClient() {
                     dateTo,
                 })
             );
-            toast.success("Saved as your default Reports view on this browser.");
+            toast.success("Saved as your default Sync Activity view on this browser.");
         } catch {
             toast.error("Could not save view.");
         }
@@ -172,13 +173,36 @@ export function ReportsClient() {
         router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     };
 
+    const resetFilters = () => {
+        const q = new URLSearchParams(searchParams.toString());
+        q.delete("source");
+        q.delete("clientId");
+        const qs = q.toString();
+        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        setDateFrom("");
+        setDateTo("");
+        setStatusFilter("all");
+    };
+
+    const activeSourceLabel = REPORTS_SOURCE_CHIPS.find((chip) => chip.id === sourceFilter)?.label ?? "All sources";
+    const activeClientLabel = clients.find((client) => client.id === clientFilter)?.name ?? "All clients";
+    const activeStatusLabel = statusFilter === "all" ? "any status" : `${statusFilter === "success" ? "Success" : "Error"} status`;
+    const hasActiveFilters = Boolean(sourceFilter || clientFilter || dateFrom || dateTo || statusFilter !== "all");
+
     return (
         <PageShell>
             <div className="relative z-10 mb-5">
                 <div className="mb-3">
                     <h1 className="text-xl font-semibold tracking-tight text-ink">Sync activity</h1>
                     <p className="mt-1 max-w-2xl text-sm text-ink-mute">
-                        Failed syncs and row counts for this workspace.
+                        Destination pipeline run history and row counts for {activeWorkspace?.name ?? "the active workspace"}.
+                    </p>
+                </div>
+                <div className="flex max-w-3xl items-start gap-2 rounded-md border border-line bg-panel px-3 py-2 text-xs text-ink-mute">
+                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink" aria-hidden="true" />
+                    <p>
+                        This page records source-to-destination pipeline runs. Manual and nightly Warehouse source refresh status lives on{" "}
+                        <Link href="/sources" className="font-medium text-ink underline underline-offset-2">Sources</Link>.
                     </p>
                 </div>
                 {clients.length > 0 ? (
@@ -266,7 +290,7 @@ export function ReportsClient() {
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                         <h2 className="text-sm font-semibold text-ink">Logs</h2>
-                        <p className="text-xs text-ink-mute">Last 100 syncs in this workspace.</p>
+                        <p className="text-xs text-ink-mute">Last 100 destination pipeline runs in this workspace.</p>
                     </div>
                     <div className="flex items-center gap-2">
                         {(["all", "success", "error"] as const).map((v) => (
@@ -301,7 +325,7 @@ export function ReportsClient() {
                         </span>
                         <span className="text-slate-300 dark:text-slate-600">|</span>
                         <span className="font-semibold text-gray-700 dark:text-slate-200">
-                            Rows (sum): <span className="text-gray-900 dark:text-white">{summary.rowsSum.toLocaleString()}</span>
+                            Rows written: <span className="text-gray-900 dark:text-white">{summary.rowsSum.toLocaleString()}</span>
                         </span>
                         <span className="text-slate-300 dark:text-slate-600">|</span>
                         <span className="font-semibold text-gray-700 dark:text-slate-200">
@@ -311,17 +335,31 @@ export function ReportsClient() {
                 ) : null}
 
                 {isLoading ? (
-                    <div className="py-16 text-center text-sm text-gray-500 dark:text-slate-400">Loading logs…</div>
+                    <SyncActivityTableSkeleton />
                 ) : error ? (
-                    <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-200">
-                        <AlertCircle className="h-4 w-4" />
-                        Failed to load sync logs.
+                    <div role="alert" className="flex flex-col gap-4 rounded-lg border border-red-500/30 bg-red-950/20 p-4 text-sm text-red-100 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-start gap-2">
+                            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                            <div>
+                                <p className="font-semibold">Sync activity could not load</p>
+                                <p className="mt-1 text-xs text-red-200/80">Your filters are still selected. Trying again only reloads this history; it will not start a sync.</p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => void retryLogs()}
+                            disabled={isValidating}
+                            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-red-400/30 bg-red-950/40 px-3 py-2 text-xs font-semibold text-red-100 transition-colors hover:bg-red-900/40 disabled:cursor-wait disabled:opacity-60"
+                        >
+                            <RefreshCw className={cn("h-3.5 w-3.5", isValidating && "motion-safe:animate-spin motion-reduce:animate-none")} aria-hidden="true" />
+                            {isValidating ? "Trying again…" : "Try again"}
+                        </button>
                     </div>
-                ) : rawLogs.length === 0 ? (
+                ) : rawLogs.length === 0 && !hasActiveFilters ? (
                     <EmptyState
                         icon={<Database className="h-12 w-12" />}
-                        title="No sync logs yet"
-                        description="Run a sync from Sources after you connect a destination to see rows land here."
+                        title="No destination pipeline runs yet"
+                        description="Connect a destination and run its pipeline to create activity here. Direct Warehouse source refreshes are tracked on Sources."
                         primaryAction={
                             <Link
                                 href="/sources"
@@ -330,27 +368,34 @@ export function ReportsClient() {
                                 Go to Sources
                             </Link>
                         }
+                        secondaryAction={
+                            <Link
+                                href="/explorer"
+                                className="inline-flex items-center justify-center rounded-md border border-line bg-canvas px-4 py-2.5 text-sm font-semibold text-ink hover:bg-white/[0.04]"
+                            >
+                                Open Warehouse
+                            </Link>
+                        }
                     />
                 ) : logs.length === 0 ? (
-                    <div className="py-12 text-center text-sm text-gray-500 dark:text-slate-400">
-                        No logs match the current filters.{" "}
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setSource("");
-                                setClient("");
-                                setDateFrom("");
-                                setDateTo("");
-                                setStatusFilter("all");
-                            }}
-                            className="font-semibold text-white underline hover:no-underline"
-                        >
-                            Reset filters
-                        </button>
-                    </div>
+                    <EmptyState
+                        icon={<Search className="h-12 w-12" />}
+                        title="No pipeline runs match this view"
+                        description={`No destination pipeline runs match ${activeSourceLabel}, ${activeClientLabel}, and ${activeStatusLabel}${dateFrom || dateTo ? " in the selected date range" : ""}.`}
+                        primaryAction={hasActiveFilters ? (
+                            <button
+                                type="button"
+                                onClick={resetFilters}
+                                className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
+                            >
+                                Reset filters
+                            </button>
+                        ) : undefined}
+                    />
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs">
+                            <caption className="sr-only">Destination pipeline sync activity for {activeWorkspace?.name ?? "the active workspace"}</caption>
                             <thead>
                                 <tr className="border-b border-line text-[10px] font-bold uppercase tracking-wider text-ink-mute">
                                     <th className="py-3 pr-4">Pipeline</th>

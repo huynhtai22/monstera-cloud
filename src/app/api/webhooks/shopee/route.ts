@@ -139,8 +139,8 @@ export async function POST(request: Request) {
                 logger.info(`[SHOPEE WEBHOOK] Received deauthorization for shop: ${shopId}. Purging connections...`);
                 
                 // Find connections by shopId - search in credentials JSON or by name pattern
-                const connections = await withSystemScope(() =>
-                    prisma.connection.findMany({
+                const connections = await withSystemScope(async () => {
+                    return await prisma.connection.findMany({
                     where: {
                         provider: "shopee",
                         OR: [
@@ -149,19 +149,22 @@ export async function POST(request: Request) {
                             { name: `Shopee ID: ${shopId}` },
                         ]
                     }
-                    }),
-                );
+                    });
+                });
                 
                 for (const conn of connections) {
                     // Delete associated pipelines first to avoid foreign key issues
-                    await prisma.pipeline.deleteMany({
-                        where: { sourceConnectionId: conn.id }
+                    // Webhook-driven cleanup crosses workspaces by design — narrow system scope.
+                    await withSystemScope(async () => {
+                        return await prisma.pipeline.deleteMany({
+                            where: { sourceConnectionId: conn.id }
+                        });
                     });
-                    
+
                     await prisma.connection.delete({
                         where: { id: conn.id }
                     });
-                    
+
                     logger.info(`[SHOPEE WEBHOOK] Deleted connection ${conn.id} for shop ${shopId}`);
                 }
                 

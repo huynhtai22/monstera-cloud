@@ -20,6 +20,8 @@ import { SecondaryButton, primaryButtonLinkClassName, IntegrationMark } from "@/
 import { IntegrationCard, IntegrationCardSkeleton } from "@/components/sources/IntegrationCard";
 import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
 import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
+import { SourceOutcomeBanner, type SourceOutcomeNotice } from "@/components/sources/SourceOutcomeBanner";
+import { countSourceHealthStatuses } from "@/lib/source-health";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin" });
@@ -71,6 +73,7 @@ export default function SourcesPage() {
     const [activeFilter, setActiveFilter] = useState('connected');
     const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
     const addSourceMenuRef = useRef<HTMLDivElement>(null);
+    const [sourceOutcome, setSourceOutcome] = useState<SourceOutcomeNotice | null>(null);
     
     // P1: Fix It flow state
     const [fixConnectionTarget, setFixConnectionTarget] = useState<{
@@ -117,13 +120,19 @@ export default function SourcesPage() {
                 activeWorkspaceId ? mutate(`/api/workspaces/${activeWorkspaceId}/connections?type=source`) : Promise.resolve(),
             ]);
             trackEvent("source_disconnected", { sourceName: displayName });
-            if (data.message) {
-                toast.success(data.message);
-            } else {
-                toast.success("Source disconnected.");
-            }
-        } catch (e: unknown) {
-            toast.error(e instanceof Error ? e.message : "Could not disconnect.");
+            setSourceOutcome({
+                kind: "success",
+                title: "Source disconnected",
+                detail: "Syncs from this source have stopped. Existing Warehouse history was retained and you can reconnect the source later.",
+                action: { href: "/explorer", label: "View warehouse" },
+            });
+        } catch {
+            setSourceOutcome({
+                kind: "error",
+                title: "Source could not be disconnected",
+                detail: "The connection and existing Warehouse history were not changed. Try again, or contact support if this continues.",
+                action: { href: "/support", label: "Get support" },
+            });
         } finally {
             removeBusy(connectionId);
             setDisconnectTarget(null);
@@ -136,18 +145,28 @@ export default function SourcesPage() {
         addBusy(key);
         try {
             const res = await fetch(`/api/pipelines/${pipelineId}/run`, { method: 'POST' });
-            const data = await res.json();
             if (res.ok) {
-                toast.success(data.message || "Sync complete.");
+                setSourceOutcome({
+                    kind: "success",
+                    title: "Pipeline sync complete",
+                    detail: "The pipeline finished successfully. Review Warehouse data if you need to confirm coverage.",
+                    action: { href: "/explorer", label: "View warehouse" },
+                });
             } else {
-                toast.error(
-                    typeof data.error === "string"
-                        ? data.error
-                        : "Sync failed."
-                );
+                setSourceOutcome({
+                    kind: "error",
+                    title: "Pipeline sync could not complete",
+                    detail: "Existing warehouse data was not deleted. Review sync activity before retrying.",
+                    action: { href: "/reports", label: "Review sync activity" },
+                });
             }
         } catch {
-            toast.error("Network error during sync.");
+            setSourceOutcome({
+                kind: "error",
+                title: "Pipeline sync could not start",
+                detail: "The request did not reach Monstera. Existing warehouse data was not changed.",
+                action: { href: "/reports", label: "Review sync activity" },
+            });
         } finally {
             removeBusy(key);
             /* #3 — Refresh sync logs after manual sync */
@@ -158,94 +177,61 @@ export default function SourcesPage() {
     }, [addBusy, removeBusy, activeWorkspaceId, mutate]);
 
     /* Direct sync for ad platforms - no pipeline needed, syncs to CampaignMetric for Data Explorer */
-    const handleDirectSync = useCallback(async (connectionId: string, provider: string, force: boolean = false) => {
+    const handleDirectSync = useCallback(async (connectionId: string) => {
         const key = `direct-sync:${connectionId}`;
         addBusy(key);
         try {
-            const url = force 
-                ? `/api/connections/${connectionId}/sync?force=true` 
-                : `/api/connections/${connectionId}/sync`;
-            const res = await fetch(url, { method: 'POST' });
+            const res = await fetch(`/api/connections/${connectionId}/sync`, { method: 'POST' });
             const data = await res.json();
-            
-            // DEBUG: Always show response for now
-            console.log('[DirectSync] Response:', { status: res.status, ok: res.ok, data });
-            
+
+            const rowsIngested = typeof data.rowsIngested === "number" ? data.rowsIngested : 0;
             if (res.ok && data.outcome === "success") {
-                toast.success(
-                    <span>
-                        Synced {data.rowsIngested || 0} rows to Data Explorer.
-                        <a href="/explorer" className="ml-2 font-medium underline">
-                            View Data
-                        </a>
-                    </span>
-                );
+                setSourceOutcome({
+                    kind: "success",
+                    title: "Sync complete",
+                    detail: `${rowsIngested.toLocaleString()} row${rowsIngested === 1 ? "" : "s"} are available in Warehouse for this source.`,
+                    action: { href: "/explorer", label: "View warehouse" },
+                });
             } else if (res.ok && data.outcome === "partial") {
-                toast.warning(`Partial sync: ${data.rowsIngested || 0} rows were written, but ${data.failedTargets?.join(", ") || "one or more provider accounts"} failed. Last fully successful sync was not advanced.`);
+                setSourceOutcome({
+                    kind: "partial",
+                    title: "Partial sync",
+                    detail: `${rowsIngested.toLocaleString()} row${rowsIngested === 1 ? "" : "s"} were written, but one or more provider accounts did not complete. The last fully successful sync was not advanced.`,
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
+                });
             } else if (data.code === 'SYNC_ACTIVE' || data.error?.includes('already queued') || data.error?.includes('running')) {
-                // Show option to force unlock
-                toast.error(
-                    <div className="max-w-md">
-                        <p className="font-semibold mb-2">Sync Blocked</p>
-                        <p className="text-sm mb-3">{data.error || "A sync is already running"}</p>
-                        <button
-                            onClick={() => {
-                                toast.dismiss('sync-blocked');
-                                handleDirectSync(connectionId, provider, true);
-                            }}
-                            className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded"
-                        >
-                            Force Unlock & Retry
-                        </button>
-                    </div>,
-                    { duration: 30000, id: 'sync-blocked' }
-                );
+                setSourceOutcome({
+                    kind: "blocked",
+                    title: "Sync already running",
+                    detail: "Another sync holds this source's lease. Wait for it to finish, then review the source if it does not complete.",
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
+                });
             } else if (data.code === 'SYNC_COOLDOWN') {
-                toast(
-                    <div className="max-w-md">
-                        <p className="font-semibold mb-1 text-white">Sync Cooldown Active</p>
-                        <p className="text-sm mb-3 text-neutral-300">{data.error}</p>
-                        <button
-                            onClick={() => {
-                                toast.dismiss('sync-cooldown');
-                                handleDirectSync(connectionId, provider, true);
-                            }}
-                            className="text-xs bg-white hover:bg-neutral-200 text-black font-semibold px-3 py-1.5 rounded transition-colors"
-                        >
-                            Force Sync Now
-                        </button>
-                    </div>,
-                    { duration: 12000, id: 'sync-cooldown' }
-                );
+                setSourceOutcome({
+                    kind: "cooldown",
+                    title: "Sync cooldown active",
+                    detail: "This source was synced recently. Wait for the cooldown to finish before starting another sync.",
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
+                });
             } else {
-                // DEBUG: Show full error details since Vercel logs are unavailable
-                const errorDetails = JSON.stringify(data, null, 2);
-                toast.error(
-                    <div className="max-w-md">
-                        <p className="font-semibold mb-2">Sync Failed:</p>
-                        <p className="text-sm mb-2">{data.error || "Unknown error"}</p>
-                        <details className="text-xs">
-                            <summary className="cursor-pointer text-red-300 hover:text-red-200">Show Debug Info</summary>
-                            <pre className="mt-2 p-2 bg-red-950/50 rounded text-left overflow-auto max-h-40">{errorDetails}</pre>
-                        </details>
-                    </div>,
-                    { duration: 10000 }
-                );
+                setSourceOutcome({
+                    kind: "error",
+                    title: "Sync could not complete",
+                    detail: "Existing warehouse data was not deleted. Review this source before retrying.",
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
+                });
             }
-        } catch (e: any) {
-            toast.error(
-                <div>
-                    <p className="font-semibold">Network Error</p>
-                    <p className="text-xs mt-1">{e.message}</p>
-                </div>
-            );
+        } catch {
+            setSourceOutcome({
+                kind: "error",
+                title: "Sync could not start",
+                detail: "The request did not reach Monstera. Existing warehouse data was not changed.",
+                action: { href: `/sources/${connectionId}`, label: "Review source" },
+            });
         } finally {
             removeBusy(key);
-            if (activeWorkspaceId) {
-                void mutate(`/api/sync-logs?workspaceId=${activeWorkspaceId}`);
-            }
         }
-    }, [addBusy, removeBusy, activeWorkspaceId, mutate]);
+    }, [addBusy, removeBusy]);
 
     const handleFixConnection = useCallback((integration: any) => {
         const catalogId = integration.catalogId;
@@ -491,8 +477,17 @@ export default function SourcesPage() {
                     catalogId,
                     name: conn.name,
                     description: desc,
-                    status: conn.lastError?.startsWith("[partial]") ? "partial" : conn.status === "connected" ? "connected" : "error",
-                    errorMsg: conn.lastError || undefined,
+                    status: conn.status === "disconnected"
+                        ? "error"
+                        : conn.lastError?.startsWith("[partial]")
+                          ? "partial"
+                          : conn.status === "connected"
+                            ? "connected"
+                            : "error",
+                    // "auth" wording makes the row show the Reconnect CTA; historical data is retained.
+                    errorMsg: conn.status === "disconnected"
+                        ? "Disconnected — warehouse history retained. Re-authenticate to resume syncing."
+                        : conn.lastError || undefined,
                     lastSync: conn.lastSyncAt
                         ? new Date(conn.lastSyncAt).toLocaleString()
                         : relatedPipeline?.lastSyncedAt
@@ -535,15 +530,7 @@ export default function SourcesPage() {
     }, [workspaces, activeWorkspaceId]);
 
     const filterStats = useMemo(() => {
-        let connected = 0;
-        let needsAttention = 0;
-        let available = 0;
-        for (const i of filteredIntegrations as Array<{ status: string }>) {
-            if (i.status === "available") available += 1;
-            else if (i.status === "error") needsAttention += 1;
-            else connected += 1;
-        }
-        return { connected, needsAttention, available };
+        return countSourceHealthStatuses(filteredIntegrations as Array<{ status: string }>);
     }, [filteredIntegrations]);
 
     // Error State (e.g. 500, expired session edge case, rate limit)
@@ -625,6 +612,19 @@ export default function SourcesPage() {
                               ? "Connect Meta, Google Ads, TikTok Ads, or Shopee. OAuth is read-only."
                               : "Connector management for this workspace."}
                     </p>
+                    {!isLoading && activeWorkspace && (
+                        <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-mute" role="status">
+                            <span>Workspace: <span className="font-medium text-ink">{activeWorkspace.name}</span></span>
+                            <span aria-hidden="true">·</span>
+                            <span>{connectedSourceCount} source connection{connectedSourceCount === 1 ? "" : "s"}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>
+                                {lastSyncSummary
+                                    ? `Last successful sync: ${lastSyncSummary}`
+                                    : "No successful sync recorded yet"}
+                            </span>
+                        </p>
+                    )}
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3">
                     <RefreshedAt
@@ -759,6 +759,13 @@ export default function SourcesPage() {
             {/* DataFlowExplainer — only shown to first-time users (no connections yet); returning users see the compact pill */}
             {!isLoading && connectedSourceCount === 0 ? <DataFlowExplainer variant="sources" /> : null}
 
+            {sourceOutcome && (
+                <SourceOutcomeBanner
+                    notice={sourceOutcome}
+                    onDismiss={() => setSourceOutcome(null)}
+                />
+            )}
+
             <div className="mb-5 flex flex-col gap-3 border-b border-line pb-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-wrap items-center gap-4" role="tablist" aria-label="Filter integrations">
                     <button
@@ -781,6 +788,12 @@ export default function SourcesPage() {
                         <span className="inline-flex items-center gap-1.5 rounded-md border border-red-500/30 px-2 py-1 text-[11px] text-red-300">
                             <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
                             {filterStats.needsAttention} need attention
+                        </span>
+                    )}
+                    {!isLoading && filterStats.partial > 0 && (
+                        <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 px-2 py-1 text-[11px] text-amber-300">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                            {filterStats.partial} partial sync{filterStats.partial === 1 ? "" : "s"}
                         </span>
                     )}
                 </div>
@@ -827,13 +840,13 @@ export default function SourcesPage() {
             ) : (
                 <div role="tabpanel" aria-live="polite" className="space-y-8">
                     {activeFilter === 'connected' && connectedRows.length > 0 && (
-                        <section aria-labelledby="sources-connected-heading">
+                        <section id="connected-sources" aria-labelledby="sources-connected-heading" className="scroll-mt-6">
                             <h2 id="sources-connected-heading" className="sr-only">Connected</h2>
                             <ConnectedSourceList
                                 rows={connectedRows}
                                 busyActions={busyActions}
                                 onSync={handleSync}
-                                onDirectSync={(id, provider) => handleDirectSync(id, provider)}
+                                onDirectSync={handleDirectSync}
                                 onDisconnect={disconnectSource}
                                 onFixConnection={handleFixConnection}
                             />
@@ -871,7 +884,7 @@ export default function SourcesPage() {
 
             {connectedSourceCount > 0 && (
                 <div className="mt-8 flex items-center justify-between border-t border-line pt-4">
-                    <p className="text-xs text-ink-mute">Sync history lives in Sync activity.</p>
+                    <p className="text-xs text-ink-mute">Destination pipeline history lives in Sync activity. Source refresh status stays on each source.</p>
                     <Link href="/reports" className="text-xs font-medium text-ink-mute hover:text-ink">
                         Open logs →
                     </Link>
@@ -904,7 +917,12 @@ export default function SourcesPage() {
                 onReconnected={() => {
                     // Refresh data after successful reconnection
                     mutate((key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"));
-                    toast.success("Connection restored successfully");
+                    setSourceOutcome({
+                        kind: "success",
+                        title: "Connection restored",
+                        detail: "Authorization is ready. Existing Warehouse history was retained; run a sync when you want updated data.",
+                        action: { href: "/explorer", label: "View warehouse" },
+                    });
                 }}
             />
         </PageShell>

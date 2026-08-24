@@ -18,6 +18,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { FixConnectionModal } from "@/components/FixConnectionModal";
+import { SetupWizard } from "./SetupWizard";
 import type { DashboardOverviewDTO } from "@/lib/dashboard-overview";
 import { cn } from "@/lib/utils";
 
@@ -52,6 +53,110 @@ function formatCurrency(n: number, currency?: string | null): string {
   }
 }
 
+function DashboardSkeleton() {
+  return (
+    <PageShell>
+      <section aria-busy="true" aria-label="Loading dashboard" className="space-y-6">
+        <p className="sr-only" role="status">Loading your workspace dashboard</p>
+        <div className="flex items-center justify-between border-b border-line pb-4">
+          <div className="space-y-2">
+            <div className="h-5 w-28 rounded bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+            <div className="h-3 w-56 rounded bg-panel/80 motion-safe:animate-pulse motion-reduce:animate-none" />
+          </div>
+          <div className="h-8 w-24 rounded-md bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div key={index} className="rounded-lg border border-line bg-panel p-3.5">
+              <div className="h-3 w-16 rounded bg-canvas motion-safe:animate-pulse motion-reduce:animate-none" />
+              <div className="mt-3 h-5 w-24 rounded bg-canvas motion-safe:animate-pulse motion-reduce:animate-none" />
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="space-y-6 lg:col-span-7">
+            <div className="h-56 rounded-lg border border-line bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+            <div className="h-40 rounded-lg border border-line bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+          </div>
+          <div className="space-y-6 lg:col-span-5">
+            <div className="h-44 rounded-lg border border-line bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+            <div className="h-52 rounded-lg border border-line bg-panel motion-safe:animate-pulse motion-reduce:animate-none" />
+          </div>
+        </div>
+      </section>
+    </PageShell>
+  );
+}
+
+type StatePresentation = {
+  label: string;
+  detail: string;
+  dotClassName: string;
+  textClassName: string;
+};
+
+function warehouseStatePresentation(
+  status: DashboardOverviewDTO["summaryCards"]["warehouse"]["status"] | undefined,
+): StatePresentation {
+  switch (status) {
+    case "fresh":
+      return { label: "Fresh", detail: "Warehouse data is current.", dotClassName: "bg-emerald-400", textClassName: "text-emerald-400" };
+    case "refreshing":
+      return { label: "Syncing", detail: "A warehouse refresh is in progress.", dotClassName: "bg-sky-400", textClassName: "text-sky-400" };
+    case "stale":
+      return { label: "Stale", detail: "Warehouse data needs a refresh.", dotClassName: "bg-amber-400", textClassName: "text-amber-400" };
+    case "failed":
+      return { label: "Refresh failed", detail: "The latest refresh did not complete.", dotClassName: "bg-red-400", textClassName: "text-red-400" };
+    default:
+      return { label: "Not synced", detail: "No warehouse data has been imported yet.", dotClassName: "bg-amber-400", textClassName: "text-amber-400" };
+  }
+}
+
+function sourceStatePresentation(state: DashboardOverviewDTO["sourcesList"][number]["state"]): StatePresentation {
+  switch (state) {
+    case "fresh":
+      return { label: "Healthy", detail: "Authorized with a recent successful sync.", dotClassName: "bg-emerald-400", textClassName: "text-emerald-400" };
+    case "stale":
+      return { label: "Stale", detail: "The last successful sync is more than a day old.", dotClassName: "bg-amber-400", textClassName: "text-amber-400" };
+    case "error":
+      return { label: "Needs attention", detail: "Authorization or connection setup needs attention.", dotClassName: "bg-red-400", textClassName: "text-red-400" };
+    case "syncing":
+      return { label: "Syncing", detail: "A warehouse sync is in progress.", dotClassName: "bg-sky-400", textClassName: "text-sky-400" };
+    default:
+      return { label: "Connected — not synced", detail: "No successful warehouse sync is recorded yet.", dotClassName: "bg-amber-400", textClassName: "text-amber-400" };
+  }
+}
+
+function DashboardSourceRow({ source }: { source: DashboardOverviewDTO["sourcesList"][number] }) {
+  const state = sourceStatePresentation(source.state);
+  const lastSyncLabel = source.lastSyncAt
+    ? `Last successful sync ${new Date(source.lastSyncAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+    : state.detail;
+
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5 first:pt-2.5 last:pb-0">
+      <div className="flex min-w-0 items-center gap-3">
+        <IntegrationMark
+          src={logoPathForConnectionProvider(source.provider)}
+          alt={source.name}
+          size="md"
+        />
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-ink truncate">{source.name}</p>
+          <p className="text-[11px] text-ink-mute">
+            {source.accountCount} {source.accountCount === 1 ? "account" : "accounts"} · {lastSyncLabel}
+          </p>
+        </div>
+      </div>
+
+      <span className={cn("inline-flex shrink-0 items-center gap-1.5 text-[11px] font-medium", state.textClassName)} title={state.detail}>
+        <span className={cn("h-1.5 w-1.5 rounded-full", state.dotClassName, source.state === "syncing" && "motion-safe:animate-pulse motion-reduce:animate-none")} />
+        {state.label}
+      </span>
+    </div>
+  );
+}
+
 export function DashboardHomePage() {
   const { workspaceId, isLoading: workspaceLoading } = useResolvedWorkspaceId();
   const [expandedRawErrorId, setExpandedRawErrorId] = useState<string | null>(null);
@@ -77,6 +182,7 @@ export function DashboardHomePage() {
   );
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [wizardDismissed, setWizardDismissed] = useState(false);
   const handleManualRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -86,38 +192,32 @@ export function DashboardHomePage() {
     }
   }, [mutate]);
 
+  React.useEffect(() => {
+    if (!workspaceId) return;
+    try {
+      setWizardDismissed(
+        localStorage.getItem(`monstera_setup_wizard_dismissed_${workspaceId}`) === "1",
+      );
+    } catch {
+      /* storage blocked — wizard stays visible */
+    }
+  }, [workspaceId]);
+
+  const handleWizardDismiss = useCallback(() => {
+    setWizardDismissed(true);
+    if (!workspaceId) return;
+    try {
+      localStorage.setItem(`monstera_setup_wizard_dismissed_${workspaceId}`, "1");
+    } catch {
+      /* ignore */
+    }
+  }, [workspaceId]);
+
   const isLoading = workspaceLoading || (dataLoading && !overview);
 
   // ── Loading Skeleton ────────────────────────────────────────────────────────
   if (isLoading) {
-    return (
-      <PageShell>
-        <div className="space-y-6 animate-pulse">
-          <div className="flex items-center justify-between border-b border-line pb-4">
-            <div className="space-y-1.5">
-              <div className="h-5 w-28 rounded bg-panel" />
-              <div className="h-3.5 w-56 rounded bg-panel" />
-            </div>
-            <div className="h-8 w-24 rounded bg-panel" />
-          </div>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-20 rounded-lg border border-line bg-panel p-3.5" />
-            ))}
-          </div>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-            <div className="space-y-6 lg:col-span-7">
-              <div className="h-56 rounded-lg border border-line bg-panel" />
-              <div className="h-40 rounded-lg border border-line bg-panel" />
-            </div>
-            <div className="space-y-6 lg:col-span-5">
-              <div className="h-44 rounded-lg border border-line bg-panel" />
-              <div className="h-52 rounded-lg border border-line bg-panel" />
-            </div>
-          </div>
-        </div>
-      </PageShell>
-    );
+    return <DashboardSkeleton />;
   }
 
   // ── Error State ─────────────────────────────────────────────────────────────
@@ -151,6 +251,21 @@ export function DashboardHomePage() {
     destinationsList = [],
     recentActivity = [],
   } = overview || ({} as Partial<DashboardOverviewDTO>);
+  const warehouseState = warehouseStatePresentation(summaryCards?.warehouse?.status);
+  const sourceCount = summaryCards?.sources?.total ?? 0;
+  const accountCount = summaryCards?.sources?.accountsTotal ?? 0;
+  const errorSourceCount = sourcesList.filter((source) => source.state === "error").length;
+  const pendingSourceCount = sourcesList.filter((source) => source.state === "pending").length;
+  const staleSourceCount = sourcesList.filter((source) => source.state === "stale").length;
+  const sourceSummaryDetail = errorSourceCount
+    ? `${errorSourceCount} need attention`
+    : pendingSourceCount
+      ? `${pendingSourceCount} connected but not synced`
+      : staleSourceCount
+        ? `${staleSourceCount} stale`
+        : sourceCount
+          ? `${accountCount} accounts · All current`
+          : "Connect a source to begin";
 
   return (
     <PageShell>
@@ -160,26 +275,26 @@ export function DashboardHomePage() {
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-ink">Dashboard</h1>
             <p className="mt-0.5 text-xs text-ink-mute">
-              Operational overview for this workspace
-              {summaryCards?.sources?.total ? (
-                <>
-                  {" · "}
-                  <span className="text-ink font-medium">
-                    {summaryCards.sources.total} {summaryCards.sources.total === 1 ? "source" : "sources"}
-                  </span>
-                  {" · "}
-                  <span className="text-ink font-medium">
-                    {summaryCards.sources.accountsTotal ?? 0} accounts
-                  </span>
-                  {warehouseSnapshot?.dataThroughDate && (
-                    <>
-                      {" · "}
-                      <span>Data through {warehouseSnapshot.dataThroughDate}</span>
-                    </>
-                  )}
-                </>
-              ) : null}
+              Viewing <span className="font-medium text-ink">{overview?.workspace?.name ?? "your workspace"}</span>
+              {" · "}
+              {sourceCount} source connection{sourceCount === 1 ? "" : "s"}
+              {" · "}
+              {accountCount} account{accountCount === 1 ? "" : "s"}
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-mute" role="status" aria-live="polite">
+              <span className={cn("inline-flex items-center gap-1 font-medium", warehouseState.textClassName)}>
+                <span className={cn("h-1.5 w-1.5 rounded-full", warehouseState.dotClassName, summaryCards?.warehouse?.status === "refreshing" && "motion-safe:animate-pulse motion-reduce:animate-none")} />
+                Warehouse: {warehouseState.label}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>{warehouseSnapshot?.dataThroughDate ? `Data through ${warehouseSnapshot.dataThroughDate}` : warehouseState.detail}</span>
+              {summaryCards?.syncs?.lastSyncTimeAgo && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span>Last successful sync {summaryCards.syncs.lastSyncTimeAgo}</span>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -201,6 +316,15 @@ export function DashboardHomePage() {
           </div>
         </div>
 
+        {/* ── 1b. Onboarding setup wizard ───────────────────────────────────── */}
+        {!wizardDismissed && (
+          <SetupWizard
+            hasSource={(summaryCards?.sources?.total ?? 0) > 0}
+            hasSuccessfulSync={(sourcesList ?? []).some((s) => s.lastSyncAt)}
+            onDismiss={handleWizardDismiss}
+          />
+        )}
+
         {/* ── 2. Top Summary Cards (4 Clean Operational Pillars) ──────────────── */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {/* Sources Card */}
@@ -210,10 +334,10 @@ export function DashboardHomePage() {
               <Layers className="h-3.5 w-3.5 text-ink-mute" />
             </div>
             <p className="mt-1.5 text-base font-semibold tabular-nums text-ink">
-              {summaryCards?.sources?.total ?? 0} connected
+              {sourceCount} source connection{sourceCount === 1 ? "" : "s"}
             </p>
             <p className="mt-0.5 text-[11px] text-ink-mute truncate">
-              {summaryCards?.sources?.subtext ?? "None connected"}
+              {sourceSummaryDetail}
             </p>
           </div>
 
@@ -224,32 +348,11 @@ export function DashboardHomePage() {
               <Database className="h-3.5 w-3.5 text-ink-mute" />
             </div>
             <p className="mt-1.5 text-base font-semibold tabular-nums text-ink flex items-center gap-1.5">
-              {summaryCards?.warehouse?.status === "fresh" ? (
-                <>
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-emerald-400">Fresh</span>
-                </>
-              ) : summaryCards?.warehouse?.status === "refreshing" ? (
-                <>
-                  <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-pulse" />
-                  <span className="text-sky-400">Syncing</span>
-                </>
-              ) : summaryCards?.warehouse?.status === "stale" ? (
-                <>
-                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                  <span className="text-amber-400">Stale</span>
-                </>
-              ) : summaryCards?.warehouse?.status === "failed" ? (
-                <>
-                  <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
-                  <span className="text-red-400">Failed</span>
-                </>
-              ) : (
-                <span className="text-ink-mute">—</span>
-              )}
+              <span className={cn("h-1.5 w-1.5 rounded-full", warehouseState.dotClassName, summaryCards?.warehouse?.status === "refreshing" && "motion-safe:animate-pulse motion-reduce:animate-none")} />
+              <span className={warehouseState.textClassName}>{warehouseState.label}</span>
             </p>
             <p className="mt-0.5 text-[11px] text-ink-mute truncate">
-              {summaryCards?.warehouse?.dataThroughDate ? `Data through ${summaryCards.warehouse.dataThroughDate}` : "No data synced"}
+              {summaryCards?.warehouse?.dataThroughDate ? `Data through ${summaryCards.warehouse.dataThroughDate}` : warehouseState.detail}
             </p>
           </div>
 
@@ -378,11 +481,11 @@ export function DashboardHomePage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* Left Column (7 cols): Sources & Warehouse */}
           <div className="space-y-6 lg:col-span-7">
-            {/* Connected Sources */}
+            {/* Source readiness */}
             <div className="rounded-lg border border-line bg-panel p-4">
               <div className="flex items-center justify-between border-b border-line pb-3">
                 <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-mute">
-                  Connected sources
+                  Source readiness
                 </h2>
                 <Link
                   href="/sources"
@@ -395,46 +498,7 @@ export function DashboardHomePage() {
               {sourcesList.length > 0 ? (
                 <div className="divide-y divide-line">
                   {sourcesList.map((source) => (
-                    <div key={source.id} className="flex items-center justify-between py-2.5 first:pt-2.5 last:pb-0">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <IntegrationMark
-                          src={logoPathForConnectionProvider(source.provider)}
-                          alt={source.name}
-                          size="md"
-                        />
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-ink truncate">{source.name}</p>
-                          <p className="text-[11px] text-ink-mute">
-                            {source.accountCount} {source.accountCount === 1 ? "account" : "accounts"}
-                            {source.lastSyncAt ? ` · Last sync ${new Date(source.lastSyncAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : " · Awaiting sync"}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {source.state === "error" ? (
-                          <span className="inline-flex items-center gap-1.5 text-[11px] text-amber-400 font-medium">
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                            Needs attention
-                          </span>
-                        ) : source.state === "fresh" ? (
-                          <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                            Healthy
-                          </span>
-                        ) : source.state === "syncing" ? (
-                          <span className="inline-flex items-center gap-1.5 text-[11px] text-sky-400 font-medium">
-                            <span className="h-1.5 w-1.5 rounded-full bg-sky-400 animate-pulse" />
-                            Syncing
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-mute">
-                            <span className="h-1.5 w-1.5 rounded-full bg-neutral-600" />
-                            Pending
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    <DashboardSourceRow key={source.id} source={source} />
                   ))}
                 </div>
               ) : (

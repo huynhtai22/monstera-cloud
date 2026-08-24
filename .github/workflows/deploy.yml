@@ -44,14 +44,20 @@ jobs:
 
       - name: Build project
         env:
-          GIT_COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy to Vercel
         id: deploy
+        env:
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          URL=$(vercel deploy --prebuilt --prod --archive=tgz --token=${{ secrets.VERCEL_TOKEN }})
+          URL=$(vercel deploy --prebuilt --prod --archive=tgz \
+            --meta githubDeployment=1 \
+            --meta githubCommitRef=main \
+            --meta githubCommitSha="$RELEASE_SHA" \
+            --token=${{ secrets.VERCEL_TOKEN }})
           echo "url=$URL" >> $GITHUB_OUTPUT
 
       - name: Verify deployed version
@@ -62,7 +68,7 @@ jobs:
             if curl --fail --silent --show-error \
               --output version.json \
               "https://monsteracloud.com/api/version" && \
-              node -e 'const fs=require("node:fs"); const v=JSON.parse(fs.readFileSync("version.json", "utf8")); if (v.commitSha !== process.env.EXPECTED_SHA) { console.error(`Expected ${process.env.EXPECTED_SHA}, got ${v.commitSha}`); process.exit(1) } if (!v.buildTime) { console.error("Missing build time"); process.exit(1) } if (v.schemaVersion !== "20260819000000_support_tickets") process.exit(1)'; then
+              node -e 'const fs=require("node:fs"); const v=JSON.parse(fs.readFileSync("version.json", "utf8")); if (v.commitSha !== process.env.EXPECTED_SHA) { console.error(`Expected ${process.env.EXPECTED_SHA}, got ${v.commitSha}`); process.exit(1) } if (v.commitSource !== "build") { console.error(`Expected build commit source, got ${v.commitSource}`); process.exit(1) } if (!v.buildTime) { console.error("Missing build time"); process.exit(1) } if (v.schemaVersion !== "20260819000000_support_tickets") process.exit(1)'; then
               exit 0
             fi
             echo "Production alias is not ready yet (attempt $attempt/12)"

@@ -16,6 +16,7 @@ import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentia
 import { syncConnectionData } from "@/lib/sync-connection";
 import { requireWorkspaceAccess } from "@/lib/rbac";
 import { assertWorkspaceProviderEnabled } from "@/lib/workspace-provider-access";
+import { isConnectionSyncBlocked } from "@/lib/connection-lifecycle";
 
 export async function POST(
   request: Request,
@@ -43,6 +44,16 @@ export async function POST(
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+    }
+
+    if (isConnectionSyncBlocked(connection.status)) {
+      return NextResponse.json(
+        {
+          error: "This source is disconnected. Reconnect it to resume syncing.",
+          code: "CONNECTION_DISCONNECTED",
+        },
+        { status: 409 }
+      );
     }
 
     await requireWorkspaceAccess({
@@ -78,12 +89,21 @@ export async function POST(
       safeDecrypt(connection.credentials)
     ) as Record<string, unknown>;
 
-    // Force unlock: clear any existing locks before starting
+    // Force unlock: expire any existing leases before starting. Rows are kept
+    // (status flipped + expiry zeroed) so fencingToken stays monotonic across
+    // unlock generations; the next claim increments it rather than restarting.
     if (force && connection.provider === "meta_ads") {
       logger.info(`[Sync Route] Force unlock requested for connection ${connectionId}`);
       const scopePrefix = `meta_ads:${connection.workspaceId}:${connectionId}:`;
       try {
-        await prisma.$executeRaw`DELETE FROM "SyncLock" WHERE scope LIKE ${scopePrefix + '%'}`;
+        await prisma.syncLock.updateMany({
+          where: { scope: { startsWith: scopePrefix } },
+          data: {
+            status: "released",
+            heartbeatAt: new Date(),
+            leaseExpiresAt: new Date(0),
+          },
+        });
       } catch (lockErr) {
         logger.warn(`[Sync Route] Failed to clear locks during force unlock:`, lockErr);
       }

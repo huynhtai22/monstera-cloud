@@ -11,7 +11,12 @@ import { sendAgencyAlert } from "@/lib/alerts";
 import { classifyIngestionError, describeNextAction, formatLogError } from "@/lib/ingestion/error-taxonomy";
 import { shouldNotifyIngestionFailure } from "@/lib/ingestion/alert-policy";
 import { upsertOpenTicket } from "@/lib/support-ticket";
-import { markConnectionsSyncedOk, markConnectionsSyncError } from "@/lib/ingestion/connection-sync-state";
+import { markConnectionsSyncedOk, markConnectionsSyncError, type ConnectionSyncLeases } from "@/lib/ingestion/connection-sync-state";
+import {
+    acquireConnectionSyncLease,
+    releaseConnectionSyncLease,
+    type ConnectionLease,
+} from "@/lib/connection-sync-lease";
 import { logger } from "@/lib/logger";
 import { requireWorkspaceAccess, RbacError } from "@/lib/rbac";
 import { hasBearerSecret } from "@/lib/request-auth";
@@ -25,6 +30,9 @@ export async function POST(req: Request, context: { params: any }) {
     let notifyEmail: string | undefined;
     let pipelineNameForNotify: string | undefined;
     let activePipeline: any = null;
+    let sourceLease: ConnectionLease | null = null;
+    let destinationLease: ConnectionLease | null = null;
+    let runCompletedSuccessfully = false;
 
     try {
         // 0. Auth Check: Allow either Session OR Cron Secret
@@ -203,6 +211,49 @@ export async function POST(req: Request, context: { params: any }) {
             logger.info(`[Pipeline Run] Provider ${provider} is not an ad platform, skipping pre-sync`);
         }
 
+        // Hold connection leases across ETL so the post-run outcome writes are
+        // fenced: a worker that lost its lease (expiry + steal) must not
+        // clobber the new owner's lastSyncAt/lastError/status.
+        const sourceLeaseResult = await acquireConnectionSyncLease({
+            provider,
+            workspaceId: pipeline.workspaceId,
+            connectionId: pipeline.sourceConnectionId,
+            jobId: `pipeline-${pipeline.id}`,
+        });
+        if (!sourceLeaseResult.acquired) {
+            return NextResponse.json(
+                {
+                    error: "Another sync is already running for the source connection.",
+                    code: "SYNC_LEASE_BUSY",
+                    retryable: true,
+                },
+                { status: 409 }
+            );
+        }
+        sourceLease = sourceLeaseResult.lease;
+
+        if (pipeline.destinationConnectionId) {
+            const destinationLeaseResult = await acquireConnectionSyncLease({
+                provider: pipeline.destinationConnection?.provider ?? "unknown",
+                workspaceId: pipeline.workspaceId,
+                connectionId: pipeline.destinationConnectionId,
+                jobId: `pipeline-${pipeline.id}`,
+            });
+            if (!destinationLeaseResult.acquired) {
+                await releaseConnectionSyncLease(sourceLease, false);
+                sourceLease = null;
+                return NextResponse.json(
+                    {
+                        error: "Another sync is already running for the destination connection.",
+                        code: "SYNC_LEASE_BUSY",
+                        retryable: true,
+                    },
+                    { status: 409 }
+                );
+            }
+            destinationLease = destinationLeaseResult.lease;
+        }
+
         const etl = await runEtlPipeline({
             userId: userIdForLimits,
             userPlan: workspacePlan,
@@ -244,7 +295,13 @@ export async function POST(req: Request, context: { params: any }) {
             },
         });
 
-        await markConnectionsSyncedOk(connIds, now);
+        const outcomeLeases: ConnectionSyncLeases = {
+            sourceId: sourceLease ?? undefined,
+            destinationId: destinationLease ?? undefined,
+        };
+
+        await markConnectionsSyncedOk(connIds, now, outcomeLeases);
+        runCompletedSuccessfully = true;
 
         // Await data quality checks
         try {
@@ -333,7 +390,11 @@ export async function POST(req: Request, context: { params: any }) {
                             sourceId: activePipeline.sourceConnectionId,
                             destinationId: activePipeline.destinationConnectionId,
                         },
-                        logLine
+                        logLine,
+                        {
+                            sourceId: sourceLease ?? undefined,
+                            destinationId: destinationLease ?? undefined,
+                        }
                     );
                 }
             } catch (e) {
@@ -349,5 +410,12 @@ export async function POST(req: Request, context: { params: any }) {
             },
             { status: 500 }
         );
+    } finally {
+        if (sourceLease) {
+            await releaseConnectionSyncLease(sourceLease, runCompletedSuccessfully);
+        }
+        if (destinationLease) {
+            await releaseConnectionSyncLease(destinationLease, runCompletedSuccessfully);
+        }
     }
 }

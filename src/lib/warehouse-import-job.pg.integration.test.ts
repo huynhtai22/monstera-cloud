@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { assertCiDatabaseReachable, assertCiDatabaseReachableWhenMissing } from "./pg-test-discipline";
 import { describe, it, before, after } from "node:test";
 import { PrismaClient } from "@prisma/client";
 import {
@@ -19,6 +20,7 @@ describe("PostgreSQL Integration: Real Database Atomicity & Concurrency Fencing"
   const testUser = "usr_pg_test_1";
 
   before(async () => {
+    assertCiDatabaseReachableWhenMissing();
     if (process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("mock")) {
       try {
         prisma = new PrismaClient();
@@ -45,6 +47,7 @@ describe("PostgreSQL Integration: Real Database Atomicity & Concurrency Fencing"
           create: { id: testWorkspace2, name: "PG Test Workspace 2", slug: "pg-test-ws-2", ownerId: testUser, plan: "pilot" },
         });
       } catch {
+        assertCiDatabaseReachable();
         isDbAvailable = false;
       }
     }

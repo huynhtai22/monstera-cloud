@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { Redis } from "@upstash/redis";
 import { Ratelimit } from "@upstash/ratelimit";
 import { logger } from "@/lib/logger";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
 import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-cache";
 import { hashApiKey, resolveApiKey } from "@/lib/api-key-security";
 import { queryWarehouse } from "@/lib/warehouse-query";
-
-const UPSTASH_AVAILABLE = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+import { createNodeRedis } from "@/lib/node-redis";
 
 type RateLimitResult = {
   success: boolean;
@@ -18,7 +16,8 @@ type RateLimitResult = {
 };
 
 async function checkPerKeyRateLimit(key: string, plan: string | null): Promise<RateLimitResult> {
-  if (!UPSTASH_AVAILABLE) return { success: true };
+  const redis = createNodeRedis();
+  if (!redis) return { success: true };
 
   // Map plan -> requests per minute
   const planMap: Record<string, number> = {
@@ -32,7 +31,7 @@ async function checkPerKeyRateLimit(key: string, plan: string | null): Promise<R
   const limit = plan && planMap[plan] ? planMap[plan] : 60;
 
   const rl = new Ratelimit({
-    redis: Redis.fromEnv(),
+    redis,
     limiter: Ratelimit.slidingWindow(limit, "1 m"),
     analytics: false,
     prefix: "monstera:ratelimit:perkey",

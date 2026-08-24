@@ -1,11 +1,5 @@
-import { Redis } from "@upstash/redis/cloudflare";
 import crypto from "crypto";
-
-// Use edge-friendly import for Redis, falling back to null if disabled
-export const redisCacheClient =
-  process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
-    ? Redis.fromEnv()
-    : null;
+import { createNodeRedis, type NodeRedisClient } from "./node-redis";
 
 /**
  * Generate a deterministic SHA-256 cache key from a prefix and any serializable parameters.
@@ -19,10 +13,13 @@ export function generateCacheKey(prefix: string, params: Record<string, any>): s
 /**
  * Fetch a cached query result from Redis.
  */
-export async function getCachedQuery<T>(key: string): Promise<T | null> {
-  if (!redisCacheClient) return null;
+export async function getCachedQuery<T>(
+  key: string,
+  redis: NodeRedisClient | null = createNodeRedis(),
+): Promise<T | null> {
+  if (!redis) return null;
   try {
-    const data = await redisCacheClient.get(key);
+    const data = await redis.get(key);
     if (!data) return null;
     return (typeof data === "string" ? JSON.parse(data) : data) as T;
   } catch (error) {
@@ -34,11 +31,16 @@ export async function getCachedQuery<T>(key: string): Promise<T | null> {
 /**
  * Store a query result in Redis with a TTL (in seconds).
  */
-export async function setCachedQuery(key: string, data: any, ttlSeconds: number): Promise<void> {
-  if (!redisCacheClient) return;
+export async function setCachedQuery(
+  key: string,
+  data: any,
+  ttlSeconds: number,
+  redis: NodeRedisClient | null = createNodeRedis(),
+): Promise<void> {
+  if (!redis) return;
   try {
     const serialized = typeof data === "string" ? data : JSON.stringify(data);
-    await redisCacheClient.set(key, serialized, { ex: ttlSeconds });
+    await redis.set(key, serialized, { ex: ttlSeconds });
   } catch (error) {
     console.error(`[Redis Cache Error] setCachedQuery failed for key ${key}:`, error);
   }

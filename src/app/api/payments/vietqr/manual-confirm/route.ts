@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fulfillVietQrPayment, listRecentVietQrOrders } from "@/lib/vietqr-gateway";
+import { requirePlatformAdmin } from "@/lib/admin-auth";
 
+/**
+ * Manual bank-transfer confirmation (BD admin) — this mutates workspace plans,
+ * so both the order listing and the confirmation require platform-admin auth.
+ * Previously both were unauthenticated, letting anyone with a 6-digit order
+ * code upgrade any workspace for free.
+ */
 export async function GET() {
+    const auth = await requirePlatformAdmin();
+    if (auth.error) return auth.error;
     try {
         const orders = await listRecentVietQrOrders(30);
         return NextResponse.json({ orders });
@@ -11,6 +20,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+    const auth = await requirePlatformAdmin();
+    if (auth.error) return auth.error;
     try {
         const body = await req.json();
         const { orderCode } = body;

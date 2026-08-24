@@ -69,10 +69,10 @@ export async function GET(request: Request) {
           until: untilDate,
         });
         if (result.success) {
-          await prisma.connection.updateMany({
-            where: { id: connection.id, workspaceId: workspace.id },
-            data: { lastSyncAt: new Date(), lastError: null },
-          });
+          // lastSyncAt/lastError are persisted by the lease-fenced
+          // persistConnectionSyncOutcome inside syncConnectionData; this route
+          // must not write them again (an unfenced duplicate could misreport
+          // freshness after a lease steal).
 
           // Await post-refresh data quality checks
           try {

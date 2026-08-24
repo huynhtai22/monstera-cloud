@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
+import { resolveReleaseIdentity } from "@/lib/release-identity";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const releaseIdentity = resolveReleaseIdentity({
+    // RELEASE_COMMIT_SHA is set only by trusted production release paths and
+    // stamped into the build. Provider metadata remains an explicit fallback.
+    buildCommitSha: process.env.RELEASE_COMMIT_SHA,
+    vercelCommitSha: process.env.VERCEL_GIT_COMMIT_SHA,
+  });
+
   return NextResponse.json(
     {
-      commitSha: process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || "development",
+      ...releaseIdentity,
       buildTime: process.env.BUILD_TIME || null,
       schemaVersion: "20260819000000_support_tickets",
       environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",

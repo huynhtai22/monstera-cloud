@@ -252,27 +252,57 @@ export interface ShopeeApiOptions {
   sandbox?: boolean;
 }
 
-async function shopeeGet(
+/** Bounded transport retry for genuinely transient Shopee failures only. */
+const SHOPEE_TRANSPORT_MAX_ATTEMPTS = 3;
+
+function isShopeeTransientHttpStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+export async function shopeeGet(
   path: string,
   params: Record<string, string>,
   opts: ShopeeApiOptions
 ): Promise<any> {
-  const ts = nowUnix();
-  const sign = signShop(path, ts, opts.accessToken, opts.shopId);
   const host = getHost(opts.sandbox);
 
-  const q = new URLSearchParams();
-  q.set("partner_id", partnerIdString());
-  q.set("timestamp", String(ts));
-  q.set("access_token", opts.accessToken);
-  q.set("shop_id", String(opts.shopId));
-  q.set("sign", sign);
-  for (const [k, v] of Object.entries(params)) {
-    q.set(k, v);
-  }
+  // Each attempt signs with a fresh timestamp; auth/signature and business
+  // errors are never retried (they throw past this loop).
+  let lastNetworkError: unknown;
+  for (let attempt = 0; attempt < SHOPEE_TRANSPORT_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1) + Math.floor(Math.random() * 200)));
+    }
+    const ts = nowUnix();
+    const sign = signShop(path, ts, opts.accessToken, opts.shopId);
+    const q = new URLSearchParams();
+    q.set("partner_id", partnerIdString());
+    q.set("timestamp", String(ts));
+    q.set("access_token", opts.accessToken);
+    q.set("shop_id", String(opts.shopId));
+    q.set("sign", sign);
+    for (const [k, v] of Object.entries(params)) {
+      q.set(k, v);
+    }
 
-  const res = await fetch(`${host}${path}?${q.toString()}`);
-  const rawJson = await res.json();
+    let res: Response;
+    try {
+      res = await fetch(`${host}${path}?${q.toString()}`);
+    } catch (networkError) {
+      // Timeout/reset-style failures are retryable; a sign/auth problem throws
+      // elsewhere and never reaches this loop's error branches.
+      lastNetworkError = networkError;
+      continue;
+    }
+    if (isShopeeTransientHttpStatus(res.status) && attempt < SHOPEE_TRANSPORT_MAX_ATTEMPTS - 1) {
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const delayMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1000, 30_000)
+        : 500 * 2 ** attempt + Math.floor(Math.random() * 200);
+      await new Promise((r) => setTimeout(r, delayMs));
+      continue;
+    }
+    const rawJson = await res.json();
   const json = unwrapShopeePayload(rawJson);
   if (shopeeApiHasError(json)) {
     const errCode = String(json.error ?? "");
@@ -286,6 +316,10 @@ async function shopeeGet(
     );
   }
   return json;
+  }
+  throw new Error(
+    `Shopee API ${path} error: network — ${lastNetworkError instanceof Error ? lastNetworkError.message : "transport failed"}`
+  );
 }
 
 /** Extra context for Ads / sandbox support (IP allowlist, permission, Wrong sign). */

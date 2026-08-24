@@ -17,6 +17,9 @@ describe("tenant query guard", () => {
       }),
       true,
     );
+    assert.equal(argsHaveWorkspaceScope({ where: { workspace: { is: { id: "ws-a" } } } }), true);
+    assert.equal(argsHaveWorkspaceScope({ where: { pipeline: { is: { workspaceId: "ws-a" } } } }), true);
+    assert.equal(argsHaveWorkspaceScope({ where: { workspace: { is: { name: "unscoped" } } } }), false);
     assert.equal(argsHaveWorkspaceScope({ where: { status: "connected" } }), false);
 
     assert.doesNotThrow(() =>

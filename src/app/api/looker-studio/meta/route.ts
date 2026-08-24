@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { Redis } from "@upstash/redis";
 import { logger } from "@/lib/logger";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
 import { resolveApiKey } from "@/lib/api-key-security";
-
-const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN ? Redis.fromEnv() : null;
+import { getCachedQuery, setCachedQuery } from "@/lib/redis-cache";
 
 function isGoogleJwt(token: string): boolean {
   const parts = token.split('.');
@@ -73,14 +71,8 @@ export async function GET(req: NextRequest) {
     const platform = req.nextUrl.searchParams.get("platform");
 
     const cacheKey = `looker:meta:${workspaceId}:${startDateParam || ''}:${endDateParam || ''}:${platform || 'all'}`;
-    if (redis) {
-      try {
-        const cached = await redis.get(cacheKey);
-        if (cached && typeof cached === 'string') return NextResponse.json(JSON.parse(cached));
-      } catch {
-        // ignore cache read errors
-      }
-    }
+    const cached = await getCachedQuery<unknown>(cacheKey);
+    if (cached) return NextResponse.json(cached);
 
     const where: any = { workspaceId };
     if (platform && platform !== 'all') where.platform = platform;
@@ -118,9 +110,7 @@ export async function GET(req: NextRequest) {
       platforms: platforms.map(p => p.platform),
     };
 
-    if (redis) {
-      try { await redis.set(cacheKey, JSON.stringify(res), { ex: 60 }); } catch {}
-    }
+    await setCachedQuery(cacheKey, res, 60);
 
     return NextResponse.json(res);
   } catch (e) {

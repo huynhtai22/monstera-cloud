@@ -7,13 +7,59 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * nested filter). Fleet cron/webhooks wrap work in withSystemScope().
  */
 
+/**
+ * Models guarded because they carry a DIRECT, NON-NULL `workspaceId` column,
+ * so workspace scope can be enforced correctly at the application layer.
+ *
+ * Deliberately NOT guarded yet (future RLS / architecture decision):
+ * - SyncJob, SyncLog, SyncLogDetail, TransformationRule: owned indirectly via
+ *   `pipelineId → Pipeline.workspaceId`. Nested `where.pipeline.workspaceId`
+ *   filters satisfy the checker, but fleet cron claims these rows globally by
+ *   status/priority, so every call site must be migrated first.
+ * - SyncCheckpoint: has `pipelineId` but NO Prisma relation declared, so a
+ *   nested ownership filter cannot even be expressed.
+ * - WorkspaceInvitation: nullable workspaceId (pre-provisioning invitations).
+ * - WorkspaceMember: membership join queried by userId during auth.
+ * - WorkspaceProviderAccess: provider entitlements are checked through a
+ *   workspace-authorized route before access is granted.
+ * - SyncLock: system lease infra keyed by provider scope string.
+ * - DashboardTemplate, SchemaVersion: global platform catalogs.
+ * - User/Account/Session/VerificationToken/PasswordResetToken: identity tables.
+ */
 export const TENANT_GUARDED_MODELS = new Set([
+  // Existing guards
   "Connection",
   "CampaignMetric",
   "WarehouseImportJob",
   "ApiKey",
   "SupportTicket",
+  // Coverage extension (audit 2026-08): direct non-null workspaceId owners
+  "Client",
+  "Pipeline",
+  "RetailOrder",
+  "AuditEvent",
+  "OAuthAttempt",
+  "AttributionSnapshot",
+  "DataQualityRule",
+  "DataQualityViolation",
+  "UserDashboard",
+  "LookerJob",
+  // No call sites today; guarded so future code cannot regress silently
+  "UtmMappingRule",
+  "AttributionTouch",
+  "ReportSchedule",
 ]);
+
+/**
+ * Direct workspace-owned models that intentionally use a different access
+ * pattern. The schema coverage test rejects any new direct owner unless it is
+ * guarded here or explicitly documented below.
+ */
+export const TENANT_GUARD_EXEMPTIONS: Readonly<Record<string, string>> = {
+  WorkspaceMember: "Membership joins are queried by user ID during authentication.",
+  WorkspaceProviderAccess: "Provider entitlements are accessed through workspace-authorized routes.",
+  SyncLock: "System lease infrastructure is keyed by provider scope.",
+};
 
 const LIST_OR_BULK_OPS = new Set([
   "findMany",
@@ -67,10 +113,18 @@ function nodeHasWorkspaceScope(node: unknown, depth = 0): boolean {
     const workspace = record.workspace as Record<string, unknown>;
     if (isNonEmptyString(workspace.id) || isNonEmptyString(workspace.workspaceId)) return true;
     if ("members" in workspace) return true;
-    if (workspace.is && nodeHasWorkspaceScope(workspace.is, depth + 1)) return true;
+    if (workspace.is && typeof workspace.is === "object") {
+      const relationTarget = workspace.is as Record<string, unknown>;
+      if (isNonEmptyString(relationTarget.id) || isNonEmptyString(relationTarget.workspaceId)) return true;
+      if (nodeHasWorkspaceScope(relationTarget, depth + 1)) return true;
+    }
   }
 
-  if (record.pipeline && nodeHasWorkspaceScope(record.pipeline, depth + 1)) return true;
+  if (record.pipeline && typeof record.pipeline === "object") {
+    const pipeline = record.pipeline as Record<string, unknown>;
+    const pipelineNode = pipeline.is ?? pipeline;
+    if (nodeHasWorkspaceScope(pipelineNode, depth + 1)) return true;
+  }
 
   if (Array.isArray(record.AND) && record.AND.some((item) => nodeHasWorkspaceScope(item, depth + 1))) {
     return true;

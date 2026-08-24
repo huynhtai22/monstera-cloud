@@ -24,13 +24,38 @@ type IntegrationRow = {
 
 type SortKey = "name" | "status" | "lastSync";
 
+type SourceStateKind = "connected" | "not-synced" | "syncing" | "partial" | "attention";
+
+type SourceState = {
+  kind: SourceStateKind;
+  label: string;
+  detail: string;
+};
+
+function sourceStateFor(row: IntegrationRow, syncBusy: boolean): SourceState {
+  if (syncBusy || row.status === "syncing") {
+    return { kind: "syncing", label: "Syncing", detail: "A warehouse sync is currently running." };
+  }
+  if (row.status === "error") {
+    return { kind: "attention", label: "Needs attention", detail: "Authorization or connection setup needs attention." };
+  }
+  if (row.status === "partial") {
+    return { kind: "partial", label: "Partial sync", detail: "Some requested data was imported; review and retry the affected source." };
+  }
+  if (!row.lastSync || row.lastSync === "Never") {
+    return { kind: "not-synced", label: "Connected — not synced", detail: "Authorization is ready, but no successful warehouse sync is recorded yet." };
+  }
+  return { kind: "connected", label: "Connected", detail: "Authorized and has at least one successful sync." };
+}
+
 function statusRank(row: IntegrationRow): number {
-  // Lower is better (connected), higher is worse (error)
-  if (row.status === "error") return 3;
-  // Stale is rendered by card, but list doesn't know stale precisely; treat "connected" as best.
+  // Lower is better (connected), higher is worse (needs attention).
+  if (row.status === "error") return 5;
+  if (row.status === "partial") return 4;
+  if (row.status === "syncing") return 3;
+  if (!row.lastSync || row.lastSync === "Never") return 2;
   if (row.status === "connected") return 1;
-  if (row.status === "syncing") return 2;
-  return 2;
+  return 3;
 }
 
 function safeTimeValue(s: string | undefined): number {
@@ -47,7 +72,7 @@ export function ConnectedSourceList(props: {
   rows: IntegrationRow[];
   busyActions: Set<string>;
   onSync: (pipelineId: string, integrationId: string) => void;
-  onDirectSync: (connectionId: string, provider: string) => void;
+  onDirectSync: (connectionId: string) => void;
   onDisconnect: (connectionId: string, displayName: string) => void;
   onFixConnection: (integration: any) => void;
 }) {
@@ -106,7 +131,7 @@ export function ConnectedSourceList(props: {
         return;
       }
       if (canDirectSync(r.provider)) {
-        onDirectSync(r.id, r.provider!);
+        onDirectSync(r.id);
         return;
       }
       toast.error(
@@ -202,6 +227,14 @@ export function ConnectedSourceList(props: {
                 (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
               const disconnectBusy = busyActions.has(r.id);
               const isError = r.status === "error";
+              const sourceState = sourceStateFor(r, syncBusy);
+              const syncActionLabel = sourceState.kind === "partial"
+                ? "Retry sync"
+                : sourceState.kind === "not-synced"
+                  ? "Run first sync"
+                  : sourceState.kind === "syncing"
+                    ? "Syncing"
+                    : "Sync";
               return (
                 <React.Fragment key={r.id}>
                   <tr 
@@ -263,17 +296,37 @@ export function ConnectedSourceList(props: {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {isError ? (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-1 text-xs font-semibold text-red-800 dark:bg-red-950/70 dark:text-red-200">
-                          <AlertCircle className="h-3.5 w-3.5" /> Error
+                      <div>
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold",
+                            sourceState.kind === "attention"
+                              ? "bg-red-50 text-red-800 dark:bg-red-950/70 dark:text-red-200"
+                              : sourceState.kind === "partial" || sourceState.kind === "not-synced"
+                                ? "bg-amber-50 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200"
+                                : sourceState.kind === "syncing"
+                                  ? "bg-blue-50 text-blue-800 dark:bg-blue-950/70 dark:text-blue-200"
+                                  : "border border-line text-ink",
+                          )}
+                        >
+                          {sourceState.kind === "attention" || sourceState.kind === "partial" || sourceState.kind === "not-synced" ? (
+                            <AlertCircle className="h-3.5 w-3.5" />
+                          ) : sourceState.kind === "syncing" ? (
+                            <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin motion-reduce:animate-none" />
+                          ) : (
+                            <CheckCircle2 className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
+                          )}
+                          {sourceState.label}
                         </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-xs font-medium text-ink">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} /> Connected
-                        </span>
+                        <p className="mt-1 max-w-[15rem] text-[11px] leading-snug text-ink-mute">{sourceState.detail}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600 dark:text-slate-300">
+                      <p>{r.lastSync ?? "Never"}</p>
+                      {sourceState.kind === "not-synced" && (
+                        <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">No successful sync recorded</p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-600 dark:text-slate-300">{r.lastSync ?? "Never"}</td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
                         {isError ? (
@@ -283,7 +336,7 @@ export function ConnectedSourceList(props: {
                             className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
                             data-no-row-click
                           >
-                            <Wrench className="h-3.5 w-3.5" /> Fix
+                            <Wrench className="h-3.5 w-3.5" /> Reconnect
                           </button>
                         ) : (
                           <button
@@ -298,8 +351,8 @@ export function ConnectedSourceList(props: {
                             )}
                             data-no-row-click
                           >
-                            {syncBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                            Sync
+                            {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                            {syncActionLabel}
                           </button>
                         )}
                         <button
@@ -332,9 +385,10 @@ export function ConnectedSourceList(props: {
                     <tr className="bg-canvas/40">
                       <td colSpan={6} className="px-4 pb-4">
                         <div className="mt-3 rounded-xl border border-line bg-canvas p-4 text-sm">
-                          {isError && r.errorMsg ? (
+                          {(sourceState.kind === "attention" || sourceState.kind === "partial") && r.errorMsg ? (
                             <p className="mb-2 text-sm font-medium text-red-700 dark:text-red-300">{r.errorMsg}</p>
                           ) : null}
+                          <p className="mb-2 text-xs text-ink-mute">{sourceState.detail}</p>
                           <div className="flex flex-wrap items-center gap-2 text-xs text-ink-mute">
                             <Link href={`/sources/${r.id}`} className="font-semibold text-white hover:text-neutral-300">
                               Open details
@@ -365,4 +419,3 @@ export function ConnectedSourceList(props: {
     </div>
   );
 }
-

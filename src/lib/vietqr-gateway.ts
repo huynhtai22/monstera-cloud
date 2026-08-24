@@ -1,17 +1,12 @@
 /**
- * Monstera Cloud - Domestic Vietnamese QR Payment Gateway (VietQR / PayOS / SePay)
- *
- * Supports:
- * 1. 100% In-House Direct VietQR (Napas 24/7 with manual / BD 1-click confirmation)
- * 2. PayOS.vn Open Banking API & Webhooks (Zero fees, automated 24/7)
- * 3. SePay.vn Bank Balance Webhook Receiver
+ * Payment order and fulfillment support for the PayOS hosted checkout.
  */
 
-import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { getRedis } from "@/lib/redis";
 import { logger } from "@/lib/logger";
 import { PLAN_PRICING, type PlanName } from "@/lib/plan-config";
+import { createPayOSPaymentLink, verifyPayOSData } from "@/lib/payos";
 
 export interface VietQrOrder {
     orderCode: number;
@@ -28,16 +23,8 @@ export interface VietQrOrder {
     accountNo: string;
     accountName: string;
     qrUrl: string;
-}
-
-// Bank Default Settings (Configurable via Environment Variables)
-export function getBankConfig() {
-    return {
-        bankId: (process.env.VIETQR_BANK_ID || "TCB").trim(), // TCB, VCB, MB, ACB, VPB, etc.
-        bankName: (process.env.VIETQR_BANK_NAME || "Techcombank").trim(),
-        accountNo: (process.env.VIETQR_ACCOUNT_NO || "19036348292019").trim(),
-        accountName: (process.env.VIETQR_ACCOUNT_NAME || "HUYNH CAM TAI").trim(),
-    };
+    checkoutUrl?: string;
+    paymentLinkId?: string;
 }
 
 /**
@@ -55,19 +42,23 @@ export async function createVietQrOrder(opts: {
     billingCycle: "monthly" | "annual";
     userEmail?: string;
     workspaceId?: string;
+    returnUrl: string;
+    cancelUrl: string;
 }): Promise<VietQrOrder> {
     const orderCode = generateOrderCode();
     const cfg = PLAN_PRICING[opts.plan] || PLAN_PRICING.free;
     const monthlyPrice = opts.billingCycle === "annual" ? cfg.vndAnnualMonthly : cfg.vndMonthly;
     const totalAmount = opts.billingCycle === "annual" ? monthlyPrice * 12 : monthlyPrice;
 
-    const bank = getBankConfig();
     const memo = `MC${orderCode}`;
-
-    // Standard Napas 24/7 VietQR API format (img.vietqr.io)
-    const qrUrl = `https://img.vietqr.io/image/${bank.bankId}-${bank.accountNo}-compact2.png?amount=${totalAmount}&addInfo=${encodeURIComponent(
-        memo
-    )}&accountName=${encodeURIComponent(bank.accountName)}`;
+    const paymentLink = await createPayOSPaymentLink({
+        orderCode,
+        amount: totalAmount,
+        description: memo,
+        returnUrl: opts.returnUrl,
+        cancelUrl: opts.cancelUrl,
+        buyerEmail: opts.userEmail,
+    });
 
     const order: VietQrOrder = {
         orderCode,
@@ -79,10 +70,12 @@ export async function createVietQrOrder(opts: {
         userEmail: opts.userEmail,
         workspaceId: opts.workspaceId,
         createdAt: Date.now(),
-        bankName: bank.bankName,
-        accountNo: bank.accountNo,
-        accountName: bank.accountName,
-        qrUrl,
+        bankName: "PayOS",
+        accountNo: "",
+        accountName: "",
+        qrUrl: "",
+        checkoutUrl: paymentLink.checkoutUrl,
+        paymentLinkId: paymentLink.paymentLinkId,
     };
 
     // Store order in Redis with 24-hour TTL (86400s)
@@ -135,6 +128,16 @@ export async function listRecentVietQrOrders(limit = 20): Promise<VietQrOrder[]>
 }
 
 /**
+ * A bank transfer may exceed the order amount (overpayment), but must never be
+ * less — underpayment must not fulfill (upgrade) an order.
+ */
+export function isTransferAmountValid(orderAmount: number, transferAmount: unknown): boolean {
+    if (transferAmount === undefined || transferAmount === null) return true; // manual/admin-verified path
+    const paid = Number(transferAmount);
+    return Number.isFinite(paid) && paid >= orderAmount;
+}
+
+/**
  * Fulfill payment: Upgrades workspace & user subscription in database
  */
 export async function fulfillVietQrPayment(orderCode: number, transactionDetails?: Record<string, unknown>): Promise<{ success: boolean; message: string }> {
@@ -145,6 +148,14 @@ export async function fulfillVietQrPayment(orderCode: number, transactionDetails
 
     if (order.status === "PAID") {
         return { success: true, message: `Order ${orderCode} was already fulfilled` };
+    }
+
+    const transferredAmount = transactionDetails?.amount ?? transactionDetails?.transferAmount;
+    if (!isTransferAmountValid(order.amount, transferredAmount)) {
+        return {
+            success: false,
+            message: `Order ${orderCode} underpaid: expected >= ${order.amount}, received ${String(transferredAmount)}`,
+        };
     }
 
     // Mark as PAID
@@ -218,16 +229,5 @@ export async function fulfillVietQrPayment(orderCode: number, transactionDetails
  * PayOS Webhook Checksum Verification (HMAC-SHA256)
  */
 export function verifyPayOSWebhook(data: Record<string, unknown>, signature: string): boolean {
-    const checksumKey = process.env.PAYOS_CHECKSUM_KEY;
-    if (!checksumKey) return true; // If not set in development, bypass
-
-    try {
-        // Sort keys alphabetically and construct query string format
-        const sortedKeys = Object.keys(data).sort();
-        const dataStr = sortedKeys.map((k) => `${k}=${data[k]}`).join("&");
-        const hmac = crypto.createHmac("sha256", checksumKey).update(dataStr).digest("hex");
-        return crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(signature));
-    } catch {
-        return false;
-    }
+    return verifyPayOSData(data, signature);
 }

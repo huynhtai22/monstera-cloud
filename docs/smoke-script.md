@@ -16,8 +16,8 @@
 
 | Step | Action | Expected (factual) | Result |
 |------|--------|-------------------|--------|
-| A1 | Open `https://monsteracloud.com` | Page loads; nav shows **Log in**, **Start free trial** | |
-| A2 | Click **Log in** | URL is `/login`; heading **Welcome back**; **Continue with Google** visible | |
+| A1 | Open `https://monsteracloud.com` | Page loads; nav shows **Log in**, **Start free** | |
+| A2 | Click **Log in** | URL is `/login`; heading **Log in to Monstera Cloud**; **Continue with Google** visible | |
 | A3 | Wrong password submit | Red message: **Invalid email or password** | |
 | A4 | Sign in with **valid** credentials (email or Google) | Redirect to **`/console`** (unless `callbackUrl` is set—then that path) | |
 | A5 | Open `/login` again while signed in | Brief spinner, then redirect away from login (session recognized) | |
@@ -27,19 +27,15 @@
 
 ---
 
-## Flow B — Data Sources (core console)
+## Flow B — Console dashboard (core console)
 
 | Step | Action | Expected (factual) | Result |
 |------|--------|-------------------|--------|
-| B1 | While signed in, open `https://monsteracloud.com/console` | **H1:** `Data Sources`; subcopy about connect and manage platforms | |
-| B2 | See **Connected sources:** row with a number | Number matches count of connected sources (0 is OK) | |
-| B3 | Click **Refresh All** | List reloads without permanent error state | |
-| B4 | On an **Available** card (e.g. **Meta Ads**), click **Connect** | Modal opens; for Meta, step 1 title **Sign in with Facebook** | |
-| B5 | Close modal (X); in **Search integrations…** type `Meta` | List filters to matching cards | |
-| B6 | Tabs **All Sources** / **Connected** / **Available** | Switching tabs changes the list logically | |
-| B7 | *(Optional)* Header **New Data Source** only | Modal opens (first visit often defaults to Shopee authorize copy—OK) | **SKIP** if redundant after B4 |
-
-**Time target:** B1–B6 under **5 minutes**.
+| B1 | While signed in, open `https://monsteracloud.com/console` | **H1:** `Dashboard`; sections **CONNECTED SOURCES**, **WAREHOUSE STATE**, **DESTINATIONS**, **RECENT ACTIVITY** | |
+| B2 | Check the **CONNECTED SOURCES** section | Shows your connected sources count/state (empty is OK for a new workspace) | |
+| B3 | Click **Refresh** | Dashboard reloads without a permanent error state | |
+| B4 | Open a provider connect flow from the console CTA | Connect modal opens and names the provider's authorization step (e.g. Meta → Facebook). Completing OAuth requires real provider credentials — full connector verification is covered separately in [connector-readiness.md](./connector-readiness.md) | |
+| B5 | Visit **Data explorer** (`/explorer`) | Warehouse & metrics view loads (empty until sources sync — not an error) | |
 
 ---
 
@@ -47,14 +43,14 @@
 
 | Step | Action | Expected (factual) | Result |
 |------|--------|-------------------|--------|
-| C1 | Open `https://monsteracloud.com/settings` | Settings layout loads; sidebar includes **Workspace**, **API Keys**, etc. | |
-| C2 | Click **API Keys** | **H3:** `Developer API Keys`; copy about programmatic access / Sheets add-on | |
-| C3 | Click **Generate Key** | Banner **Key Generated Successfully** and **Please copy this value now.**; list updates after | |
+| C1 | Open `https://monsteracloud.com/settings` | Settings loads; tabs include **Workspace**, **Clients**, **Team**, **Alerts & Quality**, **Billing**, **API Keys** | |
+| C2 | Click the **API Keys** tab | **H3:** `API keys`; subcopy `Workspace-scoped bearer credentials. New secrets are shown only once.` | |
+| C3 | Click **Generate** | Banner **Copy this key now** with the full secret shown once; key appears under **Active keys** | |
 | C4 | **Terminal** — replace `YOUR_KEY` (use the key from C3 or an existing test key): `curl -sS -o /tmp/mc-ping.json -w "%{http_code}" -H "Authorization: Bearer YOUR_KEY" "https://monsteracloud.com/api/looker-studio?ping=1"` | Exit code 0; printed code **`200`**; `/tmp/mc-ping.json` contains `"ok":true` | |
 | C5 | Same key, data probe (adjust dates): `curl -sS -H "Authorization: Bearer YOUR_KEY" "https://monsteracloud.com/api/looker-studio?startDate=2026-01-01&endDate=2026-01-31"` | HTTP **200**; JSON has top-level **`data`** array (may be empty) | |
-| C6 | Click **Revoke** on the test key *(if you created one for this run)* | Key disappears; repeat C4 → **401** | **SKIP** if you reused a long-lived key |
+| C6 | Revoke via the trash icon on the test key *(aria-label `Revoke <name>`)* *(if you created one for this run)* | Key disappears from Active keys; repeat C4 → **401** | **SKIP** if you reused a long-lived key |
 
-**Time target:** C1–C5 under **5 minutes** (C6 optional).
+**Time target:** B1–B5 under **5 minutes**.
 
 ---
 

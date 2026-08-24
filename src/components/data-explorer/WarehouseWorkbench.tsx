@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
+import { resolveDataThrough, resolveWarehouseEmptyState } from "@/lib/warehouse-truth";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -530,6 +531,16 @@ export function WarehouseWorkbench() {
     return warehousedAccounts.filter((a) => a.platform === selectedPlatform);
   }, [warehousedAccounts, selectedPlatform]);
 
+  const selectedPlatformLabel = selectedPlatform
+    ? (PLATFORM_LABELS[selectedPlatform] || selectedPlatform)
+    : null;
+
+  const clearTableView = () => {
+    setRowSearch("");
+    setSelectedPlatform("");
+    setAccountFilterIds([]);
+  };
+
   useEffect(() => {
     if (!selectedPlatform) return;
     if (accountsDimensionsLoading) return;
@@ -720,11 +731,16 @@ export function WarehouseWorkbench() {
     if (warehousedAccounts.length > 0) {
       parts.push(`${warehousedAccounts.length} account${warehousedAccounts.length === 1 ? "" : "s"}`);
     }
-    if (endDate) {
-      parts.push(`Data through ${formatDateDisplay(endDate)}`);
+    // Truthfulness: "Data through" is the latest ACTUAL warehouse data date
+    // (workspace-wide MAX(metric date)), never the selected range end.
+    const dataThrough = resolveDataThrough(summary?.dateRange?.latest ?? null);
+    if (dataThrough) {
+      parts.push(`Data through ${formatDateDisplay(dataThrough)}`);
+    } else if (endDate) {
+      parts.push("No warehouse data yet");
     }
     return parts.length > 0 ? parts.join(" · ") : "Ready";
-  }, [availablePlatforms.length, warehousedAccounts.length, endDate]);
+  }, [availablePlatforms.length, warehousedAccounts.length, endDate, summary?.dateRange?.latest]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -748,25 +764,14 @@ export function WarehouseWorkbench() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsRefreshOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-md bg-white px-3.5 py-2 text-xs font-semibold text-neutral-900 shadow-xs transition-colors hover:bg-neutral-100"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh warehouse
-          </button>
-          <details className="group relative">
-            <summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-md border border-line bg-panel px-3.5 text-xs font-medium text-ink transition-colors hover:bg-white/[0.04] [&::-webkit-details-marker]:hidden">
-              <Download className="h-3.5 w-3.5" /> Export <ChevronDown className="h-3 w-3" />
-            </summary>
-            <div className="absolute right-0 top-[calc(100%+4px)] z-30 w-36 rounded-md border border-line bg-panel p-1 shadow-xl">
-              <button type="button" onClick={() => handleExport("csv")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-2 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">CSV</button>
-              <button type="button" onClick={() => handleExport("excel")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-2 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">Excel (.xlsx)</button>
-            </div>
-          </details>
-        </div>
+        <button
+          type="button"
+          onClick={() => setIsRefreshOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-md bg-white px-3.5 py-2 text-xs font-semibold text-neutral-900 shadow-xs transition-colors hover:bg-neutral-100"
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          Refresh warehouse
+        </button>
       </div>
 
       {/* ─── 2. FILTERS ─── */}
@@ -948,17 +953,42 @@ export function WarehouseWorkbench() {
 
         {/* Table state renders */}
         {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <RefreshCw className="h-6 w-6 animate-spin text-ink-mute" strokeWidth={1.5} />
+          <div className="px-4 py-6" role="status" aria-live="polite" aria-busy="true">
+            <div className="flex items-center gap-3">
+              <RefreshCw className="h-5 w-5 shrink-0 motion-safe:animate-spin motion-reduce:animate-none text-ink-mute" strokeWidth={1.5} />
+              <div>
+                <p className="text-sm font-medium text-ink">Loading warehouse data</p>
+                <p className="mt-0.5 text-xs text-ink-mute">Applying your date, platform, and account filters.</p>
+              </div>
+            </div>
+            <div className="mt-5 space-y-2 motion-safe:animate-pulse motion-reduce:animate-none" aria-hidden="true">
+              {["96%", "88%", "92%", "80%", "90%"].map((width) => (
+                <div key={width} className="flex gap-4 rounded-md border border-line/70 px-3 py-3">
+                  <div className="h-3 w-28 rounded bg-white/[0.06]" />
+                  <div className="h-3 flex-1 rounded bg-white/[0.06]" style={{ maxWidth: width }} />
+                  <div className="h-3 w-16 rounded bg-white/[0.06]" />
+                  <div className="h-3 w-20 rounded bg-white/[0.06]" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : error ? (
           <div className="p-4">
-            <div className="flex items-center gap-2 rounded-md border border-red-900/50 bg-red-950/30 px-3.5 py-2.5 text-xs text-red-300">
-              <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
-              Failed to load warehouse data. Please try refreshing.
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-red-900/50 bg-red-950/30 px-3.5 py-3 text-xs text-red-300" role="alert">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-red-400" />
+                <span>Warehouse data could not load. Your saved data has not been changed.</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void mutate()}
+                className="rounded-md border border-red-400/30 bg-red-950/50 px-2.5 py-1.5 font-medium text-red-100 transition-colors hover:bg-red-900/40"
+              >
+                Try again
+              </button>
             </div>
           </div>
-        ) : metrics.length === 0 ? (
+        ) : metrics.length === 0 && resolveWarehouseEmptyState(metrics.length, summary?.dateRange?.latest ?? null) === "no-data" ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Database className="mb-3 h-8 w-8 text-ink-mute" strokeWidth={1.5} />
             <p className="text-sm font-medium text-ink">No warehouse data yet</p>
@@ -983,20 +1013,21 @@ export function WarehouseWorkbench() {
           </div>
         ) : processedRows.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <p className="text-sm font-medium text-ink">No data matches these filters</p>
-            <p className="mt-1 text-xs text-ink-mute">
-              Try widening the date range or clearing some filters.
+            <Database className="mb-3 h-7 w-7 text-ink-mute" strokeWidth={1.5} />
+            <p className="text-sm font-medium text-ink">
+              {selectedPlatformLabel ? `No ${selectedPlatformLabel} rows in this view` : "No data matches this view"}
+            </p>
+            <p className="mt-1 max-w-md text-xs text-ink-mute">
+              {selectedPlatformLabel
+                ? "Try another platform or account, widen the date range, or reset the table view."
+                : "Try widening the date range, changing an account filter, or resetting the table view."}
             </p>
             <button
               type="button"
-              onClick={() => {
-                setRowSearch("");
-                setSelectedPlatform("");
-                setAccountFilterIds([]);
-              }}
+              onClick={clearTableView}
               className="mt-4 rounded-md border border-line bg-canvas px-3 py-1.5 text-xs font-medium text-ink hover:bg-white/[0.04]"
             >
-              Clear filters
+              Reset table view
             </button>
           </div>
         ) : visibleColumnsOrdered.length === 0 ? (

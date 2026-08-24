@@ -1,416 +1,123 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 /**
- * GlobeLoader — spinning monochrome Earth + particle whirl.
- *
- * Drop-in usage:
- *   const [loading, setLoading] = useState(true);
- *   <GlobeLoader visible={loading} />
- *
- * Or use the imperative API via a ref:
- *   const ref = useRef<GlobeLoaderHandle>(null);
- *   ref.current?.show(); ref.current?.hide();
- *
- * The loader enforces a MIN_VISIBLE_MS so fast loads don't flash,
- * and fades in/out smoothly on mount/unmount.
+ * Lightweight app-shell loader. It deliberately uses local SVG/CSS only: the
+ * first screen must never wait on a map download or third-party script.
  */
-
-// --- External deps loaded from CDN the first time the component mounts ---
-// If you prefer npm packages, install `d3-geo` + `topojson-client` and
-// replace these dynamic imports with static ones.
-const D3_SRC = "https://unpkg.com/d3@7.9.0/dist/d3.min.js";
-const TOPO_SRC = "https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js";
-const TOPO_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-110m.json";
-
-declare global {
-    interface Window {
-        d3?: any;
-        topojson?: any;
-    }
-}
-
-function loadScript(src: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        if (document.querySelector(`script[src="${src}"]`)) return resolve();
-        const s = document.createElement("script");
-        s.src = src;
-        s.async = true;
-        s.onload = () => resolve();
-        s.onerror = () => reject(new Error("Failed to load " + src));
-        document.head.appendChild(s);
-    });
-}
-
-export type GlobeLoaderHandle = {
-    show: () => void;
-    hide: () => void;
-};
+export type GlobeLoaderHandle = { show: () => void; hide: () => void };
 
 export interface GlobeLoaderProps {
-    /** Controlled visibility. If omitted, defaults to true. */
-    visible?: boolean;
-    /** Minimum time the loader stays on screen once shown (ms). */
-    minVisibleMs?: number;
-    /** Globe rotation speed in degrees/second. */
-    spinSpeedDegPerSec?: number;
-    /** Stroke weight multiplier for country outlines (0.5 – 2). */
-    globeWeight?: number;
-    /** Whether this covers the whole viewport (fixed overlay). Default true. */
-    fullscreen?: boolean;
-    /** Optional className for outer container. */
-    className?: string;
+  visible?: boolean;
+  minVisibleMs?: number;
+  /** Retained for backwards-compatible visual tuning. */
+  spinSpeedDegPerSec?: number;
+  /** Retained for backwards-compatible visual tuning. */
+  globeWeight?: number;
+  fullscreen?: boolean;
+  className?: string;
 }
 
 export const GlobeLoader = React.forwardRef<GlobeLoaderHandle, GlobeLoaderProps>(
-    function GlobeLoader(
-        {
-            visible = true,
-            minVisibleMs = 700,
-            spinSpeedDegPerSec = 18,
-            globeWeight = 1,
-            fullscreen = true,
-            className = "",
-        },
-        ref
-    ) {
-        const canvasRef = useRef<HTMLCanvasElement | null>(null);
-        const [internalVisible, setInternalVisible] = useState(visible);
-        const [mounted, setMounted] = useState(visible);
-        const shownAtRef = useRef<number>(0);
+  function GlobeLoader(
+    {
+      visible = true,
+      minVisibleMs = 480,
+      spinSpeedDegPerSec = 18,
+      globeWeight = 1,
+      fullscreen = true,
+      className = "",
+    },
+    ref,
+  ) {
+    const [mounted, setMounted] = useState(visible);
+    const [shown, setShown] = useState(visible);
+    const shownAt = useRef(visible ? Date.now() : 0);
+    const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const unmountTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-        // Refs for drawing so prop changes don't tear down rAF
-        const speedRef = useRef(spinSpeedDegPerSec);
-        const weightRef = useRef(globeWeight);
-        useEffect(() => {
-            speedRef.current = spinSpeedDegPerSec;
-        }, [spinSpeedDegPerSec]);
-        useEffect(() => {
-            weightRef.current = globeWeight;
-        }, [globeWeight]);
+    const clearTimers = useCallback(() => {
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+      if (unmountTimer.current) clearTimeout(unmountTimer.current);
+      hideTimer.current = null;
+      unmountTimer.current = null;
+    }, []);
 
-        // Sync controlled `visible` into our min-time aware state
-        useEffect(() => {
-            if (visible) {
-                setMounted(true);
-                // next frame so CSS transition plays
-                requestAnimationFrame(() => setInternalVisible(true));
-                shownAtRef.current = Date.now();
-            } else {
-                const elapsed = Date.now() - shownAtRef.current;
-                const wait = Math.max(0, minVisibleMs - elapsed);
-                const t = setTimeout(() => {
-                    setInternalVisible(false);
-                    // wait for fade-out before unmounting
-                    setTimeout(() => setMounted(false), 320);
-                }, wait);
-                return () => clearTimeout(t);
-            }
-        }, [visible, minVisibleMs]);
+    const show = useCallback(() => {
+      clearTimers();
+      shownAt.current = Date.now();
+      setMounted(true);
+      requestAnimationFrame(() => setShown(true));
+    }, [clearTimers]);
 
-        // Imperative API
-        const showImp = useCallback(() => {
-            setMounted(true);
-            requestAnimationFrame(() => setInternalVisible(true));
-            shownAtRef.current = Date.now();
-        }, []);
-        const hideImp = useCallback(() => {
-            const elapsed = Date.now() - shownAtRef.current;
-            const wait = Math.max(0, minVisibleMs - elapsed);
-            setTimeout(() => {
-                setInternalVisible(false);
-                setTimeout(() => setMounted(false), 320);
-            }, wait);
-        }, [minVisibleMs]);
-        React.useImperativeHandle(ref, () => ({ show: showImp, hide: hideImp }), [showImp, hideImp]);
+    const hide = useCallback(() => {
+      clearTimers();
+      const remaining = Math.max(0, minVisibleMs - (Date.now() - shownAt.current));
+      hideTimer.current = setTimeout(() => {
+        setShown(false);
+        unmountTimer.current = setTimeout(() => setMounted(false), 220);
+      }, remaining);
+    }, [clearTimers, minVisibleMs]);
 
-        // Globe drawing effect
-        useEffect(() => {
-            if (!mounted) return;
-            const canvas = canvasRef.current;
-            if (!canvas) return;
+    useEffect(() => {
+      if (visible) show();
+      else hide();
+      return clearTimers;
+    }, [visible, show, hide, clearTimers]);
 
-            let raf = 0;
-            let lambda = 0;
-            let lastTs = 0;
-            let land: any = null;
-            let borders: any = null;
-            let disposed = false;
-            const DPR = 2;
-            const CSS_SIZE = 200;
-            const DPR_SIZE = CSS_SIZE * DPR;
-            const CENTER = DPR_SIZE / 2;
-            const RADIUS = 72 * DPR;
+    useImperativeHandle(ref, () => ({ show, hide }), [show, hide]);
+    if (!mounted) return null;
 
-            canvas.width = DPR_SIZE;
-            canvas.height = DPR_SIZE;
-            const ctx = canvas.getContext("2d")!;
+    const orbitSeconds = `${Math.max(7, Math.round(270 / Math.max(1, spinSpeedDegPerSec)))}s`;
+    const lineWeight = Math.min(1.8, Math.max(0.7, globeWeight));
+    const containerStyle: React.CSSProperties = fullscreen
+      ? {
+          position: "fixed", inset: 0, zIndex: 9999, display: "grid", placeItems: "center",
+          background: "#070909", opacity: shown ? 1 : 0, transition: "opacity 220ms ease",
+          pointerEvents: visible ? "auto" : "none",
+        }
+      : { display: "grid", placeItems: "center", opacity: shown ? 1 : 0, transition: "opacity 220ms ease" };
 
-            let projection: any, path: any;
-
-            const lerp = (h1: string, h2: string, t: number) => {
-                const p = (h: string) => [
-                    parseInt(h.slice(1, 3), 16),
-                    parseInt(h.slice(3, 5), 16),
-                    parseInt(h.slice(5, 7), 16),
-                ];
-                const [r1, g1, b1] = p(h1);
-                const [r2, g2, b2] = p(h2);
-                return `rgb(${Math.round(r1 + (r2 - r1) * t)},${Math.round(g1 + (g2 - g1) * t)},${Math.round(b1 + (b2 - b1) * t)})`;
-            };
-
-            const draw = () => {
-                if (!projection) return;
-                const w = weightRef.current;
-                const landFill = "#1a1a1a";
-                const landStroke = "#383838";
-                const borderCol = "#222222";
-                const sphereRim = "#444444";
-
-                ctx.clearRect(0, 0, DPR_SIZE, DPR_SIZE);
-
-                ctx.beginPath();
-                path({ type: "Sphere" });
-                ctx.fillStyle = "#0a0a0a";
-                ctx.fill();
-
-                // graticule
-                ctx.beginPath();
-                path(window.d3.geoGraticule10());
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.06)";
-                ctx.lineWidth = 0.6 * DPR;
-                ctx.stroke();
-
-                if (land) {
-                    ctx.beginPath();
-                    path(land);
-                    ctx.fillStyle = landFill;
-                    ctx.fill();
-
-                    ctx.beginPath();
-                    path(land);
-                    ctx.strokeStyle = landStroke;
-                    ctx.lineWidth = 1.3 * DPR * w;
-                    ctx.lineJoin = "round";
-                    ctx.stroke();
-
-                    if (borders) {
-                        ctx.beginPath();
-                        path(borders);
-                        ctx.strokeStyle = borderCol;
-                        ctx.lineWidth = 0.7 * DPR * w;
-                        ctx.globalAlpha = 0.85;
-                        ctx.stroke();
-                        ctx.globalAlpha = 1;
-                    }
-                }
-
-                ctx.beginPath();
-                path({ type: "Sphere" });
-                ctx.strokeStyle = sphereRim;
-                ctx.lineWidth = 1.4 * DPR;
-                ctx.stroke();
-            };
-
-            const tick = (ts: number) => {
-                if (disposed) return;
-                if (!lastTs) lastTs = ts;
-                const dt = (ts - lastTs) / 1000;
-                lastTs = ts;
-                lambda = (lambda + speedRef.current * dt) % 360;
-                projection.rotate([lambda, -12, 0]);
-                draw();
-                raf = requestAnimationFrame(tick);
-            };
-
-            (async () => {
-                try {
-                    await loadScript(D3_SRC);
-                    await loadScript(TOPO_SRC);
-                    if (disposed) return;
-                    projection = window.d3
-                        .geoOrthographic()
-                        .scale(RADIUS)
-                        .translate([CENTER, CENTER])
-                        .clipAngle(90);
-                    path = window.d3.geoPath(projection, ctx);
-                    raf = requestAnimationFrame(tick);
-
-                    const res = await fetch(TOPO_URL);
-                    const topo = await res.json();
-                    if (disposed) return;
-                    land = window.topojson.feature(topo, topo.objects.countries);
-                    borders = window.topojson.mesh(
-                        topo,
-                        topo.objects.countries,
-                        (a: any, b: any) => a !== b
-                    );
-                } catch (e) {
-                    // fail silently — we keep rendering the sphere
-                    console.warn("GlobeLoader deps failed", e);
-                }
-            })();
-
-            return () => {
-                disposed = true;
-                cancelAnimationFrame(raf);
-            };
-        }, [mounted]);
-
-        if (!mounted) return null;
-
-        // Pointer events must follow the controlled `visible` prop, not `internalVisible`.
-        // Otherwise the full-screen layer (z-index 9999) keeps intercepting clicks for up to
-        // minVisibleMs after the session is ready — the fade-out can still use internalVisible.
-        const blockInteraction = visible;
-        const containerStyle: React.CSSProperties = fullscreen
-            ? {
-                  position: "fixed",
-                  inset: 0,
-                  background: "#050505",
-                  display: "grid",
-                  placeItems: "center",
-                  zIndex: 9999,
-                  opacity: internalVisible ? 1 : 0,
-                  transform: internalVisible ? "scale(1)" : "scale(1.06)",
-                  transition: "opacity 300ms ease, transform 300ms ease",
-                  pointerEvents: blockInteraction ? "auto" : "none",
-              }
-            : {
-                  display: "grid",
-                  placeItems: "center",
-                  opacity: internalVisible ? 1 : 0,
-                  transform: internalVisible ? "scale(1)" : "scale(0.96)",
-                  transition: "opacity 300ms ease, transform 300ms ease",
-              };
-
-        return (
-            <div
-                className={className}
-                role="status"
-                aria-label="Loading"
-                style={containerStyle}
-            >
-                <div
-                    style={{
-                        position: "relative",
-                        width: 200,
-                        height: 200,
-                        display: "grid",
-                        placeItems: "center",
-                    }}
-                >
-                    {/* Halo */}
-                    <div
-                        aria-hidden
-                        style={{
-                            position: "absolute",
-                            inset: 0,
-                            borderRadius: "50%",
-                            background:
-                                "radial-gradient(circle at center, rgba(255,255,255,0.06) 0%, transparent 62%)",
-                            animation: "mgl-halo 2.4s ease-in-out infinite",
-                            zIndex: 1,
-                        }}
-                    />
-
-                    {/* Whirl */}
-                    <div
-                        aria-hidden
-                        style={{ position: "absolute", inset: 0, width: 200, height: 200, zIndex: 3 }}
-                    >
-                        <svg viewBox="0 0 200 200" style={{ width: "100%", height: "100%", overflow: "visible" }}>
-                            <defs>
-                                <linearGradient id="mgl-whirlGrad" x1="0" y1="0" x2="1" y2="0">
-                                    <stop offset="0%" stopColor="#ededed" stopOpacity="0" />
-                                    <stop offset="55%" stopColor="#ededed" stopOpacity="0.7" />
-                                    <stop offset="100%" stopColor="#ededed" stopOpacity="0" />
-                                </linearGradient>
-                            </defs>
-
-                            <circle cx="100" cy="100" r="98" stroke="#cbd5e1" strokeWidth="0.6" strokeOpacity="0.55" fill="none" />
-
-                            <g className="mgl-ring mgl-ring-3">
-                                <path d="M 100 8 A 92 92 0 0 1 192 100" stroke="url(#mgl-whirlGrad)" strokeWidth="3" fill="none" />
-                                <path d="M 100 192 A 92 92 0 0 1 8 100" stroke="url(#mgl-whirlGrad)" strokeWidth="3" fill="none" />
-                            </g>
-
-                            <circle
-                                className="mgl-ring mgl-ring-2"
-                                cx="100"
-                                cy="100"
-                                r="84"
-                                stroke="#8a8a8a"
-                                strokeOpacity="0.5"
-                                strokeWidth="1.2"
-                                strokeDasharray="2 6"
-                                fill="none"
-                            />
-
-                            <g className="mgl-ring mgl-ring-1">
-                                <path
-                                    d="M 100 23 A 77 77 0 0 1 177 100"
-                                    stroke="#ededed"
-                                    strokeOpacity="0.8"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    fill="none"
-                                />
-                                <path
-                                    d="M 100 177 A 77 77 0 0 1 23 100"
-                                    stroke="#ededed"
-                                    strokeOpacity="0.4"
-                                    strokeWidth="1.6"
-                                    strokeLinecap="round"
-                                    fill="none"
-                                />
-                            </g>
-
-                            <g className="mgl-particles">
-                                <circle cx="100" cy="8" r="2.2" fill="#ededed" />
-                                <circle cx="192" cy="100" r="1.6" fill="#ededed" />
-                                <circle cx="100" cy="192" r="1.3" fill="#8a8a8a" />
-                            </g>
-                        </svg>
-                    </div>
-
-                    {/* Globe */}
-                    <canvas
-                        ref={canvasRef}
-                        style={{
-                            position: "absolute",
-                            inset: 0,
-                            width: 200,
-                            height: 200,
-                            zIndex: 2,
-                            filter: "drop-shadow(0 1px 0 rgba(15,23,42,0.04))",
-                        }}
-                    />
-                </div>
-
-                <style>{`
-          @keyframes mgl-spin { to { transform: rotate(360deg); } }
-          @keyframes mgl-halo {
-            0%, 100% { transform: scale(0.96); opacity: 0.55; }
-            50%      { transform: scale(1.04); opacity: 0.9;  }
-          }
-          .mgl-ring {
-            transform-origin: 100px 100px;
-            transform-box: view-box;
-          }
-          .mgl-ring-1 { animation: mgl-spin 3.2s linear infinite; }
-          .mgl-ring-2 { animation: mgl-spin 5.5s linear infinite reverse; }
-          .mgl-ring-3 { animation: mgl-spin 8s   linear infinite; }
-          .mgl-particles {
-            animation: mgl-spin 4.6s linear infinite reverse;
-            transform-origin: 100px 100px;
-            transform-box: view-box;
-          }
+    return (
+      <div className={className} role="status" aria-live="polite" aria-label="Preparing your workspace" style={containerStyle}>
+        <div className="mc-loader-shell">
+          <div className="mc-loader-mark" aria-hidden="true">
+            <div className="mc-loader-glow" />
+            <svg viewBox="0 0 132 132" fill="none" className="mc-loader-svg">
+              <circle cx="66" cy="66" r="39" className="mc-loader-sphere" strokeWidth={lineWeight} />
+              <ellipse cx="66" cy="66" rx="18" ry="39" className="mc-loader-grid" strokeWidth={lineWeight * 0.72} />
+              <path d="M28 66h76M34 46h64M34 86h64" className="mc-loader-grid" strokeWidth={lineWeight * 0.72} />
+              <g className="mc-loader-orbit" style={{ animationDuration: orbitSeconds }}>
+                <path d="M18 68c12-33 83-48 98-9" className="mc-loader-orbit-line" strokeWidth={lineWeight} />
+                <circle cx="111" cy="55" r="2.5" className="mc-loader-node" />
+              </g>
+            </svg>
+          </div>
+          <p className="mc-loader-wordmark">MONSTERA</p>
+          <p className="mc-loader-title">Preparing your workspace</p>
+          <p className="mc-loader-subtitle">Checking your secure session</p>
+        </div>
+        <style>{`
+          .mc-loader-shell { display:grid; justify-items:center; gap:8px; text-align:center; }
+          .mc-loader-mark { position:relative; width:132px; height:132px; margin-bottom:10px; }
+          .mc-loader-svg { position:relative; z-index:1; width:132px; height:132px; overflow:visible; }
+          .mc-loader-glow { position:absolute; inset:18px; border-radius:999px; background:radial-gradient(circle, rgba(111,255,213,.13), rgba(111,255,213,0) 68%); animation:mc-loader-breathe 2.8s ease-in-out infinite; }
+          .mc-loader-sphere { stroke:rgba(239,255,251,.7); }
+          .mc-loader-grid { stroke:rgba(168,210,198,.24); }
+          .mc-loader-orbit { transform-origin:66px 66px; animation:mc-loader-spin linear infinite; }
+          .mc-loader-orbit-line { stroke:rgba(118,244,206,.78); stroke-linecap:round; }
+          .mc-loader-node { fill:#b9ffe6; }
+          .mc-loader-wordmark { margin:0; color:rgba(255,255,255,.42); font:600 10px/1 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.22em; }
+          .mc-loader-title { margin:5px 0 0; color:#f2f8f6; font-size:14px; font-weight:600; letter-spacing:-.01em; }
+          .mc-loader-subtitle { margin:0; color:rgba(225,240,235,.52); font-size:12px; }
+          @keyframes mc-loader-spin { to { transform:rotate(360deg); } }
+          @keyframes mc-loader-breathe { 0%,100% { opacity:.55; transform:scale(.94); } 50% { opacity:1; transform:scale(1.08); } }
+          @media (prefers-reduced-motion: reduce) { .mc-loader-glow,.mc-loader-orbit { animation:none !important; } }
         `}</style>
-            </div>
-        );
-    }
+      </div>
+    );
+  },
 );
 
 export default GlobeLoader;
