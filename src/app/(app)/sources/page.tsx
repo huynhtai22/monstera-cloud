@@ -20,6 +20,7 @@ import { SecondaryButton, primaryButtonLinkClassName, IntegrationMark } from "@/
 import { IntegrationCard, IntegrationCardSkeleton } from "@/components/sources/IntegrationCard";
 import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
 import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
+import { SyncOutcomeBanner, type SyncOutcomeNotice } from "@/components/sources/SyncOutcomeBanner";
 import { countSourceHealthStatuses } from "@/lib/source-health";
 
 const fetcher = async (url: string) => {
@@ -72,6 +73,7 @@ export default function SourcesPage() {
     const [activeFilter, setActiveFilter] = useState('connected');
     const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
     const addSourceMenuRef = useRef<HTMLDivElement>(null);
+    const [syncOutcome, setSyncOutcome] = useState<SyncOutcomeNotice | null>(null);
     
     // P1: Fix It flow state
     const [fixConnectionTarget, setFixConnectionTarget] = useState<{
@@ -137,18 +139,28 @@ export default function SourcesPage() {
         addBusy(key);
         try {
             const res = await fetch(`/api/pipelines/${pipelineId}/run`, { method: 'POST' });
-            const data = await res.json();
             if (res.ok) {
-                toast.success(data.message || "Sync complete.");
+                setSyncOutcome({
+                    kind: "success",
+                    title: "Pipeline sync complete",
+                    detail: "The pipeline finished successfully. Review Warehouse data if you need to confirm coverage.",
+                    action: { href: "/explorer", label: "View warehouse" },
+                });
             } else {
-                toast.error(
-                    typeof data.error === "string"
-                        ? data.error
-                        : "Sync failed."
-                );
+                setSyncOutcome({
+                    kind: "error",
+                    title: "Pipeline sync could not complete",
+                    detail: "Existing warehouse data was not deleted. Review sync activity before retrying.",
+                    action: { href: "/reports", label: "Review sync activity" },
+                });
             }
         } catch {
-            toast.error("Network error during sync.");
+            setSyncOutcome({
+                kind: "error",
+                title: "Pipeline sync could not start",
+                detail: "The request did not reach Monstera. Existing warehouse data was not changed.",
+                action: { href: "/reports", label: "Review sync activity" },
+            });
         } finally {
             removeBusy(key);
             /* #3 — Refresh sync logs after manual sync */
@@ -159,87 +171,57 @@ export default function SourcesPage() {
     }, [addBusy, removeBusy, activeWorkspaceId, mutate]);
 
     /* Direct sync for ad platforms - no pipeline needed, syncs to CampaignMetric for Data Explorer */
-    const handleDirectSync = useCallback(async (connectionId: string, provider: string, force: boolean = false) => {
+    const handleDirectSync = useCallback(async (connectionId: string) => {
         const key = `direct-sync:${connectionId}`;
         addBusy(key);
         try {
-            const url = force 
-                ? `/api/connections/${connectionId}/sync?force=true` 
-                : `/api/connections/${connectionId}/sync`;
-            const res = await fetch(url, { method: 'POST' });
+            const res = await fetch(`/api/connections/${connectionId}/sync`, { method: 'POST' });
             const data = await res.json();
-            
-            // DEBUG: Always show response for now
-            console.log('[DirectSync] Response:', { status: res.status, ok: res.ok, data });
-            
+
+            const rowsIngested = typeof data.rowsIngested === "number" ? data.rowsIngested : 0;
             if (res.ok && data.outcome === "success") {
-                toast.success(
-                    <span>
-                        Synced {data.rowsIngested || 0} rows to Data Explorer.
-                        <a href="/explorer" className="ml-2 font-medium underline">
-                            View Data
-                        </a>
-                    </span>
-                );
+                setSyncOutcome({
+                    kind: "success",
+                    title: "Sync complete",
+                    detail: `${rowsIngested.toLocaleString()} row${rowsIngested === 1 ? "" : "s"} are available in Warehouse for this source.`,
+                    action: { href: "/explorer", label: "View warehouse" },
+                });
             } else if (res.ok && data.outcome === "partial") {
-                toast.warning(`Partial sync: ${data.rowsIngested || 0} rows were written, but ${data.failedTargets?.join(", ") || "one or more provider accounts"} failed. Last fully successful sync was not advanced.`);
+                setSyncOutcome({
+                    kind: "partial",
+                    title: "Partial sync",
+                    detail: `${rowsIngested.toLocaleString()} row${rowsIngested === 1 ? "" : "s"} were written, but one or more provider accounts did not complete. The last fully successful sync was not advanced.`,
+                    action: { href: "/reports", label: "Review sync activity" },
+                });
             } else if (data.code === 'SYNC_ACTIVE' || data.error?.includes('already queued') || data.error?.includes('running')) {
-                // Show option to force unlock
-                toast.error(
-                    <div className="max-w-md">
-                        <p className="font-semibold mb-2">Sync Blocked</p>
-                        <p className="text-sm mb-3">{data.error || "A sync is already running"}</p>
-                        <button
-                            onClick={() => {
-                                toast.dismiss('sync-blocked');
-                                handleDirectSync(connectionId, provider, true);
-                            }}
-                            className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded"
-                        >
-                            Force Unlock & Retry
-                        </button>
-                    </div>,
-                    { duration: 30000, id: 'sync-blocked' }
-                );
+                setSyncOutcome({
+                    kind: "blocked",
+                    title: "Sync already running",
+                    detail: "Another sync holds this source's lease. Wait for it to finish, then review sync activity if it does not complete.",
+                    action: { href: "/reports", label: "Review sync activity" },
+                });
             } else if (data.code === 'SYNC_COOLDOWN') {
-                toast(
-                    <div className="max-w-md">
-                        <p className="font-semibold mb-1 text-white">Sync Cooldown Active</p>
-                        <p className="text-sm mb-3 text-neutral-300">{data.error}</p>
-                        <button
-                            onClick={() => {
-                                toast.dismiss('sync-cooldown');
-                                handleDirectSync(connectionId, provider, true);
-                            }}
-                            className="text-xs bg-white hover:bg-neutral-200 text-black font-semibold px-3 py-1.5 rounded transition-colors"
-                        >
-                            Force Sync Now
-                        </button>
-                    </div>,
-                    { duration: 12000, id: 'sync-cooldown' }
-                );
+                setSyncOutcome({
+                    kind: "cooldown",
+                    title: "Sync cooldown active",
+                    detail: "This source was synced recently. Wait for the cooldown to finish before starting another sync.",
+                    action: { href: "/reports", label: "Review sync activity" },
+                });
             } else {
-                // DEBUG: Show full error details since Vercel logs are unavailable
-                const errorDetails = JSON.stringify(data, null, 2);
-                toast.error(
-                    <div className="max-w-md">
-                        <p className="font-semibold mb-2">Sync Failed:</p>
-                        <p className="text-sm mb-2">{data.error || "Unknown error"}</p>
-                        <details className="text-xs">
-                            <summary className="cursor-pointer text-red-300 hover:text-red-200">Show Debug Info</summary>
-                            <pre className="mt-2 p-2 bg-red-950/50 rounded text-left overflow-auto max-h-40">{errorDetails}</pre>
-                        </details>
-                    </div>,
-                    { duration: 10000 }
-                );
+                setSyncOutcome({
+                    kind: "error",
+                    title: "Sync could not complete",
+                    detail: "Existing warehouse data was not deleted. Review sync activity before retrying.",
+                    action: { href: "/reports", label: "Review sync activity" },
+                });
             }
-        } catch (e: any) {
-            toast.error(
-                <div>
-                    <p className="font-semibold">Network Error</p>
-                    <p className="text-xs mt-1">{e.message}</p>
-                </div>
-            );
+        } catch {
+            setSyncOutcome({
+                kind: "error",
+                title: "Sync could not start",
+                detail: "The request did not reach Monstera. Existing warehouse data was not changed.",
+                action: { href: "/reports", label: "Review sync activity" },
+            });
         } finally {
             removeBusy(key);
             if (activeWorkspaceId) {
@@ -774,6 +756,13 @@ export default function SourcesPage() {
             {/* DataFlowExplainer — only shown to first-time users (no connections yet); returning users see the compact pill */}
             {!isLoading && connectedSourceCount === 0 ? <DataFlowExplainer variant="sources" /> : null}
 
+            {syncOutcome && (
+                <SyncOutcomeBanner
+                    notice={syncOutcome}
+                    onDismiss={() => setSyncOutcome(null)}
+                />
+            )}
+
             <div className="mb-5 flex flex-col gap-3 border-b border-line pb-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-wrap items-center gap-4" role="tablist" aria-label="Filter integrations">
                     <button
@@ -854,7 +843,7 @@ export default function SourcesPage() {
                                 rows={connectedRows}
                                 busyActions={busyActions}
                                 onSync={handleSync}
-                                onDirectSync={(id, provider) => handleDirectSync(id, provider)}
+                                onDirectSync={handleDirectSync}
                                 onDisconnect={disconnectSource}
                                 onFixConnection={handleFixConnection}
                             />
