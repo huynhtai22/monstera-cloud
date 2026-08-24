@@ -311,7 +311,7 @@ export function FixConnectionModal({
                                 Your {connection.name} connection is working again.
                             </p>
                             <p className="mt-1 text-sm text-ink-mute">
-                                Syncs will resume automatically.
+                                Run a sync when you&apos;re ready to update Warehouse data.
                             </p>
                             <PrimaryButton onClick={handleClose} className="mt-6 w-full">
                                 Done

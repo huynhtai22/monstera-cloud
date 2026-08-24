@@ -20,7 +20,7 @@ import { SecondaryButton, primaryButtonLinkClassName, IntegrationMark } from "@/
 import { IntegrationCard, IntegrationCardSkeleton } from "@/components/sources/IntegrationCard";
 import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
 import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
-import { SyncOutcomeBanner, type SyncOutcomeNotice } from "@/components/sources/SyncOutcomeBanner";
+import { SourceOutcomeBanner, type SourceOutcomeNotice } from "@/components/sources/SourceOutcomeBanner";
 import { countSourceHealthStatuses } from "@/lib/source-health";
 
 const fetcher = async (url: string) => {
@@ -73,7 +73,7 @@ export default function SourcesPage() {
     const [activeFilter, setActiveFilter] = useState('connected');
     const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
     const addSourceMenuRef = useRef<HTMLDivElement>(null);
-    const [syncOutcome, setSyncOutcome] = useState<SyncOutcomeNotice | null>(null);
+    const [sourceOutcome, setSourceOutcome] = useState<SourceOutcomeNotice | null>(null);
     
     // P1: Fix It flow state
     const [fixConnectionTarget, setFixConnectionTarget] = useState<{
@@ -120,13 +120,19 @@ export default function SourcesPage() {
                 activeWorkspaceId ? mutate(`/api/workspaces/${activeWorkspaceId}/connections?type=source`) : Promise.resolve(),
             ]);
             trackEvent("source_disconnected", { sourceName: displayName });
-            if (data.message) {
-                toast.success(data.message);
-            } else {
-                toast.success("Source disconnected.");
-            }
-        } catch (e: unknown) {
-            toast.error(e instanceof Error ? e.message : "Could not disconnect.");
+            setSourceOutcome({
+                kind: "success",
+                title: "Source disconnected",
+                detail: "Syncs from this source have stopped. Existing Warehouse history was retained and you can reconnect the source later.",
+                action: { href: "/explorer", label: "View warehouse" },
+            });
+        } catch {
+            setSourceOutcome({
+                kind: "error",
+                title: "Source could not be disconnected",
+                detail: "The connection and existing Warehouse history were not changed. Try again, or contact support if this continues.",
+                action: { href: "/support", label: "Get support" },
+            });
         } finally {
             removeBusy(connectionId);
             setDisconnectTarget(null);
@@ -140,14 +146,14 @@ export default function SourcesPage() {
         try {
             const res = await fetch(`/api/pipelines/${pipelineId}/run`, { method: 'POST' });
             if (res.ok) {
-                setSyncOutcome({
+                setSourceOutcome({
                     kind: "success",
                     title: "Pipeline sync complete",
                     detail: "The pipeline finished successfully. Review Warehouse data if you need to confirm coverage.",
                     action: { href: "/explorer", label: "View warehouse" },
                 });
             } else {
-                setSyncOutcome({
+                setSourceOutcome({
                     kind: "error",
                     title: "Pipeline sync could not complete",
                     detail: "Existing warehouse data was not deleted. Review sync activity before retrying.",
@@ -155,7 +161,7 @@ export default function SourcesPage() {
                 });
             }
         } catch {
-            setSyncOutcome({
+            setSourceOutcome({
                 kind: "error",
                 title: "Pipeline sync could not start",
                 detail: "The request did not reach Monstera. Existing warehouse data was not changed.",
@@ -180,35 +186,35 @@ export default function SourcesPage() {
 
             const rowsIngested = typeof data.rowsIngested === "number" ? data.rowsIngested : 0;
             if (res.ok && data.outcome === "success") {
-                setSyncOutcome({
+                setSourceOutcome({
                     kind: "success",
                     title: "Sync complete",
                     detail: `${rowsIngested.toLocaleString()} row${rowsIngested === 1 ? "" : "s"} are available in Warehouse for this source.`,
                     action: { href: "/explorer", label: "View warehouse" },
                 });
             } else if (res.ok && data.outcome === "partial") {
-                setSyncOutcome({
+                setSourceOutcome({
                     kind: "partial",
                     title: "Partial sync",
                     detail: `${rowsIngested.toLocaleString()} row${rowsIngested === 1 ? "" : "s"} were written, but one or more provider accounts did not complete. The last fully successful sync was not advanced.`,
                     action: { href: "/reports", label: "Review sync activity" },
                 });
             } else if (data.code === 'SYNC_ACTIVE' || data.error?.includes('already queued') || data.error?.includes('running')) {
-                setSyncOutcome({
+                setSourceOutcome({
                     kind: "blocked",
                     title: "Sync already running",
                     detail: "Another sync holds this source's lease. Wait for it to finish, then review sync activity if it does not complete.",
                     action: { href: "/reports", label: "Review sync activity" },
                 });
             } else if (data.code === 'SYNC_COOLDOWN') {
-                setSyncOutcome({
+                setSourceOutcome({
                     kind: "cooldown",
                     title: "Sync cooldown active",
                     detail: "This source was synced recently. Wait for the cooldown to finish before starting another sync.",
                     action: { href: "/reports", label: "Review sync activity" },
                 });
             } else {
-                setSyncOutcome({
+                setSourceOutcome({
                     kind: "error",
                     title: "Sync could not complete",
                     detail: "Existing warehouse data was not deleted. Review sync activity before retrying.",
@@ -216,7 +222,7 @@ export default function SourcesPage() {
                 });
             }
         } catch {
-            setSyncOutcome({
+            setSourceOutcome({
                 kind: "error",
                 title: "Sync could not start",
                 detail: "The request did not reach Monstera. Existing warehouse data was not changed.",
@@ -756,10 +762,10 @@ export default function SourcesPage() {
             {/* DataFlowExplainer — only shown to first-time users (no connections yet); returning users see the compact pill */}
             {!isLoading && connectedSourceCount === 0 ? <DataFlowExplainer variant="sources" /> : null}
 
-            {syncOutcome && (
-                <SyncOutcomeBanner
-                    notice={syncOutcome}
-                    onDismiss={() => setSyncOutcome(null)}
+            {sourceOutcome && (
+                <SourceOutcomeBanner
+                    notice={sourceOutcome}
+                    onDismiss={() => setSourceOutcome(null)}
                 />
             )}
 
@@ -914,7 +920,12 @@ export default function SourcesPage() {
                 onReconnected={() => {
                     // Refresh data after successful reconnection
                     mutate((key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"));
-                    toast.success("Connection restored successfully");
+                    setSourceOutcome({
+                        kind: "success",
+                        title: "Connection restored",
+                        detail: "Authorization is ready. Existing Warehouse history was retained; run a sync when you want updated data.",
+                        action: { href: "/explorer", label: "View warehouse" },
+                    });
                 }}
             />
         </PageShell>

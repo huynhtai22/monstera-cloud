@@ -59,6 +59,12 @@ than leaving people to infer whether anything is happening.
 - Exercise a partial, blocked, cooldown, and failed sync response. Each must
   explain whether data was written or retained, never display raw response
   payloads, and never suggest forcing an active lease from the console.
+- Disconnect a source and confirm the persistent confirmation says that syncs
+  stopped while Warehouse history was retained. If the request fails, confirm
+  the persistent error says neither the connection nor Warehouse data changed.
+- Reconnect an expired source and confirm the final state says authorization is
+  ready and that the user must run a sync when they want refreshed Warehouse
+  data; do not imply that a sync began automatically.
 
 ## Acceptance criteria
 
