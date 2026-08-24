@@ -627,6 +627,19 @@ export default function SourcesPage() {
                               ? "Connect Meta, Google Ads, TikTok Ads, or Shopee. OAuth is read-only."
                               : "Connector management for this workspace."}
                     </p>
+                    {!isLoading && activeWorkspace && (
+                        <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-mute" role="status">
+                            <span>Workspace: <span className="font-medium text-ink">{activeWorkspace.name}</span></span>
+                            <span aria-hidden="true">·</span>
+                            <span>{connectedSourceCount} source connection{connectedSourceCount === 1 ? "" : "s"}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>
+                                {lastSyncSummary
+                                    ? `Last successful sync: ${lastSyncSummary}`
+                                    : "No successful sync recorded yet"}
+                            </span>
+                        </p>
+                    )}
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3">
                     <RefreshedAt
