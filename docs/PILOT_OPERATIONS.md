@@ -7,7 +7,8 @@
 3. Run CI gates and connector contract tests for every enabled provider.
 4. Run the dependency preflight checklist (below) whenever a release touches security, auth, rate limiting, or any external dependency.
 5. Deploy three internal tenants, then five design partners, then expand to no more than twenty agencies.
-6. After the production alias changes, compare `/api/version` with the intended commit and schema migration.
+6. Deploy from `origin/main` with `npm run deploy:prod`, or allow the gated main-branch workflow to deploy. Both paths stamp the immutable build SHA and attach Git metadata.
+7. After the production alias changes, compare `/api/version` with the intended commit and schema migration. Require `commitSource: build`; a different source means release provenance is not trustworthy.
 
 ## Dependency preflight checklist
 
