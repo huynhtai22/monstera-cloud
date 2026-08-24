@@ -99,6 +99,7 @@ export async function POST(request: Request) {
             authUrl,
             connectionId,
             provider: providerId,
+            baselineUpdatedAt: connection.updatedAt.toISOString(),
         });
         response.cookies.set(oauthAttemptCookieName(providerId), reconnectState, {
             httpOnly: true,

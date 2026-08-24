@@ -35,6 +35,7 @@ export async function GET(
             select: {
                 id: true,
                 status: true,
+                lastError: true,
                 updatedAt: true,
             },
         });
@@ -49,6 +50,7 @@ export async function GET(
         return NextResponse.json({
             id: connection.id,
             status: connection.status,
+            hasError: Boolean(connection.lastError),
             updatedAt: connection.updatedAt,
         });
     } catch (error) {

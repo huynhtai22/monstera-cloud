@@ -1,10 +1,20 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import { X, AlertCircle, RefreshCw, CheckCircle2, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
+import {
+    resolveReconnectVerification,
+    type ReconnectStatusSnapshot,
+} from "@/lib/reconnect-verification";
 import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui";
 import { useMounted } from "@/hooks/useMounted";
 
@@ -27,6 +37,7 @@ type FixStep = "diagnose" | "reconnect" | "success" | "error";
 
 const DIALOG_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 const DIALOG_DURATION_MS = 280;
+const RECONNECT_TIMEOUT_MS = 10 * 60 * 1000;
 
 export function FixConnectionModal({
     isOpen,
@@ -41,6 +52,29 @@ export function FixConnectionModal({
 
     const [shouldRender, setShouldRender] = useState(isOpen);
     const [isVisible, setIsVisible] = useState(isOpen);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const previousActiveElement = useRef<HTMLElement | null>(null);
+    const popupRef = useRef<Window | null>(null);
+    const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const verificationAbortRef = useRef<AbortController | null>(null);
+
+    const clearReconnectPolling = useCallback((closePopup = false) => {
+        if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+        }
+        if (pollTimeoutRef.current) {
+            clearTimeout(pollTimeoutRef.current);
+            pollTimeoutRef.current = null;
+        }
+        verificationAbortRef.current?.abort();
+        verificationAbortRef.current = null;
+        if (closePopup && popupRef.current && !popupRef.current.closed) {
+            popupRef.current.close();
+        }
+        popupRef.current = null;
+    }, []);
 
     useEffect(() => {
         if (isOpen) {
@@ -62,9 +96,66 @@ export function FixConnectionModal({
     }, []);
 
     const handleClose = useCallback(() => {
+        clearReconnectPolling(true);
         reset();
         onClose();
-    }, [reset, onClose]);
+    }, [clearReconnectPolling, reset, onClose]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        previousActiveElement.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        return () => {
+            const previous = previousActiveElement.current;
+            if (previous?.isConnected) {
+                previous.focus();
+                return;
+            }
+            document
+                .querySelector<HTMLElement>("[data-dashboard-focus-fallback]")
+                ?.focus();
+        };
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        const frame = requestAnimationFrame(() => dialogRef.current?.focus());
+        return () => cancelAnimationFrame(frame);
+    }, [isOpen, step]);
+
+    useEffect(() => () => clearReconnectPolling(true), [clearReconnectPolling]);
+
+    const handleDialogKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+        if (event.key === "Escape") {
+            event.preventDefault();
+            handleClose();
+            return;
+        }
+        if (event.key !== "Tab" || !dialogRef.current) return;
+
+        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+        );
+        if (focusable.length === 0) {
+            event.preventDefault();
+            dialogRef.current.focus();
+            return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (document.activeElement === dialogRef.current) {
+            event.preventDefault();
+            (event.shiftKey ? last : first).focus();
+            return;
+        }
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }, [handleClose]);
 
     // Analyze the error to determine the issue
     const diagnosis = (() => {
@@ -76,7 +167,7 @@ export function FixConnectionModal({
             return {
                 type: "token_expired" as const,
                 title: "Access token expired",
-                description: "Your authorization with this platform has expired. This happens automatically after 60-90 days for security.",
+                description: "Your authorization with this platform expired or was revoked.",
                 action: "Reconnect with the same permissions to restore access.",
             };
         }
@@ -102,14 +193,15 @@ export function FixConnectionModal({
         return {
             type: "unknown" as const,
             title: "Connection issue",
-            description: connection.errorMsg || "The connection is not working properly.",
+            description: "The connection is not working properly and needs to be reauthorized.",
             action: "Try reconnecting to restore the connection.",
         };
     })();
 
     const handleReconnect = useCallback(async () => {
         if (!connection) return;
-        
+
+        clearReconnectPolling(true);
         setIsReconnecting(true);
         setStep("reconnect");
         
@@ -127,7 +219,7 @@ export function FixConnectionModal({
             const data = await res.json();
             
             if (!res.ok) {
-                throw new Error(data.error || "Failed to initiate reconnection");
+                throw new Error("Could not start reconnection. Please try again.");
             }
             
             if (data.authUrl) {
@@ -148,39 +240,97 @@ export function FixConnectionModal({
                     window.location.href = data.authUrl;
                     return;
                 }
-                
-                // Poll for completion
-                const checkClosed = setInterval(() => {
-                    if (popup.closed) {
-                        clearInterval(checkClosed);
-                        // Verify reconnection
-                        fetch(`/api/connections/${connection.id}/status`)
-                            .then(r => r.json())
-                            .then(status => {
-                                if (status.status === "connected") {
-                                    setStep("success");
-                                    onReconnected();
-                                } else {
-                                    setStep("error");
-                                    setError("Reconnection not completed. Please try again.");
-                                }
-                            })
-                            .catch(() => {
-                                setStep("error");
-                                setError("Could not verify reconnection status.");
-                            })
-                            .finally(() => setIsReconnecting(false));
+
+                popupRef.current = popup;
+                const baselineUpdatedAt = String(data.baselineUpdatedAt || "");
+                let verificationInFlight = false;
+                let popupClosedAt: number | null = null;
+
+                const verifyReconnect = async () => {
+                    if (verificationInFlight) return;
+                    verificationInFlight = true;
+                    const controller = new AbortController();
+                    verificationAbortRef.current = controller;
+
+                    try {
+                        const statusResponse = await fetch(
+                            `/api/connections/${connection.id}/status`,
+                            { signal: controller.signal },
+                        );
+                        if (!statusResponse.ok) throw new Error("status_unavailable");
+                        const status = (await statusResponse.json()) as ReconnectStatusSnapshot;
+                        if (popup.closed && popupClosedAt === null) popupClosedAt = Date.now();
+                        const popupCancellationConfirmed = Boolean(
+                            popupClosedAt && Date.now() - popupClosedAt >= 2_000,
+                        );
+                        const outcome = resolveReconnectVerification({
+                            snapshot: status,
+                            baselineUpdatedAt,
+                            popupClosed: popupCancellationConfirmed,
+                            timedOut: false,
+                        });
+
+                        if (outcome === "success") {
+                            clearReconnectPolling(true);
+                            setStep("success");
+                            setIsReconnecting(false);
+                            onReconnected();
+                        } else if (outcome === "cancelled") {
+                            clearReconnectPolling(false);
+                            setStep("error");
+                            setError("Authorization was closed before the connection was restored.");
+                            setIsReconnecting(false);
+                        }
+                    } catch (verificationError) {
+                        if (verificationError instanceof DOMException && verificationError.name === "AbortError") {
+                            return;
+                        }
+                        if (popup.closed) {
+                            clearReconnectPolling(false);
+                            setStep("error");
+                            setError("Could not verify reconnection status. Please try again.");
+                            setIsReconnecting(false);
+                        }
+                    } finally {
+                        verificationInFlight = false;
+                        if (verificationAbortRef.current === controller) {
+                            verificationAbortRef.current = null;
+                        }
                     }
-                }, 500);
+                };
+
+                // Poll server evidence while the popup is open. The callback redirects
+                // rather than closing the popup, so popup closure alone is never success.
+                pollIntervalRef.current = setInterval(() => {
+                    void verifyReconnect();
+                }, 750);
+                void verifyReconnect();
+
+                pollTimeoutRef.current = setTimeout(() => {
+                    const outcome = resolveReconnectVerification({
+                        snapshot: null,
+                        baselineUpdatedAt,
+                        popupClosed: popup.closed,
+                        timedOut: true,
+                    });
+                    clearReconnectPolling(true);
+                    setStep("error");
+                    setError(
+                        outcome === "timeout"
+                            ? "Authorization timed out. Start the reconnection again when you are ready."
+                            : "Reconnection was not completed. Please try again.",
+                    );
+                    setIsReconnecting(false);
+                }, RECONNECT_TIMEOUT_MS);
             } else {
-                throw new Error("No authorization URL returned");
+                throw new Error("Could not start reconnection. Please try again.");
             }
-        } catch (err) {
+        } catch {
             setStep("error");
-            setError(err instanceof Error ? err.message : "Unknown error");
+            setError("Could not reconnect. Please try again.");
             setIsReconnecting(false);
         }
-    }, [connection, onReconnected]);
+    }, [clearReconnectPolling, connection, onReconnected]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -199,22 +349,30 @@ export function FixConnectionModal({
         <div className={cn(
             "fixed inset-0 z-[100] flex items-center justify-center p-4",
             !isVisible && "pointer-events-none"
-        )}>
+        )} role="presentation">
             {/* Backdrop */}
             <div
                 className={cn(
                     "absolute inset-0 bg-black/70 backdrop-blur-[2px]",
-                    "transition-opacity duration-200 ease-out",
+                    "transition-opacity duration-200 ease-out motion-reduce:transition-none",
                     isVisible ? "opacity-100" : "opacity-0"
                 )}
                 onClick={handleClose}
+                aria-hidden="true"
             />
 
             {/* Modal */}
             <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="fix-connection-title"
+                aria-describedby="fix-connection-description"
+                tabIndex={-1}
+                onKeyDown={handleDialogKeyDown}
                 className={cn(
-                    "relative w-full max-w-md overflow-hidden rounded-lg border border-line bg-panel",
-                    "transition-[opacity,transform] duration-[280ms] motion-reduce:transition-none",
+                    "relative flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-lg border border-line bg-panel outline-none",
+                    "transition-[opacity,transform] duration-[280ms] motion-reduce:transition-none motion-reduce:transform-none",
                     isVisible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
                 )}
                 style={{ transitionTimingFunction: DIALOG_EASE }}
@@ -224,20 +382,27 @@ export function FixConnectionModal({
                 <div className="flex items-center justify-between border-b border-line px-6 py-4">
                     <div className="flex items-center gap-3">
                         <IntegrationMark src={logo} size="md" />
-                        <h2 className="text-lg font-semibold text-ink">
-                            Fix Connection
-                        </h2>
+                        <div>
+                            <h2 id="fix-connection-title" className="text-lg font-semibold text-ink">
+                                Fix Connection
+                            </h2>
+                            <p id="fix-connection-description" className="sr-only">
+                                Review the connection issue and restore authorization.
+                            </p>
+                        </div>
                     </div>
                     <button
+                        type="button"
                         onClick={handleClose}
-                        className="rounded-md p-1 text-ink-mute hover:bg-white/[0.04] hover:text-ink"
+                        aria-label="Close connection dialog"
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-ink-mute transition-colors hover:bg-white/[0.04] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
                     >
                         <X className="h-5 w-5" strokeWidth={1.5} />
                     </button>
                 </div>
 
                 {/* Content */}
-                <div className="p-6">
+                <div className="overflow-y-auto overscroll-contain p-6">
                     {step === "diagnose" && diagnosis && (
                         <div className="space-y-4">
                             {/* Error icon */}
@@ -285,7 +450,7 @@ export function FixConnectionModal({
                     {step === "reconnect" && (
                         <div className="py-8 text-center">
                             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center">
-                                <RefreshCw className="h-8 w-8 animate-spin text-accent" strokeWidth={1.5} />
+                                <RefreshCw className="h-8 w-8 text-accent motion-safe:animate-spin" strokeWidth={1.5} />
                             </div>
                             <h3 className="text-lg font-semibold text-ink">
                                 Waiting for authorization...
@@ -341,7 +506,7 @@ export function FixConnectionModal({
                                     onClick={handleClose}
                                     className="flex-1"
                                 >
-                                    View Details
+                                    Close
                                 </PrimaryButton>
                             </div>
                         </div>

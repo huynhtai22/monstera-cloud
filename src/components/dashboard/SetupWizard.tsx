@@ -45,24 +45,24 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
 
     if (allDone) {
         return (
-            <div className="relative z-10 mb-10 rounded-lg border border-line bg-panel p-8">
-                <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-line bg-canvas">
-                        <Sparkles className="h-6 w-6 text-ink" strokeWidth={1.5} />
+            <div className="relative z-10 rounded-lg border border-line bg-panel p-5 sm:p-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-line bg-canvas">
+                        <Sparkles className="h-5 w-5 text-ink" strokeWidth={1.5} />
                     </div>
-                    <div>
-                        <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                    <div className="min-w-0 flex-1">
+                        <h2 className="text-base font-semibold text-ink">
                             You&apos;re all set, {firstName}!
                         </h2>
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                            Your first sync is complete. Open{" "}
+                        <p className="mt-1 text-sm leading-relaxed text-ink-mute">
+                            Your first source sync is complete. Open{" "}
                             <Link
-                                    href="/looker-studio"
-                                    className="font-semibold text-ink underline hover:no-underline"
-                                    onClick={() => trackEvent("wizard_help_link_click", { href: "/looker-studio", step: "all_done" })}
-                                >
-                                    Looker Studio
-                                </Link>{" "}
+                                href="/looker-studio"
+                                className="font-semibold text-ink underline hover:no-underline"
+                                onClick={() => trackEvent("wizard_help_link_click", { href: "/looker-studio", step: "all_done" })}
+                            >
+                                Looker Studio
+                            </Link>{" "}
                             or the{" "}
                             <Link
                                 href="/docs"
@@ -71,22 +71,22 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
                             >
                                 Sheets add-on docs
                             </Link>{" "}
-                            to use data outside the console. Check Sync activity for logs.
+                            to use data outside the console. Review Sources for the latest source-sync status.
                         </p>
                     </div>
-                    <div className="ml-auto flex items-center gap-3">
+                    <div className="flex shrink-0 flex-wrap items-center gap-3 sm:ml-auto sm:justify-end">
                         <Link
-                            href="/reports"
+                            href="/sources"
                             className={primaryButtonLinkClassName + " inline-flex items-center gap-2"}
                             onClick={() => trackEvent("wizard_step_completed", { step: "view_reports" })}
                         >
-                            View sync activity <ArrowRight className="h-3.5 w-3.5" />
+                            Review sources <ArrowRight className="h-3.5 w-3.5" />
                         </Link>
                         {onDismiss && (
                             <button
                                 type="button"
                                 onClick={() => { trackEvent("wizard_step_completed", { step: "dismiss" }); onDismiss(); }}
-                                className="text-xs font-semibold text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white"
+                                className="rounded text-xs font-semibold text-ink-mute transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
                             >
                                 Dismiss
                             </button>
@@ -98,14 +98,14 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
     }
 
     return (
-        <div className="relative z-10 mb-10 rounded-lg border border-line bg-panel p-6">
+        <div className="relative z-10 rounded-lg border border-line bg-panel p-5 sm:p-6">
             {/* Header + progress */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
                 <div>
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                    <h2 className="text-base font-semibold text-ink">
                         Hi {firstName}, let&apos;s get your data flowing.
                     </h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="mt-1 text-sm text-ink-mute">
                         {doneCount} of 2 core steps complete — most users finish in under 5 minutes.
                     </p>
                 </div>
@@ -113,7 +113,7 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
                     <button
                         type="button"
                         onClick={() => { trackEvent("wizard_step_completed", { step: "dismiss" }); onDismiss(); }}
-                        className="self-start sm:self-auto text-xs font-semibold text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-200 transition-colors"
+                        className="self-start rounded text-xs font-semibold text-ink-mute transition-colors hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30 sm:self-auto"
                     >
                         Dismiss
                     </button>
@@ -121,9 +121,9 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
             </div>
 
             {/* Progress bar */}
-            <div className="mb-6 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-[#16181c]">
+            <div className="mb-6 h-1.5 w-full overflow-hidden rounded-full bg-canvas">
                 <div
-                    className="h-full rounded-full bg-accent transition-all duration-500"
+                    className="h-full rounded-full bg-accent motion-safe:transition-[width] motion-safe:duration-500 motion-reduce:transition-none"
                     style={{ width: `${(doneCount / 2) * 100}%` }}
                 />
             </div>
@@ -137,12 +137,12 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
                         <li
                             key={step.key}
                             className={cn(
-                                "flex items-start gap-4 rounded-xl border px-5 py-4 transition-all",
+                                "flex flex-col gap-3 rounded-lg border px-4 py-4 motion-safe:transition-colors sm:flex-row sm:items-start sm:gap-4",
                                 done
-                                    ? "border-gray-100 bg-gray-50/60 dark:border-[#2f3336] dark:bg-[#16181c]/30 opacity-70"
+                                    ? "border-line bg-canvas/70 opacity-70"
                                     : isActive
                                       ? "border-line bg-white/[0.04]"
-                                      : "border-gray-100 bg-white/40 dark:border-[#2f3336]/60 dark:bg-[#000000]/20 opacity-50"
+                                      : "border-line bg-canvas/40 opacity-50"
                             )}
                         >
                             {/* Icon */}
@@ -154,7 +154,7 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
                                         <div className="h-2 w-2 rounded-full bg-accent" />
                                     </div>
                                 ) : (
-                                    <Circle className="h-5 w-5 text-gray-300 dark:text-gray-600" />
+                                    <Circle className="h-5 w-5 text-ink-mute" />
                                 )}
                             </div>
 
@@ -162,16 +162,16 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
                             <div className="flex-1 min-w-0">
                                 <div className={cn(
                                     "font-semibold text-sm",
-                                    done ? "text-gray-500 dark:text-gray-400 line-through decoration-gray-300 dark:decoration-gray-600"
-                                        : isActive ? "text-gray-900 dark:text-white"
-                                        : "text-gray-400 dark:text-gray-600"
+                                    done ? "text-ink-mute line-through decoration-ink-mute"
+                                        : isActive ? "text-ink"
+                                        : "text-ink-mute"
                                 )}>
                                     {i + 1}. {step.label}
                                 </div>
                                 {!done && (
                                     <p className={cn(
                                         "mt-0.5 text-xs",
-                                        isActive ? "text-gray-600 dark:text-gray-400" : "text-gray-400 dark:text-gray-600"
+                                        "leading-relaxed text-ink-mute"
                                     )}>
                                         {step.description}
                                     </p>
@@ -180,10 +180,10 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
 
                             {/* CTA — only on active step */}
                             {isActive && (
-                                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                                <div className="flex shrink-0 flex-col items-start gap-1.5 sm:items-end">
                                     <Link
                                         href={step.href}
-                                        className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary-hover transition-colors whitespace-nowrap"
+                                        className="inline-flex min-h-8 items-center gap-1.5 whitespace-nowrap rounded-md bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
                                         onClick={() => trackEvent(step.eventKey, { from: "wizard" })}
                                     >
                                         {step.cta} <ArrowRight className="h-3 w-3" />
@@ -203,7 +203,7 @@ export function SetupWizard({ hasSource, hasSuccessfulSync, onDismiss }: SetupWi
 
             <div className="mt-6 rounded-md border border-dashed border-line bg-canvas p-4">
                 <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-mute">Use data in Sheets or Looker</p>
-                <p className="mt-2 text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+                <p className="mt-2 text-xs leading-relaxed text-ink-mute">
                     After you sync, use the private pilot Sheets installation or connect Looker Studio with a workspace API key from Settings.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs font-semibold">
