@@ -80,6 +80,33 @@ test.describe("Onboarding & activation journey", () => {
     workspaceId = membership.workspace.id;
   });
 
+  test("sync activity states its pipeline-only scope and retries without starting a sync", async ({ page }) => {
+    await page.goto("/login");
+    await page.locator('input[type="email"]').fill(email);
+    await page.locator('input[type="password"]').fill(password);
+    await page.getByRole("button", { name: "Continue with Email" }).click();
+    await expect(page.locator("h1")).toContainText("Dashboard", { timeout: 20_000 });
+
+    let historyRequests = 0;
+    await page.route("**/api/sync-logs?**", async (route) => {
+      historyRequests += 1;
+      expect(route.request().method()).toBe("GET");
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Temporary test failure" }),
+      });
+    });
+
+    await page.goto("/reports");
+    await expect(page.getByRole("heading", { name: "Sync activity" })).toBeVisible();
+    await expect(page.getByText("This page records source-to-destination pipeline runs.")).toBeVisible();
+    await expect(page.getByText("Trying again only reloads this history; it will not start a sync.")).toBeVisible();
+
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect.poll(() => historyRequests).toBeGreaterThan(1);
+  });
+
   test("API key creation enables the Looker/Sheets delivery path, revocation closes it", async ({ page }) => {
     await page.goto("/login");
     await page.locator('input[type="email"]').fill(email);

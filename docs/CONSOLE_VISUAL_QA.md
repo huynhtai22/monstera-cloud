@@ -65,6 +65,21 @@ than leaving people to infer whether anything is happening.
 - Reconnect an expired source and confirm the final state says authorization is
   ready and that the user must run a sync when they want refreshed Warehouse
   data; do not imply that a sync began automatically.
+- Complete OAuth and confirm the success banner never says a first sync is
+  queued unless a job actually exists. **Run first sync** must jump to the
+  connected source list.
+
+### Sync activity
+
+- Confirm the page explicitly identifies itself as destination-pipeline run
+  history. Direct manual or nightly Warehouse source refresh state must point
+  users to Sources or the source detail page, not imply that it appears here.
+- On a cold request, confirm table-shaped placeholders preserve the final layout
+  and reduced-motion users see a static loading state.
+- Force the logs request to fail, select **Try again**, and confirm existing
+  filters remain selected and no sync, refresh, or import request is started.
+- Select filters that match no destination-pipeline runs and confirm the empty
+  state names the active scope and offers a one-click filter reset.
 
 ## Acceptance criteria
 

@@ -197,28 +197,28 @@ export default function SourcesPage() {
                     kind: "partial",
                     title: "Partial sync",
                     detail: `${rowsIngested.toLocaleString()} row${rowsIngested === 1 ? "" : "s"} were written, but one or more provider accounts did not complete. The last fully successful sync was not advanced.`,
-                    action: { href: "/reports", label: "Review sync activity" },
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
                 });
             } else if (data.code === 'SYNC_ACTIVE' || data.error?.includes('already queued') || data.error?.includes('running')) {
                 setSourceOutcome({
                     kind: "blocked",
                     title: "Sync already running",
-                    detail: "Another sync holds this source's lease. Wait for it to finish, then review sync activity if it does not complete.",
-                    action: { href: "/reports", label: "Review sync activity" },
+                    detail: "Another sync holds this source's lease. Wait for it to finish, then review the source if it does not complete.",
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
                 });
             } else if (data.code === 'SYNC_COOLDOWN') {
                 setSourceOutcome({
                     kind: "cooldown",
                     title: "Sync cooldown active",
                     detail: "This source was synced recently. Wait for the cooldown to finish before starting another sync.",
-                    action: { href: "/reports", label: "Review sync activity" },
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
                 });
             } else {
                 setSourceOutcome({
                     kind: "error",
                     title: "Sync could not complete",
-                    detail: "Existing warehouse data was not deleted. Review sync activity before retrying.",
-                    action: { href: "/reports", label: "Review sync activity" },
+                    detail: "Existing warehouse data was not deleted. Review this source before retrying.",
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
                 });
             }
         } catch {
@@ -226,15 +226,12 @@ export default function SourcesPage() {
                 kind: "error",
                 title: "Sync could not start",
                 detail: "The request did not reach Monstera. Existing warehouse data was not changed.",
-                action: { href: "/reports", label: "Review sync activity" },
+                action: { href: `/sources/${connectionId}`, label: "Review source" },
             });
         } finally {
             removeBusy(key);
-            if (activeWorkspaceId) {
-                void mutate(`/api/sync-logs?workspaceId=${activeWorkspaceId}`);
-            }
         }
-    }, [addBusy, removeBusy, activeWorkspaceId, mutate]);
+    }, [addBusy, removeBusy]);
 
     const handleFixConnection = useCallback((integration: any) => {
         const catalogId = integration.catalogId;
@@ -843,7 +840,7 @@ export default function SourcesPage() {
             ) : (
                 <div role="tabpanel" aria-live="polite" className="space-y-8">
                     {activeFilter === 'connected' && connectedRows.length > 0 && (
-                        <section aria-labelledby="sources-connected-heading">
+                        <section id="connected-sources" aria-labelledby="sources-connected-heading" className="scroll-mt-6">
                             <h2 id="sources-connected-heading" className="sr-only">Connected</h2>
                             <ConnectedSourceList
                                 rows={connectedRows}
@@ -887,7 +884,7 @@ export default function SourcesPage() {
 
             {connectedSourceCount > 0 && (
                 <div className="mt-8 flex items-center justify-between border-t border-line pt-4">
-                    <p className="text-xs text-ink-mute">Sync history lives in Sync activity.</p>
+                    <p className="text-xs text-ink-mute">Destination pipeline history lives in Sync activity. Source refresh status stays on each source.</p>
                     <Link href="/reports" className="text-xs font-medium text-ink-mute hover:text-ink">
                         Open logs →
                     </Link>
