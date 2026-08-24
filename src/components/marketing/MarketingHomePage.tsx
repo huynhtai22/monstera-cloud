@@ -16,9 +16,9 @@ const COPY = {
     hero: {
       eyebrow: "Marketing data, made usable",
       title: ["Your ad data, cleaned", "and ready to report."],
-      description: "Connect Meta, Google Ads, TikTok, and Shopee. Monstera normalizes your marketing data and keeps a reporting warehouse ready for the tools your team already uses.",
+      description: "For marketing teams and agencies: connect certified Meta Ads, Google Ads, TikTok Ads, and Shopee workflows to a normalized warehouse, then verify and report the data in Google Sheets or Looker Studio.",
       primary: "Start free",
-      secondary: "See how it works",
+      secondary: "Explore integrations",
     },
     trust: [
       { icon: Eye, label: "Read-only provider access where available" },
@@ -68,9 +68,9 @@ const COPY = {
     hero: {
       eyebrow: "Dữ liệu marketing, sẵn sàng để sử dụng",
       title: ["Dữ liệu quảng cáo được làm sạch", "và sẵn sàng cho báo cáo."],
-      description: "Kết nối Meta, Google Ads, TikTok và Shopee. Monstera chuẩn hóa dữ liệu marketing và duy trì kho dữ liệu báo cáo sẵn sàng cho các công cụ team bạn đang dùng.",
+      description: "Dành cho team marketing và agency: kết nối các luồng Meta Ads, Google Ads, TikTok Ads và Shopee đã được xác nhận vào kho dữ liệu chuẩn hóa, sau đó kiểm tra và báo cáo trong Google Sheets hoặc Looker Studio.",
       primary: "Bắt đầu miễn phí",
-      secondary: "Xem cách hoạt động",
+      secondary: "Xem các tích hợp",
     },
     trust: [
       { icon: Eye, label: "Quyền truy cập chỉ đọc khi nền tảng hỗ trợ" },
@@ -119,10 +119,10 @@ const COPY = {
 } as const;
 
 const PROVIDERS = [
-  { name: "Meta Ads", logo: INTEGRATION_LOGOS.meta },
-  { name: "Google Ads", logo: INTEGRATION_LOGOS.googleAds },
-  { name: "TikTok Ads", logo: INTEGRATION_LOGOS.tiktok },
-  { name: "Shopee", logo: INTEGRATION_LOGOS.shopee },
+  { name: "Meta Ads", logo: INTEGRATION_LOGOS.meta, href: "/integrations/meta-ads-to-google-sheets" },
+  { name: "Google Ads", logo: INTEGRATION_LOGOS.googleAds, href: "/integrations/google-ads-to-google-sheets" },
+  { name: "TikTok Ads", logo: INTEGRATION_LOGOS.tiktok, href: "/integrations/tiktok-ads-to-google-sheets" },
+  { name: "Shopee", logo: INTEGRATION_LOGOS.shopee, href: "/integrations/shopee-to-google-sheets" },
 ];
 
 export default function MarketingHomePage() {
@@ -148,14 +148,14 @@ export default function MarketingHomePage() {
           <p className="mx-auto mt-6 max-w-2xl text-pretty text-base leading-relaxed text-ink-mute sm:text-lg">{t.hero.description}</p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link href="/register" className="inline-flex items-center justify-center rounded-md bg-white px-5 py-3 text-sm font-semibold text-neutral-950 transition-colors hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-canvas">{t.hero.primary}<ArrowRight className="ml-2 h-4 w-4" aria-hidden /></Link>
-            <a href="#architecture" className="inline-flex items-center justify-center rounded-md border border-line bg-panel px-5 py-3 text-sm font-medium text-ink transition-colors hover:border-white/25 hover:bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-canvas">{t.hero.secondary}</a>
+            <Link href="/integrations" className="inline-flex items-center justify-center rounded-md border border-line bg-panel px-5 py-3 text-sm font-medium text-ink transition-colors hover:border-white/25 hover:bg-white/[0.04] focus:outline-none focus:ring-2 focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-canvas">{t.hero.secondary}</Link>
           </div>
         </MarketingScrollReveal>
       </section>
 
       <section aria-label="Trust signals" className="border-y border-line bg-panel/35 px-4 py-5 sm:px-6 lg:px-8"><MarketingScrollReveal className="mx-auto grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-4">{t.trust.map(({ icon: Icon, label }) => <div key={label} className="flex items-center gap-2.5 px-2 text-xs leading-snug text-ink-mute"><Icon className="h-4 w-4 shrink-0 text-ink" strokeWidth={1.5} aria-hidden /><span>{label}</span></div>)}</MarketingScrollReveal></section>
 
-      <section className="px-4 py-16 sm:px-6 sm:py-20 lg:px-8"><MarketingScrollReveal className="mx-auto max-w-6xl"><p className="mb-6 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-mute">{t.providers.label}</p><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{PROVIDERS.map((provider) => <div key={provider.name} className="flex h-16 items-center justify-center gap-3 rounded-lg border border-line bg-panel px-4"><IntegrationMark src={provider.logo} alt="" size="sm" /><span className="text-sm font-medium text-ink">{provider.name}</span></div>)}</div></MarketingScrollReveal></section>
+      <section id="integrations" className="scroll-mt-20 px-4 py-16 sm:px-6 sm:py-20 lg:px-8"><MarketingScrollReveal className="mx-auto max-w-6xl"><p className="mb-6 text-center font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-mute">{t.providers.label}</p><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{PROVIDERS.map((provider) => <Link key={provider.name} href={provider.href} className="flex h-16 items-center justify-center gap-3 rounded-lg border border-line bg-panel px-4 transition-colors hover:border-white/25"><IntegrationMark src={provider.logo} alt="" size="sm" /><span className="text-sm font-medium text-ink">{provider.name}</span></Link>)}</div></MarketingScrollReveal></section>
 
       <section className="px-4 py-12 sm:px-6 sm:py-16 lg:px-8"><div className="mx-auto max-w-6xl"><MarketingScrollReveal className="max-w-2xl"><p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-mute">{t.outcomes.eyebrow}</p><h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{t.outcomes.title}</h2><p className="mt-4 text-base leading-relaxed text-ink-mute">{t.outcomes.description}</p></MarketingScrollReveal><div className="mt-10 grid gap-4 md:grid-cols-3">{t.outcomes.items.map((item, index) => { const Icon = item.icon; return <MarketingScrollReveal key={item.title} delay={index * 70} className="h-full"><article className="flex h-full flex-col rounded-xl border border-line bg-panel p-6 transition-colors hover:border-white/20"><div className="mb-8 flex items-center justify-between"><span className="font-mono text-xs text-ink-mute">0{index + 1}</span><span className="flex h-8 w-8 items-center justify-center rounded-md border border-line bg-canvas"><Icon className="h-4 w-4 text-ink" strokeWidth={1.5} aria-hidden /></span></div><h3 className="text-lg font-semibold text-ink">{item.title}</h3><p className="mt-3 text-sm leading-relaxed text-ink-mute">{item.description}</p><ul className="mt-6 space-y-2 border-t border-line pt-5 text-xs leading-relaxed text-ink-mute">{item.points.map((point) => <li key={point} className="flex gap-2"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" aria-hidden />{point}</li>)}</ul></article></MarketingScrollReveal>; })}</div></div></section>
 

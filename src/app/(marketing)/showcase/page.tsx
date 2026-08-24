@@ -1,4 +1,10 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Connector review materials",
+  robots: { index: false, follow: false },
+};
 
 export default function ShowcasePage() {
   return (
@@ -41,8 +47,8 @@ export default function ShowcasePage() {
             </Link>
           </li>
           <li>
-            <Link className="text-accent hover:underline" href="/destinations">
-              Destinations (product)
+            <Link className="text-accent hover:underline" href="/integrations">
+              Certified integrations
             </Link>
           </li>
         </ul>
@@ -50,4 +56,3 @@ export default function ShowcasePage() {
     </div>
   );
 }
-

@@ -1,156 +1,27 @@
-"use client";
-
+import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, ArrowLeft, ShieldCheck, Database, Zap, Building2, CheckCircle2 } from "lucide-react";
+import { ArrowRight, Building2, CheckCircle2, Database, ShieldCheck } from "lucide-react";
+import { PRODUCT_SITE_URL } from "@/lib/site-url";
+
+export const metadata: Metadata = {
+  title: "Workspace-scoped reporting for agencies",
+  description: "Keep client advertising sources, warehouse metrics, and reporting credentials separated by Monstera workspace.",
+  alternates: { canonical: `${PRODUCT_SITE_URL}/solutions/agencies` },
+};
+
+const STEPS = [
+  ["Create the client boundary", "Use a distinct workspace for each client or brand and confirm the correct members before connecting a source."],
+  ["Connect and verify", "Authorize one certified provider workflow, run a bounded import, and validate its rows in Data Explorer."],
+  ["Deliver the report", "Use the Sheets add-on identity flow or a workspace API key for Looker Studio, then reconcile the first report."],
+] as const;
 
 export default function AgenciesSolutionPage() {
-    return (
-        <div className="flex flex-col items-center bg-canvas text-ink w-full selection:bg-accent/20 overflow-hidden font-sans">
-            
-            {/* HERO SECTION */}
-            <section className="relative w-full min-h-[80vh] flex flex-col items-center justify-center pt-32 pb-20 px-4 sm:px-6 lg:px-8 overflow-hidden border-b border-line bg-canvas">
-                <div className="relative z-10 w-full max-w-5xl mx-auto text-center flex flex-col items-center">
-                    
-                    <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full border border-line bg-panel text-ink-mute text-xs font-semibold tracking-wider uppercase mb-8">
-                        <Building2 className="w-3.5 h-3.5 mr-1 text-accent" /> For APAC Agencies &amp; Aggregators
-                    </div>
-
-                    <h1 className="text-4xl sm:text-6xl md:text-7xl font-bold text-ink tracking-tight leading-[1.05] mb-6 max-w-4xl">
-                        Manage 50+ seller accounts.<br className="hidden md:block"/>
-                        <span className="text-accent">Zero infrastructure code.</span>
-                    </h1>
-
-                    <p className="text-base sm:text-lg text-ink-mute max-w-3xl mx-auto mb-10 leading-relaxed font-normal">
-                        One console for many clients: separate Monstera workspaces per seller or brand, OAuth into Shopee, Meta Ads, and TikTok, then deliver into each client&apos;s{" "}
-                        <strong className="text-ink">Google Sheets™</strong> or <strong className="text-ink">Looker Studio™</strong> — matching what the product does today.
-                    </p>
-
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full">
-                        <Link
-                            href="/register"
-                            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-semibold text-black bg-white hover:bg-neutral-200 rounded-md transition-colors shadow-xs"
-                        >
-                            Provision Agency Fabric
-                            <ArrowRight className="w-4 h-4" />
-                        </Link>
-                        <Link
-                            href="/pricing"
-                            className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-ink bg-panel border border-line hover:bg-[#16181c] rounded-md transition-colors"
-                        >
-                            View Enterprise Pricing
-                        </Link>
-                    </div>
-                </div>
-            </section>
-
-            {/* AGENCY CAPABILITIES GRID */}
-            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 bg-canvas border-b border-line">
-                <div className="max-w-6xl mx-auto">
-                    <div className="mb-14">
-                        <h2 className="text-3xl font-bold text-ink tracking-tight mb-3">Architected for Aggregation.</h2>
-                        <p className="text-ink-mute text-sm sm:text-base max-w-2xl">Stop building brittle cron jobs per client. Monstera Cloud normalizes APAC marketplace APIs into a unified analytical schema.</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        
-                        {/* Capability 1 */}
-                        <div className="bg-panel rounded-lg border border-line p-6 hover:border-[#333] transition-colors flex flex-col">
-                            <div className="w-10 h-10 rounded-md bg-canvas border border-line flex items-center justify-center mb-5 text-accent">
-                                <Database className="w-5 h-5" />
-                            </div>
-                            <h3 className="text-base font-bold text-ink mb-2 tracking-tight">Multi-Tenant Routing</h3>
-                            <p className="text-xs text-ink-mute flex-1 leading-relaxed">
-                                Map each Shopee or Meta seller to its own Monstera workspace so credentials, pipelines, and destinations never cross between clients.
-                            </p>
-                        </div>
-
-                        {/* Capability 2 */}
-                        <div className="bg-panel rounded-lg border border-line p-6 hover:border-[#333] transition-colors flex flex-col">
-                            <div className="w-10 h-10 rounded-md bg-canvas border border-line flex items-center justify-center mb-5 text-accent">
-                                <ShieldCheck className="w-5 h-5" />
-                            </div>
-                            <h3 className="text-base font-bold text-ink mb-2 tracking-tight">Vietnam PDPA Compliant</h3>
-                            <p className="text-xs text-ink-mute flex-1 leading-relaxed">
-                                Stay ahead of regional expectations: minimize what you store, encrypt credentials at rest, and keep buyer identifiers out of spreadsheets where your policies require it.
-                            </p>
-                        </div>
-
-                        {/* Capability 3 */}
-                        <div className="bg-panel rounded-lg border border-line p-6 hover:border-[#333] transition-colors flex flex-col">
-                            <div className="w-10 h-10 rounded-md bg-canvas border border-line flex items-center justify-center mb-5 text-accent">
-                                <Zap className="w-5 h-5" />
-                            </div>
-                            <h3 className="text-base font-bold text-ink mb-2 tracking-tight">Flash-Sale Resiliency</h3>
-                            <p className="text-xs text-ink-mute flex-1 leading-relaxed">
-                                Our Vercel Edge ingesters elastically scale to absorb high-volume webhooks during peak campaigns across your entire client portfolio without dropping payloads.
-                            </p>
-                        </div>
-
-                    </div>
-                </div>
-            </section>
-
-            {/* DEMO / ARCHITECTURE SECTION */}
-            <section className="w-full py-24 px-4 sm:px-6 lg:px-8 border-b border-line bg-canvas">
-                <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center gap-12">
-                    <div className="md:w-1/2">
-                        <h2 className="text-3xl font-bold text-ink tracking-tight mb-4">
-                            The &quot;Query-Once&quot; Hierarchy.
-                        </h2>
-                        <p className="text-ink-mute text-xs sm:text-sm mb-8 leading-relaxed">
-                            For agencies, maintaining 50 different API connectors is a nightmare. Monstera standardizes the output of Shopee, TikTok, and Meta Ads into a single, unified analytical schema.
-                        </p>
-                        <ul className="space-y-3 mb-8">
-                            <li className="flex items-start gap-3">
-                                <CheckCircle2 className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                                <span className="text-ink-mute text-xs">Deploy unified Looker Studio reports across multiple clients.</span>
-                            </li>
-                            <li className="flex items-start gap-3">
-                                <CheckCircle2 className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                                <span className="text-ink-mute text-xs">Run aggressive cross-brand aggregations for market insights.</span>
-                            </li>
-                            <li className="flex items-start gap-3">
-                                <CheckCircle2 className="w-4 h-4 text-accent shrink-0 mt-0.5" />
-                                <span className="text-ink-mute text-xs">Share Looker Studio dashboards fed by each client&apos;s workspace API key.</span>
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div className="md:w-1/2 w-full">
-                         {/* Terminal Mockup */}
-                         <div className="bg-panel border border-line rounded-lg overflow-hidden shadow-sm">
-                            <div className="bg-canvas px-4 py-3 flex items-center border-b border-line">
-                                <div className="flex space-x-1.5">
-                                    <div className="w-2.5 h-2.5 rounded-full bg-[#333]"></div>
-                                    <div className="w-2.5 h-2.5 rounded-full bg-[#333]"></div>
-                                    <div className="w-2.5 h-2.5 rounded-full bg-[#333]"></div>
-                                </div>
-                                <div className="mx-auto text-[11px] text-ink-mute font-mono">agency_pipeline_router.yaml</div>
-                            </div>
-                            <div className="p-5 font-mono text-xs text-ink leading-relaxed overflow-x-auto">
-                                <p><span className="text-accent">routes:</span></p>
-                                <p className="pl-4"><span className="text-ink-mute">- client_id:</span> &quot;brand_alpha_vn&quot;</p>
-                                <p className="pl-8"><span className="text-ink-mute">source:</span> shopee_v2_api</p>
-                                <p className="pl-8"><span className="text-ink-mute">destination:</span> google_sheets.brand_alpha_workbook</p>
-                                <p className="pl-8"><span className="text-accent">pii_masking:</span> true</p>
-                                <p className="mt-3 pl-4"><span className="text-ink-mute">- client_id:</span> &quot;brand_omega_sg&quot;</p>
-                                <p className="pl-8"><span className="text-ink-mute">source:</span> tiktok_shop_api</p>
-                                <p className="pl-8"><span className="text-ink-mute">destination:</span> looker_studio.brand_omega_connector</p>
-                                <p className="pl-8"><span className="text-accent">pii_masking:</span> true</p>
-                                <p className="mt-3 text-ink-mute"># 48 more clients authenticated...</p>
-                                <p className="mt-3 text-accent font-semibold">[SYS] FABRIC DEPLOYMENT HEALTHY.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-             <div className="py-16 text-center">
-                <Link href="/" className="inline-flex items-center text-xs font-medium text-ink-mute hover:text-ink transition-colors">
-                    <ArrowLeft className="w-4 h-4 mr-2" /> Back to Platform Overview
-                </Link>
-            </div>
-
-        </div>
-    );
+  return (
+    <div className="min-h-screen bg-canvas text-ink">
+      <section className="border-b border-line px-4 pb-20 pt-28 text-center sm:px-6 sm:pb-24 sm:pt-36 lg:px-8"><div className="mx-auto max-w-4xl"><div className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute"><Building2 className="h-3.5 w-3.5" aria-hidden /> Agency workflow</div><h1 className="mt-6 text-balance text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">Separate client data. Standardize the reporting process.</h1><p className="mx-auto mt-5 max-w-3xl text-base leading-relaxed text-ink-mute">Monstera workspaces keep source connections, warehouse metrics, API keys, and sync activity scoped to the intended client boundary.</p><div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row"><Link href="/support?pilot=1&audience=agency" className="inline-flex items-center justify-center rounded-md bg-white px-5 py-3 text-sm font-semibold text-black hover:bg-neutral-200">Request agency pilot access <ArrowRight className="ml-2 h-4 w-4" aria-hidden /></Link><Link href="/pricing" className="inline-flex items-center justify-center rounded-md border border-line bg-panel px-5 py-3 text-sm font-semibold hover:border-white/25">Compare workspace plans</Link></div></div></section>
+      <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6 lg:px-8"><div className="grid gap-5 md:grid-cols-3"><article className="rounded-xl border border-line bg-panel p-6"><ShieldCheck className="h-5 w-5 text-emerald-400" aria-hidden /><h2 className="mt-5 text-lg font-semibold">Workspace boundaries</h2><p className="mt-3 text-sm leading-relaxed text-ink-mute">Keep each client&apos;s connections and reporting credentials in its own workspace and assign only the required members.</p></article><article className="rounded-xl border border-line bg-panel p-6"><Database className="h-5 w-5 text-emerald-400" aria-hidden /><h2 className="mt-5 text-lg font-semibold">Normalized warehouse</h2><p className="mt-3 text-sm leading-relaxed text-ink-mute">Use consistent campaign dimensions for supported provider data while retaining source and account context.</p></article><article className="rounded-xl border border-line bg-panel p-6"><CheckCircle2 className="h-5 w-5 text-emerald-400" aria-hidden /><h2 className="mt-5 text-lg font-semibold">Visible verification</h2><p className="mt-3 text-sm leading-relaxed text-ink-mute">Check sync outcome, date coverage, and row-level plausibility before a client report is refreshed or shared.</p></article></div></section>
+      <section className="border-y border-line bg-panel/30 px-4 py-20 sm:px-6 lg:px-8"><div className="mx-auto max-w-5xl"><p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">Recommended operating sequence</p><h2 className="mt-3 text-3xl font-semibold tracking-tight">One repeatable handoff for every client.</h2><ol className="mt-8 grid gap-4 md:grid-cols-3">{STEPS.map(([title, description], index) => <li key={title} className="rounded-xl border border-line bg-canvas p-6"><span className="font-mono text-xs text-emerald-400">0{index + 1}</span><h3 className="mt-5 text-base font-semibold">{title}</h3><p className="mt-3 text-sm leading-relaxed text-ink-mute">{description}</p></li>)}</ol><p className="mt-8 text-xs leading-relaxed text-ink-mute">Pilot access, provider coverage, workspace capacity, and support expectations are confirmed before rollout.</p></div></section>
+      <section className="px-4 py-20 text-center sm:px-6 lg:px-8"><h2 className="text-3xl font-semibold tracking-tight">Validate one client workflow first.</h2><p className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-ink-mute">Use the first-run guide to connect, import, verify, and reconcile before expanding the pilot.</p><Link href="/docs" className="mt-7 inline-flex items-center justify-center rounded-md border border-line bg-panel px-5 py-2.5 text-sm font-semibold hover:border-white/25">Read the verification guide <ArrowRight className="ml-2 h-4 w-4" aria-hidden /></Link></section>
+    </div>
+  );
 }

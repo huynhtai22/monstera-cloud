@@ -6,10 +6,6 @@ import { PRODUCT_SITE_URL } from "@/lib/site-url";
 const ogImage = `${PRODUCT_SITE_URL}/icon-512.png`;
 
 export const metadata: Metadata = {
-    title: {
-        default: "Monstera Cloud | Your Ad Data, Ready to Report",
-        template: "%s | Monstera Cloud",
-    },
     description:
         "Connect Meta, Google Ads, TikTok, and Shopee. Monstera normalizes marketing data and keeps it ready for reporting workflows.",
     openGraph: {

@@ -43,26 +43,26 @@ function LangToggle({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void 
 
 const PRODUCT_LINKS = [
   {
-    name: "Sources & Connectors",
-    description: "Connect Meta, Google Ads, TikTok, and Shopee via read-only OAuth.",
-    href: "/sources",
+    name: "How Monstera works",
+    description: "See the path from provider authorization to verified reporting data.",
+    href: "/platform",
     icon: DatabaseZap,
   },
   {
-    name: "Unified Warehouse",
-    description: "Normalized multi-channel metrics stored in isolated PostgreSQL tables.",
-    href: "/explorer",
+    name: "Certified integrations",
+    description: "Compare current Meta, Google Ads, TikTok Ads, and Shopee workflows.",
+    href: "/integrations",
     icon: Database,
   },
   {
-    name: "Exports & API",
-    description: "Live Looker Studio, Google Sheets, and programmatic REST API delivery.",
-    href: "/exports",
+    name: "Looker Studio",
+    description: "Query completed workspace imports with a revocable API key.",
+    href: "/looker-studio",
     icon: Download,
   },
   {
-    name: "Dashboard Templates",
-    description: "Pre-built agency client reporting templates and KPI decks.",
+    name: "Workflow examples",
+    description: "See practical reporting patterns built around current product capabilities.",
     href: "/templates",
     icon: LayoutTemplate,
   },
@@ -111,6 +111,16 @@ export function MarketingNavbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setActiveDropdown(null);
+      setMobileMenuOpen(false);
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, []);
+
   // Close menus on route change
   useEffect(() => {
     setActiveDropdown(null);
@@ -150,6 +160,8 @@ export function MarketingNavbar() {
             <button
               type="button"
               onClick={() => setActiveDropdown(activeDropdown === "product" ? null : "product")}
+              aria-expanded={activeDropdown === "product"}
+              aria-controls="marketing-product-menu"
               className={cn(
                 "inline-flex items-center gap-1 text-[13px] font-medium transition-colors duration-150",
                 activeDropdown === "product" ? "text-ink" : "text-ink-mute hover:text-ink"
@@ -166,7 +178,7 @@ export function MarketingNavbar() {
 
             {activeDropdown === "product" && (
               <div className="absolute left-1/2 top-full -translate-x-1/2 pt-2 animate-in fade-in-0 duration-150">
-                <div className="w-[360px] rounded-lg border border-line bg-panel p-2 shadow-xl">
+                <div id="marketing-product-menu" className="w-[360px] rounded-lg border border-line bg-panel p-2 shadow-xl">
                   <div className="space-y-1">
                     {PRODUCT_LINKS.map((item) => {
                       const Icon = item.icon;
@@ -194,7 +206,7 @@ export function MarketingNavbar() {
             )}
           </div>
 
-          <Link href="/#architecture" className="text-[13px] font-medium text-ink-mute transition-colors duration-150 hover:text-ink">Integrations</Link>
+          <Link href="/integrations" className="text-[13px] font-medium text-ink-mute transition-colors duration-150 hover:text-ink">Integrations</Link>
           <Link href="/#security" className="text-[13px] font-medium text-ink-mute transition-colors duration-150 hover:text-ink">Security</Link>
 
           <Link
@@ -213,7 +225,11 @@ export function MarketingNavbar() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-3 sm:gap-4">
-          {showLangToggle && <LangToggle lang={lang} setLang={onSetLang} />}
+          {showLangToggle && (
+            <div className="hidden sm:block">
+              <LangToggle lang={lang} setLang={onSetLang} />
+            </div>
+          )}
 
           {isAuthed ? (
             <Link
@@ -247,6 +263,8 @@ export function MarketingNavbar() {
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="flex h-8 w-8 items-center justify-center rounded-md border border-line bg-panel text-ink-mute hover:text-ink md:hidden"
             aria-label="Toggle navigation menu"
+            aria-expanded={mobileMenuOpen}
+            aria-controls="marketing-mobile-menu"
           >
             {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </button>
@@ -255,8 +273,14 @@ export function MarketingNavbar() {
 
       {/* Mobile Menu Panel */}
       {mobileMenuOpen && (
-        <div className="border-b border-line bg-panel px-4 py-5 md:hidden">
+        <div id="marketing-mobile-menu" className="border-b border-line bg-panel px-4 py-5 md:hidden">
           <div className="space-y-4 text-sm">
+            {showLangToggle && (
+              <div className="flex items-center justify-between border-b border-line pb-3">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">Language</span>
+                <LangToggle lang={lang} setLang={onSetLang} />
+              </div>
+            )}
             <div className="space-y-2">
               <p className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">Product</p>
               {PRODUCT_LINKS.map((item) => (
@@ -271,7 +295,7 @@ export function MarketingNavbar() {
             </div>
 
             <div className="flex flex-col gap-2 border-t border-line pt-3">
-              <Link href="/#architecture" className="py-1 text-[13px] text-ink">Integrations</Link>
+              <Link href="/integrations" className="py-1 text-[13px] text-ink">Integrations</Link>
               <Link href="/#security" className="py-1 text-[13px] text-ink">Security</Link>
               <Link href="/pricing" className="py-1 text-[13px] text-ink">
                 Pricing

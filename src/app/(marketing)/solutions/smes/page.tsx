@@ -101,9 +101,9 @@ const FEATURES = [
     { icon: TrendingUp,    title: "TikTok & Meta Ads in one place",  desc: "See spend, impressions, clicks, and conversions from all your ad accounts side by side. No switching tabs." },
     { icon: ShoppingBag,   title: "Shopee order data",               desc: "Pull orders, revenue, and product performance from your Shopee seller account. Filter by date and status." },
     { icon: FileSpreadsheet,title: "Query from Google Sheets™",      desc: "Use the private add-on to choose an agency workspace and pull its current warehouse data into a sheet." },
-    { icon: BarChart3,     title: "Looker Studio dashboards",        desc: "Connect to Looker Studio for beautiful charts. Share live reports with your team or your boss." },
-    { icon: RefreshCw,     title: "Scheduled auto-sync",             desc: "Set it and forget it. Monstera syncs your data on a schedule so your numbers are always up to date." },
-    { icon: Zap,           title: "No engineers needed",             desc: "Built for business owners, not developers. Connect your accounts in minutes with just a few clicks." },
+    { icon: BarChart3,     title: "Looker Studio dashboards",        desc: "Query the latest completed workspace import from Looker Studio with a revocable API key." },
+    { icon: RefreshCw,     title: "Visible refresh state",            desc: "Inspect the latest completed outcome and metric window before relying on a report." },
+    { icon: Zap,           title: "Guided setup",                     desc: "Follow one documented path from provider authorization through import verification and reporting." },
 ];
 
 export default function SMEsSolutionPage() {
@@ -139,7 +139,7 @@ export default function SMEsSolutionPage() {
                     {/* Official partner logo strip */}
                     <div className="flex flex-col items-center gap-4 pt-2">
                         <p className="text-[10px] font-mono text-ink-mute uppercase tracking-widest">
-                            Official API Partner · Trusted by sellers across Vietnam · Indonesia · Thailand
+                            Certified public workflows · Built for Southeast Asian reporting teams
                         </p>
                         <div className="flex flex-wrap items-center justify-center gap-3">
                             <IntegrationMark src={INTEGRATION_LOGOS.tiktok} alt="TikTok Ads" size="sm" />
@@ -161,7 +161,7 @@ export default function SMEsSolutionPage() {
                         <span>Sound familiar?</span>
                     </div>
                     <h2 className="text-3xl md:text-4xl font-bold text-ink tracking-tight mb-12">
-                        Every SME seller wastes hours on this.
+                        Reporting work grows quickly across channels.
                     </h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left mb-12">
                         {PAIN_POINTS.map((pain) => (
@@ -172,7 +172,7 @@ export default function SMEsSolutionPage() {
                         ))}
                     </div>
                     <p className="text-ink-mute text-base">
-                        That's <span className="text-ink font-semibold">5–10 hours a week</span> you could spend on growing your business instead.
+                        A consistent import and verification process reduces repeated preparation and makes data freshness easier to inspect.
                     </p>
                 </div>
             </section>
@@ -281,7 +281,7 @@ export default function SMEsSolutionPage() {
                     </div>
 
                     <p className="text-center text-xs text-ink-mute mt-6">
-                        This data goes directly into your Google Sheets™ — or use it in Looker Studio for live dashboards.
+                        Verify imported rows in Data Explorer, then query the same warehouse data from Google Sheets™ or Looker Studio.
                     </p>
                 </div>
             </section>
@@ -323,9 +323,9 @@ export default function SMEsSolutionPage() {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {[
-                            { step: "01", title: "Connect your platforms", desc: "Sign in with TikTok Ads, Meta Ads, Shopee, or Google Ads. Takes 2 minutes. We handle the OAuth — you just click Authorize." },
-                            { step: "02", title: "Choose your destination", desc: "Send data to Google Sheets™ with our add-on, or build a live Looker Studio dashboard with our connector." },
-                            { step: "03", title: "Verify freshness", desc: "Run the first import, inspect rows in Data Explorer, then rely on manual and nightly warehouse refresh." },
+                            { step: "01", title: "Connect your platforms", desc: "Choose a certified source, complete its provider authorization, and confirm it appears in the intended workspace." },
+                            { step: "02", title: "Choose your destination", desc: "Use the Google Sheets™ add-on identity flow or a workspace API key for the Looker Studio connector." },
+                            { step: "03", title: "Verify freshness", desc: "Run the first import, inspect rows in Data Explorer, and confirm the configured plan cadence before relying on later refreshes." },
                         ].map((item) => (
                             <div key={item.step} className="p-6 rounded-lg bg-panel border border-line flex flex-col items-start">
                                 <div className="text-3xl font-bold text-ink-mute mb-3 font-mono">
@@ -355,7 +355,7 @@ export default function SMEsSolutionPage() {
                                 "Meta Ads: reach, CPM, ROAS broken down by ad set",
                                 "Shopee: orders, revenue, and top products by date",
                                 "Google Ads: CPC, clicks, conversions by campaign",
-                                "Google Sheets™ auto-updated — no manual export needed",
+                                "Google Sheets™ add-on queries for selected warehouse data",
                                 "All platforms in one workspace — not scattered across 5 tabs",
                             ].map((item) => (
                                 <li key={item} className="flex items-start gap-3">
@@ -369,10 +369,10 @@ export default function SMEsSolutionPage() {
                     {/* Mini stat cards */}
                     <div className="grid grid-cols-2 gap-4">
                         {[
-                            { label: "Hours saved per week",  value: "8–10h",  sub: "On manual reporting" },
-                            { label: "Platforms connected",   value: "4+",     sub: "TikTok, Meta, Shopee, Google" },
-                            { label: "Pilot refresh",         value: "Nightly", sub: "+ manual refresh" },
-                            { label: "Setup time",            value: "< 2min", sub: "No engineers needed" },
+                            { label: "Certified sources", value: "4", sub: "Meta, Google, TikTok Ads, Shopee" },
+                            { label: "Report destinations", value: "2", sub: "Google Sheets and Looker Studio" },
+                            { label: "Pilot cadence", value: "Plan", sub: "Shown in configured limits" },
+                            { label: "Verification", value: "Visible", sub: "Rows, dates, and sync outcome" },
                         ].map((stat) => (
                             <div key={stat.label} className="p-5 rounded-lg bg-panel border border-line flex flex-col gap-1">
                                 <p className="text-[11px] text-ink-mute font-medium">{stat.label}</p>
@@ -394,14 +394,14 @@ export default function SMEsSolutionPage() {
                             Ready to get your time back?
                         </h2>
                         <p className="text-ink-mute mb-8 max-w-md mx-auto text-xs sm:text-sm leading-relaxed">
-                            Connect your first data source in under 2 minutes. Free plan available — no credit card required.
+                            Start with one certified source, verify its first import, and expand only after the reporting totals reconcile.
                         </p>
                         <Link href="/register" className="inline-flex items-center gap-2 px-8 py-3.5 text-sm font-semibold text-black bg-white hover:bg-neutral-200 rounded-md shadow-xs transition-colors">
                             Start Free Today
                             <ArrowRight className="w-4 h-4" />
                         </Link>
                         <p className="mt-8 text-[10px] text-ink-mute uppercase tracking-[0.2em] font-medium">
-                            Free plan available · VND + USD billing · Cancel anytime
+                            Free plan available · Paid pilot activation is operator-managed
                         </p>
                     </div>
                 </div>

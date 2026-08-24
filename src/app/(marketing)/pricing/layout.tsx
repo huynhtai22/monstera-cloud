@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
 
 export const metadata: Metadata = {
-    title: "Pricing",
+    title: "Pricing and workspace plans",
     description:
-        "One flat price. Every platform. No row caps. Flat-rate plans for TikTok Ads, Shopee, and Google Sheets™ — USD and VND.",
+        "Compare Monstera Cloud workspace capacity, reporting limits, and pilot pricing in USD or VND.",
+    alternates: {
+        canonical: `${PRODUCT_SITE_URL}/pricing`,
+    },
     openGraph: {
-        title: "Pricing | Monstera Cloud",
+        title: "Pricing and workspace plans",
         description:
-            "Most teams save vs legacy BI connectors. Free, Starter, and Pro — secure checkout via Paddle.",
+            "Compare connections, seats, pipelines, reporting limits, and operator-managed private-pilot plans.",
         url: `${PRODUCT_SITE_URL}/pricing`,
     },
 };

@@ -1,3 +1,12 @@
+import type { Metadata } from "next";
+import { PRODUCT_SITE_URL } from "@/lib/site-url";
+
+export const metadata: Metadata = {
+  title: "Support and troubleshooting",
+  description: "Troubleshoot Monstera source authorization, warehouse imports, Google Sheets, and Looker Studio workflows.",
+  alternates: { canonical: `${PRODUCT_SITE_URL}/support` },
+};
+
 export default function SupportPage() {
   return (
     <div className="mx-auto max-w-4xl px-6 pt-28 pb-20 font-sans text-ink">
@@ -27,7 +36,7 @@ export default function SupportPage() {
             </li>
             <li>
               <span className="font-semibold text-ink">No data in reports:</span>{" "}
-              run “Sync Now” on a pipeline, then check <span className="font-mono text-ink">/reports</span> for logs.
+              verify the selected workspace, account, and date range, then review the final outcome in Sync activity before retrying.
             </li>
           </ul>
         </div>
@@ -53,4 +62,3 @@ export default function SupportPage() {
     </div>
   );
 }
-

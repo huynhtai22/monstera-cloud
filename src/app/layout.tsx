@@ -23,24 +23,24 @@ const FBQ_INIT_OPTIONS =
 
 export const metadata: Metadata = {
     title: {
-      default: "Monstera Cloud | Effortless Data Integration",
+      default: "Monstera Cloud | Advertising data for reporting",
       template: "%s | Monstera Cloud",
     },
-    description: "Connect data, validate quality, and deliver insights without complex engineering setup. The modern data stack, simplified.",
+    description: "Connect certified advertising and marketplace sources to a workspace-scoped reporting warehouse for Google Sheets and Looker Studio.",
     keywords: ["data integration", "ETL", "meta ads to google sheets", "tiktok ads to google sheets", "shopee reporting", "looker studio connector", "marketing dashboard"],
     metadataBase: new URL(PRODUCT_SITE_URL),
     openGraph: {
       type: "website",
       locale: "en_US",
       url: PRODUCT_SITE_URL,
-      title: "Monstera Cloud | Effortless Data Integration",
-      description: "Connect data, validate quality, and deliver insights without complex engineering setup.",
+      title: "Monstera Cloud | Advertising data for reporting",
+      description: "Connect certified advertising and marketplace sources to a workspace-scoped reporting warehouse.",
       siteName: "Monstera Cloud",
     },
     twitter: {
       card: "summary_large_image",
-      title: "Monstera Cloud | Effortless Data Integration",
-      description: "Connect data, validate quality, and deliver insights without complex engineering setup.",
+      title: "Monstera Cloud | Advertising data for reporting",
+      description: "Connect certified advertising and marketplace sources to a workspace-scoped reporting warehouse.",
     },
     icons: {
       icon: [
@@ -66,12 +66,7 @@ export default function RootLayout({
         "name": "Monstera Cloud",
         "applicationCategory": "BusinessApplication",
         "operatingSystem": "Web",
-        "offers": {
-            "@type": "Offer",
-            "price": "0",
-            "priceCurrency": "USD"
-        },
-        "description": "Connect data, validate quality, and deliver insights without complex engineering setup.",
+        "description": "Connect certified advertising and marketplace sources to a workspace-scoped reporting warehouse for Google Sheets and Looker Studio.",
         "url": PRODUCT_SITE_URL
     };
 
