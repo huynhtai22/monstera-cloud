@@ -32,8 +32,8 @@ export function MarketingTrustSecuritySection() {
                         <Lock className="mb-3 h-6 w-6 text-ink" strokeWidth={1.5} aria-hidden />
                         <h3 className="mb-2 text-sm font-semibold text-ink">What we don&apos;t do</h3>
                         <p className="text-xs leading-relaxed text-slate-500">
-                            We don&apos;t sell your ad data. Sheets access is scoped to spreadsheets Monstera creates unless you choose otherwise in
-                            your pipeline settings. Infrastructure is hosted with a Singapore-region posture for SEA latency.
+                            We don&apos;t sell your ad data. The Sheets add-on is scoped to the active spreadsheet, and reporting data remains
+                            scoped to the selected Monstera workspace.
                         </p>
                     </div>
                     <div className="rounded-lg border border-line bg-panel p-6">
@@ -46,9 +46,7 @@ export function MarketingTrustSecuritySection() {
                     </div>
                 </div>
                 <p className="mt-8 text-center text-xs text-slate-400">
-                    Serving sellers and agencies in{" "}
-                    <span className="font-semibold text-slate-600">Singapore, Malaysia, Indonesia, Vietnam, Thailand</span> — pricing in USD and VND
-                    where available.
+                    Built for reporting teams across Southeast Asia — configured pricing can be viewed in USD or VND.
                 </p>
             </div>
         </section>

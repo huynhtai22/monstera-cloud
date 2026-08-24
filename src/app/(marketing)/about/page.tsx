@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
     title: "About Monstera Cloud",
     description: "Built for sellers and agencies in Southeast Asia.",
+    alternates: { canonical: "https://monsteracloud.com/about" },
 };
 
 export default function AboutPage() {
@@ -21,7 +22,7 @@ export default function AboutPage() {
 
                 <div className="max-w-none text-ink-mute space-y-6 text-sm md:text-base leading-relaxed font-normal">
                     <p>
-                        Southeast Asia is one of the fastest-growing ecommerce markets in the world. Sellers here manage multi-channel empires—TikTok Shop, Shopee, Lazada, Meta, and Google Ads. But the data tools built for the West aren&apos;t built for us.
+                        Southeast Asian teams often report across regional commerce and advertising platforms while still delivering decisions through spreadsheets and dashboards.
                     </p>
                     <p>
                         They are expensive, overly complex, and often bill exclusively in USD with harsh row-count limits. 
@@ -30,10 +31,10 @@ export default function AboutPage() {
                         We started Monstera Cloud because we were tired of reconciling spreadsheets at midnight.
                     </p>
                     <p>
-                        As agency owners and ecommerce operators, we built the exact tool we needed: an integration platform that simply works out of the box, bills fairly in VND and USD, and supports the specific platforms that actually matter in our region.
+                        As agency owners and ecommerce operators, we built the workflow we needed: connect an approved source, inspect the import outcome, verify the warehouse rows, and deliver them into a familiar reporting surface.
                     </p>
                     <p>
-                        We strip away the enterprise bloat. No confusing seat-based pricing. No row tier penalties. Just your data, automatically streaming into your Google Sheets and Looker Studio dashboards so you can make profitable decisions while you sleep.
+                        Monstera publishes its workspace limits and certified connector coverage so teams can evaluate the current product without relying on unsupported promises.
                     </p>
                     <div className="mt-12 pt-8 border-t border-line">
                         <p className="text-ink font-bold mb-2">Legal entity</p>
@@ -47,7 +48,7 @@ export default function AboutPage() {
                         <ul className="list-disc pl-5 space-y-2 text-ink-mute text-xs sm:text-sm">
                             <li><strong className="text-ink">Radical simplicity:</strong> You shouldn&apos;t need an engineering degree to sync your ad spend.</li>
                             <li><strong className="text-ink">Regional focus:</strong> We specialize in solving data routing for TikTok Ads, Meta, and Shopee.</li>
-                            <li><strong className="text-ink">Transparent limits:</strong> Uncapped rows. Predictable pricing.</li>
+                            <li><strong className="text-ink">Transparent limits:</strong> Plan capacity and current integration coverage are published clearly.</li>
                         </ul>
                     </div>
                 </div>

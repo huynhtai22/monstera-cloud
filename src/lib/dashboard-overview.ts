@@ -10,7 +10,7 @@ export interface DashboardSourceItem {
   name: string;
   accountCount: number;
   accountTags: string[];
-  state: "fresh" | "stale" | "error" | "syncing" | "pending";
+  state: "fresh" | "stale" | "error" | "syncing" | "pending" | "disconnected";
   lastSyncAt: string | null;
   lastError: string | null;
 }
@@ -41,7 +41,15 @@ export interface DashboardDestinationItem {
   id: string;
   type: "sheets" | "looker" | "api";
   name: string;
-  status: "healthy" | "ready" | "active" | "error" | "unconfigured";
+  status:
+    | "healthy"
+    | "ready"
+    | "active"
+    | "syncing"
+    | "partial"
+    | "stale"
+    | "error"
+    | "unconfigured";
   subtext: string;
   href: string;
 }
@@ -68,7 +76,7 @@ export interface DashboardOverviewDTO {
       subtext: string;
     };
     warehouse: {
-      status: "fresh" | "stale" | "refreshing" | "failed" | "never";
+      status: "fresh" | "stale" | "refreshing" | "partial" | "failed" | "never";
       dataThroughDate: string | null;
       totalRows: number;
       rows7d: number;
@@ -116,6 +124,219 @@ const PROVIDER_NAMES: Record<string, string> = {
   amazon: "Amazon",
   lazada: "Lazada",
 };
+
+type DashboardDestinationConnectionInput = {
+  id: string;
+  provider: string;
+  status: string;
+};
+
+type DashboardDestinationPipelineInput = {
+  destinationConnectionId: string;
+  status: string;
+  healthStatus: string;
+  lastSyncedAt: Date | null;
+  destinationConnection: {
+    provider: string;
+    status: string;
+  };
+};
+
+export function resolveDashboardSourceState(input: {
+  connectionStatus: string;
+  lastError: string | null;
+  lastSyncAt: Date | null;
+  isSyncing: boolean;
+  staleBefore: Date;
+}): DashboardSourceItem["state"] {
+  if (input.connectionStatus === "error" || input.lastError) return "error";
+  if (input.connectionStatus !== "connected") return "disconnected";
+  if (input.isSyncing) return "syncing";
+  if (!input.lastSyncAt) return "pending";
+  return input.lastSyncAt < input.staleBefore ? "stale" : "fresh";
+}
+
+export function isDashboardImportOutcomeCurrent(input: {
+  latestImportAt?: Date | null;
+  lastPulledAt: Date | null;
+}): boolean {
+  return Boolean(
+    input.latestImportAt &&
+      (!input.lastPulledAt || input.latestImportAt >= input.lastPulledAt),
+  );
+}
+
+export function resolveDashboardWarehouseStatus(input: {
+  latestImportStatus?: string | null;
+  latestImportAt?: Date | null;
+  latestSyncStatus?: string | null;
+  lastPulledAt: Date | null;
+  staleBefore: Date;
+}): DashboardOverviewDTO["summaryCards"]["warehouse"]["status"] {
+  if (input.latestImportStatus === "running" || input.latestSyncStatus === "running") {
+    return "refreshing";
+  }
+  const importOutcomeIsCurrent = isDashboardImportOutcomeCurrent(input);
+  if (importOutcomeIsCurrent && input.latestImportStatus === "failed") return "failed";
+  if (importOutcomeIsCurrent && input.latestImportStatus === "partial") return "partial";
+  if (!input.lastPulledAt) return "never";
+  return input.lastPulledAt >= input.staleBefore ? "fresh" : "stale";
+}
+
+export function latestValidDate(
+  values: Array<Date | string | null | undefined>,
+): Date | null {
+  let latest: Date | null = null;
+  for (const value of values) {
+    if (!value) continue;
+    const candidate = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(candidate.getTime())) continue;
+    if (!latest || candidate > latest) latest = candidate;
+  }
+  return latest;
+}
+
+export function summarizeDashboardSyncCounts(
+  groups: Array<{ status: string; _count: { _all: number } }>,
+): { successful: number; failed: number } {
+  return {
+    successful: groups.find((group) => group.status === "success")?._count._all ?? 0,
+    failed: groups.find((group) => group.status === "error")?._count._all ?? 0,
+  };
+}
+
+export function buildDashboardDestinations(input: {
+  destinationConnections: DashboardDestinationConnectionInput[];
+  pipelines: DashboardDestinationPipelineInput[];
+  apiKeysCount: number;
+  latestLookerStatus?: string | null;
+  hasCompletedLookerQuery?: boolean;
+}): { list: DashboardDestinationItem[]; activeNames: string[] } {
+  const sheetsConnections = input.destinationConnections.filter(
+    (connection) => connection.provider === "google_sheets",
+  );
+  const sheetsConnectionIds = new Set(sheetsConnections.map((connection) => connection.id));
+  const sheetsPipelines = input.pipelines.filter(
+    (pipeline) =>
+      pipeline.destinationConnection.provider === "google_sheets" ||
+      sheetsConnectionIds.has(pipeline.destinationConnectionId),
+  );
+
+  const hasActiveSheetsPipeline = sheetsPipelines.some(
+    (pipeline) =>
+      pipeline.status === "active" &&
+      pipeline.healthStatus === "healthy" &&
+      pipeline.lastSyncedAt !== null &&
+      pipeline.destinationConnection.status === "connected",
+  );
+  const hasSheetsError =
+    sheetsConnections.some((connection) => connection.status !== "connected") ||
+    sheetsPipelines.some((pipeline) => pipeline.healthStatus === "error");
+  const hasStaleSheetsPipeline = sheetsPipelines.some(
+    (pipeline) => pipeline.healthStatus === "stale",
+  );
+  const hasConfiguredSheets = sheetsConnections.some(
+    (connection) => connection.status === "connected",
+  );
+
+  const sheetsStatus: DashboardDestinationItem["status"] =
+    hasActiveSheetsPipeline && (hasSheetsError || hasStaleSheetsPipeline)
+      ? "partial"
+      : hasSheetsError
+        ? "error"
+        : hasStaleSheetsPipeline
+          ? "stale"
+          : hasActiveSheetsPipeline
+            ? "healthy"
+            : hasConfiguredSheets
+              ? "ready"
+              : "unconfigured";
+
+  const latestLookerStatus = input.latestLookerStatus ?? null;
+  const lookerStatus: DashboardDestinationItem["status"] =
+    input.apiKeysCount === 0
+      ? "unconfigured"
+      : latestLookerStatus === "failed"
+        ? "error"
+        : latestLookerStatus === "queued" || latestLookerStatus === "running"
+          ? "syncing"
+        : latestLookerStatus === "done"
+          ? "healthy"
+          : input.hasCompletedLookerQuery
+            ? "healthy"
+          : "ready";
+  const apiStatus: DashboardDestinationItem["status"] =
+    input.apiKeysCount > 0 ? "active" : "unconfigured";
+
+  const list: DashboardDestinationItem[] = [
+    {
+      id: "dest-sheets",
+      type: "sheets",
+      name: "Google Sheets",
+      status: sheetsStatus,
+      subtext:
+        sheetsStatus === "healthy"
+          ? "Scheduled export pipeline active"
+          : sheetsStatus === "partial"
+            ? "Some export pipelines need attention"
+          : sheetsStatus === "error"
+            ? "Export connection needs attention"
+            : sheetsStatus === "stale"
+              ? "Export pipeline has not synced recently"
+              : sheetsStatus === "ready"
+                ? "Connected; waiting for a successful export"
+                : "Set up an export or use the Sheets add-on",
+      href: "/exports",
+    },
+    {
+      id: "dest-looker",
+      type: "looker",
+      name: "Looker Studio",
+      status: lookerStatus,
+      subtext:
+        lookerStatus === "healthy"
+          ? "Recent connector query completed"
+          : lookerStatus === "syncing"
+            ? latestLookerStatus === "queued"
+              ? "Connector query queued"
+              : "Connector query in progress"
+          : lookerStatus === "error"
+            ? "Latest connector query failed"
+            : lookerStatus === "ready"
+              ? "API key configured; awaiting first query"
+              : "Create an API key to connect",
+      href: "/looker-studio",
+    },
+    {
+      id: "dest-api",
+      type: "api",
+      name: "REST API & CSV",
+      status: apiStatus,
+      subtext:
+        apiStatus === "active"
+          ? "Workspace API key configured"
+          : "Create an API key to enable access",
+      href: "/exports",
+    },
+  ];
+
+  const activeNames = list
+    .filter(
+      (destination) =>
+        destination.status === "healthy" ||
+        destination.status === "active" ||
+        destination.status === "syncing",
+    )
+    .map((destination) =>
+      destination.type === "sheets"
+        ? "Sheets"
+        : destination.type === "looker"
+          ? "Looker Studio"
+          : "REST API",
+    );
+
+  return { list, activeNames };
+}
 
 /**
  * Sanitize known raw technical/engineering errors into clean user-facing language.
@@ -239,13 +460,14 @@ export async function getWorkspaceDashboardOverview(
   // Parallel data fetching
   const [
     connections,
-    _pipelines,
+    pipelines,
     warehouseAgg,
     warehouse7dByCurrency,
-    retailOrdersCount,
+    retailOrdersAgg,
     latestSyncJob,
     latestImportJob,
-    syncLogs7d,
+    recentSyncLogs,
+    syncLogCounts7d,
     apiKeysCount,
     lookerJobs,
   ] = await Promise.all([
@@ -260,7 +482,9 @@ export async function getWorkspaceDashboardOverview(
       where: { workspaceId },
       include: {
         sourceConnection: { select: { id: true, name: true, provider: true } },
-        destinationConnection: { select: { id: true, name: true, provider: true, type: true } },
+        destinationConnection: {
+          select: { id: true, name: true, provider: true, type: true, status: true },
+        },
       },
     }),
 
@@ -286,8 +510,10 @@ export async function getWorkspaceDashboardOverview(
     }),
 
     // 5. Retail Orders
-    prisma.retailOrder.count({
+    prisma.retailOrder.aggregate({
       where: { workspaceId },
+      _count: { _all: true },
+      _max: { pulledAt: true, createdAtIso: true },
     }),
 
     // 6. Latest Sync Job
@@ -298,7 +524,7 @@ export async function getWorkspaceDashboardOverview(
         pipeline: {
           select: {
             name: true,
-            sourceConnection: { select: { name: true, provider: true } },
+            sourceConnection: { select: { id: true, name: true, provider: true } },
           },
         },
       },
@@ -310,7 +536,7 @@ export async function getWorkspaceDashboardOverview(
       orderBy: { createdAt: "desc" },
     }),
 
-    // 8. 7-day Sync Logs
+    // 8. Recent 7-day Sync Logs (activity feed only)
     prisma.syncLog.findMany({
       where: {
         pipeline: { workspaceId },
@@ -323,12 +549,22 @@ export async function getWorkspaceDashboardOverview(
       },
     }),
 
-    // 9. API Keys
+    // 9. Complete 7-day Sync Log counts (not capped by the activity feed)
+    prisma.syncLog.groupBy({
+      where: {
+        pipeline: { workspaceId },
+        createdAt: { gte: sevenDaysAgo },
+      },
+      by: ["status"],
+      _count: { _all: true },
+    }),
+
+    // 10. API Keys
     prisma.apiKey.count({
       where: { workspaceId, revokedAt: null },
     }),
 
-    // 10. Looker Jobs
+    // 11. Looker Jobs
     prisma.lookerJob.findMany({
       where: { workspaceId },
       orderBy: { createdAt: "desc" },
@@ -338,6 +574,11 @@ export async function getWorkspaceDashboardOverview(
 
   // Parse Sources
   const sourceConnections = connections.filter((c) => c.type === "source");
+  const destinationConnections = connections.filter((c) => c.type === "destination");
+  const runningSourceConnectionId =
+    latestSyncJob?.status === "running"
+      ? latestSyncJob.pipeline?.sourceConnection?.id ?? null
+      : null;
   let totalConnectedAccounts = 0;
   const needsAttention: DashboardIssueItem[] = [];
 
@@ -396,26 +637,40 @@ export async function getWorkspaceDashboardOverview(
 
     const providerLabel = conn.name || PROVIDER_NAMES[conn.provider] || conn.provider;
 
-    // Determine state
-    let state: DashboardSourceItem["state"] = "fresh";
-    if (conn.status === "error" || conn.lastError) {
-      state = "error";
+    const state = resolveDashboardSourceState({
+      connectionStatus: conn.status,
+      lastError: conn.lastError,
+      lastSyncAt: conn.lastSyncAt,
+      isSyncing: runningSourceConnectionId === conn.id,
+      staleBefore: oneDayAgo,
+    });
+    let safeLastError: string | null = null;
+
+    if (state === "error") {
       const sanitized = sanitizeUserFacingError(conn.lastError, providerLabel);
+      safeLastError = sanitized.explanation;
       needsAttention.push({
         id: `conn-err-${conn.id}`,
         title: sanitized.title,
         explanation: sanitized.explanation,
-        rawDetails: conn.lastError || undefined,
         actionType: sanitized.actionType,
         actionLabel: sanitized.actionLabel,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
       });
-    } else if (!conn.lastSyncAt) {
-      state = "pending";
-    } else if (new Date(conn.lastSyncAt) < oneDayAgo) {
-      state = "stale";
+    } else if (state === "disconnected") {
+      safeLastError = "This source is disconnected and cannot sync until it is reauthorized.";
+      needsAttention.push({
+        id: `conn-disconnected-${conn.id}`,
+        title: `${providerLabel} is disconnected`,
+        explanation: safeLastError,
+        actionType: "reconnect",
+        actionLabel: "Reconnect",
+        connectionId: conn.id,
+        provider: conn.provider,
+        timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
+      });
     }
 
     return {
@@ -426,19 +681,18 @@ export async function getWorkspaceDashboardOverview(
       accountTags,
       state,
       lastSyncAt: conn.lastSyncAt ? conn.lastSyncAt.toISOString() : null,
-      lastError: conn.lastError,
+      lastError: safeLastError,
     };
   });
 
   // Check for failed jobs
-  if (latestSyncJob && latestSyncJob.status === "failed" && latestSyncJob.errorMsg) {
+  if (latestSyncJob && latestSyncJob.status === "failed") {
     const jobSource = latestSyncJob.pipeline?.sourceConnection?.name || "Pipeline";
     const sanitized = sanitizeUserFacingError(latestSyncJob.errorMsg, jobSource);
     needsAttention.push({
       id: `job-err-${latestSyncJob.id}`,
       title: `${jobSource} sync failed`,
       explanation: sanitized.explanation,
-      rawDetails: latestSyncJob.errorMsg,
       actionType: "retry",
       actionLabel: "Review",
       href: "/reports",
@@ -447,59 +701,66 @@ export async function getWorkspaceDashboardOverview(
   }
 
   // Warehouse Freshness
-  const maxMetricDate = warehouseAgg._max.date;
-  const maxPulledAt = warehouseAgg._max.pulledAt;
-  const totalWarehouseRows = warehouseAgg._count.id + retailOrdersCount;
+  const latestWarehouseDataDate = latestValidDate([
+    warehouseAgg._max.date,
+    retailOrdersAgg._max.createdAtIso,
+  ]);
+  const latestWarehousePullAt = latestValidDate([
+    warehouseAgg._max.pulledAt,
+    retailOrdersAgg._max.pulledAt,
+  ]);
+  const totalWarehouseRows = warehouseAgg._count.id + retailOrdersAgg._count._all;
   const rows7d = warehouse7dByCurrency.reduce((sum, row) => sum + (row._count._all ?? 0), 0);
+  const latestImportAt = latestImportJob
+    ? latestImportJob.finishedAt || latestImportJob.updatedAt || latestImportJob.createdAt
+    : null;
 
-  let warehouseStatus: DashboardOverviewDTO["summaryCards"]["warehouse"]["status"] = "never";
-  if (latestImportJob?.status === "running" || latestSyncJob?.status === "running") {
-    warehouseStatus = "refreshing";
-  } else if (latestImportJob?.status === "failed" && !maxPulledAt) {
-    warehouseStatus = "failed";
-  } else if (maxPulledAt && new Date(maxPulledAt) >= oneDayAgo) {
-    warehouseStatus = "fresh";
-  } else if (maxPulledAt) {
-    warehouseStatus = "stale";
+  if (
+    (latestImportJob?.status === "failed" || latestImportJob?.status === "partial") &&
+    isDashboardImportOutcomeCurrent({ latestImportAt, lastPulledAt: latestWarehousePullAt })
+  ) {
+    const partial = latestImportJob.status === "partial";
+    needsAttention.push({
+      id: `import-${latestImportJob.status}-${latestImportJob.id}`,
+      title: partial ? "Warehouse refresh partially completed" : "Warehouse refresh failed",
+      explanation: partial
+        ? "Some selected sources did not finish. Review the import results before treating this refresh as complete."
+        : "The latest warehouse refresh did not complete. Existing warehouse rows remain available.",
+      actionType: "review",
+      actionLabel: "Review warehouse",
+      href: "/explorer",
+      timestamp: (latestImportJob.finishedAt || latestImportJob.createdAt).toISOString(),
+    });
   }
 
+  const warehouseStatus = resolveDashboardWarehouseStatus({
+    latestImportStatus: latestImportJob?.status,
+    latestImportAt,
+    latestSyncStatus: latestSyncJob?.status,
+    lastPulledAt: latestWarehousePullAt,
+    staleBefore: oneDayAgo,
+  });
+
   // Sync Stats
-  const successful7d = syncLogs7d.filter((l) => l.status === "success").length;
-  const failed7d = syncLogs7d.filter((l) => l.status === "error").length;
-  const latestActivityDate =
-    maxPulledAt ||
-    (latestSyncJob?.finishedAt ? latestSyncJob.finishedAt : null) ||
-    (sourceConnections[0]?.lastSyncAt ? sourceConnections[0].lastSyncAt : null);
+  const syncCounts7d = summarizeDashboardSyncCounts(syncLogCounts7d);
+  const successful7d = syncCounts7d.successful;
+  const failed7d = syncCounts7d.failed;
+  const latestActivityDate = latestValidDate([
+    latestWarehousePullAt,
+    latestSyncJob?.status === "done" ? latestSyncJob.finishedAt : null,
+    ...sourceConnections.map((connection) => connection.lastSyncAt),
+  ]);
 
   // Destinations List
-  const destinationsList: DashboardDestinationItem[] = [
-    {
-      id: "dest-sheets",
-      type: "sheets",
-      name: "Google Sheets",
-      status: "ready",
-      subtext: "Live add-on & scheduled exports",
-      href: "/exports",
-    },
-    {
-      id: "dest-looker",
-      type: "looker",
-      name: "Looker Studio",
-      status: apiKeysCount > 0 ? "healthy" : "ready",
-      subtext: apiKeysCount > 0 ? "Community connector active" : "API key required to connect",
-      href: "/looker-studio",
-    },
-    {
-      id: "dest-api",
-      type: "api",
-      name: "REST API & CSV",
-      status: "active",
-      subtext: "Programmatic warehouse queries",
-      href: "/exports",
-    },
-  ];
-
-  const activeDestinations = ["Sheets", "Looker Studio", "REST API"];
+  const destinationOverview = buildDashboardDestinations({
+    destinationConnections,
+    pipelines,
+    apiKeysCount,
+    latestLookerStatus: lookerJobs[0]?.status,
+    hasCompletedLookerQuery: lookerJobs.some((job) => job.status === "done"),
+  });
+  const destinationsList = destinationOverview.list;
+  const activeDestinations = destinationOverview.activeNames;
 
   // 7-day KPI snapshot — currency-safe: never blend monetary values across currencies
   const metrics7dRows = warehouse7dByCurrency.map((g) => ({
@@ -518,7 +779,7 @@ export async function getWorkspaceDashboardOverview(
   // Recent Activity Feed
   const recentActivity: DashboardActivityItem[] = [];
 
-  for (const log of syncLogs7d.slice(0, 4)) {
+  for (const log of recentSyncLogs.slice(0, 4)) {
     recentActivity.push({
       id: `log-${log.id}`,
       type: log.status === "success" ? "sync_success" : "sync_error",
@@ -530,24 +791,50 @@ export async function getWorkspaceDashboardOverview(
   }
 
   if (latestImportJob) {
+    const importPresentation: Pick<DashboardActivityItem, "description" | "status"> = (() => {
+      switch (latestImportJob.status) {
+        case "completed":
+          return { description: "Refresh completed", status: "success" };
+        case "partial":
+          return { description: "Refresh partially completed", status: "warning" };
+        case "failed":
+          return { description: "Refresh failed", status: "error" };
+        case "running":
+          return { description: "Refresh in progress", status: "info" };
+        default:
+          return { description: "Refresh queued", status: "info" };
+      }
+    })();
     recentActivity.push({
       id: `import-${latestImportJob.id}`,
       type: "warehouse_refresh",
       title: "Warehouse batch refresh",
-      description: latestImportJob.status === "completed" ? "Refresh completed" : "Refresh in progress",
+      description: importPresentation.description,
       timestamp: (latestImportJob.finishedAt || latestImportJob.createdAt).toISOString(),
-      status: latestImportJob.status === "completed" ? "success" : "info",
+      status: importPresentation.status,
     });
   }
 
   for (const lJob of lookerJobs) {
+    const lookerPresentation: Pick<DashboardActivityItem, "description" | "status"> = (() => {
+      switch (lJob.status) {
+        case "done":
+          return { description: "Query served", status: "success" };
+        case "failed":
+          return { description: "Query failed", status: "error" };
+        case "running":
+          return { description: "Query in progress", status: "info" };
+        default:
+          return { description: "Query queued", status: "info" };
+      }
+    })();
     recentActivity.push({
       id: `looker-${lJob.id}`,
       type: "looker_query",
       title: "Looker Studio query",
-      description: "Query served",
+      description: lookerPresentation.description,
       timestamp: (lJob.finishedAt || lJob.createdAt).toISOString(),
-      status: lJob.status === "done" ? "success" : "info",
+      status: lookerPresentation.status,
     });
   }
 
@@ -571,9 +858,28 @@ export async function getWorkspaceDashboardOverview(
     overallState = "syncing";
     overallHeadline = "Warehouse syncing";
     overallSupportingText = "A scheduled warehouse refresh is currently in progress.";
+  } else if (warehouseStatus === "stale") {
+    overallState = "attention";
+    overallHeadline = "Warehouse data is stale";
+    overallSupportingText = "The last successful warehouse refresh is more than a day old.";
+  } else if (sourcesList.some((source) => source.state === "stale")) {
+    overallState = "attention";
+    overallHeadline = "A source is stale";
+    overallSupportingText = "At least one source has not completed a successful sync in more than a day.";
+  } else if (sourcesList.some((source) => source.state === "pending" || source.state === "syncing")) {
+    overallState = "syncing";
+    overallHeadline = "Source setup in progress";
+    overallSupportingText = "At least one connected source is awaiting its first successful sync.";
   }
 
-  const healthySources = sourcesList.filter((s) => s.state === "fresh" || s.state === "pending").length;
+  const healthySources = sourcesList.filter((source) => source.state === "fresh").length;
+  const sourceAttentionCount = sourcesList.filter(
+    (source) => source.state === "error" || source.state === "stale" || source.state === "disconnected",
+  ).length;
+  const pendingSources = sourcesList.filter(
+    (source) => source.state === "pending" || source.state === "syncing",
+  ).length;
+  const accountSummary = `${totalConnectedAccounts} account${totalConnectedAccounts === 1 ? "" : "s"}`;
 
   return {
     workspace: {
@@ -591,20 +897,22 @@ export async function getWorkspaceDashboardOverview(
       sources: {
         total: sourceConnections.length,
         healthy: healthySources,
-        attention: sourceConnections.length - healthySources,
+        attention: sourceAttentionCount,
         accountsTotal: totalConnectedAccounts,
-        label: `${sourceConnections.length} connected`,
+        label: `${sourceConnections.length} configured`,
         subtext:
-          needsAttention.length > 0
-            ? `${totalConnectedAccounts} accounts · ${needsAttention.length} need attention`
-            : `${totalConnectedAccounts} accounts · All healthy`,
+          sourceAttentionCount > 0
+            ? `${accountSummary} · ${sourceAttentionCount} need attention`
+            : pendingSources > 0
+              ? `${accountSummary} · ${pendingSources} awaiting a successful sync`
+              : `${accountSummary} · All current`,
       },
       warehouse: {
         status: warehouseStatus,
-        dataThroughDate: formatDateCoverage(maxMetricDate),
+        dataThroughDate: formatDateCoverage(latestWarehouseDataDate),
         totalRows: totalWarehouseRows,
         rows7d,
-        asOf: formatRelativeTime(maxPulledAt),
+        asOf: formatRelativeTime(latestWarehousePullAt),
       },
       syncs: {
         successful7d,
@@ -620,8 +928,8 @@ export async function getWorkspaceDashboardOverview(
     sourcesList,
     warehouseSnapshot: {
       hasData: totalWarehouseRows > 0,
-      dataThroughDate: formatDateCoverage(maxMetricDate),
-      lastRefreshAt: formatRelativeTime(maxPulledAt),
+      dataThroughDate: formatDateCoverage(latestWarehouseDataDate),
+      lastRefreshAt: formatRelativeTime(latestWarehousePullAt),
       metrics7d: {
         impressions: sumImpressions,
         clicks: sumClicks,

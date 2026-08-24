@@ -1,314 +1,175 @@
-import { MarketingTrustSecuritySection } from "@/components/marketing/MarketingTrustSecuritySection";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import Link from "next/link";
-import { Metadata } from "next";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
-
-type IntegrationEntry = {
-    source: string;
-    dest: string;
-    headline: string;
-    sub: string;
-    /** Extra SEO keywords beyond source/dest defaults */
-    keywords?: string[];
-    /** Short FAQ for on-page long-tail relevance */
-    faqs?: { q: string; a: string }[];
-};
-
-const DATA: Record<string, IntegrationEntry> = {
-    "tiktok-ads-to-google-sheets": {
-        source: "TikTok Ads",
-        dest: "Google Sheets™",
-        headline: "Connect TikTok Ads to Google Sheets",
-        sub: "Pull spend, ROAS, and conversion metrics from TikTok Ads into Google Sheets on a schedule—fewer CSV exports for SEA campaign teams.",
-        keywords: [
-            "TikTok Ads Google Sheets",
-            "SEA performance marketing",
-            "automate TikTok reporting",
-        ],
-        faqs: [
-            {
-                q: "Why not export CSVs from TikTok Ads Manager?",
-                a: "Scheduled sync reduces copy-paste errors and keeps agency dashboards aligned when campaigns change daily.",
-            },
-            {
-                q: "Is this built for Southeast Asia teams?",
-                a: "Yes—Monstera is designed around regional ad and marketplace workflows, not only Western DTC stacks.",
-            },
-        ],
-    },
-    "shopee-to-google-sheets": {
-        source: "Shopee",
-        dest: "Google Sheets™",
-        headline: "Connect Shopee to Google Sheets",
-        sub: "Pipe Shopee Seller performance into Google Sheets so Thailand, Indonesia, Malaysia, and Vietnam teams can report without stitching spreadsheets by hand.",
-        keywords: [
-            "Shopee Seller Center reporting",
-            "automate Shopee Google Sheets",
-            "SEA marketplace analytics",
-        ],
-        faqs: [
-            {
-                q: "Can I blend Shopee with ad spend from Meta or TikTok?",
-                a: "Connect each source in Monstera, then join or model in Sheets or Looker Studio using the same workspace metrics.",
-            },
-            {
-                q: "Do marketplace metrics match native Shopee definitions?",
-                a: "We recommend validating totals against Seller Center during onboarding; marketplace APIs can differ by field from what you see in UI exports.",
-            },
-        ],
-    },
-    "meta-ads-to-google-sheets": {
-        source: "Meta Ads",
-        dest: "Google Sheets™",
-        headline: "Connect Meta Ads to Google Sheets",
-        sub: "Automate Facebook and Instagram campaign metrics into Google Sheets for client reporting across Indonesia, Thailand, Vietnam, and Malaysia.",
-        keywords: ["Meta Ads Google Sheets", "Facebook ads reporting automation", "agency Meta reporting"],
-        faqs: [
-            {
-                q: "How is pilot data refreshed?",
-                a: "Agency staff can refresh on demand, and Monstera runs one nightly warehouse refresh.",
-            },
-        ],
-    },
-    "shopee-to-looker-studio": {
-        source: "Shopee",
-        dest: "Looker Studio™",
-        headline: "Connect Shopee to Looker Studio",
-        sub: "Build client-ready dashboards that combine Shopee marketplace performance with your other Monstera sources—without row-based warehouse pricing.",
-        keywords: [
-            "Shopee Looker Studio",
-            "Shopee data studio",
-            "marketplace dashboard SEA",
-        ],
-        faqs: [
-            {
-                q: "How does data reach Looker Studio?",
-                a: "Use Monstera’s native Looker Studio connector with your workspace API key after connecting Shopee in the console.",
-            },
-        ],
-    },
-    "lazada-to-google-sheets": {
-        source: "Lazada",
-        dest: "Google Sheets™",
-        headline: "Connect Lazada to Google Sheets",
-        sub: "Sync Lazada marketplace metrics into Google Sheets for Malaysia, Singapore, Thailand, and cross-border teams that need predictable, flat-rate pipelines.",
-        keywords: ["Lazada Google Sheets", "Lazada Seller reporting", "Lazada automation SEA"],
-        faqs: [
-            {
-                q: "Does this replace Lazada Seller Center exports?",
-                a: "It reduces repetitive CSV work; you still validate business-critical numbers against Seller Center when definitions change.",
-            },
-        ],
-    },
-    "lazada-to-looker-studio": {
-        source: "Lazada",
-        dest: "Looker Studio™",
-        headline: "Connect Lazada to Looker Studio",
-        sub: "Visualize Lazada alongside Meta Ads and TikTok Ads in Looker Studio for a regional view agencies can share with clients.",
-        keywords: ["Lazada Looker Studio", "Lazada BI connector", "SEA ecommerce reporting"],
-        faqs: [
-            {
-                q: "Can agencies use one workspace per client?",
-                a: "Workspace-scoped connections help separate client data; pair with your internal access controls for multi-client delivery.",
-            },
-        ],
-    },
-    "meta-ads-to-looker-studio": {
-        source: "Meta Ads",
-        dest: "Looker Studio™",
-        headline: "Connect Meta Ads to Looker Studio",
-        sub: "Report Meta and Instagram spend from the normalized warehouse in Looker Studio, with manual and nightly source refresh.",
-        keywords: ["Meta Ads Looker Studio", "Facebook ads Looker", "GDS Meta connector alternative"],
-        faqs: [
-            {
-                q: "Why Looker Studio instead of only Sheets?",
-                a: "Looker Studio is ideal for shareable dashboards; Sheets stays best for ad-hoc modeling and client-specific templates.",
-            },
-        ],
-    },
-    "tiktok-ads-to-looker-studio": {
-        source: "TikTok Ads",
-        dest: "Looker Studio™",
-        headline: "Connect TikTok Ads to Looker Studio",
-        sub: "Keep TikTok Ads metrics next to Shopee or Lazada charts in Looker Studio so ROAS conversations match how SEA brands actually spend.",
-        keywords: ["TikTok Ads Looker Studio", "TikTok marketing dashboard", "SEA TikTok reporting"],
-        faqs: [
-            {
-                q: "Is TikTok Shop the same as TikTok Ads?",
-                a: "No—TikTok Ads covers paid media; TikTok Shop covers storefront and order data. Monstera supports both as separate connections.",
-            },
-        ],
-    },
-    "google-ads-to-google-sheets": {
-        source: "Google Ads",
-        dest: "Google Sheets™",
-        headline: "Connect Google Ads to Google Sheets",
-        sub: "Automate Search, PMAX, and Shopping performance into Google Sheets for accounts that run alongside Shopee and Lazada in Southeast Asia.",
-        keywords: ["Google Ads Google Sheets", "SEA Google Ads reporting", "automate Google Ads export"],
-        faqs: [
-            {
-                q: "Can I combine Google Ads with marketplace sources?",
-                a: "Yes—connect Google Ads and each marketplace in the same workspace, then join metrics in Sheets or Looker Studio.",
-            },
-        ],
-    },
-    "google-ads-to-looker-studio": {
-        source: "Google Ads",
-        dest: "Looker Studio™",
-        headline: "Connect Google Ads to Looker Studio",
-        sub: "Publish Google Ads performance to Looker Studio dashboards your agency already uses for regional ecommerce clients.",
-        keywords: ["Google Ads Looker Studio", "Google Ads data studio", "SEA paid search reporting"],
-        faqs: [
-            {
-                q: "Do I need a data warehouse?",
-                a: "No—Monstera targets Sheets and Looker Studio first, so marketers are not forced into MAR-style warehouse billing for basic reporting.",
-            },
-        ],
-    },
-    "tiktok-shop-to-google-sheets": {
-        source: "TikTok Shop",
-        dest: "Google Sheets™",
-        headline: "Connect TikTok Shop to Google Sheets",
-        sub: "Bring TikTok Shop orders and storefront metrics into Google Sheets on a schedule—built for live-commerce and flash-sale cadences common in SEA.",
-        keywords: ["TikTok Shop Google Sheets", "TikTok Shop reporting", "TikTok Shop data export"],
-        faqs: [
-            {
-                q: "How is TikTok Shop different from TikTok Ads?",
-                a: "TikTok Shop reflects commerce and orders; TikTok Ads reflects paid media. Connect both to reconcile spend with marketplace revenue.",
-            },
-        ],
-    },
-    "tiktok-shop-to-looker-studio": {
-        source: "TikTok Shop",
-        dest: "Looker Studio™",
-        headline: "Connect TikTok Shop to Looker Studio",
-        sub: "Layer TikTok Shop GMV and orders into Looker Studio next to ad platforms so leadership sees one regional narrative.",
-        keywords: ["TikTok Shop Looker Studio", "TikTok Shop dashboard", "TikTok Shop analytics SEA"],
-        faqs: [
-            {
-                q: "Will metrics match TikTok Shop Seller Center?",
-                a: "API field definitions can differ from UI labels; we recommend spot-checking totals during campaign spikes and mega-sale windows.",
-            },
-        ],
-    },
-};
-
-type Slug = keyof typeof DATA;
+import { ArrowRight, CheckCircle2, CircleAlert } from "lucide-react";
+import { MarketingTrustSecuritySection } from "@/components/marketing/MarketingTrustSecuritySection";
+import { PRODUCT_SITE_URL } from "@/lib/site-url";
+import {
+  PUBLIC_INTEGRATIONS,
+  publicIntegrationBySlug,
+} from "@/lib/public-integrations";
 
 export function generateStaticParams() {
-    return Object.keys(DATA).map((slug) => ({ slug }));
+  return PUBLIC_INTEGRATIONS.map(({ slug }) => ({ slug }));
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-    const { slug } = await params;
-    const data = DATA[slug] ?? DATA["tiktok-ads-to-google-sheets"];
-    const baseKeywords = [
-        data.source,
-        data.dest,
-        "integration",
-        "Southeast Asia",
-        "ecommerce data pipeline",
-        "automate reporting",
-    ];
-    const extra = data.keywords ?? [];
-    return {
-        title: `${data.headline} | Monstera Cloud`,
-        description: data.sub,
-        keywords: [...new Set([...baseKeywords, ...extra])],
-    };
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const data = publicIntegrationBySlug(slug);
+  if (!data) return {};
+
+  return {
+    title: data.headline,
+    description: data.description,
+    keywords: [
+      data.source,
+      data.destination,
+      "advertising data connector",
+      "reporting automation",
+      ...data.keywords,
+    ],
+    alternates: { canonical: `${PRODUCT_SITE_URL}/integrations/${data.slug}` },
+    openGraph: {
+      title: data.headline,
+      description: data.description,
+      url: `${PRODUCT_SITE_URL}/integrations/${data.slug}`,
+    },
+  };
 }
 
-export default async function IntegrationPage({ params }: { params: Promise<{ slug: string }> }) {
-    const { slug } = await params;
-    const data = DATA[slug];
+export default async function IntegrationPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const data = publicIntegrationBySlug(slug);
+  if (!data) notFound();
 
-    if (!data) {
-        return <div className="min-h-screen bg-canvas text-ink flex items-center justify-center font-sans">Integration not found.</div>;
-    }
-
-    const faqs = data.faqs ?? [];
-
-    return (
-        <div className="flex min-h-screen flex-col bg-canvas font-sans text-ink">
-            <div className="flex-1">
-                <section className="pt-20 pb-24 border-b border-line relative overflow-hidden">
-                    <div className="max-w-4xl mx-auto px-4 sm:px-6 relative text-center">
-                        <div className="inline-flex items-center gap-3 mb-8 bg-panel border border-line rounded-full px-4 py-1.5 font-mono text-xs text-ink-mute">
-                            <span className="text-ink font-semibold">{data.source}</span>
-                            <ArrowRight className="w-3.5 h-3.5 text-accent" />
-                            <span className="text-ink font-semibold">{data.dest}</span>
-                        </div>
-
-                        <h1 className="text-4xl md:text-6xl font-bold text-ink tracking-tight mb-6">{data.headline}</h1>
-
-                        <p className="text-sm sm:text-base text-ink-mute mb-10 max-w-2xl mx-auto leading-relaxed font-normal">{data.sub}</p>
-
-                        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                            <Link
-                                href="/register"
-                                className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-semibold text-black bg-white hover:bg-neutral-200 rounded-md transition-colors shadow-xs"
-                            >
-                                Start your free 14-day pilot
-                                <ArrowRight className="w-3.5 h-3.5" />
-                            </Link>
-                            <Link
-                                href="/docs#sources"
-                                className="inline-flex items-center gap-2 px-6 py-2.5 text-xs font-semibold text-ink bg-panel border border-line hover:bg-[#16181c] rounded-md transition-colors"
-                            >
-                                View supported connectors
-                            </Link>
-                        </div>
-                    </div>
-                </section>
-
-                <section className="py-24 max-w-5xl mx-auto px-4 sm:px-6">
-                    <h2 className="text-2xl sm:text-3xl font-bold text-center mb-12 text-ink">Stop doing this manually</h2>
-                    <div className="grid md:grid-cols-3 gap-6">
-                        <div className="p-6 bg-panel border border-line rounded-lg">
-                            <CheckCircle2 className="w-5 h-5 text-accent mb-4" />
-                            <h3 className="font-semibold text-sm text-ink mb-2">Scheduled refresh</h3>
-                            <p className="text-xs text-ink-mute leading-relaxed">
-                                Run on-demand or nightly warehouse refreshes so account managers spend less time on CSV cleanup.
-                            </p>
-                        </div>
-                        <div className="p-6 bg-panel border border-line rounded-lg">
-                            <CheckCircle2 className="w-5 h-5 text-accent mb-4" />
-                            <h3 className="font-semibold text-sm text-ink mb-2">No row caps on plans</h3>
-                            <p className="text-xs text-ink-mute leading-relaxed">
-                                Flat workspace pricing avoids surprise bills when order volume spikes on 11.11 or paydays—see our pricing page for details.
-                            </p>
-                        </div>
-                        <div className="p-6 bg-panel border border-line rounded-lg">
-                            <CheckCircle2 className="w-5 h-5 text-accent mb-4" />
-                            <h3 className="font-semibold text-sm text-ink mb-2">Sheets and Looker Studio</h3>
-                            <p className="text-xs text-ink-mute leading-relaxed">
-                                Keep reporting where marketers already work—no data engineering stack required for standard agency workflows.
-                            </p>
-                        </div>
-                    </div>
-                </section>
-
-                {faqs.length > 0 ? (
-                    <section className="pb-24 max-w-3xl mx-auto px-4 sm:px-6" aria-labelledby="integration-faq-heading">
-                        <h2 id="integration-faq-heading" className="text-2xl font-bold text-center mb-10 text-ink">
-                            Common questions
-                        </h2>
-                        <ul className="space-y-4">
-                            {faqs.map((item, index) => (
-                                <li
-                                    key={`${slug}-faq-${index}`}
-                                    className="rounded-lg border border-line bg-panel p-6 text-left"
-                                >
-                                    <h3 className="text-sm font-semibold text-ink mb-2">{item.q}</h3>
-                                    <p className="text-xs text-ink-mute leading-relaxed">{item.a}</p>
-                                </li>
-                            ))}
-                        </ul>
-                    </section>
-                ) : null}
-
-                <MarketingTrustSecuritySection />
-            </div>
+  return (
+    <div className="flex min-h-screen flex-col bg-canvas font-sans text-ink">
+      <section className="relative overflow-hidden border-b border-line px-4 pb-20 pt-20 sm:px-6 sm:pb-24">
+        <div className="mx-auto max-w-4xl text-center">
+          <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-line bg-panel px-4 py-1.5 font-mono text-xs text-ink-mute">
+            <span className="font-semibold text-ink">{data.source}</span>
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            <span className="font-semibold text-ink">{data.destination}</span>
+          </div>
+          <h1 className="text-balance text-4xl font-semibold tracking-[-0.04em] text-ink sm:text-5xl md:text-6xl">
+            {data.headline}
+          </h1>
+          <p className="mx-auto mt-6 max-w-2xl text-pretty text-sm leading-relaxed text-ink-mute sm:text-base">
+            {data.description}
+          </p>
+          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+            <Link
+              href="/support?pilot=1"
+              className="inline-flex items-center gap-2 rounded-md bg-white px-6 py-2.5 text-xs font-semibold text-black transition-colors hover:bg-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            >
+              Request pilot access
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            </Link>
+            <Link
+              href="/docs#connect-source"
+              className="inline-flex items-center gap-2 rounded-md border border-line bg-panel px-6 py-2.5 text-xs font-semibold text-ink transition-colors hover:border-white/25 hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+            >
+              Review setup steps
+            </Link>
+          </div>
         </div>
-    );
+      </section>
+
+      <section className="px-4 py-20 sm:px-6 sm:py-24" aria-labelledby="integration-details">
+        <div className="mx-auto max-w-5xl">
+          <div className="max-w-2xl">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-mute">Workflow details</p>
+            <h2 id="integration-details" className="mt-3 text-3xl font-semibold tracking-tight text-ink">
+              What this connection supports
+            </h2>
+            <p className="mt-3 text-sm leading-relaxed text-ink-mute">
+              Availability is scoped to the certified pilot path. Provider definitions and access requirements still apply.
+            </p>
+          </div>
+
+          <div className="mt-10 grid gap-4 lg:grid-cols-3">
+            <DetailCard title="Reporting data" items={data.availableData} />
+            <DetailCard title="Before you start" items={data.requirements} />
+            <DetailCard title="Know before relying on it" items={data.limitations} caution />
+          </div>
+        </div>
+      </section>
+
+      <section className="border-y border-line bg-panel/30 px-4 py-20 sm:px-6" aria-labelledby="integration-flow">
+        <div className="mx-auto max-w-5xl">
+          <h2 id="integration-flow" className="text-center text-3xl font-semibold tracking-tight text-ink">
+            From authorization to a report you can verify
+          </h2>
+          <ol className="mt-10 grid gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-4">
+            {[
+              ["01", "Authorize", `Connect ${data.source} from the selected Monstera workspace.`],
+              ["02", "Import", "Choose a date window and run the first warehouse refresh."],
+              ["03", "Verify", "Inspect the outcome, row count, and latest metric date in Data Explorer."],
+              ["04", "Report", `Open the ${data.destination} workflow and query the verified workspace data.`],
+            ].map(([number, title, description]) => (
+              <li key={number} className="bg-panel p-6">
+                <span className="font-mono text-[11px] text-emerald-400">{number}</span>
+                <h3 className="mt-5 text-sm font-semibold text-ink">{title}</h3>
+                <p className="mt-2 text-xs leading-relaxed text-ink-mute">{description}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <section className="px-4 py-20 sm:px-6" aria-labelledby="integration-faq">
+        <div className="mx-auto max-w-3xl">
+          <h2 id="integration-faq" className="text-center text-2xl font-semibold text-ink">Common questions</h2>
+          <ul className="mt-8 space-y-4">
+            {data.faqs.map((item) => (
+              <li key={item.question} className="rounded-lg border border-line bg-panel p-6">
+                <h3 className="text-sm font-semibold text-ink">{item.question}</h3>
+                <p className="mt-2 text-xs leading-relaxed text-ink-mute">{item.answer}</p>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-8 flex justify-center">
+            <Link href="/integrations" className="text-sm font-medium text-ink-mute underline decoration-line underline-offset-4 hover:text-ink">
+              Compare all certified connector workflows
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      <MarketingTrustSecuritySection />
+    </div>
+  );
+}
+
+function DetailCard({
+  title,
+  items,
+  caution = false,
+}: {
+  title: string;
+  items: readonly string[];
+  caution?: boolean;
+}) {
+  const Icon = caution ? CircleAlert : CheckCircle2;
+  return (
+    <article className="rounded-xl border border-line bg-panel p-6">
+      <h3 className="text-sm font-semibold text-ink">{title}</h3>
+      <ul className="mt-5 space-y-3">
+        {items.map((item) => (
+          <li key={item} className="flex gap-2.5 text-xs leading-relaxed text-ink-mute">
+            <Icon className={caution ? "mt-0.5 h-4 w-4 shrink-0 text-amber-300" : "mt-0.5 h-4 w-4 shrink-0 text-emerald-400"} aria-hidden />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </article>
+  );
 }

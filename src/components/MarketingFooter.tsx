@@ -17,23 +17,23 @@ export function MarketingFooter() {
             <h3 className={colTitle}>Product</h3>
             <ul className="space-y-2.5">
               <li>
-                <Link href="/sources" className={colLink}>
-                  Sources &amp; Connectors
+                <Link href="/platform" className={colLink}>
+                  How Monstera Works
                 </Link>
               </li>
               <li>
-                <Link href="/explorer" className={colLink}>
-                  Unified Warehouse
+                <Link href="/integrations" className={colLink}>
+                  Certified Integrations
                 </Link>
               </li>
               <li>
-                <Link href="/exports" className={colLink}>
-                  Exports &amp; REST API
+                <Link href="/looker-studio" className={colLink}>
+                  Looker Studio Connector
                 </Link>
               </li>
               <li>
                 <Link href="/templates" className={colLink}>
-                  Dashboard Templates
+                  Workflow Examples
                 </Link>
               </li>
               <li>
@@ -64,8 +64,8 @@ export function MarketingFooter() {
                 </Link>
               </li>
               <li>
-                <Link href="/docs#architecture" className={colLink}>
-                  Architecture Overview
+                <Link href="/platform" className={colLink}>
+                  Product Architecture
                 </Link>
               </li>
             </ul>
@@ -81,8 +81,8 @@ export function MarketingFooter() {
                 </Link>
               </li>
               <li>
-                <Link href="/docs#sources" className={colLink}>
-                  Connector API Reference
+                <Link href="/docs#connect-source" className={colLink}>
+                  Connect a Data Source
                 </Link>
               </li>
               <li>
@@ -136,11 +136,11 @@ export function MarketingFooter() {
           <div className="flex flex-wrap items-center gap-4 text-[11px] font-mono text-ink-mute">
             <span>© {new Date().getFullYear()} Monstera Cloud</span>
             <span>·</span>
-            <span>AES-256 Encrypted</span>
+            <span>AES-256-GCM credentials</span>
             <span>·</span>
-            <span>Tenant Isolated</span>
+            <span>Workspace-scoped data</span>
             <span>·</span>
-            <span>Singapore Region Posture</span>
+            <span>HTTPS in transit</span>
           </div>
         </div>
       </div>
