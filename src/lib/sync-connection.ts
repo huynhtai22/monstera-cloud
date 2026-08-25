@@ -624,6 +624,12 @@ async function syncGoogleAds(opts: {
     }
   }
 
+  if (leafAccounts.length === 0) {
+    // All roots were manager accounts with no syncable client accounts —
+    // requesting metrics on a manager fails (REQUESTED_METRICS_FOR_MANAGER).
+    logger.info("[syncGoogleAds] No leaf customer accounts under any root; nothing to query");
+  }
+
   logger.info(`[syncGoogleAds] Total leaf accounts to query: ${leafAccounts.length}`);
 
   // ── Step 2: Query each leaf account ────────────────────────────────────────

@@ -338,7 +338,9 @@ export class GoogleAdsReportClient {
       }
       );
     } catch (error) {
-      // Non-manager accounts reject customer_client; preserve the intentional leaf fallback.
+      // Non-manager (standalone) accounts reject customer_client; preserve the
+      // intentional leaf fallback. Managers answer successfully, so a 4xx here
+      // reliably means "standalone account".
       if (error instanceof GoogleAdsProviderError && error.status && error.status < 500 && !error.retryable) {
         return [{ customerId: cleanId, mccId: cleanId, isManager: false, descriptiveName: `Customer ${cleanId}` }];
       }
@@ -351,7 +353,9 @@ export class GoogleAdsReportClient {
       batches = JSON.parse(text);
       if (!Array.isArray(batches)) batches = [batches];
     } catch {
-      return [{ customerId: cleanId, mccId: cleanId, isManager: false, descriptiveName: `Customer ${cleanId}` }];
+      // Unparseable 200 from a manager-shaped root: skip it (querying metrics
+      // on a manager is guaranteed to fail with REQUESTED_METRICS_FOR_MANAGER).
+      return [];
     }
 
     const clients: Array<{ customerId: string; mccId: string; isManager: boolean; descriptiveName: string }> = [];
@@ -368,11 +372,11 @@ export class GoogleAdsReportClient {
       }
     }
 
-    // If no leaf clients found (account is a standalone non-MCC), treat root as leaf
-    if (clients.length === 0) {
-      return [{ customerId: cleanId, mccId: cleanId, isManager: false, descriptiveName: `Customer ${cleanId}` }];
-    }
-
+    // The customer_client query SUCCEEDS only for manager accounts. Zero leaf
+    // children therefore means "manager with nothing syncable beneath it"
+    // (childless MCC, or children that are all managers/disabled) — return an
+    // empty set so callers skip it. Requesting metrics directly on a manager
+    // fails with REQUESTED_METRICS_FOR_MANAGER.
     return clients;
   }
 

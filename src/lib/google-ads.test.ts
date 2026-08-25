@@ -271,6 +271,26 @@ describe("google ads connector", () => {
     }
   });
 
+  it("skips manager roots that have no syncable leaf children (REQUESTED_METRICS_FOR_MANAGER guard)", async () => {
+    // Live finding 2026-08-24: a manager account selected for sync produced
+    // 400 REQUESTED_METRICS_FOR_MANAGER because the zero-leaf fallback
+    // fabricated a self-leaf. A SUCCESSFUL customer_client query means the
+    // root is a manager — zero leaves must now yield an empty set.
+    const restore = stubFetch([
+      {
+        results: [
+          { customerClient: { id: "777", descriptiveName: "Nested Manager", manager: true, status: "ENABLED" } },
+        ],
+      },
+    ]);
+    try {
+      const clients = await googleAdsReportClient.listCustomerClients("t", "5902904696");
+      assert.deepEqual(clients, [], "manager with no leaf children must not become a sync target");
+    } finally {
+      restore();
+    }
+  });
+
   it("falls back to treating a non-MCC account as its own leaf", async () => {
     const restore = stubFetch([{ __status: 400, __body: JSON.stringify({ error: { message: "not a manager" } }) }]);
     try {
