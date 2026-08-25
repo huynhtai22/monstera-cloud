@@ -326,7 +326,7 @@ export async function ingestTiktokRows(
 
       // TikTok dimensions
       const campaignId = String(dims.campaign_id ?? '');
-      const campaignName = String(dims.campaign_name ?? '');
+      const campaignName = String(dims.campaign_name ?? metrics.campaign_name ?? '');
       const adgroupId = String(dims.adgroup_id ?? '');
       const adgroupName = String(dims.adgroup_name ?? '');
       const dateStr = String(dims.stat_time_day ?? dims.date ?? '');

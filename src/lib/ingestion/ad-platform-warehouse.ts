@@ -1,7 +1,11 @@
 import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import { encrypt } from "@/lib/encryption";
 import { googleAdsReportClient } from "@/lib/google-ads";
-import { tiktokReportClient, TIKTOK_CAMPAIGN_REPORT_DIMENSIONS } from "@/lib/tiktok-business";
+import {
+  tiktokReportClient,
+  TIKTOK_CAMPAIGN_REPORT_DIMENSIONS,
+  TIKTOK_CAMPAIGN_REPORT_METRICS,
+} from "@/lib/tiktok-business";
 import { ingestGoogleAdsRows, ingestTiktokRows } from "@/lib/ad-platform-ingest";
 import { logger } from "@/lib/logger";
 
@@ -149,7 +153,7 @@ export async function syncTikTokIntoWarehouse(params: {
           report_type: "BASIC",
           data_level: "AUCTION_CAMPAIGN",
           dimensions: [...TIKTOK_CAMPAIGN_REPORT_DIMENSIONS],
-          metrics: ["impression", "click", "spend", "cpc", "ctr", "conversion", "revenue", "roas"],
+          metrics: [...TIKTOK_CAMPAIGN_REPORT_METRICS],
           start_date: since,
           end_date: until,
           page_size: 1000,
@@ -179,32 +183,7 @@ export async function syncTikTokIntoWarehouse(params: {
         throw new Error(`TikTok report not ready (status=${status.status})`);
       }
 
-      const reportRes = await fetch(status.url);
-      const reportText = await reportRes.text();
-      const reportRows = reportText.split("\n").filter((l) => l.trim()).slice(1);
-
-      const rows = reportRows.map((line) => {
-        const parts = line.split(",");
-        return {
-          dimensions: {
-            campaign_id: parts[0],
-            campaign_name: parts[1],
-            adgroup_id: parts[2],
-            adgroup_name: parts[3],
-            stat_time_day: parts[4],
-          },
-          metrics: {
-            impression: parts[5],
-            click: parts[6],
-            spend: parts[7],
-            cpc: parts[8],
-            ctr: parts[9],
-            conversion: parts[10],
-            revenue: parts[11],
-            roas: parts[12],
-          },
-        };
-      });
+      const rows = await tiktokReportClient.downloadRows(status.url);
 
       const result = await ingestTiktokRows(rows, {
         workspaceId,

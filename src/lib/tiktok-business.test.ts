@@ -5,6 +5,7 @@ import {
   TikTokProviderError,
   TikTokReportClient,
   TIKTOK_CAMPAIGN_REPORT_DIMENSIONS,
+  TIKTOK_CAMPAIGN_REPORT_METRICS,
 } from "./tiktok-business";
 
 async function withFastRetries<T>(run: () => Promise<T>): Promise<T> {
@@ -37,14 +38,14 @@ async function withMockedFetch<T>(responses: Response[], run: (calls: () => numb
 }
 
 describe("TikTok for Business OAuth & Report Parsing", () => {
-  it("uses a valid campaign-level dimension set for warehouse reports", () => {
+  it("keeps campaign names out of TikTok campaign report dimensions", () => {
     assert.deepEqual(TIKTOK_CAMPAIGN_REPORT_DIMENSIONS, [
       "campaign_id",
-      "campaign_name",
       "stat_time_day",
     ]);
     assert.ok(TIKTOK_CAMPAIGN_REPORT_DIMENSIONS.length >= 1);
     assert.ok(TIKTOK_CAMPAIGN_REPORT_DIMENSIONS.length <= 4);
+    assert.ok(TIKTOK_CAMPAIGN_REPORT_METRICS.includes("campaign_name"));
   });
 
   it("generates correct authorize URL with state and redirectUri", () => {
