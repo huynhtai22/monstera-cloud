@@ -63,5 +63,6 @@ jobs:
           check "homepage" "200" "${code}"
           echo "${headers}" | grep -qi "^content-security-policy:" || { echo "::error::FAIL homepage missing Content-Security-Policy"; fail=1; }
           echo "${headers}" | grep -qi "^strict-transport-security:" || { echo "::error::FAIL homepage missing HSTS"; fail=1; }
+          echo "${headers}" | grep -qi "^permissions-policy:" || { echo "::error::FAIL homepage missing Permissions-Policy"; fail=1; }
 
           exit "${fail}"
