@@ -61,6 +61,7 @@ export function FixConnectionModal({
 
     const clearReconnectPolling = useCallback((closePopup = false) => {
         if (pollIntervalRef.current) {
+            clearTimeout(pollIntervalRef.current as unknown as number);
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = null;
         }
@@ -245,9 +246,11 @@ export function FixConnectionModal({
                 const baselineUpdatedAt = String(data.baselineUpdatedAt || "");
                 let verificationInFlight = false;
                 let popupClosedAt: number | null = null;
+                let consecutive429s = 0;
+                let isTerminated = false;
 
                 const verifyReconnect = async () => {
-                    if (verificationInFlight) return;
+                    if (verificationInFlight || isTerminated) return;
                     verificationInFlight = true;
                     const controller = new AbortController();
                     verificationAbortRef.current = controller;
@@ -257,6 +260,15 @@ export function FixConnectionModal({
                             `/api/connections/${connection.id}/status`,
                             { signal: controller.signal },
                         );
+
+                        if (statusResponse.status === 429) {
+                            // Back off gracefully on rate limit instead of aborting
+                            consecutive429s++;
+                            scheduleNextPoll(Math.min(3000 * Math.pow(1.5, consecutive429s), 10000));
+                            return;
+                        }
+
+                        consecutive429s = 0;
                         if (!statusResponse.ok) throw new Error("status_unavailable");
                         const status = (await statusResponse.json()) as ReconnectStatusSnapshot;
                         if (popup.closed && popupClosedAt === null) popupClosedAt = Date.now();
@@ -271,25 +283,41 @@ export function FixConnectionModal({
                         });
 
                         if (outcome === "success") {
+                            isTerminated = true;
                             clearReconnectPolling(true);
                             setStep("success");
                             setIsReconnecting(false);
                             onReconnected();
+                            return;
                         } else if (outcome === "cancelled") {
+                            isTerminated = true;
                             clearReconnectPolling(false);
                             setStep("error");
                             setError("Authorization was closed before the connection was restored.");
                             setIsReconnecting(false);
+                            return;
+                        }
+
+                        // Continue polling while still pending
+                        if (!popup.closed) {
+                            scheduleNextPoll(2500);
+                        } else {
+                            // Popup just closed, do a couple more quick checks before finalizing
+                            scheduleNextPoll(1000);
                         }
                     } catch (verificationError) {
                         if (verificationError instanceof DOMException && verificationError.name === "AbortError") {
                             return;
                         }
                         if (popup.closed) {
+                            isTerminated = true;
                             clearReconnectPolling(false);
                             setStep("error");
                             setError("Could not verify reconnection status. Please try again.");
                             setIsReconnecting(false);
+                        } else {
+                            // Retry with a slightly longer delay on temporary network error
+                            scheduleNextPoll(3500);
                         }
                     } finally {
                         verificationInFlight = false;
@@ -299,14 +327,21 @@ export function FixConnectionModal({
                     }
                 };
 
-                // Poll server evidence while the popup is open. The callback redirects
-                // rather than closing the popup, so popup closure alone is never success.
-                pollIntervalRef.current = setInterval(() => {
-                    void verifyReconnect();
-                }, 750);
-                void verifyReconnect();
+                const scheduleNextPoll = (delayMs: number) => {
+                    if (isTerminated) return;
+                    if (pollIntervalRef.current) {
+                        clearTimeout(pollIntervalRef.current as unknown as number);
+                    }
+                    pollIntervalRef.current = setTimeout(() => {
+                        void verifyReconnect();
+                    }, delayMs) as unknown as ReturnType<typeof setInterval>;
+                };
+
+                // Initial poll after brief pause to allow popup to load
+                scheduleNextPoll(1200);
 
                 pollTimeoutRef.current = setTimeout(() => {
+                    isTerminated = true;
                     const outcome = resolveReconnectVerification({
                         snapshot: null,
                         baselineUpdatedAt,

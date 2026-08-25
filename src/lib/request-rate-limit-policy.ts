@@ -70,8 +70,8 @@ type ClassPolicy = {
 };
 
 export const ROUTE_CLASS_POLICIES: Record<RateLimitRouteClass, ClassPolicy> = {
-  // Session/API-key app traffic. Preserves today's global 60/min per-IP behavior.
-  "internal-api": { limit: 60, windowSeconds: 60, prefix: "monstera:ratelimit:api", onFailure: "fail-open" },
+  // Session/API-key app traffic. 180/min per verified user/IP gives interactive console headroom while bounding abuse.
+  "internal-api": { limit: 180, windowSeconds: 60, prefix: "monstera:ratelimit:api", onFailure: "fail-open" },
   // Password reset / registration / OTP outer guard. Handlers additionally
   // enforce stricter per-account limits via allowAuthAttempt().
   credential: { limit: 20, windowSeconds: 60, prefix: "monstera:ratelimit:credential", onFailure: "fail-open" },

@@ -16,6 +16,7 @@ type IntegrationRow = {
   catalogId?: string;
   name: string;
   description?: string;
+  managerBadge?: string | null;
   status: "connected" | "error" | "syncing" | string;
   healthState?: SourceHealthState;
   errorMsg?: string;
@@ -35,6 +36,15 @@ type SourceState = {
   label: string;
   detail: string;
 };
+
+interface ConnectedSourceListProps {
+  rows: IntegrationRow[];
+  busyActions: Set<string>;
+  onSync: (pipelineId: string, integrationId: string) => void;
+  onDirectSync: (connectionId: string, provider: string) => void;
+  onDisconnect: (connectionId: string, displayName: string) => void;
+  onFixConnection: (integration: any) => void;
+}
 
 function sourceStateFor(row: IntegrationRow, syncBusy: boolean): SourceState {
   if (syncBusy || row.healthState === "syncing" || row.status === "syncing") {
@@ -63,14 +73,12 @@ function sourceStateFor(row: IntegrationRow, syncBusy: boolean): SourceState {
 }
 
 function statusRank(row: IntegrationRow): number {
-  // Lower is better (connected), higher is worse (needs attention).
   const state = row.healthState ?? row.status;
   if (["error", "disconnected", "unknown", "stale"].includes(state)) return 5;
   if (state === "partial") return 4;
   if (state === "syncing") return 3;
-  if (state === "pending") return 2;
-  if (!row.lastSync || row.lastSync === "Never") return 2;
-  if (row.status === "connected") return 1;
+  if (state === "pending" || !row.lastSync || row.lastSync === "Never") return 2;
+  if (state === "connected") return 1;
   return 3;
 }
 
@@ -84,51 +92,34 @@ function canDirectSync(provider: string | undefined): boolean {
   return provider != null && ["meta_ads", "google_ads", "tiktok_business"].includes(provider);
 }
 
-export function ConnectedSourceList(props: {
-  rows: IntegrationRow[];
-  busyActions: Set<string>;
-  onSync: (pipelineId: string, integrationId: string) => void;
-  onDirectSync: (connectionId: string) => void;
-  onDisconnect: (connectionId: string, displayName: string) => void;
-  onFixConnection: (integration: any) => void;
-}) {
-  const { rows, busyActions, onSync, onDirectSync, onDisconnect, onFixConnection } = props;
+export function ConnectedSourceList({
+  rows,
+  busyActions,
+  onSync,
+  onDirectSync,
+  onDisconnect,
+  onFixConnection,
+}: ConnectedSourceListProps) {
   const router = useRouter();
-
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [openTagsId, setOpenTagsId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!openTagsId) return;
-    const close = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest('[data-no-row-click]')) setOpenTagsId(null);
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    const close = () => setOpenTagsId(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
   }, [openTagsId]);
 
-  const sortedRows = useMemo(() => {
-    const mul = sortDir === "asc" ? 1 : -1;
-    return [...rows].sort((a, b) => {
-      if (sortKey === "name") return a.name.localeCompare(b.name) * mul;
-      if (sortKey === "status") return (statusRank(a) - statusRank(b)) * mul || a.name.localeCompare(b.name);
-      if (sortKey === "lastSync") return (safeTimeValue(a.lastSync) - safeTimeValue(b.lastSync)) * mul || a.name.localeCompare(b.name);
-      return 0;
-    });
-  }, [rows, sortKey, sortDir]);
-
-  const allSelected = selectedIds.size > 0 && sortedRows.every((r) => selectedIds.has(r.id));
+  const allSelected = rows.length > 0 && selectedIds.size === rows.length;
   const anySelected = selectedIds.size > 0;
 
   const toggleSelectAll = () => {
-    if (allSelected) {
-      setSelectedIds(new Set());
-      return;
-    }
-    setSelectedIds(new Set(sortedRows.map((r) => r.id)));
+    if (allSelected) setSelectedIds(new Set());
+    else setSelectedIds(new Set(rows.map((r) => r.id)));
   };
 
   const toggleSelectOne = (id: string) => {
@@ -140,79 +131,86 @@ export function ConnectedSourceList(props: {
     });
   };
 
-  const runRowSync = useCallback(
-    (r: IntegrationRow) => {
+  const sortedRows = useMemo(() => {
+    const list = [...rows];
+    list.sort((a, b) => {
+      if (sortKey === "name") {
+        const cmp = (a.name || "").localeCompare(b.name || "");
+        return sortDir === "asc" ? cmp : -cmp;
+      }
+      if (sortKey === "status") {
+        const diff = statusRank(a) - statusRank(b);
+        return sortDir === "asc" ? diff : -diff;
+      }
+      if (sortKey === "lastSync") {
+        const diff = safeTimeValue(a.lastSync) - safeTimeValue(b.lastSync);
+        return sortDir === "asc" ? diff : -diff;
+      }
+      return 0;
+    });
+    return list;
+  }, [rows, sortKey, sortDir]);
+
+  const bulkSync = () => {
+    for (const r of rows) {
+      if (!selectedIds.has(r.id)) continue;
       if (r.pipelineId) {
         onSync(r.pipelineId, r.id);
-        return;
+      } else if (onDirectSync && r.provider) {
+        onDirectSync(r.id, r.provider);
       }
-      if (canDirectSync(r.provider)) {
-        onDirectSync(r.id);
-        return;
-      }
-      toast.error(
-        <span>
-          No sync pipeline configured. Create a pipeline in the Dashboard.
-        </span>
-      );
-    },
-    [onSync, onDirectSync],
-  );
-
-  const bulkSync = async () => {
-    if (!anySelected) return;
-    const selected = sortedRows.filter((r) => selectedIds.has(r.id));
-    if (selected.length === 0) return;
-    toast.message(`Starting sync for ${selected.length} source${selected.length === 1 ? "" : "s"}…`);
-    for (const r of selected) {
-      runRowSync(r);
     }
   };
 
-  const bulkDisconnect = async () => {
-    if (!anySelected) return;
-    const selected = sortedRows.filter((r) => selectedIds.has(r.id));
-    if (selected.length === 0) return;
-    for (const r of selected) {
+  const bulkDisconnect = () => {
+    for (const r of rows) {
+      if (!selectedIds.has(r.id)) continue;
       onDisconnect(r.id, r.name);
     }
-    setSelectedIds(new Set());
+  };
+
+  const runRowSync = (r: IntegrationRow) => {
+    if (r.pipelineId) {
+      onSync(r.pipelineId, r.id);
+    } else if (onDirectSync && r.provider) {
+      onDirectSync(r.id, r.provider);
+    }
   };
 
   return (
-    <div className="rounded-lg border border-line bg-panel">
-      <div className="flex flex-col gap-3 border-b border-line px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-ink-mute">
-          <span className="text-xs font-semibold text-ink-mute uppercase tracking-[0.1em]">Connected sources</span>
-          <span className="rounded-md border border-line px-2 py-0.5 font-mono text-[11px] text-ink">
+    <div className="rounded-xl border border-line bg-panel shadow-xs overflow-hidden">
+      <div className="flex flex-col gap-3 border-b border-line px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between bg-panel/70">
+        <div className="flex flex-wrap items-center gap-2.5 text-xs text-ink-mute">
+          <span className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute">Connected sources</span>
+          <span className="rounded-md border border-line/80 bg-canvas px-2 py-0.5 font-mono text-[11px] text-ink">
             {rows.length}
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
           {anySelected && (
             <>
-              <PrimaryButton type="button" className="h-9 px-3 text-xs" onClick={bulkSync}>
+              <PrimaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkSync}>
                 <RefreshCw className="h-3.5 w-3.5" /> <span className="ml-1.5">Sync selected</span>
               </PrimaryButton>
-              <SecondaryButton type="button" className="h-9 px-3 text-xs" onClick={bulkDisconnect}>
+              <SecondaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkDisconnect}>
                 <X className="h-3.5 w-3.5" /> <span className="ml-1.5">Disconnect</span>
               </SecondaryButton>
             </>
           )}
-          <div className="flex items-center gap-2 rounded-md border border-line bg-canvas px-2 py-1.5 text-xs">
-            <span className="text-ink-mute">Sort</span>
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas px-2.5 py-1 text-xs">
+            <span className="text-ink-mute">Sort:</span>
             <select
-              className="bg-transparent text-xs font-medium text-ink outline-none"
+              className="bg-transparent text-xs font-medium text-ink outline-none cursor-pointer"
               value={sortKey}
               onChange={(e) => setSortKey(e.target.value as SortKey)}
             >
-              <option value="name">Name</option>
-              <option value="status">Status</option>
-              <option value="lastSync">Last sync</option>
+              <option value="name" className="bg-panel text-ink">Name</option>
+              <option value="status" className="bg-panel text-ink">Status</option>
+              <option value="lastSync" className="bg-panel text-ink">Last sync</option>
             </select>
             <button
               type="button"
-              className="rounded-md px-1.5 py-0.5 text-ink-mute hover:text-ink hover:bg-white/[0.04] transition-colors"
+              className="rounded px-1 py-0.5 text-ink-mute hover:text-ink hover:bg-white/[0.06] transition-colors"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
               title="Toggle sort direction"
             >
@@ -224,16 +222,16 @@ export function ConnectedSourceList(props: {
 
       <div className="overflow-x-auto">
         <table className="min-w-[900px] w-full text-sm">
-          <thead className="bg-canvas/80">
+          <thead className="bg-panel/40 border-b border-line">
             <tr>
-              <th className="w-10 px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.1em] text-ink-mute">
+              <th className="w-12 px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">
                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} data-no-row-click />
               </th>
-              <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.1em] text-ink-mute">Connector</th>
-              <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.1em] text-ink-mute">Accounts</th>
-              <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.1em] text-ink-mute">Status</th>
-              <th className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-[0.1em] text-ink-mute">Last sync</th>
-              <th className="px-4 py-3 text-right text-[11px] font-medium uppercase tracking-[0.1em] text-ink-mute">Actions</th>
+              <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Connector</th>
+              <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Accounts</th>
+              <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Status</th>
+              <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Last sync</th>
+              <th className="px-5 py-3.5 text-right text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -254,39 +252,46 @@ export function ConnectedSourceList(props: {
               return (
                 <React.Fragment key={r.id}>
                   <tr 
-                    className="cursor-pointer hover:bg-white/[0.03] transition-colors duration-150"
+                    className="cursor-pointer hover:bg-white/[0.025] transition-colors duration-150"
                     onClick={(e) => {
                       if (!(e.target as HTMLElement).closest('[data-no-row-click]')) {
                         router.push(`/sources/${r.id}`);
                       }
                     }}
                   >
-                    <td className="px-4 py-3" data-no-row-click>
+                    <td className="px-5 py-4" data-no-row-click>
                       <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} />
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex min-w-0 items-center gap-3">
+                    <td className="px-5 py-4">
+                      <div className="flex min-w-0 items-center gap-3.5">
                         {r.logoSrc ? <IntegrationMark src={r.logoSrc} size="md" /> : null}
                         <div className="min-w-0">
-                          <Link
-                            href={`/sources/${r.id}`}
-                            className="block truncate font-semibold text-ink hover:text-white"
-                            data-no-row-click
-                          >
-                            {r.name}
-                          </Link>
-                          <p className="mt-0.5 line-clamp-1 text-xs text-gray-500 dark:text-slate-400">
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/sources/${r.id}`}
+                              className="block truncate text-sm font-semibold tracking-tight text-ink hover:text-white"
+                              data-no-row-click
+                            >
+                              {r.name}
+                            </Link>
+                            {r.managerBadge ? (
+                              <span className="inline-flex items-center rounded-md border border-line/80 bg-panel px-1.5 py-0.5 font-mono text-[10px] font-medium text-ink-mute shrink-0">
+                                {r.managerBadge}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="mt-0.5 line-clamp-1 text-xs text-ink-mute">
                             {r.description ?? ""}
                           </p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
+                    <td className="px-5 py-4">
+                      <div className="flex flex-wrap gap-1.5">
                         {(r.accountTags ?? []).slice(0, 3).map((t) => (
                           <span
                             key={t}
-                            className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-[#16181c] dark:text-slate-300"
+                            className="inline-flex items-center rounded-md border border-line/70 bg-panel px-2 py-0.5 font-mono text-[11px] font-medium text-ink-mute"
                           >
                             {t}
                           </span>
@@ -296,33 +301,43 @@ export function ConnectedSourceList(props: {
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); setOpenTagsId(prev => prev === r.id ? null : r.id); }}
-                              className="inline-flex items-center rounded-md bg-[#16181c] px-2 py-0.5 text-[10px] font-medium text-slate-300 hover:bg-[#1d2025] hover:text-white transition-colors duration-150 cursor-pointer border border-line"
+                              className="inline-flex items-center rounded-md border border-line bg-panel px-2 py-0.5 font-mono text-[11px] font-medium text-ink-mute hover:bg-white/[0.06] hover:text-white transition-colors duration-150 cursor-pointer"
                             >
                               +{(r.accountTags?.length ?? 0) - 3} more
                             </button>
                             {openTagsId === r.id && (
-                              <div className="absolute left-0 top-full z-50 mt-1 min-w-[10rem] rounded-md border border-line bg-panel shadow-elevated p-2 space-y-1">
+                              <div className="absolute left-0 top-full z-50 mt-1.5 min-w-[14rem] max-h-60 overflow-y-auto rounded-xl border border-line bg-panel shadow-elevated p-2 space-y-1.5">
+                                <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-ink-mute border-b border-line/50">
+                                  Scoped Accounts ({(r.accountTags?.length ?? 0)})
+                                </div>
                                 {(r.accountTags ?? []).slice(3).map((t) => (
-                                  <div key={t} className="px-2 py-1 rounded text-[11px] text-ink font-medium bg-canvas">{t}</div>
+                                  <div key={t} className="px-2.5 py-1.5 rounded-lg text-xs font-mono text-ink font-medium bg-canvas border border-line/60 truncate" title={t}>
+                                    {t}
+                                  </div>
                                 ))}
                               </div>
                             )}
                           </div>
                         )}
+                        {(!r.accountTags || r.accountTags.length === 0) && (
+                          <span className="text-xs text-ink-mute/70 italic">
+                            All manager accounts
+                          </span>
+                        )}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-4">
                       <div>
                         <span
                           className={cn(
-                            "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold",
+                            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
                             sourceState.kind === "attention"
-                              ? "bg-red-50 text-red-800 dark:bg-red-950/70 dark:text-red-200"
+                              ? "border border-rose-500/30 bg-rose-500/10 text-rose-300"
                               : sourceState.kind === "partial" || sourceState.kind === "not-synced"
-                                ? "bg-amber-50 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200"
+                                ? "border border-amber-500/30 bg-amber-500/10 text-amber-300"
                                 : sourceState.kind === "syncing"
-                                  ? "bg-blue-50 text-blue-800 dark:bg-blue-950/70 dark:text-blue-200"
-                                  : "border border-line text-ink",
+                                  ? "border border-sky-500/30 bg-sky-500/10 text-sky-300"
+                                  : "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
                           )}
                         >
                           {sourceState.kind === "attention" || sourceState.kind === "partial" || sourceState.kind === "not-synced" ? (
@@ -330,31 +345,30 @@ export function ConnectedSourceList(props: {
                           ) : sourceState.kind === "syncing" ? (
                             <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin motion-reduce:animate-none" />
                           ) : (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-accent" strokeWidth={1.5} />
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" strokeWidth={2} />
                           )}
                           {sourceState.label}
                         </span>
-                        <p className="mt-1 max-w-[15rem] text-[11px] leading-snug text-ink-mute">{sourceState.detail}</p>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-600 dark:text-slate-300">
-                      <p>{r.lastSync ?? "Never"}</p>
+                    <td className="px-5 py-4 text-xs text-ink-mute">
+                      <p className="font-medium text-ink">{r.lastSync ?? "Never"}</p>
                       {r.dataThroughDate ? (
-                        <p className="mt-1 text-[11px] text-ink-mute">
+                        <p className="mt-0.5 text-[11px] text-ink-mute">
                           Data through {new Date(r.dataThroughDate).toLocaleDateString()}
                         </p>
                       ) : null}
-                      {sourceState.kind === "not-synced" && (
-                        <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">No successful sync recorded</p>
+                      {sourceState.kind === "not-synced" && !r.dataThroughDate && (
+                        <p className="mt-0.5 text-[11px] text-amber-400/90 font-mono">Pending initial sync</p>
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center justify-end gap-2">
                         {needsReconnect ? (
                           <button
                             type="button"
                             onClick={() => onFixConnection(r)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition-all"
                             data-no-row-click
                           >
                             <Wrench className="h-3.5 w-3.5" /> Reconnect
@@ -365,10 +379,10 @@ export function ConnectedSourceList(props: {
                             disabled={syncBusy}
                             onClick={() => runRowSync(r)}
                             className={cn(
-                              "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
+                              "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all",
                               syncBusy
-                                ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-500 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-400"
-                                : "border-line bg-canvas text-ink hover:bg-white/[0.04]",
+                                ? "cursor-not-allowed border-line bg-panel text-ink-mute"
+                                : "border-line bg-canvas text-ink hover:bg-white/[0.06] hover:border-white/20",
                             )}
                             data-no-row-click
                           >
@@ -381,10 +395,10 @@ export function ConnectedSourceList(props: {
                           disabled={disconnectBusy}
                           onClick={() => onDisconnect(r.id, r.name)}
                           className={cn(
-                            "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors",
+                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all",
                             disconnectBusy
-                              ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-500 dark:border-[#2f3336] dark:bg-[#16181c] dark:text-slate-400"
-                              : "border-red-200 bg-red-50 text-red-800 hover:bg-red-100 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200 dark:hover:bg-red-950/50",
+                              ? "cursor-not-allowed border-line bg-panel text-ink-mute"
+                              : "border-line/70 bg-panel text-ink-mute hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300",
                           )}
                           data-no-row-click
                         >
@@ -392,32 +406,62 @@ export function ConnectedSourceList(props: {
                         </button>
                         <button
                           type="button"
-                          className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 hover:bg-gray-50 dark:border-[#2f3336] dark:bg-[#000000]/40 dark:text-slate-200 dark:hover:bg-[#000000]"
+                          className="rounded-lg border border-line bg-panel p-1.5 text-xs text-ink-mute hover:bg-white/[0.06] hover:text-ink transition-colors"
                           onClick={() => setExpandedId((prev) => (prev === r.id ? null : r.id))}
                           title="Toggle details"
                           data-no-row-click
                         >
-                          <ChevronDown className={cn("h-4 w-4 transition-transform", isExpanded ? "rotate-180" : "")} />
+                          <ChevronDown className={cn("h-4 w-4 transition-transform duration-200", isExpanded ? "rotate-180 text-ink" : "")} />
                         </button>
                       </div>
                     </td>
                   </tr>
                   {isExpanded && (
                     <tr className="bg-canvas/40">
-                      <td colSpan={6} className="px-4 pb-4">
-                        <div className="mt-3 rounded-xl border border-line bg-canvas p-4 text-sm">
-                          {(sourceState.kind === "attention" || sourceState.kind === "partial") && r.errorMsg ? (
-                            <p className="mb-2 text-sm font-medium text-red-700 dark:text-red-300">{r.errorMsg}</p>
-                          ) : null}
-                          <p className="mb-2 text-xs text-ink-mute">{sourceState.detail}</p>
+                      <td colSpan={6} className="px-5 pb-5 pt-1">
+                        <div className="rounded-xl border border-line/80 bg-panel/70 p-5 shadow-card backdrop-blur-sm space-y-4">
+                          {(sourceState.kind === "attention" || sourceState.kind === "partial") && (
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
+                              <div className="flex items-start gap-3">
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/15 text-rose-400">
+                                  <AlertCircle className="h-4 w-4" />
+                                </div>
+                                <div>
+                                  <h4 className="text-sm font-semibold text-rose-200">Re-authentication Required</h4>
+                                  <p className="mt-0.5 text-xs text-rose-300/90 leading-relaxed">
+                                    {r.errorMsg || sourceState.detail}
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => onFixConnection(r)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 transition-all shadow-xs shrink-0"
+                              >
+                                <Wrench className="h-3.5 w-3.5" /> Reconnect source
+                              </button>
+                            </div>
+                          )}
+
                           {canDirectSync(r.provider) ? (
                             <AccountSelector connectionId={r.id} provider={r.provider!} variant="compact" />
                           ) : null}
-                          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-mute">
-                            <Link href={`/sources/${r.id}`} className="font-semibold text-white hover:text-neutral-300">Open source details</Link>
-                            <span>·</span>
-                            <Link href="/explorer" className="font-semibold text-white hover:text-neutral-300">View warehouse data</Link>
-                            {!r.pipelineId ? <><span>·</span><span>Sync writes to warehouse</span></> : null}
+
+                          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-ink-mute border-t border-line/60">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <Link href={`/sources/${r.id}`} className="font-semibold text-ink hover:text-white transition-colors">
+                                Open source details →
+                              </Link>
+                              <span className="text-line">·</span>
+                              <Link href="/explorer" className="font-semibold text-ink hover:text-white transition-colors">
+                                View warehouse data →
+                              </Link>
+                            </div>
+                            {!r.pipelineId ? (
+                              <span className="font-mono text-[11px] text-ink-mute">
+                                Sync writes directly to warehouse
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </td>
