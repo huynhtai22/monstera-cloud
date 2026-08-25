@@ -10,14 +10,14 @@ Method: read-only probes of live production, GitHub CI, Vercel project state, an
 
 | Domain | Status | Evidence |
 |---|---|---|
-| Production deployment | ✅ Healthy | Latest prod Ready; `/api/version` serves `commitSha 03ad250` (#70), `schemaVersion 20260819000000`, `cache-control: no-store` (uncached, as smoke requires) |
-| CI on `main` | ✅ Green | #70 and #72 merge commits both pass `verify`; Deploy to Vercel success |
+| Production deployment | ✅ Healthy | Verify the current intended SHA and `commitSource: build` through `/api/version` after every alias change; the endpoint is uncached (`cache-control: no-store`) |
+| CI on `main` | ✅ Green | Required `verify` includes typecheck, lint, unit/real-PG tests, production build, full Playwright against isolated Postgres, and production dependency audit |
 | Scheduled cron | ✅ Healthy | `pilot-cron.yml` runs every ~15–30 min, last three all success (21:22 / 20:53 / 20:29 UTC) |
-| Security headers | ✅ Present | CSP, HSTS (`preload`), `X-Frame-Options: SAMEORIGIN`, nosniff, `strict-origin-when-cross-origin` on live responses; defined in `next.config.mjs` |
+| Security headers | ✅ Present | CSP, HSTS (`preload`), `X-Frame-Options: SAMEORIGIN`, nosniff, `strict-origin-when-cross-origin`, and `Permissions-Policy`; defined in `next.config.mjs` and probed externally |
 | Auth middleware coverage | ✅ Enforced | `/console` `/clients` `/synced-data` `/settings` → 307/308 redirects when signed out |
 | Cron fail-closed | ✅ Enforced | `/api/cron/master`, `/api/cron/warehouse-jobs`, `/api/cron/shopee/refresh` → `401` without secret |
 | Required env vars present | ✅ Present | Security-relevant set exists with Production scope (names only verified): `UPSTASH_REDIS_REST_URL/TOKEN` (Prod+Preview), `GOOGLE_ID_TOKEN_AUDIENCES`, `CRON_SECRET`, `NEXTAUTH_SECRET/URL`, `ENCRYPTION_KEY`, `DATABASE_URL` |
-| Test suites | ✅ Passing | Unit + real-PG: **281/281** on main (CI). E2E: **16/16** locally against isolated Postgres 16 + two-tenant rehearsal seed (PR #71) |
+| Test suites | ✅ Required | Unit + real-PG suites and the full Playwright journey suite run in the required CI job against isolated PostgreSQL |
 | Tenant safety | ✅ Fail-closed | Guarded models enforced at query layer (#69); connection leases fenced end-to-end incl. pipeline runs and non-Meta ingestion (#70); runbook shipped (#72) |
 
 ---
@@ -40,8 +40,50 @@ Ranked by launch risk × effort. "Owner" = who must act.
 
 ---
 
+## Engineering follow-up — 2026-08-25
+
+The ranked list above is a historical evidence record. The following corrections
+keep it from being misread as a current to-do list:
+
+- **Gap 5 — closed in code:** the dependency preflight is now step 4 of the
+  [pilot release sequence](./PILOT_OPERATIONS.md#release-sequence), and the
+  guarded release path requires the deployed version to report the intended
+  immutable build SHA.
+- **Gap 6 — engineering validation closed; GA gate remains:** the benchmark and
+  query plans are recorded in [SCALABILITY_EVIDENCE.md](./SCALABILITY_EVIDENCE.md)
+  (1.1M rows, no sequential scans, all recorded hot paths under 50 ms). This
+  does **not** activate retention; retention ownership and an isolated expiry
+  drill remain blocked in [OPERATIONS_ACCEPTANCE.md](./OPERATIONS_ACCEPTANCE.md).
+- **Gap 7 — closed in CI:** `onboarding-activation.spec.ts` runs as part of the
+  required full Playwright suite, covering the committed activation journey.
+- **Gap 8 — closed and externally guarded:** `Permissions-Policy` is set in
+  `next.config.mjs`; the scheduled synthetic probe now fails if it disappears.
+- **Gaps 1 and 4 — implemented controls, not accepted operations:** synthetic
+  checks, SLO definitions, and error telemetry are in place, but alert delivery
+  and escalation are still **unverified** until the evidence gate has named
+  owners and same-day delivery proof. Do not describe them as fully closed in a
+  pilot or GA decision.
+
+### Current remaining owner actions
+
+The only unresolved pilot-readiness items are external, evidence-based controls:
+
+1. Assign primary and backup owners for monitoring, restore authority, and
+   retention/deletion approval.
+2. Run one non-sensitive production alert delivery and escalation exercise,
+   then record its sanitized evidence.
+3. Complete the retention decision and isolated expiry drill before enabling
+   any automated retention/deletion job.
+4. Certify each customer-facing connector with real provider credentials using
+   the checklist in `PILOT_OPERATIONS.md`.
+
+---
+
 ## Recommended sequence
 
-Merge #71 → adopt gaps 1+5 (cheap, high signal) → gap 2 restore drill (owner) → gap 3 CI e2e gate → gaps 4+9 → then plan items 7–8 with the audit refreshed after each landing.
+For each pilot expansion: complete the external evidence gate in
+`OPERATIONS_ACCEPTANCE.md`, certify the specific connectors being offered, and
+append a new dated evidence pass after material operational changes. Reassess
+retention and the accepted schema-drift decision before GA.
 
 *Audit method note: this file should be re-generated (or appended) after each major landing so it stays an evidence log, not a stale checklist.*
