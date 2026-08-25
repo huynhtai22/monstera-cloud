@@ -89,7 +89,7 @@ function safeTimeValue(s: string | undefined): number {
 }
 
 function canDirectSync(provider: string | undefined): boolean {
-  return provider != null && ["meta_ads", "google_ads", "tiktok_business"].includes(provider);
+  return provider != null && ["meta_ads", "google_ads", "tiktok_business", "shopee", "lazada"].includes(provider);
 }
 
 export function ConnectedSourceList({
@@ -108,7 +108,6 @@ export function ConnectedSourceList({
   const [openTagsId, setOpenTagsId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!openTagsId) return;
     const close = () => setOpenTagsId(null);
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
@@ -156,8 +155,10 @@ export function ConnectedSourceList({
       if (!selectedIds.has(r.id)) continue;
       if (r.pipelineId) {
         onSync(r.pipelineId, r.id);
-      } else if (onDirectSync && r.provider) {
-        onDirectSync(r.id, r.provider);
+      } else if (canDirectSync(r.provider)) {
+        onDirectSync(r.id, r.provider!);
+      } else {
+        toast.error(`No sync pipeline configured for ${r.name}.`);
       }
     }
   };
@@ -172,8 +173,10 @@ export function ConnectedSourceList({
   const runRowSync = (r: IntegrationRow) => {
     if (r.pipelineId) {
       onSync(r.pipelineId, r.id);
-    } else if (onDirectSync && r.provider) {
-      onDirectSync(r.id, r.provider);
+    } else if (canDirectSync(r.provider)) {
+      onDirectSync(r.id, r.provider!);
+    } else {
+      toast.error(`No sync pipeline configured for ${r.name}.`);
     }
   };
 

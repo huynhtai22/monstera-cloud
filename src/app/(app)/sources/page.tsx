@@ -474,7 +474,7 @@ export default function SourcesPage() {
                     accountTags = list.map((a: any) =>
                         a.name && a.name !== a.id ? a.name : String(a.id).replace(/^act_/, '')
                     );
-                    const bmId = creds.businessManagerId || conn.remoteAccountId || null;
+                    const bmId = creds.businessManagerId || creds.bmId || null;
                     if (bmId && bmId !== "") {
                         managerBadge = `BM: ${bmId}`;
                     }
@@ -494,7 +494,7 @@ export default function SourcesPage() {
                         }
                         return String(id);
                     });
-                    const mccId = creds.mccId || conn.remoteAccountId || null;
+                    const mccId = creds.mccId || creds.managerCustomerId || null;
                     if (mccId && mccId !== "") {
                         const cleanMcc = String(mccId).replace(/\D/g, '');
                         const formattedMcc = cleanMcc.length === 10 
@@ -512,7 +512,7 @@ export default function SourcesPage() {
                 } else if (conn.provider === 'tiktok_business') {
                     const list: string[] = creds.advertiserIds ?? [];
                     accountTags = list.map((id: string) => String(id));
-                    const bcId = creds.businessCenterId || conn.remoteAccountId || null;
+                    const bcId = creds.businessCenterId || creds.bcId || null;
                     if (bcId && bcId !== "") {
                         managerBadge = `BC: ${bcId}`;
                     }
@@ -522,7 +522,7 @@ export default function SourcesPage() {
                     }
                     scopeDesc = `Business Center · ${totalCount} advertiser${totalCount === 1 ? '' : 's'} synced`;
                 } else if (conn.provider === 'shopee') {
-                    const shop = creds.shopId || conn.remoteAccountId || null;
+                    const shop = creds.shopId || null;
                     if (shop) {
                         accountTags = [`Shop ID: ${shop}`];
                         managerBadge = `Shop: ${shop}`;
@@ -530,7 +530,7 @@ export default function SourcesPage() {
                     if (!displayName) displayName = "Shopee";
                     scopeDesc = shop ? `Shop ID: ${shop} · Orders & GMV sync` : "Shopee Marketplace store";
                 } else if (conn.provider === 'shopify') {
-                    const domain = creds.shopDomain || conn.remoteAccountId || null;
+                    const domain = creds.shopDomain || null;
                     if (domain) {
                         accountTags = [domain];
                         managerBadge = domain;
@@ -610,11 +610,16 @@ export default function SourcesPage() {
         return countSourceHealthStatuses(filteredIntegrations as Array<{ status: string }>);
     }, [filteredIntegrations]);
 
-    // Error State (only block the screen when there is NO data at all to display)
-    const hasCachedData = (Array.isArray(workspaces) && workspaces.length > 0) || (Array.isArray(sourceConnections) && sourceConnections.length > 0);
-    const failure = error || connectionsError;
+    // Error State (only block the screen when the failing endpoint has NO cached data)
+    const hasCachedWorkspaces = Array.isArray(workspaces) && workspaces.length > 0;
+    const hasCachedConnections = Array.isArray(sourceConnections) && sourceConnections.length > 0;
+    const isBlocked = Boolean(
+        (error && !hasCachedWorkspaces) ||
+        (connectionsError && !hasCachedConnections && activeWorkspaceId)
+    );
 
-    if (failure && !hasCachedData) {
+    if (isBlocked) {
+        const failure = error || connectionsError;
         const detail = failure instanceof Error ? failure.message : "Failed to fetch data";
         const isAuth =
             detail === "Unauthorized" || detail.toLowerCase().includes("unauthorized");
