@@ -3,8 +3,12 @@ name: Restore Google Ads demo data
 on:
   workflow_dispatch:
     inputs:
+      workspace_id:
+        description: Exact target workspace ID. Required to avoid ambiguous display names.
+        required: true
+        type: string
       workspace_name:
-        description: Exact target workspace name. The command refuses ambiguous names.
+        description: Expected target workspace display name; checked against the supplied ID.
         required: true
         default: Personal Workspace
         type: string
@@ -35,11 +39,13 @@ jobs:
       - name: Restore dedicated Google demo rows
         env:
           RESTORE_WORKSPACE_NAME: ${{ inputs.workspace_name }}
+          RESTORE_WORKSPACE_ID: ${{ inputs.workspace_id }}
           RESTORE_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -a
           source .vercel/.env.production.local
           set +a
           npm run restore-personal-google-demo -- \
+            --workspace-id "$RESTORE_WORKSPACE_ID" \
             --workspace-name "$RESTORE_WORKSPACE_NAME" \
             --confirm "$RESTORE_CONFIRMATION"

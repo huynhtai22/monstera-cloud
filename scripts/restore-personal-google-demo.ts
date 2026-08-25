@@ -2,11 +2,11 @@
  * Restore a clearly labelled Google Ads sample dataset for one workspace.
  *
  * This is an operator-only, explicit recovery tool. It never touches real
- * Google Ads connections or their warehouse rows. The target workspace name
- * must resolve to exactly one row, otherwise the command refuses to run.
+ * Google Ads connections or their warehouse rows. The exact target workspace
+ * ID and expected display name must agree, otherwise the command refuses to run.
  *
  * Usage:
- *   npm run restore-personal-google-demo -- --workspace-name "Personal Workspace" --confirm RESTORE_GOOGLE_DEMO
+ *   npm run restore-personal-google-demo -- --workspace-id <workspace-id> --workspace-name "Personal Workspace" --confirm RESTORE_GOOGLE_DEMO
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -89,21 +89,20 @@ function dailyMetrics(dayIndex: number, campaignIndex: number, adsetIndex: numbe
 }
 
 async function main() {
+  const workspaceId = readArg("--workspace-id")?.trim();
   const workspaceName = readArg("--workspace-name")?.trim();
   const confirmation = readArg("--confirm");
-  if (!workspaceName || confirmation !== "RESTORE_GOOGLE_DEMO") {
-    throw new Error('Usage: --workspace-name "Personal Workspace" --confirm RESTORE_GOOGLE_DEMO');
+  if (!workspaceId || !workspaceName || confirmation !== "RESTORE_GOOGLE_DEMO") {
+    throw new Error('Usage: --workspace-id <workspace-id> --workspace-name "Personal Workspace" --confirm RESTORE_GOOGLE_DEMO');
   }
 
-  const workspaces = await prisma.workspace.findMany({
-    where: { name: workspaceName },
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
     select: { id: true, name: true },
-    take: 2,
   });
-  if (workspaces.length !== 1) {
-    throw new Error(`Expected exactly one workspace named "${workspaceName}"; found ${workspaces.length}. No rows were changed.`);
+  if (!workspace || workspace.name !== workspaceName) {
+    throw new Error("The supplied workspace ID and name do not identify the expected workspace. No rows were changed.");
   }
-  const workspace = workspaces[0];
 
   const existing = await prisma.connection.findFirst({
     where: { workspaceId: workspace.id, name: DEMO_CONNECTION_NAME },
