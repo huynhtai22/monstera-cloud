@@ -133,10 +133,14 @@ function sourceStatePresentation(state: DashboardOverviewDTO["sourcesList"][numb
       return { label: "Stale", detail: "The last successful sync is more than a day old.", dotClassName: "bg-amber-400", textClassName: "text-amber-400" };
     case "error":
       return { label: "Needs attention", detail: "Authorization or connection setup needs attention.", dotClassName: "bg-red-400", textClassName: "text-red-400" };
+    case "partial":
+      return { label: "Partial sync", detail: "Some requested data was imported; review the source before delivery.", dotClassName: "bg-amber-400", textClassName: "text-amber-400" };
     case "syncing":
       return { label: "Syncing", detail: "A warehouse sync is in progress.", dotClassName: "bg-sky-400", textClassName: "text-sky-400" };
     case "disconnected":
       return { label: "Disconnected", detail: "This source cannot sync until it is reconnected.", dotClassName: "bg-red-400", textClassName: "text-red-400" };
+    case "unknown":
+      return { label: "State needs review", detail: "This source has an unrecognized state and is not treated as healthy.", dotClassName: "bg-red-400", textClassName: "text-red-400" };
     default:
       return { label: "Connected — not synced", detail: "No successful warehouse sync is recorded yet.", dotClassName: "bg-amber-400", textClassName: "text-amber-400" };
   }
@@ -302,11 +306,13 @@ export function DashboardHomePage() {
   const sourceCount = summaryCards?.sources?.total ?? 0;
   const accountCount = summaryCards?.sources?.accountsTotal ?? 0;
   const errorSourceCount = sourcesList.filter((source) => source.state === "error").length;
+  const partialSourceCount = sourcesList.filter((source) => source.state === "partial").length;
   const pendingSourceCount = sourcesList.filter((source) => source.state === "pending").length;
   const syncingSourceCount = sourcesList.filter((source) => source.state === "syncing").length;
   const staleSourceCount = sourcesList.filter((source) => source.state === "stale").length;
   const disconnectedSourceCount = sourcesList.filter((source) => source.state === "disconnected").length;
-  const attentionSourceCount = errorSourceCount + staleSourceCount + disconnectedSourceCount;
+  const unknownSourceCount = sourcesList.filter((source) => source.state === "unknown").length;
+  const attentionSourceCount = errorSourceCount + partialSourceCount + staleSourceCount + disconnectedSourceCount + unknownSourceCount;
   const inProgressSourceCount = pendingSourceCount + syncingSourceCount;
   const accountSummary = `${accountCount} account${accountCount === 1 ? "" : "s"}`;
   const sourceSummaryDetail = attentionSourceCount

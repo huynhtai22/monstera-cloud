@@ -67,6 +67,29 @@ describe("dashboard overview source truth", () => {
       "fresh",
     );
   });
+
+  it("keeps partial state distinct and fails closed for unknown status", () => {
+    assert.equal(
+      resolveDashboardSourceState({
+        connectionStatus: "connected",
+        lastError: "[partial] one selected customer failed",
+        lastSyncAt: new Date("2026-08-24T12:00:00.000Z"),
+        isSyncing: false,
+        staleBefore,
+      }),
+      "partial",
+    );
+    assert.equal(
+      resolveDashboardSourceState({
+        connectionStatus: "unexpected",
+        lastError: null,
+        lastSyncAt: new Date("2026-08-24T12:00:00.000Z"),
+        isSyncing: false,
+        staleBefore,
+      }),
+      "unknown",
+    );
+  });
 });
 
 describe("dashboard warehouse truth", () => {

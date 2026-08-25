@@ -10,6 +10,11 @@ import prisma from "@/lib/prisma";
 import { decrypt, encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import {
+    authorizedConnectionAccountIds,
+    validateConnectionAccountSelection,
+    type AccountSelectionProvider,
+} from "@/lib/connection-account-selection";
 
 export async function GET(
     _request: Request,
@@ -161,8 +166,10 @@ export async function POST(
         }
 
         const { id } = await params;
-        const body = await request.json();
-        const { selectedIds } = body;
+        const body: unknown = await request.json();
+        const selectedIds = body && typeof body === "object" && !Array.isArray(body)
+            ? (body as { selectedIds?: unknown }).selectedIds
+            : undefined;
 
         if (!Array.isArray(selectedIds)) {
             return NextResponse.json(
@@ -211,13 +218,29 @@ export async function POST(
         // Decrypt and update credentials
         const credentials = JSON.parse(decrypt(connection.credentials));
         credentials.extraFields = credentials.extraFields || {};
+        const selection = validateConnectionAccountSelection({
+            provider: connection.provider as AccountSelectionProvider,
+            selectedIds,
+            authorizedIds: authorizedConnectionAccountIds(
+                connection.provider as AccountSelectionProvider,
+                credentials,
+            ),
+        });
+        if (!selection.ok) {
+            return NextResponse.json(
+                { error: selection.error === "invalid_selection"
+                    ? "selectedIds must contain non-empty account IDs"
+                    : "Selected accounts are not available on this connection" },
+                { status: 400 },
+            );
+        }
         
         if (connection.provider === "meta_ads") {
-            credentials.extraFields.selectedAdAccountIds = selectedIds;
+            credentials.extraFields.selectedAdAccountIds = selection.selectedIds;
         } else if (connection.provider === "google_ads") {
-            credentials.extraFields.selectedCustomerIds = selectedIds;
+            credentials.extraFields.selectedCustomerIds = selection.selectedIds;
         } else if (connection.provider === "tiktok_business") {
-            credentials.extraFields.selectedAdvertiserIds = selectedIds;
+            credentials.extraFields.selectedAdvertiserIds = selection.selectedIds;
         }
 
         // Save updated credentials
@@ -233,8 +256,8 @@ export async function POST(
 
         return NextResponse.json({
             success: true,
-            message: `Selected ${selectedIds.length} accounts`,
-            selectedIds,
+            message: `Selected ${selection.selectedIds.length} accounts`,
+            selectedIds: selection.selectedIds,
         });
     } catch (error) {
         const rbac = toRbacResponse(error);

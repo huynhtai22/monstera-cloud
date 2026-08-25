@@ -3,6 +3,7 @@ import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
 import { logger } from "@/lib/logger";
 import { aggregateCurrencySafe } from "@/lib/currency-safe-aggregation";
+import { resolveSourceHealthState, type SourceHealthState } from "@/lib/source-health";
 
 export interface DashboardSourceItem {
   id: string;
@@ -10,7 +11,7 @@ export interface DashboardSourceItem {
   name: string;
   accountCount: number;
   accountTags: string[];
-  state: "fresh" | "stale" | "error" | "syncing" | "pending" | "disconnected";
+  state: SourceHealthState;
   lastSyncAt: string | null;
   lastError: string | null;
 }
@@ -149,11 +150,7 @@ export function resolveDashboardSourceState(input: {
   isSyncing: boolean;
   staleBefore: Date;
 }): DashboardSourceItem["state"] {
-  if (input.connectionStatus === "error" || input.lastError) return "error";
-  if (input.connectionStatus !== "connected") return "disconnected";
-  if (input.isSyncing) return "syncing";
-  if (!input.lastSyncAt) return "pending";
-  return input.lastSyncAt < input.staleBefore ? "stale" : "fresh";
+  return resolveSourceHealthState(input);
 }
 
 export function isDashboardImportOutcomeCurrent(input: {
@@ -655,6 +652,45 @@ export async function getWorkspaceDashboardOverview(
         explanation: sanitized.explanation,
         actionType: sanitized.actionType,
         actionLabel: sanitized.actionLabel,
+        connectionId: conn.id,
+        provider: conn.provider,
+        timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
+      });
+    } else if (state === "partial") {
+      safeLastError = sanitizeUserFacingError(conn.lastError, providerLabel).explanation;
+      needsAttention.push({
+        id: `conn-partial-${conn.id}`,
+        title: `${providerLabel} sync partially completed`,
+        explanation: safeLastError,
+        actionType: "retry",
+        actionLabel: "Review source",
+        href: `/sources/${conn.id}`,
+        connectionId: conn.id,
+        provider: conn.provider,
+        timestamp: (conn.updatedAt || conn.createdAt).toISOString(),
+      });
+    } else if (state === "stale") {
+      safeLastError = "The last successful sync is older than the one-day freshness threshold.";
+      needsAttention.push({
+        id: `conn-stale-${conn.id}`,
+        title: `${providerLabel} data is stale`,
+        explanation: safeLastError,
+        actionType: "retry",
+        actionLabel: "Review source",
+        href: `/sources/${conn.id}`,
+        connectionId: conn.id,
+        provider: conn.provider,
+        timestamp: conn.lastSyncAt?.toISOString() ?? (conn.updatedAt || conn.createdAt).toISOString(),
+      });
+    } else if (state === "unknown") {
+      safeLastError = "This source has an unrecognized connection state and is not treated as healthy.";
+      needsAttention.push({
+        id: `conn-unknown-${conn.id}`,
+        title: `${providerLabel} state needs review`,
+        explanation: safeLastError,
+        actionType: "review",
+        actionLabel: "Review source",
+        href: `/sources/${conn.id}`,
         connectionId: conn.id,
         provider: conn.provider,
         timestamp: (conn.updatedAt || conn.createdAt).toISOString(),

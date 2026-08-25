@@ -477,13 +477,17 @@ export default function SourcesPage() {
                     catalogId,
                     name: conn.name,
                     description: desc,
-                    status: conn.status === "disconnected"
-                        ? "error"
+                    // `healthState` is computed server-side from durable
+                    // connection truth. Keep the fallback for older API
+                    // responses while the client cache rolls over.
+                    status: conn.healthState ?? (conn.status === "disconnected"
+                        ? "disconnected"
                         : conn.lastError?.startsWith("[partial]")
                           ? "partial"
                           : conn.status === "connected"
                             ? "connected"
-                            : "error",
+                            : "error"),
+                    healthState: conn.healthState,
                     // "auth" wording makes the row show the Reconnect CTA; historical data is retained.
                     errorMsg: conn.status === "disconnected"
                         ? "Disconnected — warehouse history retained. Re-authenticate to resume syncing."
@@ -493,6 +497,7 @@ export default function SourcesPage() {
                         : relatedPipeline?.lastSyncedAt
                           ? new Date(relatedPipeline.lastSyncedAt).toLocaleString()
                           : "Never",
+                    dataThroughDate: conn.dataThroughDate,
                     logoSrc: logo,
                     pipelineId: relatedPipeline?.id,
                     accountTags,

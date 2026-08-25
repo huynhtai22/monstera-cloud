@@ -48,4 +48,16 @@ describe("source health counts — partial is not connected", () => {
       { connected: 2, needsAttention: 0, available: 0, partial: 0 },
     );
   });
+
+  it("does not count pending or stale sources as healthy", () => {
+    assert.deepEqual(
+      countSourceHealthStatuses([
+        { status: "fresh" },
+        { status: "pending" },
+        { status: "stale" },
+        { status: "unknown" },
+      ]),
+      { connected: 1, needsAttention: 2, available: 0, partial: 0 },
+    );
+  });
 });

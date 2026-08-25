@@ -7,6 +7,8 @@ Release stage: Controlled Pilot
 
 Production-capable architecture, suitable for controlled pilot use, with documented operational hardening remaining before broad GA.
 
+**Google Ads status update (2026-08-25):** Basic Access is approved, removing the prior external developer-token approval blocker. Production connector validation is still pending: a real authorized account must complete bounded OAuth, MCC/customer selection, a seven-day sync, reconciliation, and destination retrieval. This is not a claim of controlled-pilot readiness; see [google-ads-basic-access.md](./google-ads-basic-access.md).
+
 ## ETL / Sync
 
 ### 1. Overlapping connection sync protection

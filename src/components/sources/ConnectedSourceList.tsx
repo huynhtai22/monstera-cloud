@@ -8,6 +8,7 @@ import { AlertCircle, CheckCircle2, ChevronDown, Loader2, RefreshCw, Wrench, X }
 import { cn } from "@/lib/utils";
 import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui";
 import { AccountSelector } from "@/components/sources/AccountSelector";
+import type { SourceHealthState } from "@/lib/source-health";
 
 type IntegrationRow = {
   id: string;
@@ -16,8 +17,10 @@ type IntegrationRow = {
   name: string;
   description?: string;
   status: "connected" | "error" | "syncing" | string;
+  healthState?: SourceHealthState;
   errorMsg?: string;
   lastSync?: string;
+  dataThroughDate?: string | null;
   logoSrc?: string;
   pipelineId?: string;
   accountTags?: string[];
@@ -34,14 +37,24 @@ type SourceState = {
 };
 
 function sourceStateFor(row: IntegrationRow, syncBusy: boolean): SourceState {
-  if (syncBusy || row.status === "syncing") {
+  if (syncBusy || row.healthState === "syncing" || row.status === "syncing") {
     return { kind: "syncing", label: "Syncing", detail: "A warehouse sync is currently running." };
   }
-  if (row.status === "error") {
-    return { kind: "attention", label: "Needs attention", detail: "Authorization or connection setup needs attention." };
-  }
-  if (row.status === "partial") {
+  const state = row.healthState ?? row.status;
+  if (state === "partial") {
     return { kind: "partial", label: "Partial sync", detail: "Some requested data was imported; review and retry the affected source." };
+  }
+  if (state === "pending") {
+    return { kind: "not-synced", label: "Connected — not synced", detail: "Authorization is ready, but no successful warehouse sync is recorded yet." };
+  }
+  if (state === "stale") {
+    return { kind: "attention", label: "Data stale", detail: "The last successful sync is older than the one-day freshness threshold." };
+  }
+  if (state === "unknown") {
+    return { kind: "attention", label: "State needs review", detail: "This source has an unrecognized state and is not treated as healthy." };
+  }
+  if (state === "error" || state === "disconnected") {
+    return { kind: "attention", label: "Needs attention", detail: "Authorization or connection setup needs attention." };
   }
   if (!row.lastSync || row.lastSync === "Never") {
     return { kind: "not-synced", label: "Connected — not synced", detail: "Authorization is ready, but no successful warehouse sync is recorded yet." };
@@ -51,9 +64,11 @@ function sourceStateFor(row: IntegrationRow, syncBusy: boolean): SourceState {
 
 function statusRank(row: IntegrationRow): number {
   // Lower is better (connected), higher is worse (needs attention).
-  if (row.status === "error") return 5;
-  if (row.status === "partial") return 4;
-  if (row.status === "syncing") return 3;
+  const state = row.healthState ?? row.status;
+  if (["error", "disconnected", "unknown", "stale"].includes(state)) return 5;
+  if (state === "partial") return 4;
+  if (state === "syncing") return 3;
+  if (state === "pending") return 2;
   if (!row.lastSync || row.lastSync === "Never") return 2;
   if (row.status === "connected") return 1;
   return 3;
@@ -227,8 +242,8 @@ export function ConnectedSourceList(props: {
               const syncBusy =
                 (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
               const disconnectBusy = busyActions.has(r.id);
-              const isError = r.status === "error";
               const sourceState = sourceStateFor(r, syncBusy);
+              const needsReconnect = ["error", "disconnected"].includes(r.healthState ?? r.status);
               const syncActionLabel = sourceState.kind === "partial"
                 ? "Retry sync"
                 : sourceState.kind === "not-synced"
@@ -324,13 +339,18 @@ export function ConnectedSourceList(props: {
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-600 dark:text-slate-300">
                       <p>{r.lastSync ?? "Never"}</p>
+                      {r.dataThroughDate ? (
+                        <p className="mt-1 text-[11px] text-ink-mute">
+                          Data through {new Date(r.dataThroughDate).toLocaleDateString()}
+                        </p>
+                      ) : null}
                       {sourceState.kind === "not-synced" && (
                         <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">No successful sync recorded</p>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
-                        {isError ? (
+                        {needsReconnect ? (
                           <button
                             type="button"
                             onClick={() => onFixConnection(r)}
