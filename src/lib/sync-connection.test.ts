@@ -92,7 +92,7 @@ describe("provider HTTP failures preserve sync correctness", () => {
       const rootId = url.match(/customers\/([^/]+)\//)?.[1];
       if (body.query?.includes("customer_client")) {
         const customerId = rootId === "111" ? "101" : "202";
-        return new Response(JSON.stringify([{ results: [{ customerClient: { id: customerId, manager: false, descriptiveName: customerId } }] }]), { status: 200 });
+        return new Response(JSON.stringify([{ results: [{ customerClient: { id: customerId, manager: false, status: "ENABLED", descriptiveName: customerId } }] }]), { status: 200 });
       }
       if (rootId === "101") return new Response("[]", { status: 200 });
       return new Response(JSON.stringify({ error: { code: 429, message: "RESOURCE_EXHAUSTED quota" } }), { status: 429 });
