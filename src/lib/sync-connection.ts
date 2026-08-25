@@ -41,6 +41,7 @@ import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
 import {
   tiktokReportClient,
   TIKTOK_CAMPAIGN_REPORT_DIMENSIONS,
+  TIKTOK_CAMPAIGN_REPORT_METRICS,
   type CreateReportTaskParams,
 } from "@/lib/tiktok-business";
 import { ingestTiktokRows } from "@/lib/ad-platform-ingest";
@@ -795,7 +796,7 @@ async function syncTikTok(opts: {
         report_type: "BASIC",
         data_level: "AUCTION_CAMPAIGN",
         dimensions: [...TIKTOK_CAMPAIGN_REPORT_DIMENSIONS],
-        metrics: ["impression", "click", "spend", "cpc", "ctr", "conversion", "revenue", "roas"],
+        metrics: [...TIKTOK_CAMPAIGN_REPORT_METRICS],
         start_date: startDate,
         end_date: endDate,
         page_size: 1000,
