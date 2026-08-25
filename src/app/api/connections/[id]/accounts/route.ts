@@ -66,6 +66,7 @@ export async function GET(
         
         // Extract accounts from stored credentials
         let accounts: Array<{ id: string; name: string; type: string; selected?: boolean }> = [];
+        let unavailableCount = 0;
         
         if (connection.provider === "meta_ads") {
             // Meta stores adAccounts array in extraFields
@@ -100,6 +101,9 @@ export async function GET(
                 : Array.isArray(credentials.selectedCustomerIds)
                     ? credentials.selectedCustomerIds
                     : undefined;
+            unavailableCount = Number.isInteger(extraFields.unavailableCustomerCount)
+                ? Number(extraFields.unavailableCustomerCount)
+                : 0;
             
             accounts = customerIds.map((id: string) => ({
                 id,
@@ -129,6 +133,7 @@ export async function GET(
             provider: connection.provider,
             total: accounts.length,
             selected: accounts.filter(a => a.selected).length,
+            unavailableCount,
         });
     } catch (error) {
         const rbac = toRbacResponse(error);

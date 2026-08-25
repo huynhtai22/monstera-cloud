@@ -36,6 +36,16 @@ export function isGoogleAdsRetryableFailure(status: number, message: string): bo
   return status === 429 || status >= 500 || /resource[_ ]exhausted|rate[_ ]exceeded|quota|temporar|timeout/i.test(message);
 }
 
+/**
+ * Google returns this when a customer has not completed signup or was
+ * deactivated. It is an account-state result, not an OAuth or developer-token
+ * problem, so it must never fall through to the standalone-account fallback.
+ */
+export function isGoogleAdsCustomerUnavailable(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /CUSTOMER_NOT_ENABLED|customer account can't be accessed because it is not yet enabled or has been deactivated/i.test(message);
+}
+
 /** Strip the developer-token value from any provider-echoed text (defense in depth). */
 function scrubDevToken(text: string): string {
   const t = developerToken();
@@ -338,9 +348,13 @@ export class GoogleAdsReportClient {
       }
       );
     } catch (error) {
+      // A disabled customer also rejects customer_client with a 4xx. Do not
+      // fabricate a standalone leaf for it: reporting would fail later with
+      // CUSTOMER_NOT_ENABLED and leave the customer with a confusing error.
+      if (isGoogleAdsCustomerUnavailable(error)) return [];
+
       // Non-manager (standalone) accounts reject customer_client; preserve the
-      // intentional leaf fallback. Managers answer successfully, so a 4xx here
-      // reliably means "standalone account".
+      // intentional leaf fallback for those account shapes.
       if (error instanceof GoogleAdsProviderError && error.status && error.status < 500 && !error.retryable) {
         return [{ customerId: cleanId, mccId: cleanId, isManager: false, descriptiveName: `Customer ${cleanId}` }];
       }
@@ -365,7 +379,8 @@ export class GoogleAdsReportClient {
         const clientId = String(cc.id ?? cc.client_customer?.replace('customers/', '') ?? '').replace(/-/g, '');
         const isManager = cc.manager === true || cc.manager === 'true';
         const name = cc.descriptiveName ?? cc.descriptive_name ?? `Customer ${clientId}`;
-        if (clientId && !isManager) {
+        const status = String(cc.status ?? "").toUpperCase();
+        if (clientId && !isManager && status === "ENABLED") {
           // Leaf account — use root (MCC) as login-customer-id
           clients.push({ customerId: clientId, mccId: cleanId, isManager: false, descriptiveName: name });
         }
@@ -378,6 +393,27 @@ export class GoogleAdsReportClient {
     // empty set so callers skip it. Requesting metrics directly on a manager
     // fails with REQUESTED_METRICS_FOR_MANAGER.
     return clients;
+  }
+
+  /**
+   * Validate the roots returned by listAccessibleCustomers before a connection
+   * is persisted. An MCC root stays selectable only when it has at least one
+   * enabled leaf; a disabled standalone root resolves to no leaves.
+   */
+  async resolveEligibleCustomerRoots(
+    accessToken: string,
+    customerIds: string[],
+  ): Promise<{ eligibleCustomerIds: string[]; excludedCustomerIds: string[] }> {
+    const eligibleCustomerIds: string[] = [];
+    const excludedCustomerIds: string[] = [];
+
+    for (const customerId of customerIds) {
+      const clients = await this.listCustomerClients(accessToken, customerId);
+      if (clients.length > 0) eligibleCustomerIds.push(customerId.replace(/-/g, ""));
+      else excludedCustomerIds.push(customerId.replace(/-/g, ""));
+    }
+
+    return { eligibleCustomerIds, excludedCustomerIds };
   }
 
   /**
