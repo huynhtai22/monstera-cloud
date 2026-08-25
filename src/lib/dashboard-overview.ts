@@ -616,8 +616,11 @@ export async function getWorkspaceDashboardOverview(
         const bmId = creds.businessManagerId || creds.bmId;
         if (bmId) {
           managerBadge = `BM: ${bmId}`;
-        } else if (accountTags.length > 0) {
-          managerBadge = `act_${accountTags[0]}`;
+        } else if (list.length > 0) {
+          const first = list[0];
+          const firstId = typeof first === "object" ? first.id : String(first);
+          const cleanId = String(firstId).replace(/^act_/, "");
+          managerBadge = `act_${cleanId}`;
         }
       } else if (conn.provider === "google_ads") {
         const customers = (creds.customerIds ??
@@ -673,7 +676,7 @@ export async function getWorkspaceDashboardOverview(
     totalConnectedAccounts += accountCount;
 
     const rawName = (conn.name || "").trim();
-    const isDefaultName = !rawName || /^(Google Ads|Meta(\s*Ads)?|TikTok Ads|Shopee|Shopify)\s*(\(.*?\))?$/i.test(rawName);
+    const isDefaultName = !rawName || /^(Google Ads|Meta(\s*Ads)?|TikTok Ads|Shopee|Shopify)(\s*\(\d+\s*(accounts?|advertisers?|shops?|stores?)\))?$/i.test(rawName);
     const providerLabel = isDefaultName ? (PROVIDER_NAMES[conn.provider] || conn.provider) : rawName;
     const shortId = conn.id ? conn.id.slice(-4) : undefined;
 
@@ -853,33 +856,62 @@ export async function getWorkspaceDashboardOverview(
     conversions: g._sum.conversions ?? 0,
   }));
   const kpi7d = aggregateCurrencySafe(metrics7dRows);
+  const byCurrency = kpi7d.byCurrency;
   const sumImpressions = kpi7d.impressions;
   const sumClicks = kpi7d.clicks;
   const sumConversions = kpi7d.conversions;
 
-  const platformSpendMap: Record<string, { spend: number; revenue: number; currency?: string }> = {};
-  let totalSpendAll = 0;
-  for (const g of warehouse7dByCurrency) {
-    const p = g.platform || "other";
-    const s = g._sum.spend ?? 0;
-    const r = g._sum.revenue ?? 0;
-    if (!platformSpendMap[p]) {
-      platformSpendMap[p] = { spend: 0, revenue: 0, currency: g.currency ?? undefined };
-    }
-    platformSpendMap[p].spend += s;
-    platformSpendMap[p].revenue += r;
-    totalSpendAll += s;
-  }
+  let byPlatform: Array<{
+    platform: string;
+    spend: number;
+    revenue: number;
+    percentage: number;
+    currency?: string;
+  }> = [];
 
-  const byPlatform = Object.entries(platformSpendMap)
-    .map(([platform, data]) => ({
-      platform,
-      spend: data.spend,
-      revenue: data.revenue,
-      currency: data.currency,
-      percentage: totalSpendAll > 0 ? Math.round((data.spend / totalSpendAll) * 100) : 0,
-    }))
-    .sort((a, b) => b.spend - a.spend);
+  if (byCurrency.length <= 1) {
+    const singleCurrency = byCurrency[0]?.currency;
+    const totalSpend = byCurrency[0]?.spend ?? 0;
+    const platformMap: Record<string, { spend: number; revenue: number }> = {};
+    for (const g of warehouse7dByCurrency) {
+      const p = g.platform || "other";
+      if (!platformMap[p]) platformMap[p] = { spend: 0, revenue: 0 };
+      platformMap[p].spend += g._sum.spend ?? 0;
+      platformMap[p].revenue += g._sum.revenue ?? 0;
+    }
+    byPlatform = Object.entries(platformMap)
+      .map(([platform, data]) => ({
+        platform,
+        spend: data.spend,
+        revenue: data.revenue,
+        currency: singleCurrency,
+        percentage: totalSpend > 0 ? Math.round((data.spend / totalSpend) * 100) : 0,
+      }))
+      .sort((a, b) => b.spend - a.spend);
+  } else {
+    // Mixed currency: keep (platform, currency) groups separate without summing across currencies
+    const currencySpendTotals: Record<string, number> = {};
+    for (const c of byCurrency) {
+      currencySpendTotals[c.currency] = c.spend;
+    }
+    byPlatform = warehouse7dByCurrency
+      .filter((g) => (g._sum.spend ?? 0) > 0 || (g._sum.revenue ?? 0) > 0)
+      .map((g) => {
+        const platform = g.platform || "other";
+        const spend = g._sum.spend ?? 0;
+        const revenue = g._sum.revenue ?? 0;
+        const currency = g.currency ?? undefined;
+        const totalForCurrency = currency ? (currencySpendTotals[currency] ?? 0) : 0;
+        return {
+          platform,
+          spend,
+          revenue,
+          currency,
+          percentage: totalForCurrency > 0 ? Math.round((spend / totalForCurrency) * 100) : 0,
+        };
+      })
+      .sort((a, b) => b.spend - a.spend);
+  }
 
   // Recent Activity Feed
   const recentActivity: DashboardActivityItem[] = [];

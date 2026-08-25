@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Database, Search, Plus, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, X, Clock } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
@@ -67,6 +68,7 @@ const SOURCE_BLURB_BY_PROVIDER: Record<string, string> = {
  * ───────────────────────────────────────────────────────────────────────────── */
 
 export default function SourcesPage() {
+    const router = useRouter();
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
     const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
     const [disconnectTarget, setDisconnectTarget] = useState<{ id: string; name: string } | null>(null);
@@ -104,6 +106,24 @@ export default function SourcesPage() {
 
     async function disconnectSource(connectionId: string, displayName: string) {
         setDisconnectTarget({ id: connectionId, name: displayName });
+    }
+
+    async function handleRenameConnection(connectionId: string, newName: string) {
+        const res = await fetch(`/api/connections/${connectionId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: newName }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || "Failed to rename connection");
+        }
+        toast.success(`Connection renamed to "${newName}"`);
+        await Promise.all([
+            mutate((key) => typeof key === "string" && key.includes("/api/workspaces")),
+            mutate((key) => typeof key === "string" && key.includes("/api/connections")),
+        ]);
+        router.refresh();
     }
 
     async function confirmDisconnect() {
@@ -468,7 +488,7 @@ export default function SourcesPage() {
                 }
 
                 // Extract ad accounts, manager badges, and account tags
-                let accountTags: string[] = [];
+                let accountTags: Array<{ id: string; label: string } | string> = [];
                 let rawName = (conn.name || "").trim();
                 let displayName = rawName;
                 let managerBadge: string | null = null;
@@ -478,9 +498,10 @@ export default function SourcesPage() {
                     const list: Array<{ id: string; name?: string }> =
                         creds.adAccounts ??
                         (creds.adAccountIds ?? []).map((id: string) => ({ id }));
-                    accountTags = list.map((a: any) =>
-                        a.name && a.name !== a.id ? a.name : String(a.id).replace(/^act_/, '')
-                    );
+                    accountTags = list.map((a: any) => ({
+                        id: String(a.id),
+                        label: a.name && a.name !== a.id ? a.name : String(a.id).replace(/^act_/, ''),
+                    }));
                     const bmId = creds.businessManagerId || creds.bmId || null;
                     const totalCount = accountTags.length;
                     if (bmId && bmId !== "") {
@@ -499,16 +520,16 @@ export default function SourcesPage() {
                     }
 
                     // Clean auto-generated name strings like "Meta (2 accounts)" or "Meta Ads (1 account)"
-                    const isDefaultName = !rawName || /^Meta(\s*Ads)?\s*(\(.*?\))?$/i.test(rawName);
+                    const isDefaultName = !rawName || /^Meta(\s*Ads)?(\s*\(\d+\s*accounts?\))?$/i.test(rawName);
                     displayName = isDefaultName ? "Meta Ads" : rawName;
                 } else if (conn.provider === 'google_ads') {
                     const list: string[] = creds.customerIds ?? [];
                     accountTags = list.map((id: string) => {
                         const clean = String(id).replace(/\D/g, '');
-                        if (clean.length === 10) {
-                            return `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}`;
-                        }
-                        return String(id);
+                        const formatted = clean.length === 10
+                            ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}`
+                            : String(id);
+                        return { id: String(id), label: formatted };
                     });
                     const mccId = creds.mccId || creds.managerCustomerId || null;
                     const totalCount = accountTags.length;
@@ -538,11 +559,11 @@ export default function SourcesPage() {
                     }
 
                     // Clean auto-generated name strings like "Google Ads (8 accounts)" or "Google Ads (1 account)"
-                    const isDefaultName = !rawName || /^Google Ads\s*(\(.*?\))?$/i.test(rawName);
+                    const isDefaultName = !rawName || /^Google Ads(\s*\(\d+\s*accounts?\))?$/i.test(rawName);
                     displayName = isDefaultName ? "Google Ads" : rawName;
                 } else if (conn.provider === 'tiktok_business') {
                     const list: string[] = creds.advertiserIds ?? [];
-                    accountTags = list.map((id: string) => String(id));
+                    accountTags = list.map((id: string) => ({ id: String(id), label: String(id) }));
                     const bcId = creds.businessCenterId || creds.bcId || null;
                     const totalCount = accountTags.length;
                     if (bcId && bcId !== "") {
@@ -560,24 +581,24 @@ export default function SourcesPage() {
                     }
 
                     // Clean auto-generated name strings like "TikTok Ads (1 advertiser)" or "TikTok Ads (account)"
-                    const isDefaultName = !rawName || /^TikTok Ads\s*(\(.*?\))?$/i.test(rawName);
+                    const isDefaultName = !rawName || /^TikTok Ads(\s*\(\d+\s*advertisers?\))?$/i.test(rawName);
                     displayName = isDefaultName ? "TikTok Ads" : rawName;
                 } else if (conn.provider === 'shopee') {
                     const shop = creds.shopId || null;
                     if (shop) {
-                        accountTags = [`Shop ID: ${shop}`];
+                        accountTags = [{ id: String(shop), label: `Shop ID: ${shop}` }];
                         managerBadge = `Shop: ${shop}`;
                     }
-                    const isDefaultName = !rawName || /^Shopee\s*(\(.*?\))?$/i.test(rawName);
+                    const isDefaultName = !rawName || /^Shopee(\s*\(\d+\s*shops?\))?$/i.test(rawName);
                     displayName = isDefaultName ? "Shopee" : rawName;
                     scopeDesc = shop ? `Shop ID: ${shop} · Orders & GMV sync` : "Shopee Marketplace store";
                 } else if (conn.provider === 'shopify') {
                     const domain = creds.shopDomain || null;
                     if (domain) {
-                        accountTags = [domain];
+                        accountTags = [{ id: String(domain), label: String(domain) }];
                         managerBadge = `Store: ${domain}`;
                     }
-                    const isDefaultName = !rawName || /^Shopify\s*(\(.*?\))?$/i.test(rawName);
+                    const isDefaultName = !rawName || /^Shopify(\s*\(\d+\s*stores?\))?$/i.test(rawName);
                     displayName = isDefaultName ? "Shopify" : rawName;
                     scopeDesc = domain ? `Store: ${domain} · E-commerce sync` : "Shopify Store sync";
                 } else {
@@ -1005,6 +1026,7 @@ export default function SourcesPage() {
                                 onDirectSync={handleDirectSync}
                                 onDisconnect={disconnectSource}
                                 onFixConnection={handleFixConnection}
+                                onRenameConnection={handleRenameConnection}
                             />
                         </section>
                     )}

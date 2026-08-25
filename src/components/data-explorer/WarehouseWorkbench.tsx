@@ -288,33 +288,40 @@ function formatMoney(amount: number, currency: string | null | undefined): strin
   }
 }
 
+function formatLocalDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function getPresetRange(preset: "7d" | "14d" | "30d" | "mtd" | "last_month"): { start: string; end: string } {
   const today = new Date();
-  const end = today.toISOString().split("T")[0]!;
+  const end = formatLocalDate(today);
 
   if (preset === "7d") {
     const s = new Date(today);
-    s.setDate(s.getDate() - 7);
-    return { start: s.toISOString().split("T")[0]!, end };
+    s.setDate(s.getDate() - 6);
+    return { start: formatLocalDate(s), end };
   }
   if (preset === "14d") {
     const s = new Date(today);
-    s.setDate(s.getDate() - 14);
-    return { start: s.toISOString().split("T")[0]!, end };
+    s.setDate(s.getDate() - 13);
+    return { start: formatLocalDate(s), end };
   }
   if (preset === "30d") {
     const s = new Date(today);
-    s.setDate(s.getDate() - 30);
-    return { start: s.toISOString().split("T")[0]!, end };
+    s.setDate(s.getDate() - 29);
+    return { start: formatLocalDate(s), end };
   }
   if (preset === "mtd") {
     const s = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { start: s.toISOString().split("T")[0]!, end };
+    return { start: formatLocalDate(s), end };
   }
   if (preset === "last_month") {
     const s = new Date(today.getFullYear(), today.getMonth() - 1, 1);
     const e = new Date(today.getFullYear(), today.getMonth(), 0);
-    return { start: s.toISOString().split("T")[0]!, end: e.toISOString().split("T")[0]! };
+    return { start: formatLocalDate(s), end: formatLocalDate(e) };
   }
   return { start: "", end: "" };
 }

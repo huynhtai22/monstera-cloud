@@ -3,6 +3,7 @@
 import React, { useCallback, useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSWRConfig } from "swr";
 import { toast } from "sonner";
 import { AlertCircle, CheckCircle2, ChevronDown, Clock, Loader2, Pencil, RefreshCw, Search, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,6 +11,8 @@ import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
 import { AccountSelector } from "@/components/sources/AccountSelector";
 import type { SourceHealthState } from "@/lib/source-health";
+
+export type AccountTagEntry = { id: string; label: string } | string;
 
 type IntegrationRow = {
   id: string;
@@ -26,7 +29,7 @@ type IntegrationRow = {
   dataThroughDate?: string | null;
   logoSrc?: string;
   pipelineId?: string;
-  accountTags?: string[];
+  accountTags?: AccountTagEntry[];
 };
 
 type SortKey = "name" | "status" | "lastSync";
@@ -112,6 +115,7 @@ export function ConnectedSourceList({
   onRenameConnection,
 }: ConnectedSourceListProps) {
   const router = useRouter();
+  const { mutate } = useSWRConfig();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -161,6 +165,10 @@ export function ConnectedSourceList({
           throw new Error(err.error || "Failed to rename connection");
         }
         toast.success(`Connection renamed to "${renameValue.trim()}"`);
+        await Promise.all([
+          mutate((key: unknown) => typeof key === "string" && key.includes("/api/workspaces")),
+          mutate((key: unknown) => typeof key === "string" && key.includes("/api/connections")),
+        ]);
         router.refresh();
       }
       setRenamingRow(null);
@@ -189,7 +197,7 @@ export function ConnectedSourceList({
   };
 
   const filteredAndSortedRows = useMemo(() => {
-    let list = rows.filter((r) => {
+    const list = rows.filter((r) => {
       if (selectedPlatform !== "all" && r.provider !== selectedPlatform) {
         return false;
       }
@@ -199,7 +207,9 @@ export function ConnectedSourceList({
         const badgeMatch = (r.managerBadge || "").toLowerCase().includes(q);
         const descMatch = (r.description || "").toLowerCase().includes(q);
         const idMatch = (r.id || "").toLowerCase().includes(q) || (r.shortId || "").toLowerCase().includes(q);
-        const tagMatch = (r.accountTags || []).some((t) => t.toLowerCase().includes(q));
+        const tagMatch = (r.accountTags || []).some((t) =>
+          (typeof t === "object" ? `${t.id} ${t.label}` : t).toLowerCase().includes(q)
+        );
         return nameMatch || badgeMatch || descMatch || idMatch || tagMatch;
       }
       return true;
@@ -479,14 +489,19 @@ export function ConnectedSourceList({
                       </td>
                     <td className="px-5 py-4">
                       <div className="flex flex-wrap items-center gap-1.5 max-w-[240px]">
-                        {(r.accountTags ?? []).slice(0, 3).map((t) => (
-                          <CopyableBadge
-                            key={t}
-                            text={t}
-                            title={`Click to copy account ID "${t}"`}
-                            className="text-[11px] text-ink-mute font-mono"
-                          />
-                        ))}
+                        {(r.accountTags ?? []).slice(0, 3).map((item, idx) => {
+                          const label = typeof item === "object" ? item.label : item;
+                          const copyVal = typeof item === "object" ? item.id : item;
+                          return (
+                            <CopyableBadge
+                              key={`${copyVal}-${idx}`}
+                              text={label}
+                              copyValue={copyVal}
+                              title={`Click to copy account ID "${copyVal}"`}
+                              className="text-[11px] text-ink-mute font-mono"
+                            />
+                          );
+                        })}
                         {(r.accountTags?.length ?? 0) > 3 && (
                           <div className="relative shrink-0" data-no-row-click>
                             <button
@@ -501,17 +516,22 @@ export function ConnectedSourceList({
                                 <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-ink-mute border-b border-line/50">
                                   Scoped Accounts ({(r.accountTags?.length ?? 0)})
                                 </div>
-                                {(r.accountTags ?? []).slice(3).map((t) => (
-                                  <div key={t} className="px-2.5 py-1.5 rounded-lg text-xs font-mono text-ink font-medium bg-canvas border border-line/60 truncate" title={t}>
-                                    {t}
-                                  </div>
-                                ))}
+                                {(r.accountTags ?? []).slice(3).map((item, idx) => {
+                                  const label = typeof item === "object" ? item.label : item;
+                                  const copyVal = typeof item === "object" ? item.id : item;
+                                  return (
+                                    <div key={`${copyVal}-${idx}`} className="px-2.5 py-1.5 rounded-lg text-xs font-mono text-ink font-medium bg-canvas border border-line/60 truncate flex items-center justify-between" title={label}>
+                                      <span className="truncate mr-2">{label}</span>
+                                      <CopyableBadge text={copyVal} copyValue={copyVal} className="text-[10px]" />
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
                         )}
                         {(!r.accountTags || r.accountTags.length === 0) && (
-                          <span className="text-xs text-ink-mute/70 italic">
+                          <span className="text-xs text-ink-mute/70 italic font-mono">
                             All manager accounts
                           </span>
                         )}
