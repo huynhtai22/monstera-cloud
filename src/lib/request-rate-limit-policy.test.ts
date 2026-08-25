@@ -142,6 +142,24 @@ describe("limiter identity tiers", () => {
     assert.equal(identity.key, "203.0.113.7");
   });
 
+  it("keys internal-api per verified session user when provided", async () => {
+    const req = apiRequest("/api/sources", { "x-forwarded-for": "198.51.100.9" });
+    const aliceA = await resolveLimiterIdentity(req, "internal-api", "user-alice");
+    const aliceB = await resolveLimiterIdentity(req, "internal-api", "user-alice");
+    const bob = await resolveLimiterIdentity(req, "internal-api", "user-bob");
+    assert.equal(aliceA.kind, "user");
+    assert.equal(aliceA.key, aliceB.key, "same user -> same limiter identity across requests");
+    assert.notEqual(aliceA.key, bob.key, "different users -> independent budgets");
+    assert.notEqual(aliceA.key, "198.51.100.9", "no longer shares the office IP bucket");
+  });
+
+  it("falls back to the IP tier for internal-api when no session user is resolved", async () => {
+    const req = apiRequest("/api/sources", { "x-forwarded-for": "203.0.113.7" });
+    const identity = await resolveLimiterIdentity(req, "internal-api");
+    assert.equal(identity.kind, "ip");
+    assert.equal(identity.key, "203.0.113.7");
+  });
+
   it("keeps internal and webhook classes on the coarse IP tier even with bearers", async () => {
     const req = apiRequest("/api/workspaces", {
       authorization: "Bearer whatever",

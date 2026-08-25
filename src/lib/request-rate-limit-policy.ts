@@ -146,7 +146,7 @@ async function shortFingerprint(value: string): Promise<string> {
 
 export type LimiterIdentity = {
   key: string;
-  kind: "token-fingerprint" | "ip";
+  kind: "token-fingerprint" | "ip" | "user";
 };
 
 /**
@@ -159,6 +159,7 @@ export type LimiterIdentity = {
 export async function resolveLimiterIdentity(
   request: Request,
   routeClass: RateLimitRouteClass,
+  sessionUserId?: string,
 ): Promise<LimiterIdentity> {
   const bearer =
     request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim() ||
@@ -171,6 +172,11 @@ export async function resolveLimiterIdentity(
 
   if (usesTokenIdentity && bearer.length > 0) {
     return { key: await shortFingerprint(bearer), kind: "token-fingerprint" };
+  }
+  // First-party app APIs: prefer the verified session user so shared office /
+  // VPN addresses cannot exhaust a single workspace's budget.
+  if (routeClass === "internal-api" && sessionUserId) {
+    return { key: await shortFingerprint(`user:${sessionUserId}`), kind: "user" };
   }
   return { key: requestIp(request), kind: "ip" };
 }
@@ -440,6 +446,13 @@ export type EnforceOptions = {
   isProduction?: boolean;
   /** Limiter call timeout in ms. */
   timeoutMs?: number;
+  /**
+   * Authenticated user id for first-party API classes (resolved by the caller
+   * from the NextAuth session). When present, internal-api keys per USER
+   * instead of per IP so office/VPN shared addresses cannot exhaust a
+   * workspace's budget. Absent (unauthenticated) falls back to IP.
+   */
+  sessionUserId?: string;
 };
 
 const DEFAULT_TIMEOUT_MS = 3000;
@@ -615,7 +628,7 @@ export async function enforceRequestLimit(
     if (outerResult.outcome !== "allowed") return outerResult;
   }
 
-  const identity = await resolveLimiterIdentity(request, routeClass);
+  const identity = await resolveLimiterIdentity(request, routeClass, options.sessionUserId);
   const primaryResult = await enforceTier(
     routeClass,
     policy,
