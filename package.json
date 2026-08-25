@@ -24,6 +24,7 @@
     "create-smoke-user:pro": "SMOKE_PLAN=professional tsx scripts/create-smoke-test-account.ts",
     "reset-smoke-plan": "tsx scripts/reset-smoke-test-plan.ts",
     "seed-demo-metrics": "tsx scripts/seed-demo-metrics.ts",
+    "restore-personal-google-demo": "tsx scripts/restore-personal-google-demo.ts",
     "seed-two-tenant-rehearsal": "tsx scripts/seed-two-tenant-rehearsal.ts",
     "encrypt-connection-credentials": "tsx prisma/scripts/encrypt-connection-credentials.ts",
     "job-worker": "tsx scripts/looker-job-worker.ts",

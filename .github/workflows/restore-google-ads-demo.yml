@@ -1,0 +1,42 @@
+name: Restore Google Ads demo data
+
+on:
+  workflow_dispatch:
+    inputs:
+      workspace_name:
+        description: Exact target workspace name. The command refuses ambiguous names.
+        required: true
+        default: Personal Workspace
+        type: string
+      confirmation:
+        description: Type RESTORE_GOOGLE_DEMO to replace only the dedicated demo Google rows.
+        required: true
+        type: string
+
+jobs:
+  restore:
+    if: ${{ inputs.confirmation == 'RESTORE_GOOGLE_DEMO' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+      - name: Pull production environment
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Restore dedicated Google demo rows
+        run: |
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          npm run restore-personal-google-demo -- \
+            --workspace-name "${{ inputs.workspace_name }}" \
+            --confirm "${{ inputs.confirmation }}"
