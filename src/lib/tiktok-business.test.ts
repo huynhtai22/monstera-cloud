@@ -1,6 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { TikTokBusinessClient, TikTokProviderError, TikTokReportClient } from "./tiktok-business";
+import {
+  TikTokBusinessClient,
+  TikTokProviderError,
+  TikTokReportClient,
+  TIKTOK_CAMPAIGN_REPORT_DIMENSIONS,
+} from "./tiktok-business";
 
 async function withFastRetries<T>(run: () => Promise<T>): Promise<T> {
   const originalTimeout = globalThis.setTimeout;
@@ -32,6 +37,16 @@ async function withMockedFetch<T>(responses: Response[], run: (calls: () => numb
 }
 
 describe("TikTok for Business OAuth & Report Parsing", () => {
+  it("uses a valid campaign-level dimension set for warehouse reports", () => {
+    assert.deepEqual(TIKTOK_CAMPAIGN_REPORT_DIMENSIONS, [
+      "campaign_id",
+      "campaign_name",
+      "stat_time_day",
+    ]);
+    assert.ok(TIKTOK_CAMPAIGN_REPORT_DIMENSIONS.length >= 1);
+    assert.ok(TIKTOK_CAMPAIGN_REPORT_DIMENSIONS.length <= 4);
+  });
+
   it("generates correct authorize URL with state and redirectUri", () => {
     process.env.TIKTOK_BUSINESS_APP_ID = "tiktok_test_app_123";
     const client = new TikTokBusinessClient();
