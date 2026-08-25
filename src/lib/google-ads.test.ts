@@ -160,6 +160,25 @@ describe("google ads connector", () => {
     }
   });
 
+  it("only references GAQL fields that exist (regression: metrics.conversions_value)", async () => {
+    // 2026-08-24 live validation: metrics.conversion_value (singular) is not a
+    // GAQL field — every reachable account failed with UNRECOGNIZED_FIELD.
+    const restore = stubFetch([{ results: [] }, { results: [] }]);
+    try {
+      await googleAdsReportClient.getCampaignPerformance("t", "1112223333", "LAST_7_DAYS");
+      await googleAdsReportClient.getShoppingPerformance("t", "1112223333", "LAST_7_DAYS");
+      const qCampaign = JSON.parse(captured[0].init.body as string).query as string;
+      const qShopping = JSON.parse(captured[1].init.body as string).query as string;
+      for (const q of [qCampaign, qShopping]) {
+        assert.ok(q.includes("metrics.conversions_value"), "must use metrics.conversions_value");
+        assert.ok(!/metrics\.conversion_value\b/.test(q), "metrics.conversion_value is not a GAQL field");
+      }
+      assert.match(qCampaign, /metrics\.all_conversions/);
+    } finally {
+      restore();
+    }
+  });
+
   // ── Errors: classification, retry, redaction ───────────────────────────────
 
   it("classifies DEVELOPER_TOKEN_NOT_APPROVED structurally and by legacy text", () => {

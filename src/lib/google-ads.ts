@@ -404,7 +404,7 @@ export class GoogleAdsReportClient {
         metrics.cost_micros,
         metrics.conversions,
         metrics.all_conversions,
-        metrics.conversion_value,
+        metrics.conversions_value,
         metrics.ctr,
         metrics.average_cpc,
         metrics.search_impression_share,
@@ -467,7 +467,7 @@ export class GoogleAdsReportClient {
         metrics.impressions,
         metrics.conversions,
         metrics.all_conversions,
-        metrics.conversion_value,
+        metrics.conversions_value,
         segments.date
       FROM shopping_performance_view
       WHERE segments.date DURING ${datePeriod}
