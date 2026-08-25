@@ -38,11 +38,18 @@ export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
         // TikTok returns `auth_code` not `code`
         const tokenData = await tiktokBusinessClient.exchangeCode(code);
 
-        const credentials: OAuthCredentials = {
-            accessToken: tokenData.access_token,
-            refreshToken: tokenData.refresh_token,
-            expiresAt: new Date(Date.now() + tokenData.expires_in * 1000),
-        };
+        const isLongLivedAdvertiserToken = !tokenData.refresh_token && !tokenData.expires_in;
+        const credentials: OAuthCredentials = isLongLivedAdvertiserToken
+            ? {
+                  accessToken: tokenData.access_token,
+                  tokenMode: "long_lived_advertiser",
+              }
+            : {
+                  accessToken: tokenData.access_token,
+                  refreshToken: tokenData.refresh_token,
+                  expiresAt: new Date(Date.now() + Number(tokenData.expires_in) * 1000),
+                  tokenMode: "refreshable",
+              };
 
         const metadata: ConnectionMetadata = {
             name: `TikTok Ads (${tokenData.advertiser_ids.length} advertiser${
@@ -80,7 +87,14 @@ export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
     async refreshCredentials(
         credentials: unknown
     ): Promise<OAuthCredentials> {
-        const creds = credentials as { refreshToken?: string };
+        const creds = credentials as { refreshToken?: string; tokenMode?: string };
+        if (creds.tokenMode === "long_lived_advertiser") {
+            throw new OAuthError(
+                "provider_error",
+                "TikTok advertiser authorization uses a long-lived token and must not be refreshed",
+                this.id
+            );
+        }
         if (!creds.refreshToken) {
             throw new OAuthError(
                 "provider_error",
@@ -93,10 +107,20 @@ export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
             creds.refreshToken
         );
 
+        const expiresIn = Number(refreshed.expires_in);
+        if (!refreshed.refresh_token || !Number.isFinite(expiresIn) || expiresIn <= 0) {
+            throw new OAuthError(
+                "provider_error",
+                "TikTok returned an invalid refresh-token response",
+                this.id
+            );
+        }
+
         return {
             accessToken: refreshed.access_token,
             refreshToken: refreshed.refresh_token,
-            expiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
+            expiresAt: new Date(Date.now() + expiresIn * 1000),
+            tokenMode: "refreshable",
         };
     }
 }

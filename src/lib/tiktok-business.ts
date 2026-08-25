@@ -11,6 +11,8 @@
  * @see https://business-api.tiktok.com/portal/docs?id=1738373164380162
  */
 
+import { logger } from "@/lib/logger";
+
 /** app_id from business-api.tiktok.com/portal */
 function appId(): string {
   return (process.env.TIKTOK_BUSINESS_APP_ID || process.env.TIKTOK_BUSINESS_CLIENT_KEY || '').trim();
@@ -23,11 +25,16 @@ function appSecret(): string {
 
 export interface TikTokBusinessTokenResponse {
   access_token: string;
-  refresh_token: string;
+  /**
+   * Advertiser-authorized Marketing API tokens are long-lived and omit both
+   * refresh_token and expires_in. TikTok account-holder OAuth is a different
+   * flow and returns the short-lived, refreshable form.
+   */
+  refresh_token?: string;
   /** Access token TTL in seconds */
-  expires_in: number;
+  expires_in?: number;
   /** Refresh token TTL in seconds */
-  refresh_token_expires_in: number;
+  refresh_token_expires_in?: number;
   /** Advertiser accounts this token has access to */
   advertiser_ids: string[];
   scope: string;
@@ -77,7 +84,34 @@ export class TikTokBusinessClient {
       throw new Error(`TikTok Marketing API token error ${json.code}: ${msg}`);
     }
 
-    return json.data as unknown as TikTokBusinessTokenResponse;
+    // The advertiser authorization flow returns a long-lived token. It normally
+    // omits refresh_token and expires_in; TikTok account-holder OAuth is a
+    // separate flow that returns the refreshable variant. Log only field
+    // presence if a malformed hybrid response arrives—never token values,
+    // authorization codes, headers, or the response body.
+    const tokenData = json.data as Record<string, unknown>;
+    const hasAccessToken =
+      typeof tokenData.access_token === "string" && tokenData.access_token.length > 0;
+    const hasRefreshToken =
+      typeof tokenData.refresh_token === "string" && tokenData.refresh_token.length > 0;
+    const expiresIn = Number(tokenData.expires_in);
+    const hasExpiresIn = Number.isFinite(expiresIn) && expiresIn > 0;
+
+    const isLongLivedAdvertiserToken = !hasRefreshToken && !hasExpiresIn;
+    const isRefreshableToken = hasRefreshToken && hasExpiresIn;
+
+    if (!hasAccessToken || (!isLongLivedAdvertiserToken && !isRefreshableToken)) {
+      logger.warn("[TikTok OAuth] Invalid token response shape", {
+        hasAccessToken,
+        hasRefreshToken,
+        hasExpiresIn,
+      });
+      throw new Error(
+        "TikTok authorization returned an invalid token response. The source was not connected; reconnect TikTok Ads."
+      );
+    }
+
+    return tokenData as unknown as TikTokBusinessTokenResponse;
   }
 
   /** Refresh an expired access token. */
