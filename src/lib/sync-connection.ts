@@ -676,7 +676,7 @@ async function syncGoogleAds(opts: {
           cpc:               Number(r.metrics_average_cpc ?? r.average_cpc ?? 0),
           ctr:               Number(r.metrics_ctr ?? r.ctr ?? 0),
           conversions:       Number(r.metrics_conversions ?? r.conversions ?? 0),
-          conversion_value:  Number(r.metrics_conversion_value ?? r.conversion_value ?? 0),
+          conversion_value:  Number(r.metrics_conversions_value ?? r.metrics_conversion_value ?? r.conversion_value ?? 0),
           currency:          r.customer_currency_code ?? r.currency ?? undefined,
           raw:               r,
         };
