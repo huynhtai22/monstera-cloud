@@ -57,6 +57,7 @@ export function AccountSelector({ connectionId, provider, variant = "panel" }: A
 
   const accounts: Account[] = useMemo(() => data?.accounts || [], [data?.accounts]);
   const selectedCount = accounts.filter((a) => a.selected).length;
+  const unavailableCount = Number.isInteger(data?.unavailableCount) ? data.unavailableCount : 0;
   const visibleAccounts = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return accounts;
@@ -154,6 +155,7 @@ export function AccountSelector({ connectionId, provider, variant = "panel" }: A
               <span className="rounded-md border border-line px-1.5 py-0.5 font-mono text-[11px] text-ink-mute">{selectedCount}/{accounts.length} active</span>
             </div>
             <p className="mt-1 text-xs text-ink-mute">Paused accounts stay connected but are excluded from future syncs. Existing warehouse data stays intact.</p>
+            {provider === "google_ads" && unavailableCount > 0 ? <p className="mt-1 text-xs text-amber-500">{unavailableCount} unavailable account{unavailableCount === 1 ? "" : "s"} excluded from this source.</p> : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex h-8 w-full items-center gap-2 rounded-md border border-line bg-panel px-2 text-xs text-ink-mute sm:w-64">

@@ -9,7 +9,7 @@ import {
     ConnectedAccount,
     OAuthError,
 } from "../types";
-import { googleAdsOAuthClient } from "@/lib/google-ads";
+import { googleAdsOAuthClient, googleAdsReportClient } from "@/lib/google-ads";
 
 export class GoogleAdsOAuthAdapter implements OAuthProviderAdapter {
     readonly id = "google_ads";
@@ -38,9 +38,21 @@ export class GoogleAdsOAuthAdapter implements OAuthProviderAdapter {
         const tokenData = await googleAdsOAuthClient.exchangeCode(code, redirectUri);
 
         // Get customer IDs (MCC structure)
-        const customerIds = await googleAdsOAuthClient.listAccessibleCustomers(
+        const accessibleCustomerIds = await googleAdsOAuthClient.listAccessibleCustomers(
             tokenData.access_token
         );
+        const { eligibleCustomerIds: customerIds, excludedCustomerIds } = await googleAdsReportClient.resolveEligibleCustomerRoots(
+            tokenData.access_token,
+            accessibleCustomerIds,
+        );
+
+        if (customerIds.length === 0) {
+            throw new OAuthError(
+                "provider_error",
+                "No active Google Ads customer accounts are available. Activate an account in Google Ads, then reconnect.",
+                this.id,
+            );
+        }
 
         const credentials: OAuthCredentials = {
             accessToken: tokenData.access_token,
@@ -53,6 +65,7 @@ export class GoogleAdsOAuthAdapter implements OAuthProviderAdapter {
             accountIdentifiers: customerIds,
             extraFields: {
                 customerIds,
+                unavailableCustomerCount: excludedCustomerIds.length,
                 // NOTE: the developer token is deliberately NOT stored here.
                 // It is an app-level secret consumed from the environment at
                 // call time (see google-ads.ts); persisting it would duplicate

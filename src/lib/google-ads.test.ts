@@ -4,6 +4,7 @@ import {
   GoogleAdsProviderError,
   GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED,
   isGoogleAdsDeveloperTokenBlocked,
+  isGoogleAdsCustomerUnavailable,
   isGoogleAdsRetryableFailure,
   normalizeGoogleAdsRow,
   googleAdsOAuthClient,
@@ -262,9 +263,8 @@ describe("google ads connector", () => {
     ]);
     try {
       const clients = await googleAdsReportClient.listCustomerClients("t", "9999999999");
-      // The stub ignores the server-side status=ENABLED filter; what this unit
-      // proves is manager-exclusion and login-id mapping.
-      assert.deepEqual(clients.map((c) => c.customerId), ["111", "333"]);
+      // Defend against unexpected provider rows as well as the GAQL filter.
+      assert.deepEqual(clients.map((c) => c.customerId), ["111"]);
       assert.ok(clients.every((c) => c.mccId === "9999999999" && !c.isManager));
     } finally {
       restore();
@@ -296,6 +296,34 @@ describe("google ads connector", () => {
     try {
       const clients = await googleAdsReportClient.listCustomerClients("t", "1112223333");
       assert.deepEqual(clients, [{ customerId: "1112223333", mccId: "1112223333", isManager: false, descriptiveName: "Customer 1112223333" }]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("excludes a deactivated customer instead of fabricating a standalone leaf", async () => {
+    const restore = stubFetch([{ __status: 403, __body: JSON.stringify({ error: { message: "The customer account can't be accessed because it is not yet enabled or has been deactivated.", details: [{ errors: [{ errorCode: { authorizationError: "CUSTOMER_NOT_ENABLED" } }] }] } }) }]);
+    try {
+      const clients = await googleAdsReportClient.listCustomerClients("t", "1112223333");
+      assert.deepEqual(clients, []);
+      await assert.rejects(
+        () => googleAdsReportClient.searchStream("t", "1112223333", "SELECT campaign.id FROM campaign"),
+        (error: unknown) => isGoogleAdsCustomerUnavailable(error),
+      );
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps only roots that resolve to at least one enabled leaf", async () => {
+    const restore = stubFetch([
+      { results: [{ customerClient: { id: "111", descriptiveName: "Enabled leaf", manager: false, status: "ENABLED" } }] },
+      { __status: 403, __body: JSON.stringify({ error: { message: "CUSTOMER_NOT_ENABLED" } }) },
+      { results: [{ customerClient: { id: "333", descriptiveName: "Manager only", manager: true, status: "ENABLED" } }] },
+    ]);
+    try {
+      const result = await googleAdsReportClient.resolveEligibleCustomerRoots("t", ["100", "200", "300"]);
+      assert.deepEqual(result, { eligibleCustomerIds: ["100"], excludedCustomerIds: ["200", "300"] });
     } finally {
       restore();
     }
