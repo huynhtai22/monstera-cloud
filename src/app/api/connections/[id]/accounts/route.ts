@@ -71,44 +71,56 @@ export async function GET(
             // Meta stores adAccounts array in extraFields
             const adAccounts = extraFields.adAccounts || credentials.adAccounts || [];
             const adAccountIds = extraFields.adAccountIds || credentials.adAccountIds || [];
-            const selectedIds = extraFields.selectedAdAccountIds || credentials.selectedAdAccountIds || adAccountIds;
+            const selectedIds = Array.isArray(extraFields.selectedAdAccountIds)
+                ? extraFields.selectedAdAccountIds
+                : Array.isArray(credentials.selectedAdAccountIds)
+                    ? credentials.selectedAdAccountIds
+                    : undefined;
             
             if (adAccounts.length > 0) {
                 accounts = adAccounts.map((acc: any) => ({
                     id: acc.id,
                     name: acc.name || `Ad Account ${acc.id}`,
                     type: "ad_account",
-                    selected: selectedIds.length === 0 || selectedIds.includes(acc.id),
+                    selected: selectedIds ? selectedIds.includes(acc.id) : true,
                 }));
             } else if (adAccountIds.length > 0) {
                 accounts = adAccountIds.map((id: string) => ({
                     id,
                     name: `Ad Account ${id}`,
                     type: "ad_account",
-                    selected: selectedIds.includes(id),
+                    selected: selectedIds ? selectedIds.includes(id) : true,
                 }));
             }
         } else if (connection.provider === "google_ads") {
             // Google stores customerIds in extraFields
             const customerIds = extraFields.customerIds || credentials.customerIds || [];
-            const selectedIds = extraFields.selectedCustomerIds || credentials.selectedCustomerIds || customerIds;
+            const selectedIds = Array.isArray(extraFields.selectedCustomerIds)
+                ? extraFields.selectedCustomerIds
+                : Array.isArray(credentials.selectedCustomerIds)
+                    ? credentials.selectedCustomerIds
+                    : undefined;
             
             accounts = customerIds.map((id: string) => ({
                 id,
                 name: `Customer ${id}`,
                 type: "customer",
-                selected: selectedIds.length === 0 || selectedIds.includes(id),
+                selected: selectedIds ? selectedIds.includes(id) : true,
             }));
         } else if (connection.provider === "tiktok_business") {
             // TikTok stores advertiserIds in extraFields
             const advertiserIds = extraFields.advertiserIds || credentials.advertiserIds || [];
-            const selectedIds = extraFields.selectedAdvertiserIds || credentials.selectedAdvertiserIds || advertiserIds;
+            const selectedIds = Array.isArray(extraFields.selectedAdvertiserIds)
+                ? extraFields.selectedAdvertiserIds
+                : Array.isArray(credentials.selectedAdvertiserIds)
+                    ? credentials.selectedAdvertiserIds
+                    : undefined;
             
             accounts = advertiserIds.map((id: string) => ({
                 id,
                 name: `Advertiser ${id}`,
                 type: "advertiser",
-                selected: selectedIds.length === 0 || selectedIds.includes(id),
+                selected: selectedIds ? selectedIds.includes(id) : true,
             }));
         }
         

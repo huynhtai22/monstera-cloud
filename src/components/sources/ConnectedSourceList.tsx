@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AlertCircle, CheckCircle2, ChevronDown, Loader2, RefreshCw, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui";
+import { AccountSelector } from "@/components/sources/AccountSelector";
 
 type IntegrationRow = {
   id: string;
@@ -389,22 +390,14 @@ export function ConnectedSourceList(props: {
                             <p className="mb-2 text-sm font-medium text-red-700 dark:text-red-300">{r.errorMsg}</p>
                           ) : null}
                           <p className="mb-2 text-xs text-ink-mute">{sourceState.detail}</p>
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-ink-mute">
-                            <Link href={`/sources/${r.id}`} className="font-semibold text-white hover:text-neutral-300">
-                              Open details
-                            </Link>
+                          {canDirectSync(r.provider) ? (
+                            <AccountSelector connectionId={r.id} provider={r.provider!} variant="compact" />
+                          ) : null}
+                          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-mute">
+                            <Link href={`/sources/${r.id}`} className="font-semibold text-white hover:text-neutral-300">Open source details</Link>
                             <span>·</span>
-                            <Link href="/explorer" className="font-semibold text-white hover:text-neutral-300">
-                              View warehouse data
-                            </Link>
-                            {!r.pipelineId ? (
-                              <>
-                                <span>·</span>
-                                <span className="font-medium text-amber-700 dark:text-amber-300">
-                                  No pipeline — sync writes to warehouse (CampaignMetric)
-                                </span>
-                              </>
-                            ) : null}
+                            <Link href="/explorer" className="font-semibold text-white hover:text-neutral-300">View warehouse data</Link>
+                            {!r.pipelineId ? <><span>·</span><span>Sync writes to warehouse</span></> : null}
                           </div>
                         </div>
                       </td>
