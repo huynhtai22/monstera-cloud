@@ -36,13 +36,19 @@ export function isGoogleAdsRetryableFailure(status: number, message: string): bo
   return status === 429 || status >= 500 || /resource[_ ]exhausted|rate[_ ]exceeded|quota|temporar|timeout/i.test(message);
 }
 
+/** Strip the developer-token value from any provider-echoed text (defense in depth). */
+function scrubDevToken(text: string): string {
+  const t = developerToken();
+  return t ? text.split(t).join("[REDACTED_DEVELOPER_TOKEN]") : text;
+}
+
 async function fetchGoogleAds(url: string, init: RequestInit): Promise<Response> {
   const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const response = await fetch(url, init);
       if (response.ok) return response;
-      const detail = (await response.clone().text()).slice(0, 1000);
+      const detail = scrubDevToken((await response.clone().text()).slice(0, 1000));
       const retryable = isGoogleAdsRetryableFailure(response.status, detail);
       if (!retryable || attempt === maxAttempts - 1) {
         const code = detail.includes(GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED)
@@ -497,6 +503,9 @@ export function normalizeGoogleAdsRow(row: GoogleAdsRow): NormalizedGoogleAdsRow
         if (snakeField === 'cost_micros' || snakeField.endsWith('_micros')) {
           // Convert micros to real currency — dividing by 1,000,000
           out[key.replace('_micros', '')] = Number(fieldVal) / 1_000_000;
+        } else if (snakeField === 'average_cpc' || snakeField === 'average_cost') {
+          // GAQL returns these in micros too (no _micros suffix) — convert once here.
+          out[key] = Number(fieldVal) / 1_000_000;
         } else if (typeof fieldVal === 'string' && /^\d+$/.test(fieldVal)) {
           out[key] = Number(fieldVal);
         } else {
