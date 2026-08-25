@@ -3,12 +3,16 @@
 import React, { useCallback, useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSWRConfig } from "swr";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, ChevronDown, Loader2, RefreshCw, Wrench, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, Clock, Loader2, Pencil, RefreshCw, Search, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui";
+import { CopyableBadge } from "@/components/ui/CopyableBadge";
 import { AccountSelector } from "@/components/sources/AccountSelector";
 import type { SourceHealthState } from "@/lib/source-health";
+
+export type AccountTagEntry = { id: string; label: string } | string;
 
 type IntegrationRow = {
   id: string;
@@ -17,6 +21,7 @@ type IntegrationRow = {
   name: string;
   description?: string;
   managerBadge?: string | null;
+  shortId?: string;
   status: "connected" | "error" | "syncing" | string;
   healthState?: SourceHealthState;
   errorMsg?: string;
@@ -24,7 +29,7 @@ type IntegrationRow = {
   dataThroughDate?: string | null;
   logoSrc?: string;
   pipelineId?: string;
-  accountTags?: string[];
+  accountTags?: AccountTagEntry[];
 };
 
 type SortKey = "name" | "status" | "lastSync";
@@ -44,6 +49,7 @@ interface ConnectedSourceListProps {
   onDirectSync: (connectionId: string, provider: string) => void;
   onDisconnect: (connectionId: string, displayName: string) => void;
   onFixConnection: (integration: any) => void;
+  onRenameConnection?: (connectionId: string, newName: string) => Promise<void> | void;
 }
 
 function sourceStateFor(row: IntegrationRow, syncBusy: boolean): SourceState {
@@ -73,24 +79,31 @@ function sourceStateFor(row: IntegrationRow, syncBusy: boolean): SourceState {
 }
 
 function statusRank(row: IntegrationRow): number {
-  const state = row.healthState ?? row.status;
-  if (["error", "disconnected", "unknown", "stale"].includes(state)) return 5;
-  if (state === "partial") return 4;
-  if (state === "syncing") return 3;
-  if (state === "pending" || !row.lastSync || row.lastSync === "Never") return 2;
-  if (state === "connected") return 1;
-  return 3;
+  const s = sourceStateFor(row, false);
+  if (s.kind === "attention") return 0;
+  if (s.kind === "partial") return 1;
+  if (s.kind === "not-synced") return 2;
+  if (s.kind === "syncing") return 3;
+  return 4;
 }
 
-function safeTimeValue(s: string | undefined): number {
-  if (!s || s === "Never") return 0;
-  const t = Date.parse(s);
+function safeTimeValue(dateStr?: string): number {
+  if (!dateStr || dateStr === "Never") return 0;
+  const t = new Date(dateStr).getTime();
   return Number.isFinite(t) ? t : 0;
 }
 
 function canDirectSync(provider: string | undefined): boolean {
   return provider != null && ["meta_ads", "google_ads", "tiktok_business", "shopee", "lazada"].includes(provider);
 }
+
+const PROVIDER_LABELS: Record<string, string> = {
+  google_ads: "Google Ads",
+  meta_ads: "Meta Ads",
+  tiktok_business: "TikTok Ads",
+  shopee: "Shopee",
+  shopify: "Shopify",
+};
 
 export function ConnectedSourceList({
   rows,
@@ -99,19 +112,72 @@ export function ConnectedSourceList({
   onDirectSync,
   onDisconnect,
   onFixConnection,
+  onRenameConnection,
 }: ConnectedSourceListProps) {
   const router = useRouter();
+  const { mutate } = useSWRConfig();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [openTagsId, setOpenTagsId] = useState<string | null>(null);
+  const [renamingRow, setRenamingRow] = useState<{ id: string; name: string } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedPlatform, setSelectedPlatform] = useState<string>("all");
 
   useEffect(() => {
     const close = () => setOpenTagsId(null);
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, [openTagsId]);
+
+  const availablePlatforms = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const r of rows) {
+      if (r.provider) {
+        counts[r.provider] = (counts[r.provider] || 0) + 1;
+      }
+    }
+    return Object.entries(counts).map(([id, count]) => ({
+      id,
+      label: PROVIDER_LABELS[id] || id,
+      count,
+    }));
+  }, [rows]);
+
+  const handleRenameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renamingRow || !renameValue.trim()) return;
+    setRenameBusy(true);
+    try {
+      if (onRenameConnection) {
+        await onRenameConnection(renamingRow.id, renameValue.trim());
+      } else {
+        const res = await fetch(`/api/connections/${renamingRow.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: renameValue.trim() }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Failed to rename connection");
+        }
+        toast.success(`Connection renamed to "${renameValue.trim()}"`);
+        await Promise.all([
+          mutate((key: unknown) => typeof key === "string" && key.includes("/api/workspaces")),
+          mutate((key: unknown) => typeof key === "string" && key.includes("/api/connections")),
+        ]);
+        router.refresh();
+      }
+      setRenamingRow(null);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to rename connection");
+    } finally {
+      setRenameBusy(false);
+    }
+  };
 
   const allSelected = rows.length > 0 && selectedIds.size === rows.length;
   const anySelected = selectedIds.size > 0;
@@ -130,8 +196,25 @@ export function ConnectedSourceList({
     });
   };
 
-  const sortedRows = useMemo(() => {
-    const list = [...rows];
+  const filteredAndSortedRows = useMemo(() => {
+    const list = rows.filter((r) => {
+      if (selectedPlatform !== "all" && r.provider !== selectedPlatform) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.trim().toLowerCase();
+        const nameMatch = (r.name || "").toLowerCase().includes(q);
+        const badgeMatch = (r.managerBadge || "").toLowerCase().includes(q);
+        const descMatch = (r.description || "").toLowerCase().includes(q);
+        const idMatch = (r.id || "").toLowerCase().includes(q) || (r.shortId || "").toLowerCase().includes(q);
+        const tagMatch = (r.accountTags || []).some((t) =>
+          (typeof t === "object" ? `${t.id} ${t.label}` : t).toLowerCase().includes(q)
+        );
+        return nameMatch || badgeMatch || descMatch || idMatch || tagMatch;
+      }
+      return true;
+    });
+
     list.sort((a, b) => {
       if (sortKey === "name") {
         const cmp = (a.name || "").localeCompare(b.name || "");
@@ -148,7 +231,7 @@ export function ConnectedSourceList({
       return 0;
     });
     return list;
-  }, [rows, sortKey, sortDir]);
+  }, [rows, selectedPlatform, searchQuery, sortKey, sortDir]);
 
   const bulkSync = () => {
     for (const r of rows) {
@@ -182,49 +265,117 @@ export function ConnectedSourceList({
 
   return (
     <div className="rounded-xl border border-line bg-panel shadow-xs overflow-hidden">
-      <div className="flex flex-col gap-3 border-b border-line px-5 py-3.5 sm:flex-row sm:items-center sm:justify-between bg-panel/70">
-        <div className="flex flex-wrap items-center gap-2.5 text-xs text-ink-mute">
-          <span className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute">Connected sources</span>
-          <span className="rounded-md border border-line/80 bg-canvas px-2 py-0.5 font-mono text-[11px] text-ink">
-            {rows.length}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          {anySelected && (
-            <>
-              <PrimaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkSync}>
-                <RefreshCw className="h-3.5 w-3.5" /> <span className="ml-1.5">Sync selected</span>
-              </PrimaryButton>
-              <SecondaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkDisconnect}>
-                <X className="h-3.5 w-3.5" /> <span className="ml-1.5">Disconnect</span>
-              </SecondaryButton>
-            </>
-          )}
-          <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas px-2.5 py-1 text-xs">
-            <span className="text-ink-mute">Sort:</span>
-            <select
-              className="bg-transparent text-xs font-medium text-ink outline-none cursor-pointer"
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as SortKey)}
-            >
-              <option value="name" className="bg-panel text-ink">Name</option>
-              <option value="status" className="bg-panel text-ink">Status</option>
-              <option value="lastSync" className="bg-panel text-ink">Last sync</option>
-            </select>
-            <button
-              type="button"
-              className="rounded px-1 py-0.5 text-ink-mute hover:text-ink hover:bg-white/[0.06] transition-colors"
-              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              title="Toggle sort direction"
-            >
-              {sortDir === "asc" ? "↑" : "↓"}
-            </button>
+      {/* Header & Controls */}
+      <div className="flex flex-col gap-3 border-b border-line p-4 sm:p-5 bg-panel/70">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 text-xs text-ink-mute">
+            <span className="font-mono text-xs font-semibold uppercase tracking-wider text-ink-mute">Connected sources</span>
+            <span className="rounded-md border border-line/80 bg-canvas px-2 py-0.5 font-mono text-[11px] text-ink">
+              {filteredAndSortedRows.length}{filteredAndSortedRows.length !== rows.length ? ` of ${rows.length}` : ""}
+            </span>
           </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            {anySelected && (
+              <>
+                <PrimaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkSync}>
+                  <RefreshCw className="h-3.5 w-3.5" /> <span className="ml-1.5">Sync selected</span>
+                </PrimaryButton>
+                <SecondaryButton type="button" className="h-8 px-3 text-xs" onClick={bulkDisconnect}>
+                  <X className="h-3.5 w-3.5" /> <span className="ml-1.5">Disconnect</span>
+                </SecondaryButton>
+              </>
+            )}
+
+            <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas px-2.5 py-1 text-xs">
+              <span className="text-ink-mute">Sort:</span>
+              <select
+                className="bg-transparent text-xs font-medium text-ink outline-none cursor-pointer"
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+              >
+                <option value="name" className="bg-panel text-ink">Name</option>
+                <option value="status" className="bg-panel text-ink">Status</option>
+                <option value="lastSync" className="bg-panel text-ink">Last sync</option>
+              </select>
+              <button
+                type="button"
+                className="rounded px-1 py-0.5 text-ink-mute hover:text-ink hover:bg-white/[0.06] transition-colors"
+                onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                title="Toggle sort direction"
+              >
+                {sortDir === "asc" ? "↑" : "↓"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Real-time Search & Platform Tabs for 20+ MCCs/BMs */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-line/50">
+          <div className="relative flex-1 sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-mute" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by MCC, account ID, or name…"
+              className="h-8.5 w-full rounded-lg border border-line bg-canvas pl-8.5 pr-8 text-xs text-ink placeholder:text-ink-mute focus:border-white/30 focus:outline-none transition-colors"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-mute hover:text-ink"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {availablePlatforms.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setSelectedPlatform("all")}
+                className={cn(
+                  "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
+                  selectedPlatform === "all"
+                    ? "bg-white text-black font-semibold shadow-xs"
+                    : "border border-line/80 bg-canvas text-ink-mute hover:text-ink hover:bg-white/[0.04]"
+                )}
+              >
+                All ({rows.length})
+              </button>
+              {availablePlatforms.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setSelectedPlatform(p.id)}
+                  className={cn(
+                    "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
+                    selectedPlatform === p.id
+                      ? "bg-white text-black font-semibold shadow-xs"
+                      : "border border-line/80 bg-canvas text-ink-mute hover:text-ink hover:bg-white/[0.04]"
+                  )}
+                >
+                  {p.label} ({p.count})
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       <div className="overflow-x-auto">
-        <table className="min-w-[900px] w-full text-sm">
+        <table className="min-w-[960px] w-full text-sm">
+          <colgroup>
+            <col className="w-12" />
+            <col className="w-[320px]" />
+            <col className="w-[240px]" />
+            <col className="w-[140px]" />
+            <col className="w-[180px]" />
+            <col className="w-[160px]" />
+          </colgroup>
           <thead className="bg-panel/40 border-b border-line">
             <tr>
               <th className="w-12 px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">
@@ -238,69 +389,121 @@ export function ConnectedSourceList({
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
-            {sortedRows.map((r) => {
-              const isExpanded = expandedId === r.id;
-              const syncBusy =
-                (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
-              const disconnectBusy = busyActions.has(r.id);
-              const sourceState = sourceStateFor(r, syncBusy);
-              const needsReconnect = ["error", "disconnected"].includes(r.healthState ?? r.status);
-              const syncActionLabel = sourceState.kind === "partial"
-                ? "Retry sync"
-                : sourceState.kind === "not-synced"
-                  ? "Run first sync"
-                  : sourceState.kind === "syncing"
-                    ? "Syncing"
-                    : "Sync";
-              return (
-                <React.Fragment key={r.id}>
-                  <tr 
-                    className="cursor-pointer hover:bg-white/[0.025] transition-colors duration-150"
-                    onClick={(e) => {
-                      if (!(e.target as HTMLElement).closest('[data-no-row-click]')) {
-                        router.push(`/sources/${r.id}`);
-                      }
-                    }}
-                  >
-                    <td className="px-5 py-4" data-no-row-click>
-                      <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} />
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex min-w-0 items-center gap-3.5">
-                        {r.logoSrc ? <IntegrationMark src={r.logoSrc} size="md" /> : null}
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <Link
-                              href={`/sources/${r.id}`}
-                              className="block truncate text-sm font-semibold tracking-tight text-ink hover:text-white"
-                              data-no-row-click
-                            >
-                              {r.name}
-                            </Link>
-                            {r.managerBadge ? (
-                              <span className="inline-flex items-center rounded-md border border-line/80 bg-panel px-1.5 py-0.5 font-mono text-[10px] font-medium text-ink-mute shrink-0">
-                                {r.managerBadge}
-                              </span>
-                            ) : null}
+            {filteredAndSortedRows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-5 py-12 text-center text-xs text-ink-mute">
+                  <p className="font-medium text-ink text-sm">No connections found</p>
+                  <p className="mt-1 text-ink-mute">
+                    {searchQuery ? `No sources match "${searchQuery}".` : "No sources match the selected filter."}
+                  </p>
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="mt-3 inline-flex items-center rounded-lg border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.05] transition-colors cursor-pointer"
+                    >
+                      Clear search
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ) : (
+              filteredAndSortedRows.map((r) => {
+                const isExpanded = expandedId === r.id;
+                const syncBusy =
+                  (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
+                const disconnectBusy = busyActions.has(r.id);
+                const sourceState = sourceStateFor(r, syncBusy);
+                const needsReconnect = ["error", "disconnected"].includes(r.healthState ?? r.status);
+                const syncActionLabel = sourceState.kind === "partial"
+                  ? "Retry sync"
+                  : sourceState.kind === "not-synced"
+                    ? "Run first sync"
+                    : sourceState.kind === "syncing"
+                      ? "Syncing"
+                      : "Sync";
+                return (
+                  <React.Fragment key={r.id}>
+                    <tr 
+                      className="cursor-pointer hover:bg-white/[0.025] transition-colors duration-150"
+                      onClick={(e) => {
+                        if (!(e.target as HTMLElement).closest('[data-no-row-click]')) {
+                          router.push(`/sources/${r.id}`);
+                        }
+                      }}
+                    >
+                      <td className="px-5 py-4" data-no-row-click>
+                        <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} />
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3.5">
+                          {r.logoSrc ? <IntegrationMark src={r.logoSrc} size="md" className="shrink-0" /> : null}
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex items-center gap-1.5 group/name">
+                              <Link
+                                href={`/sources/${r.id}`}
+                                className="truncate text-sm font-semibold tracking-tight text-ink hover:text-white transition-colors"
+                                data-no-row-click
+                              >
+                                {r.name}
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRenamingRow({ id: r.id, name: r.name });
+                                  setRenameValue(r.name);
+                                }}
+                                className="opacity-0 group-hover/name:opacity-100 p-0.5 text-ink-mute hover:text-ink transition-opacity rounded cursor-pointer shrink-0"
+                                title="Rename connection / add nickname"
+                                data-no-row-click
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-mute">
+                              {r.managerBadge && (
+                                <CopyableBadge
+                                  text={r.managerBadge}
+                                  copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC):\s*/, "")}
+                                  title={`Click to copy ${r.managerBadge}`}
+                                  className="text-[10px] text-ink-mute border-line/70 bg-canvas"
+                                />
+                              )}
+                              {r.shortId && (
+                                <CopyableBadge
+                                  text={`#${r.shortId}`}
+                                  copyValue={r.id}
+                                  title={`Click to copy full Connection ID (${r.id})`}
+                                  className="text-[10px] text-ink-mute/70 border-line/40 bg-transparent hover:bg-canvas"
+                                />
+                              )}
+                              {r.description && (
+                                <span className="truncate text-[11px] text-ink-mute/80">
+                                  {r.description}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <p className="mt-0.5 line-clamp-1 text-xs text-ink-mute">
-                            {r.description ?? ""}
-                          </p>
                         </div>
-                      </div>
-                    </td>
+                      </td>
                     <td className="px-5 py-4">
-                      <div className="flex flex-wrap gap-1.5">
-                        {(r.accountTags ?? []).slice(0, 3).map((t) => (
-                          <span
-                            key={t}
-                            className="inline-flex items-center rounded-md border border-line/70 bg-panel px-2 py-0.5 font-mono text-[11px] font-medium text-ink-mute"
-                          >
-                            {t}
-                          </span>
-                        ))}
+                      <div className="flex flex-wrap items-center gap-1.5 max-w-[240px]">
+                        {(r.accountTags ?? []).slice(0, 3).map((item, idx) => {
+                          const label = typeof item === "object" ? item.label : item;
+                          const copyVal = typeof item === "object" ? item.id : item;
+                          return (
+                            <CopyableBadge
+                              key={`${copyVal}-${idx}`}
+                              text={label}
+                              copyValue={copyVal}
+                              title={`Click to copy account ID "${copyVal}"`}
+                              className="text-[11px] text-ink-mute font-mono"
+                            />
+                          );
+                        })}
                         {(r.accountTags?.length ?? 0) > 3 && (
-                          <div className="relative" data-no-row-click>
+                          <div className="relative shrink-0" data-no-row-click>
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); setOpenTagsId(prev => prev === r.id ? null : r.id); }}
@@ -313,17 +516,22 @@ export function ConnectedSourceList({
                                 <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-ink-mute border-b border-line/50">
                                   Scoped Accounts ({(r.accountTags?.length ?? 0)})
                                 </div>
-                                {(r.accountTags ?? []).slice(3).map((t) => (
-                                  <div key={t} className="px-2.5 py-1.5 rounded-lg text-xs font-mono text-ink font-medium bg-canvas border border-line/60 truncate" title={t}>
-                                    {t}
-                                  </div>
-                                ))}
+                                {(r.accountTags ?? []).slice(3).map((item, idx) => {
+                                  const label = typeof item === "object" ? item.label : item;
+                                  const copyVal = typeof item === "object" ? item.id : item;
+                                  return (
+                                    <div key={`${copyVal}-${idx}`} className="px-2.5 py-1.5 rounded-lg text-xs font-mono text-ink font-medium bg-canvas border border-line/60 truncate flex items-center justify-between" title={label}>
+                                      <span className="truncate mr-2">{label}</span>
+                                      <CopyableBadge text={copyVal} copyValue={copyVal} className="text-[10px]" />
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
                         )}
                         {(!r.accountTags || r.accountTags.length === 0) && (
-                          <span className="text-xs text-ink-mute/70 italic">
+                          <span className="text-xs text-ink-mute/70 italic font-mono">
                             All manager accounts
                           </span>
                         )}
@@ -355,14 +563,23 @@ export function ConnectedSourceList({
                       </div>
                     </td>
                     <td className="px-5 py-4 text-xs text-ink-mute">
-                      <p className="font-medium text-ink">{r.lastSync ?? "Never"}</p>
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="h-3 w-3 text-ink-mute/70 shrink-0" />
+                        <span className="font-medium text-ink">{r.lastSync ?? "Never"}</span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 rounded bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-ink-mute border border-line/60">
+                          <span className="h-1 w-1 rounded-full bg-emerald-400" />
+                          Hourly auto-sync
+                        </span>
+                      </div>
                       {r.dataThroughDate ? (
-                        <p className="mt-0.5 text-[11px] text-ink-mute">
+                        <p className="mt-1 text-[11px] text-ink-mute font-mono">
                           Data through {new Date(r.dataThroughDate).toLocaleDateString()}
                         </p>
                       ) : null}
                       {sourceState.kind === "not-synced" && !r.dataThroughDate && (
-                        <p className="mt-0.5 text-[11px] text-amber-400/90 font-mono">Pending initial sync</p>
+                        <p className="mt-1 text-[11px] text-amber-400/90 font-mono">Pending initial sync</p>
                       )}
                     </td>
                     <td className="px-5 py-4">
@@ -447,7 +664,13 @@ export function ConnectedSourceList({
                           )}
 
                           {canDirectSync(r.provider) ? (
-                            <AccountSelector connectionId={r.id} provider={r.provider!} variant="compact" />
+                            <AccountSelector
+                              connectionId={r.id}
+                              provider={r.provider!}
+                              connectionName={r.name}
+                              managerBadge={r.managerBadge}
+                              variant="compact"
+                            />
                           ) : null}
 
                           <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-ink-mute border-t border-line/60">
@@ -472,10 +695,69 @@ export function ConnectedSourceList({
                   )}
                 </React.Fragment>
               );
-            })}
+            })
+          )}
           </tbody>
         </table>
       </div>
+
+      {renamingRow && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4"
+          onClick={() => setRenamingRow(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-line bg-panel p-6 shadow-elevated animate-in fade-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-line">
+              <h3 className="text-base font-semibold text-ink">Rename Connection</h3>
+              <button
+                type="button"
+                onClick={() => setRenamingRow(null)}
+                className="text-ink-mute hover:text-ink"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-ink-mute leading-relaxed">
+              Give this connection a custom nickname (e.g. &quot;US Marketing BM&quot; or &quot;Agency Client MCC&quot;) to easily differentiate multiple ad accounts and managers.
+            </p>
+            <form onSubmit={handleRenameSubmit} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-ink-mute mb-1.5">
+                  Connection Name
+                </label>
+                <input
+                  type="text"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  placeholder="e.g. Brand Alpha TikTok"
+                  maxLength={100}
+                  className="w-full h-10 rounded-xl border border-line bg-canvas px-3.5 text-sm text-ink outline-none focus:border-white/40 transition-colors"
+                  autoFocus
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setRenamingRow(null)}
+                  className="rounded-xl border border-line px-4 py-2 text-xs font-semibold text-ink-mute hover:text-ink hover:bg-white/[0.05] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={renameBusy || !renameValue.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-semibold text-black hover:bg-neutral-200 disabled:opacity-50 transition-colors"
+                >
+                  {renameBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save Name"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

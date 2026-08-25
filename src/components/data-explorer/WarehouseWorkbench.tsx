@@ -15,6 +15,7 @@ import {
   Search,
   SlidersHorizontal,
   ArrowUpDown,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -145,6 +146,52 @@ const WAREHOUSE_COLUMNS: ColumnDef[] = [
   { id: "spend", label: "Spend", group: "metric", defaultOn: true },
 ];
 
+export type ColumnPresetId = "performance" | "traffic" | "ecommerce" | "all";
+
+export const COLUMN_PRESETS: Array<{ id: ColumnPresetId; label: string; description: string; columns: WarehouseColId[] }> = [
+  {
+    id: "performance",
+    label: "Performance",
+    description: "Spend, Revenue, ROAS, Conversions & Costs",
+    columns: ["date", "platform", "account", "campaign", "spend", "revenue", "roas", "conversions", "cpc", "ctr"],
+  },
+  {
+    id: "traffic",
+    label: "Traffic & Engagement",
+    description: "Impressions, Clicks, CTR, CPC & Reach",
+    columns: ["date", "platform", "account", "campaign", "impressions", "clicks", "ctr", "cpc", "reach", "spend"],
+  },
+  {
+    id: "ecommerce",
+    label: "E-Commerce",
+    description: "Spend, Attributed Revenue, Conversions & ROAS",
+    columns: ["date", "platform", "account", "campaign", "spend", "revenue", "conversions", "roas"],
+  },
+  {
+    id: "all",
+    label: "All Columns",
+    description: "Full attribution across all 16 dimensions & metrics",
+    columns: [
+      "date",
+      "platform",
+      "account",
+      "campaign",
+      "adset",
+      "ad",
+      "currency",
+      "impressions",
+      "clicks",
+      "spend",
+      "cpc",
+      "ctr",
+      "conversions",
+      "revenue",
+      "roas",
+      "reach",
+    ],
+  },
+];
+
 function rowSearchBlob(m: MetricRow): string {
   const parts = [
     m.date,
@@ -241,6 +288,44 @@ function formatMoney(amount: number, currency: string | null | undefined): strin
   }
 }
 
+function formatLocalDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getPresetRange(preset: "7d" | "14d" | "30d" | "mtd" | "last_month"): { start: string; end: string } {
+  const today = new Date();
+  const end = formatLocalDate(today);
+
+  if (preset === "7d") {
+    const s = new Date(today);
+    s.setDate(s.getDate() - 6);
+    return { start: formatLocalDate(s), end };
+  }
+  if (preset === "14d") {
+    const s = new Date(today);
+    s.setDate(s.getDate() - 13);
+    return { start: formatLocalDate(s), end };
+  }
+  if (preset === "30d") {
+    const s = new Date(today);
+    s.setDate(s.getDate() - 29);
+    return { start: formatLocalDate(s), end };
+  }
+  if (preset === "mtd") {
+    const s = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { start: formatLocalDate(s), end };
+  }
+  if (preset === "last_month") {
+    const s = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const e = new Date(today.getFullYear(), today.getMonth(), 0);
+    return { start: formatLocalDate(s), end: formatLocalDate(e) };
+  }
+  return { start: "", end: "" };
+}
+
 function formatExportCell(m: MetricRow, id: WarehouseColId, ctrFmt: (row: MetricRow) => string): string | number {
   switch (id) {
     case "date":
@@ -284,16 +369,48 @@ function renderWarehouseTableCell(
   m: MetricRow,
   col: ColumnDef,
   ctrFmt: (row: MetricRow) => string,
+  stickyInfo?: { isSticky: boolean; left: number; isLastSticky: boolean },
+  maxVals?: { maxSpend: number; maxRevenue: number; maxImpressions: number; maxClicks: number; maxConversions: number },
 ): React.ReactNode {
   const alignRight = col.group === "metric";
+
+  let microBarPct: number | null = null;
+  let microBarColor = "bg-white/[0.04]";
+
+  if (col.id === "spend" && maxVals?.maxSpend && (m.spend ?? 0) > 0) {
+    microBarPct = Math.round(((m.spend ?? 0) / maxVals.maxSpend) * 100);
+    microBarColor = "bg-blue-500/15";
+  } else if (col.id === "revenue" && maxVals?.maxRevenue && (m.revenue ?? 0) > 0) {
+    microBarPct = Math.round(((m.revenue ?? 0) / maxVals.maxRevenue) * 100);
+    microBarColor = "bg-emerald-500/15";
+  } else if (col.id === "impressions" && maxVals?.maxImpressions && (m.impressions ?? 0) > 0) {
+    microBarPct = Math.round(((m.impressions ?? 0) / maxVals.maxImpressions) * 100);
+    microBarColor = "bg-white/[0.05]";
+  } else if (col.id === "clicks" && maxVals?.maxClicks && (m.clicks ?? 0) > 0) {
+    microBarPct = Math.round(((m.clicks ?? 0) / maxVals.maxClicks) * 100);
+    microBarColor = "bg-purple-500/15";
+  } else if (col.id === "conversions" && maxVals?.maxConversions && (m.conversions ?? 0) > 0) {
+    microBarPct = Math.round(((m.conversions ?? 0) / maxVals.maxConversions) * 100);
+    microBarColor = "bg-emerald-500/15";
+  }
+
   const wrap = (node: React.ReactNode) => (
     <td
+      style={stickyInfo?.isSticky ? { left: `${stickyInfo.left}px`, position: "sticky", zIndex: 10 } : undefined}
       className={cn(
-        "px-4 py-3 text-ink",
+        "relative px-4 py-3 text-ink transition-colors",
         alignRight ? "text-right tabular-nums" : "max-w-[180px] truncate",
+        stickyInfo?.isSticky && "bg-panel z-10",
+        stickyInfo?.isLastSticky && "border-r border-line shadow-[3px_0_6px_-2px_rgba(0,0,0,0.6)]",
       )}
     >
-      {node}
+      {microBarPct !== null && (
+        <div
+          className={cn("absolute inset-y-1.5 right-1 rounded pointer-events-none transition-all duration-300", microBarColor)}
+          style={{ width: `${Math.min(microBarPct, 100)}%` }}
+        />
+      )}
+      <span className="relative z-10">{node}</span>
     </td>
   );
 
@@ -508,6 +625,55 @@ export function WarehouseWorkbench() {
   );
   const visibleColSet = useMemo(() => new Set(visibleColIds), [visibleColIds]);
 
+  const activePresetId = useMemo<ColumnPresetId | "custom">(() => {
+    const currentSet = new Set(visibleColIds);
+    for (const preset of COLUMN_PRESETS) {
+      if (preset.columns.length === visibleColIds.length && preset.columns.every((c) => currentSet.has(c))) {
+        return preset.id;
+      }
+    }
+    return "custom";
+  }, [visibleColIds]);
+
+  const activePresetLabel = useMemo(() => {
+    if (activePresetId === "custom") {
+      return `Custom (${visibleColIds.length})`;
+    }
+    return COLUMN_PRESETS.find((p) => p.id === activePresetId)?.label || "Presets";
+  }, [activePresetId, visibleColIds.length]);
+
+  const applyColumnPreset = (presetId: ColumnPresetId) => {
+    const p = COLUMN_PRESETS.find((preset) => preset.id === presetId);
+    if (p) {
+      setVisibleColIds([...p.columns]);
+    }
+  };
+
+  const stickyOffsets = useMemo(() => {
+    const offsets: Record<number, { isSticky: boolean; left: number; isLastSticky: boolean }> = {};
+    let accumulatedLeft = 0;
+    const freezeCount = Math.min(2, visibleColumnsOrdered.length);
+    for (let i = 0; i < visibleColumnsOrdered.length; i++) {
+      const col = visibleColumnsOrdered[i];
+      const width = columnWidths[col.id] ?? (col.group === "metric" ? 112 : 160);
+      if (i < freezeCount) {
+        offsets[i] = {
+          isSticky: true,
+          left: accumulatedLeft,
+          isLastSticky: i === freezeCount - 1,
+        };
+        accumulatedLeft += width;
+      } else {
+        offsets[i] = {
+          isSticky: false,
+          left: 0,
+          isLastSticky: false,
+        };
+      }
+    }
+    return offsets;
+  }, [visibleColumnsOrdered, columnWidths]);
+
   const processedRows = useMemo(() => {
     let rows = metrics;
     const q = rowSearch.trim().toLowerCase();
@@ -519,6 +685,22 @@ export function WarehouseWorkbench() {
   }, [metrics, rowSearch, sortColumn, sortDir]);
 
   const tableDisplayRows = useMemo(() => processedRows.slice(0, 100), [processedRows]);
+
+  const metricMaxValues = useMemo(() => {
+    let maxSpend = 0;
+    let maxRevenue = 0;
+    let maxImpressions = 0;
+    let maxClicks = 0;
+    let maxConversions = 0;
+    for (const m of tableDisplayRows) {
+      if ((m.spend ?? 0) > maxSpend) maxSpend = m.spend ?? 0;
+      if ((m.revenue ?? 0) > maxRevenue) maxRevenue = m.revenue ?? 0;
+      if ((m.impressions ?? 0) > maxImpressions) maxImpressions = m.impressions ?? 0;
+      if ((m.clicks ?? 0) > maxClicks) maxClicks = m.clicks ?? 0;
+      if ((m.conversions ?? 0) > maxConversions) maxConversions = m.conversions ?? 0;
+    }
+    return { maxSpend, maxRevenue, maxImpressions, maxClicks, maxConversions };
+  }, [tableDisplayRows]);
 
   const availablePlatforms: string[] =
     platformsData?.platforms || summary?.platforms || [];
@@ -775,39 +957,94 @@ export function WarehouseWorkbench() {
       </div>
 
       {/* ─── 2. FILTERS ─── */}
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-panel p-3.5">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-ink-mute">From</label>
-          <Input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="h-8.5 w-36 text-xs"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-ink-mute">To</label>
-          <Input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="h-8.5 w-36 text-xs"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-ink-mute">Platform</label>
-          <Dropdown
-            value={selectedPlatform}
-            onChange={setSelectedPlatform}
-            options={PLATFORM_OPTIONS.map((opt) => {
-              if (!opt.value) return opt;
-              const hasData = availablePlatforms.includes(opt.value);
-              return hasData ? opt : { ...opt, description: "No data yet" };
+      <div className="flex flex-col gap-3 rounded-lg border border-line bg-panel p-3.5">
+        {/* Quick Date Presets */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line/60 pb-2.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-ink-mute mr-1">
+              Date Presets:
+            </span>
+            {[
+              { id: "7d", label: "Last 7D" },
+              { id: "14d", label: "Last 14D" },
+              { id: "30d", label: "Last 30D" },
+              { id: "mtd", label: "This Month" },
+              { id: "last_month", label: "Last Month" },
+            ].map((p) => {
+              const range = getPresetRange(p.id as any);
+              const isActive = startDate === range.start && endDate === range.end;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    setStartDate(range.start);
+                    setEndDate(range.end);
+                  }}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
+                    isActive
+                      ? "bg-white text-black font-semibold shadow-xs"
+                      : "border border-line/80 bg-canvas text-ink-mute hover:text-ink hover:bg-white/[0.04]"
+                  )}
+                >
+                  {p.label}
+                </button>
+              );
             })}
-            placeholder="All platforms"
-            className="w-[220px] min-w-[220px] max-w-full"
-          />
+          </div>
+
+          {(startDate || endDate || selectedPlatform || accountFilterIds.length > 0) && (
+            <button
+              type="button"
+              onClick={() => {
+                const def = getPresetRange("30d");
+                setStartDate(def.start);
+                setEndDate(def.end);
+                setSelectedPlatform("");
+                setAccountFilterIds([]);
+              }}
+              className="text-xs text-ink-mute hover:text-ink transition-colors cursor-pointer"
+            >
+              Reset filters
+            </button>
+          )}
         </div>
+
+        {/* Inputs row */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-ink-mute">From</label>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="h-8.5 w-36 text-xs"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-ink-mute">To</label>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="h-8.5 w-36 text-xs"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-ink-mute">Platform</label>
+            <Dropdown
+              value={selectedPlatform}
+              onChange={setSelectedPlatform}
+              options={PLATFORM_OPTIONS.map((opt) => {
+                if (!opt.value) return opt;
+                const hasData = availablePlatforms.includes(opt.value);
+                return hasData ? opt : { ...opt, description: "No data yet" };
+              })}
+              placeholder="All platforms"
+              className="w-[220px] min-w-[220px] max-w-full"
+            />
+          </div>
         {warehousedAccounts.length > 0 && (
           <div className="flex min-w-[200px] flex-1 flex-col gap-1">
             <div className="flex items-center justify-between">
@@ -840,6 +1077,7 @@ export function WarehouseWorkbench() {
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {dateRangeError && (
@@ -884,6 +1122,35 @@ export function WarehouseWorkbench() {
                 className="h-8 w-44 rounded-md border border-line bg-canvas pl-8 pr-3 text-xs text-ink placeholder:text-ink-mute/60 focus:border-white/20 focus:outline-none"
               />
             </div>
+            {/* View Preset Switcher */}
+            <details className="group relative">
+              <summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-md border border-line bg-canvas px-2.5 text-xs font-medium text-ink-mute hover:text-ink [&::-webkit-details-marker]:hidden">
+                <Sparkles className="h-3.5 w-3.5 text-emerald-400" strokeWidth={1.5} />
+                <span>{activePresetLabel}</span>
+                <ChevronDown className="h-3 w-3" />
+              </summary>
+              <div className="absolute right-0 top-[calc(100%+4px)] z-30 w-56 rounded-md border border-line bg-panel p-1.5 shadow-xl">
+                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-mute">
+                  View Presets
+                </div>
+                {COLUMN_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => applyColumnPreset(preset.id)}
+                    className={cn(
+                      "w-full rounded px-2 py-1.5 text-left text-xs transition-colors flex flex-col cursor-pointer",
+                      activePresetId === preset.id
+                        ? "bg-white/[0.08] text-white font-medium"
+                        : "text-ink hover:bg-white/[0.04]"
+                    )}
+                  >
+                    <span className="font-medium">{preset.label}</span>
+                    <span className="text-[10px] text-ink-mute">{preset.description}</span>
+                  </button>
+                ))}
+              </div>
+            </details>
             <details className="group relative">
               <summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-md border border-line bg-canvas px-2.5 text-xs font-medium text-ink-mute hover:text-ink [&::-webkit-details-marker]:hidden">
                 <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -1045,8 +1312,9 @@ export function WarehouseWorkbench() {
                 </colgroup>
                 <thead className="bg-canvas/80">
                   <tr>
-                    {visibleColumnsOrdered.map((col) => {
+                    {visibleColumnsOrdered.map((col, index) => {
                       const active = sortColumn === col.id;
+                      const sticky = stickyOffsets[index];
                       return (
                         <th
                           key={col.id}
@@ -1058,9 +1326,12 @@ export function WarehouseWorkbench() {
                             setDraggedColumn(null);
                           }}
                           onDragEnd={() => setDraggedColumn(null)}
+                          style={sticky?.isSticky ? { left: `${sticky.left}px`, position: "sticky", zIndex: 20 } : undefined}
                           className={cn(
-                            "relative select-none px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-mute",
+                            "relative select-none px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-mute transition-colors",
                             col.group === "metric" ? "text-right" : "text-left",
+                            sticky?.isSticky && "bg-canvas z-20",
+                            sticky?.isLastSticky && "border-r border-line shadow-[3px_0_6px_-2px_rgba(0,0,0,0.6)]"
                           )}
                         >
                           <button
@@ -1102,8 +1373,10 @@ export function WarehouseWorkbench() {
                         className="cursor-pointer hover:bg-white/[0.02]"
                         onClick={() => toggleRow(m.id)}
                       >
-                        {visibleColumnsOrdered.map((col) => (
-                          <React.Fragment key={col.id}>{renderWarehouseTableCell(m, col, ctrLabel)}</React.Fragment>
+                        {visibleColumnsOrdered.map((col, index) => (
+                          <React.Fragment key={col.id}>
+                            {renderWarehouseTableCell(m, col, ctrLabel, stickyOffsets[index], metricMaxValues)}
+                          </React.Fragment>
                         ))}
                       </tr>
                       {expandedRows.has(m.id) && (

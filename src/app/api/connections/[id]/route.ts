@@ -144,3 +144,63 @@ export async function DELETE(
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
 }
+
+/**
+ * PATCH — rename a connection (e.g. nickname for distinct multi-BM/MCC setups).
+ */
+export async function PATCH(
+    request: Request,
+    context: { params: Promise<{ id: string }> }
+) {
+    try {
+        const session = await getServerSession(authOptions);
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const { id: connectionId } = await context.params;
+        if (!connectionId) {
+            return NextResponse.json({ error: "Missing connection id" }, { status: 400 });
+        }
+
+        const connection = await prisma.connection.findUnique({
+            where: { id: connectionId },
+            select: { id: true, workspaceId: true, name: true },
+        });
+
+        if (!connection) {
+            return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+        }
+
+        await requireWorkspaceAccess({
+            userId: session.user.id,
+            workspaceId: connection.workspaceId,
+            minimumRole: "member",
+            operation: "edit_connection",
+        });
+
+        const body = await request.json().catch(() => ({}));
+        const name = typeof body?.name === "string" ? body.name.trim() : null;
+
+        if (!name || name.length === 0) {
+            return NextResponse.json({ error: "Name is required" }, { status: 400 });
+        }
+
+        if (name.length > 100) {
+            return NextResponse.json({ error: "Name cannot exceed 100 characters" }, { status: 400 });
+        }
+
+        const updated = await prisma.connection.update({
+            where: { id: connectionId },
+            data: { name },
+            select: { id: true, name: true, provider: true, updatedAt: true },
+        });
+
+        return NextResponse.json({ ok: true, connection: updated });
+    } catch (error) {
+        const rbac = toRbacResponse(error);
+        if (rbac) return rbac;
+        logger.error("PATCH /api/connections/[id]:", error);
+        return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    }
+}

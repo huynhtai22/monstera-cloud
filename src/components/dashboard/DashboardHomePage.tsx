@@ -19,6 +19,8 @@ import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { SetupWizard } from "./SetupWizard";
+import { PipelineArchitectureVisualizer } from "./PipelineArchitectureVisualizer";
+import { CopyableBadge } from "@/components/ui/CopyableBadge";
 import type { DashboardOverviewDTO } from "@/lib/dashboard-overview";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +29,15 @@ const fetcher = async (url: string) => {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Failed to fetch dashboard data");
   return data;
+};
+
+const PROVIDER_NAMES: Record<string, string> = {
+  meta_ads: "Meta Ads",
+  google_ads: "Google Ads",
+  tiktok_business: "TikTok Ads",
+  shopee: "Shopee",
+  lazada: "Lazada",
+  shopify: "Shopify",
 };
 
 function formatCompactNumber(n: number): string {
@@ -180,7 +191,30 @@ function DashboardSourceRow({ source }: { source: DashboardOverviewDTO["sourcesL
       <div className="flex min-w-0 items-center gap-3">
         <IntegrationMark src={logoPathForConnectionProvider(source.provider)} size="md" />
         <div className="min-w-0">
-          <p className="break-words text-xs font-medium leading-snug text-ink">{source.name}</p>
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/sources/${source.id}`}
+              className="break-words text-xs font-semibold leading-snug text-ink hover:text-white transition-colors"
+            >
+              {source.name}
+            </Link>
+            {source.managerBadge && (
+              <CopyableBadge
+                text={source.managerBadge}
+                copyValue={source.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC):\s*/, "")}
+                title={`Click to copy ${source.managerBadge}`}
+                className="text-[10px] text-ink-mute"
+              />
+            )}
+            {source.shortId && (
+              <CopyableBadge
+                text={`#${source.shortId}`}
+                copyValue={source.id}
+                title={`Click to copy connection ID (${source.id})`}
+                className="text-[10px] text-ink-mute/60"
+              />
+            )}
+          </div>
           <p className="mt-0.5 text-[11px] leading-snug text-ink-mute">
             {source.accountCount} {source.accountCount === 1 ? "account" : "accounts"} · {lastSyncLabel}
           </p>
@@ -409,7 +443,179 @@ export function DashboardHomePage() {
           />
         )}
 
-        {/* ── 2. Top Summary Cards (4 Clean Operational Pillars) ──────────────── */}
+        {/* ── 2. Performance & Spend at a Glance ─────────────────────────────── */}
+        <div className="rounded-xl border border-line bg-panel p-4 sm:p-5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-line pb-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="font-mono text-xs font-semibold uppercase tracking-wider text-ink">
+                Performance & Spend
+              </span>
+              <span className="inline-flex items-center rounded-md border border-line/80 bg-canvas px-2 py-0.5 font-mono text-[11px] text-ink-mute">
+                Last 7 Days
+              </span>
+            </div>
+            <Link
+              href="/explorer"
+              className="text-xs font-medium text-ink-mute hover:text-ink transition-colors duration-150 inline-flex items-center gap-1"
+            >
+              Open warehouse analytics <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+
+          <div className="mt-3.5 grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Total Ad Spend */}
+            <div className="rounded-lg border border-line bg-canvas p-3.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-mute">Total Ad Spend</span>
+                <span className="text-[10px] font-mono text-ink-mute/60">7D</span>
+              </div>
+              <p className="mt-2 text-xl font-bold tracking-tight text-ink tabular-nums">
+                {!hasPeriodMetrics
+                  ? "—"
+                  : warehouseSnapshot?.metrics7d?.byCurrency?.length
+                  ? warehouseSnapshot.metrics7d.mixedCurrency
+                    ? `${warehouseSnapshot.metrics7d.byCurrency
+                        .slice(0, 2)
+                        .map((b) => formatCurrency(b.spend, b.currency))
+                        .join(" · ")}${warehouseSnapshot.metrics7d.byCurrency.length > 2 ? ` +${warehouseSnapshot.metrics7d.byCurrency.length - 2}` : ""}`
+                    : formatCurrency(warehouseSnapshot.metrics7d.byCurrency[0]?.spend ?? 0, warehouseSnapshot.metrics7d.byCurrency[0]?.currency)
+                  : "—"}
+              </p>
+              <p className="mt-1 text-[11px] text-ink-mute">
+                {hasPeriodMetrics && warehouseSnapshot?.metrics7d?.byCurrency?.length
+                  ? "Combined ad channels"
+                  : "Awaiting sync data"}
+              </p>
+            </div>
+
+            {/* Attributed Revenue / GMV */}
+            <div className="rounded-lg border border-line bg-canvas p-3.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-mute">Attributed GMV / Rev</span>
+                <span className="text-[10px] font-mono text-ink-mute/60">7D</span>
+              </div>
+              <p className="mt-2 text-xl font-bold tracking-tight text-ink tabular-nums">
+                {!hasPeriodMetrics
+                  ? "—"
+                  : warehouseSnapshot?.metrics7d?.byCurrency?.length
+                  ? warehouseSnapshot.metrics7d.mixedCurrency
+                    ? `${warehouseSnapshot.metrics7d.byCurrency
+                        .slice(0, 2)
+                        .map((b) => formatCurrency(b.revenue, b.currency))
+                        .join(" · ")}${warehouseSnapshot.metrics7d.byCurrency.length > 2 ? ` +${warehouseSnapshot.metrics7d.byCurrency.length - 2}` : ""}`
+                    : formatCurrency(warehouseSnapshot.metrics7d.byCurrency[0]?.revenue ?? 0, warehouseSnapshot.metrics7d.byCurrency[0]?.currency)
+                  : "—"}
+              </p>
+              <p className="mt-1 text-[11px] text-ink-mute">
+                {hasPeriodMetrics ? "E-commerce & retail conversions" : "Awaiting sync data"}
+              </p>
+            </div>
+
+            {/* Blended ROAS */}
+            <div className="rounded-lg border border-line bg-canvas p-3.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-mute">Blended ROAS</span>
+                <span className="text-[10px] font-mono text-ink-mute/60">7D</span>
+              </div>
+              <p className="mt-2 text-xl font-bold tracking-tight text-ink tabular-nums">
+                {!hasPeriodMetrics
+                  ? "—"
+                  : warehouseSnapshot?.metrics7d?.mixedCurrency
+                  ? <span className="text-ink-mute text-sm font-medium">Multi-currency</span>
+                  : (warehouseSnapshot?.metrics7d?.byCurrency?.[0]?.spend ?? 0) > 0
+                    ? `${(warehouseSnapshot?.metrics7d?.byCurrency?.[0]?.roas ?? 0).toFixed(2)}×`
+                    : "—"}
+              </p>
+              <p className="mt-1 text-[11px] text-ink-mute">
+                {hasPeriodMetrics ? "Revenue / Spend ratio" : "Calculated from warehouse data"}
+              </p>
+            </div>
+
+            {/* Paid Traffic & Conversions */}
+            <div className="rounded-lg border border-line bg-canvas p-3.5 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-mute">Traffic Volume</span>
+                <span className="text-[10px] font-mono text-ink-mute/60">7D</span>
+              </div>
+              <p className="mt-2 text-xl font-bold tracking-tight text-ink tabular-nums">
+                {hasPeriodMetrics
+                  ? `${formatCompactNumber(warehouseSnapshot?.metrics7d?.impressions ?? 0)} imp`
+                  : "—"}
+              </p>
+              <p className="mt-1 text-[11px] text-ink-mute">
+                {hasPeriodMetrics
+                  ? `${formatCompactNumber(warehouseSnapshot?.metrics7d?.clicks ?? 0)} clicks · ${formatCompactNumber(warehouseSnapshot?.metrics7d?.conversions ?? 0)} conv`
+                  : "Impressions & clicks"}
+              </p>
+            </div>
+          </div>
+
+          {/* Channel Spend Distribution Bar */}
+          {hasPeriodMetrics && warehouseSnapshot?.metrics7d?.byPlatform && warehouseSnapshot.metrics7d.byPlatform.length > 0 && (
+            <div className="mt-4 pt-3.5 border-t border-line/60">
+              <div className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">
+                    Spend Share by Channel
+                  </span>
+                  <span className="font-mono text-[10px] text-ink-mute">
+                    {warehouseSnapshot.metrics7d.byPlatform.length} active channel{warehouseSnapshot.metrics7d.byPlatform.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                <div className="flex h-2 w-full overflow-hidden rounded-full bg-canvas border border-line/80">
+                  {warehouseSnapshot.metrics7d.byPlatform.map((bp) => {
+                    const colorClass = bp.platform === "google_ads"
+                      ? "bg-emerald-500"
+                      : bp.platform === "meta_ads"
+                      ? "bg-blue-500"
+                      : bp.platform === "tiktok_business"
+                      ? "bg-purple-500"
+                      : bp.platform === "shopee"
+                      ? "bg-orange-500"
+                      : "bg-sky-500";
+                    return (
+                      <div
+                        key={bp.platform}
+                        style={{ width: `${Math.max(bp.percentage, 4)}%` }}
+                        className={cn("h-full transition-all duration-300", colorClass)}
+                        title={`${PROVIDER_NAMES[bp.platform] || bp.platform}: ${bp.percentage}% (${formatCurrency(bp.spend, bp.currency)})`}
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Channel Labels & Pills */}
+                <div className="flex flex-wrap items-center gap-4 pt-1">
+                  {warehouseSnapshot.metrics7d.byPlatform.map((bp) => {
+                    const dotClass = bp.platform === "google_ads"
+                      ? "bg-emerald-500"
+                      : bp.platform === "meta_ads"
+                      ? "bg-blue-500"
+                      : bp.platform === "tiktok_business"
+                      ? "bg-purple-500"
+                      : bp.platform === "shopee"
+                      ? "bg-orange-500"
+                      : "bg-sky-500";
+                    const label = PROVIDER_NAMES[bp.platform] || bp.platform;
+                    return (
+                      <div key={bp.platform} className="flex items-center gap-1.5 text-xs">
+                        <span className={cn("h-2 w-2 rounded-full shrink-0", dotClass)} />
+                        <span className="font-medium text-ink">{label}</span>
+                        <span className="font-mono text-[11px] text-ink-mute">
+                          {bp.percentage}% · {formatCurrency(bp.spend, bp.currency)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── 4. Operational Pillars (Sources, Warehouse, Syncs, Destinations) ── */}
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {/* Sources Card */}
           <div className="rounded-lg border border-line bg-panel p-3.5">
