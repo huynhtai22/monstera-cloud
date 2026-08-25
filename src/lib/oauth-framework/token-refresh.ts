@@ -26,8 +26,23 @@ export async function getValidOAuthToken(conn: {
         accessToken: string;
         expiresAt?: string;
         refreshToken?: string;
+        tokenMode?: string;
         [key: string]: unknown;
     };
+
+    // TikTok Ads advertiser authorization uses a long-lived access token. It
+    // has no refresh token by design and becomes invalid only if the advertiser
+    // revokes the app's authorization. Do not route it through refresh logic.
+    const isTikTokLongLivedAdvertiserToken =
+        conn.provider === "tiktok_business" &&
+        (creds.tokenMode === "long_lived_advertiser" ||
+            (!creds.refreshToken && !creds.expiresAt));
+    if (isTikTokLongLivedAdvertiserToken) {
+        if (!creds.accessToken) {
+            throw new Error("TikTok long-lived access token is missing; reconnect TikTok Ads");
+        }
+        return creds.accessToken;
+    }
 
     const expiresAt = creds.expiresAt ? new Date(creds.expiresAt) : null;
 
