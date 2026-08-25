@@ -245,6 +245,17 @@ export interface CreateReportTaskParams {
   page_size?: number;
 }
 
+/**
+ * TikTok accepts at most four dimensions per report request. Keep warehouse
+ * imports at campaign granularity: ad-group dimensions are invalid alongside
+ * the campaign dimensions and make the API reject the whole request.
+ */
+export const TIKTOK_CAMPAIGN_REPORT_DIMENSIONS = [
+  "campaign_id",
+  "campaign_name",
+  "stat_time_day",
+] as const;
+
 export interface ReportTaskStatus_Response {
   task_id: string;
   status: ReportTaskStatus;

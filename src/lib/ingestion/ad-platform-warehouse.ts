@@ -1,7 +1,7 @@
 import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import { encrypt } from "@/lib/encryption";
 import { googleAdsReportClient } from "@/lib/google-ads";
-import { tiktokReportClient } from "@/lib/tiktok-business";
+import { tiktokReportClient, TIKTOK_CAMPAIGN_REPORT_DIMENSIONS } from "@/lib/tiktok-business";
 import { ingestGoogleAdsRows, ingestTiktokRows } from "@/lib/ad-platform-ingest";
 import { logger } from "@/lib/logger";
 
@@ -148,7 +148,7 @@ export async function syncTikTokIntoWarehouse(params: {
           advertiser_id: aid,
           report_type: "BASIC",
           data_level: "AUCTION_CAMPAIGN",
-          dimensions: ["campaign_id", "campaign_name", "adgroup_id", "adgroup_name", "stat_time_day"],
+          dimensions: [...TIKTOK_CAMPAIGN_REPORT_DIMENSIONS],
           metrics: ["impression", "click", "spend", "cpc", "ctr", "conversion", "revenue", "roas"],
           start_date: since,
           end_date: until,
@@ -224,4 +224,3 @@ export async function syncTikTokIntoWarehouse(params: {
 
   return { upserted, accounts: advertiserIds.length, failed };
 }
-
