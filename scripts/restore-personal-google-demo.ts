@@ -179,7 +179,9 @@ async function main() {
           adsetName: adset.name,
           level: "adset",
           entityId: adset.id,
-          breakdownHash: "none",
+          // Keep each ad-set demo row distinct for both the current entity-key
+          // index and older production deployments keyed by campaignId.
+          breakdownHash: `demo-adset-${adset.id}`,
           date,
           currency: DEMO_ACCOUNT.currency,
           rawData: JSON.stringify({ demo: true, source: "personal-google-demo-restore" }),
