@@ -36,6 +36,12 @@ Basic Access removes the external API-access blocker. It does not by itself prov
 
 8. Only after reconciliation passes, extend the window gradually (never an unbounded backfill).
 
+### Reconciliation context and helper
+
+Do not compare totals copied from differently scoped reports. Record the customer ID, completed `since`/`until` range, Google Ads account timezone, currency, campaign scope (the product excludes `REMOVED` campaigns), and conversion semantics on both sides. The pure internal helper `reconcileGoogleAdsTotals` in `src/lib/google-ads-reconciliation.ts` returns a context mismatch before a variance is interpreted; it accepts only sanitized totals and makes no provider request.
+
+For a manual pilot record, aggregate `CampaignMetric` using the same workspace, connection, account, date window, and campaign scope used by the Google report. Never include OAuth tokens, developer tokens, or raw connection credentials in the record.
+
 ## Known Basic Access notes
 
 - Basic Access enforces daily operations quotas (fine for pilot cadences; not unlimited capacity).

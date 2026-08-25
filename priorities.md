@@ -1,6 +1,6 @@
 # Monstera Cloud — product priorities
 
-This file is the **source of truth** for what we optimize first. Technical constraints that affect scheduling and hosting stay in `[roadmap.md](./roadmap.md)`.
+The authoritative product strategy and phase gates are in [docs/PRODUCT_ROADMAP_2026.md](./docs/PRODUCT_ROADMAP_2026.md). This file retains the useful engineering-priority context that supports that strategy; it is not a competing product roadmap. Technical scheduling and hosting constraints stay in [roadmap.md](./roadmap.md).
 
 ---
 

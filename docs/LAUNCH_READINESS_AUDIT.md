@@ -45,6 +45,12 @@ Ranked by launch risk × effort. "Owner" = who must act.
 The ranked list above is a historical evidence record. The following corrections
 keep it from being misread as a current to-do list:
 
+- **Google Ads Basic Access — external approval cleared; pilot evidence still pending:**
+  Google approved Basic Access on 2026-08-25. This removes the prior approval
+  blocker, but does not certify OAuth, manager-account selection, bounded
+  synchronization, reconciliation, or Sheets/Looker delivery. The required
+  real-account procedure is [google-ads-basic-access.md](./google-ads-basic-access.md).
+
 - **Gap 5 — closed in code:** the dependency preflight is now step 4 of the
   [pilot release sequence](./PILOT_OPERATIONS.md#release-sequence), and the
   guarded release path requires the deployed version to report the intended

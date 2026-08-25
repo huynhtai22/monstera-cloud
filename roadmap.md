@@ -1,4 +1,6 @@
-# Roadmap
+# Engineering delivery roadmap
+
+The authoritative product position, Now / Next / Later phases, and release gates are in [docs/PRODUCT_ROADMAP_2026.md](./docs/PRODUCT_ROADMAP_2026.md). This file intentionally retains tactical hosting and reliability notes.
 
 ## Platform reliability
 

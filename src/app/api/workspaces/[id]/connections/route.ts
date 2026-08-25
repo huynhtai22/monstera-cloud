@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { sanitizeConnectionCredentials } from "@/lib/sanitize-connection-credentials";
+import { resolveSourceHealthState, SOURCE_HEALTH_STALE_AFTER_MS } from "@/lib/source-health";
 
 /**
  * GET /api/workspaces/[id]/connections
@@ -33,9 +34,32 @@ export async function GET(req: Request, context: { params: any }) {
             orderBy: { createdAt: "desc" }
         });
 
+        const sourceConnectionIds = connections
+            .filter((connection) => connection.type === "source")
+            .map((connection) => connection.id);
+        const dataCoverage = sourceConnectionIds.length > 0
+            ? await prisma.campaignMetric.groupBy({
+                by: ["connectionId"],
+                where: { workspaceId, connectionId: { in: sourceConnectionIds } },
+                _max: { date: true },
+            })
+            : [];
+        const dataThroughByConnectionId = new Map(
+            dataCoverage.map((coverage) => [coverage.connectionId, coverage._max.date]),
+        );
+        const staleBefore = new Date(Date.now() - SOURCE_HEALTH_STALE_AFTER_MS);
         return NextResponse.json(connections.map((connection) => ({
             ...connection,
             credentials: sanitizeConnectionCredentials(connection.credentials),
+            healthState: connection.type === "source"
+                ? resolveSourceHealthState({
+                    connectionStatus: connection.status,
+                    lastError: connection.lastError,
+                    lastSyncAt: connection.lastSyncAt,
+                    staleBefore,
+                })
+                : undefined,
+            dataThroughDate: dataThroughByConnectionId.get(connection.id)?.toISOString() ?? null,
         })));
     } catch (error: unknown) {
         const rbac = toRbacResponse(error);

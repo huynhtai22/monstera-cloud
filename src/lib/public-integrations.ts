@@ -57,7 +57,7 @@ export const PUBLIC_INTEGRATIONS: readonly PublicIntegrationEntry[] = [
       "Bring daily Google Ads campaign and ad-group metrics into a spreadsheet workflow through Monstera’s normalized reporting warehouse.",
     availableData: ["Campaign and ad-group names", "Spend, impressions, clicks, CTR, and CPC", "Conversions, conversion value, and currency"],
     requirements: ["A Google Ads account accessible to your Google user", "A Monstera workspace with Google Ads enabled", "The Monstera Google Sheets add-on"],
-    limitations: ["The Monstera Google Ads developer token must be approved for the account", "Conversion values follow the account’s Google Ads configuration"],
+    limitations: ["Basic Access is approved; the production deployment and customer account must still be authorized for Google Ads API access", "Conversion values follow the account’s Google Ads configuration"],
     keywords: ["Google Ads Google Sheets", "Google Ads reporting export", "Google Ads spreadsheet connector"],
     faqs: [
       { question: "Can manager accounts be used?", answer: "Monstera resolves accessible leaf accounts under a manager account and reports on the selected customer accounts." },
@@ -72,7 +72,7 @@ export const PUBLIC_INTEGRATIONS: readonly PublicIntegrationEntry[] = [
       "Build Looker Studio reports from Google Ads metrics stored in a workspace-scoped Monstera warehouse and authenticated with a revocable API key.",
     availableData: ["Daily campaign and ad-group performance", "Spend, clicks, impressions, CTR, and CPC", "Conversions, conversion value, and currency"],
     requirements: ["At least one completed Google Ads import", "A workspace API key", "Access to the Monstera community connector"],
-    limitations: ["Dashboards reflect the latest completed warehouse import", "The Google Ads developer-token approval requirement still applies"],
+    limitations: ["Dashboards reflect the latest completed warehouse import", "Google Ads remains subject to customer permissions and production connector validation"],
     keywords: ["Google Ads Looker Studio", "Google Ads dashboard connector", "paid search reporting"],
     faqs: [
       { question: "Does Looker Studio call Google Ads directly?", answer: "No. It queries the normalized metrics already stored in the selected Monstera workspace." },

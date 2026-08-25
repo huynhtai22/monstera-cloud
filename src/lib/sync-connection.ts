@@ -602,7 +602,7 @@ async function syncGoogleAds(opts: {
         // this account. Every leaf query would fail identically — never mask
         // it as per-account errors via the leaf fallback below.
         const result = makeFailedSyncResult(
-          `Google Ads developer token is not approved for this account (DEVELOPER_TOKEN_NOT_APPROVED). This blocks all Google Ads syncing until the token is approved in the Google Ads API Center — no account-level action will fix it.`,
+          `Google Ads rejected the configured developer token (DEVELOPER_TOKEN_NOT_APPROVED). Check the production deployment configuration and Google Ads API Center status — selecting a different customer account will not resolve this application-level rejection.`,
           false,
         );
         await persistConnectionSyncOutcome(connectionId, result, lease);
@@ -713,7 +713,7 @@ async function syncGoogleAds(opts: {
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google Ads sync failed";
       if (isGoogleAdsDeveloperTokenBlocked(error)) {
-        children.push({ id: customerId, kind: "customer", ok: false, error: "Google Ads developer token not approved — syncing is blocked at the application level.", retryable: false });
+        children.push({ id: customerId, kind: "customer", ok: false, error: "Google Ads rejected the configured developer token (DEVELOPER_TOKEN_NOT_APPROVED) — syncing is blocked at the application level.", retryable: false });
         break; // every remaining customer fails identically
       }
       children.push({ id: customerId, kind: "customer", ok: false, error: msg, retryable: isRetryableSyncError(error) });
