@@ -30,3 +30,4 @@ scratch/
 *.mov
 *.mp4
 *.webm
+.idea/

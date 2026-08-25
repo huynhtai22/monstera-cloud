@@ -444,6 +444,12 @@ export default function SourcesPage() {
         if (!activeWorkspaceId) return catalogIntegrations;
         const rawSourceConnections = Array.isArray(sourceConnections) ? sourceConnections : [];
 
+        // Count connections per provider to detect multiple connections in the workspace
+        const providerCounts: Record<string, number> = {};
+        for (const c of rawSourceConnections) {
+            providerCounts[c.provider] = (providerCounts[c.provider] || 0) + 1;
+        }
+
         const connectedSources = rawSourceConnections
             .map((conn: any) => {
                 const logo = logoPathForConnectionProvider(conn.provider);
@@ -463,7 +469,8 @@ export default function SourcesPage() {
 
                 // Extract ad accounts, manager badges, and account tags
                 let accountTags: string[] = [];
-                let displayName = conn.name || "";
+                let rawName = (conn.name || "").trim();
+                let displayName = rawName;
                 let managerBadge: string | null = null;
                 let scopeDesc = "";
 
@@ -475,16 +482,25 @@ export default function SourcesPage() {
                         a.name && a.name !== a.id ? a.name : String(a.id).replace(/^act_/, '')
                     );
                     const bmId = creds.businessManagerId || creds.bmId || null;
+                    const totalCount = accountTags.length;
                     if (bmId && bmId !== "") {
                         managerBadge = `BM: ${bmId}`;
+                        scopeDesc = `Business Manager (${bmId}) · ${totalCount} ad account${totalCount === 1 ? '' : 's'} synced`;
+                    } else if (list.length === 1) {
+                        const cleanId = String(list[0].id).replace(/^act_/, '');
+                        managerBadge = `act_${cleanId}`;
+                        scopeDesc = `Ad Account: ${list[0].name || list[0].id} · Direct sync`;
+                    } else if (list.length > 1) {
+                        const cleanFirst = String(list[0].id).replace(/^act_/, '');
+                        managerBadge = `BM Root: ${cleanFirst}`;
+                        scopeDesc = `Meta Business · ${totalCount} ad accounts synced`;
+                    } else {
+                        scopeDesc = `Meta Ads · ${totalCount} ad accounts synced`;
                     }
-                    const totalCount = accountTags.length;
-                    if (/^Meta\s*\(\d+\s*accounts?\)$/i.test(displayName) || !displayName) {
-                        displayName = "Meta Ads";
-                    }
-                    scopeDesc = bmId 
-                        ? `Business Manager (${bmId}) · ${totalCount} ad account${totalCount === 1 ? '' : 's'}`
-                        : `Business Manager · ${totalCount} ad account${totalCount === 1 ? '' : 's'} synced`;
+
+                    // Clean auto-generated name strings like "Meta (2 accounts)" or "Meta Ads (1 account)"
+                    const isDefaultName = !rawName || /^Meta(\s*Ads)?\s*(\(.*?\))?$/i.test(rawName);
+                    displayName = isDefaultName ? "Meta Ads" : rawName;
                 } else if (conn.provider === 'google_ads') {
                     const list: string[] = creds.customerIds ?? [];
                     accountTags = list.map((id: string) => {
@@ -495,50 +511,78 @@ export default function SourcesPage() {
                         return String(id);
                     });
                     const mccId = creds.mccId || creds.managerCustomerId || null;
+                    const totalCount = accountTags.length;
                     if (mccId && mccId !== "") {
                         const cleanMcc = String(mccId).replace(/\D/g, '');
                         const formattedMcc = cleanMcc.length === 10 
                             ? `${cleanMcc.slice(0, 3)}-${cleanMcc.slice(3, 6)}-${cleanMcc.slice(6)}`
                             : mccId;
                         managerBadge = `MCC: ${formattedMcc}`;
+                        scopeDesc = `${managerBadge} · ${totalCount} customer account${totalCount === 1 ? '' : 's'} synced`;
+                    } else if (list.length === 1) {
+                        const cleanCid = String(list[0]).replace(/\D/g, '');
+                        const formattedCid = cleanCid.length === 10
+                            ? `${cleanCid.slice(0, 3)}-${cleanCid.slice(3, 6)}-${cleanCid.slice(6)}`
+                            : list[0];
+                        managerBadge = `CID: ${formattedCid}`;
+                        scopeDesc = `Customer: ${formattedCid} · Direct Google Ads sync`;
+                    } else if (list.length > 1) {
+                        const cleanFirst = String(list[0]).replace(/\D/g, '');
+                        const formattedFirst = cleanFirst.length === 10
+                            ? `${cleanFirst.slice(0, 3)}-${cleanFirst.slice(3, 6)}-${cleanFirst.slice(6)}`
+                            : list[0];
+                        managerBadge = `MCC: ${formattedFirst}`;
+                        scopeDesc = `MCC Manager · ${totalCount} customer accounts synced`;
+                    } else {
+                        scopeDesc = `Google Ads · ${totalCount} customer accounts synced`;
                     }
-                    const totalCount = accountTags.length;
-                    if (/^Google Ads\s*\(\d+\s*accounts?\)$/i.test(displayName) || !displayName) {
-                        displayName = "Google Ads";
-                    }
-                    scopeDesc = managerBadge
-                        ? `${managerBadge} · ${totalCount} customer account${totalCount === 1 ? '' : 's'}`
-                        : `MCC Manager · ${totalCount} customer account${totalCount === 1 ? '' : 's'} synced`;
+
+                    // Clean auto-generated name strings like "Google Ads (8 accounts)" or "Google Ads (1 account)"
+                    const isDefaultName = !rawName || /^Google Ads\s*(\(.*?\))?$/i.test(rawName);
+                    displayName = isDefaultName ? "Google Ads" : rawName;
                 } else if (conn.provider === 'tiktok_business') {
                     const list: string[] = creds.advertiserIds ?? [];
                     accountTags = list.map((id: string) => String(id));
                     const bcId = creds.businessCenterId || creds.bcId || null;
+                    const totalCount = accountTags.length;
                     if (bcId && bcId !== "") {
                         managerBadge = `BC: ${bcId}`;
+                        scopeDesc = `Business Center (${bcId}) · ${totalCount} advertiser${totalCount === 1 ? '' : 's'} synced`;
+                    } else if (list.length === 1) {
+                        const advId = list[0];
+                        managerBadge = `Adv: ${advId}`;
+                        scopeDesc = `Advertiser ID: ${advId} · Direct TikTok sync`;
+                    } else if (list.length > 1) {
+                        managerBadge = `BC: ${list[0]}`;
+                        scopeDesc = `Business Center · ${totalCount} advertisers synced`;
+                    } else {
+                        scopeDesc = `TikTok Ads · ${totalCount} advertisers synced`;
                     }
-                    const totalCount = accountTags.length;
-                    if (/^TikTok Ads\s*\(\d+\s*advertisers?\)$/i.test(displayName) || !displayName) {
-                        displayName = "TikTok Ads";
-                    }
-                    scopeDesc = `Business Center · ${totalCount} advertiser${totalCount === 1 ? '' : 's'} synced`;
+
+                    // Clean auto-generated name strings like "TikTok Ads (1 advertiser)" or "TikTok Ads (account)"
+                    const isDefaultName = !rawName || /^TikTok Ads\s*(\(.*?\))?$/i.test(rawName);
+                    displayName = isDefaultName ? "TikTok Ads" : rawName;
                 } else if (conn.provider === 'shopee') {
                     const shop = creds.shopId || null;
                     if (shop) {
                         accountTags = [`Shop ID: ${shop}`];
                         managerBadge = `Shop: ${shop}`;
                     }
-                    if (!displayName) displayName = "Shopee";
+                    const isDefaultName = !rawName || /^Shopee\s*(\(.*?\))?$/i.test(rawName);
+                    displayName = isDefaultName ? "Shopee" : rawName;
                     scopeDesc = shop ? `Shop ID: ${shop} · Orders & GMV sync` : "Shopee Marketplace store";
                 } else if (conn.provider === 'shopify') {
                     const domain = creds.shopDomain || null;
                     if (domain) {
                         accountTags = [domain];
-                        managerBadge = domain;
+                        managerBadge = `Store: ${domain}`;
                     }
-                    if (!displayName) displayName = "Shopify";
+                    const isDefaultName = !rawName || /^Shopify\s*(\(.*?\))?$/i.test(rawName);
+                    displayName = isDefaultName ? "Shopify" : rawName;
                     scopeDesc = domain ? `Store: ${domain} · E-commerce sync` : "Shopify Store sync";
                 } else {
                     const baseBlurb = SOURCE_BLURB_BY_PROVIDER[conn.provider] ?? `${conn.provider} — data for this workspace.`;
+                    displayName = rawName || conn.provider;
                     scopeDesc = baseBlurb;
                 }
 
@@ -549,6 +593,7 @@ export default function SourcesPage() {
                     name: displayName,
                     description: scopeDesc,
                     managerBadge,
+                    shortId: conn.id ? conn.id.slice(-4) : undefined,
                     // `healthState` is computed server-side from durable
                     // connection truth. Keep the fallback for older API
                     // responses while the client cache rolls over.

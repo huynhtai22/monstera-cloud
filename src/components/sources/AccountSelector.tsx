@@ -16,6 +16,8 @@ interface Account {
 interface AccountSelectorProps {
   connectionId: string;
   provider: string;
+  connectionName?: string;
+  managerBadge?: string | null;
   variant?: "panel" | "compact";
 }
 
@@ -44,7 +46,7 @@ const PROVIDER_CONFIG: Record<string, { icon: React.ReactNode; title: string; ty
   },
 };
 
-export function AccountSelector({ connectionId, provider, variant = "panel" }: AccountSelectorProps) {
+export function AccountSelector({ connectionId, provider, connectionName, managerBadge, variant = "panel" }: AccountSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState("");
@@ -162,9 +164,17 @@ export function AccountSelector({ connectionId, provider, variant = "panel" }: A
               <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-line bg-panel text-ink shadow-xs">
                 {config.icon}
               </div>
-              <h3 className="text-sm font-semibold tracking-tight text-ink">{config.title}</h3>
+              <h3 className="text-sm font-semibold tracking-tight text-ink">{connectionName || config.title}</h3>
+              {managerBadge ? (
+                <span className="inline-flex items-center rounded-md border border-line/80 bg-panel px-2 py-0.5 font-mono text-[11px] font-medium text-ink-mute">
+                  {managerBadge}
+                </span>
+              ) : null}
               <span className="inline-flex items-center rounded-md border border-line/80 bg-panel px-2 py-0.5 font-mono text-[11px] font-medium text-ink-mute">
                 {selectedCount} / {accounts.length} active
+              </span>
+              <span className="font-mono text-[10px] text-ink-mute/50" title={`Connection ID: ${connectionId}`}>
+                #{connectionId.slice(-4)}
               </span>
             </div>
             <p className="mt-1.5 text-xs leading-relaxed text-ink-mute">

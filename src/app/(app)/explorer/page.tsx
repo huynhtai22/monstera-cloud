@@ -3,7 +3,7 @@ import { WarehouseWorkbench } from "@/components/data-explorer/WarehouseWorkbenc
 
 export default function DataExplorerPage() {
     return (
-        <PageShell className="max-w-7xl">
+        <PageShell className="w-full" withBackdrop>
             <WarehouseWorkbench />
         </PageShell>
     );

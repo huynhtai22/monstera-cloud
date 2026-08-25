@@ -45,3 +45,13 @@ Guidance for autonomous agents working in this repo.
 - **App shell / click-through:** On large screens, `AppLayout` uses a **full-width** `lg:sticky` top strip for `NotificationCenter` (`z-20`) above `main` (`z-10`). That strip must use `pointer-events-none` on the row and `pointer-events-auto` on the bell control only; otherwise empty flex space overlaps scrolling page content and **intercepts clicks** (e.g. setup wizard CTAs, links).
 
 - For standard dev commands (`npm run dev`, `npm run lint`, `npm run build`), see root `README.md` and `package.json`.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

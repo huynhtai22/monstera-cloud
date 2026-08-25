@@ -9,6 +9,8 @@ export interface DashboardSourceItem {
   id: string;
   provider: string;
   name: string;
+  managerBadge?: string | null;
+  shortId?: string;
   accountCount: number;
   accountTags: string[];
   state: SourceHealthState;
@@ -109,6 +111,13 @@ export interface DashboardOverviewDTO {
         spend: number;
         revenue: number;
         roas: number;
+      }>;
+      byPlatform: Array<{
+        platform: string;
+        spend: number;
+        revenue: number;
+        currency?: string;
+        percentage: number;
       }>;
     };
   };
@@ -495,7 +504,7 @@ export async function getWorkspaceDashboardOverview(
     // 4. 7-day Warehouse Metrics
     prisma.campaignMetric.groupBy({
       where: { workspaceId, date: { gte: sevenDaysAgo } },
-      by: ["currency"],
+      by: ["currency", "platform"],
       _sum: {
         spend: true,
         impressions: true,
@@ -583,6 +592,7 @@ export async function getWorkspaceDashboardOverview(
     let accountTags: string[] = [];
     let accountCount = 1;
 
+    let managerBadge: string | null = null;
     try {
       let creds: Record<string, unknown> = {};
       try {
@@ -603,26 +613,56 @@ export async function getWorkspaceDashboardOverview(
           );
           accountCount = list.length;
         }
+        const bmId = creds.businessManagerId || creds.bmId;
+        if (bmId) {
+          managerBadge = `BM: ${bmId}`;
+        } else if (accountTags.length > 0) {
+          managerBadge = `act_${accountTags[0]}`;
+        }
       } else if (conn.provider === "google_ads") {
         const customers = (creds.customerIds ??
           (creds.extraFields as Record<string, unknown>)?.customerIds ??
           []) as string[];
         if (Array.isArray(customers) && customers.length > 0) {
-          accountTags = customers;
+          accountTags = customers.map((id) => {
+            const clean = String(id).replace(/\D/g, "");
+            return clean.length === 10 ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}` : String(id);
+          });
           accountCount = customers.length;
+        }
+        const mccId = creds.mccId || creds.managerCustomerId;
+        if (mccId) {
+          const cleanMcc = String(mccId).replace(/\D/g, "");
+          managerBadge = `MCC: ${cleanMcc.length === 10 ? `${cleanMcc.slice(0, 3)}-${cleanMcc.slice(3, 6)}-${cleanMcc.slice(6)}` : mccId}`;
+        } else if (accountTags.length > 0) {
+          managerBadge = `MCC: ${accountTags[0]}`;
         }
       } else if (conn.provider === "tiktok_business") {
         const advs = (creds.advertiserIds ??
           (creds.extraFields as Record<string, unknown>)?.advertiserIds ??
           []) as string[];
         if (Array.isArray(advs) && advs.length > 0) {
-          accountTags = advs;
+          accountTags = advs.map((id) => String(id));
           accountCount = advs.length;
+        }
+        const bcId = creds.businessCenterId || creds.bcId;
+        if (bcId) {
+          managerBadge = `BC: ${bcId}`;
+        } else if (accountTags.length > 0) {
+          managerBadge = `Adv: ${accountTags[0]}`;
         }
       } else if (conn.provider === "shopee") {
         const shopId = creds.shop_id || creds.shopId;
         if (shopId) {
           accountTags = [`Shop ${shopId}`];
+          managerBadge = `Shop: ${shopId}`;
+          accountCount = 1;
+        }
+      } else if (conn.provider === "shopify") {
+        const domain = creds.shopDomain || creds.domain;
+        if (domain) {
+          accountTags = [String(domain)];
+          managerBadge = `Store: ${domain}`;
           accountCount = 1;
         }
       }
@@ -632,7 +672,10 @@ export async function getWorkspaceDashboardOverview(
 
     totalConnectedAccounts += accountCount;
 
-    const providerLabel = conn.name || PROVIDER_NAMES[conn.provider] || conn.provider;
+    const rawName = (conn.name || "").trim();
+    const isDefaultName = !rawName || /^(Google Ads|Meta(\s*Ads)?|TikTok Ads|Shopee|Shopify)\s*(\(.*?\))?$/i.test(rawName);
+    const providerLabel = isDefaultName ? (PROVIDER_NAMES[conn.provider] || conn.provider) : rawName;
+    const shortId = conn.id ? conn.id.slice(-4) : undefined;
 
     const state = resolveDashboardSourceState({
       connectionStatus: conn.status,
@@ -713,6 +756,8 @@ export async function getWorkspaceDashboardOverview(
       id: conn.id,
       provider: conn.provider,
       name: providerLabel,
+      managerBadge,
+      shortId,
       accountCount,
       accountTags,
       state,
@@ -811,6 +856,30 @@ export async function getWorkspaceDashboardOverview(
   const sumImpressions = kpi7d.impressions;
   const sumClicks = kpi7d.clicks;
   const sumConversions = kpi7d.conversions;
+
+  const platformSpendMap: Record<string, { spend: number; revenue: number; currency?: string }> = {};
+  let totalSpendAll = 0;
+  for (const g of warehouse7dByCurrency) {
+    const p = g.platform || "other";
+    const s = g._sum.spend ?? 0;
+    const r = g._sum.revenue ?? 0;
+    if (!platformSpendMap[p]) {
+      platformSpendMap[p] = { spend: 0, revenue: 0, currency: g.currency ?? undefined };
+    }
+    platformSpendMap[p].spend += s;
+    platformSpendMap[p].revenue += r;
+    totalSpendAll += s;
+  }
+
+  const byPlatform = Object.entries(platformSpendMap)
+    .map(([platform, data]) => ({
+      platform,
+      spend: data.spend,
+      revenue: data.revenue,
+      currency: data.currency,
+      percentage: totalSpendAll > 0 ? Math.round((data.spend / totalSpendAll) * 100) : 0,
+    }))
+    .sort((a, b) => b.spend - a.spend);
 
   // Recent Activity Feed
   const recentActivity: DashboardActivityItem[] = [];
@@ -935,7 +1004,7 @@ export async function getWorkspaceDashboardOverview(
         healthy: healthySources,
         attention: sourceAttentionCount,
         accountsTotal: totalConnectedAccounts,
-        label: `${sourceConnections.length} configured`,
+        label: `${sourceConnections.length} source connection${sourceConnections.length === 1 ? "" : "s"}`,
         subtext:
           sourceAttentionCount > 0
             ? `${accountSummary} · ${sourceAttentionCount} need attention`
@@ -977,6 +1046,7 @@ export async function getWorkspaceDashboardOverview(
           revenue: b.revenue,
           roas: b.roas,
         })),
+        byPlatform,
       },
     },
     destinationsList,
