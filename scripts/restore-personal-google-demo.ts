@@ -137,10 +137,6 @@ async function main() {
         select: { id: true },
       });
 
-  // This intentionally deletes only the dedicated demo connection's rows so a
-  // re-run replaces stale sample data without touching real account history.
-  await prisma.campaignMetric.deleteMany({ where: { connectionId: connection.id } });
-
   const rows = [] as Array<{
     workspaceId: string;
     connectionId: string;
@@ -151,6 +147,9 @@ async function main() {
     campaignName: string;
     adsetId: string;
     adsetName: string;
+    level: string;
+    entityId: string;
+    breakdownHash: string;
     date: Date;
     impressions: number;
     clicks: number;
@@ -179,6 +178,9 @@ async function main() {
           campaignName: campaign.name,
           adsetId: adset.id,
           adsetName: adset.name,
+          level: "adset",
+          entityId: adset.id,
+          breakdownHash: "none",
           date,
           currency: DEMO_ACCOUNT.currency,
           rawData: JSON.stringify({ demo: true, source: "personal-google-demo-restore" }),
@@ -188,7 +190,12 @@ async function main() {
     });
   }
 
-  await prisma.campaignMetric.createMany({ data: rows });
+  // Replace only this demo connection's rows atomically. If insertion fails,
+  // the previous demo data remains intact and real account history is never touched.
+  await prisma.$transaction([
+    prisma.campaignMetric.deleteMany({ where: { connectionId: connection.id } }),
+    prisma.campaignMetric.createMany({ data: rows }),
+  ]);
   console.log(JSON.stringify({
     restored: true,
     workspaceName: workspace.name,

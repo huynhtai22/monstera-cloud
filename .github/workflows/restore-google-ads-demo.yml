@@ -33,10 +33,13 @@ jobs:
       - name: Pull production environment
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
       - name: Restore dedicated Google demo rows
+        env:
+          RESTORE_WORKSPACE_NAME: ${{ inputs.workspace_name }}
+          RESTORE_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -a
           source .vercel/.env.production.local
           set +a
           npm run restore-personal-google-demo -- \
-            --workspace-name "${{ inputs.workspace_name }}" \
-            --confirm "${{ inputs.confirmation }}"
+            --workspace-name "$RESTORE_WORKSPACE_NAME" \
+            --confirm "$RESTORE_CONFIRMATION"
