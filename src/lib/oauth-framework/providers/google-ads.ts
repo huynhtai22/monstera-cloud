@@ -53,7 +53,10 @@ export class GoogleAdsOAuthAdapter implements OAuthProviderAdapter {
             accountIdentifiers: customerIds,
             extraFields: {
                 customerIds,
-                developerToken: process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+                // NOTE: the developer token is deliberately NOT stored here.
+                // It is an app-level secret consumed from the environment at
+                // call time (see google-ads.ts); persisting it would duplicate
+                // the secret into every connection row.
             },
         };
 
