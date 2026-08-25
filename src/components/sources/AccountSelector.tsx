@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { Check, ChevronDown, Building2, Layers, Users } from "lucide-react";
+import { Check, ChevronDown, Building2, Copy, Layers, Search, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Account {
@@ -16,6 +16,7 @@ interface Account {
 interface AccountSelectorProps {
   connectionId: string;
   provider: string;
+  variant?: "panel" | "compact";
 }
 
 const fetcher = async (url: string) => {
@@ -43,9 +44,10 @@ const PROVIDER_CONFIG: Record<string, { icon: React.ReactNode; title: string; ty
   },
 };
 
-export function AccountSelector({ connectionId, provider }: AccountSelectorProps) {
+export function AccountSelector({ connectionId, provider, variant = "panel" }: AccountSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState("");
 
   const { data, error, isLoading, mutate } = useSWR(
     `/api/connections/${connectionId}/accounts`,
@@ -55,6 +57,13 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
 
   const accounts: Account[] = useMemo(() => data?.accounts || [], [data?.accounts]);
   const selectedCount = accounts.filter((a) => a.selected).length;
+  const visibleAccounts = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return accounts;
+    return accounts.filter((account) =>
+      account.name.toLowerCase().includes(needle) || account.id.toLowerCase().includes(needle),
+    );
+  }, [accounts, query]);
 
   const toggleAccount = useCallback((accountId: string) => {
     if (!data?.accounts) return;
@@ -96,6 +105,23 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
   const config = PROVIDER_CONFIG[provider];
   if (!config) return null;
 
+  const setVisibleSelection = (selected: boolean) => {
+    const visibleIds = new Set(visibleAccounts.map((account) => account.id));
+    mutate({
+      ...data,
+      accounts: accounts.map((account) => visibleIds.has(account.id) ? { ...account, selected } : account),
+    }, false);
+  };
+
+  const copyAccountId = async (accountId: string) => {
+    try {
+      await navigator.clipboard.writeText(accountId);
+      toast.success("Account ID copied");
+    } catch {
+      toast.error("Could not copy account ID");
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
@@ -114,6 +140,62 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
           {error?.message || "No accounts found. Try reconnecting the source."}
         </p>
       </div>
+    );
+  }
+
+  if (variant === "compact") {
+    return (
+      <section className="overflow-hidden rounded-lg border border-line bg-canvas" aria-label={`${config.title} sync selection`}>
+        <div className="flex flex-col gap-3 border-b border-line px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-semibold text-ink">
+              {config.icon}
+              <span>{config.title}</span>
+              <span className="rounded-md border border-line px-1.5 py-0.5 font-mono text-[11px] text-ink-mute">{selectedCount}/{accounts.length} active</span>
+            </div>
+            <p className="mt-1 text-xs text-ink-mute">Paused accounts stay connected but are excluded from future syncs. Existing warehouse data stays intact.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex h-8 w-full items-center gap-2 rounded-md border border-line bg-panel px-2 text-xs text-ink-mute sm:w-64">
+              <Search className="h-3.5 w-3.5" />
+              <input aria-label="Search accounts" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name or account ID" className="min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-mute" />
+            </label>
+            <button type="button" onClick={() => setVisibleSelection(true)} className="text-xs font-medium text-ink-mute hover:text-ink">Include shown</button>
+            <span className="text-line">|</span>
+            <button type="button" onClick={() => setVisibleSelection(false)} className="text-xs font-medium text-ink-mute hover:text-ink">Pause shown</button>
+          </div>
+        </div>
+
+        <div className="max-h-72 overflow-auto">
+          <div className="min-w-[42rem] divide-y divide-line">
+            <div className="grid grid-cols-[minmax(16rem,1fr)_minmax(14rem,0.7fr)_7rem] gap-3 bg-panel/60 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-mute">
+              <span>Account</span><span>Account ID</span><span className="text-right">Sync</span>
+            </div>
+            {visibleAccounts.map((account) => (
+              <div key={account.id} className="grid grid-cols-[minmax(16rem,1fr)_minmax(14rem,0.7fr)_7rem] items-center gap-3 px-3 py-2.5 text-sm hover:bg-white/[0.025]">
+                <span className="truncate font-medium text-ink" title={account.name}>{account.name}</span>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <code className="truncate font-mono text-xs text-ink-mute" title={account.id}>{account.id}</code>
+                  <button type="button" onClick={() => copyAccountId(account.id)} className="shrink-0 rounded p-1 text-ink-mute hover:bg-white/[0.06] hover:text-ink" title="Copy account ID"><Copy className="h-3.5 w-3.5" /></button>
+                </div>
+                <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs font-medium text-ink">
+                  <input type="checkbox" checked={account.selected} onChange={() => toggleAccount(account.id)} className="h-4 w-4 rounded border-line accent-white" />
+                  <span>{account.selected ? "Active" : "Paused"}</span>
+                </label>
+              </div>
+            ))}
+          </div>
+          {visibleAccounts.length === 0 ? <p className="px-3 py-8 text-center text-sm text-ink-mute">No matching accounts.</p> : null}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-line bg-panel/50 px-3 py-3">
+          <p className="text-xs text-ink-mute">{selectedCount === 0 ? "No accounts will sync until you include one." : `${selectedCount} account${selectedCount === 1 ? "" : "s"} will sync.`}</p>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => mutate()} className="rounded-md px-3 py-1.5 text-xs font-medium text-ink-mute hover:bg-white/[0.05] hover:text-ink">Reset</button>
+            <button type="button" onClick={saveSelection} disabled={saving} className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-neutral-200 disabled:opacity-50">{saving ? "Saving…" : "Save sync selection"}</button>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -208,7 +290,10 @@ export function AccountSelector({ connectionId, provider }: AccountSelectorProps
 
           <div className="mt-4 flex justify-end gap-2">
             <button
-              onClick={() => setIsOpen(false)}
+              onClick={() => {
+                mutate();
+                setIsOpen(false);
+              }}
               className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-[#16181c]"
             >
               Cancel

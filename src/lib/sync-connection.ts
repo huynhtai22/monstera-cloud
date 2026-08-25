@@ -348,8 +348,12 @@ async function syncMetaAds(opts: {
   }
 
   // 4. Filter to selected if specified (normalized matching without act_ prefix issues)
-  const selectedIds: string[] = extraFields.selectedAdAccountIds || credentials.selectedAdAccountIds;
-  if (selectedIds?.length > 0) {
+  const selectedIds: string[] | undefined = Array.isArray(extraFields.selectedAdAccountIds)
+    ? extraFields.selectedAdAccountIds
+    : Array.isArray(credentials.selectedAdAccountIds)
+      ? credentials.selectedAdAccountIds
+      : undefined;
+  if (selectedIds !== undefined) {
     if (adAccounts?.length > 0) {
       const normSelected = new Set(selectedIds.map((s) => String(s).replace(/^act_/, "").trim()));
       const filtered = adAccounts.filter((acc: any) => {
@@ -545,8 +549,12 @@ async function syncGoogleAds(opts: {
 
   logger.info(`[syncGoogleAds] Total customer IDs:`, customerIds.length);
 
-  const selectedIds = extraFields.selectedCustomerIds || credentials.selectedCustomerIds;
-  if (selectedIds?.length > 0) {
+  const selectedIds: string[] | undefined = Array.isArray(extraFields.selectedCustomerIds)
+    ? extraFields.selectedCustomerIds
+    : Array.isArray(credentials.selectedCustomerIds)
+      ? credentials.selectedCustomerIds
+      : undefined;
+  if (selectedIds !== undefined) {
     customerIds = customerIds.filter((id: string) => selectedIds.includes(id));
     logger.info(`[syncGoogleAds] Filtered to ${customerIds.length} selected customers`);
   }
@@ -764,8 +772,12 @@ async function syncTikTok(opts: {
 
   logger.info(`[syncTikTok] Total advertiser IDs:`, advertiserIds.length);
 
-  const selectedIds = extraFields.selectedAdvertiserIds || credentials.selectedAdvertiserIds;
-  if (selectedIds?.length > 0) {
+  const selectedIds: string[] | undefined = Array.isArray(extraFields.selectedAdvertiserIds)
+    ? extraFields.selectedAdvertiserIds
+    : Array.isArray(credentials.selectedAdvertiserIds)
+      ? credentials.selectedAdvertiserIds
+      : undefined;
+  if (selectedIds !== undefined) {
     advertiserIds = advertiserIds.filter((id: string) => selectedIds.includes(id));
     logger.info(`[syncTikTok] Filtered to ${advertiserIds.length} selected advertisers`);
   }

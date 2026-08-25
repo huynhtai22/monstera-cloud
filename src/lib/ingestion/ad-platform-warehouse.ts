@@ -35,8 +35,12 @@ export async function syncGoogleAdsIntoWarehouse(params: {
   const extraFields = credentials.extraFields || {};
   let customerIds: string[] = extraFields.customerIds || credentials.customerIds || [];
 
-  const selectedIds = extraFields.selectedCustomerIds || credentials.selectedCustomerIds;
-  if (selectedIds?.length) {
+  const selectedIds: string[] | undefined = Array.isArray(extraFields.selectedCustomerIds)
+    ? extraFields.selectedCustomerIds
+    : Array.isArray(credentials.selectedCustomerIds)
+      ? credentials.selectedCustomerIds
+      : undefined;
+  if (selectedIds !== undefined) {
     customerIds = customerIds.filter((id) => selectedIds.includes(id));
   }
 
@@ -129,8 +133,12 @@ export async function syncTikTokIntoWarehouse(params: {
   const extraFields = credentials.extraFields || {};
   let advertiserIds: string[] = extraFields.advertiserIds || credentials.advertiserIds || [];
 
-  const selectedIds = extraFields.selectedAdvertiserIds || credentials.selectedAdvertiserIds;
-  if (selectedIds?.length) {
+  const selectedIds: string[] | undefined = Array.isArray(extraFields.selectedAdvertiserIds)
+    ? extraFields.selectedAdvertiserIds
+    : Array.isArray(credentials.selectedAdvertiserIds)
+      ? credentials.selectedAdvertiserIds
+      : undefined;
+  if (selectedIds !== undefined) {
     advertiserIds = advertiserIds.filter((id) => selectedIds.includes(id));
   }
 
