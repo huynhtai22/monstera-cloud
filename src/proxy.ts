@@ -101,7 +101,22 @@ function createProxy(deps: ProxyDeps = {}) {
         return sheetAddonPreflightResponse(sheetAddonAllowedOrigin(request));
       }
 
-      const enforcement = await enforceRequestLimit(request, pathname, deps.enforceOptions);
+      // First-party APIs key the limiter per verified user (falls back to IP
+      // pre-auth) so shared office/VPN addresses cannot exhaust one budget.
+      let enforceOptions = deps.enforceOptions;
+      if (routeClass === "internal-api" && !enforceOptions?.sessionUserId) {
+        try {
+          const sessionToken = await verifySessionToken({ req: request });
+          const sessionUserId = (sessionToken as { sub?: unknown } | null)?.sub;
+          if (typeof sessionUserId === "string" && sessionUserId) {
+            enforceOptions = { ...enforceOptions, sessionUserId };
+          }
+        } catch {
+          /* identity stays IP-based on verifier failure */
+        }
+      }
+
+      const enforcement = await enforceRequestLimit(request, pathname, enforceOptions);
       if (
         enforcement.outcome === "blocked" ||
         enforcement.outcome === "failed-closed" ||
