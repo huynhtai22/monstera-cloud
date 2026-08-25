@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { Check, ChevronDown, Building2, Copy, Layers, Search, Users } from "lucide-react";
+import { Check, ChevronDown, Building2, Copy, Layers, Search, Users, AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Account {
@@ -28,19 +28,19 @@ const fetcher = async (url: string) => {
 
 const PROVIDER_CONFIG: Record<string, { icon: React.ReactNode; title: string; typeLabel: string }> = {
   meta_ads: {
-    icon: <Building2 className="h-5 w-5" />,
-    title: "Ad Accounts",
+    icon: <Building2 className="h-4 w-4" />,
+    title: "Meta Ad Accounts",
     typeLabel: "Ad Account",
   },
   google_ads: {
-    icon: <Layers className="h-5 w-5" />,
-    title: "Customer Accounts",
-    typeLabel: "Customer",
+    icon: <Layers className="h-4 w-4" />,
+    title: "Google Ads Customers",
+    typeLabel: "Customer ID",
   },
   tiktok_business: {
-    icon: <Users className="h-5 w-5" />,
-    title: "Advertisers",
-    typeLabel: "Advertiser",
+    icon: <Users className="h-4 w-4" />,
+    title: "TikTok Advertisers",
+    typeLabel: "Advertiser ID",
   },
 };
 
@@ -89,7 +89,7 @@ export function AccountSelector({ connectionId, provider, variant = "panel" }: A
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "Failed to save");
       }
 
@@ -117,7 +117,7 @@ export function AccountSelector({ connectionId, provider, variant = "panel" }: A
   const copyAccountId = async (accountId: string) => {
     try {
       await navigator.clipboard.writeText(accountId);
-      toast.success("Account ID copied");
+      toast.success("Account ID copied to clipboard");
     } catch {
       toast.error("Could not copy account ID");
     }
@@ -125,10 +125,10 @@ export function AccountSelector({ connectionId, provider, variant = "panel" }: A
 
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-[#2f3336] dark:bg-[#000000]">
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-ink" />
-          Loading accounts...
+      <div className="rounded-xl border border-line/80 bg-panel/50 p-5 shadow-xs">
+        <div className="flex items-center gap-3 text-xs text-ink-mute">
+          <Loader2 className="h-4 w-4 animate-spin text-ink-mute" />
+          <span>Loading ad account scopes…</span>
         </div>
       </div>
     );
@@ -136,65 +136,159 @@ export function AccountSelector({ connectionId, provider, variant = "panel" }: A
 
   if (error || accounts.length === 0) {
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-900/20">
-        <p className="text-sm text-amber-700 dark:text-amber-300">
-          {error?.message || "No accounts found. Try reconnecting the source."}
-        </p>
+      <div className="rounded-xl border border-line/80 bg-panel/50 p-5 shadow-xs">
+        <div className="flex items-start gap-3.5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400">
+            <AlertCircle className="h-4 w-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="text-sm font-semibold tracking-tight text-ink">No ad accounts discovered</h4>
+            <p className="mt-1 text-xs leading-relaxed text-ink-mute">
+              {error?.message || "Monstera could not find ad accounts attached to this connection. Reconnecting will re-authorize OAuth access and discover available ad accounts."}
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (variant === "compact") {
     return (
-      <section className="overflow-hidden rounded-lg border border-line bg-canvas" aria-label={`${config.title} sync selection`}>
-        <div className="flex flex-col gap-3 border-b border-line px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
+      <section className="overflow-hidden rounded-xl border border-line bg-canvas shadow-xs" aria-label={`${config.title} sync selection`}>
+        {/* Header */}
+        <div className="flex flex-col gap-4 border-b border-line bg-panel/60 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-semibold text-ink">
-              {config.icon}
-              <span>{config.title}</span>
-              <span className="rounded-md border border-line px-1.5 py-0.5 font-mono text-[11px] text-ink-mute">{selectedCount}/{accounts.length} active</span>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-line bg-panel text-ink shadow-xs">
+                {config.icon}
+              </div>
+              <h3 className="text-sm font-semibold tracking-tight text-ink">{config.title}</h3>
+              <span className="inline-flex items-center rounded-md border border-line/80 bg-panel px-2 py-0.5 font-mono text-[11px] font-medium text-ink-mute">
+                {selectedCount} / {accounts.length} active
+              </span>
             </div>
-            <p className="mt-1 text-xs text-ink-mute">Paused accounts stay connected but are excluded from future syncs. Existing warehouse data stays intact.</p>
-            {provider === "google_ads" && unavailableCount > 0 ? <p className="mt-1 text-xs text-amber-500">{unavailableCount} unavailable account{unavailableCount === 1 ? "" : "s"} excluded from this source.</p> : null}
+            <p className="mt-1.5 text-xs leading-relaxed text-ink-mute">
+              Paused accounts stay connected but are excluded from future syncs. Existing warehouse history is retained.
+            </p>
+            {provider === "google_ads" && unavailableCount > 0 ? (
+              <p className="mt-1 text-xs text-amber-400">
+                {unavailableCount} unavailable account{unavailableCount === 1 ? "" : "s"} excluded from this source.
+              </p>
+            ) : null}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="flex h-8 w-full items-center gap-2 rounded-md border border-line bg-panel px-2 text-xs text-ink-mute sm:w-64">
-              <Search className="h-3.5 w-3.5" />
-              <input aria-label="Search accounts" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name or account ID" className="min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-mute" />
-            </label>
-            <button type="button" onClick={() => setVisibleSelection(true)} className="text-xs font-medium text-ink-mute hover:text-ink">Include shown</button>
-            <span className="text-line">|</span>
-            <button type="button" onClick={() => setVisibleSelection(false)} className="text-xs font-medium text-ink-mute hover:text-ink">Pause shown</button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="relative flex-1 sm:flex-none">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-mute" />
+              <input
+                aria-label="Search accounts"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search name or ID…"
+                className="h-8 w-full sm:w-56 rounded-lg border border-line bg-canvas pl-8 pr-3 text-xs text-ink placeholder:text-ink-mute focus:border-white/30 focus:outline-none transition-colors"
+              />
+            </div>
+            <div className="flex items-center gap-1.5 rounded-lg border border-line/80 bg-panel/80 p-0.5">
+              <button
+                type="button"
+                onClick={() => setVisibleSelection(true)}
+                className="rounded-md px-2.5 py-1 text-xs font-medium text-ink-mute hover:bg-white/[0.06] hover:text-ink transition-colors"
+              >
+                Include shown
+              </button>
+              <span className="text-line">|</span>
+              <button
+                type="button"
+                onClick={() => setVisibleSelection(false)}
+                className="rounded-md px-2.5 py-1 text-xs font-medium text-ink-mute hover:bg-white/[0.06] hover:text-ink transition-colors"
+              >
+                Pause shown
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="max-h-72 overflow-auto">
-          <div className="min-w-[42rem] divide-y divide-line">
-            <div className="grid grid-cols-[minmax(16rem,1fr)_minmax(14rem,0.7fr)_7rem] gap-3 bg-panel/60 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-mute">
-              <span>Account</span><span>Account ID</span><span className="text-right">Sync</span>
+        {/* Account Table */}
+        <div className="max-h-72 overflow-x-auto overflow-y-auto overscroll-contain">
+          <div className="min-w-[38rem] divide-y divide-line/40">
+            <div className="sticky top-0 z-10 grid grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.8fr)_7rem] gap-4 bg-panel/90 px-4 py-2.5 text-[10px] font-mono uppercase tracking-wider text-ink-mute backdrop-blur-sm border-b border-line">
+              <span>Account</span>
+              <span>Account ID</span>
+              <span className="text-right">Sync Status</span>
             </div>
             {visibleAccounts.map((account) => (
-              <div key={account.id} className="grid grid-cols-[minmax(16rem,1fr)_minmax(14rem,0.7fr)_7rem] items-center gap-3 px-3 py-2.5 text-sm hover:bg-white/[0.025]">
-                <span className="truncate font-medium text-ink" title={account.name}>{account.name}</span>
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <code className="truncate font-mono text-xs text-ink-mute" title={account.id}>{account.id}</code>
-                  <button type="button" onClick={() => copyAccountId(account.id)} className="shrink-0 rounded p-1 text-ink-mute hover:bg-white/[0.06] hover:text-ink" title="Copy account ID"><Copy className="h-3.5 w-3.5" /></button>
+              <div
+                key={account.id}
+                onClick={() => toggleAccount(account.id)}
+                className="grid grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.8fr)_7rem] items-center gap-4 px-4 py-3 text-xs hover:bg-white/[0.025] transition-colors cursor-pointer"
+              >
+                <span className="truncate font-medium text-ink" title={account.name}>
+                  {account.name}
+                </span>
+                <div className="flex min-w-0 items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                  <code className="truncate rounded border border-line/60 bg-panel px-2 py-0.5 font-mono text-[11px] text-ink-mute" title={account.id}>
+                    {account.id}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => copyAccountId(account.id)}
+                    className="shrink-0 rounded p-1 text-ink-mute hover:bg-white/[0.08] hover:text-ink transition-colors"
+                    title="Copy account ID"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-                <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs font-medium text-ink">
-                  <input type="checkbox" checked={account.selected} onChange={() => toggleAccount(account.id)} className="h-4 w-4 rounded border-line accent-white" />
-                  <span>{account.selected ? "Active" : "Paused"}</span>
-                </label>
+                <div className="flex justify-end">
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors",
+                      account.selected
+                        ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                        : "border border-line bg-panel text-ink-mute",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-1.5 w-1.5 rounded-full",
+                        account.selected ? "bg-emerald-400" : "bg-neutral-500",
+                      )}
+                    />
+                    {account.selected ? "Active" : "Paused"}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
-          {visibleAccounts.length === 0 ? <p className="px-3 py-8 text-center text-sm text-ink-mute">No matching accounts.</p> : null}
+          {visibleAccounts.length === 0 ? (
+            <div className="px-4 py-10 text-center text-xs text-ink-mute">
+              No matching accounts found for &ldquo;{query}&rdquo;.
+            </div>
+          ) : null}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-line bg-panel/50 px-3 py-3">
-          <p className="text-xs text-ink-mute">{selectedCount === 0 ? "No accounts will sync until you include one." : `${selectedCount} account${selectedCount === 1 ? "" : "s"} will sync.`}</p>
+        {/* Footer */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-line bg-panel/50 p-4">
+          <p className="text-xs text-ink-mute">
+            {selectedCount === 0
+              ? "No accounts will sync until at least one is included."
+              : `${selectedCount} of ${accounts.length} account${accounts.length === 1 ? "" : "s"} enabled for warehouse sync.`}
+          </p>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => mutate()} className="rounded-md px-3 py-1.5 text-xs font-medium text-ink-mute hover:bg-white/[0.05] hover:text-ink">Reset</button>
-            <button type="button" onClick={saveSelection} disabled={saving} className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-black hover:bg-neutral-200 disabled:opacity-50">{saving ? "Saving…" : "Save sync selection"}</button>
+            <button
+              type="button"
+              onClick={() => mutate()}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-ink-mute hover:bg-white/[0.06] hover:text-ink transition-colors"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={saveSelection}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3.5 py-1.5 text-xs font-semibold text-black hover:bg-neutral-200 disabled:opacity-50 transition-all shadow-xs"
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              <span>{saving ? "Saving…" : "Save sync selection"}</span>
+            </button>
           </div>
         </div>
       </section>
@@ -202,87 +296,87 @@ export function AccountSelector({ connectionId, provider, variant = "panel" }: A
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white dark:border-[#2f3336] dark:bg-[#000000]">
+    <div className="rounded-xl border border-line bg-panel shadow-xs overflow-hidden">
       {/* Header */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center justify-between p-4 text-left hover:bg-gray-50 dark:hover:bg-[#16181c]/50"
+        className="flex w-full items-center justify-between p-4 text-left hover:bg-white/[0.02] transition-colors"
       >
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-md border border-line bg-panel text-ink">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-canvas text-ink">
             {config.icon}
           </div>
           <div>
-            <h3 className="font-medium text-gray-900 dark:text-white">{config.title}</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <h3 className="text-sm font-semibold tracking-tight text-ink">{config.title}</h3>
+            <p className="text-xs text-ink-mute">
               {selectedCount} of {accounts.length} selected for sync
             </p>
           </div>
         </div>
         <ChevronDown
           className={cn(
-            "h-5 w-5 text-gray-400 transition-transform",
-            isOpen && "rotate-180"
+            "h-4 w-4 text-ink-mute transition-transform duration-200",
+            isOpen && "rotate-180 text-ink"
           )}
         />
       </button>
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="border-t border-gray-200 p-4 dark:border-[#2f3336]">
+        <div className="border-t border-line p-4 sm:p-5 bg-canvas/40">
           <div className="mb-3 flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">
               Select accounts to sync
             </span>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <button
                 onClick={() => {
                   const allSelected = accounts.map((a) => ({ ...a, selected: true }));
                   mutate({ ...data, accounts: allSelected }, false);
                 }}
-                className="text-xs text-ink-mute hover:text-ink"
+                className="text-xs font-medium text-ink-mute hover:text-ink transition-colors"
               >
                 Select all
               </button>
-              <span className="text-gray-300">|</span>
+              <span className="text-line">|</span>
               <button
                 onClick={() => {
                   const noneSelected = accounts.map((a) => ({ ...a, selected: false }));
                   mutate({ ...data, accounts: noneSelected }, false);
                 }}
-                className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                className="text-xs font-medium text-ink-mute hover:text-ink transition-colors"
               >
                 Clear
               </button>
             </div>
           </div>
 
-          <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-[#2f3336] dark:bg-[#16181c]">
+          <div className="max-h-64 space-y-1.5 overflow-y-auto overscroll-contain rounded-lg border border-line bg-panel p-2">
             {accounts.map((account) => (
               <label
                 key={account.id}
                 className={cn(
                   "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 transition-colors",
-                  "hover:bg-white dark:hover:bg-[#1d1f23]",
-                  account.selected && "bg-white dark:bg-[#1d1f23]"
+                  "hover:bg-white/[0.04]",
+                  account.selected && "bg-white/[0.03]"
                 )}
               >
                 <div
                   className={cn(
-                    "flex h-5 w-5 items-center justify-center rounded border transition-colors",
+                    "flex h-4 w-4 items-center justify-center rounded border transition-colors",
                     account.selected
-                      ? "border-ink bg-primary text-primary-foreground"
-                      : "border-gray-300 bg-white dark:border-[#2f3336] dark:bg-[#16181c]"
+                      ? "border-white bg-white text-black"
+                      : "border-line bg-canvas text-transparent"
                   )}
                   onClick={() => toggleAccount(account.id)}
                 >
-                  {account.selected && <Check className="h-3.5 w-3.5" />}
+                  {account.selected && <Check className="h-3 w-3" strokeWidth={3} />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                  <p className="truncate text-xs font-medium text-ink">
                     {account.name}
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                  <p className="font-mono text-[11px] text-ink-mute">
                     {config.typeLabel}: {account.id}
                   </p>
                 </div>
@@ -290,22 +384,23 @@ export function AccountSelector({ connectionId, provider, variant = "panel" }: A
             ))}
           </div>
 
-          <div className="mt-4 flex justify-end gap-2">
+          <div className="mt-4 flex justify-end gap-2.5">
             <button
               onClick={() => {
                 mutate();
                 setIsOpen(false);
               }}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-[#16181c]"
+              className="rounded-lg px-3.5 py-1.5 text-xs font-medium text-ink-mute hover:bg-white/[0.05] hover:text-ink transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={saveSelection}
               disabled={saving}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white px-4 py-1.5 text-xs font-semibold text-black hover:bg-neutral-200 disabled:opacity-50 transition-all shadow-xs"
             >
-              {saving ? "Saving..." : "Save Selection"}
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              <span>{saving ? "Saving…" : "Save Selection"}</span>
             </button>
           </div>
         </div>

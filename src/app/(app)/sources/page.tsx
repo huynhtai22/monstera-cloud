@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Link from "next/link";
 import { toast } from "sonner";
-import { Database, Search, Plus, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, X } from "lucide-react";
+import { Database, Search, Plus, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, X, Clock } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
 import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -27,7 +27,8 @@ const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-        throw new Error(data.error || 'Failed to fetch data');
+        const message = data.error || (res.status === 429 ? 'Too Many Requests — please wait a moment before retrying' : 'Failed to fetch data');
+        throw new Error(message);
     }
     return data;
 };
@@ -268,17 +269,32 @@ export default function SourcesPage() {
     // Fetch Data
     const { data: workspaces, error, isLoading: workspacesLoading } = useSWR("/api/workspaces", fetcher, {
         shouldRetryOnError: (err) => !String(err?.message).includes("Unauthorized"),
+        errorRetryInterval: 3000,
+        errorRetryCount: 3,
+        dedupingInterval: 4000,
     });
     const { data: sourceConnections = [], error: connectionsError, isLoading: connectionsLoading } = useSWR(
         activeWorkspaceId ? `/api/workspaces/${activeWorkspaceId}/connections?type=source` : null,
         fetcher,
+        {
+            errorRetryInterval: 3000,
+            errorRetryCount: 3,
+            dedupingInterval: 4000,
+        }
     );
     const { data: pipelines = [] } = useSWR(
         activeWorkspaceId ? `/api/pipelines?workspaceId=${activeWorkspaceId}` : null,
         fetcher,
+        {
+            errorRetryInterval: 3000,
+            errorRetryCount: 3,
+            dedupingInterval: 4000,
+        }
     );
     const isLoading = workspacesLoading || connectionsLoading;
-    const { data: intConfig } = useSWR("/api/integrations/config", fetcher);
+    const { data: intConfig } = useSWR("/api/integrations/config", fetcher, {
+        dedupingInterval: 10000,
+    });
 
     const connectedSourceCount = useMemo(() => {
         return Array.isArray(sourceConnections) ? sourceConnections.length : 0;
@@ -428,55 +444,111 @@ export default function SourcesPage() {
         if (!activeWorkspaceId) return catalogIntegrations;
         const rawSourceConnections = Array.isArray(sourceConnections) ? sourceConnections : [];
 
-        // Identity Deduplication: keep only the most recent connection per provider
-        const dedupedSourceConnections = Object.values(
-            rawSourceConnections.reduce((acc: Record<string, any>, conn: any) => {
-                const existing = acc[conn.provider];
-                if (!existing || new Date(conn.updatedAt) > new Date(existing.updatedAt)) {
-                    acc[conn.provider] = conn;
-                }
-                return acc;
-            }, {})
-        );
-
-        const connectedSources = dedupedSourceConnections
+        const connectedSources = rawSourceConnections
             .map((conn: any) => {
                 const logo = logoPathForConnectionProvider(conn.provider);
                 const catalogId = integrationCatalogId(conn.provider);
-                const accountMatch = (conn.name as string | undefined)?.match(/\((.+)\)$/);
-                const accountLabel = accountMatch?.[1] ?? null;
-                const baseBlurb = SOURCE_BLURB_BY_PROVIDER[conn.provider] ?? `${conn.provider} — data for this workspace.`;
-                const desc = accountLabel ? `${accountLabel} · ${baseBlurb}` : baseBlurb;
                 const relatedPipeline = Array.isArray(pipelines)
                     ? pipelines.find((p: any) => p.sourceConnectionId === conn.id)
                     : null;
 
-                // Extract ad account tags from sanitized credentials for display
-                let accountTags: string[] = [];
+                let creds: any = {};
                 try {
-                    const creds = typeof conn.credentials === 'string'
+                    creds = typeof conn.credentials === 'string'
                         ? JSON.parse(conn.credentials)
                         : (conn.credentials ?? {});
-                    if (conn.provider === 'meta_ads') {
-                        const list: Array<{ id: string; name?: string }> =
-                            creds.adAccounts ??
-                            (creds.adAccountIds ?? []).map((id: string) => ({ id }));
-                        accountTags = list.map((a: any) =>
-                            a.name && a.name !== a.id ? a.name : String(a.id).replace(/^act_/, '')
-                        );
-                    } else if (conn.provider === 'google_ads') {
-                        accountTags = creds.customerIds ?? [];
-                    } else if (conn.provider === 'tiktok_business') {
-                        accountTags = creds.advertiserIds ?? [];
+                } catch {
+                    creds = {};
+                }
+
+                // Extract ad accounts, manager badges, and account tags
+                let accountTags: string[] = [];
+                let displayName = conn.name || "";
+                let managerBadge: string | null = null;
+                let scopeDesc = "";
+
+                if (conn.provider === 'meta_ads') {
+                    const list: Array<{ id: string; name?: string }> =
+                        creds.adAccounts ??
+                        (creds.adAccountIds ?? []).map((id: string) => ({ id }));
+                    accountTags = list.map((a: any) =>
+                        a.name && a.name !== a.id ? a.name : String(a.id).replace(/^act_/, '')
+                    );
+                    const bmId = creds.businessManagerId || creds.bmId || null;
+                    if (bmId && bmId !== "") {
+                        managerBadge = `BM: ${bmId}`;
                     }
-                } catch { /* ignore */ }
+                    const totalCount = accountTags.length;
+                    if (/^Meta\s*\(\d+\s*accounts?\)$/i.test(displayName) || !displayName) {
+                        displayName = "Meta Ads";
+                    }
+                    scopeDesc = bmId 
+                        ? `Business Manager (${bmId}) · ${totalCount} ad account${totalCount === 1 ? '' : 's'}`
+                        : `Business Manager · ${totalCount} ad account${totalCount === 1 ? '' : 's'} synced`;
+                } else if (conn.provider === 'google_ads') {
+                    const list: string[] = creds.customerIds ?? [];
+                    accountTags = list.map((id: string) => {
+                        const clean = String(id).replace(/\D/g, '');
+                        if (clean.length === 10) {
+                            return `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}`;
+                        }
+                        return String(id);
+                    });
+                    const mccId = creds.mccId || creds.managerCustomerId || null;
+                    if (mccId && mccId !== "") {
+                        const cleanMcc = String(mccId).replace(/\D/g, '');
+                        const formattedMcc = cleanMcc.length === 10 
+                            ? `${cleanMcc.slice(0, 3)}-${cleanMcc.slice(3, 6)}-${cleanMcc.slice(6)}`
+                            : mccId;
+                        managerBadge = `MCC: ${formattedMcc}`;
+                    }
+                    const totalCount = accountTags.length;
+                    if (/^Google Ads\s*\(\d+\s*accounts?\)$/i.test(displayName) || !displayName) {
+                        displayName = "Google Ads";
+                    }
+                    scopeDesc = managerBadge
+                        ? `${managerBadge} · ${totalCount} customer account${totalCount === 1 ? '' : 's'}`
+                        : `MCC Manager · ${totalCount} customer account${totalCount === 1 ? '' : 's'} synced`;
+                } else if (conn.provider === 'tiktok_business') {
+                    const list: string[] = creds.advertiserIds ?? [];
+                    accountTags = list.map((id: string) => String(id));
+                    const bcId = creds.businessCenterId || creds.bcId || null;
+                    if (bcId && bcId !== "") {
+                        managerBadge = `BC: ${bcId}`;
+                    }
+                    const totalCount = accountTags.length;
+                    if (/^TikTok Ads\s*\(\d+\s*advertisers?\)$/i.test(displayName) || !displayName) {
+                        displayName = "TikTok Ads";
+                    }
+                    scopeDesc = `Business Center · ${totalCount} advertiser${totalCount === 1 ? '' : 's'} synced`;
+                } else if (conn.provider === 'shopee') {
+                    const shop = creds.shopId || null;
+                    if (shop) {
+                        accountTags = [`Shop ID: ${shop}`];
+                        managerBadge = `Shop: ${shop}`;
+                    }
+                    if (!displayName) displayName = "Shopee";
+                    scopeDesc = shop ? `Shop ID: ${shop} · Orders & GMV sync` : "Shopee Marketplace store";
+                } else if (conn.provider === 'shopify') {
+                    const domain = creds.shopDomain || null;
+                    if (domain) {
+                        accountTags = [domain];
+                        managerBadge = domain;
+                    }
+                    if (!displayName) displayName = "Shopify";
+                    scopeDesc = domain ? `Store: ${domain} · E-commerce sync` : "Shopify Store sync";
+                } else {
+                    const baseBlurb = SOURCE_BLURB_BY_PROVIDER[conn.provider] ?? `${conn.provider} — data for this workspace.`;
+                    scopeDesc = baseBlurb;
+                }
 
                 return {
                     id: conn.id,
                     provider: conn.provider,
                     catalogId,
-                    name: conn.name,
-                    description: desc,
+                    name: displayName,
+                    description: scopeDesc,
+                    managerBadge,
                     // `healthState` is computed server-side from durable
                     // connection truth. Keep the fallback for older API
                     // responses while the client cache rolls over.
@@ -538,25 +610,38 @@ export default function SourcesPage() {
         return countSourceHealthStatuses(filteredIntegrations as Array<{ status: string }>);
     }, [filteredIntegrations]);
 
-    // Error State (e.g. 500, expired session edge case, rate limit)
-    if (error || connectionsError) {
+    // Error State (only block the screen when the failing endpoint has NO cached data)
+    const hasCachedWorkspaces = Array.isArray(workspaces) && workspaces.length > 0;
+    const hasCachedConnections = Array.isArray(sourceConnections) && sourceConnections.length > 0;
+    const isBlocked = Boolean(
+        (error && !hasCachedWorkspaces) ||
+        (connectionsError && !hasCachedConnections && activeWorkspaceId)
+    );
+
+    if (isBlocked) {
         const failure = error || connectionsError;
         const detail = failure instanceof Error ? failure.message : "Failed to fetch data";
         const isAuth =
             detail === "Unauthorized" || detail.toLowerCase().includes("unauthorized");
+        const isRateLimited = detail.toLowerCase().includes("too many requests") || detail.toLowerCase().includes("rate_limit");
+
         return (
-            <div className="w-full py-20 flex flex-col items-center justify-center text-center px-4">
-                <AlertCircle className="w-10 h-10 text-red-500 mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-                    Failed to load data sources
+            <div className="w-full py-24 flex flex-col items-center justify-center text-center px-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-500/30 bg-rose-500/10 text-rose-400 mb-4 shadow-xs">
+                    <AlertCircle className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg font-semibold tracking-tight text-ink mb-1.5">
+                    {isRateLimited ? "Rate limit reached" : "Failed to load data sources"}
                 </h3>
-                <p className="text-sm text-gray-500 dark:text-slate-400 max-w-md">
+                <p className="text-sm text-ink-mute max-w-md leading-relaxed">
                     {isAuth
                         ? "Your session is missing or expired. Sign in again to load workspaces and connections."
-                        : "Please check your connection or try again. If this persists, the server may be temporarily unavailable."}
+                        : isRateLimited
+                          ? "Too many requests were sent in a short period. Please wait a few seconds and retry."
+                          : "Please check your connection or try again. If this persists, the server may be temporarily unavailable."}
                 </p>
                 {!isAuth && (
-                    <p className="mt-2 text-xs font-mono text-gray-400 dark:text-slate-500 max-w-lg break-words">
+                    <p className="mt-3 text-xs font-mono text-ink-mute/70 bg-panel px-3 py-1.5 rounded-lg border border-line max-w-lg break-words">
                         {detail}
                     </p>
                 )}
@@ -569,7 +654,12 @@ export default function SourcesPage() {
                             Sign in
                         </Link>
                     ) : (
-                        <SecondaryButton onClick={() => mutate("/api/workspaces")}>
+                        <SecondaryButton onClick={() => {
+                            void mutate("/api/workspaces");
+                            if (activeWorkspaceId) {
+                                void mutate(`/api/workspaces/${activeWorkspaceId}/connections?type=source`);
+                            }
+                        }}>
                             Retry
                         </SecondaryButton>
                     )}
@@ -606,29 +696,32 @@ export default function SourcesPage() {
                 />
             )}
 
-
-            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                    <h1 className="text-xl font-semibold tracking-tight text-ink">Sources</h1>
+                    <h1 className="text-2xl font-bold tracking-tight text-ink">Sources</h1>
                     <p className="mt-1 text-sm text-ink-mute">
                         {isLoading
                             ? "Loading your workspace…"
                             : connectedSourceCount === 0
                               ? "Connect Meta, Google Ads, TikTok Ads, or Shopee. OAuth is read-only."
-                              : "Connector management for this workspace."}
+                              : "Connector management and pipeline sync controls for this workspace."}
                     </p>
                     {!isLoading && activeWorkspace && (
-                        <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-mute" role="status">
-                            <span>Workspace: <span className="font-medium text-ink">{activeWorkspace.name}</span></span>
-                            <span aria-hidden="true">·</span>
-                            <span>{connectedSourceCount} source connection{connectedSourceCount === 1 ? "" : "s"}</span>
-                            <span aria-hidden="true">·</span>
-                            <span>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-mute" role="status">
+                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-1 text-ink-mute">
+                                Workspace: <span className="font-semibold text-ink">{activeWorkspace.name}</span>
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-1 text-ink-mute font-mono">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                {connectedSourceCount} source connection{connectedSourceCount === 1 ? "" : "s"}
+                            </span>
+                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-panel px-2.5 py-1 text-ink-mute">
+                                <Clock className="h-3.5 w-3.5 text-ink-mute" />
                                 {lastSyncSummary
-                                    ? `Last successful sync: ${lastSyncSummary}`
+                                    ? `Last synced: ${lastSyncSummary}`
                                     : "No successful sync recorded yet"}
                             </span>
-                        </p>
+                        </div>
                     )}
                 </div>
                 <div className="flex items-center gap-2 sm:gap-3">
@@ -771,47 +864,60 @@ export default function SourcesPage() {
                 />
             )}
 
-            <div className="mb-5 flex flex-col gap-3 border-b border-line pb-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-wrap items-center gap-4" role="tablist" aria-label="Filter integrations">
+            <div className="mb-6 flex flex-col gap-4 border-b border-line pb-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap items-center gap-2.5" role="tablist" aria-label="Filter integrations">
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'connected'}
                         onClick={() => setActiveFilter('connected')}
-                        className={`py-1.5 text-sm transition-colors ${activeFilter === 'connected' ? 'border-b border-ink font-semibold text-ink' : 'text-ink-mute hover:text-ink'}`}
+                        className={cn(
+                            "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
+                            activeFilter === 'connected'
+                                ? "bg-white/[0.08] text-white border border-white/15 shadow-xs"
+                                : "text-ink-mute hover:text-ink hover:bg-white/[0.03]"
+                        )}
                     >
-                        Connected ({isLoading ? '…' : connectedSourceCount})
+                        <span>Connected</span>
+                        <span className="rounded border border-line/60 bg-panel px-1.5 py-0.5 font-mono text-[10px] text-ink-mute">
+                            {isLoading ? '…' : connectedSourceCount}
+                        </span>
                     </button>
                     <button
                         role="tab"
                         aria-selected={activeFilter === 'available'}
                         onClick={() => setActiveFilter('available')}
-                        className={`py-1.5 text-sm transition-colors ${activeFilter === 'available' ? 'border-b border-ink font-semibold text-ink' : 'text-ink-mute hover:text-ink'}`}
+                        className={cn(
+                            "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
+                            activeFilter === 'available'
+                                ? "bg-white/[0.08] text-white border border-white/15 shadow-xs"
+                                : "text-ink-mute hover:text-ink hover:bg-white/[0.03]"
+                        )}
                     >
-                        Catalog
+                        <span>Catalog</span>
                     </button>
                     {!isLoading && filterStats.needsAttention > 0 && (
-                        <span className="inline-flex items-center gap-1.5 rounded-md border border-red-500/30 px-2 py-1 text-[11px] text-red-300">
-                            <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium text-rose-300">
+                            <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
                             {filterStats.needsAttention} need attention
                         </span>
                     )}
                     {!isLoading && filterStats.partial > 0 && (
-                        <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 px-2 py-1 text-[11px] text-amber-300">
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-300">
                             <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
                             {filterStats.partial} partial sync{filterStats.partial === 1 ? "" : "s"}
                         </span>
                     )}
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-3">
                     <div className="relative">
-                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-mute" aria-hidden="true" />
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-mute" aria-hidden="true" />
                         <input
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search"
+                            placeholder="Search integrations…"
                             aria-label="Search integrations"
-                            className="h-8 w-44 rounded-md border border-line bg-panel py-1.5 pl-8 pr-3 text-sm text-ink placeholder:text-ink-mute focus:border-white/25 focus:outline-none"
+                            className="h-9 w-52 sm:w-60 rounded-lg border border-line bg-panel py-1.5 pl-9 pr-3 text-xs text-ink placeholder:text-ink-mute focus:border-white/30 focus:outline-none transition-colors"
                         />
                     </div>
                 </div>
