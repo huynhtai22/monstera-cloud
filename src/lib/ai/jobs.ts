@@ -2,6 +2,32 @@ import { randomUUID } from "node:crypto";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
+export async function enqueueAgentJob(opts: {
+  workspaceId: string;
+  userId?: string;
+  type: "analyst_turn" | "anomaly_scan" | "schema_discover" | "exec_brief";
+  payload: Record<string, unknown>;
+  status?: "queued" | "completed";
+  result?: Record<string, unknown>;
+  refusalCode?: string;
+  costUsd?: number;
+}): Promise<{ id: string }> {
+  const created = await prisma.agentJob.create({
+    data: {
+      workspaceId: opts.workspaceId,
+      userId: opts.userId,
+      type: opts.type,
+      status: opts.status ?? "queued",
+      payload: opts.payload,
+      result: opts.result ?? undefined,
+      refusalCode: opts.refusalCode,
+      costUsd: opts.costUsd ?? 0,
+      finishedAt: opts.status === "completed" ? new Date() : undefined,
+    },
+  });
+  return { id: created.id };
+}
+
 export async function recoverExpiredAgentJobs(now = new Date()): Promise<number> {
   const recovered = await prisma.agentJob.updateMany({
     where: {
