@@ -6,8 +6,7 @@ import { logger } from "@/lib/logger";
 import crypto from "crypto";
 import { allowAuthAttempt } from "@/lib/auth-rate-limit";
 import { hashInvitationToken, normalizeEmail } from "@/lib/invitation-security";
-import { isPilotMode } from "@/lib/pilot-mode";
-import { isWhitelistedProEmail } from "@/lib/plan-config";
+import { defaultSignupWorkspacePlan } from "@/lib/plan-config";
 
 /**
  * GET handler - Explicitly reject GET requests to prevent sensitive data
@@ -130,18 +129,15 @@ export async function POST(req: Request) {
           data: { acceptedAt: new Date(), acceptedByUserId: user.id, workspaceId },
         });
       } else {
-        const isPro = isWhitelistedProEmail(email);
-        const defaultPlan = isPro ? "professional" : "pilot";
-        const defaultStatus = isPro ? "ACTIVE" : "PILOT";
+        const signup = defaultSignupWorkspacePlan(email);
 
-        // Self-serve agency registration: provision default pilot workspace
         await tx.workspace.create({
           data: {
             name: `${name.trim()}'s Agency`,
             slug: `agency-${user.id.slice(0, 8)}`,
             ownerId: user.id,
-            plan: defaultPlan,
-            status: defaultStatus,
+            plan: signup.plan,
+            status: signup.status,
             members: { create: { userId: user.id, role: "owner" } },
             providerAccess: {
               create: [

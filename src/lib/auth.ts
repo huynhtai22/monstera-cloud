@@ -9,7 +9,7 @@ import { logger } from "@/lib/logger";
 import { isPilotMode } from "@/lib/pilot-mode";
 import { allowAuthAttempt } from "@/lib/auth-rate-limit";
 import { isPlatformAdminEmail } from "@/lib/admin-auth";
-import { isWhitelistedProEmail } from "@/lib/plan-config";
+import { defaultSignupWorkspacePlan, isWhitelistedProEmail } from "@/lib/plan-config";
 
 /** Long session when “Keep me signed in” is enabled (or OAuth). */
 const SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
@@ -40,14 +40,15 @@ async function ensureWorkspace(userId: string, email?: string | null): Promise<v
     }
 
     try {
+        const signup = defaultSignupWorkspacePlan(email);
         await prisma.$transaction(async (tx) => {
             const workspace = await tx.workspace.create({
                 data: {
                     name: "Agency Workspace",
                     slug: `agency-${userId.slice(0, 8)}`,
                     ownerId: userId,
-                    plan: isPro ? "professional" : "pilot",
-                    status: isPro ? "ACTIVE" : "PILOT",
+                    plan: signup.plan,
+                    status: signup.status,
                     providerAccess: {
                         create: [
                             { provider: "meta_ads", enabled: true },

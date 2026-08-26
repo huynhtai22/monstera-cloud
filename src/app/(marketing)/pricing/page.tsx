@@ -113,7 +113,7 @@ export default function PricingPage() {
                 { icon: Shield, text: isVnd ? "1 workspace · 1 nguồn · 1 tài khoản" : "1 workspace · 1 source · 1 ad account" },
                 { icon: FileSpreadsheet, text: isVnd ? "Chỉ Google Sheets" : "Sheets only — no Looker Studio" },
                 { icon: Clock, text: isVnd ? "Đồng bộ khi bạn bấm" : "On-demand sync only" },
-                { icon: Database, text: isVnd ? "Lịch sử truy vấn 14 ngày" : "14-day query history" },
+                { icon: Database, text: isVnd ? "Lookback / lịch sử truy vấn 14 ngày" : "14-day lookback / query history" },
             ],
         },
         {
@@ -139,7 +139,7 @@ export default function PricingPage() {
             features: [
                 { icon: SlidersHorizontal, text: isVnd ? "3 workspace · 4 nguồn · 15 tài khoản / workspace" : "3 workspaces · 4 sources · 15 accounts / workspace" },
                 { icon: Users, text: isVnd ? "Thành viên không giới hạn" : "Unlimited seats" },
-                { icon: Clock, text: isVnd ? "Theo giờ (Hobby: hàng đêm) + khi bấm" : "Hourly intent (Hobby: nightly) + on-demand" },
+                { icon: Clock, text: isVnd ? "Đồng bộ hàng ngày + khi bấm" : "Daily + on-demand" },
                 { icon: Zap, text: isVnd ? "CSV + REST API · kho + Sheets + Looker" : "CSV + REST API · warehouse + Sheets + Looker" },
             ],
             highlighted: true,
@@ -238,8 +238,8 @@ export default function PricingPage() {
                     <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-200/70" />
                     <p className="text-xs leading-relaxed text-neutral-400">
                         {isVnd
-                            ? "Bản nháp catalog Start / Studio / Agency. Không thay giá Paddle production trong PR này. Checkout công khai vẫn là yêu cầu quyền pilot. Google đổi tên Looker Studio thành Data Studio ngày 16/04/2026 — sản phẩm vẫn dùng Looker Studio™."
-                            : "Draft Start / Studio / Agency catalog. This PR does not change production Paddle prices. Public checkout remains Request pilot access. Google rebranded Looker Studio to Data Studio on 16 Apr 2026 — in-product copy still says Looker Studio™."}
+                            ? "Bản nháp catalog Start / Studio / Agency. Không thay giá Paddle (USD) hay PayOS/VietQR (VND) production. Checkout công khai vẫn là yêu cầu quyền pilot. VN thấy số VND; ngoài VN thấy USD. Google đổi tên Looker Studio thành Data Studio ngày 16/04/2026 — sản phẩm vẫn dùng Looker Studio™."
+                            : "Draft Start / Studio / Agency catalog. This PR does not change production Paddle (USD) or PayOS/VietQR (VND) prices. Public checkout remains Request pilot access. VN visitors see VND; everyone else sees USD. Google rebranded Looker Studio to Data Studio on 16 Apr 2026 — in-product copy still says Looker Studio™."}
                     </p>
                 </div>
 

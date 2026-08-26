@@ -94,7 +94,7 @@ model Workspace {
   name                 String
   slug                 String                @unique
   ownerId              String
-  plan                 String                @default("pilot")
+  plan                 String                @default("free")
   status               WorkspaceStatus       @default(PILOT)
   subscriptionProvider String?
   subscriptionId       String?               @unique

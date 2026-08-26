@@ -132,6 +132,7 @@ describe("refresh, API keys, CSV, seats, workspaces", () => {
     assert.equal(workspaceAllowsScheduledRefresh("free"), false);
     assert.equal(evaluateScheduledRefresh("starter"), true);
     assert.equal(evaluateScheduledRefresh("professional"), true);
+    assert.equal(PLAN_LIMITS.professional.syncLabel, "Daily + on-demand");
   });
 
   it("blocks API keys on free; Studio may create keys for Looker; CSV is Agency+", () => {

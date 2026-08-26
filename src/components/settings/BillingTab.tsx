@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Check, CreditCard, Lock } from "lucide-react";
 import { formatPlanPrice, getPlanDisplayName, getPlanLimits, PLAN_LIMITS, suggestedUpgradePlan } from "@/lib/plan-config";
 import { cn } from "@/lib/utils";
@@ -16,10 +17,10 @@ function featureList(plan: (typeof RUNGS)[number]): string[] {
   const seats = plan === "free" ? "1 seat" : "Unlimited seats (50-seat abuse cap)";
   const extra =
     plan === "professional"
-      ? ["CSV + REST API", "Hourly intent · nightly on Hobby"]
+      ? ["CSV + REST API", "Daily + on-demand"]
       : plan === "starter"
         ? ["Daily scheduled sync + on-demand"]
-        : ["On-demand sync only", "14-day query history"];
+        : ["On-demand sync only", "14-day lookback / query history"];
   return [
     `${limits.maxWorkspaces} workspace${limits.maxWorkspaces === 1 ? "" : "s"}`,
     `${limits.maxSourceProviders} source${limits.maxSourceProviders === 1 ? "" : "s"}`,
@@ -33,6 +34,26 @@ function featureList(plan: (typeof RUNGS)[number]): string[] {
 export function BillingTab({ workspacePlan }: { workspacePlan: string }) {
   const current = getPlanLimits(workspacePlan);
   const upgrade = suggestedUpgradePlan(workspacePlan);
+  const [currency, setCurrency] = useState<"USD" | "VND">("USD");
+
+  useEffect(() => {
+    let active = true;
+    async function resolveCurrency() {
+      try {
+        const response = await fetch("/api/geo");
+        if (!response.ok) return;
+        const geo = await response.json() as { currency?: string };
+        if (!active) return;
+        setCurrency(geo.currency === "VND" ? "VND" : "USD");
+      } catch {
+        // USD remains the safe fallback when location detection is unavailable.
+      }
+    }
+    void resolveCurrency();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <div className="max-w-4xl space-y-5">
@@ -60,7 +81,7 @@ export function BillingTab({ workspacePlan }: { workspacePlan: string }) {
 
       <div className="grid gap-4 md:grid-cols-3">
         {RUNGS.map((plan) => {
-          const price = formatPlanPrice(plan, "USD", true);
+          const price = formatPlanPrice(plan, currency, true);
           const isCurrent = workspacePlan === plan || (plan === "starter" && current.displayName === "Studio");
           const highlighted = plan === "starter";
           return (
@@ -85,7 +106,7 @@ export function BillingTab({ workspacePlan }: { workspacePlan: string }) {
               </p>
               {plan !== "free" ? (
                 <p className="mt-0.5 font-mono text-[10px] text-ink-mute">
-                  {formatPlanPrice(plan, "USD", false).formatted}/mo month-to-month
+                  {formatPlanPrice(plan, currency, false).formatted}/mo month-to-month
                 </p>
               ) : (
                 <p className="mt-0.5 text-xs text-ink-mute">Trial — not a paid plan</p>
@@ -121,8 +142,8 @@ export function BillingTab({ workspacePlan }: { workspacePlan: string }) {
       <div className="flex items-start gap-2 rounded-lg border border-amber-300/20 bg-amber-200/[0.04] px-4 py-3 text-xs text-ink-mute">
         <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-200/80" />
         <p>
-          Draft catalog on this preview. Live Paddle prices are not changed. Destinations are included on Studio and
-          Agency — there is no second-destination upsell.
+          Draft catalog on this preview. Live Paddle (USD) and PayOS/VietQR (VND) prices are not changed.
+          Destinations are included on Studio and Agency — there is no second-destination upsell.
         </p>
       </div>
     </div>

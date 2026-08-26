@@ -172,7 +172,7 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     metaReportCooldownMs: 10 * 60 * 1000,        // 10 min cooldown
     googleReportCooldownMs: 10 * 60 * 1000,      // 10 min cooldown
     priority: 3,
-    syncLabel: "Hourly intent · nightly on Hobby + on-demand",
+    syncLabel: "Daily + on-demand",
     scheduledRefresh: "hourly",
     allowLooker: true,
     allowApiKeys: true,
@@ -225,6 +225,20 @@ export function suggestedUpgradePlan(plan: string): SelfServePlanId {
     return "professional";
   }
   return "starter";
+}
+
+/**
+ * Default workspace plan for self-serve signup / first workspace.
+ * Pilot remains invite-only (`invitation.plan`). PRO_WHITELIST_EMAILS still get Agency.
+ */
+export function defaultSignupWorkspacePlan(email?: string | null): {
+  plan: "free" | "professional";
+  status: "PILOT" | "ACTIVE";
+} {
+  if (isWhitelistedProEmail(email)) {
+    return { plan: "professional", status: "ACTIVE" };
+  }
+  return { plan: "free", status: "PILOT" };
 }
 
 /** Clamp custom date range to plan max history (free = 14 days). */
