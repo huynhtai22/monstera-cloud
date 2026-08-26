@@ -23,6 +23,8 @@ const BUDGET_WRITE =
   /\b(reallocate|move budget|change budget|set budget|auto[- ]?bid|increase spend automatically)\b/i;
 const HEALTH = /\b(stale|partial|sync(ed|ing)?|freshness|reconnect|last data through|not synced)\b/i;
 const CREATIVE = /\b(hook|transcript|creative|video ad|thumbnail|cta placement)\b/i;
+const DEEPER =
+  /\b(executive brief|deeper brief|full report|week[- ]over[- ]week|anomal(y|ies))\b/i;
 
 export const FLAGSHIP_REFUSAL_QUESTION =
   "Which TikTok campaigns generated first-time buyers in Vietnam that later converted on Shopee with >3x ROAS?";
@@ -57,7 +59,7 @@ export function classifyQuestion(question: string): QuestionClass {
     intent: "metrics",
     refuse: false,
     tools: ["get_reporting_readiness", "query_metrics"],
-    needsQueue: false,
+    needsQueue: DEEPER.test(q),
   };
 }
 

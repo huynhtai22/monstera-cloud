@@ -20,5 +20,13 @@ describe("analyst refusal eval", () => {
     const c = classifyQuestion("Why is Meta stale?");
     assert.equal(c.refuse, false);
     assert.deepEqual(c.tools, ["get_source_health"]);
+    assert.equal(c.needsQueue, false);
+  });
+
+  it("queues an executive brief for the nightly worker instead of refusing", () => {
+    const c = classifyQuestion("Write an executive brief of last week spend");
+    assert.equal(c.refuse, false);
+    assert.equal(c.needsQueue, true);
+    assert.deepEqual(c.tools, ["get_reporting_readiness", "query_metrics"]);
   });
 });
