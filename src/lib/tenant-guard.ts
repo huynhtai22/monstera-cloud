@@ -48,6 +48,10 @@ export const TENANT_GUARDED_MODELS = new Set([
   "UtmMappingRule",
   "AttributionTouch",
   "ReportSchedule",
+  "WorkspaceAiPolicy",
+  "AgentJob",
+  "AgentTrace",
+  "EvidencePackRecord",
 ]);
 
 /**

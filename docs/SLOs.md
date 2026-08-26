@@ -12,6 +12,7 @@ Telemetry reality (documented so nobody hunts for ghosts): this app runs on Verc
 | 4 | Cron freshness | pilot-cron succeeds every scheduled tick; no two consecutive failures | Actions run history | Consecutive failures → Actions email; investigate via Runbook quick-reference |
 | 5 | Sync freshness | Every connected workspace's newest `lastSyncAt` within plan interval × 2 | `health-tick` staleness marking + console UI | Stale connections surface in console; escalate per connector-readiness docs |
 | 6 | Data durability | Restore drill executed at least quarterly; backups restorable into app-compatible state | Drill evidence in LAUNCH_READINESS_AUDIT.md | Calendar reminder (owner); first completed 2026-08-23 |
+| 7 | AI worker freshness | Nightly `/api/cron/master` task `agentJobs` succeeds; queued `AgentJob` age ≈ 24h | Sentry + `emitMonitor("ai_worker_failed")` on `/api/cron/agent-jobs` | Not SLO #4 (`pilot-cron.yml`). Optional `pilot-ai-cron.yml` is a later, separate Actions alert |
 
 ## One manual step remaining (#3 alert rule)
 
