@@ -149,11 +149,15 @@ describe("connection-lifecycle reconnect does not duplicate retained metrics", (
     });
 
     it("reconnect upserts by identity triple, reusing the same connection row and resetting status to connected", async () => {
-        let upsertArgs: any;
+        let updateArgs: any;
         (prisma as any).connection = {
-            findUnique: async () => ({ id: CONNECTION_ID }),
+            findUnique: async () => ({ id: CONNECTION_ID, remoteAccountId: "1234567890" }),
+            findMany: async () => [{ id: CONNECTION_ID, remoteAccountId: "1234567890" }],
+            update: async (args: any) => {
+                updateArgs = args;
+                return { id: CONNECTION_ID, status: args.data.status, remoteAccountId: args.data.remoteAccountId };
+            },
             upsert: async (args: any) => {
-                upsertArgs = args;
                 return { id: CONNECTION_ID, status: args.update.status };
             },
         };
@@ -169,12 +173,9 @@ describe("connection-lifecycle reconnect does not duplicate retained metrics", (
 
         assert.equal(result.id, CONNECTION_ID, "same row reused — no duplicate connection");
         assert.equal(result.created, false);
-        assert.deepEqual(upsertArgs.where.workspaceId_provider_remoteAccountId, {
-            workspaceId: WORKSPACE,
-            provider: "google_ads",
-            remoteAccountId: "123-456-7890",
-        });
-        assert.equal(upsertArgs.update.status, "connected", "reconnect reactivates the disconnected row");
+        assert.equal(updateArgs.where.id, CONNECTION_ID);
+        assert.equal(updateArgs.data.status, "connected", "reconnect reactivates the disconnected row");
+        assert.equal(updateArgs.data.remoteAccountId, "1234567890", "canonicalized remoteAccountId");
         // Same row id ⇒ retained CampaignMetric.connectionId stays valid and the
         // deterministic unique key prevents duplicate rows on the next sync.
     });
