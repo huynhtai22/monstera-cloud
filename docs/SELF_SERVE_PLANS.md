@@ -14,7 +14,7 @@ Source of truth: `src/lib/plan-config.ts`. Destinations are included on paid run
 | Studio | `starter` | $49 / $59 | 1 | 2 | 6 | Daily + on-demand | Warehouse + Sheets + Looker, no dest fee |
 | Agency | `professional` | $129 / $149 | 3 | 4 | 15 | Daily + on-demand | Same dests + CSV/REST |
 
-- Start is the **public signup default**. 14-day lookback is a **query clamp**, not warehouse TTL. Rows are not deleted.
+- Start is the **public signup default**. After login, Start users land in the console (not `/pricing`). 14-day lookback is a **query clamp**, not warehouse TTL. Rows are not deleted.
 - Unlimited seats on Studio/Agency: copy says unlimited; enforcement is a **50-seat** abuse cap.
 - Agency `scheduledRefresh` may stay `"hourly"` as **internal intent**. User-visible copy is Daily + on-demand. Hobby cron is nightly.
 - Account unit is **workspace-total source `Connection` rows**, not leaf ads inside a BM/MCC.
