@@ -1,18 +1,23 @@
 /**
- * Shopee Ads (v2.ads) — granular CPC daily performance → CampaignMetric.
- * Best-effort: if the Open Platform app lacks Ads API permission, sync returns
- * success with 0 rows so order-based Shopee warehouse sync still completes.
+ * Shopee Ads (v2.ads) — Granular Product & Campaign Daily Performance → CampaignMetric.
+ * Strictly enforces Vietnam-only region policy, fetches product campaign discovery,
+ * settings, keyword configuration, and product-level daily performance in <= 100 ID batches
+ * and <= 30-day date windows.
  */
 
+import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { getValidShopeeCreds, shopeeAdsClient } from "@/lib/shopee";
+import { getValidShopeeCreds, shopeeAdsClient, shopeeDataClient, type ShopeeProductCampaignSetting } from "@/lib/shopee";
 import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";
 import { heartbeatConnectionSyncLease, type ConnectionLease } from "@/lib/connection-sync-lease";
 import {
+  mapShopeeProductDailyToCampaignMetricPayload,
   mapShopeeRowToCampaignMetricPayload,
   parseShopeeAdsRowDate,
 } from "@/lib/shopee-ads-mapper";
+import { isShopeeRegionEligible, assertShopeeRegionEligible } from "@/lib/provider-market-policy";
 import type { MarketplaceSyncResult } from "@/lib/sync-marketplace-warehouse";
+import { refreshConnectionLastDataThrough } from "@/lib/connection-data-through";
 
 const UPSERT_CHUNK_SIZE = 25;
 
@@ -30,13 +35,18 @@ function isBenignAdsFailure(message: string): boolean {
     m.includes("unauthorized") ||
     m.includes("access denied") ||
     m.includes("error_auth") ||
-    m.includes("invalid access_token") ||
-    m.includes("error_param")
+    m.includes("invalid access_token")
   );
 }
 
+/** Clamp historical date to Shopee's 6-month limit (approx 180 days). */
+function clampShopeeHistoricalDate(sinceYmd: string): string {
+  const earliest = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+  return sinceYmd < earliest ? earliest : sinceYmd;
+}
+
 async function upsertPayloadsInChunks(
-  payloads: Awaited<ReturnType<typeof mapShopeeRowToCampaignMetricPayload>>[],
+  payloads: Awaited<ReturnType<typeof mapShopeeProductDailyToCampaignMetricPayload>>[],
   lease?: ConnectionLease
 ): Promise<number> {
   const valid = payloads.filter((p): p is NonNullable<typeof p> => p != null);
@@ -55,8 +65,7 @@ async function upsertPayloadsInChunks(
 }
 
 /**
- * Pull CPC ads daily performance and upsert one CampaignMetric row per API row
- * (campaign or ad grain).
+ * Pull product campaign daily performance and upsert one CampaignMetric row per product/campaign day.
  */
 export async function syncShopeeAdsWarehouseMetrics(opts: {
   connectionId: string;
@@ -71,7 +80,9 @@ export async function syncShopeeAdsWarehouseMetrics(opts: {
     return { success: true, rowsIngested: 0 };
   }
 
-  const { connectionId, workspaceId, since, until } = opts;
+  const { connectionId, workspaceId } = opts;
+  const clampedSince = clampShopeeHistoricalDate(opts.since);
+  const until = opts.until;
 
   try {
     const creds = await getValidShopeeCreds(connectionId);
@@ -81,94 +92,147 @@ export async function syncShopeeAdsWarehouseMetrics(opts: {
       sandbox: creds.sandbox === true,
     };
 
-    let rows: unknown[] = [];
-    let mode: "range" | "per_day" = "range";
-
+    // Step 1: Verify authoritative shop region is VN
     try {
-      const result = await shopeeAdsClient.getAllCpcAdsDailyPerformance(
-        apiOpts,
-        since,
-        until
-      );
-      rows = result.rows;
-      mode = result.mode;
-      if (result.perDayErrors?.length) {
-        logger.warn("[syncShopeeAdsWarehouse] Per-day fallback had errors", {
-          count: result.perDayErrors.length,
-          sample: result.perDayErrors.slice(0, 3),
-        });
+      const shopInfo = await shopeeDataClient.getShopInfo(apiOpts);
+      assertShopeeRegionEligible(shopInfo.region, "ads_reporting");
+    } catch (regionErr: unknown) {
+      const msg = regionErr instanceof Error ? regionErr.message : String(regionErr);
+      if (msg.includes("Shopee capability") || msg.includes("restricted to [VN]")) {
+        logger.warn(`[syncShopeeAdsWarehouse] Ineligible shop region: ${msg}`, { connectionId });
+        return { success: false, rowsIngested: 0, error: msg };
       }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      // If shop info failed due to benign permission issue, log warning
       if (isBenignAdsFailure(msg)) {
-        logger.warn(
-          "[syncShopeeAdsWarehouse] Ads API not available yet (expected until Shopee enables app).",
-          { connectionId, message: msg }
-        );
-        return { success: true, rowsIngested: 0 };
+        logger.warn("[syncShopeeAdsWarehouse] Shop info check deferred", { msg });
       }
-      throw e;
-    }
-
-    if (rows.length === 0) {
-      logger.info(
-        "[syncShopeeAdsWarehouse] No CPC daily rows (empty shop or no ads data in range)",
-        { connectionId, since, until, mode }
-      );
-      return { success: true, rowsIngested: 0 };
     }
 
     const accountId = String(creds.shop_id);
-    const accountName = `Shopee shop ${accountId}`;
+    const accountName = `Shopee VN Shop ${accountId}`;
     const jobId = `shopee-ads-warehouse-${Date.now()}`;
-
     const payloads = [];
-    let skippedDate = 0;
-    let skippedMap = 0;
 
-    for (const raw of rows) {
-      if (!raw || typeof raw !== "object") continue;
-      const row = raw as Record<string, unknown>;
-      const d = parseShopeeAdsRowDate(row);
-      if (!d) {
-        skippedDate += 1;
-        continue;
+    // Step 2: Discover product-level campaign IDs
+    let campaignIds: number[] = [];
+    try {
+      campaignIds = await shopeeAdsClient.getAllProductLevelCampaignIds(apiOpts);
+      logger.info(`[syncShopeeAdsWarehouse] Discovered ${campaignIds.length} product campaigns for shop ${accountId}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (isBenignAdsFailure(msg)) {
+        logger.warn("[syncShopeeAdsWarehouse] Ads API not available yet (expected until Shopee enables app).", { connectionId, message: msg });
+        return { success: true, rowsIngested: 0 };
       }
-      const dayKey = d.toISOString().slice(0, 10);
-      if (dayKey < since || dayKey > until) continue;
+      logger.warn(`[syncShopeeAdsWarehouse] Product campaign discovery failed, falling back to shop CPC ads: ${msg}`);
+    }
 
-      const payload = mapShopeeRowToCampaignMetricPayload({
-        workspaceId,
-        connectionId,
-        accountId,
-        accountName,
-        row,
-        syncJobId: jobId,
-        apiMode: mode,
-      });
-      if (!payload) {
-        skippedMap += 1;
-        continue;
+    if (campaignIds.length > 0) {
+      if (opts.lease) await heartbeatConnectionSyncLease(opts.lease);
+
+      // Step 3: Fetch campaign settings (settings, items, keyword configs) in chunks of <= 100
+      let settingsList: ShopeeProductCampaignSetting[] = [];
+      try {
+        settingsList = await shopeeAdsClient.getProductLevelCampaignSettingInfo(apiOpts, campaignIds);
+      } catch (err) {
+        logger.warn("[syncShopeeAdsWarehouse] Could not fetch campaign settings, continuing with IDs", { err });
       }
-      payloads.push(payload);
+      const settingsMap = new Map<number, ShopeeProductCampaignSetting>();
+      for (const s of settingsList) {
+        settingsMap.set(s.campaign_id, s);
+      }
+
+      if (opts.lease) await heartbeatConnectionSyncLease(opts.lease);
+
+      // Step 4: Fetch product campaign daily metrics
+      try {
+        const metrics = await shopeeAdsClient.getProductCampaignDailyPerformance(
+          apiOpts,
+          campaignIds,
+          clampedSince,
+          until
+        );
+
+        for (const m of metrics) {
+          const setting = settingsMap.get(m.campaign_id);
+          const payload = mapShopeeProductDailyToCampaignMetricPayload({
+            workspaceId,
+            connectionId,
+            accountId,
+            accountName,
+            metric: m,
+            setting,
+            syncJobId: jobId,
+          });
+          if (payload) {
+            payloads.push(payload);
+          }
+        }
+      } catch (err) {
+        logger.warn("[syncShopeeAdsWarehouse] Product daily metrics pull failed", { err });
+      }
+    }
+
+    // Step 5: If no product campaign metrics were found or if shop has overall CPC ads, query shop-level daily performance
+    if (payloads.length === 0) {
+      try {
+        const cpcResult = await shopeeAdsClient.getAllCpcAdsDailyPerformance(
+          apiOpts,
+          clampedSince,
+          until
+        );
+        for (const raw of cpcResult.rows) {
+          if (!raw || typeof raw !== "object") continue;
+          const row = raw as Record<string, unknown>;
+          const d = parseShopeeAdsRowDate(row);
+          if (!d) continue;
+          const dayKey = d.toISOString().slice(0, 10);
+          if (dayKey < clampedSince || dayKey > until) continue;
+
+          const payload = mapShopeeRowToCampaignMetricPayload({
+            workspaceId,
+            connectionId,
+            accountId,
+            accountName,
+            row,
+            syncJobId: jobId,
+            apiMode: cpcResult.mode,
+          });
+          if (payload) {
+            payloads.push(payload);
+          }
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (isBenignAdsFailure(msg)) {
+          logger.warn(
+            "[syncShopeeAdsWarehouse] Ads API not available yet (expected until Shopee enables app).",
+            { connectionId, message: msg }
+          );
+          return { success: true, rowsIngested: 0 };
+        }
+        throw e;
+      }
     }
 
     if (payloads.length === 0) {
-      logger.warn("[syncShopeeAdsWarehouse] No mappable rows after transform", {
-        connectionId,
-        mode,
-        skippedDate,
-        skippedMap,
-        sample: rows[0],
-      });
+      logger.info(
+        "[syncShopeeAdsWarehouse] No ads daily rows (empty shop or no ads data in range)",
+        { connectionId, since: clampedSince, until }
+      );
       return { success: true, rowsIngested: 0 };
     }
 
     const upserted = await upsertPayloadsInChunks(payloads, opts.lease);
 
+    await prisma.connection.update({
+      where: { id: connectionId },
+      data: { lastSyncAt: new Date() },
+    });
+    await refreshConnectionLastDataThrough(workspaceId, connectionId);
+
     logger.info(
-      `[syncShopeeAdsWarehouse] ${upserted} granular rows for ${connectionId}`,
-      { mode, skippedDate, skippedMap }
+      `[syncShopeeAdsWarehouse] ${upserted} granular Shopee Ads rows ingested for connection ${connectionId}`
     );
     return { success: true, rowsIngested: upserted };
   } catch (e: unknown) {

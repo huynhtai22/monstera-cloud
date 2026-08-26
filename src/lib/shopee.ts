@@ -371,8 +371,21 @@ function logShopeeShopApiFailure(
 
 export class ShopeeDataClient {
   /** Get basic shop information. */
-  async getShopInfo(opts: ShopeeApiOptions) {
-    return shopeeGet("/api/v2/shop/get_shop_info", {}, opts);
+  async getShopInfo(opts: ShopeeApiOptions): Promise<ShopeeShopInfo> {
+    const raw = await shopeeGet("/api/v2/shop/get_shop_info", {}, opts);
+    const resp = (raw.response || raw) as Record<string, unknown>;
+    return {
+      shop_name: String(resp.shop_name || resp.shopName || `Shop ${opts.shopId}`),
+      region: String(resp.region || "").toUpperCase().trim(),
+      status: String(resp.status || "NORMAL"),
+      auth_time: Number(resp.auth_time || 0),
+      expire_time: Number(resp.expire_time || 0),
+      merchant_id: resp.merchant_id != null ? Number(resp.merchant_id) : undefined,
+      is_cb: Boolean(resp.is_cb),
+      is_sip: resp.is_sip != null ? Boolean(resp.is_sip) : undefined,
+      sip_affi_shops: Array.isArray(resp.sip_affi_shops) ? (resp.sip_affi_shops as any) : undefined,
+      is_3pf: resp.is_3pf != null ? Boolean(resp.is_3pf) : undefined,
+    };
   }
 
   /**
@@ -457,18 +470,87 @@ export class ShopeeDataClient {
 
 export const shopeeDataClient = new ShopeeDataClient();
 
-// ── Shopee Ads (v2.ads) — read-only performance ─────────────────────────────
+// ── Shopee Ads (v2.ads) — Product & Shop Performance ─────────────────────────
 // Requires Open Platform app permission for Ads/Marketing APIs.
 // Date strings for request params use DD-MM-YYYY per Shopee Ads API docs.
 
-const ADS_PATH_CPC_DAILY = "/api/v2/ads/get_all_cpc_ads_daily_performance";
-const ADS_PATH_CPC_HOURLY = "/api/v2/ads/get_all_cpc_ads_hourly_performance";
+export const ADS_PATH_PRODUCT_CAMPAIGN_ID_LIST = "/api/v2/ads/get_product_level_campaign_id_list";
+export const ADS_PATH_PRODUCT_CAMPAIGN_SETTING = "/api/v2/ads/get_product_level_campaign_setting_info";
+export const ADS_PATH_PRODUCT_CAMPAIGN_PERFORMANCE = "/api/v2/ads/get_product_campaign_daily_performance";
+export const ADS_PATH_CPC_DAILY = "/api/v2/ads/get_all_cpc_ads_daily_performance";
+export const ADS_PATH_CPC_HOURLY = "/api/v2/ads/get_all_cpc_ads_hourly_performance";
 
 /** Convert YYYY-MM-DD → DD-MM-YYYY for Shopee Ads query params. */
 export function shopeeAdsDateParam(ymd: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
   if (!m) throw new Error(`Invalid Shopee ads date (expected YYYY-MM-DD): ${ymd}`);
   return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
+export interface ShopeeShopInfo {
+  shop_name: string;
+  region: string;
+  status: string;
+  auth_time: number;
+  expire_time: number;
+  merchant_id?: number;
+  is_cb: boolean;
+  is_sip?: boolean;
+  sip_affi_shops?: Array<{ shop_id: number; region: string }>;
+  is_3pf?: boolean;
+}
+
+export interface ShopeeKeywordSetting {
+  keyword: string;
+  match_type: "broad" | "exact" | string;
+  status: string;
+  bid_price: number;
+}
+
+export interface ShopeeProductCampaignSetting {
+  campaign_id: number;
+  campaign_name: string;
+  campaign_status: string;
+  ad_type: string;
+  placement?: string;
+  budget?: number;
+  start_time?: number;
+  end_time?: number;
+  bidding_method?: string; // auto | manual
+  roas_target?: number;
+  item_id_list?: number[];
+  item_id?: number;
+  item_name?: string;
+  keyword_list?: ShopeeKeywordSetting[];
+  discovery_placement_settings?: Record<string, unknown>;
+}
+
+export interface ShopeeProductCampaignDailyMetric {
+  date: string; // DD-MM-YYYY or YYYY-MM-DD
+  campaign_id: number;
+  campaign_name?: string;
+  item_id?: number;
+  item_name?: string;
+  ad_type?: string;
+  impression: number;
+  clicks: number;
+  ctr: number;
+  expense: number;
+  broad_order: number;
+  broad_order_amount: number; // units sold
+  broad_gmv: number;
+  broad_roas: number;
+  broad_cir: number; // ACOS
+  broad_cr: number;
+  broad_cost_per_conversion?: number;
+  direct_order: number;
+  direct_order_amount: number;
+  direct_gmv: number;
+  direct_roas: number;
+  direct_cir: number;
+  direct_cr: number;
+  direct_cost_per_conversion?: number;
+  raw?: Record<string, unknown>;
 }
 
 export interface ShopeeAdsDailyPerformanceResult {
@@ -478,7 +560,260 @@ export interface ShopeeAdsDailyPerformanceResult {
   perDayErrors?: string[];
 }
 
+export function chunkDateRangeIntoMonths(
+  sinceYmd: string,
+  untilYmd: string,
+  maxDays = 30
+): Array<{ since: string; until: string }> {
+  const chunks: Array<{ since: string; until: string }> = [];
+  const start = parseYmdUtc(sinceYmd);
+  const end = parseYmdUtc(untilYmd);
+
+  if (start.getTime() > end.getTime()) {
+    return [{ since: sinceYmd, until: untilYmd }];
+  }
+
+  let curr = new Date(start.getTime());
+  while (curr.getTime() <= end.getTime()) {
+    const chunkStart = curr.toISOString().slice(0, 10);
+    const nextEndMs = Math.min(
+      curr.getTime() + (maxDays - 1) * 86400000,
+      end.getTime()
+    );
+    const chunkEnd = new Date(nextEndMs).toISOString().slice(0, 10);
+    chunks.push({ since: chunkStart, until: chunkEnd });
+    curr = new Date(nextEndMs + 86400000);
+  }
+  return chunks;
+}
+
 export class ShopeeAdsClient {
+  /**
+   * 1. Discover product advertising campaign IDs (paginated).
+   * GET /api/v2/ads/get_product_level_campaign_id_list
+   */
+  async getProductLevelCampaignIdList(
+    opts: ShopeeApiOptions,
+    params?: { ad_type?: string; offset?: number; page_size?: number }
+  ): Promise<{ campaign_id_list: number[]; total_count: number; has_more: boolean }> {
+    const q: Record<string, string> = {
+      offset: String(params?.offset ?? 0),
+      page_size: String(Math.min(params?.page_size ?? 100, 100)),
+    };
+    if (params?.ad_type) {
+      q.ad_type = params.ad_type;
+    }
+    const json = await shopeeGet(ADS_PATH_PRODUCT_CAMPAIGN_ID_LIST, q, opts);
+    const resp = (json.response || json) as Record<string, unknown>;
+    const listRaw = resp.campaign_id_list || resp.campaign_ids || resp.list || [];
+    const campaign_id_list = Array.isArray(listRaw)
+      ? listRaw.map((id) => (typeof id === "object" && id !== null ? Number((id as any).campaign_id || id) : Number(id))).filter((n) => Number.isFinite(n) && n > 0)
+      : [];
+    const total_count = Number(resp.total_count || campaign_id_list.length);
+    const has_more = Boolean(resp.has_more ?? (params?.offset ?? 0) + campaign_id_list.length < total_count);
+    return { campaign_id_list, total_count, has_more };
+  }
+
+  /**
+   * Helper to retrieve all product campaign IDs by traversing pagination.
+   */
+  async getAllProductLevelCampaignIds(
+    opts: ShopeeApiOptions,
+    adType = "ALL"
+  ): Promise<number[]> {
+    const allIds: number[] = [];
+    let offset = 0;
+    const pageSize = 100;
+
+    for (let page = 0; page < 50; page++) {
+      const res = await this.getProductLevelCampaignIdList(opts, {
+        ad_type: adType,
+        offset,
+        page_size: pageSize,
+      });
+      if (!res.campaign_id_list.length) break;
+      allIds.push(...res.campaign_id_list);
+      if (!res.has_more || res.campaign_id_list.length < pageSize) break;
+      offset += res.campaign_id_list.length;
+    }
+    return Array.from(new Set(allIds));
+  }
+
+  /**
+   * 2. Fetch campaign settings in batches of <= 100 campaign IDs.
+   * GET /api/v2/ads/get_product_level_campaign_setting_info
+   */
+  async getProductLevelCampaignSettingInfo(
+    opts: ShopeeApiOptions,
+    campaignIds: number[]
+  ): Promise<ShopeeProductCampaignSetting[]> {
+    if (!campaignIds.length) return [];
+
+    const settings: ShopeeProductCampaignSetting[] = [];
+    // Shopee batch limit is 100 campaign IDs per call
+    for (let i = 0; i < campaignIds.length; i += 100) {
+      const chunk = campaignIds.slice(i, i + 100);
+      const json = await shopeeGet(
+        ADS_PATH_PRODUCT_CAMPAIGN_SETTING,
+        { campaign_id_list: chunk.join(",") },
+        opts
+      );
+      const resp = (json.response || json) as Record<string, unknown>;
+      const rawList = (resp.campaign_list || resp.campaign_setting_list || resp.list || (Array.isArray(resp) ? resp : [])) as unknown[];
+
+      if (Array.isArray(rawList)) {
+        for (const item of rawList) {
+          if (!item || typeof item !== "object") continue;
+          const c = item as Record<string, unknown>;
+          const cid = Number(c.campaign_id ?? c.campaignId);
+          if (!cid) continue;
+
+          const rawKeywords = (c.keyword_list || c.keywords || []) as unknown[];
+          const keyword_list: ShopeeKeywordSetting[] = Array.isArray(rawKeywords)
+            ? rawKeywords.map((k: any) => ({
+                keyword: String(k.keyword_text || k.keyword || ""),
+                match_type: String(k.match_type || k.matchType || "broad"),
+                status: String(k.status || "normal"),
+                bid_price: Number(k.bid_price || k.bidPrice || k.bid || 0),
+              }))
+            : [];
+
+          const rawItemIds = (c.item_id_list || c.item_ids || []) as unknown[];
+          const item_id_list = Array.isArray(rawItemIds)
+            ? rawItemIds.map(Number).filter((n) => Number.isFinite(n))
+            : c.item_id ? [Number(c.item_id)] : [];
+
+          settings.push({
+            campaign_id: cid,
+            campaign_name: String(c.campaign_name || c.campaignName || `Campaign ${cid}`),
+            campaign_status: String(c.campaign_status || c.status || "ongoing"),
+            ad_type: String(c.ad_type || c.adType || "product"),
+            placement: c.placement ? String(c.placement) : undefined,
+            budget: c.budget != null ? Number(c.budget) : undefined,
+            start_time: c.start_time != null ? Number(c.start_time) : undefined,
+            end_time: c.end_time != null ? Number(c.end_time) : undefined,
+            bidding_method: c.bidding_method ? String(c.bidding_method) : undefined,
+            roas_target: c.roas_target != null ? Number(c.roas_target) : undefined,
+            item_id_list,
+            item_id: item_id_list[0] ?? (c.item_id ? Number(c.item_id) : undefined),
+            item_name: c.item_name ? String(c.item_name) : undefined,
+            keyword_list,
+            discovery_placement_settings: typeof c.discovery_placement_settings === "object" && c.discovery_placement_settings !== null
+              ? (c.discovery_placement_settings as Record<string, unknown>)
+              : undefined,
+          });
+        }
+      }
+    }
+    return settings;
+  }
+
+  /**
+   * 3. Fetch product campaign daily advertising performance.
+   * GET /api/v2/ads/get_product_campaign_daily_performance
+   * Batches by <= 100 campaign IDs and <= 30-day date windows (up to 6 months historical).
+   */
+  async getProductCampaignDailyPerformance(
+    opts: ShopeeApiOptions,
+    campaignIds: number[],
+    sinceYmd: string,
+    untilYmd: string
+  ): Promise<ShopeeProductCampaignDailyMetric[]> {
+    if (!campaignIds.length) return [];
+
+    const dateChunks = chunkDateRangeIntoMonths(sinceYmd, untilYmd, 30);
+    const results: ShopeeProductCampaignDailyMetric[] = [];
+
+    for (const dateRange of dateChunks) {
+      const start = shopeeAdsDateParam(dateRange.since);
+      const end = shopeeAdsDateParam(dateRange.until);
+
+      for (let i = 0; i < campaignIds.length; i += 100) {
+        const idChunk = campaignIds.slice(i, i + 100);
+        try {
+          const json = await shopeeGet(
+            ADS_PATH_PRODUCT_CAMPAIGN_PERFORMANCE,
+            {
+              campaign_id_list: idChunk.join(","),
+              start_date: start,
+              end_date: end,
+            },
+            opts
+          );
+
+          const resp = (json.response || json) as Record<string, unknown>;
+          const rawList = (resp.performance_list || resp.list || resp.data || (Array.isArray(resp) ? resp : [])) as unknown[];
+
+          if (Array.isArray(rawList)) {
+            for (const item of rawList) {
+              if (!item || typeof item !== "object") continue;
+              const r = item as Record<string, unknown>;
+              const cid = Number(r.campaign_id ?? r.campaignId);
+              if (!cid) continue;
+
+              const impression = Math.round(Number(r.impression ?? r.impressions ?? 0));
+              const clicks = Math.round(Number(r.clicks ?? 0));
+              const expense = Number(r.expense ?? r.ad_expense ?? r.cost ?? 0);
+              const ctr = Number(r.ctr ?? (impression > 0 ? clicks / impression : 0));
+
+              const broad_order = Number(r.broad_order ?? r.broad_orders ?? r.orders ?? 0);
+              const broad_order_amount = Number(r.broad_order_amount ?? r.broad_units ?? r.units_sold ?? broad_order);
+              const broad_gmv = Number(r.broad_gmv ?? r.broad_revenue ?? r.gmv ?? 0);
+              const broad_roas = Number(r.broad_roas ?? r.broad_roi ?? (expense > 0 ? broad_gmv / expense : 0));
+              const broad_cir = Number(r.broad_cir ?? r.broad_acos ?? (broad_gmv > 0 ? expense / broad_gmv : 0));
+              const broad_cr = Number(r.broad_cr ?? (clicks > 0 ? broad_order / clicks : 0));
+              const broad_cost_per_conversion = broad_order > 0 ? expense / broad_order : 0;
+
+              const direct_order = Number(r.direct_order ?? r.direct_orders ?? 0);
+              const direct_order_amount = Number(r.direct_order_amount ?? r.direct_units ?? direct_order);
+              const direct_gmv = Number(r.direct_gmv ?? r.direct_revenue ?? 0);
+              const direct_roas = Number(r.direct_roas ?? r.direct_roi ?? (expense > 0 ? direct_gmv / expense : 0));
+              const direct_cir = Number(r.direct_cir ?? r.direct_acos ?? (direct_gmv > 0 ? expense / direct_gmv : 0));
+              const direct_cr = Number(r.direct_cr ?? (clicks > 0 ? direct_order / clicks : 0));
+              const direct_cost_per_conversion = direct_order > 0 ? expense / direct_order : 0;
+
+              results.push({
+                date: String(r.date || r.report_date || dateRange.since),
+                campaign_id: cid,
+                campaign_name: r.campaign_name ? String(r.campaign_name) : undefined,
+                item_id: r.item_id ? Number(r.item_id) : undefined,
+                item_name: r.item_name ? String(r.item_name) : undefined,
+                ad_type: r.ad_type ? String(r.ad_type) : undefined,
+                impression,
+                clicks,
+                ctr,
+                expense,
+                broad_order,
+                broad_order_amount,
+                broad_gmv,
+                broad_roas,
+                broad_cir,
+                broad_cr,
+                broad_cost_per_conversion,
+                direct_order,
+                direct_order_amount,
+                direct_gmv,
+                direct_roas,
+                direct_cir,
+                direct_cr,
+                direct_cost_per_conversion,
+                raw: r,
+              });
+            }
+          }
+        } catch (err) {
+          logger.warn(`[Shopee Ads] Batch product performance query failed for chunk`, {
+            campaignCount: idChunk.length,
+            since: dateRange.since,
+            until: dateRange.until,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+    return results;
+  }
+
   /**
    * Shop-level CPC ads — daily performance for a date range.
    * Tries `start_date` + `end_date` (DD-MM-YYYY); falls back to per-day `performance_date` if Shopee returns error_param.
