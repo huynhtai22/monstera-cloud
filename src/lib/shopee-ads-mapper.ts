@@ -1,5 +1,10 @@
 import { createHash } from "crypto";
 import type { CampaignMetricPayload } from "@/lib/ad-platform-ingest";
+import type {
+  ShopeeProductCampaignDailyMetric,
+  ShopeeProductCampaignSetting,
+  ShopeeKeywordSetting,
+} from "@/lib/shopee";
 
 export type ShopeeAdsMetricLevel = "campaign" | "ad";
 
@@ -166,13 +171,148 @@ export function mapShopeeRowToCampaignMetricPayload(
     revenue,
     roas,
     currency:
-      typeof row.currency === "string" && row.currency ? row.currency : undefined,
+      typeof row.currency === "string" && row.currency ? row.currency : "VND",
     rawData: {
       source: "shopee_ads_v2",
       metric: "get_all_cpc_ads_daily_performance",
       mode: apiMode,
       revenue_basis: "broad_gmv_preferred",
       row,
+    },
+    syncJobId,
+  };
+}
+
+export type MapShopeeProductPerformanceParams = {
+  workspaceId: string;
+  connectionId: string;
+  accountId: string;
+  accountName: string;
+  metric: ShopeeProductCampaignDailyMetric;
+  setting?: ShopeeProductCampaignSetting;
+  syncJobId?: string;
+};
+
+/**
+ * Map documented Shopee product-level daily advertising performance row → CampaignMetric payload.
+ * Stores comprehensive non-PII marketing metrics (broad/direct conversions, units, GMV, ROAS, ACOS, CR, CPC)
+ * and discloses that keyword records are configuration-only.
+ */
+export function mapShopeeProductDailyToCampaignMetricPayload(
+  params: MapShopeeProductPerformanceParams
+): CampaignMetricPayload | null {
+  const {
+    workspaceId,
+    connectionId,
+    accountId,
+    accountName,
+    metric,
+    setting,
+    syncJobId,
+  } = params;
+
+  const campaignId = String(metric.campaign_id);
+  const itemId = metric.item_id ? String(metric.item_id) : (setting?.item_id ? String(setting.item_id) : undefined);
+  const level: ShopeeAdsMetricLevel = itemId ? "ad" : "campaign";
+  const entityId = itemId ? itemId : campaignId;
+
+  const date = parseShopeeAdsRowDate(metric as any, metric.date);
+  if (!date) return null;
+
+  const campaignName =
+    metric.campaign_name || setting?.campaign_name || `Shopee Campaign ${campaignId}`;
+  const itemName = metric.item_name || setting?.item_name;
+
+  const extraDims: Record<string, string | number> = {};
+  if (setting?.placement) {
+    extraDims.placement = setting.placement;
+  }
+  if (metric.ad_type || setting?.ad_type) {
+    extraDims.ad_type = metric.ad_type || setting?.ad_type || "product";
+  }
+  const breakdownHash = generateShopeeBreakdownHash(extraDims);
+
+  const impressions = Math.round(num(metric.impression));
+  const clicks = Math.round(num(metric.clicks));
+  const spend = num(metric.expense);
+  const conversions = num(metric.broad_order);
+  const revenue = num(metric.broad_gmv);
+
+  const ctr =
+    metric.ctr > 0
+      ? metric.ctr
+      : impressions > 0
+        ? clicks / impressions
+        : 0;
+  const cpc = clicks > 0 ? spend / clicks : 0;
+  const roas =
+    metric.broad_roas > 0
+      ? metric.broad_roas
+      : spend > 0
+        ? revenue / spend
+        : 0;
+
+  const keywordSettings: ShopeeKeywordSetting[] = setting?.keyword_list || [];
+
+  return {
+    workspaceId,
+    connectionId,
+    platform: "shopee",
+    accountId,
+    accountName,
+    level,
+    entityId,
+    campaignId,
+    campaignName,
+    adsetId: itemId ?? "",
+    adsetName: itemName,
+    adId: itemId ?? "",
+    date,
+    breakdownHash,
+    impressions,
+    clicks,
+    spend,
+    reach: 0,
+    cpc,
+    ctr,
+    conversions,
+    revenue,
+    roas,
+    currency: "VND",
+    rawData: {
+      source: "shopee_product_campaign_daily",
+      region: "VN",
+      campaign_id: campaignId,
+      campaign_name: campaignName,
+      item_id: itemId,
+      item_name: itemName,
+      ad_type: metric.ad_type || setting?.ad_type,
+      bidding_method: setting?.bidding_method,
+      budget: setting?.budget,
+      roas_target: setting?.roas_target,
+      broad_metrics: {
+        orders: metric.broad_order,
+        units_sold: metric.broad_order_amount,
+        gmv: metric.broad_gmv,
+        roas: metric.broad_roas,
+        acos: metric.broad_cir,
+        conversion_rate: metric.broad_cr,
+        cost_per_conversion: metric.broad_cost_per_conversion ?? (metric.broad_order > 0 ? spend / metric.broad_order : 0),
+      },
+      direct_metrics: {
+        orders: metric.direct_order,
+        units_sold: metric.direct_order_amount,
+        gmv: metric.direct_gmv,
+        roas: metric.direct_roas,
+        acos: metric.direct_cir,
+        conversion_rate: metric.direct_cr,
+        cost_per_conversion: metric.direct_cost_per_conversion ?? (metric.direct_order > 0 ? spend / metric.direct_order : 0),
+      },
+      keyword_settings_count: keywordSettings.length,
+      keyword_settings: keywordSettings,
+      keyword_performance_note:
+        "Shopee API exposes keyword configuration only; keyword-level performance metrics are not supported by Shopee Open Platform.",
+      metric_raw: metric.raw,
     },
     syncJobId,
   };

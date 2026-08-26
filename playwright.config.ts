@@ -12,12 +12,14 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "npm start",
+    command: "npx next start -H 127.0.0.1 -p 3000",
     url: "http://127.0.0.1:3000/api/version",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
       ...process.env,
+      HOSTNAME: "127.0.0.1",
+      PORT: "3000",
       DATABASE_URL: process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/monstera_e2e",
       NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET || "e2e-nextauth-secret-at-least-32-characters",
       NEXTAUTH_URL: process.env.NEXTAUTH_URL || "http://127.0.0.1:3000",

@@ -1,8 +1,3 @@
-/**
- * Shopee OAuth Provider Adapter
- * Implements OAuthProviderAdapter for Shopee Open Platform v2
- */
-
 import {
     OAuthProviderAdapter,
     OAuthCredentials,
@@ -10,8 +5,9 @@ import {
     ConnectedAccount,
     OAuthError,
 } from "../types";
-import { shopeeClient } from "@/lib/shopee";
+import { shopeeClient, shopeeDataClient } from "@/lib/shopee";
 import { isShopeeSandboxEnabled } from "@/lib/shopee-env";
+import { assertShopeeRegionEligible } from "@/lib/provider-market-policy";
 
 const isSandbox = () => isShopeeSandboxEnabled();
 
@@ -53,7 +49,43 @@ export class ShopeeOAuthAdapter implements OAuthProviderAdapter {
 
         const tokenData = await shopeeClient.exchangeCode(authCode, shopId, isSandbox());
 
-        // Store sandbox flag in extra fields for future refreshes
+        // Step 1: Immediately fetch authoritative shop info to determine region eligibility
+        let shopName = `Shopee Shop (${tokenData.shop_id})`;
+        let region = "UNKNOWN";
+        let isCb = false;
+        let merchantId: number | undefined;
+
+        try {
+            const shopInfo = await shopeeDataClient.getShopInfo({
+                accessToken: tokenData.access_token,
+                shopId: tokenData.shop_id,
+                sandbox: isSandbox(),
+            });
+            region = (shopInfo.region || "").toUpperCase().trim();
+            shopName = shopInfo.shop_name || shopName;
+            isCb = shopInfo.is_cb;
+            merchantId = shopInfo.merchant_id;
+
+            // Enforce Vietnam-only capability policy (shop.region === 'VN')
+            assertShopeeRegionEligible(region, "ads_reporting");
+        } catch (err: unknown) {
+            if (err instanceof OAuthError) throw err;
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes("Shopee capability") || msg.includes("restricted to [VN]")) {
+                throw new OAuthError(
+                    "configuration_error",
+                    msg,
+                    this.id
+                );
+            }
+            throw new OAuthError(
+                "provider_error",
+                `Failed to verify Shopee shop information: ${msg}`,
+                this.id
+            );
+        }
+
+        // Store sandbox flag and authoritative shop region in extra fields
         const credentials: OAuthCredentials = {
             accessToken: tokenData.access_token,
             refreshToken: tokenData.refresh_token,
@@ -64,13 +96,17 @@ export class ShopeeOAuthAdapter implements OAuthProviderAdapter {
         };
 
         const connectionMetadata: ConnectionMetadata = {
-            name: `Shopee Shop (${tokenData.shop_id})`,
+            name: `${shopName} (${tokenData.shop_id})`,
             accountIdentifiers: [String(tokenData.shop_id)],
             extraFields: {
                 refreshExpiresAt: new Date(
                     Date.now() + 30 * 24 * 60 * 60 * 1000
                 ).toISOString(),
                 product: "shopee",
+                region,
+                shopName,
+                isCb,
+                merchantId,
                 sandbox: isSandbox(), // Store sandbox flag for refresh
             },
         };

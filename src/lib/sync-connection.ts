@@ -176,11 +176,9 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
         );
       }
 
-      // Shopee Ads is explicitly best-effort until Partner Center enables the
-      // Ads API. The requested warehouse scope here is the order rollup; do not
-      // turn an optional unavailable endpoint into a misleading partial result.
       const children: SyncChildResult[] = [
-        { id: "orders", kind: "connection", ok: true, rowsIngested: orders.rowsIngested },
+        { id: "orders", kind: "connection", ok: orders.success, rowsIngested: orders.rowsIngested, error: orders.error },
+        { id: "ads", kind: "connection", ok: ads.success, rowsIngested: ads.rowsIngested, error: ads.error },
       ];
       const summary = summarizeSyncOutcome(children);
       await persistConnectionSyncOutcome(connectionId, summary, lease);
