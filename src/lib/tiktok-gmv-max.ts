@@ -147,12 +147,11 @@ export class TikTokGmvMaxClient {
       url.searchParams.set("end_date", params.end_date);
       url.searchParams.set("dimensions", JSON.stringify(dimensions));
       url.searchParams.set("metrics", JSON.stringify(metrics));
+      const apiCampaignType = campaignType === "LIVE" ? "LIVE_STREAM" : "PRODUCT";
+      url.searchParams.set("campaign_type", apiCampaignType);
+      url.searchParams.set("filters", JSON.stringify({ campaign_types: [apiCampaignType], ...(params.filters || {}) }));
       url.searchParams.set("page", String(page));
       url.searchParams.set("page_size", String(pageSize));
-
-      if (params.filters) {
-        url.searchParams.set("filters", JSON.stringify(params.filters));
-      }
 
       const maxAttempts = 3;
       let json: Record<string, unknown> | null = null;

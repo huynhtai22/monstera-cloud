@@ -1,7 +1,7 @@
 /**
  * TikTok GMV Max Warehouse Sync Worker (Sandbox Route)
  * 
- * Ingests store and product-level GMV Max performance metrics into
+ * Ingests store, product, and livestream-level GMV Max performance metrics into
  * the dedicated TikTokGmvMaxMetric table.
  * 
  * Isolation Guarantees:
@@ -129,6 +129,11 @@ export async function syncTikTokGmvMaxWarehouseMetrics(
         await heartbeatConnectionSyncLease(lease);
       }
 
+      let storeUpserted = 0;
+      let storeFailed = 0;
+      const errors: string[] = [];
+
+      // Query 1: PRODUCT GMV Max
       try {
         const productRows = await tiktokGmvMaxClient.getReport(
           accessToken,
@@ -141,9 +146,6 @@ export async function syncTikTokGmvMaxWarehouseMetrics(
           },
           isSandbox
         );
-
-        let upserted = 0;
-        let failed = 0;
 
         for (const row of productRows) {
           if (!recordedSchema) {
@@ -161,12 +163,12 @@ export async function syncTikTokGmvMaxWarehouseMetrics(
 
           const dateStr = String(dims.stat_time_day ?? "");
           if (!dateStr) {
-            failed++;
+            storeFailed++;
             continue;
           }
           const date = new Date(dateStr);
           if (isNaN(date.getTime())) {
-            failed++;
+            storeFailed++;
             continue;
           }
 
@@ -237,27 +239,120 @@ export async function syncTikTokGmvMaxWarehouseMetrics(
             },
           });
 
-          upserted++;
+          storeUpserted++;
         }
-
-        totalUpserted += upserted;
-        children.push({
-          id: childId,
-          kind: "store",
-          ok: failed === 0,
-          rowsIngested: upserted,
-          error: failed > 0 ? `${failed} row(s) could not be written` : undefined,
-        });
       } catch (err) {
-        logger.error(`[syncTikTokGmvMax] Failed for ${childId}:`, err);
-        const msg = err instanceof Error ? err.message : "GMV Max sync failed";
-        children.push({
-          id: childId,
-          kind: "store",
-          ok: false,
-          error: msg,
-        });
+        logger.error(`[syncTikTokGmvMax] Product report failed for ${childId}:`, err);
+        errors.push(err instanceof Error ? err.message : "Product GMV Max query failed");
       }
+
+      // Query 2: LIVE GMV Max
+      try {
+        const liveRows = await tiktokGmvMaxClient.getReport(
+          accessToken,
+          {
+            advertiser_id: advertiserId,
+            store_ids: [storeId],
+            start_date: startDate,
+            end_date: endDate,
+            campaign_type: "LIVE",
+          },
+          isSandbox
+        );
+
+        for (const row of liveRows) {
+          const dims = row.dimensions || {};
+          const metrics = row.metrics || {};
+
+          const dateStr = String(dims.stat_time_day ?? "");
+          if (!dateStr) {
+            storeFailed++;
+            continue;
+          }
+          const date = new Date(dateStr);
+          if (isNaN(date.getTime())) {
+            storeFailed++;
+            continue;
+          }
+
+          const campaignId = String(dims.campaign_id ?? "");
+          const campaignName = String(dims.campaign_name ?? "");
+          const liveRoomId = String(dims.live_room_id ?? "");
+          const roomTitle = dims.room_title ? String(dims.room_title) : null;
+          const storeName = dims.store_name ? String(dims.store_name) : null;
+
+          const gmvMaxCost = Number(metrics.gmv_max_cost ?? 0) || 0;
+          const gmvMaxGrossRevenue = Number(metrics.gmv_max_gross_revenue ?? 0) || 0;
+          const gmvMaxOrders = Math.floor(Number(metrics.gmv_max_orders ?? 0)) || 0;
+          const gmvMaxRoi = Number(metrics.gmv_max_roi ?? 0) || 0;
+
+          await prisma.tikTokGmvMaxMetric.upsert({
+            where: {
+              connectionId_storeId_campaignId_itemId_liveRoomId_date: {
+                connectionId,
+                storeId,
+                campaignId,
+                itemId: "",
+                liveRoomId,
+                date,
+              },
+            },
+            update: {
+              advertiserId,
+              storeName,
+              campaignType: "LIVE",
+              campaignName,
+              liveRoomId,
+              roomTitle,
+              gmvMaxCost,
+              gmvMaxGrossRevenue,
+              gmvMaxOrders,
+              gmvMaxRoi,
+              currency: "USD",
+              rawData: JSON.stringify(row),
+              syncJobId,
+              ingestedAt: new Date(),
+            },
+            create: {
+              workspaceId,
+              connectionId,
+              advertiserId,
+              storeId,
+              storeName,
+              date,
+              campaignType: "LIVE",
+              campaignId,
+              campaignName,
+              itemId: "",
+              liveRoomId,
+              roomTitle,
+              gmvMaxCost,
+              gmvMaxGrossRevenue,
+              gmvMaxOrders,
+              gmvMaxRoi,
+              currency: "USD",
+              rawData: JSON.stringify(row),
+              syncJobId,
+              ingestedAt: new Date(),
+            },
+          });
+
+          storeUpserted++;
+        }
+      } catch (err) {
+        logger.error(`[syncTikTokGmvMax] Live report failed for ${childId}:`, err);
+        errors.push(err instanceof Error ? err.message : "Live GMV Max query failed");
+      }
+
+      totalUpserted += storeUpserted;
+      const ok = errors.length === 0 && storeFailed === 0;
+      children.push({
+        id: childId,
+        kind: "store",
+        ok,
+        rowsIngested: storeUpserted,
+        error: errors.length > 0 ? errors.join("; ") : (storeFailed > 0 ? `${storeFailed} row(s) could not be written` : undefined),
+      });
     }
   }
 
