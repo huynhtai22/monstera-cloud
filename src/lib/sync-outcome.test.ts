@@ -34,6 +34,18 @@ describe("sync outcome contract", () => {
     assert.match(summary.error ?? "", /customer-b/);
   });
 
+  it("keeps a required Shopee endpoint failure partial even when zero-row endpoints are valid", () => {
+    const summary = summarizeSyncOutcome([
+      { id: "campaign_catalog", kind: "connection", ok: false, error: "Shopee API v2.ads.get_product_level_campaign_id_list error: error_permission" },
+      { id: "product_catalog", kind: "connection", ok: true, rowsIngested: 0 },
+      { id: "orders", kind: "connection", ok: true, rowsIngested: 0 },
+      { id: "ads_performance", kind: "connection", ok: true, rowsIngested: 0 },
+    ]);
+    assert.equal(summary.outcome, "partial");
+    assert.equal(summary.success, false);
+    assert.match(summary.error ?? "", /get_product_level_campaign_id_list/);
+  });
+
   it("records a complete provider failure as failed", () => {
     const summary = summarizeSyncOutcome([
       { id: "advertiser-a", kind: "advertiser", ok: false, error: "permission denied", retryable: false },

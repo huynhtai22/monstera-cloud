@@ -59,6 +59,27 @@ describe("shopee-ads-mapper", () => {
     assert.ok(payloads.some((p) => p!.level === "ad" && p!.entityId === "50001"));
   });
 
+  it("reads the documented ads_performance_list response without fabricating empty metrics", () => {
+    const rows = extractShopeeAdsPerformanceRows({
+      response: {
+        ads_performance_list: [{ date: "10-01-2026", campaign_id: 210343, impression: 19, click: 2, expense: 3.5 }],
+      },
+    });
+    assert.equal(rows.length, 1);
+    const mapped = mapShopeeRowToCampaignMetricPayload({
+      workspaceId: "ws", connectionId: "conn", accountId: "227420569", accountName: "Shopee shop 227420569",
+      row: rows[0] as Record<string, unknown>,
+    });
+    assert.ok(mapped);
+    assert.equal(mapped!.impressions, 19);
+    assert.equal(mapped!.clicks, 2);
+    assert.equal(mapped!.spend, 3.5);
+  });
+
+  it("preserves a valid empty Ads response as zero source rows", () => {
+    assert.deepEqual(extractShopeeAdsPerformanceRows({ response: { ads_performance_list: [] } }), []);
+  });
+
   it("computes cpc/ctr/roas when API omits ratios", () => {
     const payload = mapShopeeRowToCampaignMetricPayload({
       workspaceId: "ws",

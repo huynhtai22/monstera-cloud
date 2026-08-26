@@ -68,12 +68,23 @@ export async function GET(
         const safeConnection = {
             ...connection,
             credentials: sanitizeConnectionCredentials(connection.credentials),
+            environment: connection.provider === "shopee"
+                ? (JSON.parse(sanitizeConnectionCredentials(connection.credentials)).sandbox === true ? "sandbox" : "production")
+                : null,
         };
+        const recentProviderRuns = connection.provider === "shopee"
+            ? await (prisma as any).providerSyncRun.findMany({
+                where: { workspaceId: connection.workspaceId, connectionId },
+                orderBy: { startedAt: "desc" },
+                take: 30,
+              })
+            : [];
 
         return NextResponse.json({
             connection: safeConnection,
             pipelines,
             recentLogs,
+            recentProviderRuns,
         });
     } catch (error) {
         const rbac = toRbacResponse(error);

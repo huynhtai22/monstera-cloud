@@ -58,6 +58,7 @@ export default function SourceDetailPage() {
               lastSyncAt: string | null;
               workspaceId: string;
               workspace?: { name: string };
+              environment?: "sandbox" | "production" | null;
               credentials?: string;
           }
         | undefined;
@@ -229,6 +230,7 @@ export default function SourceDetailPage() {
                             <h1 className="text-xl font-bold tracking-tight text-ink">{connection.name}</h1>
                             <p className="text-xs text-ink-mute">
                                 {connection.provider} · {isSource ? "Data source" : "Destination"}
+                                {connection.environment === "sandbox" ? " · Shopee Sandbox" : ""}
                             </p>
                         </div>
                     </div>
@@ -318,6 +320,21 @@ export default function SourceDetailPage() {
             </div>
 
             {/* Recent syncs */}
+            {((data?.recentProviderRuns ?? []) as Array<any>).length > 0 ? <div className="mb-10">
+                <h2 className="mb-3 text-sm font-bold text-ink">Shopee sync activity</h2>
+                <div className="space-y-2">
+                    {((data?.recentProviderRuns ?? []) as Array<any>).map((run) => (
+                        <div key={run.id} className="rounded-md border border-line bg-panel p-3 text-xs">
+                            <div className="flex items-center justify-between gap-3">
+                                <span className="font-semibold text-ink">{run.endpoint}</span>
+                                <span className={run.status === "success" ? "text-emerald-300" : "text-red-300"}>{run.status}</span>
+                            </div>
+                            <p className="mt-1 text-ink-mute">{run.environment} · {run.rowsReceived} received · {run.rowsWritten} written · {new Date(run.startedAt).toLocaleString()}</p>
+                            {run.errorMessage ? <p className="mt-1 text-red-300">{run.errorCategory}: {run.errorMessage}</p> : null}
+                        </div>
+                    ))}
+                </div>
+            </div> : null}
             {recentLogs.length > 0 ? <div>
                 <h2 className="mb-3 text-sm font-bold text-ink">Historical destination activity</h2>
                 <p className="mb-4 text-xs text-ink-mute">Legacy pipeline history is read-only during the agency pilot.</p>

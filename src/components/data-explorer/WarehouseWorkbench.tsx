@@ -443,6 +443,11 @@ export function WarehouseWorkbench() {
   }, [activeWorkspaceId]);
 
   const { data: platformsData } = useSWR(platformsUrl, fetcher);
+  const catalogUrl = useMemo(
+    () => activeWorkspaceId ? `/api/data-explorer/shopee-catalog?workspaceId=${activeWorkspaceId}` : null,
+    [activeWorkspaceId],
+  );
+  const { data: shopeeCatalog, isLoading: shopeeCatalogLoading } = useSWR(catalogUrl, fetcher);
   const {
     data: accountsDimensions,
     isLoading: accountsDimensionsLoading,
@@ -732,6 +737,10 @@ export function WarehouseWorkbench() {
     return parts.length > 0 ? parts.join(" · ") : "Ready";
   }, [availablePlatforms.length, warehousedAccounts.length, endDate, summary?.dateRange?.latest]);
 
+  const shopeeCampaigns = (shopeeCatalog?.campaigns ?? []) as Array<any>;
+  const shopeeProducts = (shopeeCatalog?.products ?? []) as Array<any>;
+  const showShopeeCatalog = selectedPlatform === "shopee" || shopeeCampaigns.length > 0 || shopeeProducts.length > 0;
+
   return (
     <div className="flex flex-col gap-6">
       {/* ─── 1. HEADER ─── */}
@@ -867,6 +876,52 @@ export function WarehouseWorkbench() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Catalog identities are warehouse records, not zero-valued metrics. */}
+      {showShopeeCatalog && (
+        <section className="overflow-hidden rounded-lg border border-line bg-panel">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+            <div>
+              <h2 className="text-sm font-semibold text-ink">Shopee catalog</h2>
+              <p className="mt-0.5 text-xs text-ink-mute">Campaign and product identities stored separately from performance metrics.</p>
+            </div>
+            {shopeeCatalog?.lastRun ? <span className="text-xs text-ink-mute">Last catalog call: {shopeeCatalog.lastRun.status} · {new Date(shopeeCatalog.lastRun.startedAt).toLocaleString()}</span> : null}
+          </div>
+          {selectedPlatform === "shopee" && metrics.length === 0 ? (
+            <div className="border-b border-line bg-amber-950/20 px-4 py-2.5 text-xs text-amber-100">
+              No Shopee Ads performance was returned for the selected range. This is valid for a sandbox with zero activity and is different from catalog synchronization.
+            </div>
+          ) : null}
+          <div className="grid divide-y divide-line md:grid-cols-2 md:divide-x md:divide-y-0">
+            <div className="p-4">
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-mute">Campaigns ({shopeeCampaigns.length})</h3>
+              {shopeeCampaigns.length === 0 ? <p className="text-xs text-ink-mute">No campaign identities synchronized yet. Apply the catalog migration, then refresh the Shopee source.</p> : (
+                <div className="space-y-2">
+                  {shopeeCampaigns.slice(0, 8).map((campaign: any) => (
+                    <div key={campaign.id} className="rounded-md border border-line bg-canvas px-3 py-2 text-xs">
+                      <div className="flex items-center justify-between gap-2"><span className="font-semibold text-ink">Campaign {campaign.externalCampaignId}</span><span className="text-amber-300">Shopee {campaign.environment === "sandbox" ? "Sandbox" : "Production"}</span></div>
+                      <p className="mt-1 text-ink-mute">{campaign.adType} · shop {campaign.shopId} · {campaign.region} · {campaign.campaignStatus || "status unavailable"}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-4">
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-mute">Products ({shopeeProducts.length})</h3>
+              {shopeeProducts.length === 0 ? <p className="text-xs text-ink-mute">No product identities synchronized yet. Apply the catalog migration, then refresh the Shopee source.</p> : (
+                <div className="space-y-2">
+                  {shopeeProducts.slice(0, 8).map((product: any) => (
+                    <div key={product.id} className="rounded-md border border-line bg-canvas px-3 py-2 text-xs">
+                      <div className="flex items-center justify-between gap-2"><span className="font-semibold text-ink">Item {product.externalItemId}</span><span className="text-amber-300">Shopee {product.environment === "sandbox" ? "Sandbox" : "Production"}</span></div>
+                      <p className="mt-1 truncate text-ink-mute">{product.itemName || "Unnamed product"} · {product.itemStatus || "status unavailable"} · shop {product.shopId}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
       )}
 
       {/* ─── 4. WAREHOUSE DATA TABLE ─── */}

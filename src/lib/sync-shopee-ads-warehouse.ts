@@ -14,6 +14,39 @@ import {
 import type { MarketplaceSyncResult } from "@/lib/sync-marketplace-warehouse";
 
 const UPSERT_CHUNK_SIZE = 25;
+export const SHOPEE_SHOP_TIME_ZONE = "Asia/Ho_Chi_Minh";
+// Shopee rejects ranges over a calendar month. Use a conservative 28 inclusive
+// calendar-day window so month-length and timezone interpretation cannot push a
+// request over the provider's boundary.
+const SHOPEE_ADS_MAX_DAYS_PER_REQUEST = 28;
+
+function parseYmdUtc(ymd: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!match) throw new Error(`Invalid Shopee Ads date: ${ymd}`);
+  return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+}
+
+export function splitShopeeAdsDateRange(since: string, until: string): Array<{ since: string; until: string }> {
+  // The Ads API accepts date-only strings. These are Vietnam shop-calendar
+  // labels, not instants; UTC is used only for stable label arithmetic, so a
+  // host timezone can never shift an inclusive Vietnam date to a different day.
+  const end = parseYmdUtc(until);
+  let cursor = parseYmdUtc(since);
+  if (cursor > end) throw new Error("Shopee Ads range start must not be after its end");
+  const ranges: Array<{ since: string; until: string }> = [];
+  while (cursor <= end) {
+    const chunkEnd = new Date(Math.min(
+      cursor.getTime() + (SHOPEE_ADS_MAX_DAYS_PER_REQUEST - 1) * 86400000,
+      end.getTime(),
+    ));
+    ranges.push({
+      since: cursor.toISOString().slice(0, 10),
+      until: chunkEnd.toISOString().slice(0, 10),
+    });
+    cursor = new Date(chunkEnd.getTime() + 86400000);
+  }
+  return ranges;
+}
 
 function isShopeeAdsSyncDisabled(): boolean {
   const v = (process.env.SHOPEE_ADS_SYNC ?? "").trim().toLowerCase();
@@ -77,17 +110,22 @@ export async function syncShopeeAdsWarehouseMetrics(opts: {
     let mode: "range" | "per_day" = "range";
 
     try {
-      const result = await shopeeAdsClient.getAllCpcAdsDailyPerformance(
-        apiOpts,
-        since,
-        until
-      );
-      rows = result.rows;
-      mode = result.mode;
-      if (result.perDayErrors?.length) {
+      const windows = splitShopeeAdsDateRange(since, until);
+      const perDayErrors: string[] = [];
+      for (const window of windows) {
+        const result = await shopeeAdsClient.getAllCpcAdsDailyPerformance(
+          apiOpts,
+          window.since,
+          window.until,
+        );
+        rows.push(...result.rows);
+        if (result.mode === "per_day") mode = "per_day";
+        if (result.perDayErrors?.length) perDayErrors.push(...result.perDayErrors);
+      }
+      if (perDayErrors.length) {
         logger.warn("[syncShopeeAdsWarehouse] Per-day fallback had errors", {
-          count: result.perDayErrors.length,
-          sample: result.perDayErrors.slice(0, 3),
+          count: perDayErrors.length,
+          sample: perDayErrors.slice(0, 3),
         });
       }
     } catch (e) {

@@ -385,13 +385,18 @@ export class ShopeeDataClient {
     opts: ShopeeApiOptions,
     offset = 0,
     pageSize = 50,
-    itemStatus = "NORMAL"
+    itemStatus = "NORMAL",
+    updateTimeFrom?: number,
+    updateTimeTo?: number,
   ) {
-    return shopeeGet("/api/v2/product/get_item_list", {
+    const params: Record<string, string> = {
       offset: String(offset),
       page_size: String(Math.min(pageSize, 100)),
       item_status: itemStatus,
-    }, opts);
+    };
+    if (updateTimeFrom != null) params.update_time_from = String(updateTimeFrom);
+    if (updateTimeTo != null) params.update_time_to = String(updateTimeTo);
+    return shopeeGet("/api/v2/product/get_item_list", params, opts);
   }
 
   /**
@@ -463,6 +468,8 @@ export const shopeeDataClient = new ShopeeDataClient();
 
 const ADS_PATH_CPC_DAILY = "/api/v2/ads/get_all_cpc_ads_daily_performance";
 const ADS_PATH_CPC_HOURLY = "/api/v2/ads/get_all_cpc_ads_hourly_performance";
+const ADS_PATH_CAMPAIGN_IDS = "/api/v2/ads/get_product_level_campaign_id_list";
+const ADS_PATH_CAMPAIGN_SETTINGS = "/api/v2/ads/get_product_level_campaign_setting_info";
 
 /** Convert YYYY-MM-DD → DD-MM-YYYY for Shopee Ads query params. */
 export function shopeeAdsDateParam(ymd: string): string {
@@ -479,6 +486,50 @@ export interface ShopeeAdsDailyPerformanceResult {
 }
 
 export class ShopeeAdsClient {
+  /**
+   * Enumerate every product-level campaign for an authorized shop. Shopee uses
+   * offset/limit pagination here (not cursors); callers receive the original
+   * provider payloads so request IDs and optional metadata are retained.
+   */
+  async getAllProductLevelCampaignIds(opts: ShopeeApiOptions): Promise<unknown[]> {
+    const campaigns: unknown[] = [];
+    const limit = 100;
+    let offset = 0;
+    for (;;) {
+      const json = await shopeeGet(
+        ADS_PATH_CAMPAIGN_IDS,
+        { ad_type: "all", limit: String(limit), offset: String(offset) },
+        opts,
+      );
+      campaigns.push(json);
+      const response = asShopeeRecord(json.response) ?? json;
+      const list = Array.isArray(response.campaign_list) ? response.campaign_list : [];
+      const hasNext = response.has_next_page === true;
+      if (!hasNext || list.length === 0) break;
+      offset += list.length;
+      if (offset > 100_000) throw new Error("Shopee campaign pagination exceeded safe limit");
+    }
+    return campaigns;
+  }
+
+  /** Fetch campaign settings in Shopee's maximum 100-campaign batches. */
+  async getProductLevelCampaignSettings(
+    opts: ShopeeApiOptions,
+    campaignIds: string[],
+  ): Promise<unknown[]> {
+    const responses: unknown[] = [];
+    for (let i = 0; i < campaignIds.length; i += 100) {
+      const batch = campaignIds.slice(i, i + 100);
+      if (batch.length === 0) continue;
+      responses.push(await shopeeGet(
+        ADS_PATH_CAMPAIGN_SETTINGS,
+        { campaign_id_list: batch.join(","), info_type_list: "1,2,3,4" },
+        opts,
+      ));
+    }
+    return responses;
+  }
+
   /**
    * Shop-level CPC ads — daily performance for a date range.
    * Tries `start_date` + `end_date` (DD-MM-YYYY); falls back to per-day `performance_date` if Shopee returns error_param.
@@ -551,6 +602,12 @@ export class ShopeeAdsClient {
   }
 }
 
+function asShopeeRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
 function parseYmdUtc(ymd: string): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
   if (!m) throw new Error(`Invalid date: ${ymd}`);
@@ -565,12 +622,12 @@ export function extractShopeeAdsPerformanceRows(payload: unknown): unknown[] {
   if (Array.isArray(inner)) return inner;
   if (inner && typeof inner === "object" && !Array.isArray(inner)) {
     const r = inner as Record<string, unknown>;
-    for (const key of ["list", "performance_list", "data", "result"]) {
+    for (const key of ["ads_performance_list", "list", "performance_list", "data", "result"]) {
       const v = r[key];
       if (Array.isArray(v)) return v;
     }
   }
-  for (const key of ["list", "performance_list", "data"]) {
+  for (const key of ["ads_performance_list", "list", "performance_list", "data"]) {
     const v = o[key];
     if (Array.isArray(v)) return v;
   }

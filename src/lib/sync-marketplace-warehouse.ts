@@ -132,11 +132,6 @@ export async function syncShopeeWarehouseMetrics(opts: {
       upserted += 1;
     }
 
-    await prisma.connection.update({
-      where: { id: connectionId },
-      data: { lastSyncAt: new Date() },
-    });
-
     logger.info(`[syncShopeeWarehouse] ${upserted} day rows for ${connectionId}`);
     return { success: true, rowsIngested: upserted };
   } catch (e: unknown) {
