@@ -16,6 +16,7 @@ import {
   syncLazadaWarehouseMetrics,
 } from "@/lib/sync-marketplace-warehouse";
 import { syncShopeeAdsWarehouseMetrics } from "@/lib/sync-shopee-ads-warehouse";
+import { syncTikTokGmvMaxWarehouseMetrics } from "@/lib/sync-tiktok-gmv-max";
 
 // Meta imports
 import { ingestMetaRows } from "@/lib/meta-ingest";
@@ -876,6 +877,42 @@ async function syncTikTok(opts: {
       logger.error(`[TikTok Sync] Failed for advertiser ${advertiserId}:`, error);
       const message = error instanceof Error ? error.message : "TikTok sync failed";
       children.push({ id: String(advertiserId), kind: "advertiser", ok: false, error: message, retryable: isRetryableSyncError(error) || /did not complete before/i.test(message) });
+    }
+  }
+
+  // Sandbox-only GMV Max reporting route (fails closed in production)
+  if (credentials.sandbox === true) {
+    try {
+      const gmvMax = await syncTikTokGmvMaxWarehouseMetrics({
+        connectionId,
+        workspaceId,
+        userPlan: opts.userPlan,
+        since: startDate,
+        until: endDate,
+        lease,
+      });
+
+      if (gmvMax.children && gmvMax.children.length > 0) {
+        for (const child of gmvMax.children) {
+          children.push({
+            id: `gmv_max_${child.id}`,
+            kind: "connection",
+            ok: child.ok,
+            rowsIngested: child.rowsIngested,
+            error: child.error,
+            retryable: !child.ok && isRetryableSyncError(child.error),
+          });
+        }
+      } else if (!gmvMax.success && gmvMax.error) {
+        logger.warn(
+          `[syncTikTok] TikTok GMV Max warehouse failed (standard ads still ok): ${gmvMax.error}`
+        );
+      }
+    } catch (gmvErr) {
+      logger.warn(
+        `[syncTikTok] TikTok GMV Max execution error (standard ads still ok):`,
+        gmvErr
+      );
     }
   }
 

@@ -42,6 +42,30 @@ const SCHEMA = {
         { value: 'reach', label: 'Reach' },
       ],
     },
+    {
+      id: 'tiktok_gmv_max',
+      name: 'TikTok GMV Max',
+      tabName: 'TikTok GMV Max',
+      logo: absoluteIntegrationLogo(INTEGRATION_LOGOS.tiktok),
+      disclaimer: 'Product GMV Max uses 1-day blended attribution (paid + organic + affiliate). Do not compare with standard ad ROAS.',
+      dataLevels: [
+        { value: 'PRODUCT', label: 'Product Level' },
+        { value: 'LIVE', label: 'Livestream Level' },
+      ],
+      dimensions: [
+        { value: 'date', label: 'Date' },
+        { value: 'store_id', label: 'Store ID' },
+        { value: 'campaign_id', label: 'Campaign ID' },
+        { value: 'item_id', label: 'Item ID' },
+        { value: 'live_room_id', label: 'Live Room ID' },
+      ],
+      metrics: [
+        { value: 'gmv_max_cost', label: 'GMV Max Cost' },
+        { value: 'gmv_max_gross_revenue', label: 'Gross Revenue' },
+        { value: 'gmv_max_orders', label: 'Orders' },
+        { value: 'gmv_max_roi', label: 'GMV Max ROI' },
+      ],
+    },
   ],
 };
 
