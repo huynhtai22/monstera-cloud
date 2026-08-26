@@ -4,16 +4,25 @@ import { authOptions } from "@/lib/auth";
 import { buildPerformanceContext } from "@/lib/ai/build-performance-context";
 import { generatePerformanceSummary } from "@/lib/ai/openai-summary";
 import { logger } from "@/lib/logger";
-import { productionRouteDisabled } from "@/lib/request-auth";
+import { isLegacyPerformanceSummaryRetired } from "@/lib/ai/legacy-performance-summary";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 /**
  * POST /api/ai/performance-summary
  * Body: { workspaceId: string }
  * Returns LLM summary of last-7-day workspace metrics (requires OPENAI_API_KEY).
+ * Production always 410s — ENABLE_AI_SUMMARIES cannot reopen this ungoverned path.
  */
 export async function POST(req: Request) {
-    if (productionRouteDisabled("ENABLE_AI_SUMMARIES")) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (isLegacyPerformanceSummaryRetired()) {
+        return NextResponse.json(
+            {
+                error: "Gone",
+                hint: "Use the governed analyst when ENABLE_GOVERNED_ANALYST is enabled.",
+            },
+            { status: 410 },
+        );
+    }
     try {
         const session = await getServerSession(authOptions);
         if (!session?.user?.id) {
