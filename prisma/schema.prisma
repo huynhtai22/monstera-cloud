@@ -136,6 +136,7 @@ model Workspace {
   agentJobs           AgentJob[]
   agentTraces         AgentTrace[]
   evidencePacks       EvidencePackRecord[]
+  payloadDiscoveries  PayloadSchemaDiscovery[]
 }
 
 model Client {
@@ -836,6 +837,20 @@ model EvidencePackRecord {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, jobId])
+}
+
+model PayloadSchemaDiscovery {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  connectionId String
+  provider     String
+  schemaHash   String
+  fields       String
+  discoveredAt DateTime @default(now())
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, schemaHash])
+  @@index([workspaceId, provider, discoveredAt])
 }
 
 model SupportTicket {

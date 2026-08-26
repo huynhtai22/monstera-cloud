@@ -12,6 +12,7 @@ import {
   heartbeatConnectionSyncLease,
   type ConnectionLease,
 } from '@/lib/connection-sync-lease';
+import { recordPayloadSchemaDiscovery } from '@/lib/payload-schema-discovery';
 
 export interface CampaignMetricPayload {
   workspaceId: string;
@@ -232,6 +233,15 @@ export async function ingestGoogleAdsRows(
     }
   }
 
+  if (rows[0]) {
+    void recordPayloadSchemaDiscovery({
+      workspaceId: opts.workspaceId,
+      connectionId: opts.connectionId,
+      provider: "google_ads",
+      sample: rows[0],
+    });
+  }
+
   for (const row of rows) {
     if (!(await fencedHeartbeat(opts.lease, upserted + failed))) {
       failed += rows.length - upserted - failed;
@@ -313,6 +323,15 @@ export async function ingestTiktokRows(
     } catch {
       return { upserted: 0, failed: rows.length };
     }
+  }
+
+  if (rows[0]) {
+    void recordPayloadSchemaDiscovery({
+      workspaceId: opts.workspaceId,
+      connectionId: opts.connectionId,
+      provider: "tiktok_business",
+      sample: rows[0],
+    });
   }
 
   for (const row of rows) {
