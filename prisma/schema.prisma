@@ -132,6 +132,10 @@ model Workspace {
   oauthAttempts       OAuthAttempt[]
   auditEvents         AuditEvent[]
   supportTickets      SupportTicket[]
+  aiPolicy            WorkspaceAiPolicy?
+  agentJobs           AgentJob[]
+  agentTraces         AgentTrace[]
+  evidencePacks       EvidencePackRecord[]
 }
 
 model Client {
@@ -762,6 +766,76 @@ model WarehouseImportJob {
   @@index([workspaceId, status])
   @@index([status, scheduledAt])
   @@index([status, leaseExpiresAt])
+}
+
+model WorkspaceAiPolicy {
+  workspaceId                    String    @id
+  enabledFeatures                String[]
+  monthlyTokenBudget             Int       @default(2000000)
+  monthlyUsdBudget               Float     @default(25)
+  budgetWriteOptIn               Boolean   @default(false)
+  acknowledgeBestEffortDefault   Boolean   @default(false)
+  updatedAt                      DateTime  @updatedAt
+  workspace                      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model AgentJob {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  userId         String?
+  type           String
+  status         String    @default("queued")
+  payload        Json
+  result         Json?
+  errorMsg       String?
+  promptVersion  String?
+  model          String?
+  provider       String?
+  inputTokens    Int       @default(0)
+  outputTokens   Int       @default(0)
+  costUsd        Float     @default(0)
+  refusalCode    String?
+  priority       Int       @default(1)
+  retryCount     Int       @default(0)
+  maxRetries     Int       @default(3)
+  leaseId        String?
+  leaseExpiresAt DateTime?
+  heartbeatAt    DateTime?
+  scheduledAt    DateTime  @default(now())
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([status, scheduledAt])
+  @@index([workspaceId, createdAt])
+  @@index([status, leaseExpiresAt])
+}
+
+model AgentTrace {
+  id          String   @id @default(cuid())
+  workspaceId String
+  jobId       String
+  step        Int
+  toolName    String?
+  toolArgs    Json?
+  toolResult  Json?
+  durationMs  Int
+  createdAt   DateTime @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, jobId])
+}
+
+model EvidencePackRecord {
+  id          String   @id @default(cuid())
+  workspaceId String
+  jobId       String
+  pack        Json
+  createdAt   DateTime @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, jobId])
 }
 
 model SupportTicket {

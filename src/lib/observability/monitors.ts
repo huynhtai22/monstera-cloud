@@ -7,7 +7,8 @@ export function emitMonitor(
     | "time_to_first_row"
     | "queued_job_age"
     | "warehouse_freshness"
-    | "tenant_authz_denied",
+    | "tenant_authz_denied"
+    | "ai_worker_failed",
   fields: Record<string, unknown>,
 ): void {
   logger.warn(`[MONITOR] ${event}`, fields);
