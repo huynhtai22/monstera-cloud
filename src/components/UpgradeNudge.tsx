@@ -19,10 +19,16 @@ export function UpgradeNudge() {
         ? workspaces.find((w: { id: string }) => w.id === activeWorkspaceId)
         : null;
     const limits = getPlanLimits(ws?.plan ?? "pilot");
-    if (limits.maxPipelines === Infinity) return null;
     const pipelineCount = ws?.counts?.pipelines ?? 0;
+    const connectionCount = ws?.counts?.sourceConnections ?? ws?.counts?.connections ?? 0;
+    const pipelineHit = limits.maxPipelines !== Infinity && pipelineCount >= limits.maxPipelines;
+    const accountHit = limits.maxConnections !== Infinity && connectionCount >= limits.maxConnections;
+    if (!pipelineHit && !accountHit) return null;
 
-    if (pipelineCount < limits.maxPipelines) return null;
+    const title = accountHit ? "Account limit reached" : "Pipeline limit reached";
+    const detail = accountHit
+        ? `This workspace has ${connectionCount}/${limits.maxConnections} source connections — the ${limits.displayName} cap. Destinations are not metered.`
+        : `This workspace has ${pipelineCount}/${limits.maxPipelines} pipelines — the ${limits.displayName} cap.`;
 
     return (
         <div
@@ -36,23 +42,18 @@ export function UpgradeNudge() {
                     </div>
                     <div className="min-w-0">
                         <p className="text-sm font-semibold text-ink">
-                            Pipeline limit reached
+                            {title}
                         </p>
                         <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
-                            Your workspace has{" "}
-                            <span className="font-semibold tabular-nums text-slate-800 dark:text-slate-200">
-                                {pipelineCount}/{limits.maxPipelines}
-                            </span>{" "}
-                            pipelines — the maximum for your current plan. Upgrade to add more pipelines and unlock higher
-                            workspace capacity.
+                            {detail}
                         </p>
                     </div>
                 </div>
                 <Link
-                    href="/support"
+                    href="/settings?tab=billing"
                     className="inline-flex shrink-0 items-center justify-center rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary-hover"
                 >
-                    Contact pilot support
+                    View plans
                 </Link>
             </div>
         </div>

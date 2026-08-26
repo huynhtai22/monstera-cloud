@@ -13,6 +13,7 @@ import prisma from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { upsertSourceConnection } from "@/lib/connection-upsert";
+import { assertCanCreateSourceConnection, PlanLimitError } from "@/lib/plan-entitlements";
 import { consumeOAuthAttempt, oauthAttemptCookieName } from "@/lib/oauth-attempt";
 import { requireWorkspaceAccess } from "@/lib/rbac";
 import { assertWorkspaceProviderEnabled, ProviderAccessError } from "@/lib/workspace-provider-access";
@@ -172,6 +173,16 @@ export async function GET(request: NextRequest) {
             metadata.accountIdentifiers?.[0] ??
             (metadata.name ? metadata.name.replace(/\s+/g, "_").toLowerCase() : providerId);
 
+        await assertCanCreateSourceConnection({
+            workspaceId,
+            provider: providerId,
+            remoteAccountId,
+            credentials: {
+                ...credentials,
+                ...metadata.extraFields,
+            },
+        });
+
         const connection = await upsertSourceConnection({
             workspaceId,
             provider: providerId,
@@ -228,11 +239,15 @@ export async function GET(request: NextRequest) {
         logger.error("[OAuth Callback] Error:", error);
         
         const errorParams = new URLSearchParams({
-            error: "oauth_failed",
+            error: error instanceof PlanLimitError ? "plan_limit" : "oauth_failed",
             provider: providerId || "unknown",
         });
         
-        if (error instanceof OAuthError) {
+        if (error instanceof PlanLimitError) {
+            errorParams.set("error_code", error.code);
+            errorParams.set("message", error.message);
+            errorParams.set("upgrade", error.upgradeHref);
+        } else if (error instanceof OAuthError) {
             errorParams.set("error_code", error.code);
             errorParams.set("message", error.message);
         } else if (error instanceof Error) {

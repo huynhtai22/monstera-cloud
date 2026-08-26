@@ -99,6 +99,7 @@ export async function GET(req: Request) {
 
     const workspacePlan = p.workspace?.plan ?? "pilot";
     const limits = getPlanLimits(workspacePlan);
+    if (limits.scheduledRefresh === "none") continue;
 
     const last = p.lastSyncedAt?.getTime() ?? 0;
     if (Date.now() - last < NIGHTLY_CADENCE_MS) continue;

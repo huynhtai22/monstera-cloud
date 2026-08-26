@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import { generateInvitationToken, normalizeEmail } from "@/lib/invitation-security";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import type { WorkspaceRole } from "@prisma/client";
+import { assertCanInviteSeat, toPlanLimitResponse } from "@/lib/plan-entitlements";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -34,6 +35,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const role: WorkspaceRole = body.role === "admin" || body.role === "viewer" ? body.role : "member";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: "A valid email is required" }, { status: 400 });
     if (role === "admin" && access.membership.role !== "owner") return NextResponse.json({ error: "Only the owner can invite admins" }, { status: 403 });
+    await assertCanInviteSeat(workspaceId);
 
     const existing = await prisma.workspaceMember.findFirst({ where: { workspaceId, user: { email } }, select: { id: true } });
     if (existing) return NextResponse.json({ error: "This user is already a member" }, { status: 409 });
@@ -46,6 +48,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await prisma.auditEvent.create({ data: { workspaceId, actorUserId: session.user.id, action: "invitation.created", resource: "workspace_invitation", resourceId: invitation.id, metadata: { role, email } } });
     return NextResponse.json({ ...invitation, invitationUrl: `${new URL(request.url).origin}/invite/${generated.token}` }, { status: 201 });
   } catch (error) {
-    return toRbacResponse(error) ?? NextResponse.json({ error: "Could not create invitation" }, { status: 500 });
+    return toRbacResponse(error) ?? toPlanLimitResponse(error) ?? NextResponse.json({ error: "Could not create invitation" }, { status: 500 });
   }
 }

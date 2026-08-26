@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { generateApiKey, publicApiKeyRow } from "@/lib/api-key-security";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { assertCanCreateApiKey, toPlanLimitResponse } from "@/lib/plan-entitlements";
 
 export async function GET(request: Request) {
     try {
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
             minimumRole: "admin",
             operation: "create_api_key",
         });
+        await assertCanCreateApiKey(workspaceId);
 
         // Generate a secure API Key
         const generated = generateApiKey();
@@ -86,6 +88,8 @@ export async function POST(request: Request) {
     } catch (error) {
         const rbac = toRbacResponse(error);
         if (rbac) return rbac;
+        const planLimit = toPlanLimitResponse(error);
+        if (planLimit) return planLimit;
         logger.error("Error creating API key:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

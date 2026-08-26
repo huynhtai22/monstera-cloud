@@ -9,6 +9,7 @@ import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { DESTINATION_HELP_PATHS } from "@/lib/destination-help-urls";
 import { trackEvent } from "@/lib/analytics-events";
+import { PlanLimitCard } from "@/components/PlanLimitCard";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url);
@@ -24,6 +25,11 @@ export default function ExportsPage() {
         fetcher,
     );
 
+    const { data: workspaces } = useSWR("/api/workspaces", fetcher);
+    const activeWorkspace = Array.isArray(workspaces)
+        ? workspaces.find((workspace: { id: string }) => workspace.id === activeWorkspaceId)
+        : null;
+    const allowLooker = activeWorkspace?.entitlements?.allowLooker !== false && activeWorkspace?.plan !== "free";
     const firstKey = Array.isArray(apiKeys) ? apiKeys[0] as { keyMasked?: string } | undefined : undefined;
     const apiKeyMasked = firstKey?.keyMasked ?? "";
     const hasApiKey = Boolean(firstKey);
@@ -55,7 +61,7 @@ export default function ExportsPage() {
                             On-Demand Data Pull (Available in Pilot)
                         </div>
                         <p className="text-xs text-ink-mute">
-                            Query warehouse metrics directly within <strong>Google Sheets™ Add-on</strong> or <strong>Looker Studio™</strong> on demand using your Workspace API key.
+                            Query warehouse metrics directly within <strong>Google Sheets™ Add-on</strong> or <strong>Looker Studio™</strong>. Studio and Agency include both destinations — there is no second-destination charge.
                         </p>
                     </div>
                     <div className="rounded-md border border-line bg-canvas p-4 shadow-xs">
@@ -121,7 +127,7 @@ export default function ExportsPage() {
                             <div>
                                 <h2 className="text-base font-bold text-ink">Looker Studio Connector</h2>
                                 <p className="text-xs font-medium text-ink-mute flex items-center mt-0.5">
-                                    <FlaskConical className="w-3.5 h-3.5 mr-1" /> Private beta
+                                    <FlaskConical className="w-3.5 h-3.5 mr-1" /> {allowLooker ? "Included on this plan" : "Studio and Agency"}
                                 </p>
                             </div>
                         </div>
@@ -130,7 +136,18 @@ export default function ExportsPage() {
                             Connect Looker Studio to Monstera Cloud using your Workspace API Key to build powerful, automated marketing dashboards.
                         </p>
 
-                        <div className="rounded-lg border border-line bg-canvas p-4 mb-6">
+                        {!allowLooker ? (
+                            <div className="mb-6">
+                                <PlanLimitCard
+                                    title="Looker Studio is on Studio and Agency"
+                                    detail="Start is Sheets-only. Paid plans include warehouse, Sheets, and Looker Studio with no extra destination fee."
+                                    upgradeHref="/support?pilot=1&plan=starter"
+                                    actionLabel="Request Studio"
+                                />
+                            </div>
+                        ) : null}
+
+                        <div className={allowLooker ? "rounded-lg border border-line bg-canvas p-4 mb-6" : "rounded-lg border border-line bg-canvas p-4 mb-6 opacity-50 pointer-events-none"}>
                             <label className="mb-2 flex items-center text-xs font-semibold text-ink">
                                 <Lock className="mr-2 h-3.5 w-3.5 text-white" />
                                 Workspace API Key
