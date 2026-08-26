@@ -645,8 +645,28 @@ export default function SourcesPage() {
                 return connectedSourceSortRank(a.catalogId) - connectedSourceSortRank(b.catalogId);
             });
 
+        // Deduplicate connections that point to the exact same manager identity (e.g. identical MCC ID)
+        const seenManagerKeys = new Set<string>();
+        const deduplicatedConnectedSources: typeof connectedSources = [];
+
+        for (const source of connectedSources) {
+            const managerKey = source.managerBadge 
+                ? `${source.provider}:${source.managerBadge}`
+                : source.provider === 'google_ads' && source.accountTags?.length
+                    ? `${source.provider}:${typeof source.accountTags[0] === 'object' ? source.accountTags[0].id : source.accountTags[0]}`
+                    : null;
+
+            if (managerKey) {
+                if (seenManagerKeys.has(managerKey)) {
+                    continue;
+                }
+                seenManagerKeys.add(managerKey);
+            }
+            deduplicatedConnectedSources.push(source);
+        }
+
         const filteredAvailable = catalogIntegrations;
-        const combined = [...connectedSources, ...filteredAvailable];
+        const combined = [...deduplicatedConnectedSources, ...filteredAvailable];
 
         return combined.filter((integration: any) => {
             const matchesSearch = integration.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
