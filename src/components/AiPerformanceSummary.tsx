@@ -3,12 +3,14 @@
 import React from "react";
 import { Sparkles, Loader2, RefreshCw, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isLegacyPerformanceSummaryRetired } from "@/lib/ai/legacy-performance-summary";
 
 type Props = {
     workspaceId: string | null;
 };
 
 export function AiPerformanceSummary({ workspaceId }: Props) {
+    const retired = isLegacyPerformanceSummaryRetired();
     const [loading, setLoading] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
     const [summary, setSummary] = React.useState<string | null>(null);
@@ -33,6 +35,13 @@ export function AiPerformanceSummary({ workspaceId }: Props) {
                 body: JSON.stringify({ workspaceId }),
             });
             const data = await res.json().catch(() => ({}));
+            if (res.status === 410) {
+                setConfigured(false);
+                setError(typeof data.hint === "string" ? data.hint : "This summary has been retired.");
+                setSummary(null);
+                setBullets([]);
+                return;
+            }
             if (res.status === 503) {
                 setConfigured(false);
                 setError(typeof data.hint === "string" ? data.hint : data.error || "AI not configured");
@@ -63,13 +72,17 @@ export function AiPerformanceSummary({ workspaceId }: Props) {
                         <Sparkles className="h-6 w-6 text-indigo-600 dark:text-indigo-200" />
                     </div>
                     <div>
-                        <h2 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">AI digest (last 7 days)</h2>
+                        <h2 className="text-lg font-semibold tracking-tight text-gray-900 dark:text-white">
+                            {retired ? "AI digest retired" : "AI digest (last 7 days, local debug)"}
+                        </h2>
                         <p className="mt-1 max-w-xl text-sm text-gray-500 dark:text-gray-400">
-                            Short summary from your sync, pipeline, and attribution metrics. Uses a small, cost-efficient
-                            model — no raw credentials are sent.
+                            {retired
+                                ? "The ungoverned 7-day summary is no longer available. Use the governed analyst when it is enabled."
+                                : "Local/dev only. Short summary from sync and attribution metrics — no raw credentials are sent."}
                         </p>
                     </div>
                 </div>
+                {retired ? null : (
                 <button
                     type="button"
                     onClick={() => void run()}
@@ -81,12 +94,18 @@ export function AiPerformanceSummary({ workspaceId }: Props) {
                     {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                     {summary || bullets.length ? "Regenerate" : "Generate summary"}
                 </button>
+                )}
             </div>
 
-            {configured === false && error ? (
+            {(retired || configured === false) && error ? (
                 <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
                     <AlertCircle className="h-4 w-4 shrink-0" />
                     <span>{error}</span>
+                </div>
+            ) : retired ? (
+                <div className="flex gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>Use the governed analyst when ENABLE_GOVERNED_ANALYST is enabled.</span>
                 </div>
             ) : null}
 
@@ -108,7 +127,7 @@ export function AiPerformanceSummary({ workspaceId }: Props) {
                         </ul>
                     ) : null}
                 </div>
-            ) : !loading && configured !== false && !error ? (
+            ) : !retired && !loading && configured !== false && !error ? (
                 <p className="text-xs text-gray-400 dark:text-gray-500">
                     Click Generate to produce a summary from the last week of data.
                 </p>
