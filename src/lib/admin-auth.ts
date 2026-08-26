@@ -15,6 +15,22 @@ export function isPlatformAdminEmail(email?: string | null): boolean {
   return PLATFORM_ADMIN_EMAILS.includes(normalized);
 }
 
+/** Same gate as /pilot-admin page.tsx: OPERATOR else 404. Does not admit ADMIN_EMAIL. */
+export async function requireOperator() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return { session: null, error: Response.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  const operator = await prisma.user.findFirst({
+    where: { id: session.user.id, platformRole: "OPERATOR" },
+    select: { id: true },
+  });
+  if (!operator) {
+    return { session: null, error: Response.json({ error: "Not found" }, { status: 404 }) };
+  }
+  return { session, error: null };
+}
+
 export async function requirePlatformAdmin() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {

@@ -38,6 +38,17 @@ export function PilotProvisioningClient() {
     const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
     const [loadingOrders, setLoadingOrders] = useState(false);
     const [approvingCode, setApprovingCode] = useState<number | null>(null);
+    const [proposals, setProposals] = useState<Array<{
+        id: string;
+        provider: string;
+        connectionId: string;
+        status: string;
+        addedFields: string;
+        removedFields: string;
+        breaking: boolean;
+        note: string | null;
+    }>>([]);
+    const [proposalBusy, setProposalBusy] = useState(false);
 
     // Calculate BD Custom Amount
     const baseMonthlyPrice = bdDurationMonths >= 12
@@ -67,9 +78,38 @@ export function PilotProvisioningClient() {
             .finally(() => setLoadingOrders(false));
     };
 
+    const loadProposals = () => {
+        fetch("/api/pilot-admin/schema-proposals")
+            .then((r) => (r.ok ? r.json() : { proposals: [] }))
+            .then((d) => {
+                if (Array.isArray(d.proposals)) setProposals(d.proposals);
+            })
+            .catch(() => {});
+    };
+
     useEffect(() => {
         loadRecentOrders();
+        loadProposals();
     }, []);
+
+    const scanProposals = async () => {
+        setProposalBusy(true);
+        try {
+            await fetch("/api/pilot-admin/schema-proposals", { method: "POST" });
+            loadProposals();
+        } finally {
+            setProposalBusy(false);
+        }
+    };
+
+    const decideProposal = async (id: string, decision: "approved" | "rejected") => {
+        await fetch(`/api/pilot-admin/schema-proposals/${id}/decision`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ decision }),
+        });
+        loadProposals();
+    };
 
     const approveOrder = async (orderCode: number) => {
         setApprovingCode(orderCode);
@@ -383,6 +423,51 @@ export function PilotProvisioningClient() {
                             </tbody>
                         </table>
                     </div>
+                )}
+            </div>
+
+            <div className="rounded-lg border border-line bg-panel p-6 md:p-8 shadow-xs space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                    <div>
+                        <h2 className="font-bold text-base text-ink">Mapping copilot</h2>
+                        <p className="text-xs text-ink-mute">
+                            OPERATOR-only. Proposals are CI diffs against compile-time fieldMapping. Approve files an engineer ticket — nothing auto-migrates.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => void scanProposals()}
+                        disabled={proposalBusy}
+                        className="inline-flex items-center gap-2 rounded-md border border-line px-3 py-1.5 text-xs font-semibold text-ink disabled:opacity-50"
+                    >
+                        {proposalBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        Scan discoveries
+                    </button>
+                </div>
+                {proposals.length === 0 ? (
+                    <p className="text-xs text-ink-mute">No pending mapping proposals.</p>
+                ) : (
+                    <ul className="space-y-2 text-xs">
+                        {proposals.map((p) => (
+                            <li key={p.id} className="rounded-md border border-line p-3 space-y-1">
+                                <div className="font-semibold text-ink">
+                                    {p.provider} · {p.connectionId.slice(-6)} · {p.status}
+                                    {p.breaking ? " · breaking" : ""}
+                                </div>
+                                <div className="text-ink-mute">{p.note}</div>
+                                {p.status === "pending" ? (
+                                    <div className="flex gap-2 pt-1">
+                                        <button type="button" className="rounded border border-line px-2 py-1" onClick={() => void decideProposal(p.id, "approved")}>
+                                            Approve
+                                        </button>
+                                        <button type="button" className="rounded border border-line px-2 py-1" onClick={() => void decideProposal(p.id, "rejected")}>
+                                            Reject
+                                        </button>
+                                    </div>
+                                ) : null}
+                            </li>
+                        ))}
+                    </ul>
                 )}
             </div>
         </main>
