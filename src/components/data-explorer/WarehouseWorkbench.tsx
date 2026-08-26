@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { resolveDataThrough, resolveWarehouseEmptyState } from "@/lib/warehouse-truth";
 import Link from "next/link";
@@ -26,6 +26,7 @@ import { downloadCsv, downloadExcel } from "@/lib/export-utils";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { RefreshWarehouseModal } from "./RefreshWarehouseModal";
+import { AnalystPane } from "./AnalystPane";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -955,6 +956,10 @@ export function WarehouseWorkbench() {
           Refresh warehouse
         </button>
       </div>
+
+      <Suspense fallback={null}>
+        <AnalystPane />
+      </Suspense>
 
       {/* ─── 2. FILTERS ─── */}
       <div className="flex flex-col gap-3 rounded-lg border border-line bg-panel p-3.5">
