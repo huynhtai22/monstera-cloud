@@ -36,7 +36,7 @@ CREATE INDEX "TikTokGmvMaxMetric_workspaceId_storeId_date_idx" ON "TikTokGmvMaxM
 CREATE INDEX "TikTokGmvMaxMetric_connectionId_date_idx" ON "TikTokGmvMaxMetric"("connectionId", "date");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "TikTokGmvMaxMetric_connectionId_storeId_campaignId_itemId_liveRoomId_date_key" ON "TikTokGmvMaxMetric"("connectionId", "storeId", "campaignId", "itemId", "liveRoomId", "date");
+CREATE UNIQUE INDEX "TikTokGmvMaxMetric_unique_dim_key" ON "TikTokGmvMaxMetric"("connectionId", "storeId", "campaignId", "itemId", "liveRoomId", "date");
 
 -- AddForeignKey
 ALTER TABLE "TikTokGmvMaxMetric" ADD CONSTRAINT "TikTokGmvMaxMetric_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -928,7 +928,7 @@ model TikTokGmvMaxMetric {
   workspace          Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   connection         Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
-  @@unique([connectionId, storeId, campaignId, itemId, liveRoomId, date])
+  @@unique([connectionId, storeId, campaignId, itemId, liveRoomId, date], map: "TikTokGmvMaxMetric_unique_dim_key")
   @@index([workspaceId, storeId, date])
   @@index([connectionId, date])
 }
