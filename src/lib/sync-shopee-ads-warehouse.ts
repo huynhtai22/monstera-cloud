@@ -17,9 +17,28 @@ import {
 } from "@/lib/shopee-ads-mapper";
 import { isShopeeRegionEligible, assertShopeeRegionEligible } from "@/lib/provider-market-policy";
 import type { MarketplaceSyncResult } from "@/lib/sync-marketplace-warehouse";
-import { refreshConnectionLastDataThrough } from "@/lib/connection-data-through";
 
 const UPSERT_CHUNK_SIZE = 25;
+const SHOPEE_ADS_MAX_DAYS_PER_REQUEST = 28;
+
+function parseYmdUtc(ymd: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!match) throw new Error(`Invalid Shopee Ads date: ${ymd}`);
+  return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+}
+
+export function splitShopeeAdsDateRange(since: string, until: string): Array<{ since: string; until: string }> {
+  const end = parseYmdUtc(until);
+  let cursor = parseYmdUtc(since);
+  if (cursor > end) throw new Error("Shopee Ads range start must not be after its end");
+  const windows: Array<{ since: string; until: string }> = [];
+  while (cursor <= end) {
+    const chunkEnd = new Date(Math.min(cursor.getTime() + (SHOPEE_ADS_MAX_DAYS_PER_REQUEST - 1) * 86_400_000, end.getTime()));
+    windows.push({ since: cursor.toISOString().slice(0, 10), until: chunkEnd.toISOString().slice(0, 10) });
+    cursor = new Date(chunkEnd.getTime() + 86_400_000);
+  }
+  return windows;
+}
 
 function isShopeeAdsSyncDisabled(): boolean {
   const v = (process.env.SHOPEE_ADS_SYNC ?? "").trim().toLowerCase();
@@ -176,12 +195,9 @@ export async function syncShopeeAdsWarehouseMetrics(opts: {
     // Step 5: If no product campaign metrics were found or if shop has overall CPC ads, query shop-level daily performance
     if (payloads.length === 0) {
       try {
-        const cpcResult = await shopeeAdsClient.getAllCpcAdsDailyPerformance(
-          apiOpts,
-          clampedSince,
-          until
-        );
-        for (const raw of cpcResult.rows) {
+        for (const window of splitShopeeAdsDateRange(clampedSince, until)) {
+          const cpcResult = await shopeeAdsClient.getAllCpcAdsDailyPerformance(apiOpts, window.since, window.until);
+          for (const raw of cpcResult.rows) {
           if (!raw || typeof raw !== "object") continue;
           const row = raw as Record<string, unknown>;
           const d = parseShopeeAdsRowDate(row);
@@ -198,8 +214,9 @@ export async function syncShopeeAdsWarehouseMetrics(opts: {
             syncJobId: jobId,
             apiMode: cpcResult.mode,
           });
-          if (payload) {
-            payloads.push(payload);
+            if (payload) {
+              payloads.push(payload);
+            }
           }
         }
       } catch (e) {
@@ -224,12 +241,6 @@ export async function syncShopeeAdsWarehouseMetrics(opts: {
     }
 
     const upserted = await upsertPayloadsInChunks(payloads, opts.lease);
-
-    await prisma.connection.update({
-      where: { id: connectionId },
-      data: { lastSyncAt: new Date() },
-    });
-    await refreshConnectionLastDataThrough(workspaceId, connectionId);
 
     logger.info(
       `[syncShopeeAdsWarehouse] ${upserted} granular Shopee Ads rows ingested for connection ${connectionId}`

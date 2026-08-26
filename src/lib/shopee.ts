@@ -668,6 +668,27 @@ export class ShopeeAdsClient {
     return Array.from(new Set(allIds));
   }
 
+  /** Raw list pages retain campaign identity metadata and provider request IDs. */
+  async getAllProductLevelCampaignPages(opts: ShopeeApiOptions): Promise<unknown[]> {
+    const pages: unknown[] = [];
+    let offset = 0;
+    const limit = 100;
+    for (;;) {
+      const json = await shopeeGet(
+        ADS_PATH_PRODUCT_CAMPAIGN_ID_LIST,
+        { ad_type: "all", offset: String(offset), limit: String(limit) },
+        opts,
+      );
+      pages.push(json);
+      const response = (json.response || json) as Record<string, unknown>;
+      const list = Array.isArray(response.campaign_list) ? response.campaign_list : [];
+      if (response.has_next_page !== true || list.length === 0) break;
+      offset += list.length;
+      if (offset > 100_000) throw new Error("Shopee campaign pagination exceeded safe limit");
+    }
+    return pages;
+  }
+
   /**
    * 2. Fetch campaign settings in batches of <= 100 campaign IDs.
    * GET /api/v2/ads/get_product_level_campaign_setting_info
@@ -737,6 +758,21 @@ export class ShopeeAdsClient {
     return settings;
   }
 
+  /** Raw setting pages used only for optional catalog enrichment and diagnostics. */
+  async getProductLevelCampaignSettingPages(opts: ShopeeApiOptions, campaignIds: string[]): Promise<unknown[]> {
+    const pages: unknown[] = [];
+    for (let i = 0; i < campaignIds.length; i += 100) {
+      const ids = campaignIds.slice(i, i + 100);
+      if (!ids.length) continue;
+      pages.push(await shopeeGet(
+        ADS_PATH_PRODUCT_CAMPAIGN_SETTING,
+        { campaign_id_list: ids.join(","), info_type_list: "1,2,3,4" },
+        opts,
+      ));
+    }
+    return pages;
+  }
+
   /**
    * 3. Fetch product campaign daily advertising performance.
    * GET /api/v2/ads/get_product_campaign_daily_performance
@@ -750,7 +786,7 @@ export class ShopeeAdsClient {
   ): Promise<ShopeeProductCampaignDailyMetric[]> {
     if (!campaignIds.length) return [];
 
-    const dateChunks = chunkDateRangeIntoMonths(sinceYmd, untilYmd, 30);
+    const dateChunks = chunkDateRangeIntoMonths(sinceYmd, untilYmd, 28);
     const results: ShopeeProductCampaignDailyMetric[] = [];
 
     for (const dateRange of dateChunks) {

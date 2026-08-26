@@ -54,6 +54,9 @@ export const TENANT_GUARDED_MODELS = new Set([
   "EvidencePackRecord",
   "PayloadSchemaDiscovery",
   "SchemaPatchProposal",
+  "ShopeeCampaign",
+  "ShopeeProduct",
+  "ProviderSyncRun",
 ]);
 
 /**

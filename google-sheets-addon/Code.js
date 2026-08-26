@@ -18,6 +18,7 @@ var BASE_URL         = 'https://monsteracloud.com';
 var API_ENDPOINT     = BASE_URL + '/api/looker-studio';
 var AUTH_ENDPOINT    = BASE_URL + '/api/addon/auth';
 var ACCOUNTS_ENDPOINT = BASE_URL + '/api/addon/accounts';
+var SHOPEE_REPORT_ENDPOINT = BASE_URL + '/api/addon/shopee-report';
 var CACHE_TTL_SECONDS = 600;
 var EMPTY_RESULT_MESSAGE = 'No rows found for the selected filters.';
 
@@ -59,6 +60,12 @@ var PLATFORM_FIELDS = {
 function getFieldOrder(platform) {
   return PLATFORM_FIELDS[platform] || PLATFORM_FIELDS['all'];
 }
+
+var SHOPEE_REPORT_FIELDS = {
+  shopee_products: ['source', 'shopId', 'region', 'lastSynchronizedAt', 'itemId', 'itemName', 'itemStatus', 'sourceUpdatedAt'],
+  shopee_campaigns: ['source', 'shopId', 'region', 'lastSynchronizedAt', 'campaignId', 'adType', 'biddingStrategy', 'campaignName', 'campaignStatus'],
+  shopee_ads_performance: ['source', 'shopId', 'region', 'lastSynchronizedAt', 'date', 'campaignId', 'campaignName', 'impressions', 'clicks', 'spend', 'conversions', 'revenue', 'roas', 'currency', 'performanceState']
+};
 
 // ── Identity Token ────────────────────────────────────────────────────────────
 
@@ -187,6 +194,7 @@ function pullData(params) {
   var endDate     = params.endDate     || getToday();
   var platform    = params.platform    || null;
   var reportLevel = params.reportLevel || 'adset';
+  var reportType = params.reportType || '';
   var accountIds  = normalizeAccountIds(params.accountIds);
   var targetCell  = params.targetCell  || 'A1';
   var workspaceId = params.workspaceId || '';
@@ -201,7 +209,8 @@ function pullData(params) {
   if (platform) qp.push('platform=' + encodeURIComponent(platform));
   accountIds.forEach(function(id) { qp.push('accountId=' + encodeURIComponent(id)); });
 
-  var url = API_ENDPOINT + '?' + qp.join('&');
+  if (reportType) qp.push('reportType=' + encodeURIComponent(reportType));
+  var url = reportType ? SHOPEE_REPORT_ENDPOINT + '?' + qp.join('&') : API_ENDPOINT + '?' + qp.join('&');
 
   var cache = CacheService.getUserCache();
   var accountSelection = accountIds.length ? accountIds.join(',') : 'all';
@@ -280,7 +289,7 @@ function pullData(params) {
   });
   if (data.length === 0) return EMPTY_RESULT_MESSAGE;
 
-  var headers = getFieldOrder(platform).filter(function(f) { return data[0].hasOwnProperty(f); });
+  var headers = (SHOPEE_REPORT_FIELDS[reportType] || getFieldOrder(platform)).filter(function(f) { return data[0].hasOwnProperty(f); });
 
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
   var startRow = sheet.getRange(targetCell).getRow();
@@ -310,7 +319,7 @@ function pullData(params) {
 
   PropertiesService.getDocumentProperties().setProperty(
     'monstera_query_' + sheet.getSheetId(),
-    JSON.stringify({ workspaceId: workspaceId, platform: platform, reportLevel: reportLevel, accountIds: accountIds, targetCell: targetCell })
+    JSON.stringify({ workspaceId: workspaceId, platform: platform, reportLevel: reportLevel, reportType: reportType, accountIds: accountIds, targetCell: targetCell })
   );
 
   return 'Done! ' + data.length + ' rows written to ' + sheet.getName() + '.';
@@ -439,6 +448,23 @@ function logQueryDiagnostics(eventName, details) {
   // Deliberately limited to filter metadata and row counts; never log tokens,
   // cookies, OAuth credentials, or response bodies.
   console.log('[Monstera Sheets] ' + eventName + ' ' + JSON.stringify(details));
+}
+
+/**
+ * One-time diagnostic helper. Logs only the identity token's audience claim,
+ * never the token itself. Remove after setting GOOGLE_ID_TOKEN_AUDIENCES.
+ */
+function showIdentityTokenAudience() {
+  var token = ScriptApp.getIdentityToken();
+  if (!token) {
+    throw new Error('No identity token; reauthorize the add-on first.');
+  }
+
+  var payload = JSON.parse(
+    Utilities.newBlob(Utilities.base64Decode(token.split('.')[1])).getDataAsString()
+  );
+
+  Logger.log('Audience: ' + payload.aud);
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

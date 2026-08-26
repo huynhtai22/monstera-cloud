@@ -71,6 +71,7 @@ export default function SourceDetailPage() {
               workspaceId: string;
               workspace?: { name: string };
               credentials?: string;
+              environment?: "sandbox" | "production" | null;
           }
         | undefined;
 
@@ -314,11 +315,13 @@ export default function SourceDetailPage() {
                             <span
                                 className={cn(
                                     "absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full ring-2 ring-panel",
-                                    connection.status === "connected"
-                                        ? "bg-emerald-400"
-                                        : connection.lastError?.startsWith("[partial]")
+                                    connection.lastError?.startsWith("[partial]")
                                           ? "bg-amber-400"
-                                          : "bg-red-400"
+                                          : connection.lastError?.startsWith("[failed]")
+                                            ? "bg-red-400"
+                                            : connection.status === "connected"
+                                              ? "bg-emerald-400"
+                                              : "bg-red-400"
                                 )}
                             />
                         </div>
@@ -382,7 +385,7 @@ export default function SourceDetailPage() {
                             </div>
 
                             <p className="mt-1 text-xs text-ink-mute">
-                                {connection.provider} · {isSource ? "Direct Warehouse Ingestion Source" : "Destination Pipeline"}
+                                {connection.provider} · {isSource ? "Direct Warehouse Ingestion Source" : "Destination Pipeline"}{connection.environment === "sandbox" ? " · Shopee Sandbox" : ""}
                             </p>
                         </div>
                     </div>
@@ -446,6 +449,11 @@ export default function SourceDetailPage() {
                                 <AlertCircle className="h-4 w-4 text-amber-400" />
                                 <span className="font-semibold text-xs text-amber-200">Partial sync</span>
                             </>
+                        ) : connection.lastError?.startsWith("[failed]") ? (
+                            <>
+                                <AlertCircle className="h-4 w-4 text-red-400" />
+                                <span className="font-semibold text-xs text-red-200">Failed sync</span>
+                            </>
                         ) : connection.status === "connected" ? (
                             <>
                                 <CheckCircle2 className="h-4 w-4 text-emerald-400" />
@@ -499,6 +507,24 @@ export default function SourceDetailPage() {
                     <p className="mt-1 text-[11px] text-ink-mute">Lease-fenced incremental</p>
                 </div>
             </div>
+
+            {connection.provider === "shopee" && Array.isArray(data?.recentProviderRuns) && data.recentProviderRuns.length > 0 ? (
+                <div className="mb-8">
+                    <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-ink">Shopee source activity</h2>
+                    <div className="space-y-2">
+                        {data.recentProviderRuns.map((run: any) => (
+                            <div key={run.id} className="rounded-lg border border-line bg-panel p-3 text-xs">
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className="font-semibold text-ink">{run.endpoint}</span>
+                                    <span className={run.status === "success" ? "text-emerald-300" : "text-red-300"}>{run.status}</span>
+                                </div>
+                                <p className="mt-1 text-ink-mute">{run.environment} · {run.rowsReceived} received · {run.rowsWritten} written{run.providerRequestId ? ` · request ${run.providerRequestId}` : ""}</p>
+                                {run.errorMessage ? <p className="mt-1 text-red-300">{run.errorCategory}: {run.errorMessage}</p> : null}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : null}
 
             {/* Ad Account Management Hub (Unified Table View) */}
             {isSource && isGoogleOrMeta ? (

@@ -113,6 +113,9 @@ model Workspace {
   members              WorkspaceMember[]
   apiKeys              ApiKey[]
   campaignMetrics      CampaignMetric[]
+  shopeeCampaigns      ShopeeCampaign[]
+  shopeeProducts       ShopeeProduct[]
+  providerSyncRuns     ProviderSyncRun[]
   orders               RetailOrder[]
   utmRules             UtmMappingRule[]
   attributionSnapshots AttributionSnapshot[]
@@ -252,6 +255,10 @@ model Connection {
   sourcePipelines      Pipeline[]       @relation("SourceConnection")
   campaignMetrics      CampaignMetric[]
   orders               RetailOrder[]
+  shopeeCampaigns      ShopeeCampaign[]
+  shopeeProducts       ShopeeProduct[]
+  shopeeCatalogState   ShopeeCatalogSyncState?
+  providerSyncRuns     ProviderSyncRun[]
 
   @@unique([workspaceId, provider, remoteAccountId])
 }
@@ -414,6 +421,94 @@ model CampaignMetric {
   @@index([connectionId, date])
   @@index([workspaceId, accountId, date])
   @@index([workspaceId, platform, accountId, date])
+}
+
+/// Provider-discovered Shopee campaign identity. This is intentionally separate
+/// from dated performance rows so an empty sandbox performance response cannot
+/// be mistaken for zero-valued metrics.
+model ShopeeCampaign {
+  id                 String   @id @default(cuid())
+  workspaceId        String
+  connectionId       String
+  environment        String
+  shopId             String
+  region             String
+  externalCampaignId String
+  adType             String
+  biddingStrategy    String?
+  campaignName       String?
+  campaignStatus     String?
+  sourceRequestId    String?
+  syncedAt           DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection         Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, environment, shopId, externalCampaignId])
+  @@index([workspaceId, environment, shopId])
+  @@index([connectionId, syncedAt])
+}
+
+/// Provider-discovered Shopee product identity. Performance remains in
+/// CampaignMetric; catalog rows retain their own source timestamp and status.
+model ShopeeProduct {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  connectionId     String
+  environment      String
+  shopId           String
+  region           String
+  externalItemId   String
+  itemName         String?
+  itemStatus       String?
+  sourceUpdatedAt  DateTime?
+  sourceRequestId  String?
+  syncedAt         DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection       Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, environment, shopId, externalItemId])
+  @@index([workspaceId, environment, shopId])
+  @@index([connectionId, syncedAt])
+}
+
+/// Per-connection catalog watermark. The first catalog run deliberately leaves
+/// this null and performs a full product scan; subsequent runs overlap it.
+model ShopeeCatalogSyncState {
+  id                 String   @id @default(cuid())
+  connectionId       String   @unique
+  productWatermarkAt DateTime?
+  updatedAt          DateTime @updatedAt
+  connection         Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+}
+
+/// Sanitized per-endpoint provider call record. It intentionally has no URL,
+/// credential, token, request body, or signature fields.
+model ProviderSyncRun {
+  id                String    @id @default(cuid())
+  workspaceId       String
+  connectionId      String
+  provider          String
+  environment       String
+  shopId            String?
+  endpoint          String
+  httpStatus        Int?
+  providerRequestId String?
+  status            String
+  rowsReceived      Int       @default(0)
+  rowsWritten       Int       @default(0)
+  errorCategory     String?
+  errorMessage      String?
+  startedAt         DateTime  @default(now())
+  completedAt       DateTime?
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection        Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, connectionId, startedAt])
+  @@index([connectionId, endpoint, startedAt])
 }
 
 model RetailOrder {
