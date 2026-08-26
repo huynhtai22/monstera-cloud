@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 import { requireOperator } from "@/lib/admin-auth";
 import { productionRouteDisabled } from "@/lib/request-auth";
+import { decideSchemaPatchProposal } from "@/lib/ai/mapping-overlay";
 
 export async function POST(
   req: Request,
@@ -20,17 +20,18 @@ export async function POST(
     return NextResponse.json({ error: "decision must be approved or rejected" }, { status: 400 });
   }
 
-  const updated = await prisma.schemaPatchProposal.updateMany({
-    where: { id: params.id, status: "pending" },
-    data: {
-      status: decision,
-      note: typeof body.note === "string" ? body.note : undefined,
-      decidedAt: new Date(),
-      decidedBy: gate.session?.user?.id ?? null,
-    },
+  const result = await decideSchemaPatchProposal({
+    proposalId: params.id,
+    decision,
+    operatorUserId: gate.session!.user!.id,
+    note: typeof body.note === "string" ? body.note : undefined,
   });
-  if (updated.count === 0) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error, message: result.message }, { status: result.status });
   }
-  return NextResponse.json({ ok: true, decision });
+  return NextResponse.json({
+    ok: true,
+    decision: result.decision,
+    overlayApplied: result.overlayApplied,
+  });
 }

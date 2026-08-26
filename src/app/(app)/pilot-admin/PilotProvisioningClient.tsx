@@ -103,11 +103,15 @@ export function PilotProvisioningClient() {
     };
 
     const decideProposal = async (id: string, decision: "approved" | "rejected") => {
-        await fetch(`/api/pilot-admin/schema-proposals/${id}/decision`, {
+        const res = await fetch(`/api/pilot-admin/schema-proposals/${id}/decision`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ decision }),
         });
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            setError(typeof body.message === "string" ? body.message : "Could not apply mapping decision");
+        }
         loadProposals();
     };
 
@@ -431,7 +435,7 @@ export function PilotProvisioningClient() {
                     <div>
                         <h2 className="font-bold text-base text-ink">Mapping copilot</h2>
                         <p className="text-xs text-ink-mute">
-                            OPERATOR-only. Proposals are CI diffs against compile-time fieldMapping. Approve files an engineer ticket — nothing auto-migrates.
+                            OPERATOR-only. Additive canonical keys apply as a per-connection overlay on approve. Breaking diffs need an engineer PR — nothing auto-migrates.
                         </p>
                     </div>
                     <button
@@ -457,9 +461,13 @@ export function PilotProvisioningClient() {
                                 <div className="text-ink-mute">{p.note}</div>
                                 {p.status === "pending" ? (
                                     <div className="flex gap-2 pt-1">
-                                        <button type="button" className="rounded border border-line px-2 py-1" onClick={() => void decideProposal(p.id, "approved")}>
-                                            Approve
-                                        </button>
+                                        {p.breaking ? (
+                                            <span className="text-ink-mute">Approve disabled — engineer PR required</span>
+                                        ) : (
+                                            <button type="button" className="rounded border border-line px-2 py-1" onClick={() => void decideProposal(p.id, "approved")}>
+                                                Apply overlay
+                                            </button>
+                                        )}
                                         <button type="button" className="rounded border border-line px-2 py-1" onClick={() => void decideProposal(p.id, "rejected")}>
                                             Reject
                                         </button>

@@ -3,6 +3,7 @@ import { extractForProvider } from '@/etl/extract';
 import { loadToGoogleSheets } from '@/etl/loaders/googleSheets';
 import { resolveCursor, saveCheckpoint, completeCheckpoint } from '@/etl/checkpoint';
 import { transform, loadTransformRules } from '@/etl/transform';
+import { loadApprovedMappingOverlay } from '@/lib/ai/mapping-overlay';
 import { logger } from '@/lib/logger';
 
 export async function runEtlPipeline(opts: {
@@ -108,7 +109,8 @@ async function applyTransform(
   provider: EtlProvider,
   ctx: PipelineContext
 ): Promise<(string | number | null)[][]> {
-  if (rules.length === 0) return extracted.rows;
+  const overlay = await loadApprovedMappingOverlay(ctx.workspaceId, ctx.sourceConnectionId, provider);
+  if (rules.length === 0 && Object.keys(overlay).length === 0) return extracted.rows;
 
   // rows are arrays aligned to columns — convert to objects for transform
   const asObjects = extracted.rows.map((row) => {
@@ -123,7 +125,7 @@ async function applyTransform(
     platform: provider,
     pipelineId: ctx.pipelineId,
     connectionId: ctx.sourceConnectionId,
-  });
+  }, overlay);
 
   // Re-align columns. If transform added/removed fields, use all unique keys
   // preserving original column order for unchanged fields.
