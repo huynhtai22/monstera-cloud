@@ -137,6 +137,7 @@ model Workspace {
   agentTraces         AgentTrace[]
   evidencePacks       EvidencePackRecord[]
   payloadDiscoveries  PayloadSchemaDiscovery[]
+  schemaProposals     SchemaPatchProposal[]
 }
 
 model Client {
@@ -851,6 +852,25 @@ model PayloadSchemaDiscovery {
 
   @@unique([connectionId, schemaHash])
   @@index([workspaceId, provider, discoveredAt])
+}
+
+model SchemaPatchProposal {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  connectionId  String
+  provider      String
+  status        String    @default("pending")
+  addedFields   String
+  removedFields String
+  mappingDelta  String
+  breaking      Boolean   @default(false)
+  note          String?
+  decidedAt     DateTime?
+  decidedBy     String?
+  createdAt     DateTime  @default(now())
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, createdAt])
 }
 
 model SupportTicket {
