@@ -69,6 +69,7 @@ describe("payment gates never mix", () => {
     assert.match(href, /currency=VND/);
     assert.match(href, /plan=starter/);
     assert.doesNotMatch(href, /paddle|payos|vietqr/i);
+    assert.match(href, /pilot=1/);
   });
 });
 

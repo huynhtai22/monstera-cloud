@@ -15,6 +15,7 @@ interface CheckoutButtonProps {
   children: React.ReactNode;
 }
 
+/** Catalog approved 2026-08-27. This button still does not charge; invoiceCurrency is kept for dual-gate cutover. */
 export function CheckoutButton({
   plan,
   billingCycle,

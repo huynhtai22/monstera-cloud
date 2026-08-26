@@ -208,7 +208,7 @@ export default function PricingPage() {
                 <header className="mx-auto mb-9 max-w-3xl pt-6 text-center">
                     <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-200/[0.06] px-3 py-1 font-mono text-[11px] font-medium text-amber-100">
                         <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                        <span>{isVnd ? "Bản nháp — chưa thu phí" : "Draft catalog — not live billing"}</span>
+                        <span>{isVnd ? "Catalog đã duyệt — chưa thu phí" : "Approved catalog — not charging yet"}</span>
                     </div>
                     <h1 className="text-4xl font-semibold leading-[1.12] tracking-tight text-ink sm:text-5xl">
                         {isVnd ? (
@@ -238,8 +238,8 @@ export default function PricingPage() {
                     <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-200/70" />
                     <p className="text-xs leading-relaxed text-neutral-400">
                         {isVnd
-                            ? "Bản nháp catalog Start / Studio / Agency. Không thay giá Paddle (USD) hay PayOS/VietQR (VND) production. Checkout công khai vẫn là yêu cầu quyền pilot. VN thấy số VND; ngoài VN thấy USD. Google đổi tên Looker Studio thành Data Studio ngày 16/04/2026 — sản phẩm vẫn dùng Looker Studio™."
-                            : "Draft Start / Studio / Agency catalog. This PR does not change production Paddle (USD) or PayOS/VietQR (VND) prices. Public checkout remains Request pilot access. VN visitors see VND; everyone else sees USD. Google rebranded Looker Studio to Data Studio on 16 Apr 2026 — in-product copy still says Looker Studio™."}
+                            ? "Catalog Start / Studio / Agency đã được duyệt (27/08/2026). Checkout công khai vẫn là yêu cầu quyền pilot — chưa thu phí. VN thấy số VND (PayOS/VietQR); ngoài VN thấy USD (Paddle). Google đổi tên Looker Studio thành Data Studio ngày 16/04/2026 — sản phẩm vẫn dùng Looker Studio™."
+                            : "Start / Studio / Agency catalog approved 27 Aug 2026. Public checkout remains Request pilot access — not charging yet. VN visitors see VND (PayOS/VietQR); everyone else sees USD (Paddle). Google rebranded Looker Studio to Data Studio on 16 Apr 2026 — in-product copy still says Looker Studio™."}
                     </p>
                 </div>
 

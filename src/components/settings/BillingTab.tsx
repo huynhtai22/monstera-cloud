@@ -63,7 +63,7 @@ export function BillingTab({ workspacePlan }: { workspacePlan: string }) {
           Plan
         </h3>
         <p className="mt-1 text-sm text-ink-mute">
-          Workspace entitlements. Public checkout is not live — request pilot access to change the rung.
+          Workspace entitlements. Catalog approved — public checkout is not charging yet. Request pilot access to change the rung.
         </p>
       </div>
 
@@ -142,7 +142,7 @@ export function BillingTab({ workspacePlan }: { workspacePlan: string }) {
       <div className="flex items-start gap-2 rounded-lg border border-amber-300/20 bg-amber-200/[0.04] px-4 py-3 text-xs text-ink-mute">
         <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-200/80" />
         <p>
-          Draft catalog on this preview. Live Paddle (USD) and PayOS/VietQR (VND) prices are not changed.
+          Catalog approved 27 Aug 2026. Checkout is not charging yet. USD uses Paddle; VND uses PayOS/VietQR.
           Destinations are included on Studio and Agency — there is no second-destination upsell.
         </p>
       </div>
