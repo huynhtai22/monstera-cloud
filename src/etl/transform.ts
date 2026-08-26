@@ -104,7 +104,8 @@ function safeParseConfig(raw: string | Record<string, unknown>): Record<string, 
  */
 export function mapToCanonical(
     raw: Record<string, unknown>,
-    ctx: TransformContext
+    ctx: TransformContext,
+    overlay: Record<string, string> = {},
 ): Record<string, unknown> {
     const canonical: Record<string, unknown> = {
         platform: ctx.platform,
@@ -114,7 +115,8 @@ export function mapToCanonical(
     };
 
     for (const [rawKey, value] of Object.entries(raw)) {
-        const canonicalKey = FIELD_ALIASES[rawKey] || rawKey.toLowerCase().replace(/\s+/g, "_");
+        const canonicalKey =
+            overlay[rawKey] || FIELD_ALIASES[rawKey] || rawKey.toLowerCase().replace(/\s+/g, "_");
 
         // Numeric coercion
         if (typeof value === "string" && /^[\d.,]+$/.test(value)) {
@@ -251,12 +253,13 @@ export function evaluateCondition(
 export async function transform(
     records: Record<string, unknown>[],
     rules: TransformRule[],
-    ctx: TransformContext
+    ctx: TransformContext,
+    overlay: Record<string, string> = {},
 ): Promise<Record<string, unknown>[]> {
     if (records.length === 0) return records;
 
     const start = Date.now();
-    let transformed = records.map((r) => mapToCanonical(r, ctx));
+    let transformed = records.map((r) => mapToCanonical(r, ctx, overlay));
 
     for (const rule of rules) {
         if (rule.condition && !evaluateCondition(transformed[0] || {}, rule.condition)) {

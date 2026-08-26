@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { requireOperator } from "@/lib/admin-auth";
 import { productionRouteDisabled } from "@/lib/request-auth";
+import { withSystemScope } from "@/lib/tenant-guard";
 import { draftMappingProposal } from "@/lib/ai/mapping-copilot";
 import type { DiscoveredField } from "@/lib/payload-schema-discovery";
 
@@ -12,10 +13,12 @@ export async function GET() {
   const gate = await requireOperator();
   if (gate.error) return gate.error;
 
-  const proposals = await prisma.schemaPatchProposal.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  const proposals = await withSystemScope(() =>
+    prisma.schemaPatchProposal.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+  );
   return NextResponse.json({ proposals });
 }
 
@@ -27,6 +30,7 @@ export async function POST() {
   const gate = await requireOperator();
   if (gate.error) return gate.error;
 
+  return withSystemScope(async () => {
   const discoveries = await prisma.payloadSchemaDiscovery.findMany({
     orderBy: { discoveredAt: "desc" },
     take: 100,
@@ -48,10 +52,11 @@ export async function POST() {
     if (!draft) continue;
     const existing = await prisma.schemaPatchProposal.findFirst({
       where: {
+        workspaceId: row.workspaceId,
         connectionId: row.connectionId,
-        status: "pending",
         addedFields: JSON.stringify(draft.addedFields),
         removedFields: JSON.stringify(draft.removedFields),
+        status: { in: ["pending", "approved"] },
       },
     });
     if (existing) continue;
@@ -71,4 +76,5 @@ export async function POST() {
   }
 
   return NextResponse.json({ created: created.length, ids: created });
+  });
 }

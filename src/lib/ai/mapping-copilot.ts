@@ -10,7 +10,7 @@ export type MappingProposalDraft = {
   note: string;
 };
 
-const CANONICAL = new Set([
+export const CANONICAL_WAREHOUSE_FIELDS = new Set([
   "campaignId",
   "campaignName",
   "spend",
@@ -36,7 +36,7 @@ function guessCanonical(sourceField: string): string | null {
   if (lower === "conversions") return "conversions";
   if (lower === "conversion_value" || lower === "revenue" || lower === "total_amount") return "revenue";
   if (lower === "currency") return "currency";
-  return CANONICAL.has(leaf) ? leaf : null;
+  return CANONICAL_WAREHOUSE_FIELDS.has(leaf) ? leaf : null;
 }
 
 export function draftMappingProposal(provider: string, fields: DiscoveredField[]): MappingProposalDraft | null {
@@ -64,7 +64,7 @@ export function draftMappingProposal(provider: string, fields: DiscoveredField[]
     mappingDelta,
     breaking,
     note: breaking
-      ? `Required fields missing: ${requiredMissing.join(", ")}. Engineer PR against compile-time fieldMapping.`
-      : "Additive keys only. Approve to open an engineer PR against compile-time fieldMapping. No runtime overlay.",
+      ? `Required fields missing: ${requiredMissing.join(", ")}. Engineer PR against compile-time fieldMapping. OPERATOR cannot overlay breaking diffs.`
+      : "Additive canonical keys only. OPERATOR approve applies a per-connection overlay; compile-time fieldMapping is unchanged.",
   };
 }
