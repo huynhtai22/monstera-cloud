@@ -196,7 +196,7 @@ export function PillarGrid({
                         kpi={
                             sources.length > 0
                                 ? { label: "Fresh", value: `${healthyCount}/${sources.length}` }
-                                : { label: "Engine", value: "DuckDB" }
+                                : { label: "Engine", value: "PostgreSQL" }
                         }
                         items={warehouseItems}
                         emptyHint="Run the first source import to populate the warehouse."

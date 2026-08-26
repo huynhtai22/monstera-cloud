@@ -52,6 +52,7 @@ import {
   makeFailedSyncResult,
   summarizeSyncOutcome,
 } from "@/lib/sync-outcome";
+import { refreshConnectionLastDataThrough, shouldRefreshLastDataThrough } from "@/lib/connection-data-through";
 
 export interface SyncOptions {
   connectionId: string;
@@ -248,6 +249,15 @@ export async function persistConnectionSyncOutcome(
       ? { lastSyncAt: new Date(), lastError, status: "connected" }
       : { lastError },
   });
+  if (shouldRefreshLastDataThrough(outcome.outcome)) {
+    const conn = await prisma.connection.findUnique({
+      where: { id: connectionId },
+      select: { workspaceId: true },
+    });
+    if (conn) {
+      await refreshConnectionLastDataThrough(conn.workspaceId, connectionId);
+    }
+  }
 }
 
 function defaultRollingRange(plan: string): { since: string; until: string } {

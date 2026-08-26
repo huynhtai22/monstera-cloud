@@ -7,6 +7,7 @@ import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getValidShopeeCreds, shopeeDataClient } from "@/lib/shopee";
 import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";
+import { refreshConnectionLastDataThrough } from "@/lib/connection-data-through";
 import { heartbeatConnectionSyncLease, type ConnectionLease } from "@/lib/connection-sync-lease";
 import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
@@ -142,6 +143,7 @@ export async function syncShopeeWarehouseMetrics(opts: {
       where: { id: connectionId },
       data: { lastSyncAt: new Date() },
     });
+    await refreshConnectionLastDataThrough(workspaceId, connectionId);
 
     logger.info(`[syncShopeeWarehouse] ${upserted} day rows for ${connectionId}`);
     return { success: true, rowsIngested: upserted };
@@ -282,6 +284,7 @@ export async function syncLazadaWarehouseMetrics(opts: {
       where: { id: connectionId },
       data: { lastSyncAt: new Date() },
     });
+    await refreshConnectionLastDataThrough(workspaceId, connectionId);
 
     return { success: true, rowsIngested: upserted };
   } catch (e: unknown) {

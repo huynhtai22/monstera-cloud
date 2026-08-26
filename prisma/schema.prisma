@@ -237,6 +237,7 @@ model Connection {
   status               String           @default("connected")
   lastError            String? // UX: Actionable Error Tracking
   lastSyncAt           DateTime? // UX: Freshness Tracking
+  lastDataThrough      DateTime? // Latest CampaignMetric.date for this connection; not the sync clock
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
