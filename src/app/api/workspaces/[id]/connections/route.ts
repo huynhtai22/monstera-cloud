@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { sanitizeConnectionCredentials } from "@/lib/sanitize-connection-credentials";
 import { resolveSourceHealthState, SOURCE_HEALTH_STALE_AFTER_MS } from "@/lib/source-health";
+import { pickDataThroughDate } from "@/lib/connection-data-through";
 
 /**
  * GET /api/workspaces/[id]/connections
@@ -59,7 +60,10 @@ export async function GET(req: Request, context: { params: any }) {
                     staleBefore,
                 })
                 : undefined,
-            dataThroughDate: dataThroughByConnectionId.get(connection.id)?.toISOString() ?? null,
+            dataThroughDate: pickDataThroughDate(
+                connection.lastDataThrough,
+                dataThroughByConnectionId.get(connection.id),
+            )?.toISOString() ?? null,
         })));
     } catch (error: unknown) {
         const rbac = toRbacResponse(error);
