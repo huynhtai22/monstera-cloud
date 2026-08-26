@@ -453,7 +453,7 @@ export class ShopeeDataClient {
     timeTo: number,
     cursor = "",
     pageSize = 50,
-    orderStatus = "ALL"
+    orderStatus?: string
   ) {
     // Shopee strictly requires: time_to > time_from and time_to - time_from <= 15 days (15 * 86400)
     const safeTimeTo = timeTo > timeFrom ? Math.min(timeTo, timeFrom + 14 * 86400) : timeFrom + 86400;
@@ -462,8 +462,10 @@ export class ShopeeDataClient {
       time_from: String(timeFrom),
       time_to: String(safeTimeTo),
       page_size: String(Math.min(pageSize, 100)),
-      order_status: orderStatus,
     };
+    if (orderStatus && orderStatus.toUpperCase() !== "ALL") {
+      params.order_status = orderStatus.toUpperCase();
+    }
     if (cursor) params.cursor = cursor;
     return shopeeGet("/api/v2/order/get_order_list", params, opts);
   }

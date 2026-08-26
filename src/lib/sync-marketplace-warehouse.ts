@@ -70,8 +70,7 @@ export async function syncShopeeWarehouseMetrics(opts: {
           wStart,
           wEnd,
           cursor,
-          100,
-          "ALL",
+          100
         );
         const rawList = listData.response?.order_list ?? listData.order_list ?? [];
         if (!rawList.length) break;
