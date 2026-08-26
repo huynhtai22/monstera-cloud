@@ -17,10 +17,12 @@ export async function extractShopeeOrders(
   if (accessToken && shopId) {
     try {
       const timeTo = Math.floor(Date.now() / 1000);
-      const timeFrom =
+      const rawTimeFrom =
         typeof cursor?.lastTimestamp === 'number'
           ? cursor.lastTimestamp
           : timeTo - 14 * 24 * 60 * 60;
+      // Shopee enforces time_to - time_from <= 15 days
+      const timeFrom = Math.max(rawTimeFrom, timeTo - 14 * 24 * 60 * 60);
 
       const opts = { accessToken, shopId: Number(shopId), sandbox: sourceCreds?.sandbox === true };
       
