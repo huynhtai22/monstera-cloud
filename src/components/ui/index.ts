@@ -11,6 +11,7 @@ export { PageShell } from "./PageShell";
 export { IntegrationMark } from "./IntegrationMark";
 export { RefreshedAt } from "./RefreshedAt";
 export { SyncLogDiagnosticsDrawer } from "./SyncLogDiagnosticsDrawer";
+export { CopyableBadge } from "./CopyableBadge";
 
 // Re-export types
 export type { InputProps } from "./Input";
