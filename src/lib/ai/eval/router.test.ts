@@ -7,6 +7,7 @@ describe("eval judge uses a second path, not the generator", () => {
     const judge = routeModel("eval_judge");
     const narrative = routeModel("narrative");
     assert.equal(judge.provider, "deterministic");
+    assert.equal(narrative.provider, "xai");
     assert.notEqual(judge.provider, narrative.provider);
   });
 });

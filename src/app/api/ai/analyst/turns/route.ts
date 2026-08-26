@@ -92,6 +92,12 @@ export async function POST(req: Request) {
       queuedCopy: turn.queuedCopy,
     },
     refusalCode: turn.refusalCode,
+    costUsd: turn.usage?.costUsd,
+    inputTokens: turn.usage?.inputTokens,
+    outputTokens: turn.usage?.outputTokens,
+    model: turn.usage?.model,
+    provider: turn.usage?.provider,
+    promptVersion: turn.usage?.promptVersion,
   });
 
   return NextResponse.json({
