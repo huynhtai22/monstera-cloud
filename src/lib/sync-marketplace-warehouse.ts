@@ -52,65 +52,72 @@ export async function syncShopeeWarehouseMetrics(opts: {
     };
 
     const daily = new Map<string, { revenue: number; orders: number }>();
-    let cursor = "";
     let recordedSchema = false;
 
-    for (;;) {
-      if (opts.lease) {
-        await heartbeatConnectionSyncLease(opts.lease);
-      }
-      const listData = await shopeeDataClient.getOrderList(
-        apiOpts,
-        rangeStart,
-        rangeEnd,
-        cursor,
-        100,
-        "ALL",
-      );
-      const rawList = listData.response?.order_list ?? listData.order_list ?? [];
-      if (!rawList.length) break;
+    // Shopee get_order_list strictly enforces: time_to - time_from <= 15 days.
+    // We iterate in 14-day windows across [rangeStart, rangeEnd].
+    const WINDOW_SECONDS = 14 * 86400;
+    for (let wStart = rangeStart; wStart <= rangeEnd; wStart += WINDOW_SECONDS) {
+      const wEnd = Math.min(wStart + WINDOW_SECONDS, rangeEnd);
+      let cursor = "";
 
-      const orderSnList = rawList.map((o: { order_sn?: string }) => o.order_sn).filter(Boolean) as string[];
-
-      const chunks: string[][] = [];
-      for (let i = 0; i < orderSnList.length; i += 50) {
-        chunks.push(orderSnList.slice(i, i + 50));
-      }
-
-      for (const sns of chunks) {
-        const detailData = await shopeeDataClient.getOrderDetail(apiOpts, sns, [
-          "order_status",
-          "total_amount",
-          "currency",
-          "create_time",
-        ]);
-        const orders =
-          detailData.response?.order_list ?? detailData.order_list ?? [];
-        for (const o of orders) {
-          if (!recordedSchema) {
-            recordedSchema = true;
-            void recordPayloadSchemaDiscovery({
-              workspaceId,
-              connectionId,
-              provider: "shopee",
-              sample: o,
-            });
-          }
-          const ct = o.create_time as number | undefined;
-          if (ct == null) continue;
-          if (ct < rangeStart || ct > rangeEnd) continue;
-          const day = dayKeyFromUnixSeconds(ct);
-          const amt = Number(o.total_amount ?? 0) || 0;
-          const cur = daily.get(day) ?? { revenue: 0, orders: 0 };
-          cur.orders += 1;
-          cur.revenue += amt;
-          daily.set(day, cur);
+      for (;;) {
+        if (opts.lease) {
+          await heartbeatConnectionSyncLease(opts.lease);
         }
-      }
+        const listData = await shopeeDataClient.getOrderList(
+          apiOpts,
+          wStart,
+          wEnd,
+          cursor,
+          100,
+          "ALL",
+        );
+        const rawList = listData.response?.order_list ?? listData.order_list ?? [];
+        if (!rawList.length) break;
 
-      const next = listData.response?.next_cursor ?? listData.next_cursor ?? "";
-      if (!next || next === cursor) break;
-      cursor = next;
+        const orderSnList = rawList.map((o: { order_sn?: string }) => o.order_sn).filter(Boolean) as string[];
+
+        const chunks: string[][] = [];
+        for (let i = 0; i < orderSnList.length; i += 50) {
+          chunks.push(orderSnList.slice(i, i + 50));
+        }
+
+        for (const sns of chunks) {
+          const detailData = await shopeeDataClient.getOrderDetail(apiOpts, sns, [
+            "order_status",
+            "total_amount",
+            "currency",
+            "create_time",
+          ]);
+          const orders =
+            detailData.response?.order_list ?? detailData.order_list ?? [];
+          for (const o of orders) {
+            if (!recordedSchema) {
+              recordedSchema = true;
+              void recordPayloadSchemaDiscovery({
+                workspaceId,
+                connectionId,
+                provider: "shopee",
+                sample: o,
+              });
+            }
+            const ct = o.create_time as number | undefined;
+            if (ct == null) continue;
+            if (ct < rangeStart || ct > rangeEnd) continue;
+            const day = dayKeyFromUnixSeconds(ct);
+            const amt = Number(o.total_amount ?? 0) || 0;
+            const cur = daily.get(day) ?? { revenue: 0, orders: 0 };
+            cur.orders += 1;
+            cur.revenue += amt;
+            daily.set(day, cur);
+          }
+        }
+
+        const next = listData.response?.next_cursor ?? listData.next_cursor ?? "";
+        if (!next || next === cursor) break;
+        cursor = next;
+      }
     }
 
     const accountId = String(creds.shop_id);

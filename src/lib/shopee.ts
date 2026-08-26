@@ -455,10 +455,12 @@ export class ShopeeDataClient {
     pageSize = 50,
     orderStatus = "ALL"
   ) {
+    // Shopee strictly requires: time_to > time_from and time_to - time_from <= 15 days (15 * 86400)
+    const safeTimeTo = timeTo > timeFrom ? Math.min(timeTo, timeFrom + 14 * 86400) : timeFrom + 86400;
     const params: Record<string, string> = {
       time_range_field: "create_time",
       time_from: String(timeFrom),
-      time_to: String(timeTo),
+      time_to: String(safeTimeTo),
       page_size: String(Math.min(pageSize, 100)),
       order_status: orderStatus,
     };
