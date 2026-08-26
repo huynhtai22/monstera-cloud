@@ -8,6 +8,7 @@ import { logger } from "@/lib/logger";
 import { getValidShopeeCreds, shopeeDataClient } from "@/lib/shopee";
 import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";
 import { refreshConnectionLastDataThrough } from "@/lib/connection-data-through";
+import { recordPayloadSchemaDiscovery } from "@/lib/payload-schema-discovery";
 import { heartbeatConnectionSyncLease, type ConnectionLease } from "@/lib/connection-sync-lease";
 import { safeDecrypt } from "@/lib/encryption";
 import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentials";
@@ -52,6 +53,7 @@ export async function syncShopeeWarehouseMetrics(opts: {
 
     const daily = new Map<string, { revenue: number; orders: number }>();
     let cursor = "";
+    let recordedSchema = false;
 
     for (;;) {
       if (opts.lease) {
@@ -85,6 +87,15 @@ export async function syncShopeeWarehouseMetrics(opts: {
         const orders =
           detailData.response?.order_list ?? detailData.order_list ?? [];
         for (const o of orders) {
+          if (!recordedSchema) {
+            recordedSchema = true;
+            void recordPayloadSchemaDiscovery({
+              workspaceId,
+              connectionId,
+              provider: "shopee",
+              sample: o,
+            });
+          }
           const ct = o.create_time as number | undefined;
           if (ct == null) continue;
           if (ct < rangeStart || ct > rangeEnd) continue;

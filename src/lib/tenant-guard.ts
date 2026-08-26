@@ -52,6 +52,7 @@ export const TENANT_GUARDED_MODELS = new Set([
   "AgentJob",
   "AgentTrace",
   "EvidencePackRecord",
+  "PayloadSchemaDiscovery",
 ]);
 
 /**

@@ -18,6 +18,7 @@ import {
   type MetaMetricPayload,
 } from '@/lib/meta-sync-lock';
 import type { MetaInsightsRow, MetaAction } from '@/lib/meta-ads';
+import { recordPayloadSchemaDiscovery } from '@/lib/payload-schema-discovery';
 
 const CHUNK_SIZE = 100;
 
@@ -208,6 +209,14 @@ async function processChunk(
  */
 export async function ingestMetaRows(opts: IngestMetaRowsOpts): Promise<IngestResult> {
   const { rows, ...rest } = opts;
+  if (rows[0]) {
+    void recordPayloadSchemaDiscovery({
+      workspaceId: opts.workspaceId,
+      connectionId: opts.connectionId,
+      provider: "meta_ads",
+      sample: rows[0],
+    });
+  }
   let totalUpserted = 0;
   let totalFailed = 0;
 
