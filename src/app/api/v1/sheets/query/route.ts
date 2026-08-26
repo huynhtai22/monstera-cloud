@@ -26,8 +26,20 @@ const PLATFORM_BY_SOURCE: Record<string, string> = {
   google_ads: "google_ads",
   tiktok_ads: "tiktok_business",
   tiktok_business: "tiktok_business",
+  tiktok_gmv_max: "tiktok_gmv_max",
   shopee: "shopee",
 };
+
+const GMV_MAX_HEADERS = [
+  "date",
+  "store_id",
+  "campaign_id",
+  "item_id",
+  "gmv_max_cost",
+  "gmv_max_gross_revenue",
+  "gmv_max_orders",
+  "gmv_max_roi",
+];
 
 function parseDate(value: unknown, endOfDay = false): Date | undefined {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
@@ -56,6 +68,58 @@ export async function POST(req: Request) {
       select: { userId: true },
     });
     if (!membership) return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+
+    // Handle dedicated TikTok GMV Max delivery
+    if (source === "tiktok_gmv_max") {
+      if (connectionId) {
+        const connection = await prisma.connection.findFirst({
+          where: { id: connectionId, workspaceId },
+          select: { id: true },
+        });
+        if (!connection) return NextResponse.json({ error: "Connection not found" }, { status: 404 });
+      }
+
+      const startDate = parseDate(start_date);
+      const endDate = parseDate(end_date, true);
+
+      const where: any = { workspaceId };
+      if (connectionId) where.connectionId = connectionId;
+      if (startDate || endDate) {
+        where.date = {
+          ...(startDate ? { gte: startDate } : {}),
+          ...(endDate ? { lte: endDate } : {}),
+        };
+      }
+
+      const gmvRows = await prisma.tikTokGmvMaxMetric.findMany({
+        where,
+        orderBy: [{ date: "desc" }, { id: "asc" }],
+        take: 100_000,
+      });
+
+      const rows = gmvRows.map((row) => [
+        row.date.toISOString().slice(0, 10),
+        row.storeId,
+        row.campaignId,
+        row.itemId || row.liveRoomId || "",
+        row.gmvMaxCost,
+        row.gmvMaxGrossRevenue,
+        row.gmvMaxOrders,
+        row.gmvMaxRoi,
+      ]);
+
+      return NextResponse.json({
+        tabName: "TikTok GMV Max",
+        disclaimer: "Product GMV Max uses 1-day blended attribution (paid + organic + affiliate). Do not compare with standard ad ROAS.",
+        headers: GMV_MAX_HEADERS,
+        rows,
+        totalRows: rows.length,
+        truncated: false,
+        nextCursor: null,
+        asOf: new Date().toISOString(),
+        freshness: gmvRows[0]?.ingestedAt ? "fresh" : "never",
+      });
+    }
 
     const platform = typeof source === "string" ? PLATFORM_BY_SOURCE[source] : undefined;
     if (source && !platform) return NextResponse.json({ error: `Unsupported source: ${source}` }, { status: 400 });
