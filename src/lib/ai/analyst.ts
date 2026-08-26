@@ -53,7 +53,9 @@ export async function runAnalystTurn(opts: {
   clientId?: string;
   acknowledgeBestEffort?: boolean;
   jobId?: string;
+  role?: AiToolContext["role"];
 }): Promise<AnalystTurnResult> {
+  const role = opts.role ?? "interactive";
   const classified: QuestionClass = classifyQuestion(opts.question);
   if (classified.refuse) {
     return {
@@ -64,15 +66,16 @@ export async function runAnalystTurn(opts: {
     };
   }
 
-  if (classified.tools.length > 2 || classified.needsQueue) {
+  // Interactive turns queue deeper briefs; the nightly worker must execute them.
+  if (role !== "cron" && (classified.tools.length > 2 || classified.needsQueue)) {
     return { status: "queued", queuedCopy: QUEUED_COPY };
   }
 
   const ctx: AiToolContext = {
     workspaceId: opts.workspaceId,
     actorUserId: opts.actorUserId,
-    jobId: opts.jobId ?? "interactive",
-    role: "interactive",
+    jobId: opts.jobId ?? (role === "cron" ? "cron" : "interactive"),
+    role,
   };
   const window = defaultWindow();
   const citations: EvidencePack["citations"] = [];
