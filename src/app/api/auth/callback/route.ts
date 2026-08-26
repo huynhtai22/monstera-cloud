@@ -92,8 +92,11 @@ export async function GET(request: NextRequest) {
         // Get provider adapter
         const provider = getProvider(providerId);
         
-        // Special handling for Shopee which sends shop_id separately
-        const shopId = searchParams.get("shop_id");
+        // Special handling for Shopee which sends shop_id, shopId, or main_account_id separately
+        const shopId =
+            searchParams.get("shop_id") ||
+            searchParams.get("shopId") ||
+            searchParams.get("main_account_id");
         const exchangeCode = shopId ? `${code}|${shopId}` : code;
         
         // Exchange code for credentials

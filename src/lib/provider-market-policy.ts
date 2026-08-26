@@ -19,8 +19,10 @@ export type ShopeeCapability = keyof typeof PROVIDER_MARKET_POLICIES.shopee;
  */
 export function isShopeeRegionEligible(
   region: string | null | undefined,
-  capability: ShopeeCapability = "ads_reporting"
+  capability: ShopeeCapability = "ads_reporting",
+  isSandbox = false
 ): boolean {
+  if (isSandbox) return true;
   if (!region) return false;
   const normalized = region.trim().toUpperCase();
   const allowed = PROVIDER_MARKET_POLICIES.shopee[capability] as readonly string[];
@@ -33,10 +35,12 @@ export function isShopeeRegionEligible(
  */
 export function assertShopeeRegionEligible(
   region: string | null | undefined,
-  capability: ShopeeCapability = "ads_reporting"
+  capability: ShopeeCapability = "ads_reporting",
+  isSandbox = false
 ): void {
+  if (isSandbox) return;
   const normalized = (region || "").trim().toUpperCase();
-  if (!isShopeeRegionEligible(normalized, capability)) {
+  if (!isShopeeRegionEligible(normalized, capability, isSandbox)) {
     const allowed = PROVIDER_MARKET_POLICIES.shopee[capability].join(", ");
     throw new Error(
       `Shopee capability '${capability}' is currently restricted to [${allowed}] shops. Authoritative shop region is '${normalized || "UNKNOWN"}'.`

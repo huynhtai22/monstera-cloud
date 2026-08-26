@@ -49,7 +49,8 @@ function shopeeApiHasError(payload: Record<string, unknown>): boolean {
 
 function assertShopeeTokenPayload(
   payload: Record<string, unknown>,
-  context: string
+  context: string,
+  fallbackShopId?: number
 ): ShopeeTokenResponse {
   const access = payload.access_token;
   if (typeof access !== "string" || !access) {
@@ -57,7 +58,25 @@ function assertShopeeTokenPayload(
       `${context}: missing access_token after unwrap (keys: ${Object.keys(payload).join(", ")})`
     );
   }
-  return payload as unknown as ShopeeTokenResponse;
+
+  const rawShopIdList = payload.shop_id_list;
+  const listShopId = Array.isArray(rawShopIdList) && rawShopIdList.length > 0 ? Number(rawShopIdList[0]) : undefined;
+  const directShopId = payload.shop_id != null ? Number(payload.shop_id) : undefined;
+  const resolvedShopId = (Number.isFinite(directShopId) && directShopId! > 0)
+    ? directShopId!
+    : (Number.isFinite(listShopId) && listShopId! > 0)
+      ? listShopId!
+      : (fallbackShopId && Number.isFinite(fallbackShopId) && fallbackShopId > 0)
+        ? fallbackShopId
+        : 0;
+
+  return {
+    access_token: String(payload.access_token),
+    refresh_token: String(payload.refresh_token || ""),
+    expire_in: Number(payload.expire_in || 14400),
+    shop_id: resolvedShopId,
+    merchant_id_list: Array.isArray(payload.merchant_id_list) ? payload.merchant_id_list.map(Number) : undefined,
+  };
 }
 
 /** Trim, strip BOM, and remove a single layer of wrapping quotes (common when pasting into host env UIs). */
@@ -199,7 +218,7 @@ export class ShopeeClient {
         `Shopee token error: ${String(json.error ?? "")} — ${String(json.message ?? "")}`
       );
     }
-    return assertShopeeTokenPayload(json, "Shopee token/get");
+    return assertShopeeTokenPayload(json, "Shopee token/get", shopId);
   }
 
   /**
@@ -237,7 +256,7 @@ export class ShopeeClient {
         `Shopee refresh error: ${String(json.error ?? "")} — ${String(json.message ?? "")}`
       );
     }
-    return assertShopeeTokenPayload(json, "Shopee access_token/get");
+    return assertShopeeTokenPayload(json, "Shopee access_token/get", shopId);
   }
 }
 
@@ -945,6 +964,14 @@ export async function getValidShopeeCreds(connectionId: string): Promise<ShopeeC
 
   const raw = JSON.parse(safeDecrypt(conn.credentials)) as Record<string, unknown>;
   const creds = normalizeStoredShopeeCreds(raw);
+
+  // Fallback: resolve shop_id from connection.remoteAccountId if missing or 0 in payload
+  if ((!creds.shop_id || creds.shop_id === 0) && conn.remoteAccountId) {
+    const remoteIdNum = Number(conn.remoteAccountId.trim());
+    if (Number.isFinite(remoteIdNum) && remoteIdNum > 0) {
+      creds.shop_id = remoteIdNum;
+    }
+  }
 
   if (!creds.access_token || !creds.refresh_token || !creds.shop_id) {
     throw new Error(`Shopee connection ${connectionId} has incomplete credentials`);
