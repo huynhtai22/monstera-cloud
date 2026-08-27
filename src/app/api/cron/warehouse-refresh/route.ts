@@ -8,6 +8,7 @@ import { syncConnectionData } from "@/lib/sync-connection";
 import { runPostWarehouseRefreshQualityChecks } from "@/lib/observability/data-quality";
 import { claimNextImportJob } from "@/lib/warehouse-import-job";
 import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
+import { workspaceAllowsScheduledRefresh } from "@/lib/plan-config";
 
 const PILOT_PROVIDERS = new Set(["meta_ads", "google_ads", "tiktok_business", "shopee"]);
 
@@ -47,6 +48,7 @@ export async function GET(request: Request) {
   });
 
   const jobs = workspaces.flatMap((workspace) => {
+    if (!workspaceAllowsScheduledRefresh(workspace.plan)) return [];
     const enabled = new Set(workspace.providerAccess.map((access) => access.provider));
     return workspace.connections
       .filter((connection) => PILOT_PROVIDERS.has(connection.provider) && enabled.has(connection.provider))

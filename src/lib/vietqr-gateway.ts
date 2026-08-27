@@ -34,6 +34,16 @@ function generateOrderCode(): number {
     return Math.floor(100000 + Math.random() * 900000);
 }
 
+/** PayOS / VietQR amounts are VND PPP only. Never use PLAN_PRICING usdMonthly. */
+export function vietQrAmountForPlan(
+    plan: PlanName,
+    billingCycle: "monthly" | "annual",
+): number {
+    const cfg = PLAN_PRICING[plan] || PLAN_PRICING.free;
+    const monthlyPrice = billingCycle === "annual" ? cfg.vndAnnualMonthly : cfg.vndMonthly;
+    return billingCycle === "annual" ? monthlyPrice * 12 : monthlyPrice;
+}
+
 /**
  * Create a new Domestic VietQR payment order
  */
@@ -44,11 +54,13 @@ export async function createVietQrOrder(opts: {
     workspaceId?: string;
     returnUrl: string;
     cancelUrl: string;
+    invoiceCurrency?: "VND" | "USD";
 }): Promise<VietQrOrder> {
+    if (opts.invoiceCurrency && opts.invoiceCurrency !== "VND") {
+        throw new Error("PayOS/VietQR is VND-only. USD uses Paddle.");
+    }
     const orderCode = generateOrderCode();
-    const cfg = PLAN_PRICING[opts.plan] || PLAN_PRICING.free;
-    const monthlyPrice = opts.billingCycle === "annual" ? cfg.vndAnnualMonthly : cfg.vndMonthly;
-    const totalAmount = opts.billingCycle === "annual" ? monthlyPrice * 12 : monthlyPrice;
+    const totalAmount = vietQrAmountForPlan(opts.plan, opts.billingCycle);
 
     const memo = `MC${orderCode}`;
     const paymentLink = await createPayOSPaymentLink({

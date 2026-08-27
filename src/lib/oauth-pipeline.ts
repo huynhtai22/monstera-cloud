@@ -44,15 +44,10 @@ export async function ensureDefaultPipelineAfterSourceConnect(params: {
 
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    select: { ownerId: true },
+    select: { ownerId: true, plan: true },
   });
   const ownerId = workspace?.ownerId ?? actingUserId;
-
-  const owner = await prisma.user.findUnique({
-    where: { id: ownerId },
-    select: { plan: true },
-  });
-  const limits = getPlanLimits(owner?.plan ?? "free");
+  const limits = getPlanLimits(workspace?.plan ?? "free");
   const existingCount = await prisma.pipeline.count({ where: { workspaceId } });
   if (limits.maxPipelines !== Infinity && existingCount >= limits.maxPipelines) {
     return { pipelineCreated: false, needsDestination: false, skippedReason: "limit" };

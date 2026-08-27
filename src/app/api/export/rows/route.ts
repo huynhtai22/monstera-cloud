@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { resolveApiKey } from "@/lib/api-key-security";
 import { warehouseAdsCsvRows, warehouseRetailOrdersCsvRows } from "@/lib/warehouse-csv-export";
+import { assertCsvExportAllowed, toPlanLimitResponse } from "@/lib/plan-entitlements";
 
 /**
  * GET /api/export/rows
@@ -38,6 +39,13 @@ export async function GET(request: Request) {
         });
 
         const workspaceId = apiKey.workspaceId;
+        try {
+            await assertCsvExportAllowed(apiKey.workspace.plan);
+        } catch (error) {
+            const planLimit = toPlanLimitResponse(error);
+            if (planLimit) return planLimit;
+            throw error;
+        }
 
         // 2. Find a Source Connection to pull from (Assuming Shopee for now)
         const { searchParams } = new URL(request.url);

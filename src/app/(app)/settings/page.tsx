@@ -173,12 +173,14 @@ export default function SettingsPage() {
     const handleGenerateKey = async () => {
         setIsGenerating(true);
         try {
-            const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Pilot API key" }) });
+            const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Workspace API key" }) });
+            const data = await res.json().catch(() => ({}));
             if (res.ok) {
-                const data = await res.json();
                 setNewlyGeneratedKey(data.key);
                 fetchApiKeys();
                 toast.success("API Key generated");
+            } else {
+                toast.error(data.error || "Could not generate API key");
             }
         } finally { setIsGenerating(false); }
     };
@@ -276,6 +278,7 @@ export default function SettingsPage() {
                             newlyGeneratedKey={newlyGeneratedKey}
                             isGenerating={isGenerating}
                             canManage={canManage}
+                            allowApiKeys={activeWorkspace?.entitlements?.allowApiKeys !== false && workspacePlan !== "free"}
                             handleGenerateKey={handleGenerateKey}
                             handleDeleteKey={handleDeleteKey}
                         />

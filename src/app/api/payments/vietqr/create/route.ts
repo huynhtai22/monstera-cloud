@@ -28,7 +28,14 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
         const body = await req.json();
-        const { plan, billingCycle = "monthly" } = body;
+        const { plan, billingCycle = "monthly", invoiceCurrency, currency } = body;
+        const invoice = String(invoiceCurrency || currency || "VND").toUpperCase();
+        if (invoice === "USD") {
+            return NextResponse.json(
+                { error: "PayOS/VietQR is VND-only. USD uses Paddle." },
+                { status: 400 },
+            );
+        }
 
         if (!plan || !["starter", "professional", "enterprise"].includes(plan)) {
             return NextResponse.json({ error: "Invalid plan specified" }, { status: 400 });
@@ -42,6 +49,7 @@ export async function POST(req: NextRequest) {
             userEmail: session.user.email,
             returnUrl: `${origin}/pricing?payment=success`,
             cancelUrl: `${origin}/pricing?payment=cancelled`,
+            invoiceCurrency: "VND",
         });
 
         return NextResponse.json({

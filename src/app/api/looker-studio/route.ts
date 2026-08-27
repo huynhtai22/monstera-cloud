@@ -7,6 +7,7 @@ import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-ca
 import { hashApiKey, resolveApiKey } from "@/lib/api-key-security";
 import { queryWarehouse } from "@/lib/warehouse-query";
 import { createNodeRedis } from "@/lib/node-redis";
+import { assertLookerAllowed, toPlanLimitResponse } from "@/lib/plan-entitlements";
 
 type RateLimitResult = {
   success: boolean;
@@ -145,6 +146,7 @@ export async function GET(req: NextRequest) {
       }
       workspaceId = workspace.id;
       workspacePlan = workspace.plan;
+      await assertLookerAllowed({ plan: workspacePlan, auth: "jwt-sheets" });
 
       const ping = req.nextUrl.searchParams.get("ping");
       if (ping === "1") return NextResponse.json({ ok: true });
@@ -156,6 +158,10 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
       }
 
+      workspaceId = keyRecord.workspaceId;
+      workspacePlan = keyRecord.workspace.plan;
+      await assertLookerAllowed({ plan: workspacePlan, auth: "api-key-looker" });
+
       const ping = req.nextUrl.searchParams.get("ping");
       if (ping === "1") return NextResponse.json({ ok: true });
 
@@ -163,8 +169,6 @@ export async function GET(req: NextRequest) {
         where: { id: keyRecord.id },
         data: { lastUsedAt: new Date() },
       });
-      workspaceId = keyRecord.workspaceId;
-      workspacePlan = keyRecord.workspace.plan;
     }
 
     // Apply per-API-key rate limiting. For Google JWT we key by workspace id; for API keys we key by the key string.
@@ -308,6 +312,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(resObj);
   } catch (error: unknown) {
+    const planLimit = toPlanLimitResponse(error);
+    if (planLimit) return planLimit;
     logger.error("Looker Studio API Error:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },

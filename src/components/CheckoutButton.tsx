@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { metaPixelCustom } from "@/lib/meta-pixel";
 import { useRouter } from "next/navigation";
+import { pilotSupportHref } from "@/lib/checkout-api-path";
 
 interface CheckoutButtonProps {
   plan: "starter" | "professional";
@@ -14,11 +15,26 @@ interface CheckoutButtonProps {
   children: React.ReactNode;
 }
 
-export function CheckoutButton({ plan, metaPixelEvent, metaPixelParams, className }: CheckoutButtonProps) {
+/** Catalog approved 2026-08-27. This button still does not charge; invoiceCurrency is kept for dual-gate cutover. */
+export function CheckoutButton({
+  plan,
+  billingCycle,
+  invoiceCurrency,
+  metaPixelEvent,
+  metaPixelParams,
+  className,
+}: CheckoutButtonProps) {
   const router = useRouter();
   function requestPilotAccess() {
-    if (metaPixelEvent) metaPixelCustom(metaPixelEvent, { plan, ...metaPixelParams });
-    router.push(`/support?pilot=1&plan=${encodeURIComponent(plan)}`);
+    if (metaPixelEvent) {
+      metaPixelCustom(metaPixelEvent, {
+        plan,
+        ...(billingCycle ? { billingCycle } : {}),
+        ...(invoiceCurrency ? { invoiceCurrency } : {}),
+        ...metaPixelParams,
+      });
+    }
+    router.push(pilotSupportHref({ plan, billingCycle, invoiceCurrency }));
   }
   return <button type="button" onClick={requestPilotAccess} className={cn("flex w-full items-center justify-center", className)}>Request pilot access</button>;
 }

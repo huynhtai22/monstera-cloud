@@ -377,6 +377,20 @@ export default function SourcesPage() {
             }
         }
 
+        if (params.get("error") === "plan_limit") {
+            setSourceOutcome({
+                kind: "error",
+                title: "Plan limit reached",
+                detail: params.get("message") || "This workspace cannot connect another source on the current plan.",
+                action: {
+                    href: params.get("upgrade") || "/settings?tab=billing",
+                    label: "View plans",
+                },
+            });
+            window.history.replaceState({}, "", "/sources");
+            return;
+        }
+
         if (params.get("oauth_success") !== "1") return;
         const provider = params.get("provider") ?? "source";
         const pipelineReady = params.get("pipeline_ready") === "1";

@@ -6,6 +6,11 @@ import { logger } from "@/lib/logger";
 import { upsertSourceConnection } from "@/lib/connection-upsert";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { isPilotMode } from "@/lib/pilot-mode";
+import {
+    assertCanCreateSourceConnection,
+    assertDestinationAllowed,
+    toPlanLimitResponse,
+} from "@/lib/plan-entitlements";
 
 export async function POST(request: Request) {
     try {
@@ -50,15 +55,28 @@ export async function POST(request: Request) {
         const remoteAccountId = bodyRemoteAccountId ||
             (name ? name.replace(/\s+/g, "_").toLowerCase() : provider);
 
+        const parsedCredentials = typeof credentials === "string"
+            ? JSON.parse(credentials || "{}")
+            : (credentials || {});
+
+        if (type === "source") {
+            await assertCanCreateSourceConnection({
+                workspaceId,
+                provider,
+                remoteAccountId,
+                credentials: parsedCredentials,
+            });
+        } else {
+            await assertDestinationAllowed({ workspaceId, provider });
+        }
+
         const connection = await upsertSourceConnection({
             workspaceId,
             provider,
             remoteAccountId,
             name,
             type,
-            credentials: typeof credentials === "string"
-                ? JSON.parse(credentials || "{}")
-                : (credentials || {}),
+            credentials: parsedCredentials,
             status: body.status || "connected",
             clientId: clientId || undefined,
         });
@@ -67,6 +85,8 @@ export async function POST(request: Request) {
     } catch (error) {
         const rbac = toRbacResponse(error);
         if (rbac) return rbac;
+        const planLimit = toPlanLimitResponse(error);
+        if (planLimit) return planLimit;
         logger.error("Error creating connection:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }
