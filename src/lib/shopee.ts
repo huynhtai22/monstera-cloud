@@ -423,13 +423,18 @@ export class ShopeeDataClient {
     opts: ShopeeApiOptions,
     offset = 0,
     pageSize = 50,
-    itemStatus = "NORMAL"
+    itemStatus = "NORMAL",
+    updateTimeFrom?: number,
+    updateTimeTo?: number,
   ) {
-    return shopeeGet("/api/v2/product/get_item_list", {
+    const params: Record<string, string> = {
       offset: String(offset),
       page_size: String(Math.min(pageSize, 100)),
       item_status: itemStatus,
-    }, opts);
+    };
+    if (updateTimeFrom !== undefined) params.update_time_from = String(updateTimeFrom);
+    if (updateTimeTo !== undefined) params.update_time_to = String(updateTimeTo);
+    return shopeeGet("/api/v2/product/get_item_list", params, opts);
   }
 
   /**
@@ -965,12 +970,12 @@ export function extractShopeeAdsPerformanceRows(payload: unknown): unknown[] {
   if (Array.isArray(inner)) return inner;
   if (inner && typeof inner === "object" && !Array.isArray(inner)) {
     const r = inner as Record<string, unknown>;
-    for (const key of ["list", "performance_list", "data", "result"]) {
+    for (const key of ["ads_performance_list", "list", "performance_list", "data", "result"]) {
       const v = r[key];
       if (Array.isArray(v)) return v;
     }
   }
-  for (const key of ["list", "performance_list", "data"]) {
+  for (const key of ["ads_performance_list", "list", "performance_list", "data"]) {
     const v = o[key];
     if (Array.isArray(v)) return v;
   }

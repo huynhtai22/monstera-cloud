@@ -36,7 +36,7 @@ describe("Shopee catalog discovery", () => {
       }), { status: 200 });
     }) as typeof fetch;
 
-    const pages = await shopeeAdsClient.getAllProductLevelCampaignIds({ accessToken: "test-token", shopId: 227420569, sandbox: true });
+    const pages = await shopeeAdsClient.getAllProductLevelCampaignPages({ accessToken: "test-token", shopId: 227420569, sandbox: true });
     assert.equal(pages.length, 2);
     assert.deepEqual(offsets, ["0", "1"]);
     const first = pages[0] as { campaign_list?: Array<{ campaign_id: number; ad_type: string }> };
