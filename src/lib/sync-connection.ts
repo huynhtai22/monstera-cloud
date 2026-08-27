@@ -16,6 +16,7 @@ import {
   syncLazadaWarehouseMetrics,
 } from "@/lib/sync-marketplace-warehouse";
 import { syncShopeeAdsWarehouseMetrics } from "@/lib/sync-shopee-ads-warehouse";
+import { syncShopeeCatalogWarehouse } from "@/lib/sync-shopee-catalog-warehouse";
 
 // Meta imports
 import { ingestMetaRows } from "@/lib/meta-ingest";
@@ -150,6 +151,7 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
         since: opts.since ?? r.since,
         until: opts.until ?? r.until,
       };
+      const catalog = await syncShopeeCatalogWarehouse({ connectionId, workspaceId });
       const orders = await syncShopeeWarehouseMetrics({
         connectionId,
         workspaceId,
@@ -157,12 +159,6 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
         lease,
         ...range,
       });
-      if (!orders.success) {
-        const result = makeFailedSyncResult(orders.error ?? "Shopee orders sync failed");
-        await persistConnectionSyncOutcome(connectionId, result, lease);
-        return result;
-      }
-
       const ads = await syncShopeeAdsWarehouseMetrics({
         connectionId,
         workspaceId,
@@ -177,8 +173,10 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
       }
 
       const children: SyncChildResult[] = [
-        { id: "orders", kind: "connection", ok: orders.success, rowsIngested: orders.rowsIngested, error: orders.error },
-        { id: "ads", kind: "connection", ok: ads.success, rowsIngested: ads.rowsIngested, error: ads.error },
+        { id: "campaign_catalog", kind: "connection", ok: catalog.campaignsSuccess, rowsIngested: catalog.campaignsWritten, error: catalog.campaignsError, retryable: !catalog.campaignsSuccess && isRetryableSyncError(catalog.campaignsError) },
+        { id: "product_catalog", kind: "connection", ok: catalog.productsSuccess, rowsIngested: catalog.productsWritten, error: catalog.productsError, retryable: !catalog.productsSuccess && isRetryableSyncError(catalog.productsError) },
+        { id: "orders", kind: "connection", ok: orders.success, rowsIngested: orders.rowsIngested, error: orders.error, retryable: !orders.success && isRetryableSyncError(orders.error) },
+        { id: "ads_performance", kind: "connection", ok: ads.success, rowsIngested: ads.rowsIngested, error: ads.error, retryable: !ads.success && isRetryableSyncError(ads.error) },
       ];
       const summary = summarizeSyncOutcome(children);
       await persistConnectionSyncOutcome(connectionId, summary, lease);

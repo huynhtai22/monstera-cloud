@@ -122,7 +122,8 @@ export function mapShopeeRowToCampaignMetricPayload(
   const breakdownHash = generateShopeeBreakdownHash(extraDims);
 
   const impressions = Math.round(num(row.impression ?? row.impressions));
-  const clicks = Math.round(num(row.clicks));
+  // Shopee examples use both `click` and `clicks` across Ads responses.
+  const clicks = Math.round(num(row.click ?? row.clicks));
   const spend = num(row.expense ?? row.ad_expense);
   const revenue = num(row.broad_gmv ?? row.direct_gmv);
   const conversions = num(row.broad_order ?? row.direct_order);

@@ -15,7 +15,7 @@ export async function GET() {
     {
       ...releaseIdentity,
       buildTime: process.env.BUILD_TIME || null,
-      schemaVersion: "20260819000000_support_tickets",
+      schemaVersion: "20260827120000_shopee_sandbox_catalog",
       environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
     },
     { headers: { "Cache-Control": "no-store, max-age=0" } },

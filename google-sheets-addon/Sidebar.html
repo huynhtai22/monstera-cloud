@@ -147,6 +147,14 @@
     <option value="account">Account</option>
   </select>
 
+  <label>Report type</label>
+  <select id="reportType">
+    <option value="">Metrics report</option>
+    <option value="shopee_products">Shopee Products</option>
+    <option value="shopee_campaigns">Shopee Campaigns</option>
+    <option value="shopee_ads_performance">Shopee Ads Performance</option>
+  </select>
+
   <label for="timeframe">Time Frame</label>
   <select id="timeframe" onchange="handleTimeframeChange()">
     <option value="last_30d">Last 30 Days (Default)</option>
@@ -365,6 +373,7 @@
       workspaceId: document.getElementById('workspace').value,
       platform:    document.getElementById('platform').value    || null,
       reportLevel: document.getElementById('reportLevel').value || 'adset',
+      reportType:  document.getElementById('reportType').value  || '',
       startDate:   document.getElementById('startDate').value,
       endDate:     document.getElementById('endDate').value,
       targetCell:  document.getElementById('targetCell').value  || 'A1',

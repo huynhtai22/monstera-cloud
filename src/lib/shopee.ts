@@ -423,13 +423,18 @@ export class ShopeeDataClient {
     opts: ShopeeApiOptions,
     offset = 0,
     pageSize = 50,
-    itemStatus = "NORMAL"
+    itemStatus = "NORMAL",
+    updateTimeFrom?: number,
+    updateTimeTo?: number,
   ) {
-    return shopeeGet("/api/v2/product/get_item_list", {
+    const params: Record<string, string> = {
       offset: String(offset),
       page_size: String(Math.min(pageSize, 100)),
       item_status: itemStatus,
-    }, opts);
+    };
+    if (updateTimeFrom !== undefined) params.update_time_from = String(updateTimeFrom);
+    if (updateTimeTo !== undefined) params.update_time_to = String(updateTimeTo);
+    return shopeeGet("/api/v2/product/get_item_list", params, opts);
   }
 
   /**
@@ -668,6 +673,27 @@ export class ShopeeAdsClient {
     return Array.from(new Set(allIds));
   }
 
+  /** Raw list pages retain campaign identity metadata and provider request IDs. */
+  async getAllProductLevelCampaignPages(opts: ShopeeApiOptions): Promise<unknown[]> {
+    const pages: unknown[] = [];
+    let offset = 0;
+    const limit = 100;
+    for (;;) {
+      const json = await shopeeGet(
+        ADS_PATH_PRODUCT_CAMPAIGN_ID_LIST,
+        { ad_type: "all", offset: String(offset), limit: String(limit) },
+        opts,
+      );
+      pages.push(json);
+      const response = (json.response || json) as Record<string, unknown>;
+      const list = Array.isArray(response.campaign_list) ? response.campaign_list : [];
+      if (response.has_next_page !== true || list.length === 0) break;
+      offset += list.length;
+      if (offset > 100_000) throw new Error("Shopee campaign pagination exceeded safe limit");
+    }
+    return pages;
+  }
+
   /**
    * 2. Fetch campaign settings in batches of <= 100 campaign IDs.
    * GET /api/v2/ads/get_product_level_campaign_setting_info
@@ -737,6 +763,21 @@ export class ShopeeAdsClient {
     return settings;
   }
 
+  /** Raw setting pages used only for optional catalog enrichment and diagnostics. */
+  async getProductLevelCampaignSettingPages(opts: ShopeeApiOptions, campaignIds: string[]): Promise<unknown[]> {
+    const pages: unknown[] = [];
+    for (let i = 0; i < campaignIds.length; i += 100) {
+      const ids = campaignIds.slice(i, i + 100);
+      if (!ids.length) continue;
+      pages.push(await shopeeGet(
+        ADS_PATH_PRODUCT_CAMPAIGN_SETTING,
+        { campaign_id_list: ids.join(","), info_type_list: "1,2,3,4" },
+        opts,
+      ));
+    }
+    return pages;
+  }
+
   /**
    * 3. Fetch product campaign daily advertising performance.
    * GET /api/v2/ads/get_product_campaign_daily_performance
@@ -750,7 +791,7 @@ export class ShopeeAdsClient {
   ): Promise<ShopeeProductCampaignDailyMetric[]> {
     if (!campaignIds.length) return [];
 
-    const dateChunks = chunkDateRangeIntoMonths(sinceYmd, untilYmd, 30);
+    const dateChunks = chunkDateRangeIntoMonths(sinceYmd, untilYmd, 28);
     const results: ShopeeProductCampaignDailyMetric[] = [];
 
     for (const dateRange of dateChunks) {
@@ -929,12 +970,12 @@ export function extractShopeeAdsPerformanceRows(payload: unknown): unknown[] {
   if (Array.isArray(inner)) return inner;
   if (inner && typeof inner === "object" && !Array.isArray(inner)) {
     const r = inner as Record<string, unknown>;
-    for (const key of ["list", "performance_list", "data", "result"]) {
+    for (const key of ["ads_performance_list", "list", "performance_list", "data", "result"]) {
       const v = r[key];
       if (Array.isArray(v)) return v;
     }
   }
-  for (const key of ["list", "performance_list", "data"]) {
+  for (const key of ["ads_performance_list", "list", "performance_list", "data"]) {
     const v = o[key];
     if (Array.isArray(v)) return v;
   }
