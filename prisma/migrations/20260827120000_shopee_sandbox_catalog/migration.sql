@@ -63,10 +63,10 @@ CREATE TABLE "ShopeeCatalogSyncState" (
     CONSTRAINT "ShopeeCatalogSyncState_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "ShopeeCampaign_connectionId_environment_shopId_externalCampaignId_key" ON "ShopeeCampaign"("connectionId", "environment", "shopId", "externalCampaignId");
+CREATE UNIQUE INDEX "ShopeeCampaign_connectionId_environment_shopId_externalCamp_key" ON "ShopeeCampaign"("connectionId", "environment", "shopId", "externalCampaignId");
 CREATE INDEX "ShopeeCampaign_workspaceId_environment_shopId_idx" ON "ShopeeCampaign"("workspaceId", "environment", "shopId");
 CREATE INDEX "ShopeeCampaign_connectionId_syncedAt_idx" ON "ShopeeCampaign"("connectionId", "syncedAt");
-CREATE UNIQUE INDEX "ShopeeProduct_connectionId_environment_shopId_externalItemId_key" ON "ShopeeProduct"("connectionId", "environment", "shopId", "externalItemId");
+CREATE UNIQUE INDEX "ShopeeProduct_connectionId_environment_shopId_externalItemI_key" ON "ShopeeProduct"("connectionId", "environment", "shopId", "externalItemId");
 CREATE INDEX "ShopeeProduct_workspaceId_environment_shopId_idx" ON "ShopeeProduct"("workspaceId", "environment", "shopId");
 CREATE INDEX "ShopeeProduct_connectionId_syncedAt_idx" ON "ShopeeProduct"("connectionId", "syncedAt");
 CREATE INDEX "ProviderSyncRun_workspaceId_connectionId_startedAt_idx" ON "ProviderSyncRun"("workspaceId", "connectionId", "startedAt");
