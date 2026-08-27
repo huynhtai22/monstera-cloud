@@ -14,10 +14,12 @@ import {
   googleAdsOAuthRedirectUri,
   lazadaOAuthRedirectUri,
   metaAdsOAuthRedirectUri,
+  providerOAuthCallbackUri,
 } from '@/lib/oauth-callback-urls';
 import { isAmazonOAuthEnvConfigured } from '@/lib/amazon-sp';
 import { isLazadaOAuthEnvConfigured } from '@/lib/lazada';
 import { PRODUCT_SITE_URL } from '@/lib/site-url';
+import { isProviderConfigured } from '@/lib/oauth-framework/registry';
 
 /**
  * Public config for the console (no secrets). Used to show/hide connect cards.
@@ -29,7 +31,7 @@ export async function GET(request: Request) {
     tiktokBusiness: isTikTokBusinessConnectEnabled(),
     shopee: isShopeeConnectEnabled(),
     metaAds: isMetaAdsConnectEnabled(),
-    googleAds: isGoogleAdsConnectEnabled(),
+    googleAds: isGoogleAdsConnectEnabled() && isProviderConfigured('google_ads'),
     amazon:
       isAmazonConnectEnabled() && isAmazonOAuthEnvConfigured(),
     lazada: isLazadaConnectEnabled() && isLazadaOAuthEnvConfigured(),
@@ -41,10 +43,10 @@ export async function GET(request: Request) {
       amazon: amazonSpOAuthRedirectUri(request),
       lazada: lazadaOAuthRedirectUri(request),
     },
-    /** Same paths on MonsteraCloud.com — paste these into Meta / Google Cloud consoles for production. */
+    /** Exact production callback URIs to register with each OAuth provider. */
     oauthCallbacksProduction: {
       metaAds: `${PRODUCT_SITE_URL}/api/auth/meta-ads/callback`,
-      googleAds: `${PRODUCT_SITE_URL}/api/auth/google-ads/callback`,
+      googleAds: providerOAuthCallbackUri(PRODUCT_SITE_URL, 'google_ads'),
       amazon: `${PRODUCT_SITE_URL}/api/auth/amazon/callback`,
       lazada: `${PRODUCT_SITE_URL}/api/auth/lazada/callback`,
     },

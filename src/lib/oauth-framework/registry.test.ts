@@ -12,6 +12,9 @@ const trackedKeys = [
   "AMAZON_LWA_CLIENT_ID",
   "AMAZON_LWA_CLIENT_SECRET",
   "AMAZON_CONNECT_ENABLED",
+  "GOOGLE_ADS_CLIENT_ID",
+  "GOOGLE_ADS_CLIENT_SECRET",
+  "GOOGLE_ADS_DEVELOPER_TOKEN",
 ] as const;
 
 const originalEnv = Object.fromEntries(
@@ -52,5 +55,15 @@ describe("OAuth provider configuration aliases", () => {
     assert.equal(isProviderEnabled("amazon"), false);
     process.env.AMAZON_CONNECT_ENABLED = "true";
     assert.equal(isProviderEnabled("amazon"), true);
+  });
+
+  it("requires the Google Ads developer token before exposing the connector", () => {
+    clearTrackedEnv();
+    process.env.GOOGLE_ADS_CLIENT_ID = "google-client";
+    process.env.GOOGLE_ADS_CLIENT_SECRET = "google-secret";
+    assert.equal(isProviderConfigured("google_ads"), false);
+
+    process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "developer-token";
+    assert.equal(isProviderConfigured("google_ads"), true);
   });
 });

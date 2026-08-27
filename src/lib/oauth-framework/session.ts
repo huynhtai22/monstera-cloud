@@ -5,6 +5,7 @@
 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
+import { providerOAuthCallbackUri } from "@/lib/oauth-callback-urls";
 import type { SessionContext } from "./types";
 import { OAuthError as OAuthErrorClass } from "./types";
 
@@ -35,6 +36,5 @@ export function getPublicBaseUrl(request: Request): string {
 }
 
 export function buildCallbackUrl(request: Request, providerId: string): string {
-    const base = getPublicBaseUrl(request);
-    return `${base}/api/auth/callback?provider=${providerId}`;
+    return providerOAuthCallbackUri(getPublicBaseUrl(request), providerId);
 }

@@ -1,9 +1,8 @@
 # Google OAuth Verification Guide (Monstera Cloud)
 
-This document prepares OAuth verification for a 2-project setup:
-
-- **GCP A (Web app / Console):** Monstera web sign-in identity scopes + Google Ads scope (if Ads uses this project).
-- **GCP B (Add-ons: Google Sheets + Looker Studio connector):** Apps Script / add-on scopes only.
+This document prepares OAuth verification for Monstera's shared Google Cloud
+project. The consent-screen scope list is project-wide; Apps Script manifests
+retain only the scopes used by their individual add-ons.
 
 ---
 
@@ -13,7 +12,7 @@ This document prepares OAuth verification for a 2-project setup:
 > - This list covers source files and docs in this repository (excluding generated `repomix-output*` snapshots).
 > - “Scope string” includes direct Google scope URLs and identity scope declarations.
 
-### A. Web app / server (GCP A)
+### A. Web app / server
 
 | File | Location | Current scope/userinfo use | Purpose |
 |---|---|---|---|
@@ -24,7 +23,7 @@ This document prepares OAuth verification for a 2-project setup:
 | `src/app/api/v1/sheets/connections/route.ts` | userinfo fetch | userinfo endpoint | Validate add-on bearer token before listing connections. |
 | `src/app/api/v1/sheets/query/route.ts` | userinfo fetch | userinfo endpoint | Validate add-on bearer token before query execution. |
 
-### B. Add-on / Apps Script project files (GCP B)
+### B. Add-on / Apps Script project files
 
 | File | Location | Current scope/userinfo use | Purpose |
 |---|---|---|---|
@@ -44,9 +43,7 @@ This document prepares OAuth verification for a 2-project setup:
 
 ---
 
-## 2) Exact scopes by GCP project
-
-## GCP A (Web app / Console)
+## 2) Exact scopes in the shared GCP project
 
 Use only:
 
@@ -55,9 +52,8 @@ Use only:
 3. `userinfo.profile` (requested as `profile` in OAuth shorthand)
 4. `https://www.googleapis.com/auth/adwords` (**only** for Google Ads connect flow)
 
-Do **not** add Sheets or Drive scopes to GCP A sign-in.
-
-## GCP B (Add-ons / Apps Script)
+The Sheets add-on manifest must not add Google Ads or profile scopes unless the
+add-on itself begins requesting them.
 
 ### Google Sheets add-on scopes
 
@@ -91,15 +87,15 @@ Register callback URI in OAuth client used by `GOOGLE_CLIENT_ID`:
 OAuth client/env:
 - `GOOGLE_ADS_CLIENT_ID`
 - `GOOGLE_ADS_CLIENT_SECRET`
-- optional override `GOOGLE_ADS_REDIRECT_URI`
 
 Register callback URI in OAuth client used by `GOOGLE_ADS_CLIENT_ID`:
 
-- Default local: `http://localhost:3000/api/auth/google-ads/callback`
-- Default production: `https://monsteracloud.com/api/auth/google-ads/callback`
-- If override is set: exact value of `GOOGLE_ADS_REDIRECT_URI`
+- Local: `http://localhost:3000/api/auth/callback?provider=google_ads`
+- Production: `https://monsteracloud.com/api/auth/callback?provider=google_ads`
 
-## GCP B (Apps Script)
+Do not register `/api/auth/google-ads/callback`; it is a retired endpoint.
+
+## Apps Script projects
 
 For each Apps Script project (Sheets add-on and Looker Studio connector), register its Apps Script OAuth / callback URLs exactly as shown in that script project’s deployment/connector auth settings.
 
@@ -107,11 +103,10 @@ For each Apps Script project (Sheets add-on and Looker Studio connector), regist
 
 ## 4) Environment variables and client IDs used
 
-## Web (GCP A)
+## Web app
 
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` → NextAuth Google sign-in.
 - `GOOGLE_ADS_CLIENT_ID` / `GOOGLE_ADS_CLIENT_SECRET` → Google Ads OAuth code exchange.
-- `GOOGLE_ADS_REDIRECT_URI` (optional) → override Ads callback URI.
 - `GOOGLE_ADS_DEVELOPER_TOKEN` → Google Ads API access after OAuth.
 - `GOOGLE_ADS_MCC_ID` (optional) → manager account context used in reporting.
 
@@ -120,7 +115,7 @@ For each Apps Script project (Sheets add-on and Looker Studio connector), regist
 - `GOOGLE_ID_TOKEN_AUDIENCES` (comma-separated) is the preferred allowlist for accepted Google ID token audiences.
 - If not set, fallback audiences are read from: `GOOGLE_CLIENT_ID`, `GOOGLE_ADS_CLIENT_ID`, `LOOKER_OAUTH_CLIENT_ID`, `GOOGLE_ADDON_CLIENT_ID`.
 
-## Add-ons / connector (GCP B)
+## Add-ons / connector
 
 - `LOOKER_OAUTH_CLIENT_ID` / `LOOKER_OAUTH_CLIENT_SECRET` (Script Properties) for Looker connector OAuth.
 - `GOOGLE_ADDON_CLIENT_ID` can be included in backend ID-token audience allowlist for add-on issued tokens.
@@ -134,8 +129,8 @@ Use this whenever changing scopes or testing consent-screen updates:
 1. In Google Account permissions (`myaccount.google.com` → Security → Third-party access), remove the Monstera app entry for the target project/client.
 2. If testing NextAuth sign-in, sign out of Monstera.
 3. Re-run the exact flow:
-   - GCP A: web login and/or Google Ads connect.
-   - GCP B: open add-on/connector and authorize again.
+   - Web login and/or Google Ads connect.
+   - Open add-on/connector and authorize again.
 4. Confirm consent screen only lists expected scopes for that project.
 5. Confirm flow still succeeds and data loads.
 
@@ -143,13 +138,13 @@ Use this whenever changing scopes or testing consent-screen updates:
 
 ## 6) Plain-English data access summary
 
-## GCP A (web + Google Ads)
+## Web app + Google Ads
 
 - We ask for your Google email/profile only to identify your account and sign you in.
 - If you connect Google Ads, we request Google Ads scope to read ad performance data that you explicitly connect.
 - We do not request Google Drive or Google Sheets scopes in web sign-in.
 
-## GCP B (Sheets + Looker add-ons)
+## Sheets + Looker add-ons
 
 - Sheets add-on scopes are used to show add-on UI in Sheets, call Monstera APIs, and write requested report output into the current spreadsheet.
 - Looker connector scopes are used to authorize the connector and fetch Monstera data for dashboards.
