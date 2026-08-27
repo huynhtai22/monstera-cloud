@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, ChevronDown, Clock, Loader2, Pencil, Play, RefreshCw, Search, Wrench, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, Clock, LayoutGrid, List, Loader2, Pencil, Play, RefreshCw, Search, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui";
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
@@ -230,6 +230,23 @@ export function ConnectedSourceList({
   const [renameBusy, setRenameBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<"detailed" | "lite">("detailed");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("monstera_sources_view_mode");
+      if (saved === "detailed" || saved === "lite") {
+        setViewMode(saved);
+      }
+    } catch {}
+  }, []);
+
+  const handleViewModeChange = (mode: "detailed" | "lite") => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("monstera_sources_view_mode", mode);
+    } catch {}
+  };
 
   useEffect(() => {
     const close = () => setOpenTagsId(null);
@@ -391,6 +408,38 @@ export function ConnectedSourceList({
               </>
             )}
 
+            {/* View Mode Toggle: Detailed vs Lite */}
+            <div className="flex items-center rounded-lg border border-line bg-canvas p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => handleViewModeChange("detailed")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
+                  viewMode === "detailed"
+                    ? "bg-white text-black font-semibold shadow-2xs"
+                    : "text-ink-mute hover:text-ink hover:bg-white/[0.04]"
+                )}
+                title="Detailed cards view with full health details and actions"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span>Detailed</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleViewModeChange("lite")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
+                  viewMode === "lite"
+                    ? "bg-white text-black font-semibold shadow-2xs"
+                    : "text-ink-mute hover:text-ink hover:bg-white/[0.04]"
+                )}
+                title="Lite compact table view for dense scanning"
+              >
+                <List className="h-3.5 w-3.5" />
+                <span>Lite</span>
+              </button>
+            </div>
+
             <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas px-2.5 py-1 text-xs">
               <span className="text-ink-mute">Sort:</span>
               <select
@@ -470,49 +519,321 @@ export function ConnectedSourceList({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-[960px] w-full text-sm">
-          <colgroup>
-            <col className="w-12" />
-            <col className="w-[320px]" />
-            <col className="w-[240px]" />
-            <col className="w-[140px]" />
-            <col className="w-[180px]" />
-            <col className="w-[160px]" />
-          </colgroup>
-          <thead className="bg-panel/40 border-b border-line">
-            <tr>
-              <th className="w-12 px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">
-                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} data-no-row-click />
-              </th>
-              <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Connector</th>
-              <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Accounts</th>
-              <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Status</th>
-              <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Last sync</th>
-              <th className="px-5 py-3.5 text-right text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {filteredAndSortedRows.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-5 py-12 text-center text-xs text-ink-mute">
-                  <p className="font-medium text-ink text-sm">No connections found</p>
-                  <p className="mt-1 text-ink-mute">
-                    {searchQuery ? `No sources match "${searchQuery}".` : "No sources match the selected filter."}
-                  </p>
-                  {searchQuery && (
+      {filteredAndSortedRows.length === 0 ? (
+        <div className="px-5 py-12 text-center text-xs text-ink-mute">
+          <p className="font-medium text-ink text-sm">No connections found</p>
+          <p className="mt-1 text-ink-mute">
+            {searchQuery ? `No sources match "${searchQuery}".` : "No sources match the selected filter."}
+          </p>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="mt-3 inline-flex items-center rounded-lg border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.05] transition-colors cursor-pointer"
+            >
+              Clear search
+            </button>
+          )}
+        </div>
+      ) : viewMode === "detailed" ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4 sm:p-5 bg-panel/30">
+          {filteredAndSortedRows.map((r) => {
+            const isExpanded = expandedId === r.id;
+            const syncBusy =
+              (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
+            const disconnectBusy = busyActions.has(r.id);
+            const sourceState = sourceStateFor(r, syncBusy);
+
+            return (
+              <div
+                key={r.id}
+                onClick={(e) => {
+                  if (!(e.target as HTMLElement).closest('[data-no-card-click]')) {
+                    router.push(`/sources/${r.id}`);
+                  }
+                }}
+                className={cn(
+                  "glass-card governed-hover relative flex flex-col justify-between rounded-xl border p-5 transition-all duration-200 cursor-pointer group shadow-xs",
+                  sourceState.kind === "auth-required"
+                    ? "border-rose-500/30 bg-rose-950/10 hover:border-rose-500/50"
+                    : sourceState.kind === "sync-issue" || sourceState.kind === "partial"
+                      ? "border-amber-500/30 bg-amber-950/10 hover:border-amber-500/50"
+                      : sourceState.kind === "not-synced"
+                        ? "border-sky-500/30 bg-sky-950/10 hover:border-sky-500/50"
+                        : "border-line bg-panel/80 hover:border-white/20 hover:bg-panel"
+                )}
+              >
+                {/* Card Top: Checkbox + Icon + Name + Health Status Pill */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div data-no-card-click className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(r.id)}
+                        onChange={() => toggleSelectOne(r.id)}
+                        className="cursor-pointer"
+                      />
+                    </div>
+                    {r.logoSrc ? (
+                      <div className="p-2 rounded-xl border border-white/[0.08] bg-white/[0.03] shrink-0 shadow-2xs">
+                        <IntegrationMark src={r.logoSrc} size="md" />
+                      </div>
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 group/name">
+                        <Link
+                          href={`/sources/${r.id}`}
+                          className="truncate text-sm font-semibold tracking-tight text-ink hover:text-white transition-colors"
+                          data-no-card-click
+                        >
+                          {r.name}
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRenamingRow({ id: r.id, name: r.name });
+                            setRenameValue(r.name);
+                          }}
+                          className="opacity-0 group-hover/name:opacity-100 p-0.5 text-ink-mute hover:text-ink transition-opacity rounded cursor-pointer shrink-0"
+                          title="Rename connection / add nickname"
+                          data-no-card-click
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        {r.managerBadge && (
+                          <CopyableBadge
+                            text={r.managerBadge}
+                            copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
+                            title={`Click to copy ${r.managerBadge}`}
+                            className="text-[10px] text-ink-mute border-line/70 bg-canvas/80"
+                          />
+                        )}
+                        {r.shortId && (
+                          <CopyableBadge
+                            text={`#${r.shortId}`}
+                            copyValue={r.id}
+                            title={`Click to copy full Connection ID (${r.id})`}
+                            className="text-[10px] text-ink-mute/70 border-line/40 bg-transparent hover:bg-canvas"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium shrink-0 shadow-2xs",
+                      sourceState.kind === "auth-required"
+                        ? "border border-rose-500/30 bg-rose-500/10 text-rose-300"
+                        : sourceState.kind === "sync-issue" || sourceState.kind === "partial"
+                          ? "border border-amber-500/30 bg-amber-500/10 text-amber-300"
+                          : sourceState.kind === "not-synced"
+                            ? "border border-sky-500/30 bg-sky-500/10 text-sky-300"
+                            : sourceState.kind === "syncing"
+                              ? "border border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
+                              : "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                    )}
+                  >
+                    {sourceState.kind === "auth-required" ? (
+                      <AlertCircle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                    ) : sourceState.kind === "sync-issue" || sourceState.kind === "partial" ? (
+                      <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                    ) : sourceState.kind === "syncing" ? (
+                      <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin text-cyan-400 shrink-0" />
+                    ) : sourceState.kind === "not-synced" ? (
+                      <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" strokeWidth={2} />
+                    )}
+                    <span>{sourceState.label}</span>
+                  </span>
+                </div>
+
+                {/* Middle: Description, Scoped Accounts, Sync info */}
+                <div className="my-3.5 space-y-2.5 text-xs">
+                  {r.description && (
+                    <p className="text-ink-mute line-clamp-2 leading-relaxed">
+                      {r.description}
+                    </p>
+                  )}
+
+                  {/* Scoped accounts chips */}
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-mono uppercase tracking-wider text-ink-mute/70">Scoped accounts:</span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {(r.accountTags ?? []).slice(0, 3).map((item, idx) => {
+                        const label = typeof item === "object" ? item.label : item;
+                        const copyVal = typeof item === "object" ? item.id : item;
+                        return (
+                          <CopyableBadge
+                            key={`${copyVal}-${idx}`}
+                            text={label}
+                            copyValue={copyVal}
+                            title={`Click to copy account ID "${copyVal}"`}
+                            className="text-[11px] text-ink-mute font-mono"
+                          />
+                        );
+                      })}
+                      {(r.accountTags?.length ?? 0) > 3 && (
+                        <span className="rounded-md border border-line bg-panel px-2 py-0.5 font-mono text-[11px] text-ink-mute">
+                          +{(r.accountTags?.length ?? 0) - 3} more
+                        </span>
+                      )}
+                      {(!r.accountTags || r.accountTags.length === 0) && (
+                        <span className="text-ink-mute/70 italic font-mono">
+                          All manager accounts
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sync status & data through */}
+                  <div className="pt-2 border-t border-line/40 flex flex-wrap items-center justify-between gap-2 text-[11px] text-ink-mute">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="h-3 w-3 text-ink-mute/70" />
+                      <span>Last sync: <strong className="text-ink font-medium">{r.lastSync ?? "Never"}</strong></span>
+                    </div>
+                    {r.dataThroughDate ? (
+                      <span className="font-mono text-ink-mute/80">
+                        Data through {new Date(r.dataThroughDate).toLocaleDateString()}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* Error Diagnostic if any */}
+                  {(r.errorMsg || sourceState.kind === "auth-required" || sourceState.kind === "sync-issue" || sourceState.kind === "partial") && (
+                    <div className={cn(
+                      "rounded-lg p-2.5 text-[11px] font-mono leading-relaxed border mt-2",
+                      sourceState.kind === "auth-required"
+                        ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                        : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                    )}>
+                      {r.errorMsg || sourceState.detail}
+                    </div>
+                  )}
+                </div>
+
+                {/* Bottom Bar: Action buttons */}
+                <div className="pt-3 border-t border-line/50 flex items-center justify-between gap-2" data-no-card-click>
+                  {canDirectSync(r.provider) ? (
                     <button
                       type="button"
-                      onClick={() => setSearchQuery("")}
-                      className="mt-3 inline-flex items-center rounded-lg border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.05] transition-colors cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedId(isExpanded ? null : r.id);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs text-ink-mute hover:text-ink transition-colors cursor-pointer py-1"
                     >
-                      Clear search
+                      <span>Scope accounts</span>
+                      <ChevronDown className={cn("h-3 w-3 transition-transform", isExpanded && "rotate-180")} />
                     </button>
+                  ) : (
+                    <span className="text-[11px] font-mono text-ink-mute/70">Single store</span>
                   )}
-                </td>
+
+                  <div className="flex items-center gap-2">
+                    {sourceState.needsReconnect ? (
+                      <button
+                        type="button"
+                        onClick={() => onFixConnection(r)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50 transition-all cursor-pointer shadow-xs"
+                      >
+                        <Wrench className="h-3.5 w-3.5 text-rose-400" />
+                        Reconnect
+                      </button>
+                    ) : sourceState.kind === "not-synced" ? (
+                      <button
+                        type="button"
+                        disabled={syncBusy}
+                        onClick={() => runRowSync(r)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/50 transition-all cursor-pointer shadow-xs"
+                      >
+                        {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <Play className="h-3.5 w-3.5 text-sky-400 fill-sky-400/30" />}
+                        {syncBusy ? "Syncing" : "Run first sync"}
+                      </button>
+                    ) : sourceState.kind === "sync-issue" || sourceState.kind === "partial" ? (
+                      <button
+                        type="button"
+                        disabled={syncBusy}
+                        onClick={() => runRowSync(r)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all cursor-pointer shadow-xs"
+                      >
+                        {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-amber-400" />}
+                        {syncBusy ? "Syncing" : "Retry sync"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={syncBusy}
+                        onClick={() => runRowSync(r)}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shadow-xs",
+                          syncBusy
+                            ? "cursor-not-allowed border-line bg-panel text-ink-mute"
+                            : "border-line bg-canvas text-ink hover:bg-white/[0.06] hover:border-white/20"
+                        )}
+                      >
+                        {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        {syncBusy ? "Syncing" : "Sync Now"}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={disconnectBusy}
+                      onClick={() => onDisconnect(r.id, r.name)}
+                      className="p-1.5 rounded-lg border border-line bg-canvas text-ink-mute hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                      title="Disconnect source"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Inline Account Selector if expanded */}
+                {isExpanded && canDirectSync(r.provider) && (
+                  <div className="mt-3 pt-3 border-t border-line/60" data-no-card-click>
+                    <AccountSelector
+                      connectionId={r.id}
+                      provider={r.provider!}
+                      connectionName={r.name}
+                      managerBadge={r.managerBadge}
+                      variant="compact"
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-[960px] w-full text-sm">
+            <colgroup>
+              <col className="w-12" />
+              <col className="w-[320px]" />
+              <col className="w-[240px]" />
+              <col className="w-[140px]" />
+              <col className="w-[180px]" />
+              <col className="w-[160px]" />
+            </colgroup>
+            <thead className="bg-panel/40 border-b border-line">
+              <tr>
+                <th className="w-12 px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">
+                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} data-no-row-click />
+                </th>
+                <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Connector</th>
+                <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Accounts</th>
+                <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Status</th>
+                <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Last sync</th>
+                <th className="px-5 py-3.5 text-right text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Actions</th>
               </tr>
-            ) : (
-              filteredAndSortedRows.map((r) => {
+            </thead>
+            <tbody className="divide-y divide-line">
+              {filteredAndSortedRows.map((r) => {
                 const isExpanded = expandedId === r.id;
                 const syncBusy =
                   (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
@@ -749,41 +1070,37 @@ export function ConnectedSourceList({
                             data-no-row-click
                             title="Trigger warehouse sync"
                           >
-                            {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-ink-mute" />}
+                            {syncBusy ? (
+                              <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
                             {syncBusy ? "Syncing" : "Sync"}
                           </button>
                         )}
                         <button
                           type="button"
-                          disabled={disconnectBusy}
-                          onClick={() => onDisconnect(r.id, r.name)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedId(isExpanded ? null : r.id);
+                          }}
                           className={cn(
-                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer",
-                            disconnectBusy
-                              ? "cursor-not-allowed border-line bg-panel text-ink-mute"
-                              : "border-line/70 bg-panel text-ink-mute hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300",
+                            "rounded-lg p-1.5 text-ink-mute hover:text-ink hover:bg-white/[0.06] transition-all cursor-pointer",
+                            isExpanded && "bg-white/[0.06] text-ink rotate-180"
                           )}
-                          data-no-row-click
-                          title="Disconnect and archive connection"
-                        >
-                          Disconnect
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-lg border border-line bg-panel p-1.5 text-xs text-ink-mute hover:bg-white/[0.06] hover:text-ink transition-colors cursor-pointer"
-                          onClick={() => setExpandedId((prev) => (prev === r.id ? null : r.id))}
-                          title="Toggle details and account selection"
+                          title={isExpanded ? "Collapse actions" : "Expand actions"}
                           data-no-row-click
                         >
-                          <ChevronDown className={cn("h-4 w-4 transition-transform duration-200", isExpanded ? "rotate-180 text-ink" : "")} />
+                          <ChevronDown className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
                   </tr>
+
                   {isExpanded && (
-                    <tr className="bg-canvas/40">
-                      <td colSpan={6} className="px-5 pb-5 pt-1">
-                        <div className="rounded-xl border border-line/80 bg-panel/70 p-5 shadow-card backdrop-blur-sm space-y-4">
+                    <tr className="bg-canvas/50 border-b border-line/60">
+                      <td colSpan={6} className="px-6 py-4" data-no-row-click>
+                        <div className="space-y-4">
                           {sourceState.kind === "auth-required" && (
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
                               <div className="flex items-start gap-3">
@@ -791,7 +1108,7 @@ export function ConnectedSourceList({
                                   <AlertCircle className="h-4 w-4" />
                                 </div>
                                 <div>
-                                  <h4 className="text-sm font-semibold text-rose-200">Re-authentication Required</h4>
+                                  <h4 className="text-sm font-semibold text-rose-200">Re-authorization Required</h4>
                                   <p className="mt-0.5 text-xs text-rose-300/90 leading-relaxed">
                                     {r.errorMsg || sourceState.detail}
                                   </p>
@@ -872,11 +1189,11 @@ export function ConnectedSourceList({
                   )}
                 </React.Fragment>
               );
-            })
-          )}
-          </tbody>
-        </table>
-      </div>
+            })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {renamingRow && (
         <div
