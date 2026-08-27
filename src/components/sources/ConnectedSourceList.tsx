@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, ChevronDown, Clock, Loader2, Pencil, Play, RefreshCw, Search, Wrench, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, ChevronDown, Clock, LayoutGrid, List, Loader2, Pencil, Play, RefreshCw, Search, Wrench, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui";
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
@@ -209,6 +209,37 @@ const PROVIDER_LABELS: Record<string, string> = {
   shopify: "Shopify",
 };
 
+function formatSyncTime(dateStr?: string | null): string {
+  if (!dateStr || dateStr === "Never") return "Never";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const timeStr = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    if (isToday) {
+      return `Today at ${timeStr}`;
+    }
+    return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${timeStr}`;
+  } catch {
+    return dateStr;
+  }
+}
+
+function sanitizeErrorMessage(msg?: string | null): string {
+  if (!msg) return "";
+  let cleaned = msg
+    .replace(/^\[(failed|partial|error)\]\s*/i, "")
+    .replace(/^connection:\s*/i, "")
+    .replace(/connection\s+[a-z0-9_]{15,40}\s+(has\s+)?/gi, "")
+    .replace(/request_id=[a-z0-9:_]+/gi, "")
+    .trim();
+  if (cleaned.length > 130) {
+    cleaned = cleaned.slice(0, 127) + "…";
+  }
+  return cleaned;
+}
+
 export function ConnectedSourceList({
   rows,
   busyActions,
@@ -230,6 +261,23 @@ export function ConnectedSourceList({
   const [renameBusy, setRenameBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<"detailed" | "lite">("detailed");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("monstera_sources_view_mode");
+      if (saved === "detailed" || saved === "lite") {
+        setViewMode(saved);
+      }
+    } catch {}
+  }, []);
+
+  const handleViewModeChange = (mode: "detailed" | "lite") => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem("monstera_sources_view_mode", mode);
+    } catch {}
+  };
 
   useEffect(() => {
     const close = () => setOpenTagsId(null);
@@ -391,6 +439,38 @@ export function ConnectedSourceList({
               </>
             )}
 
+            {/* View Mode Toggle: Detailed vs Lite */}
+            <div className="flex items-center rounded-lg border border-line bg-canvas p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => handleViewModeChange("detailed")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
+                  viewMode === "detailed"
+                    ? "bg-white text-black font-semibold shadow-2xs"
+                    : "text-ink-mute hover:text-ink hover:bg-white/[0.04]"
+                )}
+                title="Detailed cards view with full health details and actions"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                <span>Detailed</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleViewModeChange("lite")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all cursor-pointer",
+                  viewMode === "lite"
+                    ? "bg-white text-black font-semibold shadow-2xs"
+                    : "text-ink-mute hover:text-ink hover:bg-white/[0.04]"
+                )}
+                title="Lite compact table view for dense scanning"
+              >
+                <List className="h-3.5 w-3.5" />
+                <span>Lite</span>
+              </button>
+            </div>
+
             <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas px-2.5 py-1 text-xs">
               <span className="text-ink-mute">Sort:</span>
               <select
@@ -470,49 +550,339 @@ export function ConnectedSourceList({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-[960px] w-full text-sm">
-          <colgroup>
-            <col className="w-12" />
-            <col className="w-[320px]" />
-            <col className="w-[240px]" />
-            <col className="w-[140px]" />
-            <col className="w-[180px]" />
-            <col className="w-[160px]" />
-          </colgroup>
-          <thead className="bg-panel/40 border-b border-line">
-            <tr>
-              <th className="w-12 px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">
-                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} data-no-row-click />
-              </th>
-              <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Connector</th>
-              <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Accounts</th>
-              <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Status</th>
-              <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Last sync</th>
-              <th className="px-5 py-3.5 text-right text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {filteredAndSortedRows.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-5 py-12 text-center text-xs text-ink-mute">
-                  <p className="font-medium text-ink text-sm">No connections found</p>
-                  <p className="mt-1 text-ink-mute">
-                    {searchQuery ? `No sources match "${searchQuery}".` : "No sources match the selected filter."}
-                  </p>
-                  {searchQuery && (
+      {filteredAndSortedRows.length === 0 ? (
+        <div className="px-5 py-12 text-center text-xs text-ink-mute">
+          <p className="font-medium text-ink text-sm">No connections found</p>
+          <p className="mt-1 text-ink-mute">
+            {searchQuery ? `No sources match "${searchQuery}".` : "No sources match the selected filter."}
+          </p>
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="mt-3 inline-flex items-center rounded-lg border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.05] transition-colors cursor-pointer"
+            >
+              Clear search
+            </button>
+          )}
+        </div>
+      ) : viewMode === "detailed" ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 p-4 sm:p-6 bg-panel/30">
+          {filteredAndSortedRows.map((r) => {
+            const isExpanded = expandedId === r.id;
+            const syncBusy =
+              (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
+            const disconnectBusy = busyActions.has(r.id);
+            const sourceState = sourceStateFor(r, syncBusy);
+            const formattedSync = formatSyncTime(r.lastSync);
+            const cleanError = sanitizeErrorMessage(r.errorMsg || (sourceState.kind === "auth-required" || sourceState.kind === "sync-issue" ? sourceState.detail : ""));
+
+            return (
+              <div
+                key={r.id}
+                onClick={(e) => {
+                  if (!(e.target as HTMLElement).closest('[data-no-card-click]')) {
+                    router.push(`/sources/${r.id}`);
+                  }
+                }}
+                className={cn(
+                  "glass-card governed-hover relative flex flex-col justify-between h-full rounded-2xl border p-5 sm:p-5.5 transition-all duration-200 cursor-pointer group shadow-xs",
+                  sourceState.kind === "auth-required"
+                    ? "border-rose-500/30 bg-rose-950/10 hover:border-rose-500/50"
+                    : sourceState.kind === "sync-issue" || sourceState.kind === "partial"
+                      ? "border-amber-500/30 bg-amber-950/10 hover:border-amber-500/50"
+                      : sourceState.kind === "not-synced"
+                        ? "border-sky-500/30 bg-sky-950/10 hover:border-sky-500/50"
+                        : "border-line/70 bg-panel/75 hover:border-white/20 hover:bg-panel"
+                )}
+              >
+                {/* Top: Logo + Name on Left, Status + Checkbox on Right */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    {r.logoSrc ? (
+                      <div className="p-2 rounded-xl border border-white/[0.08] bg-white/[0.03] shrink-0 shadow-2xs">
+                        <IntegrationMark src={r.logoSrc} size="md" />
+                      </div>
+                    ) : null}
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-1.5 group/name">
+                        <Link
+                          href={`/sources/${r.id}`}
+                          className="truncate text-sm font-semibold tracking-tight text-ink hover:text-white transition-colors"
+                          data-no-card-click
+                        >
+                          {r.name}
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRenamingRow({ id: r.id, name: r.name });
+                            setRenameValue(r.name);
+                          }}
+                          className="opacity-0 group-hover/name:opacity-100 p-0.5 text-ink-mute hover:text-ink transition-opacity rounded cursor-pointer shrink-0"
+                          title="Rename connection / add nickname"
+                          data-no-card-click
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {r.managerBadge && (
+                          <CopyableBadge
+                            text={r.managerBadge}
+                            copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
+                            title={`Click to copy ${r.managerBadge}`}
+                            className="text-[10px] text-ink-mute border-line/70 bg-canvas/80"
+                          />
+                        )}
+                        {r.shortId && (
+                          <CopyableBadge
+                            text={`#${r.shortId}`}
+                            copyValue={r.id}
+                            title={`Click to copy full Connection ID (${r.id})`}
+                            className="text-[10px] text-ink-mute/70 border-line/40 bg-transparent hover:bg-canvas"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2.5 shrink-0" data-no-card-click onClick={(e) => e.stopPropagation()}>
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium shadow-2xs",
+                        sourceState.kind === "auth-required"
+                          ? "border border-rose-500/30 bg-rose-500/10 text-rose-300"
+                          : sourceState.kind === "sync-issue" || sourceState.kind === "partial"
+                            ? "border border-amber-500/30 bg-amber-500/10 text-amber-300"
+                            : sourceState.kind === "not-synced"
+                              ? "border border-sky-500/30 bg-sky-500/10 text-sky-300"
+                              : sourceState.kind === "syncing"
+                                ? "border border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
+                                : "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                      )}
+                    >
+                      {sourceState.kind === "auth-required" ? (
+                        <AlertCircle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                      ) : sourceState.kind === "sync-issue" || sourceState.kind === "partial" ? (
+                        <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                      ) : sourceState.kind === "syncing" ? (
+                        <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin text-cyan-400 shrink-0" />
+                      ) : sourceState.kind === "not-synced" ? (
+                        <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" strokeWidth={2} />
+                      )}
+                      <span>{sourceState.label}</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(r.id)}
+                      onChange={() => toggleSelectOne(r.id)}
+                      className="cursor-pointer h-4 w-4 rounded border-line bg-canvas accent-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Middle: Clean Symmetrical Key-Value Rows */}
+                <div className="my-4 space-y-2.5 text-xs">
+                  {r.description && (
+                    <p className="text-ink-mute/80 line-clamp-1 leading-relaxed text-[12px]">
+                      {r.description}
+                    </p>
+                  )}
+
+                  {/* Scoped accounts row */}
+                  <div className="flex items-center justify-between gap-2 text-xs py-1 border-t border-line/40">
+                    <span className="text-ink-mute shrink-0">Accounts:</span>
+                    <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
+                      {(r.accountTags ?? []).length > 0 ? (
+                        <>
+                          {(r.accountTags ?? []).slice(0, 2).map((item, idx) => {
+                            const label = typeof item === "object" ? item.label : item;
+                            const copyVal = typeof item === "object" ? item.id : item;
+                            return (
+                              <CopyableBadge
+                                key={`${copyVal}-${idx}`}
+                                text={label}
+                                copyValue={copyVal}
+                                title={`Click to copy account ID "${copyVal}"`}
+                                className="text-[11px] text-ink-mute font-mono py-0 px-1.5"
+                              />
+                            );
+                          })}
+                          {(r.accountTags?.length ?? 0) > 2 && (
+                            <span className="rounded-md border border-line bg-canvas px-1.5 py-0.5 font-mono text-[10px] text-ink-mute">
+                              +{(r.accountTags?.length ?? 0) - 2} more
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-[11px] text-ink-mute/70 font-medium">All accounts</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Last sync timestamp row */}
+                  <div className="flex items-center justify-between gap-2 text-xs py-1 border-t border-line/40">
+                    <span className="text-ink-mute shrink-0 flex items-center gap-1.5">
+                      <Clock className="h-3 w-3 text-ink-mute/70" /> Last sync:
+                    </span>
+                    <span className="font-medium text-ink text-right truncate">
+                      {formattedSync}
+                    </span>
+                  </div>
+
+                  {/* Data through row if present */}
+                  {r.dataThroughDate && (
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-ink-mute py-0.5">
+                      <span>Data coverage:</span>
+                      <span className="font-mono text-ink/90">
+                        Through {new Date(r.dataThroughDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Error Callout (Sanitized & Friendly) */}
+                  {cleanError && (
+                    <div className={cn(
+                      "rounded-xl p-3 text-xs leading-relaxed border flex items-start gap-2.5 mt-2",
+                      sourceState.kind === "auth-required"
+                        ? "border-rose-500/25 bg-rose-500/[0.08] text-rose-300"
+                        : "border-amber-500/25 bg-amber-500/[0.08] text-amber-300"
+                    )}>
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-[11px] uppercase tracking-wider opacity-80 mb-0.5">
+                          {sourceState.kind === "auth-required" ? "Authentication Notice" : "Sync Diagnostic"}
+                        </p>
+                        <p className="text-xs break-words opacity-90 line-clamp-2" title={r.errorMsg || sourceState.detail}>
+                          {cleanError}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bottom Bar: Action buttons */}
+                <div className="pt-3.5 mt-auto border-t border-line/50 flex items-center justify-between gap-2" data-no-card-click>
+                  {canDirectSync(r.provider) ? (
                     <button
                       type="button"
-                      onClick={() => setSearchQuery("")}
-                      className="mt-3 inline-flex items-center rounded-lg border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.05] transition-colors cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedId(isExpanded ? null : r.id);
+                      }}
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-mute hover:text-ink transition-colors cursor-pointer py-1"
                     >
-                      Clear search
+                      <span>Scope accounts</span>
+                      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", isExpanded && "rotate-180")} />
                     </button>
+                  ) : (
+                    <span className="text-xs text-ink-mute/60">Single store</span>
                   )}
-                </td>
+
+                  <div className="flex items-center gap-1.5">
+                    {sourceState.needsReconnect ? (
+                      <button
+                        type="button"
+                        onClick={() => onFixConnection(r)}
+                        className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50 transition-all cursor-pointer shadow-xs"
+                      >
+                        <Wrench className="h-3.5 w-3.5 text-rose-400" />
+                        <span>Reconnect</span>
+                      </button>
+                    ) : sourceState.kind === "not-synced" ? (
+                      <button
+                        type="button"
+                        disabled={syncBusy}
+                        onClick={() => runRowSync(r)}
+                        className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-semibold text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/50 transition-all cursor-pointer shadow-xs"
+                      >
+                        {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <Play className="h-3.5 w-3.5 text-sky-400 fill-sky-400/30" />}
+                        <span>{syncBusy ? "Syncing" : "First sync"}</span>
+                      </button>
+                    ) : sourceState.kind === "sync-issue" || sourceState.kind === "partial" ? (
+                      <button
+                        type="button"
+                        disabled={syncBusy}
+                        onClick={() => runRowSync(r)}
+                        className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all cursor-pointer shadow-xs"
+                      >
+                        {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-amber-400" />}
+                        <span>{syncBusy ? "Syncing" : "Retry sync"}</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={syncBusy}
+                        onClick={() => runRowSync(r)}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer shadow-xs",
+                          syncBusy
+                            ? "cursor-not-allowed border-line bg-panel text-ink-mute"
+                            : "border-line bg-canvas text-ink hover:bg-white/[0.06] hover:border-white/20"
+                        )}
+                      >
+                        {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        <span>{syncBusy ? "Syncing" : "Sync Now"}</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={disconnectBusy}
+                      onClick={() => onDisconnect(r.id, r.name)}
+                      className="h-8.5 w-8.5 rounded-lg border border-line bg-canvas text-ink-mute hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                      title="Disconnect source"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Inline Account Selector if expanded */}
+                {isExpanded && canDirectSync(r.provider) && (
+                  <div className="mt-3.5 pt-3.5 border-t border-line/60" data-no-card-click>
+                    <AccountSelector
+                      connectionId={r.id}
+                      provider={r.provider!}
+                      connectionName={r.name}
+                      managerBadge={r.managerBadge}
+                      variant="compact"
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-[960px] w-full text-sm">
+            <colgroup>
+              <col className="w-12" />
+              <col className="w-[320px]" />
+              <col className="w-[240px]" />
+              <col className="w-[140px]" />
+              <col className="w-[180px]" />
+              <col className="w-[160px]" />
+            </colgroup>
+            <thead className="bg-panel/40 border-b border-line">
+              <tr>
+                <th className="w-12 px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">
+                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} data-no-row-click />
+                </th>
+                <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Connector</th>
+                <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Accounts</th>
+                <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Status</th>
+                <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Last sync</th>
+                <th className="px-5 py-3.5 text-right text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Actions</th>
               </tr>
-            ) : (
-              filteredAndSortedRows.map((r) => {
+            </thead>
+            <tbody className="divide-y divide-line">
+              {filteredAndSortedRows.map((r) => {
                 const isExpanded = expandedId === r.id;
                 const syncBusy =
                   (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
@@ -749,41 +1119,37 @@ export function ConnectedSourceList({
                             data-no-row-click
                             title="Trigger warehouse sync"
                           >
-                            {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-ink-mute" />}
+                            {syncBusy ? (
+                              <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
                             {syncBusy ? "Syncing" : "Sync"}
                           </button>
                         )}
                         <button
                           type="button"
-                          disabled={disconnectBusy}
-                          onClick={() => onDisconnect(r.id, r.name)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedId(isExpanded ? null : r.id);
+                          }}
                           className={cn(
-                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer",
-                            disconnectBusy
-                              ? "cursor-not-allowed border-line bg-panel text-ink-mute"
-                              : "border-line/70 bg-panel text-ink-mute hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-300",
+                            "rounded-lg p-1.5 text-ink-mute hover:text-ink hover:bg-white/[0.06] transition-all cursor-pointer",
+                            isExpanded && "bg-white/[0.06] text-ink rotate-180"
                           )}
-                          data-no-row-click
-                          title="Disconnect and archive connection"
-                        >
-                          Disconnect
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-lg border border-line bg-panel p-1.5 text-xs text-ink-mute hover:bg-white/[0.06] hover:text-ink transition-colors cursor-pointer"
-                          onClick={() => setExpandedId((prev) => (prev === r.id ? null : r.id))}
-                          title="Toggle details and account selection"
+                          title={isExpanded ? "Collapse actions" : "Expand actions"}
                           data-no-row-click
                         >
-                          <ChevronDown className={cn("h-4 w-4 transition-transform duration-200", isExpanded ? "rotate-180 text-ink" : "")} />
+                          <ChevronDown className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
                   </tr>
+
                   {isExpanded && (
-                    <tr className="bg-canvas/40">
-                      <td colSpan={6} className="px-5 pb-5 pt-1">
-                        <div className="rounded-xl border border-line/80 bg-panel/70 p-5 shadow-card backdrop-blur-sm space-y-4">
+                    <tr className="bg-canvas/50 border-b border-line/60">
+                      <td colSpan={6} className="px-6 py-4" data-no-row-click>
+                        <div className="space-y-4">
                           {sourceState.kind === "auth-required" && (
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
                               <div className="flex items-start gap-3">
@@ -791,7 +1157,7 @@ export function ConnectedSourceList({
                                   <AlertCircle className="h-4 w-4" />
                                 </div>
                                 <div>
-                                  <h4 className="text-sm font-semibold text-rose-200">Re-authentication Required</h4>
+                                  <h4 className="text-sm font-semibold text-rose-200">Re-authorization Required</h4>
                                   <p className="mt-0.5 text-xs text-rose-300/90 leading-relaxed">
                                     {r.errorMsg || sourceState.detail}
                                   </p>
@@ -872,11 +1238,11 @@ export function ConnectedSourceList({
                   )}
                 </React.Fragment>
               );
-            })
-          )}
-          </tbody>
-        </table>
-      </div>
+            })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {renamingRow && (
         <div
