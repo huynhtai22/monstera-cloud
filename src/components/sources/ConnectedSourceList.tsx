@@ -209,6 +209,37 @@ const PROVIDER_LABELS: Record<string, string> = {
   shopify: "Shopify",
 };
 
+function formatSyncTime(dateStr?: string | null): string {
+  if (!dateStr || dateStr === "Never") return "Never";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const timeStr = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    if (isToday) {
+      return `Today at ${timeStr}`;
+    }
+    return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${timeStr}`;
+  } catch {
+    return dateStr;
+  }
+}
+
+function sanitizeErrorMessage(msg?: string | null): string {
+  if (!msg) return "";
+  let cleaned = msg
+    .replace(/^\[(failed|partial|error)\]\s*/i, "")
+    .replace(/^connection:\s*/i, "")
+    .replace(/connection\s+[a-z0-9_]{15,40}\s+(has\s+)?/gi, "")
+    .replace(/request_id=[a-z0-9:_]+/gi, "")
+    .trim();
+  if (cleaned.length > 130) {
+    cleaned = cleaned.slice(0, 127) + "…";
+  }
+  return cleaned;
+}
+
 export function ConnectedSourceList({
   rows,
   busyActions,
@@ -536,13 +567,15 @@ export function ConnectedSourceList({
           )}
         </div>
       ) : viewMode === "detailed" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 p-4 sm:p-5 bg-panel/30">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 p-4 sm:p-6 bg-panel/30">
           {filteredAndSortedRows.map((r) => {
             const isExpanded = expandedId === r.id;
             const syncBusy =
               (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
             const disconnectBusy = busyActions.has(r.id);
             const sourceState = sourceStateFor(r, syncBusy);
+            const formattedSync = formatSyncTime(r.lastSync);
+            const cleanError = sanitizeErrorMessage(r.errorMsg || (sourceState.kind === "auth-required" || sourceState.kind === "sync-issue" ? sourceState.detail : ""));
 
             return (
               <div
@@ -553,33 +586,25 @@ export function ConnectedSourceList({
                   }
                 }}
                 className={cn(
-                  "glass-card governed-hover relative flex flex-col justify-between rounded-xl border p-5 transition-all duration-200 cursor-pointer group shadow-xs",
+                  "glass-card governed-hover relative flex flex-col justify-between h-full rounded-2xl border p-5 sm:p-5.5 transition-all duration-200 cursor-pointer group shadow-xs",
                   sourceState.kind === "auth-required"
                     ? "border-rose-500/30 bg-rose-950/10 hover:border-rose-500/50"
                     : sourceState.kind === "sync-issue" || sourceState.kind === "partial"
                       ? "border-amber-500/30 bg-amber-950/10 hover:border-amber-500/50"
                       : sourceState.kind === "not-synced"
                         ? "border-sky-500/30 bg-sky-950/10 hover:border-sky-500/50"
-                        : "border-line bg-panel/80 hover:border-white/20 hover:bg-panel"
+                        : "border-line/70 bg-panel/75 hover:border-white/20 hover:bg-panel"
                 )}
               >
-                {/* Card Top: Checkbox + Icon + Name + Health Status Pill */}
+                {/* Top: Logo + Name on Left, Status + Checkbox on Right */}
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div data-no-card-click className="shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(r.id)}
-                        onChange={() => toggleSelectOne(r.id)}
-                        className="cursor-pointer"
-                      />
-                    </div>
+                  <div className="flex items-center gap-3.5 min-w-0">
                     {r.logoSrc ? (
                       <div className="p-2 rounded-xl border border-white/[0.08] bg-white/[0.03] shrink-0 shadow-2xs">
                         <IntegrationMark src={r.logoSrc} size="md" />
                       </div>
                     ) : null}
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-center gap-1.5 group/name">
                         <Link
                           href={`/sources/${r.id}`}
@@ -602,7 +627,7 @@ export function ConnectedSourceList({
                           <Pencil className="h-3 w-3" />
                         </button>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         {r.managerBadge && (
                           <CopyableBadge
                             text={r.managerBadge}
@@ -623,101 +648,125 @@ export function ConnectedSourceList({
                     </div>
                   </div>
 
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium shrink-0 shadow-2xs",
-                      sourceState.kind === "auth-required"
-                        ? "border border-rose-500/30 bg-rose-500/10 text-rose-300"
-                        : sourceState.kind === "sync-issue" || sourceState.kind === "partial"
-                          ? "border border-amber-500/30 bg-amber-500/10 text-amber-300"
-                          : sourceState.kind === "not-synced"
-                            ? "border border-sky-500/30 bg-sky-500/10 text-sky-300"
-                            : sourceState.kind === "syncing"
-                              ? "border border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
-                              : "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                    )}
-                  >
-                    {sourceState.kind === "auth-required" ? (
-                      <AlertCircle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
-                    ) : sourceState.kind === "sync-issue" || sourceState.kind === "partial" ? (
-                      <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                    ) : sourceState.kind === "syncing" ? (
-                      <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin text-cyan-400 shrink-0" />
-                    ) : sourceState.kind === "not-synced" ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />
-                    ) : (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" strokeWidth={2} />
-                    )}
-                    <span>{sourceState.label}</span>
-                  </span>
+                  <div className="flex items-center gap-2.5 shrink-0" data-no-card-click onClick={(e) => e.stopPropagation()}>
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium shadow-2xs",
+                        sourceState.kind === "auth-required"
+                          ? "border border-rose-500/30 bg-rose-500/10 text-rose-300"
+                          : sourceState.kind === "sync-issue" || sourceState.kind === "partial"
+                            ? "border border-amber-500/30 bg-amber-500/10 text-amber-300"
+                            : sourceState.kind === "not-synced"
+                              ? "border border-sky-500/30 bg-sky-500/10 text-sky-300"
+                              : sourceState.kind === "syncing"
+                                ? "border border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
+                                : "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                      )}
+                    >
+                      {sourceState.kind === "auth-required" ? (
+                        <AlertCircle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                      ) : sourceState.kind === "sync-issue" || sourceState.kind === "partial" ? (
+                        <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                      ) : sourceState.kind === "syncing" ? (
+                        <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin text-cyan-400 shrink-0" />
+                      ) : sourceState.kind === "not-synced" ? (
+                        <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" strokeWidth={2} />
+                      )}
+                      <span>{sourceState.label}</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(r.id)}
+                      onChange={() => toggleSelectOne(r.id)}
+                      className="cursor-pointer h-4 w-4 rounded border-line bg-canvas accent-white"
+                    />
+                  </div>
                 </div>
 
-                {/* Middle: Description, Scoped Accounts, Sync info */}
-                <div className="my-3.5 space-y-2.5 text-xs">
+                {/* Middle: Clean Symmetrical Key-Value Rows */}
+                <div className="my-4 space-y-2.5 text-xs">
                   {r.description && (
-                    <p className="text-ink-mute line-clamp-2 leading-relaxed">
+                    <p className="text-ink-mute/80 line-clamp-1 leading-relaxed text-[12px]">
                       {r.description}
                     </p>
                   )}
 
-                  {/* Scoped accounts chips */}
-                  <div className="space-y-1">
-                    <span className="text-[11px] font-mono uppercase tracking-wider text-ink-mute/70">Scoped accounts:</span>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {(r.accountTags ?? []).slice(0, 3).map((item, idx) => {
-                        const label = typeof item === "object" ? item.label : item;
-                        const copyVal = typeof item === "object" ? item.id : item;
-                        return (
-                          <CopyableBadge
-                            key={`${copyVal}-${idx}`}
-                            text={label}
-                            copyValue={copyVal}
-                            title={`Click to copy account ID "${copyVal}"`}
-                            className="text-[11px] text-ink-mute font-mono"
-                          />
-                        );
-                      })}
-                      {(r.accountTags?.length ?? 0) > 3 && (
-                        <span className="rounded-md border border-line bg-panel px-2 py-0.5 font-mono text-[11px] text-ink-mute">
-                          +{(r.accountTags?.length ?? 0) - 3} more
-                        </span>
-                      )}
-                      {(!r.accountTags || r.accountTags.length === 0) && (
-                        <span className="text-ink-mute/70 italic font-mono">
-                          All manager accounts
-                        </span>
+                  {/* Scoped accounts row */}
+                  <div className="flex items-center justify-between gap-2 text-xs py-1 border-t border-line/40">
+                    <span className="text-ink-mute shrink-0">Accounts:</span>
+                    <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
+                      {(r.accountTags ?? []).length > 0 ? (
+                        <>
+                          {(r.accountTags ?? []).slice(0, 2).map((item, idx) => {
+                            const label = typeof item === "object" ? item.label : item;
+                            const copyVal = typeof item === "object" ? item.id : item;
+                            return (
+                              <CopyableBadge
+                                key={`${copyVal}-${idx}`}
+                                text={label}
+                                copyValue={copyVal}
+                                title={`Click to copy account ID "${copyVal}"`}
+                                className="text-[11px] text-ink-mute font-mono py-0 px-1.5"
+                              />
+                            );
+                          })}
+                          {(r.accountTags?.length ?? 0) > 2 && (
+                            <span className="rounded-md border border-line bg-canvas px-1.5 py-0.5 font-mono text-[10px] text-ink-mute">
+                              +{(r.accountTags?.length ?? 0) - 2} more
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-[11px] text-ink-mute/70 font-medium">All accounts</span>
                       )}
                     </div>
                   </div>
 
-                  {/* Sync status & data through */}
-                  <div className="pt-2 border-t border-line/40 flex flex-wrap items-center justify-between gap-2 text-[11px] text-ink-mute">
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="h-3 w-3 text-ink-mute/70" />
-                      <span>Last sync: <strong className="text-ink font-medium">{r.lastSync ?? "Never"}</strong></span>
-                    </div>
-                    {r.dataThroughDate ? (
-                      <span className="font-mono text-ink-mute/80">
-                        Data through {new Date(r.dataThroughDate).toLocaleDateString()}
+                  {/* Last sync timestamp row */}
+                  <div className="flex items-center justify-between gap-2 text-xs py-1 border-t border-line/40">
+                    <span className="text-ink-mute shrink-0 flex items-center gap-1.5">
+                      <Clock className="h-3 w-3 text-ink-mute/70" /> Last sync:
+                    </span>
+                    <span className="font-medium text-ink text-right truncate">
+                      {formattedSync}
+                    </span>
+                  </div>
+
+                  {/* Data through row if present */}
+                  {r.dataThroughDate && (
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-ink-mute py-0.5">
+                      <span>Data coverage:</span>
+                      <span className="font-mono text-ink/90">
+                        Through {new Date(r.dataThroughDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
                       </span>
-                    ) : null}
-                  </div>
+                    </div>
+                  )}
 
-                  {/* Error Diagnostic if any */}
-                  {(r.errorMsg || sourceState.kind === "auth-required" || sourceState.kind === "sync-issue" || sourceState.kind === "partial") && (
+                  {/* Error Callout (Sanitized & Friendly) */}
+                  {cleanError && (
                     <div className={cn(
-                      "rounded-lg p-2.5 text-[11px] font-mono leading-relaxed border mt-2",
+                      "rounded-xl p-3 text-xs leading-relaxed border flex items-start gap-2.5 mt-2",
                       sourceState.kind === "auth-required"
-                        ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                        : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                        ? "border-rose-500/25 bg-rose-500/[0.08] text-rose-300"
+                        : "border-amber-500/25 bg-amber-500/[0.08] text-amber-300"
                     )}>
-                      {r.errorMsg || sourceState.detail}
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-[11px] uppercase tracking-wider opacity-80 mb-0.5">
+                          {sourceState.kind === "auth-required" ? "Authentication Notice" : "Sync Diagnostic"}
+                        </p>
+                        <p className="text-xs break-words opacity-90 line-clamp-2" title={r.errorMsg || sourceState.detail}>
+                          {cleanError}
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
 
                 {/* Bottom Bar: Action buttons */}
-                <div className="pt-3 border-t border-line/50 flex items-center justify-between gap-2" data-no-card-click>
+                <div className="pt-3.5 mt-auto border-t border-line/50 flex items-center justify-between gap-2" data-no-card-click>
                   {canDirectSync(r.provider) ? (
                     <button
                       type="button"
@@ -725,44 +774,44 @@ export function ConnectedSourceList({
                         e.stopPropagation();
                         setExpandedId(isExpanded ? null : r.id);
                       }}
-                      className="inline-flex items-center gap-1 text-xs text-ink-mute hover:text-ink transition-colors cursor-pointer py-1"
+                      className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-mute hover:text-ink transition-colors cursor-pointer py-1"
                     >
                       <span>Scope accounts</span>
-                      <ChevronDown className={cn("h-3 w-3 transition-transform", isExpanded && "rotate-180")} />
+                      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", isExpanded && "rotate-180")} />
                     </button>
                   ) : (
-                    <span className="text-[11px] font-mono text-ink-mute/70">Single store</span>
+                    <span className="text-xs text-ink-mute/60">Single store</span>
                   )}
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5">
                     {sourceState.needsReconnect ? (
                       <button
                         type="button"
                         onClick={() => onFixConnection(r)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50 transition-all cursor-pointer shadow-xs"
+                        className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50 transition-all cursor-pointer shadow-xs"
                       >
                         <Wrench className="h-3.5 w-3.5 text-rose-400" />
-                        Reconnect
+                        <span>Reconnect</span>
                       </button>
                     ) : sourceState.kind === "not-synced" ? (
                       <button
                         type="button"
                         disabled={syncBusy}
                         onClick={() => runRowSync(r)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/50 transition-all cursor-pointer shadow-xs"
+                        className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-semibold text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/50 transition-all cursor-pointer shadow-xs"
                       >
                         {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <Play className="h-3.5 w-3.5 text-sky-400 fill-sky-400/30" />}
-                        {syncBusy ? "Syncing" : "Run first sync"}
+                        <span>{syncBusy ? "Syncing" : "First sync"}</span>
                       </button>
                     ) : sourceState.kind === "sync-issue" || sourceState.kind === "partial" ? (
                       <button
                         type="button"
                         disabled={syncBusy}
                         onClick={() => runRowSync(r)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all cursor-pointer shadow-xs"
+                        className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all cursor-pointer shadow-xs"
                       >
                         {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-amber-400" />}
-                        {syncBusy ? "Syncing" : "Retry sync"}
+                        <span>{syncBusy ? "Syncing" : "Retry sync"}</span>
                       </button>
                     ) : (
                       <button
@@ -770,14 +819,14 @@ export function ConnectedSourceList({
                         disabled={syncBusy}
                         onClick={() => runRowSync(r)}
                         className={cn(
-                          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer shadow-xs",
+                          "inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer shadow-xs",
                           syncBusy
                             ? "cursor-not-allowed border-line bg-panel text-ink-mute"
                             : "border-line bg-canvas text-ink hover:bg-white/[0.06] hover:border-white/20"
                         )}
                       >
                         {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                        {syncBusy ? "Syncing" : "Sync Now"}
+                        <span>{syncBusy ? "Syncing" : "Sync Now"}</span>
                       </button>
                     )}
 
@@ -785,7 +834,7 @@ export function ConnectedSourceList({
                       type="button"
                       disabled={disconnectBusy}
                       onClick={() => onDisconnect(r.id, r.name)}
-                      className="p-1.5 rounded-lg border border-line bg-canvas text-ink-mute hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                      className="h-8.5 w-8.5 rounded-lg border border-line bg-canvas text-ink-mute hover:text-rose-400 hover:border-rose-500/30 hover:bg-rose-500/10 flex items-center justify-center transition-colors cursor-pointer shrink-0"
                       title="Disconnect source"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -795,7 +844,7 @@ export function ConnectedSourceList({
 
                 {/* Inline Account Selector if expanded */}
                 {isExpanded && canDirectSync(r.provider) && (
-                  <div className="mt-3 pt-3 border-t border-line/60" data-no-card-click>
+                  <div className="mt-3.5 pt-3.5 border-t border-line/60" data-no-card-click>
                     <AccountSelector
                       connectionId={r.id}
                       provider={r.provider!}
