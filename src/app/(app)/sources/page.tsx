@@ -496,6 +496,8 @@ export default function SourcesPage() {
                         ? "error"
                         : conn.lastError?.startsWith("[partial]")
                           ? "partial"
+                          : conn.lastError?.startsWith("[failed]")
+                            ? "error"
                           : conn.status === "connected"
                             ? "connected"
                             : "error",

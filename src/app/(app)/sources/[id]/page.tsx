@@ -285,6 +285,11 @@ export default function SourceDetailPage() {
                                 <AlertCircle className="h-4 w-4 text-amber-400" />
                                 <span className="font-semibold text-xs text-amber-200">Partial sync</span>
                             </>
+                        ) : connection.lastError?.startsWith("[failed]") ? (
+                            <>
+                                <AlertCircle className="h-4 w-4 text-red-400" />
+                                <span className="font-semibold text-xs text-red-200">Failed sync</span>
+                            </>
                         ) : connection.status === "connected" ? (
                             <>
                                 <CheckCircle2 className="h-4 w-4 text-white" />

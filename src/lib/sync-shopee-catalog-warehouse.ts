@@ -4,6 +4,7 @@
  * into fake zero-performance records.
  */
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 import { getValidShopeeCreds, shopeeAdsClient, shopeeDataClient, type ShopeeApiOptions } from "@/lib/shopee";
 
 const PRODUCT_WATERMARK_OVERLAP_SECONDS = 5 * 60;
@@ -91,24 +92,35 @@ async function writeRun(input: {
   startedAt: Date;
 }): Promise<void> {
   const error = input.error ? sanitizeProviderError(input.error) : null;
-  await (prisma as any).providerSyncRun.create({
-    data: {
-      workspaceId: input.workspaceId,
+  try {
+    await (prisma as any).providerSyncRun.create({
+      data: {
+        workspaceId: input.workspaceId,
+        connectionId: input.connectionId,
+        provider: "shopee",
+        environment: input.environment,
+        shopId: input.shopId,
+        endpoint: input.endpoint,
+        status: input.status,
+        rowsReceived: input.rowsReceived ?? 0,
+        rowsWritten: input.rowsWritten ?? 0,
+        providerRequestId: input.providerRequestId ?? null,
+        errorCategory: error ? errorCategory(error) : null,
+        errorMessage: error,
+        startedAt: input.startedAt,
+        completedAt: new Date(),
+      },
+    });
+  } catch (writeError) {
+    // Diagnostics must never hide the actual provider/configuration outcome.
+    // This also leaves the original error actionable if a preview database has
+    // not yet applied the repository-managed catalog migration.
+    logger.warn("[syncShopeeCatalogWarehouse] Could not persist source sync activity", {
       connectionId: input.connectionId,
-      provider: "shopee",
-      environment: input.environment,
-      shopId: input.shopId,
       endpoint: input.endpoint,
-      status: input.status,
-      rowsReceived: input.rowsReceived ?? 0,
-      rowsWritten: input.rowsWritten ?? 0,
-      providerRequestId: input.providerRequestId ?? null,
-      errorCategory: error ? errorCategory(error) : null,
-      errorMessage: error,
-      startedAt: input.startedAt,
-      completedAt: new Date(),
-    },
-  });
+      error: sanitizeProviderError(writeError),
+    });
+  }
 }
 
 async function syncCampaigns(input: {
