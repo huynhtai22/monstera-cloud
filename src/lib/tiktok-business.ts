@@ -211,6 +211,21 @@ export interface CreateReportTaskParams {
   page_size?: number;
 }
 
+/**
+ * Metrics accepted by TikTok Marketing API v1.3 for the campaign report used
+ * by Monstera.  Keep this list shared by the regular sync and Explorer import:
+ * sending the retired singular names (or revenue/roas) makes TikTok reject the
+ * whole request with code 40002.
+ */
+export const TIKTOK_V13_CAMPAIGN_METRICS = [
+  "spend",
+  "impressions",
+  "clicks",
+  "cpc",
+  "ctr",
+  "conversion",
+] as const;
+
 export interface ReportTaskStatus_Response {
   task_id: string;
   status: ReportTaskStatus;

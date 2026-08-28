@@ -326,7 +326,7 @@ export default function SourceDetailPage() {
 
             {/* Recent syncs */}
             {((data?.recentProviderRuns ?? []) as Array<any>).length > 0 ? <div className="mb-10">
-                <h2 className="mb-3 text-sm font-bold text-ink">Shopee sync activity</h2>
+                <h2 className="mb-3 text-sm font-bold text-ink">Source activity</h2>
                 <div className="space-y-2">
                     {((data?.recentProviderRuns ?? []) as Array<any>).map((run) => (
                         <div key={run.id} className="rounded-md border border-line bg-panel p-3 text-xs">

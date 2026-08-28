@@ -23,7 +23,7 @@ import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
 import { countSourceHealthStatuses } from "@/lib/source-health";
 
 const fetcher = async (url: string) => {
-    const res = await fetch(url, { credentials: "same-origin" });
+    const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
         throw new Error(data.error || 'Failed to fetch data');
@@ -443,18 +443,10 @@ export default function SourcesPage() {
         if (!activeWorkspaceId) return catalogIntegrations;
         const rawSourceConnections = Array.isArray(sourceConnections) ? sourceConnections : [];
 
-        // Identity Deduplication: keep only the most recent connection per provider
-        const dedupedSourceConnections = Object.values(
-            rawSourceConnections.reduce((acc: Record<string, any>, conn: any) => {
-                const existing = acc[conn.provider];
-                if (!existing || new Date(conn.updatedAt) > new Date(existing.updatedAt)) {
-                    acc[conn.provider] = conn;
-                }
-                return acc;
-            }, {})
-        );
-
-        const connectedSources = dedupedSourceConnections
+        // A workspace may legitimately have more than one connection for the
+        // same provider (for example, separate Google Ads MCC logins).  Render
+        // every connection instead of silently hiding all but the newest one.
+        const connectedSources = rawSourceConnections
             .map((conn: any) => {
                 const logo = logoPathForConnectionProvider(conn.provider);
                 const catalogId = integrationCatalogId(conn.provider);

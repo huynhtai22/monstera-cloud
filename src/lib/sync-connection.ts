@@ -39,7 +39,7 @@ import { googleAdsReportClient, isGoogleAdsDeveloperTokenBlocked } from "@/lib/g
 import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
 
 // TikTok imports
-import { tiktokReportClient, type CreateReportTaskParams } from "@/lib/tiktok-business";
+import { tiktokReportClient, TIKTOK_V13_CAMPAIGN_METRICS, type CreateReportTaskParams } from "@/lib/tiktok-business";
 import { ingestTiktokRows } from "@/lib/ad-platform-ingest";
 import {
   type SyncChildResult,
@@ -806,7 +806,7 @@ async function syncTikTok(opts: {
         report_type: "BASIC",
         data_level: "AUCTION_CAMPAIGN",
         dimensions: ["campaign_id", "campaign_name", "adgroup_id", "adgroup_name", "stat_time_day"],
-        metrics: ["impression", "click", "spend", "cpc", "ctr", "conversion", "revenue", "roas"],
+        metrics: [...TIKTOK_V13_CAMPAIGN_METRICS],
         start_date: startDate,
         end_date: endDate,
         page_size: 1000,

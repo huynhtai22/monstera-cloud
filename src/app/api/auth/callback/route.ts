@@ -183,6 +183,33 @@ export async function GET(request: NextRequest) {
         });
         await prisma.auditEvent.create({ data: { workspaceId, actorUserId: userId, action: "connection.connected", resource: "connection", resourceId: connection.id, metadata: { provider: providerId } } });
 
+        // Google Ads customer discovery happens during the OAuth exchange. Log
+        // its successful outcome against the resulting connection so a second
+        // MCC login is observable even before it has an import pipeline.
+        if (providerId === "google_ads") {
+            try {
+                await (prisma as any).providerSyncRun.create({
+                    data: {
+                        workspaceId,
+                        connectionId: connection.id,
+                        provider: "google_ads",
+                        environment: "production",
+                        endpoint: "customers:listAccessibleCustomers",
+                        httpStatus: 200,
+                        status: "success",
+                        rowsReceived: metadata.accountIdentifiers?.length ?? 0,
+                        rowsWritten: 0,
+                        startedAt: new Date(),
+                        completedAt: new Date(),
+                    },
+                });
+            } catch (activityError) {
+                // Observability must never make a completed OAuth connection
+                // look failed if an older environment lacks this table.
+                logger.warn("[OAuth Callback] Google Ads discovery activity could not be recorded", activityError);
+            }
+        }
+
         try {
             const { job } = await enqueueOauthWarehouseBackfill({
                 workspaceId,

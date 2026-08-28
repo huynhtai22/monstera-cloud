@@ -1,6 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { TikTokBusinessClient, TikTokProviderError, TikTokReportClient } from "./tiktok-business";
+import {
+  TikTokBusinessClient,
+  TikTokProviderError,
+  TikTokReportClient,
+  TIKTOK_V13_CAMPAIGN_METRICS,
+} from "./tiktok-business";
 
 async function withFastRetries<T>(run: () => Promise<T>): Promise<T> {
   const originalTimeout = globalThis.setTimeout;
@@ -106,6 +111,35 @@ describe("TikTok for Business OAuth & Report Parsing", () => {
     assert.equal(parsedRows[0].dimensions.campaign_id, "180123456789");
     assert.equal(parsedRows[0].metrics.spend, "75.00");
     assert.equal(parsedRows[0].metrics.conversion, "10");
+  });
+
+  it("uses only TikTok v1.3-supported campaign metrics for a report task", async () => {
+    const originalFetch = globalThis.fetch;
+    let requestBody: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ code: 0, data: { task_id: "task-1" } }), { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      const taskId = await new TikTokReportClient().createTask("access-token", {
+        advertiser_id: "7677495922629787656",
+        report_type: "BASIC",
+        data_level: "AUCTION_CAMPAIGN",
+        dimensions: ["campaign_id", "stat_time_day"],
+        metrics: [...TIKTOK_V13_CAMPAIGN_METRICS],
+        start_date: "2026-08-01",
+        end_date: "2026-08-01",
+      });
+
+      assert.equal(taskId, "task-1");
+      assert.deepEqual(requestBody?.metrics, ["spend", "impressions", "clicks", "cpc", "ctr", "conversion"]);
+      assert.equal((requestBody?.metrics as string[]).includes("impression"), false);
+      assert.equal((requestBody?.metrics as string[]).includes("revenue"), false);
+      assert.equal((requestBody?.metrics as string[]).includes("roas"), false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("retries a report download 429 and surfaces a retryable error after exhaustion", async () => {

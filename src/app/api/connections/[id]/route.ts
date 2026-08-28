@@ -72,13 +72,11 @@ export async function GET(
                 ? (JSON.parse(sanitizeConnectionCredentials(connection.credentials)).sandbox === true ? "sandbox" : "production")
                 : null,
         };
-        const recentProviderRuns = connection.provider === "shopee"
-            ? await (prisma as any).providerSyncRun.findMany({
+        const recentProviderRuns = await (prisma as any).providerSyncRun.findMany({
                 where: { workspaceId: connection.workspaceId, connectionId },
                 orderBy: { startedAt: "desc" },
                 take: 30,
-              })
-            : [];
+              });
 
         return NextResponse.json({
             connection: safeConnection,
