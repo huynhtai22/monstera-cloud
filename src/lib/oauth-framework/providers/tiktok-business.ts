@@ -10,6 +10,10 @@ import {
     OAuthError,
 } from "../types";
 import { tiktokBusinessClient } from "@/lib/tiktok-business";
+import {
+    normalizeTikTokAdvertiserIds,
+    TIKTOK_ADVERTISER_RECONNECT_MESSAGE,
+} from "@/lib/tiktok-advertiser-id";
 
 export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
     readonly id = "tiktok_business";
@@ -37,6 +41,10 @@ export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
     }): Promise<{ credentials: OAuthCredentials; metadata: ConnectionMetadata }> {
         // TikTok returns `auth_code` not `code`
         const tokenData = await tiktokBusinessClient.exchangeCode(code);
+        const advertiserIds = normalizeTikTokAdvertiserIds(tokenData.advertiser_ids);
+        if (!advertiserIds.length) {
+            throw new OAuthError("provider_error", TIKTOK_ADVERTISER_RECONNECT_MESSAGE, this.id);
+        }
 
         const isLongLivedAdvertiserToken = !tokenData.refresh_token && !tokenData.expires_in;
         const credentials: OAuthCredentials = isLongLivedAdvertiserToken
@@ -52,12 +60,12 @@ export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
               };
 
         const metadata: ConnectionMetadata = {
-            name: `TikTok Ads (${tokenData.advertiser_ids.length} advertiser${
-                tokenData.advertiser_ids.length === 1 ? "" : "s"
+            name: `TikTok Ads (${advertiserIds.length} advertiser${
+                advertiserIds.length === 1 ? "" : "s"
             })`,
-            accountIdentifiers: tokenData.advertiser_ids,
+            accountIdentifiers: advertiserIds,
             extraFields: {
-                advertiserIds: tokenData.advertiser_ids,
+                advertiserIds,
                 scope: tokenData.scope,
             },
         };
@@ -75,9 +83,10 @@ export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
         const creds = credentials as {
             advertiserIds?: string[];
         };
-        if (!creds?.advertiserIds?.length) return [];
+        const advertiserIds = normalizeTikTokAdvertiserIds(creds?.advertiserIds);
+        if (!advertiserIds.length) return [];
 
-        return creds.advertiserIds.map((id) => ({
+        return advertiserIds.map((id) => ({
             id,
             name: `Advertiser ${id}`,
             type: "advertiser" as const,

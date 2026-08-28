@@ -31,6 +31,7 @@ async function withSyncHarness<T>(
   process.env.ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
   globalThis.fetch = fetchImpl;
   (prisma as any).connection = {
+    findUnique: async () => null,
     update: async (args: { data: Record<string, unknown> }) => {
       updates.push(args);
       return args;
@@ -128,25 +129,73 @@ describe("provider HTTP failures preserve sync correctness", () => {
         const advertiserId = new URL(url).searchParams.get("advertiser_id");
         return new Response(JSON.stringify({ code: 0, data: { status: "SUCCESS", url: `https://download.test/${advertiserId}` } }), { status: 200 });
       }
-      if (url.endsWith("/advertiser-a")) return new Response("", { status: 200 });
+      if (url.endsWith("/712345678901234")) return new Response("", { status: 200 });
       failedDownloadAttempts++;
       return new Response(JSON.stringify({ code: 429, message: "rate limit" }), { status: 429 });
     }) as typeof fetch, async (updates) => {
       const result = await syncConnectionData({
         connectionId: "tiktok-connection",
         provider: "tiktok_business",
-        credentials: { ...freshCredentials, advertiserIds: ["advertiser-a", "advertiser-b"] },
+        credentials: { ...freshCredentials, advertiserIds: ["712345678901234", "712345678901235"] },
         workspaceId: "workspace-1",
         userPlan: "pilot",
       });
       assert.equal(result.outcome, "partial");
       assert.equal(result.success, false);
-      assert.deepEqual(result.children.map((child) => [child.id, child.ok]), [["advertiser-a", true], ["advertiser-b", false]]);
-      assert.equal(result.children.find((child) => child.id === "advertiser-b")?.retryable, true);
+      assert.deepEqual(result.children.map((child) => [child.id, child.ok]), [["712345678901234", true], ["712345678901235", false]]);
+      assert.equal(result.children.find((child) => child.id === "712345678901235")?.retryable, true);
       assert.equal(failedDownloadAttempts, 3);
       assert.equal("lastSyncAt" in updates[0].data, false);
       assert.match(String(updates[0].data.lastError), /^\[partial\]/);
     }));
+  });
+
+  it("uses a numeric legacy connection identity when credentials do not yet contain advertiser IDs", async () => {
+    let reportRequests = 0;
+    await withSyncHarness((async (input, init) => {
+      const url = String(input);
+      if (url.includes("/report/task/create/")) {
+        reportRequests++;
+        const body = JSON.parse(String(init?.body ?? "{}")) as { advertiser_id: string };
+        assert.equal(body.advertiser_id, "712345678901234");
+        return new Response(JSON.stringify({ code: 0, data: { task_id: "legacy-task" } }));
+      }
+      if (url.includes("/report/task/check/")) {
+        return new Response(JSON.stringify({ code: 0, data: { status: "SUCCESS", url: "https://download.test/legacy" } }));
+      }
+      return new Response("");
+    }) as typeof fetch, async () => {
+      (prisma as any).connection.findUnique = async () => ({ remoteAccountId: "712345678901234" });
+      const result = await syncConnectionData({
+        connectionId: "tiktok-numeric-legacy-connection",
+        provider: "tiktok_business",
+        credentials: { ...freshCredentials },
+        workspaceId: "workspace-1",
+        userPlan: "pilot",
+      });
+      assert.equal(reportRequests, 1);
+      assert.doesNotMatch(String(result.error), /reconnect required/i);
+    });
+  });
+
+  it("fails closed without calling TikTok when legacy credentials contain no numeric advertiser ID", async () => {
+    let reportRequests = 0;
+    await withSyncHarness((async (input) => {
+      if (String(input).includes("/report/task/")) reportRequests++;
+      return new Response("unexpected");
+    }) as typeof fetch, async (updates) => {
+      const result = await syncConnectionData({
+        connectionId: "tiktok-legacy-connection",
+        provider: "tiktok_business",
+        credentials: { ...freshCredentials, advertiserIds: ["#un1v"] },
+        workspaceId: "workspace-1",
+        userPlan: "pilot",
+      });
+      assert.equal(result.outcome, "failed");
+      assert.match(String(result.error), /reconnect required/i);
+      assert.equal(reportRequests, 0);
+      assert.match(String(updates[0].data.lastError), /reconnect required/i);
+    });
   });
 
   it("Meta Error 190 revokes the connection via the established handler instead of retrying per account", async () => {
