@@ -12,7 +12,7 @@ import crypto from "crypto";
 import { getToken } from "./token-cache";
 import { withTokenRefreshLock } from "./distributed-lock";
 import { logger } from "@/lib/logger";
-import { isShopeeSandboxEnabled, SHOPEE_SANDBOX_OPEN_API_HOST } from "@/lib/shopee-env";
+import { getShopeeActiveConfig, isShopeeSandboxEnabled } from "@/lib/shopee-env";
 
 // Platform-specific signing configurations
 interface PlatformConfig {
@@ -47,9 +47,9 @@ interface InterceptedRequest {
 const PLATFORM_CONFIGS: Record<string, PlatformConfig> = {
   shopee: {
     name: "Shopee",
-    baseUrl: isShopeeSandboxEnabled()
-      ? SHOPEE_SANDBOX_OPEN_API_HOST
-      : "https://partner.shopeemobile.com",
+    // The actual host and signing credentials are selected per connection in
+    // signHmacRequest. Do not capture an environment at module-load time.
+    baseUrl: "",
     authType: "hmac",
     signatureMethod: "hmac-sha256",
     requireTimestamp: true,
@@ -125,21 +125,34 @@ async function signHmacRequest(
 ): Promise<InterceptedRequest> {
   const timestamp = Math.floor(Date.now() / 1000);
   const path = context.endpoint;
+  const storedSandbox = token.extraFields?.sandbox ?? token.sandbox;
+  const shopeeConfig = context.platform === "shopee"
+    ? getShopeeActiveConfig(
+        typeof storedSandbox === "boolean" ? storedSandbox : isShopeeSandboxEnabled(),
+      )
+    : null;
+  const partnerId = shopeeConfig?.partnerId ?? token.extraFields?.partnerId;
+  const partnerKey = shopeeConfig?.partnerKey ?? getPartnerKey(context.platform);
+  const baseUrl = shopeeConfig?.apiBaseUrl ?? config.baseUrl;
+
+  if (!partnerId || !partnerKey || !baseUrl) {
+    throw new Error(`Missing configured credentials for ${context.platform}`);
+  }
 
   // Build signature base string
   // Shopee: partner_id + path + timestamp + access_token + shop_id
   // Lazada: similar pattern
-  const baseString = `${token.extraFields?.partnerId || process.env.SHOPEE_PARTNER_ID}${path}${timestamp}${token.accessToken}${token.shopId}`;
+  const baseString = `${partnerId}${path}${timestamp}${token.accessToken}${token.shopId}`;
 
   const signature = crypto
-    .createHmac("sha256", getPartnerKey(context.platform))
+    .createHmac("sha256", partnerKey)
     .update(baseString)
     .digest("hex");
 
-  const url = new URL(`${config.baseUrl}${path}`);
+  const url = new URL(`${baseUrl}${path}`);
 
   // Add query params
-  url.searchParams.set("partner_id", String(token.extraFields?.partnerId || process.env.SHOPEE_PARTNER_ID));
+  url.searchParams.set("partner_id", String(partnerId));
   url.searchParams.set("timestamp", timestamp.toString());
   url.searchParams.set("access_token", token.accessToken);
   url.searchParams.set("shop_id", String(token.shopId));
@@ -260,8 +273,6 @@ async function refreshAndCacheToken(context: RequestContext): Promise<boolean> {
  */
 function getPartnerKey(platform: string): string {
   switch (platform) {
-    case "shopee":
-      return process.env.SHOPEE_PARTNER_KEY || "";
     case "lazada":
       return process.env.LAZADA_APP_KEY || "";
     default:

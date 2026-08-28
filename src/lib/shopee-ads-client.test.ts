@@ -1,11 +1,34 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { ShopeeAdsClient, ShopeeClient, ShopeeDataClient, chunkDateRangeIntoMonths } from "./shopee";
 import { ShopeeOAuthAdapter } from "./oauth-framework/providers/shopee";
+import { buildCallbackUrl } from "./oauth-framework/session";
 import { assertShopeeRegionEligible, isShopeeRegionEligible } from "./provider-market-policy";
 import { getShopeeEnvironments, getShopeeActiveConfig, SHOPEE_CANONICAL_REDIRECT_URL, SHOPEE_SANDBOX_OPEN_API_HOST } from "./shopee-env";
 
 describe("Shopee Open Platform v2 Ads Client & Region Policy", () => {
+  const shopeeEnvKeys = [
+    "SHOPEE_TEST_PARTNER_ID",
+    "SHOPEE_TEST_PARTNER_KEY",
+    "SHOPEE_LIVE_PARTNER_ID",
+    "SHOPEE_LIVE_PARTNER_KEY",
+    "SHOPEE_PARTNER_ID",
+    "SHOPEE_PARTNER_KEY",
+    "SHOPEE_SANDBOX",
+    "NEXTAUTH_URL",
+  ] as const;
+  const originalEnv = Object.fromEntries(shopeeEnvKeys.map((key) => [key, process.env[key]]));
+
+  afterEach(() => {
+    for (const key of shopeeEnvKeys) {
+      const value = originalEnv[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
   it("enforces Vietnam-only (VN) region policy for Ads reporting", () => {
     assert.equal(isShopeeRegionEligible("VN", "ads_reporting"), true);
     assert.equal(isShopeeRegionEligible("vn", "ads_reporting"), true);
@@ -59,6 +82,52 @@ describe("Shopee Open Platform v2 Ads Client & Region Policy", () => {
     assert.equal(prodActive.apiBaseUrl, "https://partner.shopeemobile.com");
     assert.equal(prodActive.partnerId, "1001234");
     assert.equal(prodActive.isSandbox, false);
+  });
+
+  it("fails closed when only deprecated generic credentials are configured", () => {
+    delete process.env.SHOPEE_TEST_PARTNER_ID;
+    delete process.env.SHOPEE_TEST_PARTNER_KEY;
+    delete process.env.SHOPEE_LIVE_PARTNER_ID;
+    delete process.env.SHOPEE_LIVE_PARTNER_KEY;
+    process.env.SHOPEE_PARTNER_ID = "deprecated-id";
+    process.env.SHOPEE_PARTNER_KEY = "deprecated-key";
+
+    assert.throws(
+      () => getShopeeActiveConfig(true),
+      (error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        return message.includes("SHOPEE_TEST_PARTNER_ID") && !message.includes("deprecated-id") && !message.includes("deprecated-key");
+      },
+    );
+    assert.throws(() => getShopeeActiveConfig(false), /SHOPEE_LIVE_PARTNER_ID/);
+  });
+
+  it("keeps sandbox and production hosts and credentials together", () => {
+    process.env.SHOPEE_TEST_PARTNER_ID = "sandbox-id";
+    process.env.SHOPEE_TEST_PARTNER_KEY = "sandbox-key";
+    process.env.SHOPEE_LIVE_PARTNER_ID = "production-id";
+    process.env.SHOPEE_LIVE_PARTNER_KEY = "production-key";
+
+    const sandbox = getShopeeActiveConfig(true);
+    const production = getShopeeActiveConfig(false);
+    assert.equal(sandbox.apiBaseUrl, SHOPEE_SANDBOX_OPEN_API_HOST);
+    assert.equal(sandbox.partnerId, "sandbox-id");
+    assert.equal(production.apiBaseUrl, "https://partner.shopeemobile.com");
+    assert.equal(production.partnerId, "production-id");
+  });
+
+  it("uses the canonical callback in runtime construction and submission instructions", () => {
+    process.env.NEXTAUTH_URL = "https://monsteracloud.com";
+    const runtimeCallback = buildCallbackUrl(
+      new Request("https://untrusted-preview.example/api/auth/connect"),
+      "shopee",
+    );
+    assert.equal(runtimeCallback, SHOPEE_CANONICAL_REDIRECT_URL);
+
+    const submission = readFileSync(resolve(process.cwd(), "scripts/shopee-open-platform-submission.md"), "utf8");
+    assert.ok(submission.includes(SHOPEE_CANONICAL_REDIRECT_URL));
+    assert.equal(submission.includes("https://monsteracloud.com/api/auth/shopee/callback"), false);
+    assert.equal(submission.includes("SHOPEE_REDIRECT_URI"), false);
   });
 
   it("generates signed Shopee sandbox authorization URL for Vietnam Local Shop", () => {

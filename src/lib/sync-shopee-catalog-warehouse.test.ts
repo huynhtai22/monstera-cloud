@@ -11,8 +11,10 @@ type CampaignRow = { id: string; data: Record<string, unknown> };
 describe("Shopee catalog warehouse sync", () => {
   const originalFetch = globalThis.fetch;
   const originalKey = process.env.ENCRYPTION_KEY;
-  const originalPartnerId = process.env.SHOPEE_PARTNER_ID;
-  const originalPartnerKey = process.env.SHOPEE_PARTNER_KEY;
+  const originalTestPartnerId = process.env.SHOPEE_TEST_PARTNER_ID;
+  const originalTestPartnerKey = process.env.SHOPEE_TEST_PARTNER_KEY;
+  const originalLivePartnerId = process.env.SHOPEE_LIVE_PARTNER_ID;
+  const originalLivePartnerKey = process.env.SHOPEE_LIVE_PARTNER_KEY;
   const originalConnection = (prisma as any).connection;
   const originalCampaign = (prisma as any).shopeeCampaign;
   const originalProduct = (prisma as any).shopeeProduct;
@@ -22,8 +24,10 @@ describe("Shopee catalog warehouse sync", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.ENCRYPTION_KEY; else process.env.ENCRYPTION_KEY = originalKey;
-    if (originalPartnerId === undefined) delete process.env.SHOPEE_PARTNER_ID; else process.env.SHOPEE_PARTNER_ID = originalPartnerId;
-    if (originalPartnerKey === undefined) delete process.env.SHOPEE_PARTNER_KEY; else process.env.SHOPEE_PARTNER_KEY = originalPartnerKey;
+    if (originalTestPartnerId === undefined) delete process.env.SHOPEE_TEST_PARTNER_ID; else process.env.SHOPEE_TEST_PARTNER_ID = originalTestPartnerId;
+    if (originalTestPartnerKey === undefined) delete process.env.SHOPEE_TEST_PARTNER_KEY; else process.env.SHOPEE_TEST_PARTNER_KEY = originalTestPartnerKey;
+    if (originalLivePartnerId === undefined) delete process.env.SHOPEE_LIVE_PARTNER_ID; else process.env.SHOPEE_LIVE_PARTNER_ID = originalLivePartnerId;
+    if (originalLivePartnerKey === undefined) delete process.env.SHOPEE_LIVE_PARTNER_KEY; else process.env.SHOPEE_LIVE_PARTNER_KEY = originalLivePartnerKey;
     (prisma as any).connection = originalConnection;
     (prisma as any).shopeeCampaign = originalCampaign;
     (prisma as any).shopeeProduct = originalProduct;
@@ -33,8 +37,13 @@ describe("Shopee catalog warehouse sync", () => {
 
   function installHarness(sandbox: boolean) {
     process.env.ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
-    process.env.SHOPEE_PARTNER_ID = "850001";
-    process.env.SHOPEE_PARTNER_KEY = "sanitized-test-key";
+    if (sandbox) {
+      process.env.SHOPEE_TEST_PARTNER_ID = "850001";
+      process.env.SHOPEE_TEST_PARTNER_KEY = "sanitized-test-key";
+    } else {
+      process.env.SHOPEE_LIVE_PARTNER_ID = "850001";
+      process.env.SHOPEE_LIVE_PARTNER_KEY = "sanitized-test-key";
+    }
     const campaigns = new Map<string, CampaignRow>();
     const runs: Array<Record<string, unknown>> = [];
     const credentials = encrypt(JSON.stringify({

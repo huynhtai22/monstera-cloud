@@ -6,20 +6,20 @@ import { splitShopeeAdsDateRange } from "@/lib/sync-shopee-ads-warehouse";
 
 describe("Shopee catalog discovery", () => {
   const originalFetch = globalThis.fetch;
-  const originalPartnerId = process.env.SHOPEE_PARTNER_ID;
-  const originalPartnerKey = process.env.SHOPEE_PARTNER_KEY;
+  const originalPartnerId = process.env.SHOPEE_TEST_PARTNER_ID;
+  const originalPartnerKey = process.env.SHOPEE_TEST_PARTNER_KEY;
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    if (originalPartnerId === undefined) delete process.env.SHOPEE_PARTNER_ID;
-    else process.env.SHOPEE_PARTNER_ID = originalPartnerId;
-    if (originalPartnerKey === undefined) delete process.env.SHOPEE_PARTNER_KEY;
-    else process.env.SHOPEE_PARTNER_KEY = originalPartnerKey;
+    if (originalPartnerId === undefined) delete process.env.SHOPEE_TEST_PARTNER_ID;
+    else process.env.SHOPEE_TEST_PARTNER_ID = originalPartnerId;
+    if (originalPartnerKey === undefined) delete process.env.SHOPEE_TEST_PARTNER_KEY;
+    else process.env.SHOPEE_TEST_PARTNER_KEY = originalPartnerKey;
   });
 
   it("retrieves campaign 210343 through complete offset pagination", async () => {
-    process.env.SHOPEE_PARTNER_ID = "850001";
-    process.env.SHOPEE_PARTNER_KEY = "sanitized-test-key";
+    process.env.SHOPEE_TEST_PARTNER_ID = "850001";
+    process.env.SHOPEE_TEST_PARTNER_KEY = "sanitized-test-key";
     const offsets: string[] = [];
     globalThis.fetch = (async (url) => {
       const parsed = new URL(String(url));

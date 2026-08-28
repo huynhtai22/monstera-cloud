@@ -17,7 +17,7 @@ import crypto from "crypto";
 import prisma from "@/lib/prisma";
 import { encrypt, safeDecrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
-import { SHOPEE_SANDBOX_OPEN_API_HOST } from "@/lib/shopee-env";
+import { getShopeeActiveConfig, isShopeeSandboxEnabled } from "@/lib/shopee-env";
 import {
   accessTokenNeedsRefresh,
   normalizeStoredShopeeCreds,
@@ -91,8 +91,6 @@ function normalizePartnerEnvValue(raw: string): string {
   return v;
 }
 
-import { getShopeeActiveConfig } from "@/lib/shopee-env";
-
 /** Decimal digits only — used in the HMAC base string and in query params (avoids Number precision edge cases). */
 function partnerIdString(sandbox = false): string {
   const cfg = getShopeeActiveConfig(sandbox);
@@ -119,8 +117,8 @@ function partnerKey(sandbox = false): string {
 }
 
 /** Same UTF-8 secret as API signing; used by `POST /api/webhooks/shopee` body HMAC. */
-export function shopeePartnerKeySecretForWebhook(): string {
-  return partnerKey(false);
+export function shopeePartnerKeySecretForWebhook(sandbox = isShopeeSandboxEnabled()): string {
+  return partnerKey(sandbox);
 }
 
 function getHost(sandbox = false): string {
@@ -364,7 +362,7 @@ function logShopeeShopApiFailure(
     msg.includes("error_sign")
   ) {
     hintParts.push(
-      "Signature/env mismatch: confirm SHOPEE_PARTNER_ID/KEY match the environment, use sandbox host with sandbox keys, and api_path in sign matches the request path."
+      "Signature/environment mismatch: confirm the selected SHOPEE_TEST_PARTNER_* or SHOPEE_LIVE_PARTNER_* credentials match the selected host, and api_path in sign matches the request path."
     );
   }
   if (

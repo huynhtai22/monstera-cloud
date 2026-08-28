@@ -10,6 +10,8 @@ export interface ShopeeEnvironment {
   redirectUrl: string;
 }
 
+export type ShopeeEnvironmentName = "sandbox" | "production";
+
 export const SHOPEE_CANONICAL_REDIRECT_URL =
   "https://monsteracloud.com/api/auth/callback?provider=shopee";
 
@@ -45,29 +47,15 @@ export function getShopeeEnvironments(): {
   return {
     sandbox: {
       apiBaseUrl: SHOPEE_SANDBOX_OPEN_API_HOST,
-      partnerId:
-        normalizePartnerEnvValue(process.env.SHOPEE_TEST_PARTNER_ID) ||
-        normalizePartnerEnvValue(process.env.SHOPEE_PARTNER_ID) ||
-        undefined,
-      partnerKey:
-        normalizePartnerEnvValue(process.env.SHOPEE_TEST_PARTNER_KEY) ||
-        normalizePartnerEnvValue(process.env.SHOPEE_PARTNER_KEY) ||
-        undefined,
-      redirectUrl:
-        process.env.SHOPEE_REDIRECT_URL || SHOPEE_CANONICAL_REDIRECT_URL,
+      partnerId: normalizePartnerEnvValue(process.env.SHOPEE_TEST_PARTNER_ID) || undefined,
+      partnerKey: normalizePartnerEnvValue(process.env.SHOPEE_TEST_PARTNER_KEY) || undefined,
+      redirectUrl: SHOPEE_CANONICAL_REDIRECT_URL,
     },
     production: {
       apiBaseUrl: SHOPEE_PRODUCTION_OPEN_API_HOST,
-      partnerId:
-        normalizePartnerEnvValue(process.env.SHOPEE_LIVE_PARTNER_ID) ||
-        normalizePartnerEnvValue(process.env.SHOPEE_PARTNER_ID) ||
-        undefined,
-      partnerKey:
-        normalizePartnerEnvValue(process.env.SHOPEE_LIVE_PARTNER_KEY) ||
-        normalizePartnerEnvValue(process.env.SHOPEE_PARTNER_KEY) ||
-        undefined,
-      redirectUrl:
-        process.env.SHOPEE_REDIRECT_URL || SHOPEE_CANONICAL_REDIRECT_URL,
+      partnerId: normalizePartnerEnvValue(process.env.SHOPEE_LIVE_PARTNER_ID) || undefined,
+      partnerKey: normalizePartnerEnvValue(process.env.SHOPEE_LIVE_PARTNER_KEY) || undefined,
+      redirectUrl: SHOPEE_CANONICAL_REDIRECT_URL,
     },
   };
 }
@@ -89,15 +77,15 @@ export function getShopeeActiveConfig(sandbox?: boolean): {
   if (!partnerId) {
     throw new Error(
       isSb
-        ? "Shopee Sandbox partner ID is not configured. Set SHOPEE_TEST_PARTNER_ID (or SHOPEE_PARTNER_ID with SHOPEE_SANDBOX=true)."
-        : "Shopee Production partner ID is not configured. Set SHOPEE_LIVE_PARTNER_ID (or SHOPEE_PARTNER_ID)."
+        ? "Shopee Sandbox partner ID is not configured. Set SHOPEE_TEST_PARTNER_ID."
+        : "Shopee Production partner ID is not configured. Set SHOPEE_LIVE_PARTNER_ID."
     );
   }
   if (!partnerKey) {
     throw new Error(
       isSb
-        ? "Shopee Sandbox partner key is not configured. Set SHOPEE_TEST_PARTNER_KEY (or SHOPEE_PARTNER_KEY with SHOPEE_SANDBOX=true)."
-        : "Shopee Production partner key is not configured. Set SHOPEE_LIVE_PARTNER_KEY (or SHOPEE_PARTNER_KEY)."
+        ? "Shopee Sandbox partner key is not configured. Set SHOPEE_TEST_PARTNER_KEY."
+        : "Shopee Production partner key is not configured. Set SHOPEE_LIVE_PARTNER_KEY."
     );
   }
 
@@ -108,4 +96,13 @@ export function getShopeeActiveConfig(sandbox?: boolean): {
     redirectUrl: env.redirectUrl,
     isSandbox: isSb,
   };
+}
+
+/**
+ * Return the complete configuration for a named Shopee environment.  This is
+ * intentionally fail-closed: deprecated SHOPEE_PARTNER_* aliases are never
+ * consulted, so toggling SHOPEE_SANDBOX cannot cross credential boundaries.
+ */
+export function getShopeeEnvironmentConfig(environment: ShopeeEnvironmentName) {
+  return getShopeeActiveConfig(environment === "sandbox");
 }
