@@ -27,7 +27,7 @@ describe("TikTok OAuth token exchange", () => {
         new Response(
           JSON.stringify({
             code: 0,
-            data: { access_token: "test-access", advertiser_ids: ["advertiser-test"] },
+            data: { access_token: "test-access", advertiser_ids: ["712345678901234"] },
           }),
         ),
         async () => {
@@ -63,7 +63,7 @@ describe("TikTok OAuth token exchange", () => {
             data: {
               access_token: "test-access",
               expires_in: 86400,
-              advertiser_ids: ["advertiser-test"],
+              advertiser_ids: ["712345678901234"],
               scope: "reporting",
               token_type: "Bearer",
             },
@@ -77,6 +77,34 @@ describe("TikTok OAuth token exchange", () => {
               metadata: { workspaceId: "workspace-test", userId: "user-test" },
             }),
             /invalid token response/,
+          );
+        },
+      );
+    } finally {
+      if (previousAppId === undefined) delete process.env.TIKTOK_BUSINESS_APP_ID;
+      else process.env.TIKTOK_BUSINESS_APP_ID = previousAppId;
+      if (previousSecret === undefined) delete process.env.TIKTOK_BUSINESS_APP_SECRET;
+      else process.env.TIKTOK_BUSINESS_APP_SECRET = previousSecret;
+    }
+  });
+
+  it("rejects a token response with no numeric advertiser IDs", async () => {
+    const previousAppId = process.env.TIKTOK_BUSINESS_APP_ID;
+    const previousSecret = process.env.TIKTOK_BUSINESS_APP_SECRET;
+    process.env.TIKTOK_BUSINESS_APP_ID = "test-app";
+    process.env.TIKTOK_BUSINESS_APP_SECRET = "test-secret";
+
+    try {
+      await withMockedFetch(
+        new Response(JSON.stringify({ code: 0, data: { access_token: "test-access", advertiser_ids: ["#un1v"] } })),
+        async () => {
+          await assert.rejects(
+            new TikTokBusinessOAuthAdapter().exchangeCode({
+              code: "test-auth-code",
+              redirectUri: "https://monsteracloud.com/api/auth/callback?provider=tiktok_business",
+              metadata: { workspaceId: "workspace-test", userId: "user-test" },
+            }),
+            /reconnect required/i,
           );
         },
       );

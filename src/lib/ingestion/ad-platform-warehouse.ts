@@ -8,6 +8,10 @@ import {
 } from "@/lib/tiktok-business";
 import { ingestGoogleAdsRows, ingestTiktokRows } from "@/lib/ad-platform-ingest";
 import { logger } from "@/lib/logger";
+import {
+  normalizeTikTokAdvertiserIds,
+  TIKTOK_ADVERTISER_RECONNECT_MESSAGE,
+} from "@/lib/tiktok-advertiser-id";
 
 function gaqlBetween(since: string, until: string) {
   // GAQL requires single quotes around date literals.
@@ -131,7 +135,9 @@ export async function syncTikTokIntoWarehouse(params: {
   if (!accessToken) throw new Error("Failed to get valid token");
 
   const extraFields = credentials.extraFields || {};
-  let advertiserIds: string[] = extraFields.advertiserIds || credentials.advertiserIds || [];
+  let advertiserIds = normalizeTikTokAdvertiserIds(
+    extraFields.advertiserIds || credentials.advertiserIds,
+  );
 
   const selectedIds: string[] | undefined = Array.isArray(extraFields.selectedAdvertiserIds)
     ? extraFields.selectedAdvertiserIds
@@ -139,14 +145,16 @@ export async function syncTikTokIntoWarehouse(params: {
       ? credentials.selectedAdvertiserIds
       : undefined;
   if (selectedIds !== undefined) {
-    advertiserIds = advertiserIds.filter((id) => selectedIds.includes(id));
+    const selectedAdvertiserIds = new Set(normalizeTikTokAdvertiserIds(selectedIds));
+    advertiserIds = advertiserIds.filter((id) => selectedAdvertiserIds.has(id));
   }
 
   if (advertiserId) {
-    advertiserIds = advertiserIds.filter((id) => id === advertiserId);
+    const requestedAdvertiserIds = new Set(normalizeTikTokAdvertiserIds([advertiserId]));
+    advertiserIds = advertiserIds.filter((id) => requestedAdvertiserIds.has(id));
   }
 
-  if (!advertiserIds.length) throw new Error("No advertisers selected");
+  if (!advertiserIds.length) throw new Error(TIKTOK_ADVERTISER_RECONNECT_MESSAGE);
 
   const jobId = `explorer-${Date.now()}`;
   let upserted = 0;

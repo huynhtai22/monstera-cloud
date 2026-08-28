@@ -45,6 +45,10 @@ import {
   TIKTOK_CAMPAIGN_REPORT_METRICS,
   type CreateReportTaskParams,
 } from "@/lib/tiktok-business";
+import {
+  normalizeTikTokAdvertiserIds,
+  TIKTOK_ADVERTISER_RECONNECT_MESSAGE,
+} from "@/lib/tiktok-advertiser-id";
 import { ingestTiktokRows } from "@/lib/ad-platform-ingest";
 import {
   type SyncChildResult,
@@ -763,22 +767,31 @@ async function syncTikTok(opts: {
     return result;
   }
 
-  // TikTok stores advertiserIds in extraFields
+  // TikTok stores advertiserIds in extraFields. A legacy connection identity
+  // may be used only when it is itself a valid numeric advertiser ID; opaque
+  // UI/source labels must never reach TikTok as `advertiser_id`.
   const extraFields = credentials.extraFields || {};
-  let advertiserIds = extraFields.advertiserIds || credentials.advertiserIds || [];
+  let advertiserIds = normalizeTikTokAdvertiserIds(
+    extraFields.advertiserIds || credentials.advertiserIds,
+  );
 
-  if ((!advertiserIds || advertiserIds.length === 0) && connectionId) {
+  if (!advertiserIds.length) {
     try {
-      const conn = await prisma.connection.findUnique({
+      const connection = await prisma.connection.findUnique({
         where: { id: connectionId },
         select: { remoteAccountId: true },
       });
-      if (conn?.remoteAccountId && conn.remoteAccountId.trim().length > 0) {
-        advertiserIds = [conn.remoteAccountId.trim()];
-        logger.info(`[syncTikTok] Resolved advertiserId from DB remoteAccountId: ${conn.remoteAccountId}`);
+      const fallbackAdvertiserIds = normalizeTikTokAdvertiserIds([
+        connection?.remoteAccountId,
+      ]);
+      if (fallbackAdvertiserIds.length) {
+        advertiserIds = fallbackAdvertiserIds;
+        logger.info("[syncTikTok] Resolved validated advertiser ID from the connection identity", {
+          connectionId,
+        });
       }
-    } catch (dbErr) {
-      logger.warn(`[syncTikTok] DB connection query failed:`, dbErr);
+    } catch (error) {
+      logger.warn("[syncTikTok] Unable to read legacy advertiser identity", { connectionId, error });
     }
   }
 
@@ -790,12 +803,13 @@ async function syncTikTok(opts: {
       ? credentials.selectedAdvertiserIds
       : undefined;
   if (selectedIds !== undefined) {
-    advertiserIds = advertiserIds.filter((id: string) => selectedIds.includes(id));
+    const selectedAdvertiserIds = new Set(normalizeTikTokAdvertiserIds(selectedIds));
+    advertiserIds = advertiserIds.filter((id: string) => selectedAdvertiserIds.has(id));
     logger.info(`[syncTikTok] Filtered to ${advertiserIds.length} selected advertisers`);
   }
 
   if (!advertiserIds.length) {
-    const result = makeFailedSyncResult("No advertisers selected or found on connection", false);
+    const result = makeFailedSyncResult(TIKTOK_ADVERTISER_RECONNECT_MESSAGE, false);
     await persistConnectionSyncOutcome(connectionId, result, lease);
     return result;
   }
