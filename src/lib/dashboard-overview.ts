@@ -631,7 +631,10 @@ export async function getWorkspaceDashboardOverview(
             const clean = String(id).replace(/\D/g, "");
             return clean.length === 10 ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}` : String(id);
           });
-          accountCount = customers.length;
+          const discoveredCustomerCount = Number(creds.discoveredCustomerCount);
+          accountCount = Number.isFinite(discoveredCustomerCount) && discoveredCustomerCount > 0
+            ? discoveredCustomerCount
+            : customers.length;
         }
         const mccId = creds.mccId || creds.managerCustomerId;
         if (mccId) {

@@ -396,24 +396,67 @@ export class GoogleAdsReportClient {
   }
 
   /**
-   * Validate the roots returned by listAccessibleCustomers before a connection
-   * is persisted. An MCC root stays selectable only when it has at least one
-   * enabled leaf; a disabled standalone root resolves to no leaves.
+   * Validate and classify the IDs returned by listAccessibleCustomers before a
+   * connection is persisted.
+   *
+   * Google returns a mixed list: manager accounts and their child customers.
+   * Persisting that raw list as one connection makes the first arbitrary ID
+   * look like an MCC and can collapse a separately authorised manager. Keep a
+   * real manager as a root, suppress children already covered by that manager,
+   * and retain standalone customers that are not covered by any manager.
    */
   async resolveEligibleCustomerRoots(
     accessToken: string,
     customerIds: string[],
-  ): Promise<{ eligibleCustomerIds: string[]; excludedCustomerIds: string[] }> {
-    const eligibleCustomerIds: string[] = [];
+  ): Promise<{
+    eligibleCustomerIds: string[];
+    excludedCustomerIds: string[];
+    roots: Array<{
+      rootCustomerId: string;
+      isManager: boolean;
+      customerIds: string[];
+    }>;
+  }> {
     const excludedCustomerIds: string[] = [];
+    const inspected: Array<{
+      rootCustomerId: string;
+      isManager: boolean;
+      customerIds: string[];
+    }> = [];
 
     for (const customerId of customerIds) {
-      const clients = await this.listCustomerClients(accessToken, customerId);
-      if (clients.length > 0) eligibleCustomerIds.push(customerId.replace(/-/g, ""));
-      else excludedCustomerIds.push(customerId.replace(/-/g, ""));
+      const rootCustomerId = customerId.replace(/\D/g, "");
+      if (!rootCustomerId) continue;
+
+      const clients = await this.listCustomerClients(accessToken, rootCustomerId);
+      if (clients.length === 0) {
+        excludedCustomerIds.push(rootCustomerId);
+        continue;
+      }
+
+      const leafIds = [...new Set(clients.map((client) => client.customerId.replace(/\D/g, "")).filter(Boolean))];
+      // listCustomerClients uses a self-leaf only for a direct, non-manager
+      // customer. A successful manager query produces one or more different
+      // child account IDs.
+      const isManager = leafIds.some((leafId) => leafId !== rootCustomerId);
+      inspected.push({ rootCustomerId, isManager, customerIds: leafIds });
     }
 
-    return { eligibleCustomerIds, excludedCustomerIds };
+    const managerChildIds = new Set(
+      inspected
+        .filter((root) => root.isManager)
+        .flatMap((root) => root.customerIds),
+    );
+
+    const roots = inspected.filter(
+      (root) => root.isManager || !managerChildIds.has(root.rootCustomerId),
+    );
+
+    return {
+      eligibleCustomerIds: roots.map((root) => root.rootCustomerId),
+      excludedCustomerIds,
+      roots,
+    };
   }
 
   /**

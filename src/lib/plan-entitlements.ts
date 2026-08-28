@@ -179,41 +179,60 @@ export async function assertCanCreateSourceConnection(opts: {
   remoteAccountId: string;
   credentials?: Record<string, unknown>;
 }): Promise<void> {
+  await assertCanCreateSourceConnections({
+    workspaceId: opts.workspaceId,
+    connections: [{
+      provider: opts.provider,
+      remoteAccountId: opts.remoteAccountId,
+      credentials: opts.credentials,
+    }],
+  });
+}
+
+/**
+ * Atomically preflight a set of source identities before OAuth writes any of
+ * them. Google Ads can discover more than one unrelated MCC in a single
+ * authorization; evaluating each against only the old database state would
+ * otherwise allow a partial, over-limit write.
+ */
+export async function assertCanCreateSourceConnections(opts: {
+  workspaceId: string;
+  connections: Array<{
+    provider: string;
+    remoteAccountId: string;
+    credentials?: Record<string, unknown>;
+  }>;
+}): Promise<void> {
   const workspace = await prisma.workspace.findUnique({
     where: { id: opts.workspaceId },
     select: { plan: true },
   });
   const plan = workspace?.plan ?? "free";
-  const canonicalRemoteId = canonicalizeRemoteAccountId(
-    opts.provider,
-    opts.remoteAccountId,
-    opts.credentials,
-  );
-  const existingIdentity = await prisma.connection.findUnique({
-    where: {
-      workspaceId_provider_remoteAccountId: {
-        workspaceId: opts.workspaceId,
-        provider: opts.provider,
-        remoteAccountId: canonicalRemoteId,
-      },
-    },
-    select: { id: true },
-  });
-  if (existingIdentity) return;
-
   const existingSources = await prisma.connection.findMany({
     where: { workspaceId: opts.workspaceId, type: "source" },
-    select: { provider: true, remoteAccountId: true },
+    select: { provider: true, remoteAccountId: true, credentials: true },
   });
-  const decision = evaluateSourceConnectLimit({
-    plan,
-    existingSources,
-    provider: opts.provider,
-    remoteAccountId: canonicalRemoteId,
-    credentials: opts.credentials,
-  });
-  if (!decision.ok) {
-    throw new PlanLimitError(decision.code, decision.message, plan);
+
+  const prospectiveSources: SourceConnectionSnapshot[] = [...existingSources];
+  for (const connection of opts.connections) {
+    const decision = evaluateSourceConnectLimit({
+      plan,
+      existingSources: prospectiveSources,
+      provider: connection.provider,
+      remoteAccountId: connection.remoteAccountId,
+      credentials: connection.credentials,
+    });
+    if (!decision.ok) {
+      throw new PlanLimitError(decision.code, decision.message, plan);
+    }
+
+    if (decision.reason !== "reconnect") {
+      prospectiveSources.push({
+        provider: connection.provider,
+        remoteAccountId: connection.remoteAccountId,
+        credentials: connection.credentials,
+      });
+    }
   }
 }
 

@@ -546,7 +546,10 @@ export default function SourcesPage() {
                         return { id: String(id), label: formatted };
                     });
                     const mccId = creds.mccId || creds.managerCustomerId || null;
-                    const totalCount = accountTags.length;
+                    const discoveredCustomerCount = Number(creds.discoveredCustomerCount);
+                    const totalCount = Number.isFinite(discoveredCustomerCount) && discoveredCustomerCount > 0
+                        ? discoveredCustomerCount
+                        : accountTags.length;
                     if (mccId && mccId !== "") {
                         const cleanMcc = String(mccId).replace(/\D/g, '');
                         const formattedMcc = cleanMcc.length === 10 

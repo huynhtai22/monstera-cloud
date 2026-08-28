@@ -41,7 +41,7 @@ export class GoogleAdsOAuthAdapter implements OAuthProviderAdapter {
         const accessibleCustomerIds = await googleAdsOAuthClient.listAccessibleCustomers(
             tokenData.access_token
         );
-        const { eligibleCustomerIds: customerIds, excludedCustomerIds } = await googleAdsReportClient.resolveEligibleCustomerRoots(
+        const { eligibleCustomerIds: customerIds, excludedCustomerIds, roots } = await googleAdsReportClient.resolveEligibleCustomerRoots(
             tokenData.access_token,
             accessibleCustomerIds,
         );
@@ -65,6 +65,7 @@ export class GoogleAdsOAuthAdapter implements OAuthProviderAdapter {
             accountIdentifiers: customerIds,
             extraFields: {
                 customerIds,
+                googleAdsRoots: roots,
                 unavailableCustomerCount: excludedCustomerIds.length,
                 // NOTE: the developer token is deliberately NOT stored here.
                 // It is an app-level secret consumed from the environment at
