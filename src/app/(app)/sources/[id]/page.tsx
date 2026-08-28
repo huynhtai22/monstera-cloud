@@ -508,9 +508,9 @@ export default function SourceDetailPage() {
                 </div>
             </div>
 
-            {connection.provider === "shopee" && Array.isArray(data?.recentProviderRuns) && data.recentProviderRuns.length > 0 ? (
+            {Array.isArray(data?.recentProviderRuns) && data.recentProviderRuns.length > 0 ? (
                 <div className="mb-8">
-                    <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-ink">Shopee source activity</h2>
+                    <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-ink">Source activity</h2>
                     <div className="space-y-2">
                         {data.recentProviderRuns.map((run: any) => (
                             <div key={run.id} className="rounded-lg border border-line bg-panel p-3 text-xs">

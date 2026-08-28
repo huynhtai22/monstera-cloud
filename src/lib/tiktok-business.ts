@@ -256,14 +256,12 @@ export const TIKTOK_CAMPAIGN_REPORT_DIMENSIONS = [
 
 export const TIKTOK_CAMPAIGN_REPORT_METRICS = [
   "campaign_name",
-  "impression",
-  "click",
   "spend",
+  "impressions",
+  "clicks",
   "cpc",
   "ctr",
   "conversion",
-  "revenue",
-  "roas",
 ] as const;
 
 export interface ReportTaskStatus_Response {

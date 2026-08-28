@@ -48,6 +48,22 @@ describe("TikTok for Business OAuth & Report Parsing", () => {
     assert.ok(TIKTOK_CAMPAIGN_REPORT_METRICS.includes("campaign_name"));
   });
 
+  it("uses v1.3 campaign metrics and excludes TikTok-rejected legacy fields", () => {
+    assert.deepEqual(TIKTOK_CAMPAIGN_REPORT_METRICS, [
+      "campaign_name",
+      "spend",
+      "impressions",
+      "clicks",
+      "cpc",
+      "ctr",
+      "conversion",
+    ]);
+    assert.equal(TIKTOK_CAMPAIGN_REPORT_METRICS.includes("impression"), false);
+    assert.equal(TIKTOK_CAMPAIGN_REPORT_METRICS.includes("click"), false);
+    assert.equal(TIKTOK_CAMPAIGN_REPORT_METRICS.includes("revenue"), false);
+    assert.equal(TIKTOK_CAMPAIGN_REPORT_METRICS.includes("roas"), false);
+  });
+
   it("generates correct authorize URL with state and redirectUri", () => {
     process.env.TIKTOK_BUSINESS_APP_ID = "tiktok_test_app_123";
     const client = new TikTokBusinessClient();
