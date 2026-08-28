@@ -73,18 +73,16 @@ export async function GET(
                 : null,
         };
         let recentProviderRuns: unknown[] = [];
-        if (connection.provider === "shopee") {
-            try {
-                recentProviderRuns = await (prisma as any).providerSyncRun.findMany({
-                    where: { workspaceId: connection.workspaceId, connectionId },
-                    orderBy: { startedAt: "desc" },
-                    take: 30,
-                });
-            } catch (providerRunError) {
-                // A preview database that has not applied the catalog migration
-                // must still render the source and its original sync error.
-                logger.warn("GET /api/connections/[id]: source activity unavailable", providerRunError);
-            }
+        try {
+            recentProviderRuns = await (prisma as any).providerSyncRun.findMany({
+                where: { workspaceId: connection.workspaceId, connectionId },
+                orderBy: { startedAt: "desc" },
+                take: 30,
+            });
+        } catch (providerRunError) {
+            // A preview database that has not applied the catalog migration
+            // must still render the source and its original sync error.
+            logger.warn("GET /api/connections/[id]: source activity unavailable", providerRunError);
         }
 
         return NextResponse.json({

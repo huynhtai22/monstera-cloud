@@ -25,7 +25,7 @@ import { SourceOutcomeBanner, type SourceOutcomeNotice } from "@/components/sour
 import { countSourceHealthStatuses } from "@/lib/source-health";
 
 const fetcher = async (url: string) => {
-    const res = await fetch(url, { credentials: "same-origin" });
+    const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
         const message = data.error || (res.status === 429 ? 'Too Many Requests — please wait a moment before retrying' : 'Failed to fetch data');
