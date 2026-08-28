@@ -24,7 +24,7 @@ function shopeePushHmacSecrets(): string[] {
     try {
         keys.push(shopeePartnerKeySecretForWebhook());
     } catch {
-        logger.warn("[SHOPEE WEBHOOK] SHOPEE_PARTNER_KEY missing — cannot verify with primary secret");
+        logger.warn("[SHOPEE WEBHOOK] Selected Shopee Partner Key is missing — cannot verify with primary secret");
     }
     const extra = trimEnvSecret(process.env.SHOPEE_PUSH_VERIFICATION_KEY);
     if (extra && !keys.includes(extra)) {
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
         // Validate Shopee Webhook Signature
         // Format: HMAC-SHA256(partner_key, request_body)
         // Note: Shopee webhooks use body-only signing (not url|body like some other endpoints).
-        // Push “Verify and Save” may sign with the Test Push Partner Key from the console; use SHOPEE_PUSH_VERIFICATION_KEY if it differs from SHOPEE_PARTNER_KEY.
+        // Push “Verify and Save” may sign with the Test Push Partner Key from the console; use SHOPEE_PUSH_VERIFICATION_KEY if it differs from the selected API Partner Key.
         // Header may be raw hex or prefixed with `SHA256 `; body bytes may match wire JSON or compact JSON.stringify(parse).
         if (!verifyShopeePushBody(rawBody, authorizationHeader)) {
             logger.warn(

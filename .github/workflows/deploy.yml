@@ -9,6 +9,13 @@ on:
   # This workflow intentionally only runs the Vercel CLI deploy on `main` to avoid
   # free-tier upload rate limits (`api-upload-free`) when many PR updates happen.
 
+# The job that runs `prisma migrate deploy` must never overlap another release
+# job against the same production database. Keep queued deployments rather than
+# cancelling an in-flight migration.
+concurrency:
+  group: monstera-production-schema-and-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
