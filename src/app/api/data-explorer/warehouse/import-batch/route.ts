@@ -81,7 +81,12 @@ export async function processBatchItems(opts: {
     where: {
       id: { in: connIds },
       workspaceId,
-      status: "connected",
+      OR: [
+        { status: "connected" },
+        // Manual retry remains valid for a TikTok connection whose previous
+        // non-auth synchronization attempt truthfully set status=error.
+        { provider: "tiktok_business", status: "error" },
+      ],
     },
   });
   const connMap = new Map(connections.map((c) => [c.id, c]));
@@ -144,7 +149,18 @@ export async function processBatchItems(opts: {
               ? { selectedAdvertiserIds: [targetAccountId] }
               : {}
         : {};
-      const itemCreds = { ...credentials, ...providerTargetCredentials };
+      const itemCreds = conn.provider === "tiktok_business" && targetAccountId
+        ? {
+            ...credentials,
+            ...providerTargetCredentials,
+            extraFields: {
+              ...(typeof parsedCreds.extraFields === "object" && parsedCreds.extraFields !== null
+                ? parsedCreds.extraFields as Record<string, unknown>
+                : {}),
+              selectedAdvertiserIds: [targetAccountId],
+            },
+          }
+        : { ...credentials, ...providerTargetCredentials };
 
       const sync = await syncRunner({
         workspaceId,

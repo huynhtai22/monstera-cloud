@@ -99,7 +99,9 @@ export async function POST(
         since,
         until,
         items: [{ connectionId }],
-        idempotencyKey: `manual-tiktok:${connectionId}:${Math.floor(Date.now() / 60000)}`,
+        // Keep one active manual job per connection for its entire lifetime.
+        // The worker releases this key only when the job becomes terminal.
+        idempotencyKey: `manual-tiktok:${connectionId}`,
         priority: limits.priority,
       });
       after(async () => {

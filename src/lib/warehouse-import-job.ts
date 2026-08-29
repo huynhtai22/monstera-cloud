@@ -64,6 +64,11 @@ export class LeaseLostError extends Error {
 
 const JOB_KEY_PREFIX = "warehouse_job:";
 const JOB_CACHE_TTL_SECONDS = 86400; // 24 hours
+const MANUAL_TIKTOK_IDEMPOTENCY_PREFIX = "manual-tiktok:";
+
+function releaseTerminalIdempotencyKey(idempotencyKey: string | null | undefined): null | undefined {
+  return idempotencyKey?.startsWith(MANUAL_TIKTOK_IDEMPOTENCY_PREFIX) ? null : undefined;
+}
 
 /**
  * Calculates exponential backoff delay in ms with bounded jitter.
@@ -393,6 +398,11 @@ export async function completeImportJob(
   errorMsg?: string,
 ): Promise<BatchImportJobState> {
   const now = new Date();
+  const current = await prisma.warehouseImportJob.findFirst({
+    where: { id: jobId, leaseId, status: "running", leaseExpiresAt: { gte: now } },
+    select: { idempotencyKey: true },
+  });
+  if (!current) throw new LeaseLostError(jobId, leaseId);
 
   const updated = await prisma.warehouseImportJob.updateMany({
     where: {
@@ -410,6 +420,7 @@ export async function completeImportJob(
       errorMsg: errorMsg ?? null,
       leaseId: null,
       leaseExpiresAt: null,
+      idempotencyKey: releaseTerminalIdempotencyKey(current.idempotencyKey),
       updatedAt: now,
     },
   });
@@ -517,6 +528,7 @@ export async function failImportJob(
     select: {
       retryCount: true,
       maxRetries: true,
+      idempotencyKey: true,
     },
   });
 
@@ -574,6 +586,7 @@ export async function failImportJob(
         leaseId: null,
         leaseExpiresAt: null,
         heartbeatAt: now,
+        idempotencyKey: releaseTerminalIdempotencyKey(current.idempotencyKey),
         updatedAt: now,
       },
     });
