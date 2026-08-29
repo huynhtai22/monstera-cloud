@@ -12,6 +12,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { parse as parseCsv } from "csv-parse/sync";
 
 /** app_id from business-api.tiktok.com/portal */
 function appId(): string {
@@ -319,11 +320,11 @@ export const TIKTOK_CAMPAIGN_REPORT_METRICS = [
 ] as const;
 
 export interface ReportTaskStatus_Response {
-  task_id: string;
+  task_id?: string;
   status: ReportTaskStatus;
   create_time?: string;
   complete_time?: string;
-  url?: string;          // download URL when COMPLETED
+  message?: string;
 }
 
 export interface ReportRow {
@@ -361,6 +362,8 @@ export class TikTokReportClient {
         start_date: params.start_date,
         end_date: params.end_date,
         page_size: params.page_size ?? 1000,
+        output_format: 'CSV_DOWNLOAD',
+        file_name: `monstera-${params.advertiser_id}`,
         lifetime: false,
         query_lifetime: false,
       }),
@@ -371,7 +374,8 @@ export class TikTokReportClient {
   }
 
   /**
-   * Step 2 — Poll task status. Returns status + download URL when COMPLETED.
+   * Step 2 — Poll task status. TikTok returns status only; SUCCESS does not
+   * include the download URL.
    */
   async checkTask(accessToken: string, advertiser_id: string, task_id: string, sandbox = false): Promise<ReportTaskStatus_Response> {
     const base = this.getBase(sandbox);
@@ -388,16 +392,45 @@ export class TikTokReportClient {
   }
 
   /**
+   * Step 3 — Exchange a successful task ID for a short-lived download URL.
+   */
+  async getDownloadUrl(
+    accessToken: string,
+    advertiser_id: string,
+    task_id: string,
+    sandbox = false,
+  ): Promise<string> {
+    const base = this.getBase(sandbox);
+    const url = new URL(`${base}/report/task/download/`);
+    url.searchParams.set('advertiser_id', advertiser_id);
+    url.searchParams.set('task_id', task_id);
+
+    const json = await fetchTikTokJson(url.toString(), {
+      headers: { 'Access-Token': accessToken },
+    });
+    const data = json.data as Record<string, unknown> | undefined;
+    const downloadUrl = typeof data?.download_url === 'string' ? data.download_url.trim() : '';
+    if (!downloadUrl) {
+      throw new TikTokProviderError(
+        `TikTok report task ${task_id} download response did not include download_url`,
+        true,
+      );
+    }
+    return downloadUrl;
+  }
+
+  /**
    * Parse NDJSON (one JSON object per line) or CSV report text.
    */
   parseReportText(text: string): ReportRow[] {
-    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-    if (!lines.length) return [];
+    const trimmedText = text.trim();
+    if (!trimmedText) return [];
 
     const rows: ReportRow[] = [];
 
     // Format 1: NDJSON or JSON lines
-    if (lines[0].startsWith('{')) {
+    if (trimmedText.startsWith('{')) {
+      const lines = trimmedText.split('\n').map((l) => l.trim()).filter(Boolean);
       for (const line of lines) {
         try {
           const parsed = JSON.parse(line);
@@ -430,30 +463,30 @@ export class TikTokReportClient {
       }
     } else {
       // Format 2: CSV format
-      const header = lines[0].split(',').map((h) => h.trim().toLowerCase());
-      for (let i = 1; i < lines.length; i++) {
-        const parts = lines[i].split(',');
-        const rowObj: Record<string, string> = {};
-        header.forEach((h, idx) => {
-          rowObj[h] = parts[idx]?.trim() ?? '';
-        });
+      const records = parseCsv(trimmedText, {
+        bom: true,
+        columns: (header: string[]) => header.map((value) => value.trim().toLowerCase()),
+        skip_empty_lines: true,
+        trim: true,
+      }) as Record<string, string>[];
+      for (const rowObj of records) {
         rows.push({
           dimensions: {
-            campaign_id: rowObj.campaign_id || parts[0] || '',
-            campaign_name: rowObj.campaign_name || parts[1] || '',
-            adgroup_id: rowObj.adgroup_id || parts[2] || '',
-            adgroup_name: rowObj.adgroup_name || parts[3] || '',
-            stat_time_day: rowObj.stat_time_day || rowObj.date || parts[4] || '',
+            campaign_id: rowObj.campaign_id || '',
+            campaign_name: rowObj.campaign_name || '',
+            adgroup_id: rowObj.adgroup_id || '',
+            adgroup_name: rowObj.adgroup_name || '',
+            stat_time_day: rowObj.stat_time_day || rowObj.date || '',
           },
           metrics: {
-            impression: rowObj.impression || rowObj.impressions || parts[5] || '0',
-            click: rowObj.click || rowObj.clicks || parts[6] || '0',
-            spend: rowObj.spend || rowObj.cost || parts[7] || '0',
-            cpc: rowObj.cpc || parts[8] || '0',
-            ctr: rowObj.ctr || parts[9] || '0',
-            conversion: rowObj.conversion || rowObj.conversions || parts[10] || '0',
-            revenue: rowObj.revenue || rowObj.conversion_value || parts[11] || '0',
-            roas: rowObj.roas || parts[12] || '0',
+            impression: rowObj.impression || rowObj.impressions || '0',
+            click: rowObj.click || rowObj.clicks || '0',
+            spend: rowObj.spend || rowObj.cost || '0',
+            cpc: rowObj.cpc || '0',
+            ctr: rowObj.ctr || '0',
+            conversion: rowObj.conversion || rowObj.conversions || '0',
+            revenue: rowObj.revenue || rowObj.conversion_value || '0',
+            roas: rowObj.roas || '0',
           },
         });
       }
@@ -463,7 +496,7 @@ export class TikTokReportClient {
   }
 
   /**
-   * Step 3 — Once SUCCESS, download rows from the returned URL.
+   * Step 4 — Download rows from the short-lived URL.
    * TikTok returns NDJSON (one JSON object per line) or CSV depending on export type.
    */
   async downloadRows(downloadUrl: string): Promise<ReportRow[]> {

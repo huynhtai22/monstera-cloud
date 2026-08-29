@@ -21,23 +21,76 @@ async function withFastRetries<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-async function withMockedFetch<T>(responses: Response[], run: (calls: () => number) => Promise<T>): Promise<T> {
+async function withMockedFetch<T>(
+  responses: Response[],
+  run: (
+    calls: () => number,
+    requests: () => Array<{ input: string; init?: RequestInit }>,
+  ) => Promise<T>,
+): Promise<T> {
   const originalFetch = globalThis.fetch;
   let count = 0;
-  globalThis.fetch = (async () => {
+  const requests: Array<{ input: string; init?: RequestInit }> = [];
+  globalThis.fetch = (async (input, init) => {
     count++;
+    requests.push({ input: String(input), init });
     const response = responses.shift();
     if (!response) throw new Error("Unexpected TikTok request");
     return response;
   }) as typeof fetch;
   try {
-    return await run(() => count);
+    return await run(() => count, () => requests);
   } finally {
     globalThis.fetch = originalFetch;
   }
 }
 
 describe("TikTok for Business OAuth & Report Parsing", () => {
+  it("uses TikTok's create, check, and download sequence for asynchronous reports", async () => {
+    await withMockedFetch([
+      new Response(JSON.stringify({ code: 0, data: { task_id: "task-123" } })),
+      new Response(JSON.stringify({ code: 0, data: { status: "SUCCESS", message: "" } })),
+      new Response(JSON.stringify({ code: 0, data: { download_url: "https://download.test/task-123" } })),
+    ], async (_calls, requests) => {
+      const client = new TikTokReportClient();
+      const taskId = await client.createTask("access-token", {
+        advertiser_id: "7677495922629787656",
+        report_type: "BASIC",
+        data_level: "AUCTION_CAMPAIGN",
+        dimensions: ["campaign_id", "stat_time_day"],
+        metrics: ["spend"],
+        start_date: "2026-08-01",
+        end_date: "2026-08-29",
+      });
+      const status = await client.checkTask("access-token", "7677495922629787656", taskId);
+      const downloadUrl = await client.getDownloadUrl("access-token", "7677495922629787656", taskId);
+
+      assert.equal(taskId, "task-123");
+      assert.equal(status.status, "SUCCESS");
+      assert.equal(downloadUrl, "https://download.test/task-123");
+
+      const createBody = JSON.parse(String(requests()[0].init?.body));
+      assert.equal(createBody.output_format, "CSV_DOWNLOAD");
+      assert.equal(createBody.file_name, "monstera-7677495922629787656");
+      const downloadRequest = requests()[2];
+      assert.match(downloadRequest.input, /\/report\/task\/download\//);
+      assert.equal(new URL(downloadRequest.input).searchParams.get("advertiser_id"), "7677495922629787656");
+      assert.equal(new URL(downloadRequest.input).searchParams.get("task_id"), "task-123");
+      assert.equal((downloadRequest.init?.headers as Record<string, string>)["Access-Token"], "access-token");
+    });
+  });
+
+  it("treats a successful download response without download_url as retryable", async () => {
+    await withMockedFetch([
+      new Response(JSON.stringify({ code: 0, data: {} })),
+    ], async () => {
+      await assert.rejects(
+        new TikTokReportClient().getDownloadUrl("access-token", "7677495922629787656", "task-123"),
+        (error: unknown) => error instanceof TikTokProviderError && error.retryable,
+      );
+    });
+  });
+
   it("keeps campaign names out of TikTok campaign report dimensions", () => {
     assert.deepEqual(TIKTOK_CAMPAIGN_REPORT_DIMENSIONS, [
       "campaign_id",
@@ -136,6 +189,21 @@ describe("TikTok for Business OAuth & Report Parsing", () => {
     const parsedRows = reportClient.parseReportText(csv);
     assert.equal(parsedRows.length, 1);
     assert.equal(parsedRows[0].dimensions.campaign_id, "180123456789");
+    assert.equal(parsedRows[0].metrics.spend, "75.00");
+    assert.equal(parsedRows[0].metrics.conversion, "10");
+  });
+
+  it("parses quoted CSV fields without shifting report metrics", () => {
+    const reportClient = new TikTokReportClient();
+    const csv = [
+      "campaign_id,campaign_name,adgroup_id,adgroup_name,stat_time_day,impression,click,spend,cpc,ctr,conversion,revenue,roas",
+      '180123456789,"US, Retargeting",999,"Group ""A""",2026-08-19,10000,250,75.00,0.30,0.025,10,500.00,6.67',
+    ].join("\n");
+
+    const parsedRows = reportClient.parseReportText(csv);
+    assert.equal(parsedRows.length, 1);
+    assert.equal(parsedRows[0].dimensions.campaign_name, "US, Retargeting");
+    assert.equal(parsedRows[0].dimensions.adgroup_name, 'Group "A"');
     assert.equal(parsedRows[0].metrics.spend, "75.00");
     assert.equal(parsedRows[0].metrics.conversion, "10");
   });
