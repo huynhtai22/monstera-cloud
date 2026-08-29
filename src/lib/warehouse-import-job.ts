@@ -2,12 +2,15 @@ import { randomUUID } from "node:crypto";
 import prisma from "@/lib/prisma";
 import { getRedis } from "@/lib/redis";
 import { logger } from "@/lib/logger";
+import type { ProviderRetryState } from "@/lib/sync-outcome";
 
 export interface BatchImportItem {
   connectionId: string;
   /** A provider account selected for a targeted retry (Meta remains backwards-compatible). */
   accountId?: string;
   adAccountId?: string;
+  /** Internal continuation state. API request validation intentionally strips it. */
+  providerState?: ProviderRetryState;
 }
 
 export interface BatchImportJobResult {

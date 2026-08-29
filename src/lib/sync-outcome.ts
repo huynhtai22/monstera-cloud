@@ -9,6 +9,14 @@ export type SyncOutcome = "success" | "partial" | "failed";
 
 export type SyncTargetKind = "ad_account" | "customer" | "advertiser" | "connection";
 
+export interface TikTokReportRetryState {
+  provider: "tiktok_business";
+  advertiserId: string;
+  reportTaskId: string;
+}
+
+export type ProviderRetryState = TikTokReportRetryState;
+
 export interface SyncChildResult {
   id: string;
   kind: SyncTargetKind;
@@ -16,6 +24,8 @@ export interface SyncChildResult {
   rowsIngested?: number;
   error?: string;
   retryable?: boolean;
+  /** Opaque provider continuation data persisted only by the internal worker. */
+  retryState?: ProviderRetryState;
 }
 
 export interface SyncResult {

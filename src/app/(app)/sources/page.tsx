@@ -213,6 +213,13 @@ export default function SourcesPage() {
                     detail: `${rowsIngested.toLocaleString()} row${rowsIngested === 1 ? "" : "s"} are available in Warehouse for this source.`,
                     action: { href: "/explorer", label: "View warehouse" },
                 });
+            } else if (res.ok && data.outcome === "queued") {
+                setSourceOutcome({
+                    kind: "success",
+                    title: "TikTok sync queued",
+                    detail: "TikTok is generating the report asynchronously. Monstera will keep the task ID and resume it automatically if it is still processing.",
+                    action: { href: `/sources/${connectionId}`, label: "Review source" },
+                });
             } else if (res.ok && data.outcome === "partial") {
                 setSourceOutcome({
                     kind: "partial",

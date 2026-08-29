@@ -154,6 +154,7 @@ export async function processBatchItems(opts: {
         since,
         until,
         userPlan: plan,
+        providerState: item.providerState,
       });
       // Keep the worker tolerant of older test doubles / extension providers while
       // first-party sync providers always return the full outcome contract.
@@ -176,6 +177,7 @@ export async function processBatchItems(opts: {
           .map((child) => ({
             connectionId: conn.id,
             ...(child.kind === "connection" ? {} : { accountId: child.id }),
+            ...(child.retryState ? { providerState: child.retryState } : {}),
           })),
       });
 
