@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it, beforeEach } from "node:test";
-import { runDurableImportWorker } from "./route";
+import { processBatchItems, runDurableImportWorker } from "./route";
 import prisma from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 
@@ -15,7 +15,13 @@ describe("Batch Import Worker & Post-Refresh Data Quality Gating", () => {
     process.env.ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     checkedConnections = [];
 
-    const encryptedCredentials = encrypt(JSON.stringify({ accessToken: "mock-access-token" }));
+    const encryptedCredentials = encrypt(JSON.stringify({
+      accessToken: "mock-access-token",
+      extraFields: {
+        advertiserIds: ["7677495922629787656", "7677495922629787000"],
+        selectedAdvertiserIds: ["7677495922629787656", "7677495922629787000"],
+      },
+    }));
 
     // Mock warehouseImportJob in prisma
     (prisma as any).warehouseImportJob = {
@@ -35,6 +41,18 @@ describe("Batch Import Worker & Post-Refresh Data Quality Gating", () => {
               { connectionId: "conn-success-2" },
               { connectionId: "conn-failed-3" },
             ],
+          };
+        }
+        return null;
+      },
+      findFirst: async ({ where }: any) => {
+        if (where.id === mockJobId) {
+          return {
+            id: mockJobId,
+            status: "running",
+            leaseId: mockLeaseId,
+            leaseExpiresAt: new Date(Date.now() + 60_000),
+            idempotencyKey: null,
           };
         }
         return null;
@@ -105,5 +123,61 @@ describe("Batch Import Worker & Post-Refresh Data Quality Gating", () => {
     assert.ok(checkedConnections.includes("conn-success-1"));
     assert.ok(checkedConnections.includes("conn-success-2"));
     assert.ok(!checkedConnections.includes("conn-failed-3"));
+  });
+
+  it("carries provider continuation state into and out of targeted retries", async () => {
+    const encryptedCredentials = encrypt(JSON.stringify({ accessToken: "mock-access-token" }));
+    (prisma as any).connection.findMany = async () => [{
+      id: "conn-tiktok",
+      workspaceId: mockWorkspaceId,
+      provider: "tiktok_business",
+      remoteAccountId: "7677495922629787656",
+      credentials: encryptedCredentials,
+      status: "error",
+    }];
+    (prisma as any).workspaceProviderAccess.findMany = async () => [
+      { provider: "tiktok_business", enabled: true },
+    ];
+
+    const providerState = {
+      provider: "tiktok_business" as const,
+      advertiserId: "7677495922629787656",
+      reportTaskId: "7679241688576950293",
+    };
+    let receivedState: unknown;
+    let receivedCredentials: any;
+    const results = await processBatchItems({
+      workspaceId: mockWorkspaceId,
+      since: "2026-08-01",
+      until: "2026-08-29",
+      plan: "pilot",
+      items: [{ connectionId: "conn-tiktok", accountId: providerState.advertiserId, providerState }],
+      syncFn: (async (options: { providerState?: unknown; credentials?: unknown }) => {
+        receivedState = options.providerState;
+        receivedCredentials = options.credentials;
+        return {
+          success: false,
+          outcome: "failed",
+          rowsIngested: 0,
+          error: "still processing",
+          children: [{
+            id: providerState.advertiserId,
+            kind: "advertiser",
+            ok: false,
+            retryable: true,
+            retryState: providerState,
+          }],
+        };
+      }) as any,
+    });
+
+    assert.deepEqual(receivedState, providerState);
+    assert.deepEqual(receivedCredentials.selectedAdvertiserIds, [providerState.advertiserId]);
+    assert.deepEqual(receivedCredentials.extraFields.selectedAdvertiserIds, [providerState.advertiserId]);
+    assert.deepEqual(results[0].retryItems, [{
+      connectionId: "conn-tiktok",
+      accountId: providerState.advertiserId,
+      providerState,
+    }]);
   });
 });

@@ -5,7 +5,7 @@
  * Ingests recent metrics into CampaignMetric / RetailOrder warehouse tables.
  */
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
@@ -17,6 +17,8 @@ import { syncConnectionData } from "@/lib/sync-connection";
 import { requireWorkspaceAccess } from "@/lib/rbac";
 import { assertWorkspaceProviderEnabled } from "@/lib/workspace-provider-access";
 import { isConnectionSyncBlocked } from "@/lib/connection-lifecycle";
+import { createImportJob, claimImportJob } from "@/lib/warehouse-import-job";
+import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
 
 export async function POST(
   request: Request,
@@ -82,6 +84,43 @@ export async function POST(
           { status: 429 }
         );
       }
+    }
+
+    // TikTok report generation is asynchronous and may legitimately remain
+    // PROCESSING beyond one serverless request. Queue it in the durable worker
+    // so the report task ID can be retained and resumed across bounded retries.
+    if (connection.provider === "tiktok_business") {
+      const until = new Date().toISOString().split("T")[0];
+      const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const job = await createImportJob({
+        workspaceId: connection.workspaceId,
+        userId: session.user.id,
+        plan: connection.workspace.plan,
+        since,
+        until,
+        items: [{ connectionId }],
+        // Keep one active manual job per connection for its entire lifetime.
+        // The worker releases this key only when the job becomes terminal.
+        idempotencyKey: `manual-tiktok:${connectionId}`,
+        priority: limits.priority,
+      });
+      after(async () => {
+        try {
+          const claim = await claimImportJob(job.id);
+          if (claim.claimed && claim.leaseId) {
+            await runDurableImportWorker(job.id, claim.leaseId);
+          }
+        } catch (workerError) {
+          logger.error("[TikTok Manual Sync] Durable worker failed", workerError);
+        }
+      });
+      return NextResponse.json({
+        success: true,
+        outcome: "queued",
+        code: "SYNC_QUEUED",
+        jobId: job.id,
+        message: "TikTok sync queued. Monstera will resume any report task that remains processing.",
+      }, { status: 202 });
     }
 
     // Parse credentials

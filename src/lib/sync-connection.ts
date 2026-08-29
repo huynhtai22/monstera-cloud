@@ -55,6 +55,7 @@ import {
   type SyncResult,
   isRetryableSyncError,
   makeFailedSyncResult,
+  type ProviderRetryState,
   summarizeSyncOutcome,
 } from "@/lib/sync-outcome";
 import { refreshConnectionLastDataThrough, shouldRefreshLastDataThrough } from "@/lib/connection-data-through";
@@ -72,6 +73,8 @@ export interface SyncOptions {
   until?: string;
   /** Used for marketplace defaults and any remaining plan-based behaviors. */
   userPlan?: string;
+  /** Internal durable-worker continuation state; never accepted from public input. */
+  providerState?: ProviderRetryState;
 }
 
 export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult> {
@@ -147,6 +150,7 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
         since: opts.since,
         until: opts.until,
         userPlan: plan,
+        providerState: opts.providerState,
         lease,
       });
     } else if (provider === "shopee") {
@@ -745,6 +749,7 @@ async function syncTikTok(opts: {
   since?: string;
   until?: string;
   userPlan: string;
+  providerState?: ProviderRetryState;
 }): Promise<SyncResult> {
   const { connectionId, credentials, workspaceId, lease } = opts;
 
@@ -849,12 +854,29 @@ async function syncTikTok(opts: {
         continue;
       }
 
-      const taskId = await tiktokReportClient.createTask(accessToken, taskParams, false);
+      const resumableTaskId = opts.providerState?.provider === "tiktok_business" &&
+        opts.providerState.advertiserId === advertiserId &&
+        /^\d+$/.test(opts.providerState.reportTaskId)
+        ? opts.providerState.reportTaskId
+        : undefined;
+      const taskId = resumableTaskId ?? await tiktokReportClient.createTask(accessToken, taskParams, false);
+      logger.info(resumableTaskId ? "[syncTikTok] Resuming report task" : "[syncTikTok] Created report task", {
+        connectionId,
+        advertiserId,
+        taskId,
+      });
 
       // Poll for completion
       let status = await tiktokReportClient.checkTask(accessToken, advertiserId, taskId, credentials.sandbox === true);
       let attempts = 0;
       while (!isTikTokReportTerminal(status.status) && attempts < 10) {
+        logger.info("[syncTikTok] Report task remains non-terminal", {
+          connectionId,
+          advertiserId,
+          taskId,
+          status: status.status,
+          poll: attempts + 1,
+        });
         await new Promise((r) => setTimeout(r, 3000));
         status = await tiktokReportClient.checkTask(accessToken, advertiserId, taskId, credentials.sandbox === true);
         attempts++;
@@ -882,7 +904,19 @@ async function syncTikTok(opts: {
       } else if (isTikTokReportTerminal(status.status)) {
         throw new Error(`TikTok report task ${taskId} ended with status ${status.status}`);
       } else {
-        throw new Error(`TikTok report task ${taskId} did not complete before the bounded polling window elapsed (status ${status.status})`);
+        const message = `TikTok report task ${taskId} is still ${status.status}; Monstera will resume this task automatically`;
+        children.push({
+          id: String(advertiserId),
+          kind: "advertiser",
+          ok: false,
+          error: message,
+          retryable: true,
+          retryState: {
+            provider: "tiktok_business",
+            advertiserId: String(advertiserId),
+            reportTaskId: taskId,
+          },
+        });
       }
     } catch (error) {
       logger.error(`[TikTok Sync] Failed for advertiser ${advertiserId}:`, error);

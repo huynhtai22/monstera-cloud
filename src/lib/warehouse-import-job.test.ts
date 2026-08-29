@@ -131,6 +131,28 @@ describe("Warehouse Import Job State Manager & Concurrency Fencing", () => {
     assert.equal(fetched?.id, jobId);
   });
 
+  it("deduplicates a manual TikTok job until terminal completion, then permits a new run", async () => {
+    const common = {
+      workspaceId: "ws-tiktok",
+      userId: "user-1",
+      since: "2026-08-01",
+      until: "2026-08-29",
+      items: [{ connectionId: "conn-tiktok" }],
+      idempotencyKey: "manual-tiktok:conn-tiktok",
+    };
+    const first = await createImportJob({ ...common, id: "tiktok-job-1" });
+    const duplicate = await createImportJob({ ...common, id: "tiktok-job-duplicate" });
+    assert.equal(duplicate.id, first.id);
+
+    const claim = await claimImportJob(first.id);
+    assert.equal(claim.claimed, true);
+    await completeImportJob(first.id, claim.leaseId!, [], 0);
+    assert.equal(mockDb.get(first.id).idempotencyKey, null);
+
+    const next = await createImportJob({ ...common, id: "tiktok-job-2" });
+    assert.equal(next.id, "tiktok-job-2");
+  });
+
   it("atomically claims a job with a lease and generates unique lease identity", async () => {
     const jobId = "claim_test_job";
     await createImportJob({

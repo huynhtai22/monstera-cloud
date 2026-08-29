@@ -150,6 +150,61 @@ describe("provider HTTP failures preserve sync correctness", () => {
     }));
   });
 
+  it("resumes a still-processing TikTok report task without creating a duplicate", async () => {
+    let phase: "pending" | "ready" = "pending";
+    let createCalls = 0;
+    let checkCalls = 0;
+    const reportTaskId = "7679241688576950293";
+    const advertiserId = "7677495922629787656";
+
+    await withFastRetries(() => withSyncHarness((async (input) => {
+      const url = String(input);
+      if (url.includes("/report/task/create/")) {
+        createCalls++;
+        return new Response(JSON.stringify({ code: 0, data: { task_id: reportTaskId } }));
+      }
+      if (url.includes("/report/task/check/")) {
+        checkCalls++;
+        const data = phase === "pending"
+          ? { status: "PROCESSING" }
+          : { status: "SUCCESS", url: "https://download.test/resumed" };
+        return new Response(JSON.stringify({ code: 0, data }));
+      }
+      if (url === "https://download.test/resumed") return new Response("");
+      return new Response(JSON.stringify({ code: 40000, message: "unexpected request" }), { status: 400 });
+    }) as typeof fetch, async () => {
+      const first = await syncConnectionData({
+        connectionId: "tiktok-resume-connection",
+        provider: "tiktok_business",
+        credentials: { ...freshCredentials, advertiserIds: [advertiserId] },
+        workspaceId: "workspace-1",
+        userPlan: "pilot",
+      });
+      assert.equal(first.outcome, "failed");
+      assert.equal(first.children[0].retryable, true);
+      assert.deepEqual(first.children[0].retryState, {
+        provider: "tiktok_business",
+        advertiserId,
+        reportTaskId,
+      });
+      assert.equal(createCalls, 1);
+      assert.equal(checkCalls, 11);
+
+      phase = "ready";
+      const resumed = await syncConnectionData({
+        connectionId: "tiktok-resume-connection",
+        provider: "tiktok_business",
+        credentials: { ...freshCredentials, advertiserIds: [advertiserId] },
+        workspaceId: "workspace-1",
+        userPlan: "pilot",
+        providerState: first.children[0].retryState,
+      });
+      assert.equal(resumed.outcome, "success");
+      assert.equal(createCalls, 1, "resuming must not create another TikTok task");
+      assert.equal(checkCalls, 12);
+    }));
+  });
+
   it("uses a numeric legacy connection identity when credentials do not yet contain advertiser IDs", async () => {
     let reportRequests = 0;
     await withSyncHarness((async (input, init) => {

@@ -81,7 +81,12 @@ export async function processBatchItems(opts: {
     where: {
       id: { in: connIds },
       workspaceId,
-      status: "connected",
+      OR: [
+        { status: "connected" },
+        // Manual retry remains valid for a TikTok connection whose previous
+        // non-auth synchronization attempt truthfully set status=error.
+        { provider: "tiktok_business", status: "error" },
+      ],
     },
   });
   const connMap = new Map(connections.map((c) => [c.id, c]));
@@ -144,7 +149,18 @@ export async function processBatchItems(opts: {
               ? { selectedAdvertiserIds: [targetAccountId] }
               : {}
         : {};
-      const itemCreds = { ...credentials, ...providerTargetCredentials };
+      const itemCreds = conn.provider === "tiktok_business" && targetAccountId
+        ? {
+            ...credentials,
+            ...providerTargetCredentials,
+            extraFields: {
+              ...(typeof parsedCreds.extraFields === "object" && parsedCreds.extraFields !== null
+                ? parsedCreds.extraFields as Record<string, unknown>
+                : {}),
+              selectedAdvertiserIds: [targetAccountId],
+            },
+          }
+        : { ...credentials, ...providerTargetCredentials };
 
       const sync = await syncRunner({
         workspaceId,
@@ -154,6 +170,7 @@ export async function processBatchItems(opts: {
         since,
         until,
         userPlan: plan,
+        providerState: item.providerState,
       });
       // Keep the worker tolerant of older test doubles / extension providers while
       // first-party sync providers always return the full outcome contract.
@@ -176,6 +193,7 @@ export async function processBatchItems(opts: {
           .map((child) => ({
             connectionId: conn.id,
             ...(child.kind === "connection" ? {} : { accountId: child.id }),
+            ...(child.retryState ? { providerState: child.retryState } : {}),
           })),
       });
 
