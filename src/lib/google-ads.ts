@@ -312,6 +312,7 @@ export class GoogleAdsReportClient {
   async listCustomerClients(
     accessToken: string,
     rootCustomerId: string,
+    options: { includeManagers?: boolean } = {},
   ): Promise<Array<{ customerId: string; mccId: string; isManager: boolean; descriptiveName: string }>> {
     const devToken = developerToken();
     if (!devToken) throw new Error('GOOGLE_ADS_DEVELOPER_TOKEN not configured');
@@ -380,9 +381,11 @@ export class GoogleAdsReportClient {
         const isManager = cc.manager === true || cc.manager === 'true';
         const name = cc.descriptiveName ?? cc.descriptive_name ?? `Customer ${clientId}`;
         const status = String(cc.status ?? "").toUpperCase();
-        if (clientId && !isManager && status === "ENABLED") {
-          // Leaf account — use root (MCC) as login-customer-id
-          clients.push({ customerId: clientId, mccId: cleanId, isManager: false, descriptiveName: name });
+        if (clientId && status === "ENABLED" && (!isManager || options.includeManagers)) {
+          // Leaf accounts use the root MCC as login-customer-id. Discovery can
+          // also request manager rows to eliminate nested MCCs covered by an
+          // ancestor manager; sync callers retain the leaf-only default.
+          clients.push({ customerId: clientId, mccId: cleanId, isManager, descriptiveName: name });
         }
       }
     }
@@ -396,24 +399,77 @@ export class GoogleAdsReportClient {
   }
 
   /**
-   * Validate the roots returned by listAccessibleCustomers before a connection
-   * is persisted. An MCC root stays selectable only when it has at least one
-   * enabled leaf; a disabled standalone root resolves to no leaves.
+   * Validate and classify the IDs returned by listAccessibleCustomers before a
+   * connection is persisted.
+   *
+   * Google returns a mixed list: manager accounts and their child customers.
+   * Persisting that raw list as one connection makes the first arbitrary ID
+   * look like an MCC and can collapse a separately authorised manager. Keep a
+   * real manager as a root, suppress children already covered by that manager,
+   * and retain standalone customers that are not covered by any manager.
    */
   async resolveEligibleCustomerRoots(
     accessToken: string,
     customerIds: string[],
-  ): Promise<{ eligibleCustomerIds: string[]; excludedCustomerIds: string[] }> {
-    const eligibleCustomerIds: string[] = [];
+  ): Promise<{
+    eligibleCustomerIds: string[];
+    excludedCustomerIds: string[];
+    roots: Array<{
+      rootCustomerId: string;
+      isManager: boolean;
+      customerIds: string[];
+    }>;
+  }> {
     const excludedCustomerIds: string[] = [];
+    const inspected: Array<{
+      rootCustomerId: string;
+      isManager: boolean;
+      customerIds: string[];
+      managerCustomerIds: string[];
+    }> = [];
 
     for (const customerId of customerIds) {
-      const clients = await this.listCustomerClients(accessToken, customerId);
-      if (clients.length > 0) eligibleCustomerIds.push(customerId.replace(/-/g, ""));
-      else excludedCustomerIds.push(customerId.replace(/-/g, ""));
+      const rootCustomerId = customerId.replace(/\D/g, "");
+      if (!rootCustomerId) continue;
+
+      const clients = await this.listCustomerClients(accessToken, rootCustomerId, { includeManagers: true });
+      const leafIds = [...new Set(
+        clients
+          .filter((client) => !client.isManager)
+          .map((client) => client.customerId.replace(/\D/g, ""))
+          .filter(Boolean),
+      )];
+      if (leafIds.length === 0) {
+        excludedCustomerIds.push(rootCustomerId);
+        continue;
+      }
+
+      // listCustomerClients uses a self-leaf only for a direct, non-manager
+      // customer. A successful manager query produces one or more different
+      // child account IDs.
+      const isManager = clients.some((client) => client.isManager) || leafIds.some((leafId) => leafId !== rootCustomerId);
+      const managerCustomerIds = clients
+        .filter((client) => client.isManager)
+        .map((client) => client.customerId.replace(/\D/g, ""))
+        .filter(Boolean);
+      inspected.push({ rootCustomerId, isManager, customerIds: leafIds, managerCustomerIds });
     }
 
-    return { eligibleCustomerIds, excludedCustomerIds };
+    const coveredChildIds = new Set(
+      inspected
+        .filter((root) => root.isManager)
+        .flatMap((root) => [...root.customerIds, ...root.managerCustomerIds]),
+    );
+
+    const roots = inspected.filter(
+      (root) => !coveredChildIds.has(root.rootCustomerId),
+    );
+
+    return {
+      eligibleCustomerIds: roots.map((root) => root.rootCustomerId),
+      excludedCustomerIds,
+      roots: roots.map(({ rootCustomerId, isManager, customerIds }) => ({ rootCustomerId, isManager, customerIds })),
+    };
   }
 
   /**

@@ -323,7 +323,55 @@ describe("google ads connector", () => {
     ]);
     try {
       const result = await googleAdsReportClient.resolveEligibleCustomerRoots("t", ["100", "200", "300"]);
-      assert.deepEqual(result, { eligibleCustomerIds: ["100"], excludedCustomerIds: ["200", "300"] });
+      assert.deepEqual(result, {
+        eligibleCustomerIds: ["100"],
+        excludedCustomerIds: ["200", "300"],
+        roots: [{ rootCustomerId: "100", isManager: true, customerIds: ["111"] }],
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps distinct MCC roots while suppressing children already covered by an MCC", async () => {
+    const restore = stubFetch([
+      { results: [{ customerClient: { id: "901", descriptiveName: "MCC child", manager: false, status: "ENABLED" } }] },
+      { __status: 400, __body: JSON.stringify({ error: { message: "not a manager" } }) },
+      { __status: 400, __body: JSON.stringify({ error: { message: "not a manager" } }) },
+    ]);
+    try {
+      const result = await googleAdsReportClient.resolveEligibleCustomerRoots("t", ["900", "901", "777"]);
+      assert.deepEqual(result, {
+        eligibleCustomerIds: ["900", "777"],
+        excludedCustomerIds: [],
+        roots: [
+          { rootCustomerId: "900", isManager: true, customerIds: ["901"] },
+          { rootCustomerId: "777", isManager: false, customerIds: ["777"] },
+        ],
+      });
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not create a second root for an MCC nested beneath another selected manager", async () => {
+    const restore = stubFetch([
+      {
+        results: [
+          { customerClient: { id: "200", descriptiveName: "Nested MCC", manager: true, status: "ENABLED" } },
+          { customerClient: { id: "300", descriptiveName: "Leaf", manager: false, status: "ENABLED" } },
+        ],
+      },
+      { results: [{ customerClient: { id: "300", descriptiveName: "Leaf", manager: false, status: "ENABLED" } }] },
+      { __status: 400, __body: JSON.stringify({ error: { message: "not a manager" } }) },
+    ]);
+    try {
+      const result = await googleAdsReportClient.resolveEligibleCustomerRoots("t", ["100", "200", "300"]);
+      assert.deepEqual(result, {
+        eligibleCustomerIds: ["100"],
+        excludedCustomerIds: [],
+        roots: [{ rootCustomerId: "100", isManager: true, customerIds: ["300"] }],
+      });
     } finally {
       restore();
     }
