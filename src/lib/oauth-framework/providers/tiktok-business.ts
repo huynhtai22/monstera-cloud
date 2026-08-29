@@ -41,7 +41,25 @@ export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
     }): Promise<{ credentials: OAuthCredentials; metadata: ConnectionMetadata }> {
         // TikTok returns `auth_code` not `code`
         const tokenData = await tiktokBusinessClient.exchangeCode(code);
-        const advertiserIds = normalizeTikTokAdvertiserIds(tokenData.advertiser_ids);
+        const tokenAdvertiserIds = normalizeTikTokAdvertiserIds(tokenData.advertiser_ids);
+        let discoveredAdvertiserIds: string[] = [];
+        let discoveryRequestId: string | undefined;
+
+        try {
+            const discovery = await tiktokBusinessClient.listAuthorizedAdvertisers(tokenData.access_token);
+            discoveredAdvertiserIds = normalizeTikTokAdvertiserIds(discovery.advertiser_ids);
+            discoveryRequestId = discovery.request_id;
+        } catch (error) {
+            // A valid token response already carries usable accounts, so an
+            // auxiliary discovery outage must not erase that successful grant.
+            // When the token response has no accounts, discovery is required.
+            if (!tokenAdvertiserIds.length) throw error;
+        }
+
+        const advertiserIds = normalizeTikTokAdvertiserIds([
+            ...tokenAdvertiserIds,
+            ...discoveredAdvertiserIds,
+        ]);
         if (!advertiserIds.length) {
             throw new OAuthError("provider_error", TIKTOK_ADVERTISER_RECONNECT_MESSAGE, this.id);
         }
@@ -67,6 +85,8 @@ export class TikTokBusinessOAuthAdapter implements OAuthProviderAdapter {
             extraFields: {
                 advertiserIds,
                 scope: tokenData.scope,
+                advertiserDiscoveryEndpoint: "/open_api/v1.3/oauth2/advertiser/get/",
+                advertiserDiscoveryRequestId: discoveryRequestId,
             },
         };
 

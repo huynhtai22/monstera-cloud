@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import { TikTokBusinessOAuthAdapter } from "./oauth-framework/providers/tiktok-business";
 
 async function withMockedFetch<T>(
-  response: Response,
+  response: Response | Response[],
   run: () => Promise<T>,
 ): Promise<T> {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => response) as typeof fetch;
+  const responses = Array.isArray(response) ? response : [response];
+  let call = 0;
+  globalThis.fetch = (async () => responses[Math.min(call++, responses.length - 1)]) as typeof fetch;
   try {
     return await run();
   } finally {
@@ -24,12 +26,15 @@ describe("TikTok OAuth token exchange", () => {
 
     try {
       await withMockedFetch(
-        new Response(
-          JSON.stringify({
-            code: 0,
-            data: { access_token: "test-access", advertiser_ids: ["712345678901234"] },
-          }),
-        ),
+        [
+          new Response(
+            JSON.stringify({
+              code: 0,
+              data: { access_token: "test-access", advertiser_ids: ["712345678901234"] },
+            }),
+          ),
+          new Response(JSON.stringify({ code: 0, data: { list: [] }, request_id: "discovery-1" })),
+        ],
         async () => {
           const { credentials } = await new TikTokBusinessOAuthAdapter().exchangeCode({
             code: "test-auth-code",
@@ -39,6 +44,40 @@ describe("TikTok OAuth token exchange", () => {
           assert.equal(credentials.tokenMode, "long_lived_advertiser");
           assert.equal(credentials.refreshToken, undefined);
           assert.equal(credentials.expiresAt, undefined);
+        },
+      );
+    } finally {
+      if (previousAppId === undefined) delete process.env.TIKTOK_BUSINESS_APP_ID;
+      else process.env.TIKTOK_BUSINESS_APP_ID = previousAppId;
+      if (previousSecret === undefined) delete process.env.TIKTOK_BUSINESS_APP_SECRET;
+      else process.env.TIKTOK_BUSINESS_APP_SECRET = previousSecret;
+    }
+  });
+
+  it("discovers numeric advertiser IDs when the token response omits them", async () => {
+    const previousAppId = process.env.TIKTOK_BUSINESS_APP_ID;
+    const previousSecret = process.env.TIKTOK_BUSINESS_APP_SECRET;
+    process.env.TIKTOK_BUSINESS_APP_ID = "test-app";
+    process.env.TIKTOK_BUSINESS_APP_SECRET = "test-secret";
+
+    try {
+      await withMockedFetch(
+        [
+          new Response(JSON.stringify({ code: 0, data: { access_token: "test-access" } })),
+          new Response(JSON.stringify({
+            code: 0,
+            data: { list: [{ advertiser_id: "712345678901234" }] },
+            request_id: "discovery-2",
+          })),
+        ],
+        async () => {
+          const { metadata } = await new TikTokBusinessOAuthAdapter().exchangeCode({
+            code: "test-auth-code",
+            redirectUri: "https://monsteracloud.com/api/auth/callback?provider=tiktok_business",
+            metadata: { workspaceId: "workspace-test", userId: "user-test" },
+          });
+          assert.deepEqual(metadata.accountIdentifiers, ["712345678901234"]);
+          assert.equal(metadata.extraFields?.advertiserDiscoveryRequestId, "discovery-2");
         },
       );
     } finally {
@@ -96,7 +135,10 @@ describe("TikTok OAuth token exchange", () => {
 
     try {
       await withMockedFetch(
-        new Response(JSON.stringify({ code: 0, data: { access_token: "test-access", advertiser_ids: ["#un1v"] } })),
+        [
+          new Response(JSON.stringify({ code: 0, data: { access_token: "test-access", advertiser_ids: ["#un1v"] } })),
+          new Response(JSON.stringify({ code: 0, data: { list: [] }, request_id: "discovery-empty" })),
+        ],
         async () => {
           await assert.rejects(
             new TikTokBusinessOAuthAdapter().exchangeCode({

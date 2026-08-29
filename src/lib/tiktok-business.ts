@@ -41,6 +41,11 @@ export interface TikTokBusinessTokenResponse {
   token_type: string;
 }
 
+export interface TikTokAdvertiserDiscoveryResponse {
+  advertiser_ids: string[];
+  request_id?: string;
+}
+
 export class TikTokBusinessClient {
   /**
    * Step 1 — Redirect the user here to grant access.
@@ -112,6 +117,55 @@ export class TikTokBusinessClient {
     }
 
     return tokenData as unknown as TikTokBusinessTokenResponse;
+  }
+
+  /**
+   * Retrieve the complete advertiser list authorized for an access token.
+   * TikTok explicitly recommends this endpoint after token exchange; some
+   * successful token responses omit or incompletely populate advertiser_ids.
+   */
+  async listAuthorizedAdvertisers(accessToken: string): Promise<TikTokAdvertiserDiscoveryResponse> {
+    const endpoint = "/open_api/v1.3/oauth2/advertiser/get/";
+    const res = await fetch(`https://business-api.tiktok.com${endpoint}`, {
+      method: "GET",
+      headers: { "Access-Token": accessToken },
+    });
+
+    const json = await res.json().catch(() => ({})) as Record<string, unknown>;
+    const requestId = typeof json.request_id === "string" ? json.request_id : undefined;
+    if (!res.ok || json.code !== 0) {
+      const code = json.code ?? res.status;
+      const message = typeof json.message === "string" ? json.message : "Advertiser discovery failed";
+      logger.warn("[TikTok OAuth] Advertiser discovery failed", {
+        endpoint,
+        httpStatus: res.status,
+        code,
+        requestId,
+      });
+      throw new Error(`TikTok advertiser discovery error ${code}: ${message}`);
+    }
+
+    const data = json.data && typeof json.data === "object"
+      ? json.data as Record<string, unknown>
+      : {};
+    const list = Array.isArray(data.list) ? data.list : [];
+    const advertiserIds = [
+      ...(Array.isArray(data.advertiser_ids) ? data.advertiser_ids : []),
+      ...list.map((entry) =>
+        entry && typeof entry === "object"
+          ? (entry as Record<string, unknown>).advertiser_id
+          : undefined
+      ),
+    ].filter((value): value is string => typeof value === "string");
+
+    logger.info("[TikTok OAuth] Advertiser discovery completed", {
+      endpoint,
+      httpStatus: res.status,
+      requestId,
+      advertiserCount: advertiserIds.length,
+    });
+
+    return { advertiser_ids: advertiserIds, request_id: requestId };
   }
 
   /** Refresh an expired access token. */
