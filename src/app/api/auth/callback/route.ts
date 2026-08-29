@@ -26,6 +26,49 @@ import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import
 
 export const dynamic = "force-dynamic";
 
+const TIKTOK_ADVERTISER_DISCOVERY_ENDPOINT = "/open_api/v1.3/oauth2/advertiser/get/";
+
+async function recordTikTokAdvertiserDiscovery({
+    workspaceId,
+    connectionId,
+    status,
+    advertiserCount = 0,
+    providerRequestId,
+    errorMessage,
+}: {
+    workspaceId: string;
+    connectionId: string;
+    status: "success" | "failed";
+    advertiserCount?: number;
+    providerRequestId?: string;
+    errorMessage?: string;
+}) {
+    try {
+        await (prisma as any).providerSyncRun.create({
+            data: {
+                workspaceId,
+                connectionId,
+                provider: "tiktok_business",
+                environment: "production",
+                endpoint: TIKTOK_ADVERTISER_DISCOVERY_ENDPOINT,
+                httpStatus: status === "success" ? 200 : null,
+                providerRequestId,
+                status,
+                rowsReceived: advertiserCount,
+                rowsWritten: 0,
+                errorCategory: status === "failed" ? "advertiser_discovery" : null,
+                errorMessage: status === "failed" ? errorMessage : null,
+                startedAt: new Date(),
+                completedAt: new Date(),
+            },
+        });
+    } catch (activityError) {
+        // OAuth must remain available while an older environment is waiting
+        // for the ProviderSyncRun migration.
+        logger.warn("[OAuth Callback] TikTok discovery activity could not be recorded", activityError);
+    }
+}
+
 export async function GET(request: NextRequest) {
     const origin = request.nextUrl.origin;
     const searchParams = request.nextUrl.searchParams;
@@ -103,11 +146,27 @@ export async function GET(request: NextRequest) {
         
         // Exchange code for credentials
         const callbackUrl = buildCallbackUrl(request, providerId);
-        const { credentials, metadata } = await provider.exchangeCode({
-            code: exchangeCode,
-            redirectUri: callbackUrl,
-            metadata: { workspaceId, userId },
-        });
+        let exchangeResult;
+        try {
+            exchangeResult = await provider.exchangeCode({
+                code: exchangeCode,
+                redirectUri: callbackUrl,
+                metadata: { workspaceId, userId },
+            });
+        } catch (exchangeError) {
+            if (providerId === "tiktok_business" && reconnectConnectionId) {
+                await recordTikTokAdvertiserDiscovery({
+                    workspaceId,
+                    connectionId: reconnectConnectionId,
+                    status: "failed",
+                    errorMessage: exchangeError instanceof Error
+                        ? exchangeError.message
+                        : "TikTok advertiser discovery failed",
+                });
+            }
+            throw exchangeError;
+        }
+        const { credentials, metadata } = exchangeResult;
 
         const googleAdsBindings = providerId === "google_ads"
             ? buildGoogleAdsMccBindings({
@@ -168,6 +227,48 @@ export async function GET(request: NextRequest) {
                 }
             }
 
+            const tiktokAdvertiserIds = providerId === "tiktok_business"
+                ? metadata.accountIdentifiers ?? []
+                : [];
+            const existingTikTokIdentity = /^\d+$/.test(existing.remoteAccountId)
+                ? existing.remoteAccountId
+                : undefined;
+            if (
+                providerId === "tiktok_business" &&
+                existingTikTokIdentity &&
+                !tiktokAdvertiserIds.includes(existingTikTokIdentity)
+            ) {
+                throw new OAuthError(
+                    "provider_error",
+                    "The TikTok account you authorized does not have access to this advertiser. Reconnect with a TikTok Business user that has access to the selected source.",
+                    providerId,
+                );
+            }
+            const tiktokRemoteAccountId = existingTikTokIdentity ?? tiktokAdvertiserIds[0];
+            const migrateLegacyTikTokIdentity = Boolean(
+                !existingTikTokIdentity &&
+                tiktokRemoteAccountId &&
+                tiktokRemoteAccountId !== existing.remoteAccountId,
+            );
+            if (migrateLegacyTikTokIdentity && tiktokRemoteAccountId) {
+                const advertiserConnection = await prisma.connection.findFirst({
+                    where: {
+                        workspaceId,
+                        provider: "tiktok_business",
+                        remoteAccountId: tiktokRemoteAccountId,
+                        NOT: { id: existing.id },
+                    },
+                    select: { id: true },
+                });
+                if (advertiserConnection) {
+                    throw new OAuthError(
+                        "provider_error",
+                        "This TikTok advertiser already has a separate source connection. Reconnect that TikTok source instead; the existing connection was not changed.",
+                        providerId,
+                    );
+                }
+            }
+
             const updated = await prisma.connection.updateMany({
                 where: { id: reconnectConnectionId, workspaceId, provider: providerId },
                 data: {
@@ -180,6 +281,9 @@ export async function GET(request: NextRequest) {
                     ...(migrateLegacyGoogleAdsIdentity && googleAdsBinding
                         ? { remoteAccountId: googleAdsBinding.remoteAccountId }
                         : {}),
+                    ...(migrateLegacyTikTokIdentity && tiktokRemoteAccountId
+                        ? { remoteAccountId: tiktokRemoteAccountId }
+                        : {}),
                     updatedAt: new Date(),
                 },
             });
@@ -187,6 +291,24 @@ export async function GET(request: NextRequest) {
                 throw new OAuthError("invalid_state", "Reconnect target does not match this workspace and provider", providerId);
             }
             await prisma.auditEvent.create({ data: { workspaceId, actorUserId: userId, action: "connection.reconnected", resource: "connection", resourceId: reconnectConnectionId, metadata: { provider: providerId } } });
+
+            if (providerId === "tiktok_business") {
+                const discoveryFailed = metadata.extraFields?.advertiserDiscoveryStatus === "failed";
+                await recordTikTokAdvertiserDiscovery({
+                    workspaceId,
+                    connectionId: reconnectConnectionId,
+                    status: discoveryFailed ? "failed" : "success",
+                    advertiserCount: discoveryFailed
+                        ? 0
+                        : Number(metadata.extraFields?.advertiserDiscoveryCount ?? 0),
+                    providerRequestId: typeof metadata.extraFields?.advertiserDiscoveryRequestId === "string"
+                        ? metadata.extraFields.advertiserDiscoveryRequestId
+                        : undefined,
+                    errorMessage: discoveryFailed && typeof metadata.extraFields?.advertiserDiscoveryError === "string"
+                        ? metadata.extraFields.advertiserDiscoveryError
+                        : undefined,
+                });
+            }
 
             try {
                 const { job } = await enqueueOauthWarehouseBackfill({
@@ -285,6 +407,26 @@ export async function GET(request: NextRequest) {
                     // look failed if an older environment lacks this table.
                     logger.warn("[OAuth Callback] Google Ads discovery activity could not be recorded", activityError);
                 }
+            }
+        }
+
+        if (providerId === "tiktok_business") {
+            const discoveryFailed = metadata.extraFields?.advertiserDiscoveryStatus === "failed";
+            for (const createdConnection of connections) {
+                await recordTikTokAdvertiserDiscovery({
+                    workspaceId,
+                    connectionId: createdConnection.id,
+                    status: discoveryFailed ? "failed" : "success",
+                    advertiserCount: discoveryFailed
+                        ? 0
+                        : Number(metadata.extraFields?.advertiserDiscoveryCount ?? 0),
+                    providerRequestId: typeof metadata.extraFields?.advertiserDiscoveryRequestId === "string"
+                        ? metadata.extraFields.advertiserDiscoveryRequestId
+                        : undefined,
+                    errorMessage: discoveryFailed && typeof metadata.extraFields?.advertiserDiscoveryError === "string"
+                        ? metadata.extraFields.advertiserDiscoveryError
+                        : undefined,
+                });
             }
         }
 
