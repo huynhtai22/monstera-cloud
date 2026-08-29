@@ -126,8 +126,13 @@ export async function GET(request: NextRequest) {
             if (!existing) {
                 throw new OAuthError("invalid_state", "Reconnect target does not match this workspace and provider", providerId);
             }
+            const existingGoogleAdsIdentity = existing.remoteAccountId.replace(/\D/g, "");
             const googleAdsBinding = providerId === "google_ads"
-                ? googleAdsBindings.find((binding) => binding.remoteAccountId === existing.remoteAccountId.replace(/\D/g, ""))
+                ? googleAdsBindings.find((binding) => {
+                    if (binding.remoteAccountId === existingGoogleAdsIdentity) return true;
+                    const discovered = binding.credentials.discoveredCustomerIds;
+                    return Array.isArray(discovered) && discovered.includes(existingGoogleAdsIdentity);
+                })
                 : undefined;
             if (providerId === "google_ads" && !googleAdsBinding) {
                 throw new OAuthError(
@@ -135,6 +140,32 @@ export async function GET(request: NextRequest) {
                     "The Google account you authorized does not have access to this MCC. Reconnect with a Google user that has access to the selected manager account.",
                     providerId,
                 );
+            }
+
+            // Older versions persisted an arbitrary child from Google's mixed
+            // accessible-account list as the connection identity. Preserve the
+            // connection row (and its pipelines/warehouse history) but migrate
+            // that identity to the discovered MCC when it is unambiguous.
+            const migrateLegacyGoogleAdsIdentity = Boolean(
+                googleAdsBinding && googleAdsBinding.remoteAccountId !== existingGoogleAdsIdentity,
+            );
+            if (migrateLegacyGoogleAdsIdentity && googleAdsBinding) {
+                const managerConnection = await prisma.connection.findFirst({
+                    where: {
+                        workspaceId,
+                        provider: "google_ads",
+                        remoteAccountId: googleAdsBinding.remoteAccountId,
+                        NOT: { id: existing.id },
+                    },
+                    select: { id: true },
+                });
+                if (managerConnection) {
+                    throw new OAuthError(
+                        "provider_error",
+                        "This MCC already has a separate source connection. Reconnect that MCC source instead; the existing connection was not changed.",
+                        providerId,
+                    );
+                }
             }
 
             const updated = await prisma.connection.updateMany({
@@ -146,6 +177,9 @@ export async function GET(request: NextRequest) {
                     status: "connected",
                     lastError: null,
                     name: googleAdsBinding?.name ?? metadata.name,
+                    ...(migrateLegacyGoogleAdsIdentity && googleAdsBinding
+                        ? { remoteAccountId: googleAdsBinding.remoteAccountId }
+                        : {}),
                     updatedAt: new Date(),
                 },
             });

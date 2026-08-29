@@ -354,6 +354,29 @@ describe("google ads connector", () => {
     }
   });
 
+  it("does not create a second root for an MCC nested beneath another selected manager", async () => {
+    const restore = stubFetch([
+      {
+        results: [
+          { customerClient: { id: "200", descriptiveName: "Nested MCC", manager: true, status: "ENABLED" } },
+          { customerClient: { id: "300", descriptiveName: "Leaf", manager: false, status: "ENABLED" } },
+        ],
+      },
+      { results: [{ customerClient: { id: "300", descriptiveName: "Leaf", manager: false, status: "ENABLED" } }] },
+      { __status: 400, __body: JSON.stringify({ error: { message: "not a manager" } }) },
+    ]);
+    try {
+      const result = await googleAdsReportClient.resolveEligibleCustomerRoots("t", ["100", "200", "300"]);
+      assert.deepEqual(result, {
+        eligibleCustomerIds: ["100"],
+        excludedCustomerIds: [],
+        roots: [{ rootCustomerId: "100", isManager: true, customerIds: ["300"] }],
+      });
+    } finally {
+      restore();
+    }
+  });
+
   it("listAccessibleCustomers extracts numeric ids from resource names", async () => {
     const restore = stubFetch([{ resourceNames: ["customers/1234567890", "customers/9876543210"] }]);
     try {
