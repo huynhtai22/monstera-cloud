@@ -833,6 +833,7 @@ async function syncTikTok(opts: {
   }
 
   for (const advertiserId of advertiserIds) {
+    let reportTaskIdForRetry: string | undefined;
     try {
       const taskParams: CreateReportTaskParams = {
         advertiser_id: advertiserId,
@@ -860,6 +861,7 @@ async function syncTikTok(opts: {
         ? opts.providerState.reportTaskId
         : undefined;
       const taskId = resumableTaskId ?? await tiktokReportClient.createTask(accessToken, taskParams, false);
+      reportTaskIdForRetry = taskId;
       logger.info(resumableTaskId ? "[syncTikTok] Resuming report task" : "[syncTikTok] Created report task", {
         connectionId,
         advertiserId,
@@ -882,8 +884,14 @@ async function syncTikTok(opts: {
         attempts++;
       }
 
-      if (isTikTokReportSuccess(status.status) && status.url) {
-        const rows = await tiktokReportClient.downloadRows(status.url);
+      if (isTikTokReportSuccess(status.status)) {
+        const downloadUrl = await tiktokReportClient.getDownloadUrl(
+          accessToken,
+          advertiserId,
+          taskId,
+          credentials.sandbox === true,
+        );
+        const rows = await tiktokReportClient.downloadRows(downloadUrl);
 
         if (rows.length > 0) {
           const result = await ingestTiktokRows(rows, {
@@ -899,8 +907,6 @@ async function syncTikTok(opts: {
         } else {
           children.push({ id: String(advertiserId), kind: "advertiser", ok: true, rowsIngested: 0 });
         }
-      } else if (isTikTokReportSuccess(status.status)) {
-        throw new Error(`TikTok report task ${taskId} completed without a download URL`);
       } else if (isTikTokReportTerminal(status.status)) {
         throw new Error(`TikTok report task ${taskId} ended with status ${status.status}`);
       } else {
@@ -921,7 +927,23 @@ async function syncTikTok(opts: {
     } catch (error) {
       logger.error(`[TikTok Sync] Failed for advertiser ${advertiserId}:`, error);
       const message = error instanceof Error ? error.message : "TikTok sync failed";
-      children.push({ id: String(advertiserId), kind: "advertiser", ok: false, error: message, retryable: isRetryableSyncError(error) || /did not complete before/i.test(message) });
+      const retryable = isRetryableSyncError(error) || /did not complete before/i.test(message);
+      children.push({
+        id: String(advertiserId),
+        kind: "advertiser",
+        ok: false,
+        error: message,
+        retryable,
+        ...(retryable && reportTaskIdForRetry
+          ? {
+              retryState: {
+                provider: "tiktok_business" as const,
+                advertiserId: String(advertiserId),
+                reportTaskId: reportTaskIdForRetry,
+              },
+            }
+          : {}),
+      });
     }
   }
 

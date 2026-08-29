@@ -9,7 +9,7 @@ import { logger } from "@/lib/logger";
 
 /**
  * GET /api/tiktok-business/report/[taskId]?connectionId=...&advertiser_id=...
- * Returns: { status, rows? } — rows only when status === "COMPLETED"
+ * Returns: { status, rows? } — rows only when the task succeeds.
  */
 export async function GET(
   req: Request,
@@ -54,8 +54,14 @@ export async function GET(
       creds.sandbox === true,
     );
 
-    if (taskInfo.status === 'COMPLETED' && taskInfo.url) {
-      const rows = await tiktokReportClient.downloadRows(taskInfo.url);
+    if (taskInfo.status === 'SUCCESS' || taskInfo.status === 'COMPLETED') {
+      const downloadUrl = await tiktokReportClient.getDownloadUrl(
+        accessToken,
+        advertiserId,
+        taskId,
+        creds.sandbox === true,
+      );
+      const rows = await tiktokReportClient.downloadRows(downloadUrl);
       return NextResponse.json({ status: taskInfo.status, rows });
     }
 

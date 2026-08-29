@@ -184,7 +184,13 @@ export async function syncTikTokIntoWarehouse(params: {
         credentials.sandbox === true,
       );
       let attempts = 0;
-      while (status.status !== "COMPLETED" && status.status !== "FAILED" && attempts < 20) {
+      while (
+        status.status !== "SUCCESS" &&
+        status.status !== "COMPLETED" &&
+        status.status !== "FAILED" &&
+        status.status !== "CANCELED" &&
+        attempts < 20
+      ) {
         await new Promise((r) => setTimeout(r, 3000));
         status = await tiktokReportClient.checkTask(
           accessToken,
@@ -195,11 +201,17 @@ export async function syncTikTokIntoWarehouse(params: {
         attempts++;
       }
 
-      if (status.status !== "COMPLETED" || !status.url) {
+      if (status.status !== "SUCCESS" && status.status !== "COMPLETED") {
         throw new Error(`TikTok report not ready (status=${status.status})`);
       }
 
-      const rows = await tiktokReportClient.downloadRows(status.url);
+      const downloadUrl = await tiktokReportClient.getDownloadUrl(
+        accessToken,
+        aid,
+        taskId,
+        credentials.sandbox === true,
+      );
+      const rows = await tiktokReportClient.downloadRows(downloadUrl);
 
       const result = await ingestTiktokRows(rows, {
         workspaceId,

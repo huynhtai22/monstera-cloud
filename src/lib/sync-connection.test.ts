@@ -126,8 +126,11 @@ describe("provider HTTP failures preserve sync correctness", () => {
         return new Response(JSON.stringify({ code: 0, data: { task_id: `${body.advertiser_id}-task` } }), { status: 200 });
       }
       if (url.includes("/report/task/check/")) {
+        return new Response(JSON.stringify({ code: 0, data: { status: "SUCCESS" } }), { status: 200 });
+      }
+      if (url.includes("/report/task/download/")) {
         const advertiserId = new URL(url).searchParams.get("advertiser_id");
-        return new Response(JSON.stringify({ code: 0, data: { status: "SUCCESS", url: `https://download.test/${advertiserId}` } }), { status: 200 });
+        return new Response(JSON.stringify({ code: 0, data: { download_url: `https://download.test/${advertiserId}` } }), { status: 200 });
       }
       if (url.endsWith("/712345678901234")) return new Response("", { status: 200 });
       failedDownloadAttempts++;
@@ -144,6 +147,7 @@ describe("provider HTTP failures preserve sync correctness", () => {
       assert.equal(result.success, false);
       assert.deepEqual(result.children.map((child) => [child.id, child.ok]), [["712345678901234", true], ["712345678901235", false]]);
       assert.equal(result.children.find((child) => child.id === "712345678901235")?.retryable, true);
+      assert.equal(result.children.find((child) => child.id === "712345678901235")?.retryState?.reportTaskId, "712345678901235-task");
       assert.equal(failedDownloadAttempts, 3);
       assert.equal("lastSyncAt" in updates[0].data, false);
       assert.match(String(updates[0].data.lastError), /^\[partial\]/);
@@ -167,8 +171,11 @@ describe("provider HTTP failures preserve sync correctness", () => {
         checkCalls++;
         const data = phase === "pending"
           ? { status: "PROCESSING" }
-          : { status: "SUCCESS", url: "https://download.test/resumed" };
+          : { status: "SUCCESS" };
         return new Response(JSON.stringify({ code: 0, data }));
+      }
+      if (url.includes("/report/task/download/")) {
+        return new Response(JSON.stringify({ code: 0, data: { download_url: "https://download.test/resumed" } }));
       }
       if (url === "https://download.test/resumed") return new Response("");
       return new Response(JSON.stringify({ code: 40000, message: "unexpected request" }), { status: 400 });
@@ -216,7 +223,10 @@ describe("provider HTTP failures preserve sync correctness", () => {
         return new Response(JSON.stringify({ code: 0, data: { task_id: "legacy-task" } }));
       }
       if (url.includes("/report/task/check/")) {
-        return new Response(JSON.stringify({ code: 0, data: { status: "SUCCESS", url: "https://download.test/legacy" } }));
+        return new Response(JSON.stringify({ code: 0, data: { status: "SUCCESS" } }));
+      }
+      if (url.includes("/report/task/download/")) {
+        return new Response(JSON.stringify({ code: 0, data: { download_url: "https://download.test/legacy" } }));
       }
       return new Response("");
     }) as typeof fetch, async () => {

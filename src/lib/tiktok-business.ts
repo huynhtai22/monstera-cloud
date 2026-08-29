@@ -319,11 +319,11 @@ export const TIKTOK_CAMPAIGN_REPORT_METRICS = [
 ] as const;
 
 export interface ReportTaskStatus_Response {
-  task_id: string;
+  task_id?: string;
   status: ReportTaskStatus;
   create_time?: string;
   complete_time?: string;
-  url?: string;          // download URL when COMPLETED
+  message?: string;
 }
 
 export interface ReportRow {
@@ -361,6 +361,8 @@ export class TikTokReportClient {
         start_date: params.start_date,
         end_date: params.end_date,
         page_size: params.page_size ?? 1000,
+        output_format: 'CSV_DOWNLOAD',
+        file_name: `monstera-${params.advertiser_id}`,
         lifetime: false,
         query_lifetime: false,
       }),
@@ -371,7 +373,8 @@ export class TikTokReportClient {
   }
 
   /**
-   * Step 2 — Poll task status. Returns status + download URL when COMPLETED.
+   * Step 2 — Poll task status. TikTok returns status only; SUCCESS does not
+   * include the download URL.
    */
   async checkTask(accessToken: string, advertiser_id: string, task_id: string, sandbox = false): Promise<ReportTaskStatus_Response> {
     const base = this.getBase(sandbox);
@@ -385,6 +388,34 @@ export class TikTokReportClient {
 
     const data = json.data as Record<string, unknown>;
     return data as unknown as ReportTaskStatus_Response;
+  }
+
+  /**
+   * Step 3 — Exchange a successful task ID for a short-lived download URL.
+   */
+  async getDownloadUrl(
+    accessToken: string,
+    advertiser_id: string,
+    task_id: string,
+    sandbox = false,
+  ): Promise<string> {
+    const base = this.getBase(sandbox);
+    const url = new URL(`${base}/report/task/download/`);
+    url.searchParams.set('advertiser_id', advertiser_id);
+    url.searchParams.set('task_id', task_id);
+
+    const json = await fetchTikTokJson(url.toString(), {
+      headers: { 'Access-Token': accessToken },
+    });
+    const data = json.data as Record<string, unknown> | undefined;
+    const downloadUrl = typeof data?.download_url === 'string' ? data.download_url.trim() : '';
+    if (!downloadUrl) {
+      throw new TikTokProviderError(
+        `TikTok report task ${task_id} download response did not include download_url`,
+        true,
+      );
+    }
+    return downloadUrl;
   }
 
   /**
@@ -463,7 +494,7 @@ export class TikTokReportClient {
   }
 
   /**
-   * Step 3 — Once SUCCESS, download rows from the returned URL.
+   * Step 4 — Download rows from the short-lived URL.
    * TikTok returns NDJSON (one JSON object per line) or CSV depending on export type.
    */
   async downloadRows(downloadUrl: string): Promise<ReportRow[]> {
