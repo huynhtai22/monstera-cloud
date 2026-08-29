@@ -233,11 +233,22 @@ export async function GET(request: NextRequest) {
             const existingTikTokIdentity = /^\d+$/.test(existing.remoteAccountId)
                 ? existing.remoteAccountId
                 : undefined;
-            const tiktokRemoteAccountId = existingTikTokIdentity && tiktokAdvertiserIds.includes(existingTikTokIdentity)
-                ? existingTikTokIdentity
-                : tiktokAdvertiserIds[0];
+            if (
+                providerId === "tiktok_business" &&
+                existingTikTokIdentity &&
+                !tiktokAdvertiserIds.includes(existingTikTokIdentity)
+            ) {
+                throw new OAuthError(
+                    "provider_error",
+                    "The TikTok account you authorized does not have access to this advertiser. Reconnect with a TikTok Business user that has access to the selected source.",
+                    providerId,
+                );
+            }
+            const tiktokRemoteAccountId = existingTikTokIdentity ?? tiktokAdvertiserIds[0];
             const migrateLegacyTikTokIdentity = Boolean(
-                tiktokRemoteAccountId && tiktokRemoteAccountId !== existing.remoteAccountId,
+                !existingTikTokIdentity &&
+                tiktokRemoteAccountId &&
+                tiktokRemoteAccountId !== existing.remoteAccountId,
             );
             if (migrateLegacyTikTokIdentity && tiktokRemoteAccountId) {
                 const advertiserConnection = await prisma.connection.findFirst({
@@ -282,13 +293,19 @@ export async function GET(request: NextRequest) {
             await prisma.auditEvent.create({ data: { workspaceId, actorUserId: userId, action: "connection.reconnected", resource: "connection", resourceId: reconnectConnectionId, metadata: { provider: providerId } } });
 
             if (providerId === "tiktok_business") {
+                const discoveryFailed = metadata.extraFields?.advertiserDiscoveryStatus === "failed";
                 await recordTikTokAdvertiserDiscovery({
                     workspaceId,
                     connectionId: reconnectConnectionId,
-                    status: "success",
-                    advertiserCount: metadata.accountIdentifiers?.length ?? 0,
+                    status: discoveryFailed ? "failed" : "success",
+                    advertiserCount: discoveryFailed
+                        ? 0
+                        : Number(metadata.extraFields?.advertiserDiscoveryCount ?? 0),
                     providerRequestId: typeof metadata.extraFields?.advertiserDiscoveryRequestId === "string"
                         ? metadata.extraFields.advertiserDiscoveryRequestId
+                        : undefined,
+                    errorMessage: discoveryFailed && typeof metadata.extraFields?.advertiserDiscoveryError === "string"
+                        ? metadata.extraFields.advertiserDiscoveryError
                         : undefined,
                 });
             }
@@ -394,14 +411,20 @@ export async function GET(request: NextRequest) {
         }
 
         if (providerId === "tiktok_business") {
+            const discoveryFailed = metadata.extraFields?.advertiserDiscoveryStatus === "failed";
             for (const createdConnection of connections) {
                 await recordTikTokAdvertiserDiscovery({
                     workspaceId,
                     connectionId: createdConnection.id,
-                    status: "success",
-                    advertiserCount: metadata.accountIdentifiers?.length ?? 0,
+                    status: discoveryFailed ? "failed" : "success",
+                    advertiserCount: discoveryFailed
+                        ? 0
+                        : Number(metadata.extraFields?.advertiserDiscoveryCount ?? 0),
                     providerRequestId: typeof metadata.extraFields?.advertiserDiscoveryRequestId === "string"
                         ? metadata.extraFields.advertiserDiscoveryRequestId
+                        : undefined,
+                    errorMessage: discoveryFailed && typeof metadata.extraFields?.advertiserDiscoveryError === "string"
+                        ? metadata.extraFields.advertiserDiscoveryError
                         : undefined,
                 });
             }

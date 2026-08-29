@@ -88,6 +88,43 @@ describe("TikTok OAuth token exchange", () => {
     }
   });
 
+  it("keeps token advertiser IDs but reports an auxiliary discovery failure", async () => {
+    const previousAppId = process.env.TIKTOK_BUSINESS_APP_ID;
+    const previousSecret = process.env.TIKTOK_BUSINESS_APP_SECRET;
+    process.env.TIKTOK_BUSINESS_APP_ID = "test-app";
+    process.env.TIKTOK_BUSINESS_APP_SECRET = "test-secret";
+
+    try {
+      await withMockedFetch(
+        [
+          new Response(JSON.stringify({
+            code: 0,
+            data: { access_token: "test-access", advertiser_ids: ["712345678901234"] },
+          })),
+          new Response(
+            JSON.stringify({ code: 40100, message: "Permission denied", request_id: "discovery-failed" }),
+            { status: 403 },
+          ),
+        ],
+        async () => {
+          const { metadata } = await new TikTokBusinessOAuthAdapter().exchangeCode({
+            code: "test-auth-code",
+            redirectUri: "https://monsteracloud.com/api/auth/callback?provider=tiktok_business",
+            metadata: { workspaceId: "workspace-test", userId: "user-test" },
+          });
+          assert.deepEqual(metadata.accountIdentifiers, ["712345678901234"]);
+          assert.equal(metadata.extraFields?.advertiserDiscoveryStatus, "failed");
+          assert.match(String(metadata.extraFields?.advertiserDiscoveryError), /Permission denied/);
+        },
+      );
+    } finally {
+      if (previousAppId === undefined) delete process.env.TIKTOK_BUSINESS_APP_ID;
+      else process.env.TIKTOK_BUSINESS_APP_ID = previousAppId;
+      if (previousSecret === undefined) delete process.env.TIKTOK_BUSINESS_APP_SECRET;
+      else process.env.TIKTOK_BUSINESS_APP_SECRET = previousSecret;
+    }
+  });
+
   it("rejects a partial refreshable response before a connection can be persisted", async () => {
     const previousAppId = process.env.TIKTOK_BUSINESS_APP_ID;
     const previousSecret = process.env.TIKTOK_BUSINESS_APP_SECRET;
