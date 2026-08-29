@@ -193,6 +193,21 @@ describe("TikTok for Business OAuth & Report Parsing", () => {
     assert.equal(parsedRows[0].metrics.conversion, "10");
   });
 
+  it("parses quoted CSV fields without shifting report metrics", () => {
+    const reportClient = new TikTokReportClient();
+    const csv = [
+      "campaign_id,campaign_name,adgroup_id,adgroup_name,stat_time_day,impression,click,spend,cpc,ctr,conversion,revenue,roas",
+      '180123456789,"US, Retargeting",999,"Group ""A""",2026-08-19,10000,250,75.00,0.30,0.025,10,500.00,6.67',
+    ].join("\n");
+
+    const parsedRows = reportClient.parseReportText(csv);
+    assert.equal(parsedRows.length, 1);
+    assert.equal(parsedRows[0].dimensions.campaign_name, "US, Retargeting");
+    assert.equal(parsedRows[0].dimensions.adgroup_name, 'Group "A"');
+    assert.equal(parsedRows[0].metrics.spend, "75.00");
+    assert.equal(parsedRows[0].metrics.conversion, "10");
+  });
+
   it("retries a report download 429 and surfaces a retryable error after exhaustion", async () => {
     await withFastRetries(() => withMockedFetch([
       new Response(JSON.stringify({ code: 429, message: "rate limit" }), { status: 429 }),

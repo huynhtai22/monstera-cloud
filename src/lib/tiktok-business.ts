@@ -12,6 +12,7 @@
  */
 
 import { logger } from "@/lib/logger";
+import { parse as parseCsv } from "csv-parse/sync";
 
 /** app_id from business-api.tiktok.com/portal */
 function appId(): string {
@@ -422,13 +423,14 @@ export class TikTokReportClient {
    * Parse NDJSON (one JSON object per line) or CSV report text.
    */
   parseReportText(text: string): ReportRow[] {
-    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-    if (!lines.length) return [];
+    const trimmedText = text.trim();
+    if (!trimmedText) return [];
 
     const rows: ReportRow[] = [];
 
     // Format 1: NDJSON or JSON lines
-    if (lines[0].startsWith('{')) {
+    if (trimmedText.startsWith('{')) {
+      const lines = trimmedText.split('\n').map((l) => l.trim()).filter(Boolean);
       for (const line of lines) {
         try {
           const parsed = JSON.parse(line);
@@ -461,30 +463,30 @@ export class TikTokReportClient {
       }
     } else {
       // Format 2: CSV format
-      const header = lines[0].split(',').map((h) => h.trim().toLowerCase());
-      for (let i = 1; i < lines.length; i++) {
-        const parts = lines[i].split(',');
-        const rowObj: Record<string, string> = {};
-        header.forEach((h, idx) => {
-          rowObj[h] = parts[idx]?.trim() ?? '';
-        });
+      const records = parseCsv(trimmedText, {
+        bom: true,
+        columns: (header: string[]) => header.map((value) => value.trim().toLowerCase()),
+        skip_empty_lines: true,
+        trim: true,
+      }) as Record<string, string>[];
+      for (const rowObj of records) {
         rows.push({
           dimensions: {
-            campaign_id: rowObj.campaign_id || parts[0] || '',
-            campaign_name: rowObj.campaign_name || parts[1] || '',
-            adgroup_id: rowObj.adgroup_id || parts[2] || '',
-            adgroup_name: rowObj.adgroup_name || parts[3] || '',
-            stat_time_day: rowObj.stat_time_day || rowObj.date || parts[4] || '',
+            campaign_id: rowObj.campaign_id || '',
+            campaign_name: rowObj.campaign_name || '',
+            adgroup_id: rowObj.adgroup_id || '',
+            adgroup_name: rowObj.adgroup_name || '',
+            stat_time_day: rowObj.stat_time_day || rowObj.date || '',
           },
           metrics: {
-            impression: rowObj.impression || rowObj.impressions || parts[5] || '0',
-            click: rowObj.click || rowObj.clicks || parts[6] || '0',
-            spend: rowObj.spend || rowObj.cost || parts[7] || '0',
-            cpc: rowObj.cpc || parts[8] || '0',
-            ctr: rowObj.ctr || parts[9] || '0',
-            conversion: rowObj.conversion || rowObj.conversions || parts[10] || '0',
-            revenue: rowObj.revenue || rowObj.conversion_value || parts[11] || '0',
-            roas: rowObj.roas || parts[12] || '0',
+            impression: rowObj.impression || rowObj.impressions || '0',
+            click: rowObj.click || rowObj.clicks || '0',
+            spend: rowObj.spend || rowObj.cost || '0',
+            cpc: rowObj.cpc || '0',
+            ctr: rowObj.ctr || '0',
+            conversion: rowObj.conversion || rowObj.conversions || '0',
+            revenue: rowObj.revenue || rowObj.conversion_value || '0',
+            roas: rowObj.roas || '0',
           },
         });
       }
