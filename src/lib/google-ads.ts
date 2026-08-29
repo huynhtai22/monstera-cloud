@@ -451,7 +451,10 @@ export class GoogleAdsReportClient {
       const managerCustomerIds = clients
         .filter((client) => client.isManager)
         .map((client) => client.customerId.replace(/\D/g, ""))
-        .filter(Boolean);
+        // Google includes the queried manager itself at hierarchy level 0.
+        // Only descendant managers cover another candidate root; treating the
+        // self-row as a child suppresses every real MCC from discovery.
+        .filter((managerId) => Boolean(managerId) && managerId !== rootCustomerId);
       inspected.push({ rootCustomerId, isManager, customerIds: leafIds, managerCustomerIds });
     }
 

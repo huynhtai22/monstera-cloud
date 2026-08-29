@@ -358,6 +358,7 @@ describe("google ads connector", () => {
     const restore = stubFetch([
       {
         results: [
+          { customerClient: { id: "100", descriptiveName: "Parent MCC", manager: true, status: "ENABLED" } },
           { customerClient: { id: "200", descriptiveName: "Nested MCC", manager: true, status: "ENABLED" } },
           { customerClient: { id: "300", descriptiveName: "Leaf", manager: false, status: "ENABLED" } },
         ],
