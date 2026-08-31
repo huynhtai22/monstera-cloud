@@ -51,6 +51,7 @@ export async function GET(
             id: connection.id,
             status: connection.status,
             hasError: Boolean(connection.lastError),
+            lastError: connection.lastError,
             updatedAt: connection.updatedAt,
         });
     } catch (error) {

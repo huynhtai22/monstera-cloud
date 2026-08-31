@@ -271,6 +271,27 @@ export function FixConnectionModal({
                         consecutive429s = 0;
                         if (!statusResponse.ok) throw new Error("status_unavailable");
                         const status = (await statusResponse.json()) as ReconnectStatusSnapshot;
+                        const providerError = typeof status.lastError === "string"
+                            ? status.lastError.trim()
+                            : "";
+                        const baselineTimestamp = new Date(baselineUpdatedAt).getTime();
+                        const statusTimestamp = new Date(status.updatedAt).getTime();
+                        const hasFreshProviderError = Boolean(
+                            providerError &&
+                            Number.isFinite(baselineTimestamp) &&
+                            Number.isFinite(statusTimestamp) &&
+                            statusTimestamp > baselineTimestamp,
+                        );
+
+                        if (hasFreshProviderError) {
+                            isTerminated = true;
+                            clearReconnectPolling(true);
+                            setStep("error");
+                            setError(providerError);
+                            setIsReconnecting(false);
+                            return;
+                        }
+
                         if (popup.closed && popupClosedAt === null) popupClosedAt = Date.now();
                         const popupCancellationConfirmed = Boolean(
                             popupClosedAt && Date.now() - popupClosedAt >= 2_000,

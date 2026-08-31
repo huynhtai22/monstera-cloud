@@ -77,6 +77,8 @@ export async function GET(request: NextRequest) {
     const state = searchParams.get("state");
     const error = searchParams.get("error");
     const errorDescription = searchParams.get("error_description");
+    let reconnectConnectionId: string | undefined;
+    let reconnectWorkspaceId: string | undefined;
     
     // Handle provider errors
     if (error) {
@@ -117,7 +119,8 @@ export async function GET(request: NextRequest) {
         });
         const workspaceId = attempt.workspaceId;
         const userId = attempt.userId;
-        const reconnectConnectionId = attempt.reconnectConnectionId ?? undefined;
+        reconnectConnectionId = attempt.reconnectConnectionId ?? undefined;
+        reconnectWorkspaceId = attempt.workspaceId;
 
         await requireWorkspaceAccess({
             userId,
@@ -467,6 +470,24 @@ export async function GET(request: NextRequest) {
         return response;
         
     } catch (error) {
+        if (reconnectConnectionId && reconnectWorkspaceId && providerId) {
+            const userFacingError = error instanceof OAuthError
+                ? error.message
+                : "The connection could not be restored. Please try again.";
+
+            try {
+                await prisma.connection.updateMany({
+                    where: {
+                        id: reconnectConnectionId,
+                        workspaceId: reconnectWorkspaceId,
+                        provider: providerId,
+                    },
+                    data: { lastError: userFacingError },
+                });
+            } catch (updateError) {
+                logger.error("[OAuth Callback] Could not save reconnect error:", updateError);
+            }
+        }
         emitMonitor("oauth_failure", {
             provider: providerId || "unknown",
             code: error instanceof OAuthError ? error.code : "oauth_failed",
