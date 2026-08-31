@@ -102,7 +102,7 @@ export interface MetaAsyncReportStatus {
 export class MetaAdsClient {
   /**
    * Step 1 — Build the Facebook OAuth URL.
-   * Scopes: ads_read (Standard Access, no review), business_management (needs Advanced Access).
+   * Scope: ads_read, which is sufficient for ad account discovery and reporting.
    */
   getAuthorizeUrl(state: string, redirectUri: string): string {
     const id = appId();
@@ -112,7 +112,7 @@ export class MetaAdsClient {
     url.searchParams.set('client_id', id);
     url.searchParams.set('redirect_uri', redirectUri);
     url.searchParams.set('state', state);
-    url.searchParams.set('scope', 'ads_read,business_management');
+    url.searchParams.set('scope', 'ads_read');
     url.searchParams.set('response_type', 'code');
 
     return url.toString();
