@@ -8,6 +8,11 @@ type PayOSConfig = {
   checksumKey: string;
 };
 
+export type PayOSReadiness = {
+  ready: boolean;
+  missing: string[];
+};
+
 type PayOSApiResponse<T> = {
   code?: string;
   desc?: string;
@@ -18,6 +23,9 @@ export type PayOSPaymentLink = {
   paymentLinkId: string;
   checkoutUrl: string;
   qrCode?: string;
+  bin?: string;
+  accountNumber?: string;
+  accountName?: string;
 };
 
 function requiredConfig(): PayOSConfig {
@@ -28,6 +36,17 @@ function requiredConfig(): PayOSConfig {
     throw new Error("PayOS is not configured.");
   }
   return { clientId, apiKey, checksumKey };
+}
+
+/**
+ * Deliberately exposes only configuration *names*, never secret values. This is
+ * used to stop the checkout flow before a customer is sent to a payment link
+ * that cannot be fulfilled by this deployment.
+ */
+export function getPayOSReadiness(): PayOSReadiness {
+  const required = ["PAYOS_CLIENT_ID", "PAYOS_API_KEY", "PAYOS_CHECKSUM_KEY"];
+  const missing = required.filter((name) => !process.env[name]?.trim());
+  return { ready: missing.length === 0, missing };
 }
 
 function requiredChecksumKey(): string {
@@ -111,7 +130,14 @@ export async function createPayOSPaymentLink(input: {
     orderCode: input.orderCode,
     returnUrl: input.returnUrl,
   };
-  const data = await payOSRequest<{ paymentLinkId?: string; checkoutUrl?: string; qrCode?: string }>("/v2/payment-requests", {
+  const data = await payOSRequest<{
+    paymentLinkId?: string;
+    checkoutUrl?: string;
+    qrCode?: string;
+    bin?: string;
+    accountNumber?: string;
+    accountName?: string;
+  }>("/v2/payment-requests", {
     ...signable,
     ...(input.buyerEmail ? { buyerEmail: input.buyerEmail } : {}),
     signature: signPayOSData(signable),
@@ -119,7 +145,14 @@ export async function createPayOSPaymentLink(input: {
   if (!data.paymentLinkId || !data.checkoutUrl) {
     throw new Error("PayOS did not return a payment link.");
   }
-  return { paymentLinkId: data.paymentLinkId, checkoutUrl: data.checkoutUrl, qrCode: data.qrCode };
+  return {
+    paymentLinkId: data.paymentLinkId,
+    checkoutUrl: data.checkoutUrl,
+    qrCode: data.qrCode,
+    bin: data.bin,
+    accountNumber: data.accountNumber,
+    accountName: data.accountName,
+  };
 }
 
 /** Registers the deployed endpoint. PayOS verifies it with a signed sample before accepting it. */

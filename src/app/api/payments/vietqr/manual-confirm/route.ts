@@ -1,12 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
-import { fulfillVietQrPayment, listRecentVietQrOrders } from "@/lib/vietqr-gateway";
+import { NextResponse } from "next/server";
+import { listRecentVietQrOrders } from "@/lib/vietqr-gateway";
 import { requirePlatformAdmin } from "@/lib/admin-auth";
 
 /**
- * Manual bank-transfer confirmation (BD admin) — this mutates workspace plans,
- * so both the order listing and the confirmation require platform-admin auth.
- * Previously both were unauthenticated, letting anyone with a 6-digit order
- * code upgrade any workspace for free.
+ * Order visibility for platform admins. Activation is deliberately webhook-only.
  */
 export async function GET() {
     const auth = await requirePlatformAdmin();
@@ -19,24 +16,8 @@ export async function GET() {
     }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST() {
     const auth = await requirePlatformAdmin();
     if (auth.error) return auth.error;
-    try {
-        const body = await req.json();
-        const { orderCode } = body;
-
-        if (!orderCode) {
-            return NextResponse.json({ error: "Missing orderCode" }, { status: 400 });
-        }
-
-        const result = await fulfillVietQrPayment(Number(orderCode), { method: "manual_bd_admin" });
-        if (!result.success) {
-            return NextResponse.json({ error: result.message }, { status: 400 });
-        }
-
-        return NextResponse.json({ success: true, message: result.message });
-    } catch (err: any) {
-        return NextResponse.json({ error: err.message || "Failed to confirm payment" }, { status: 500 });
-    }
+    return NextResponse.json({ error: "Manual activation is disabled. PayOS webhooks are the only activation source." }, { status: 410 });
 }

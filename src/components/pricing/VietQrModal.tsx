@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, QrCode, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import QRCode from "qrcode";
+import { ArrowLeft, Check, Copy, ExternalLink, Loader2, LockKeyhole, QrCode, ShieldCheck, X } from "lucide-react";
 
 interface VietQrModalProps {
     isOpen: boolean;
@@ -10,52 +12,128 @@ interface VietQrModalProps {
     planDisplayName: string;
     amountVnd: number;
     billingCycle: "monthly" | "annual";
+    workspaceId?: string;
     userEmail?: string;
 }
 
+type CheckoutOrder = {
+    orderCode: number;
+    amount: number;
+    memo: string;
+    qrCode?: string;
+    accountNo?: string;
+    accountName?: string;
+    checkoutUrl?: string;
+};
+
+function CopyValue({ value, label }: { value: string; label: string }) {
+    const [copied, setCopied] = useState(false);
+
+    const copy = async () => {
+        try {
+            await navigator.clipboard.writeText(value);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1600);
+        } catch {
+            // Manual selection remains available if a browser denies clipboard access.
+        }
+    };
+
+    return (
+        <button onClick={copy} className="group flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-white/[0.06]" aria-label={`Copy ${label}`}>
+            <span className="min-w-0">
+                <span className="block text-[11px] text-slate-500">{label}</span>
+                <span className="block truncate font-mono text-sm text-slate-100">{value}</span>
+            </span>
+            <span className="shrink-0 text-emerald-300">{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4 opacity-70 group-hover:opacity-100" />}</span>
+        </button>
+    );
+}
+
 /** Kept under its legacy filename to avoid changing the pricing integration. */
-export function VietQrModal({ isOpen, onClose, planName, planDisplayName, billingCycle }: VietQrModalProps) {
+export function VietQrModal({ isOpen, onClose, planName, planDisplayName, billingCycle, amountVnd, workspaceId }: VietQrModalProps) {
+    const router = useRouter();
     const [error, setError] = useState<string | null>(null);
+    const [order, setOrder] = useState<CheckoutOrder | null>(null);
+    const [qrImage, setQrImage] = useState<string | null>(null);
 
     useEffect(() => {
         if (!isOpen) {
             setError(null);
+            setOrder(null);
+            setQrImage(null);
             return;
         }
+
         let cancelled = false;
         void (async () => {
             try {
                 const response = await fetch("/api/payments/vietqr/create", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ plan: planName, billingCycle }),
+                    body: JSON.stringify({ plan: planName, billingCycle, workspaceId }),
                 });
                 const data = await response.json().catch(() => ({}));
-                const checkoutUrl = data?.order?.checkoutUrl;
-                if (!response.ok || typeof checkoutUrl !== "string") throw new Error("PayOS checkout unavailable");
-                if (!cancelled) window.location.assign(checkoutUrl);
-            } catch {
-                if (!cancelled) setError("Không thể kết nối PayOS. Vui lòng thử lại sau.");
+                if (response.status === 401) {
+                    const callbackUrl = `/pricing${workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ""}`;
+                    router.push(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+                    return;
+                }
+                if (!response.ok || !data?.order || typeof data.order.orderCode !== "number") {
+                    throw new Error(typeof data?.error === "string" ? data.error : "PayOS checkout unavailable");
+                }
+                if (!cancelled) setOrder(data.order as CheckoutOrder);
+            } catch (checkoutError) {
+                if (!cancelled) setError(checkoutError instanceof Error ? checkoutError.message : "Không thể kết nối PayOS. Vui lòng thử lại sau.");
             }
         })();
         return () => { cancelled = true; };
-    }, [isOpen, planName, billingCycle]);
+    }, [isOpen, planName, billingCycle, workspaceId, router]);
+
+    useEffect(() => {
+        if (!order?.qrCode) {
+            setQrImage(null);
+            return;
+        }
+        let cancelled = false;
+        void QRCode.toDataURL(order.qrCode, {
+            errorCorrectionLevel: "M",
+            margin: 2,
+            width: 320,
+            color: { dark: "#081426", light: "#ffffff" },
+        }).then((dataUrl) => {
+            if (!cancelled) setQrImage(dataUrl);
+        }).catch(() => {
+            if (!cancelled) setError("Không thể hiển thị mã VietQR. Vui lòng thử lại.");
+        });
+        return () => { cancelled = true; };
+    }, [order?.qrCode]);
 
     if (!isOpen) return null;
+    const amount = order?.amount ?? amountVnd;
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-            <div className="relative w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-2xl dark:border-slate-800 dark:bg-slate-900">
-                <button onClick={onClose} aria-label="Đóng" className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200">
-                    <X className="h-5 w-5" />
-                </button>
-                <div className="mx-auto mb-4 w-fit rounded-xl bg-emerald-100 p-3 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400"><QrCode className="h-6 w-6" /></div>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Thanh toán PayOS</h3>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Gói {planDisplayName} ({billingCycle === "annual" ? "1 năm" : "1 tháng"})</p>
-                {error ? (
-                    <p className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>
-                ) : (
-                    <div className="mt-6 flex items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400"><Loader2 className="h-5 w-5 animate-spin text-emerald-600" /> Đang chuyển đến PayOS…</div>
-                )}
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-[#050b16]/90 px-4 py-6 backdrop-blur-md sm:py-10">
+            <div className="mx-auto grid w-full max-w-5xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#0a172b] shadow-2xl shadow-black/50 lg:grid-cols-[0.88fr_1.12fr]">
+                <section className="relative border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.17),_transparent_42%),linear-gradient(145deg,#0c2034,#071326_70%)] p-7 text-white sm:p-10 lg:border-b-0 lg:border-r">
+                    <button onClick={onClose} aria-label="Quay lại bảng giá" className="inline-flex items-center gap-2 rounded-lg text-sm text-slate-300 transition hover:text-white"><ArrowLeft className="h-4 w-4" /> Quay lại bảng giá</button>
+                    <button onClick={onClose} aria-label="Đóng" className="absolute right-5 top-5 rounded-lg p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white lg:hidden"><X className="h-5 w-5" /></button>
+                    <div className="mt-12">
+                        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-400/15 text-emerald-300"><QrCode className="h-6 w-6" /></div>
+                        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">Secure VietQR checkout</p>
+                        <h2 className="mt-3 text-3xl font-semibold tracking-tight">Complete your plan</h2>
+                        <p className="mt-3 max-w-sm text-sm leading-6 text-slate-400">Scan the code in your banking app or use the transfer details. Your workspace changes only after PayOS verifies the payment.</p>
+                    </div>
+                    <div className="mt-9 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                        <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-medium text-white">{planDisplayName}</p><p className="mt-1 text-sm text-slate-400">{billingCycle === "annual" ? "Annual subscription" : "Monthly subscription"}</p></div><p className="whitespace-nowrap text-base font-semibold text-white">{amount.toLocaleString("vi-VN")} ₫</p></div>
+                    </div>
+                    <div className="mt-8 space-y-3 text-sm text-slate-400"><p className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-300" /> Verified webhook activation only</p><p className="flex items-center gap-2"><LockKeyhole className="h-4 w-4 text-emerald-300" /> QR is generated by PayOS for this order</p></div>
+                </section>
+
+                <section className="relative min-h-[620px] bg-[#0a172b] p-6 text-white sm:p-10">
+                    <button onClick={onClose} aria-label="Đóng" className="absolute right-5 top-5 rounded-lg p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"><X className="h-5 w-5" /></button>
+                    {error ? <div className="flex min-h-[520px] items-center justify-center text-center"><p className="max-w-sm rounded-xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200">{error}</p></div> : !order || !qrImage ? <div className="flex min-h-[520px] flex-col items-center justify-center gap-3 text-center"><Loader2 className="h-7 w-7 animate-spin text-emerald-300" /><p className="text-sm text-slate-400">Creating your secure payment request…</p></div> : <div className="mx-auto flex min-h-[560px] max-w-md flex-col items-center justify-center text-center"><p className="text-sm font-medium text-slate-200">Scan to pay with your banking app</p><p className="mt-1 text-xs text-slate-500">VietQR · One-time order #{order.orderCode}</p><div className="mt-6 rounded-[1.75rem] bg-white p-4 shadow-2xl shadow-black/20"><img src={qrImage} width={288} height={288} alt="VietQR payment code" className="h-72 w-72 rounded-xl" /></div><p className="mt-5 text-lg font-semibold text-white">{amount.toLocaleString("vi-VN")} ₫</p><p className="mt-1 text-sm text-slate-400">Use the exact amount and transfer note below.</p><div className="mt-6 w-full divide-y divide-white/10 rounded-2xl border border-white/10 bg-white/[0.035] p-1 text-left">{order.accountNo ? <CopyValue label="Account number" value={order.accountNo} /> : null}{order.accountName ? <CopyValue label="Account holder" value={order.accountName} /> : null}<CopyValue label="Transfer note" value={order.memo} /></div>{order.checkoutUrl ? <a href={order.checkoutUrl} target="_blank" rel="noreferrer" className="mt-5 inline-flex items-center gap-2 text-xs text-slate-500 transition hover:text-emerald-300">Having trouble scanning? Open PayOS secure page <ExternalLink className="h-3.5 w-3.5" /></a> : null}</div>}
+                </section>
             </div>
         </div>
     );

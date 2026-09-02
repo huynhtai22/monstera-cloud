@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, Suspense, useEffect } from "react";
-import { getSession, signIn, useSession } from "next-auth/react";
+import { useState, Suspense } from "react";
+import { getSession, signIn, signOut, useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import Link from "next/link";
@@ -13,7 +13,7 @@ import { getPostLoginRedirectPath } from "@/lib/post-login-redirect";
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { status } = useSession();
+  const { data: session, status } = useSession();
   const afterLoginPath = safeCallbackUrl(
     searchParams.get("callbackUrl"),
     "/console"
@@ -27,19 +27,36 @@ function LoginContent() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const isRegistered = searchParams.get("registered") === "true";
 
-  useEffect(() => {
-    if (status === "authenticated") {
-      router.replace(afterLoginPath);
-    }
-  }, [status, router, afterLoginPath]);
-
-  if (status === "loading" || status === "authenticated") {
+  if (status === "loading") {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="w-6 h-6 animate-spin text-white" />
       </div>
     );
   }
+
+  const handleSwitchAccount = async () => {
+    setIsLoading(true);
+    setError("");
+
+    try {
+      // Clear both the server session and client-side workspace selection before
+      // starting another sign-in. This prevents an existing account from being
+      // silently reused when a person is trying to switch identities.
+      await signOut({ redirect: false });
+      try {
+        localStorage.removeItem("monstera-workspace-storage");
+        sessionStorage.removeItem("monstera-last-auth-user-id");
+      } catch {
+        // Storage may be unavailable in privacy-restricted browsers.
+      }
+      router.replace(`/login?callbackUrl=${encodeURIComponent(afterLoginPath)}&switchAccount=true`);
+      router.refresh();
+    } catch {
+      setError("Could not sign out of the current account. Please try again.");
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,6 +124,32 @@ function LoginContent() {
 
       {/* Main Form Center */}
       <main className="w-full max-w-[380px] mx-auto px-4 py-8 flex flex-col items-center">
+        {status === "authenticated" ? (
+          <div className="w-full rounded-xl border border-[#262626] bg-[#0c0c0c] p-6 text-center">
+            <h1 className="text-xl font-bold tracking-tight text-white">You are already signed in</h1>
+            <p className="mt-3 text-sm text-neutral-400">
+              Continue as <span className="font-medium text-neutral-200">{session?.user?.email || session?.user?.name || "your current account"}</span>, or switch to a different account.
+            </p>
+            {error ? <p className="mt-4 text-xs font-medium text-red-300">{error}</p> : null}
+            <div className="mt-6 grid gap-3">
+              <Link
+                href={afterLoginPath}
+                className="w-full rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-black transition-colors hover:bg-neutral-200"
+              >
+                Continue to Console
+              </Link>
+              <button
+                type="button"
+                onClick={handleSwitchAccount}
+                disabled={isLoading}
+                className="w-full rounded-lg border border-[#333] bg-[#0d0d0d] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#161616] disabled:opacity-50"
+              >
+                {isLoading ? "Signing out…" : "Switch account"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
         <div className="w-full text-center mb-8">
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
             Log in to Monstera Cloud
@@ -239,6 +282,8 @@ function LoginContent() {
             Sign up
           </Link>
         </p>
+          </>
+        )}
       </main>
 
       {/* Bottom Footer */}

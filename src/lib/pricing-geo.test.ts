@@ -74,10 +74,10 @@ describe("payment gates never mix", () => {
 });
 
 describe("entitlements and Agency copy", () => {
-  it("blocks Looker API-key on free, allows Sheets, skips scheduled refresh", () => {
+  it("blocks Looker API-key on free, allows Sheets, and permits the daily refresh", () => {
     assert.equal(evaluateLookerAccess("free", "jwt-sheets"), true);
     assert.equal(evaluateLookerAccess("free", "api-key-looker"), false);
-    assert.equal(evaluateScheduledRefresh("free"), false);
+    assert.equal(evaluateScheduledRefresh("free"), true);
   });
 
   it("allows Sheets + Looker on Studio with no destination upsell", () => {

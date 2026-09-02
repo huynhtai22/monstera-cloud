@@ -98,6 +98,9 @@ model Workspace {
   status               WorkspaceStatus       @default(PILOT)
   subscriptionProvider String?
   subscriptionId       String?               @unique
+  /// Expiry boundary for domestic-transfer terms and the free trial.
+  /// Null preserves legacy workspaces until they are explicitly renewed.
+  subscriptionEndsAt   DateTime?
   /// Optional Telegram chat ID for this workspace (sync failure alerts). Falls back to TELEGRAM_CHAT_ID env.
   telegramChatId       String?
   /// Product demo: overlay synthetic console data for screenshots / feature trials.
@@ -141,6 +144,8 @@ model Workspace {
   evidencePacks       EvidencePackRecord[]
   payloadDiscoveries  PayloadSchemaDiscovery[]
   schemaProposals     SchemaPatchProposal[]
+
+  @@index([subscriptionProvider, subscriptionEndsAt])
 }
 
 model Client {

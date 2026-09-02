@@ -173,14 +173,12 @@ export default function SettingsPage() {
     const handleGenerateKey = async () => {
         setIsGenerating(true);
         try {
-            const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Workspace API key" }) });
-            const data = await res.json().catch(() => ({}));
+            const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Pilot API key" }) });
             if (res.ok) {
+                const data = await res.json();
                 setNewlyGeneratedKey(data.key);
                 fetchApiKeys();
                 toast.success("API Key generated");
-            } else {
-                toast.error(data.error || "Could not generate API key");
             }
         } finally { setIsGenerating(false); }
     };
@@ -271,14 +269,13 @@ export default function SettingsPage() {
                             onRefresh={fetchQualityData}
                         />
                     )}
-                    {activeTab === 'billing' && <BillingTab workspacePlan={workspacePlan} />}
+                    {activeTab === 'billing' && <BillingTab workspacePlan={workspacePlan} workspaceStatus={activeWorkspace?.status} workspaceId={activeWorkspace?.id} subscriptionEndsAt={activeWorkspace?.subscriptionEndsAt} isOwner={activeWorkspace?.role === 'owner'} />}
                     {activeTab === 'api' && (
                         <ApiKeysTab
                             apiKeys={apiKeys}
                             newlyGeneratedKey={newlyGeneratedKey}
                             isGenerating={isGenerating}
                             canManage={canManage}
-                            allowApiKeys={activeWorkspace?.entitlements?.allowApiKeys !== false && workspacePlan !== "free"}
                             handleGenerateKey={handleGenerateKey}
                             handleDeleteKey={handleDeleteKey}
                         />
