@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { hashInvitationToken, normalizeEmail } from "@/lib/invitation-security";
+import { freePilotEndsAt } from "@/lib/free-pilot";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
@@ -42,13 +43,15 @@ export async function POST(_request: Request, { params }: { params: Promise<{ to
       let workspaceId = invitation.workspaceId;
       if (!workspaceId) {
         if (!invitation.agencyName || !invitation.agencySlug) throw new Error("INVALID_INVITATION");
+        const isFreePilot = (invitation.plan || "pilot") === "pilot";
         const workspace = await tx.workspace.create({
           data: {
             name: invitation.agencyName,
             slug: invitation.agencySlug,
             ownerId: session.user.id,
-            plan: invitation.plan || "pilot",
-            status: "PILOT",
+            plan: isFreePilot ? "professional" : invitation.plan || "professional",
+            status: isFreePilot ? "PILOT" : "ACTIVE",
+            subscriptionEndsAt: isFreePilot ? freePilotEndsAt() : undefined,
             members: { create: { userId: session.user.id, role: "owner" } },
             providerAccess: {
               create: invitation.enabledProviders.map((provider) => ({ provider, enabled: true })),

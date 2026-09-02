@@ -26,6 +26,7 @@ export async function GET() {
             slug: true,
             plan: true,
             status: true,
+            subscriptionEndsAt: true,
             createdAt: true,
             providerAccess: {
               where: { enabled: true },
@@ -66,6 +67,7 @@ export async function GET() {
         role,
         plan: workspace.plan,
         status: workspace.status,
+        subscriptionEndsAt: workspace.subscriptionEndsAt,
         createdAt: workspace.createdAt,
         enabledProviders: workspace.providerAccess.map((item) => item.provider),
         counts: {
