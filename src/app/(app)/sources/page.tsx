@@ -23,6 +23,7 @@ import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
 import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
 import { SourceOutcomeBanner, type SourceOutcomeNotice } from "@/components/sources/SourceOutcomeBanner";
 import { countSourceHealthStatuses } from "@/lib/source-health";
+import { displayConnectionName, shopeeShopIdFrom } from "@/lib/source-list-display";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
@@ -546,9 +547,7 @@ export default function SourcesPage() {
                         scopeDesc = `Meta Ads · ${totalCount} ad accounts synced`;
                     }
 
-                    // Clean auto-generated name strings like "Meta (2 accounts)" or "Meta Ads (1 account)"
-                    const isDefaultName = !rawName || /^Meta(\s*Ads)?(\s*\(\d+\s*accounts?\))?$/i.test(rawName);
-                    displayName = isDefaultName ? "Meta Ads" : rawName;
+                    displayName = displayConnectionName(conn.provider, rawName);
                 } else if (conn.provider === 'google_ads') {
                     const list: string[] = creds.customerIds ?? [];
                     accountTags = list.map((id: string) => {
@@ -596,9 +595,7 @@ export default function SourcesPage() {
                         scopeDesc = `Google Ads${emailSuffix} · ${totalCount} customer accounts synced`;
                     }
 
-                    // Clean auto-generated name strings like "Google Ads (8 accounts)" or "Google Ads — MCC 123-456-7890" while preserving custom nicknames
-                    const isDefaultName = !rawName || /^Google Ads(\s*(\(\d+\s*accounts?\)|\s*—\s*(MCC|Customer)\s+[\d-]+))?$/i.test(rawName);
-                    displayName = isDefaultName ? "Google Ads" : rawName;
+                    displayName = displayConnectionName(conn.provider, rawName);
                 } else if (conn.provider === 'tiktok_business') {
                     const list: string[] = creds.advertiserIds ?? [];
                     accountTags = list.map((id: string) => ({ id: String(id), label: String(id) }));
@@ -618,17 +615,14 @@ export default function SourcesPage() {
                         scopeDesc = `TikTok Ads · ${totalCount} advertisers synced`;
                     }
 
-                    // Clean auto-generated name strings like "TikTok Ads (1 advertiser)" or "TikTok Ads (account)"
-                    const isDefaultName = !rawName || /^TikTok Ads(\s*\(\d+\s*advertisers?\))?$/i.test(rawName);
-                    displayName = isDefaultName ? "TikTok Ads" : rawName;
+                    displayName = displayConnectionName(conn.provider, rawName);
                 } else if (conn.provider === 'shopee') {
-                    const shop = creds.shopId || null;
+                    const shop = shopeeShopIdFrom(creds, rawName);
                     if (shop) {
                         accountTags = [{ id: String(shop), label: `Shop ID: ${shop}` }];
                         managerBadge = `Shop: ${shop}`;
                     }
-                    const isDefaultName = !rawName || /^Shopee(\s*\(\d+\s*shops?\))?$/i.test(rawName);
-                    displayName = isDefaultName ? "Shopee" : rawName;
+                    displayName = displayConnectionName(conn.provider, rawName);
                     scopeDesc = shop ? `Shop ID: ${shop} · Orders & GMV sync` : "Shopee Marketplace store";
                 } else if (conn.provider === 'shopify') {
                     const domain = creds.shopDomain || null;
@@ -636,12 +630,11 @@ export default function SourcesPage() {
                         accountTags = [{ id: String(domain), label: String(domain) }];
                         managerBadge = `Store: ${domain}`;
                     }
-                    const isDefaultName = !rawName || /^Shopify(\s*\(\d+\s*stores?\))?$/i.test(rawName);
-                    displayName = isDefaultName ? "Shopify" : rawName;
+                    displayName = displayConnectionName(conn.provider, rawName);
                     scopeDesc = domain ? `Store: ${domain} · E-commerce sync` : "Shopify Store sync";
                 } else {
                     const baseBlurb = SOURCE_BLURB_BY_PROVIDER[conn.provider] ?? `${conn.provider} — data for this workspace.`;
-                    displayName = rawName || conn.provider;
+                    displayName = displayConnectionName(conn.provider, rawName) || conn.provider;
                     scopeDesc = baseBlurb;
                 }
 
@@ -673,9 +666,9 @@ export default function SourcesPage() {
                         ? "Disconnected — warehouse history retained. Re-authenticate to resume syncing."
                         : conn.lastError || undefined,
                     lastSync: conn.lastSyncAt
-                        ? new Date(conn.lastSyncAt).toLocaleString()
+                        ? new Date(conn.lastSyncAt).toISOString()
                         : relatedPipeline?.lastSyncedAt
-                          ? new Date(relatedPipeline.lastSyncedAt).toLocaleString()
+                          ? new Date(relatedPipeline.lastSyncedAt).toISOString()
                           : "Never",
                     dataThroughDate: conn.dataThroughDate,
                     logoSrc: logo,
