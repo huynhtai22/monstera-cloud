@@ -32,6 +32,12 @@ export type SourceState = {
   canSync: boolean;
 };
 
+export const MULTI_ACCOUNT_PROVIDERS = ["meta_ads", "google_ads", "tiktok_business"] as const;
+
+export function isMultiAccountProvider(provider?: string): boolean {
+  return provider != null && (MULTI_ACCOUNT_PROVIDERS as readonly string[]).includes(provider);
+}
+
 export const PROVIDER_DISPLAY_NAME: Record<string, string> = {
   google_ads: "Google Ads",
   meta_ads: "Meta Ads",
@@ -66,6 +72,9 @@ export function isGenericConnectionName(provider: string, rawName: string): bool
   if (provider === "google_ads" && /^Google Ads(\s*(\(\d+\s*accounts?\)|\s*—\s*(MCC|Customer)\s+[\d-]+))?$/i.test(n)) {
     return true;
   }
+  if (provider === "lazada" && /^Lazada(\s*\([A-Z]{2}\))?(\s*—\s*.+)?$/i.test(n)) return true;
+  if (provider === "tiktok_shop" && /^TikTok Shop(\s*\(.+\))?$/i.test(n)) return true;
+  if (provider === "amazon" && /^Amazon( Selling Partner)?$/i.test(n)) return true;
   const title = PROVIDER_DISPLAY_NAME[provider];
   if (!title) return false;
   return new RegExp(`^${escapeRegExp(title)}(\\s*\\(\\d+\\s+[a-z]+\\))?$`, "i").test(n);
@@ -299,6 +308,144 @@ export function sourceStateFor(row: SourceListRow, syncBusy: boolean): SourceSta
     needsReconnect: false,
     canSync: true,
   };
+}
+
+export function reconnectGuidance(provider?: string): { title: string; detail: string } {
+  if (provider === "google_ads") {
+    return {
+      title: "Sign in to Google again",
+      detail: "Sign in to Google again to restore this MCC and discover customer accounts.",
+    };
+  }
+  if (provider === "meta_ads") {
+    return {
+      title: "Sign in to Meta again",
+      detail: "Sign in to Meta again to restore this Business Manager and discover ad accounts.",
+    };
+  }
+  if (provider === "tiktok_business") {
+    return {
+      title: "Sign in to TikTok again",
+      detail: "Sign in to TikTok again to restore this advertiser and resume reporting.",
+    };
+  }
+  if (provider === "shopee") {
+    return {
+      title: "Sign in to Shopee again",
+      detail: "Sign in to Shopee again to restore this shop and resume order sync.",
+    };
+  }
+  if (provider === "lazada") {
+    return {
+      title: "Sign in to Lazada again",
+      detail: "Sign in to Lazada again to restore this seller and resume order sync.",
+    };
+  }
+  if (provider === "shopify") {
+    return {
+      title: "Sign in to Shopify again",
+      detail: "Sign in to Shopify again to restore this store and resume order sync.",
+    };
+  }
+  if (provider === "amazon") {
+    return {
+      title: "Sign in to Amazon again",
+      detail: "Sign in to Amazon again to restore Selling Partner access.",
+    };
+  }
+  if (provider === "tiktok_shop") {
+    return {
+      title: "Sign in to TikTok Shop again",
+      detail: "Sign in to TikTok Shop again to restore this seller and resume catalog sync.",
+    };
+  }
+  const name = (provider && PROVIDER_DISPLAY_NAME[provider]) || "this source";
+  return {
+    title: `Reconnect ${name}`,
+    detail: `Reconnect ${name} to restore access.`,
+  };
+}
+
+function formatGoogleCustomerId(raw: unknown): string {
+  const clean = String(raw ?? "").replace(/\D/g, "");
+  if (clean.length === 10) return `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}`;
+  return String(raw ?? "");
+}
+
+/** One identifier chip for a connection: MCC / BM / Shop / Seller. */
+export function sourceManagerBadge(opts: {
+  provider: string;
+  creds?: Record<string, unknown> | null;
+  rawName?: string | null;
+  remoteAccountId?: string | null;
+}): string | null {
+  const creds = opts.creds ?? {};
+  const { provider } = opts;
+
+  if (provider === "google_ads") {
+    const rawRemoteId = String(opts.remoteAccountId ?? "").replace(/\D/g, "");
+    const isExplicitCustomer = creds.googleAdsRootType === "customer";
+    const isExplicitManager = Boolean(creds.mccId || creds.managerCustomerId || creds.googleAdsRootType === "manager");
+    const cidList = Array.isArray(creds.customerIds) ? (creds.customerIds as string[]) : [];
+    const resolvedMccId = isExplicitManager
+      ? (creds.mccId || creds.managerCustomerId || (rawRemoteId.length > 0 ? rawRemoteId : undefined))
+      : (!isExplicitCustomer && rawRemoteId.length > 0 && !cidList.includes(rawRemoteId) ? rawRemoteId : undefined);
+    if (resolvedMccId) return `MCC: ${formatGoogleCustomerId(resolvedMccId)}`;
+    if (cidList.length === 1 || (isExplicitCustomer && rawRemoteId.length > 0)) {
+      return `CID: ${formatGoogleCustomerId(cidList[0] || rawRemoteId)}`;
+    }
+    if (cidList.length > 1) return `MCC: ${formatGoogleCustomerId(cidList[0])}`;
+    return null;
+  }
+
+  if (provider === "meta_ads") {
+    const bmId = creds.businessManagerId || creds.bmId;
+    if (bmId) return `BM: ${bmId}`;
+    const ads = creds.adAccounts as Array<{ id: string }> | undefined;
+    if (Array.isArray(ads) && ads.length > 0) {
+      return `act_${String(ads[0].id).replace(/^act_/, "")}`;
+    }
+    return null;
+  }
+
+  if (provider === "tiktok_business") {
+    const bcId = creds.businessCenterId || creds.bcId;
+    if (bcId) return `BC: ${bcId}`;
+    const list = Array.isArray(creds.advertiserIds) ? (creds.advertiserIds as string[]) : [];
+    if (list.length === 1) return `Adv: ${list[0]}`;
+    if (list.length > 1) return `BC: ${list[0]}`;
+    return null;
+  }
+
+  if (provider === "shopee") {
+    const shop = shopeeShopIdFrom(creds, opts.rawName);
+    return shop ? `Shop: ${shop}` : null;
+  }
+
+  if (provider === "shopify") {
+    const domain = creds.shopDomain || creds.domain;
+    return domain ? `Store: ${String(domain)}` : null;
+  }
+
+  if (provider === "lazada") {
+    const seller = creds.sellerId || creds.seller_id;
+    if (!seller) return null;
+    const country = creds.country ? ` (${creds.country})` : "";
+    return `Seller: ${seller}${country}`;
+  }
+
+  if (provider === "amazon") {
+    const sp = creds.sellingPartnerId;
+    if (sp && sp !== "pending_user_config") return `SP: ${sp}`;
+    return null;
+  }
+
+  if (provider === "tiktok_shop") {
+    const seller = creds.sellerId || creds.seller_id;
+    return seller ? `Seller: ${seller}` : null;
+  }
+
+  return null;
 }
 
 export function formatLastSyncLabel(

@@ -7,7 +7,9 @@ import {
   isGenericConnectionName,
   isHumanAccountLabel,
   isInFlightProviderSync,
+  reconnectGuidance,
   shopeeShopIdFrom,
+  sourceManagerBadge,
   sourceStateFor,
   summarizeAccountScope,
 } from "./source-list-display";
@@ -123,6 +125,36 @@ describe("in-flight TikTok diagnostics", () => {
     );
     assert.equal(state.kind, "auth-required");
     assert.equal(state.label, "Needs re-auth");
+  });
+});
+
+describe("reconnectGuidance", () => {
+  it("tells a Google Ads client to sign in again to restore the MCC", () => {
+    const copy = reconnectGuidance("google_ads");
+    assert.equal(copy.title, "Sign in to Google again");
+    assert.match(copy.detail, /MCC/);
+  });
+
+  it("uses shop language for Shopee and seller language for Lazada", () => {
+    assert.match(reconnectGuidance("shopee").detail, /shop/i);
+    assert.match(reconnectGuidance("lazada").detail, /seller/i);
+  });
+});
+
+describe("sourceManagerBadge", () => {
+  it("reads Shopee shop_id and TikTok advertiser ids", () => {
+    assert.equal(sourceManagerBadge({ provider: "shopee", creds: { shop_id: 227420569 } }), "Shop: 227420569");
+    assert.equal(
+      sourceManagerBadge({ provider: "tiktok_business", creds: { advertiserIds: ["767749592262978656"] } }),
+      "Adv: 767749592262978656",
+    );
+  });
+
+  it("reads Lazada seller identity", () => {
+    assert.equal(
+      sourceManagerBadge({ provider: "lazada", creds: { sellerId: "VN123", country: "VN" } }),
+      "Seller: VN123 (VN)",
+    );
   });
 });
 

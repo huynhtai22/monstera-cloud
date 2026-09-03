@@ -9,28 +9,23 @@ import {
     ArrowLeft,
     AlertCircle,
     CheckCircle2,
-    Clock,
     Loader2,
     RefreshCw,
     Unplug,
-    Calendar,
-    Activity,
     Pencil,
     Check,
     X,
-    ExternalLink,
     BarChart3,
-    Database,
-    ShieldCheck,
     Wrench,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageShell, PrimaryButton, ConfirmDialog, SyncLogDiagnosticsDrawer, CopyableBadge, type SyncLogWithPipeline } from "@/components/ui";
-import { ConnectSourceModal } from "@/components/ConnectSourceModal";
+import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { integrationCatalogId } from "@/lib/sources-integration-catalog";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { cn } from "@/lib/utils";
-import { AccountSelector } from "@/components/sources/AccountSelector";
+import { SourceScopePanel } from "@/components/sources/SourceScopePanel";
+import { displayConnectionName, formatLastSyncLabel, sourceManagerBadge, sourceStateFor } from "@/lib/source-list-display";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin" });
@@ -47,8 +42,17 @@ export default function SourceDetailPage() {
 
     const [busy, setBusy] = useState<string | null>(null);
     const [disconnectOpen, setDisconnectOpen] = useState(false);
-    const [modalOpen, setModalOpen] = useState(false);
-    const [modalIntegration, setModalIntegration] = useState<any>(null);
+    const [fixTarget, setFixTarget] = useState<{
+        id: string;
+        name: string;
+        provider: string;
+        catalogId: string;
+        status: string;
+        errorMsg?: string;
+        lastSync?: string;
+        managerBadge?: string | null;
+        accountEmail?: string | null;
+    } | null>(null);
     const [selectedLog, setSelectedLog] = useState<SyncLogWithPipeline | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -76,76 +80,30 @@ export default function SourceDetailPage() {
           }
         | undefined;
 
+    const parsedCreds = React.useMemo(() => {
+        if (!connection) return {} as Record<string, unknown>;
+        try {
+            return typeof connection.credentials === "string"
+                ? JSON.parse(connection.credentials) as Record<string, unknown>
+                : (connection.credentials ?? {}) as Record<string, unknown>;
+        } catch {
+            return {};
+        }
+    }, [connection]);
+
     const managerBadge = React.useMemo(() => {
         if (!connection) return null;
-        let creds: Record<string, unknown> = {};
-        try {
-            creds = typeof connection.credentials === "string" ? JSON.parse(connection.credentials) : (connection.credentials ?? {});
-        } catch {
-            creds = {};
-        }
-
-        if (connection.provider === "google_ads") {
-            const rawRemoteId = String(connection.remoteAccountId ?? "").replace(/\D/g, "");
-            const isExplicitCustomer = creds.googleAdsRootType === "customer";
-            const isExplicitManager = Boolean(creds.mccId || creds.managerCustomerId || creds.googleAdsRootType === "manager");
-            const cids = creds.customerIds as string[] | undefined;
-            const cidList = Array.isArray(cids) ? cids : [];
-            const resolvedMccId = isExplicitManager
-                ? (creds.mccId || creds.managerCustomerId || (rawRemoteId.length > 0 ? rawRemoteId : undefined))
-                : (!isExplicitCustomer && rawRemoteId.length > 0 && !cidList.includes(rawRemoteId) ? rawRemoteId : undefined);
-            if (resolvedMccId) {
-                const clean = String(resolvedMccId).replace(/\D/g, "");
-                return `MCC: ${clean.length === 10 ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}` : resolvedMccId}`;
-            }
-            if (cidList.length === 1 || (isExplicitCustomer && rawRemoteId.length > 0)) {
-                const targetCid = cidList[0] || rawRemoteId;
-                const clean = String(targetCid).replace(/\D/g, "");
-                return `CID: ${clean.length === 10 ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}` : targetCid}`;
-            }
-            if (cidList.length > 1) {
-                const clean = String(cidList[0]).replace(/\D/g, "");
-                return `MCC: ${clean.length === 10 ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}` : cidList[0]}`;
-            }
-        }
-
-        if (connection.provider === "meta_ads") {
-            const bmId = creds.businessManagerId || creds.bmId;
-            if (bmId) return `BM: ${bmId}`;
-            const ads = creds.adAccounts as Array<{ id: string }> | undefined;
-            if (Array.isArray(ads) && ads.length > 0) {
-                return `act_${String(ads[0].id).replace(/^act_/, "")}`;
-            }
-        }
-
-        if (connection.provider === "tiktok_business") {
-            const bcId = creds.businessCenterId || creds.bcId;
-            if (bcId) return `BC: ${bcId}`;
-        }
-
-        if (connection.provider === "shopee") {
-            const shopId = creds.shop_id || creds.shopId;
-            if (shopId) return `Shop: ${shopId}`;
-        }
-
-        if (connection.provider === "shopify") {
-            const domain = creds.shopDomain || creds.domain;
-            if (domain) return `Store: ${domain}`;
-        }
-
-        return null;
-    }, [connection]);
+        return sourceManagerBadge({
+            provider: connection.provider,
+            creds: parsedCreds,
+            rawName: connection.name,
+            remoteAccountId: connection.remoteAccountId,
+        });
+    }, [connection, parsedCreds]);
 
     const accountEmail = React.useMemo(() => {
-        if (!connection) return null;
-        let creds: Record<string, unknown> = {};
-        try {
-            creds = typeof connection.credentials === "string" ? JSON.parse(connection.credentials) : (connection.credentials ?? {});
-        } catch {
-            creds = {};
-        }
-        return (creds.accountEmail || creds.email || null) as string | null;
-    }, [connection]);
+        return (parsedCreds.accountEmail || parsedCreds.email || null) as string | null;
+    }, [parsedCreds]);
 
     const pipelines = React.useMemo(() => (data?.pipelines ?? []) as Array<{
         id: string;
@@ -271,16 +229,17 @@ export default function SourceDetailPage() {
 
     const openFixModal = () => {
         if (!connection) return;
-        const cat = integrationCatalogId(connection.provider);
-        setModalIntegration({
-            id: cat,
-            catalogId: cat,
+        setFixTarget({
+            id: connection.id,
             name: connection.name,
-            description: `${connection.provider} — reconnect`,
-            logoSrc: logoPathForConnectionProvider(connection.provider),
-            status: "available",
+            provider: connection.provider,
+            catalogId: integrationCatalogId(connection.provider),
+            status: connection.status,
+            errorMsg: connection.lastError || undefined,
+            lastSync: connection.lastSyncAt || undefined,
+            managerBadge,
+            accountEmail,
         });
-        setModalOpen(true);
     };
 
     if (!id) {
@@ -315,8 +274,21 @@ export default function SourceDetailPage() {
 
     const isSource = connection.type === "source";
     const logo = logoPathForConnectionProvider(connection.provider);
-    const shortId = connection.id ? connection.id.slice(-4) : "";
-    const isGoogleOrMeta = ["google_ads", "meta_ads", "tiktok_business"].includes(connection.provider);
+    const displayName = displayConnectionName(connection.provider, connection.name);
+    const sourceState = sourceStateFor({
+        id: connection.id,
+        provider: connection.provider,
+        name: connection.name,
+        status: connection.status,
+        errorMsg: connection.lastError || undefined,
+        lastSync: connection.lastSyncAt || "Never",
+    }, busy === "warehouse-refresh");
+    const lastSync = formatLastSyncLabel(connection.lastSyncAt);
+    const identityMeta = [
+        lastSync.text === "Never" ? "Never synced" : `Last sync ${lastSync.text}`,
+        connection.workspace?.name ? `Hourly into ${connection.workspace.name}` : "Hourly auto-sync",
+        connection.environment === "sandbox" ? "Sandbox" : null,
+    ].filter(Boolean).join(" · ");
 
     return (
         <PageShell>
@@ -338,13 +310,13 @@ export default function SourceDetailPage() {
                             <span
                                 className={cn(
                                     "absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full ring-2 ring-panel",
-                                    connection.lastError?.startsWith("[partial]")
+                                    sourceState.kind === "auth-required" || sourceState.kind === "sync-issue" || sourceState.kind === "attention"
+                                        ? "bg-red-400"
+                                        : sourceState.kind === "partial" || sourceState.kind === "stale"
                                           ? "bg-amber-400"
-                                          : connection.lastError?.startsWith("[failed]")
-                                            ? "bg-red-400"
-                                            : connection.status === "connected"
-                                              ? "bg-emerald-400"
-                                              : "bg-red-400"
+                                          : sourceState.kind === "syncing" || sourceState.kind === "not-synced"
+                                            ? "bg-sky-400"
+                                            : "bg-emerald-400"
                                 )}
                             />
                         </div>
@@ -384,7 +356,7 @@ export default function SourceDetailPage() {
                                 ) : (
                                     <>
                                         <h1 className="truncate text-xl font-bold tracking-tight text-ink">
-                                            {connection.name}
+                                            {displayName}
                                         </h1>
                                         <button
                                             type="button"
@@ -414,18 +386,47 @@ export default function SourceDetailPage() {
                                     />
                                 ) : null}
 
-                                <CopyableBadge text={`#${shortId}`} copyValue={connection.id} title={`Connection ID: ${connection.id}`} className="text-ink-mute/80" />
+                                <span
+                                    className={cn(
+                                        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium",
+                                        sourceState.kind === "auth-required"
+                                            ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                                            : sourceState.kind === "sync-issue" || sourceState.kind === "partial"
+                                              ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                                              : sourceState.kind === "syncing" || sourceState.kind === "not-synced"
+                                                ? "border-sky-500/30 bg-sky-500/10 text-sky-300"
+                                                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+                                    )}
+                                    title={sourceState.detail}
+                                >
+                                    {sourceState.kind === "auth-required" || sourceState.kind === "sync-issue" || sourceState.kind === "partial" ? (
+                                        <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                                    ) : sourceState.kind === "syncing" ? (
+                                        <Loader2 className="h-3.5 w-3.5 shrink-0 motion-safe:animate-spin" />
+                                    ) : (
+                                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                                    )}
+                                    {sourceState.label}
+                                </span>
                             </div>
 
-                            <p className="mt-1 text-xs text-ink-mute">
-                                {connection.provider} · {isSource ? "Direct Warehouse Ingestion Source" : "Destination Pipeline"}{connection.environment === "sandbox" ? " · Shopee Sandbox" : ""}
+                            <p className="mt-1 text-xs text-ink-mute" title={lastSync.title}>
+                                {identityMeta}
                             </p>
                         </div>
                     </div>
 
-                    {/* Primary Action Buttons */}
                     <div className="flex flex-wrap items-center gap-2.5">
-                        {isSource && connection.status === "connected" ? (
+                        {isSource && sourceState.needsReconnect ? (
+                            <button
+                                type="button"
+                                onClick={openFixModal}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 transition-all shadow-xs"
+                            >
+                                <Wrench className="h-3.5 w-3.5" />
+                                <span>Reconnect</span>
+                            </button>
+                        ) : isSource && sourceState.canSync ? (
                             <PrimaryButton type="button" onClick={refreshWarehouse} disabled={busy !== null}>
                                 {busy === "warehouse-refresh" ? (
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -444,100 +445,16 @@ export default function SourceDetailPage() {
                             <span>View in Explorer</span>
                         </Link>
 
-                        {isSource && (connection.status === "error" || connection.lastError) ? (
-                            <button
-                                type="button"
-                                onClick={openFixModal}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-1.5 text-xs font-semibold text-amber-200 hover:bg-amber-500/20 transition-all shadow-xs"
-                            >
-                                <Wrench className="h-3.5 w-3.5" />
-                                <span>Reconnect</span>
-                            </button>
-                        ) : null}
-
                         <button
                             type="button"
                             onClick={() => setDisconnectOpen(true)}
                             disabled={busy !== null}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-red-900/40 bg-red-950/30 px-3.5 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-900/40 transition-colors"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-transparent px-3.5 py-1.5 text-xs font-semibold text-ink-mute hover:text-rose-300 hover:border-rose-500/30 hover:bg-rose-500/10 transition-colors"
                         >
                             <Unplug className="h-3.5 w-3.5" />
                             <span>Disconnect</span>
                         </button>
                     </div>
-                </div>
-            </div>
-
-            {/* Operational Health Bento Grid */}
-            <div className="mb-8 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-                {/* 1. Status */}
-                <div className="rounded-xl border border-line bg-panel p-4 shadow-xs">
-                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-ink-mute">
-                        <Activity className="h-3.5 w-3.5" />
-                        <span>Ingestion Health</span>
-                    </div>
-                    <div className="mt-2.5 flex items-center gap-2">
-                        {connection.lastError?.startsWith("[partial]") ? (
-                            <>
-                                <AlertCircle className="h-4 w-4 text-amber-400" />
-                                <span className="font-semibold text-xs text-amber-200">Partial sync</span>
-                            </>
-                        ) : connection.lastError?.startsWith("[failed]") ? (
-                            <>
-                                <AlertCircle className="h-4 w-4 text-red-400" />
-                                <span className="font-semibold text-xs text-red-200">Failed sync</span>
-                            </>
-                        ) : connection.status === "connected" ? (
-                            <>
-                                <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                                <span className="font-semibold text-xs text-ink">Active & Verified</span>
-                            </>
-                        ) : (
-                            <>
-                                <AlertCircle className="h-4 w-4 text-red-400" />
-                                <span className="font-semibold text-xs text-red-200">{connection.status}</span>
-                            </>
-                        )}
-                    </div>
-                    <p className="mt-1 text-[11px] text-ink-mute truncate" title={connection.lastError || "Durable background pipeline running smoothly."}>
-                        {connection.lastError || "Incremental delta ingestion active."}
-                    </p>
-                </div>
-
-                {/* 2. Last Sync */}
-                <div className="rounded-xl border border-line bg-panel p-4 shadow-xs">
-                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-ink-mute">
-                        <Clock className="h-3.5 w-3.5" />
-                        <span>Data Freshness</span>
-                    </div>
-                    <p className="mt-2.5 text-xs font-semibold text-ink">
-                        {connection.lastSyncAt ? new Date(connection.lastSyncAt).toLocaleString() : "Never synced"}
-                    </p>
-                    <p className="mt-1 text-[11px] text-ink-mute">
-                        {connection.lastSyncAt ? "Verified with warehouse delta" : "Run first sync to populate data"}
-                    </p>
-                </div>
-
-                {/* 3. Pipeline Mode */}
-                <div className="rounded-xl border border-line bg-panel p-4 shadow-xs">
-                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-ink-mute">
-                        <Database className="h-3.5 w-3.5" />
-                        <span>Warehouse Target</span>
-                    </div>
-                    <p className="mt-2.5 text-xs font-semibold text-ink">Direct Warehouse Sink</p>
-                    <p className="mt-1 text-[11px] text-ink-mute">
-                        {connection.workspace?.name || "Active Workspace"}
-                    </p>
-                </div>
-
-                {/* 4. Automated Cadence */}
-                <div className="rounded-xl border border-line bg-panel p-4 shadow-xs">
-                    <div className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-ink-mute">
-                        <Calendar className="h-3.5 w-3.5" />
-                        <span>Sync Cadence</span>
-                    </div>
-                    <p className="mt-2.5 text-xs font-semibold text-ink">Hourly auto-sync</p>
-                    <p className="mt-1 text-[11px] text-ink-mute">Lease-fenced incremental</p>
                 </div>
             </div>
 
@@ -559,41 +476,19 @@ export default function SourceDetailPage() {
                 </div>
             ) : null}
 
-            {/* Ad Account Management Hub (Unified Table View) */}
-            {isSource && isGoogleOrMeta ? (
+            {isSource ? (
                 <div className="mb-10">
-                    <AccountSelector
+                    <SourceScopePanel
                         connectionId={connection.id}
                         provider={connection.provider}
-                        connectionName={connection.name}
+                        connectionName={displayName}
                         managerBadge={managerBadge}
                         accountEmail={accountEmail}
-                        variant="compact"
+                        needsReconnect={sourceState.needsReconnect}
+                        onReconnect={openFixModal}
                     />
                 </div>
             ) : null}
-
-            {/* Warehouse Verification Callout */}
-            <div className="mb-10 rounded-xl border border-line/80 bg-panel/60 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-start gap-3.5 min-w-0">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-canvas text-ink">
-                        <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                    </div>
-                    <div>
-                        <h4 className="text-xs font-semibold text-ink">Verify Ingested Ad Metrics</h4>
-                        <p className="mt-0.5 text-[11px] text-ink-mute">
-                            Review Spend, Impressions, Clicks, and ROAS across all selected ad accounts in the governed Explorer.
-                        </p>
-                    </div>
-                </div>
-                <Link
-                    href="/explorer"
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-canvas px-3.5 py-1.5 text-xs font-medium text-ink hover:border-white/30 transition-colors shrink-0"
-                >
-                    <span>Open Data Explorer</span>
-                    <ExternalLink className="h-3 w-3 text-ink-mute" />
-                </Link>
-            </div>
 
             {/* Recent Execution Logs */}
             {recentLogs.length > 0 ? (
@@ -656,7 +551,17 @@ export default function SourceDetailPage() {
                 onCancel={() => setDisconnectOpen(false)}
             />
 
-            <ConnectSourceModal isOpen={modalOpen} onClose={() => setModalOpen(false)} integration={modalIntegration} />
+            <FixConnectionModal
+                isOpen={fixTarget !== null}
+                onClose={() => setFixTarget(null)}
+                connection={fixTarget}
+                onReconnected={() => {
+                    setFixTarget(null);
+                    void mutate(`/api/connections/${id}`);
+                    void mutate("/api/workspaces");
+                    toast.success("Connection restored");
+                }}
+            />
 
             <SyncLogDiagnosticsDrawer
                 isOpen={isDrawerOpen}
