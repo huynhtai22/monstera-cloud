@@ -62,14 +62,14 @@ Make Monstera Cloud safe and dependable enough to onboard the first paid HCMC ag
 6. **Cron & Background Processing**:
    - Confirm cron endpoints (`/api/cron/health-tick`, `/api/cron/sync-jobs`, `/api/cron/warehouse-jobs`) execute under valid `CRON_SECRET`.
 
-### 3. Track account-level connector health
+### 3. Track account-level connector health (COMPLETED)
 
-- Add a `ProviderAccountHealth` record for Meta, Google Ads, and TikTok accounts.
-- Store structured child-account errors and distinguish healthy, degraded, quarantined, and reconnect-required states.
-- Continue syncing healthy sibling accounts when one child account fails.
-- Add detection-only reconciliation for missing provider-account rows before enabling automatic repair.
-- Expose account-level health to the product and founder operations view.
-- Deliver actionable failures through the existing support-ticket path and Telegram founder alerting.
+- Added durable `ProviderAccountHealth` model and schema migration for Meta, Google Ads, and TikTok accounts.
+- Stored structured child-account errors with taxonomy (`AUTH_EXPIRED`, `PERMISSION_DENIED`, `RATE_LIMITED`, `SCHEMA_DRIFT`, `TRANSIENT_NETWORK`, `UNKNOWN`) and lifecycle states (`healthy`, `degraded`, `quarantined`, `reconnect_required`).
+- Isolated sibling accounts so healthy accounts continue syncing while poison or revoked accounts are safely bypassed.
+- Added provably complete-fetch, observability-only stale row reconciliation (`computeStaleRowStats`) detecting unreturned entities without destructive warehouse mutation.
+- Exposed account-level health through `GET /api/connections/[id]/status` for product UI and operator dashboards.
+- Wired actionable failures to `upsertOpenTicket` support tickets and Telegram founder notifications via `sendAgencyAlert`.
 
 ### 4. Simplify operations and prove alerting
 
