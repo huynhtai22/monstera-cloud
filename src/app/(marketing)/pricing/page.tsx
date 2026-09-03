@@ -330,7 +330,7 @@ function PricingPageContent() {
                             </button>
                         ) : (
                             <Link
-                                href="/register"
+                                href="/register?offer=agency-pro-pilot"
                                 className="w-full py-2.5 px-4 rounded-md bg-white hover:bg-neutral-200 text-black text-xs font-semibold transition-colors flex items-center justify-center gap-2 shadow-xs"
                             >
                                 <span>{payCurrency === "VND" ? "Dùng thử Agency Pro 7 ngày" : "Start 7-day free pilot"}</span>

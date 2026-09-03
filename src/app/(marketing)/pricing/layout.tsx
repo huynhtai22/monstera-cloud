@@ -4,11 +4,11 @@ import { PRODUCT_SITE_URL } from "@/lib/site-url";
 export const metadata: Metadata = {
     title: "Pricing",
     description:
-        "One flat price. Every platform. No row caps. Flat-rate plans for TikTok Ads, Shopee, and Google Sheets™ — USD and VND.",
+        "Agency Pro pricing for Monstera Cloud, with a seven-day pilot and a neutral Enterprise contact option.",
     openGraph: {
         title: "Pricing | Monstera Cloud",
         description:
-            "Most teams save vs legacy BI connectors. Free, Starter, and Pro — secure checkout via Paddle.",
+            "Start a seven-day Agency Pro pilot, then continue monthly or annually through verified PayOS checkout.",
         url: `${PRODUCT_SITE_URL}/pricing`,
     },
 };

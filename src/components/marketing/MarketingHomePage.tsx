@@ -242,7 +242,7 @@ const PROVIDERS = [
 function PilotLink({ children, location, className }: { children: ReactNode; location: string; className: string }) {
   return (
     <Link
-      href="/register"
+      href="/register?offer=agency-pro-pilot"
       className={className}
       onClick={() => trackEvent("landing_pilot_cta_clicked", { location, offer: "agency_pro_7_day" })}
     >

@@ -19,9 +19,9 @@ import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { SetupWizard } from "./SetupWizard";
-import { PipelineArchitectureVisualizer } from "./PipelineArchitectureVisualizer";
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
 import type { DashboardOverviewDTO } from "@/lib/dashboard-overview";
+import { trackOnce } from "@/lib/analytics-events";
 import { cn } from "@/lib/utils";
 
 const fetcher = async (url: string) => {
@@ -259,6 +259,8 @@ export function DashboardHomePage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [manualRefreshFailed, setManualRefreshFailed] = useState(false);
   const [wizardDismissed, setWizardDismissed] = useState(false);
+  const performancePanelRef = React.useRef<HTMLDivElement | null>(null);
+  const reviewRecordingRef = React.useRef(false);
   const handleManualRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
@@ -276,7 +278,11 @@ export function DashboardHomePage() {
   }, [error, isValidating, overview]);
 
   React.useEffect(() => {
-    if (!workspaceId) return;
+    if (!workspaceId || !overview) return;
+    if (overview.pilotActivation.status !== "activated") {
+      setWizardDismissed(false);
+      return;
+    }
     try {
       setWizardDismissed(
         localStorage.getItem(`monstera_setup_wizard_dismissed_${workspaceId}`) === "1",
@@ -284,9 +290,10 @@ export function DashboardHomePage() {
     } catch {
       /* storage blocked — wizard stays visible */
     }
-  }, [workspaceId]);
+  }, [overview, workspaceId]);
 
   const handleWizardDismiss = useCallback(() => {
+    if (overview?.pilotActivation.status !== "activated") return;
     setWizardDismissed(true);
     if (!workspaceId) return;
     try {
@@ -294,7 +301,44 @@ export function DashboardHomePage() {
     } catch {
       /* ignore */
     }
+  }, [overview?.pilotActivation.status, workspaceId]);
+
+  React.useEffect(() => {
+    reviewRecordingRef.current = false;
   }, [workspaceId]);
+
+  React.useEffect(() => {
+    if (!workspaceId || overview?.pilotActivation.status !== "ready_to_review") return;
+    const panel = performancePanelRef.current;
+    if (!panel) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting || entry.intersectionRatio < 0.5 || reviewRecordingRef.current) return;
+        reviewRecordingRef.current = true;
+        void fetch(`/api/workspaces/${workspaceId}/activation`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "dashboard_reviewed" }),
+        })
+          .then(async (response) => {
+            if (!response.ok) throw new Error("Could not record dashboard review");
+            trackOnce(
+              `monstera_activation_dashboard_reviewed_${workspaceId}`,
+              "pilot_activation_completed",
+              { workspaceId },
+            );
+            await mutate();
+          })
+          .catch(() => {
+            reviewRecordingRef.current = false;
+          });
+      },
+      { threshold: 0.5 },
+    );
+    observer.observe(panel);
+    return () => observer.disconnect();
+  }, [mutate, overview?.pilotActivation.status, workspaceId]);
 
   const isLoading = workspaceLoading || (dataLoading && !overview);
   const isUpdating = isRefreshing || isValidating;
@@ -437,14 +481,15 @@ export function DashboardHomePage() {
         {/* ── 1b. Onboarding setup wizard ───────────────────────────────────── */}
         {!wizardDismissed && (
           <SetupWizard
-            hasSource={(summaryCards?.sources?.total ?? 0) > 0}
-            hasSuccessfulSync={(sourcesList ?? []).some((s) => s.lastSyncAt)}
-            onDismiss={handleWizardDismiss}
+            activation={overview!.pilotActivation}
+            plan={overview!.workspace.plan}
+            workspaceStatus={overview!.workspace.status}
+            onDismiss={overview!.pilotActivation.status === "activated" ? handleWizardDismiss : undefined}
           />
         )}
 
         {/* ── 2. Performance & Spend at a Glance ─────────────────────────────── */}
-        <div className="rounded-xl border border-line bg-panel p-4 sm:p-5 shadow-xs">
+        <div id="performance-spend" ref={performancePanelRef} className="scroll-mt-24 rounded-xl border border-line bg-panel p-4 sm:p-5 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-line pb-3">
             <div className="flex flex-wrap items-center gap-2.5">
               <span className="font-mono text-xs font-semibold uppercase tracking-wider text-ink">

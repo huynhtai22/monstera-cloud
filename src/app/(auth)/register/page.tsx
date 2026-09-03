@@ -17,10 +17,13 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [inviteToken, setInviteToken] = useState("");
+  const [isPilotOffer, setIsPilotOffer] = useState(false);
 
   useEffect(() => {
-    const token = new URLSearchParams(window.location.search).get("invite")?.trim() || "";
+    const searchParams = new URLSearchParams(window.location.search);
+    const token = searchParams.get("invite")?.trim() || "";
     setInviteToken(token);
+    setIsPilotOffer(searchParams.get("offer") === "agency-pro-pilot");
     if (token) sessionStorage.setItem("monstera_pending_invitation", token);
   }, []);
 
@@ -91,6 +94,11 @@ export default function RegisterPage() {
           {inviteToken && (
             <div className="mt-4 p-3 border border-[#222] bg-[#0c0c0c] text-white rounded-lg text-xs font-medium w-full text-center">
               Agency pilot invitation token detected.
+            </div>
+          )}
+          {!inviteToken && isPilotOffer && (
+            <div className="mt-4 w-full rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06] p-3 text-center text-xs text-emerald-100">
+              7-day Agency Pro pilot · no card required · continue for 1,490,000 VND/month
             </div>
           )}
         </div>

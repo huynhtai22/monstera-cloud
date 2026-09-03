@@ -136,7 +136,7 @@ export function MarketingNavbar() {
 
           {!isAuthed ? (
             <Link
-              href="/register"
+              href="/register?offer=agency-pro-pilot"
               onClick={() => trackEvent("landing_pilot_cta_clicked", { location: "navbar", language: lang, offer: "agency_pro_7_day" })}
               className="inline-flex items-center justify-center rounded-md bg-white px-3.5 py-1.5 text-[13px] font-semibold text-neutral-950 shadow-xs transition-colors hover:bg-neutral-200"
             >

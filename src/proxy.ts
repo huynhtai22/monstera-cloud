@@ -149,6 +149,14 @@ function createProxy(deps: ProxyDeps = {}) {
       ? stripAgencyPath(pathname)
       : pathname;
 
+    // Quick-start used to be a second onboarding implementation and could
+    // lose the selected workspace. Retire it at the edge so anonymous and
+    // authenticated visitors, including tenant-host traffic, share the same
+    // canonical /console entry point.
+    if (authCheckPath === "/quickstart") {
+      return NextResponse.redirect(new URL("/console", request.url));
+    }
+
     // Deny-by-default: any page not explicitly public needs a session JWT.
     if (classifyPageAccess(authCheckPath) === "authenticated") {
       const token = await verifySessionToken({ req: request });
