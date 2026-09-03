@@ -23,6 +23,7 @@ import { enqueueOauthWarehouseBackfill } from "@/lib/oauth-warehouse-backfill";
 import { after } from "next/server";
 import { claimImportJob } from "@/lib/warehouse-import-job";
 import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
+import { resetConnectionAccountHealth } from "@/lib/provider-account-health";
 
 export const dynamic = "force-dynamic";
 
@@ -294,6 +295,7 @@ export async function GET(request: NextRequest) {
                 throw new OAuthError("invalid_state", "Reconnect target does not match this workspace and provider", providerId);
             }
             await prisma.auditEvent.create({ data: { workspaceId, actorUserId: userId, action: "connection.reconnected", resource: "connection", resourceId: reconnectConnectionId, metadata: { provider: providerId } } });
+            await resetConnectionAccountHealth(reconnectConnectionId);
 
             if (providerId === "tiktok_business") {
                 const discoveryFailed = metadata.extraFields?.advertiserDiscoveryStatus === "failed";

@@ -4,12 +4,15 @@
  */
 
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
-import { decrypt, encrypt } from "@/lib/encryption";
+import { safeDecrypt, encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { metaAdsClient } from "@/lib/meta-ads";
+import { googleAdsOAuthClient } from "@/lib/google-ads";
+import { tiktokBusinessClient } from "@/lib/tiktok-business";
+import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import {
     authorizedConnectionAccountIds,
     validateConnectionAccountSelection,
@@ -17,11 +20,11 @@ import {
 } from "@/lib/connection-account-selection";
 
 export async function GET(
-    _request: Request,
+    request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user?.id) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -66,8 +69,67 @@ export async function GET(
         }
 
         // Decrypt credentials
-        const credentials = JSON.parse(decrypt(connection.credentials));
+        const credentials = JSON.parse(safeDecrypt(connection.credentials));
         const extraFields = credentials.extraFields || {};
+
+        // On-demand discovery of newly added ad accounts from provider API
+        const url = new URL(request.url);
+        const shouldRefresh = url.searchParams.get("refresh") === "true";
+
+        if (shouldRefresh) {
+            try {
+                const accessToken = await getValidOAuthToken({
+                    id: connection.id,
+                    credentials: connection.credentials,
+                    provider: connection.provider,
+                });
+
+                if (connection.provider === "meta_ads" && accessToken) {
+                    const discovered = await metaAdsClient.getAdAccounts(accessToken);
+                    if (discovered.length > 0) {
+                        const existingAdAccounts: any[] = extraFields.adAccounts || credentials.adAccounts || [];
+                        const existingMap = new Map(existingAdAccounts.map((a: any) => [a.id, a]));
+                        for (const acc of discovered) {
+                            existingMap.set(acc.id, { id: acc.id, name: acc.name, currency: acc.currency });
+                        }
+                        const merged = Array.from(existingMap.values());
+                        extraFields.adAccounts = merged;
+                        extraFields.adAccountIds = merged.map((a: any) => a.id);
+                        credentials.extraFields = extraFields;
+                        await prisma.connection.update({
+                            where: { id: connection.id },
+                            data: { credentials: encrypt(JSON.stringify(credentials)) },
+                        });
+                    }
+                } else if (connection.provider === "google_ads" && accessToken) {
+                    const discovered = await googleAdsOAuthClient.listAccessibleCustomers(accessToken);
+                    if (discovered.length > 0) {
+                        const existingIds: string[] = extraFields.customerIds || credentials.customerIds || [];
+                        const mergedIds = Array.from(new Set([...existingIds, ...discovered]));
+                        extraFields.customerIds = mergedIds;
+                        credentials.extraFields = extraFields;
+                        await prisma.connection.update({
+                            where: { id: connection.id },
+                            data: { credentials: encrypt(JSON.stringify(credentials)) },
+                        });
+                    }
+                } else if (connection.provider === "tiktok_business" && accessToken) {
+                    const discovery = await tiktokBusinessClient.listAuthorizedAdvertisers(accessToken);
+                    if (discovery.advertiser_ids && discovery.advertiser_ids.length > 0) {
+                        const existingIds: string[] = extraFields.advertiserIds || credentials.advertiserIds || [];
+                        const mergedIds = Array.from(new Set([...existingIds, ...discovery.advertiser_ids]));
+                        extraFields.advertiserIds = mergedIds;
+                        credentials.extraFields = extraFields;
+                        await prisma.connection.update({
+                            where: { id: connection.id },
+                            data: { credentials: encrypt(JSON.stringify(credentials)) },
+                        });
+                    }
+                }
+            } catch (refreshErr) {
+                logger.warn(`[GET /api/connections/[id]/accounts] Live account discovery failed for connection ${connection.id}:`, refreshErr);
+            }
+        }
         
         // Extract accounts from stored credentials
         let accounts: Array<{ id: string; name: string; type: string; selected?: boolean }> = [];
@@ -160,7 +222,7 @@ export async function POST(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user?.id) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -216,7 +278,7 @@ export async function POST(
         }
 
         // Decrypt and update credentials
-        const credentials = JSON.parse(decrypt(connection.credentials));
+        const credentials = JSON.parse(safeDecrypt(connection.credentials));
         credentials.extraFields = credentials.extraFields || {};
         const selection = validateConnectionAccountSelection({
             provider: connection.provider as AccountSelectionProvider,

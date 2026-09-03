@@ -228,3 +228,28 @@ export async function getWorkspaceAccountHealth(workspaceId: string) {
     })
   );
 }
+
+/** Reset reconnect_required or degraded account health states for a connection upon reauthorization. */
+export async function resetConnectionAccountHealth(connectionId: string): Promise<number> {
+  try {
+    const result = await withSystemScope(() =>
+      prisma.providerAccountHealth.updateMany({
+        where: {
+          connectionId,
+          status: { in: ["reconnect_required", "degraded"] },
+        },
+        data: {
+          status: "healthy",
+          consecutiveFailures: 0,
+          lastError: null,
+          lastErrorAt: null,
+          errorCategory: null,
+        },
+      })
+    );
+    return result.count;
+  } catch (err) {
+    logger.error("[ACCOUNT_HEALTH] resetConnectionAccountHealth failed:", err);
+    return 0;
+  }
+}

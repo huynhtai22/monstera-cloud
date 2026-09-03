@@ -125,12 +125,39 @@ export async function GET(request: Request) {
   const succeeded = results.filter((result) => result.ok).length;
   const totalRows = results.reduce((sum, r) => sum + (r.rows || 0), 0);
 
+  // Stale data canary: identify active connections that have not synced in > 26 hours
+  let staleConnectionsCount = 0;
+  try {
+    const staleThreshold = new Date(Date.now() - 26 * 60 * 60 * 1000);
+    const staleList = await prisma.connection.findMany({
+      where: {
+        status: "connected",
+        type: "source",
+        OR: [
+          { lastSyncAt: { lt: staleThreshold } },
+          { lastSyncAt: null },
+        ],
+      },
+      select: { id: true, provider: true, lastSyncAt: true },
+    });
+    staleConnectionsCount = staleList.length;
+    if (staleConnectionsCount > 0) {
+      logger.warn("[WAREHOUSE_REFRESH_STALE_CANARY]", {
+        staleConnectionsCount,
+        sample: staleList.slice(0, 5),
+      });
+    }
+  } catch (canaryErr) {
+    logger.warn("[WAREHOUSE_REFRESH_STALE_CANARY_FAIL]", canaryErr);
+  }
+
   logger.info("[WAREHOUSE_REFRESH_COMPLETE]", {
     total: results.length,
     succeeded,
     failed: results.length - succeeded,
     totalRows,
     processedImportJobs,
+    staleConnectionsCount,
     durationMs,
     lookbackDays,
   });
@@ -141,6 +168,7 @@ export async function GET(request: Request) {
     failed: results.length - succeeded,
     totalRows,
     processedImportJobs,
+    staleConnectionsCount,
     durationMs,
     window: { since: sinceDate, until: untilDate, lookbackDays },
     results,

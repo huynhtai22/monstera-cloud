@@ -49,6 +49,7 @@ const PROVIDER_CONFIG: Record<string, { icon: React.ReactNode; title: string; ty
 export function AccountSelector({ connectionId, provider, connectionName, managerBadge, variant = "panel" }: AccountSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState("");
 
   const { data, error, isLoading, mutate } = useSWR(
@@ -56,6 +57,23 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
     fetcher,
     { refreshInterval: 0 }
   );
+
+  const config = PROVIDER_CONFIG[provider];
+
+  const refreshAccounts = async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch(`/api/connections/${connectionId}/accounts?refresh=true`);
+      const updated = await res.json();
+      if (!res.ok) throw new Error(updated.error || "Failed to refresh accounts");
+      await mutate(updated, false);
+      toast.success(`Discovered ${updated.total ?? 0} accounts from ${config?.title || "provider"}`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to refresh accounts");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const accounts: Account[] = useMemo(() => data?.accounts || [], [data?.accounts]);
   const selectedCount = accounts.filter((a) => a.selected).length;
@@ -105,7 +123,6 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
     }
   }, [accounts, connectionId, mutate]);
 
-  const config = PROVIDER_CONFIG[provider];
   if (!config) return null;
 
   const setVisibleSelection = (selected: boolean) => {
@@ -214,6 +231,16 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
                 Pause shown
               </button>
             </div>
+            <button
+              type="button"
+              onClick={refreshAccounts}
+              disabled={refreshing || isLoading}
+              title="Refresh account list from platform"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-canvas px-2.5 text-xs font-medium text-ink-mute hover:text-ink hover:border-line/80 disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
           </div>
         </div>
 
@@ -357,6 +384,16 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
                 className="text-xs font-medium text-ink-mute hover:text-ink transition-colors"
               >
                 Clear
+              </button>
+              <span className="text-line">|</span>
+              <button
+                type="button"
+                onClick={refreshAccounts}
+                disabled={refreshing || isLoading}
+                className="inline-flex items-center gap-1 text-xs font-medium text-ink-mute hover:text-ink transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} />
+                Refresh
               </button>
             </div>
           </div>

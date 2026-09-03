@@ -5,6 +5,7 @@ import {
   categorizeProviderError,
   recordAccountOutcome,
   getSkippedAccountIds,
+  resetConnectionAccountHealth,
   QUARANTINE_THRESHOLD,
 } from "./provider-account-health";
 
@@ -186,6 +187,40 @@ describe("provider-account-health unit tests", () => {
 
       const skipped = await getSkippedAccountIds("conn-1");
       assert.ok(skipped.has("act-bad"), "quarantined account is skipped");
+    });
+
+    it("resetConnectionAccountHealth clears reconnect_required and degraded accounts to healthy", async () => {
+      mockStore.set("conn-1:act-1", {
+        status: "reconnect_required",
+        consecutiveFailures: 4,
+        lastError: "Token revoked",
+        errorCategory: "AUTH_EXPIRED",
+      });
+      mockStore.set("conn-1:act-2", {
+        status: "degraded",
+        consecutiveFailures: 1,
+        lastError: "Rate limit",
+        errorCategory: "RATE_LIMITED",
+      });
+
+      (prisma as any).providerAccountHealth.updateMany = async ({ where, data }: any) => {
+        let count = 0;
+        for (const [k, v] of mockStore.entries()) {
+          if (k.startsWith(where.connectionId + ":")) {
+            if (where.status?.in?.includes(v.status)) {
+              mockStore.set(k, { ...v, ...data });
+              count++;
+            }
+          }
+        }
+        return { count };
+      };
+
+      const count = await resetConnectionAccountHealth("conn-1");
+      assert.equal(count, 2);
+      assert.equal(mockStore.get("conn-1:act-1").status, "healthy");
+      assert.equal(mockStore.get("conn-1:act-1").consecutiveFailures, 0);
+      assert.equal(mockStore.get("conn-1:act-2").status, "healthy");
     });
   });
 });
