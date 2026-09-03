@@ -21,6 +21,8 @@ type IntegrationRow = {
   name: string;
   description?: string;
   managerBadge?: string | null;
+  accountEmail?: string | null;
+  accountName?: string | null;
   shortId?: string;
   status: "connected" | "error" | "syncing" | string;
   healthState?: SourceHealthState;
@@ -357,12 +359,13 @@ export function ConnectedSourceList({
         const q = searchQuery.trim().toLowerCase();
         const nameMatch = (r.name || "").toLowerCase().includes(q);
         const badgeMatch = (r.managerBadge || "").toLowerCase().includes(q);
+        const emailMatch = (r.accountEmail || "").toLowerCase().includes(q) || (r.accountName || "").toLowerCase().includes(q);
         const descMatch = (r.description || "").toLowerCase().includes(q);
         const idMatch = (r.id || "").toLowerCase().includes(q) || (r.shortId || "").toLowerCase().includes(q);
         const tagMatch = (r.accountTags || []).some((t) =>
           (typeof t === "object" ? `${t.id} ${t.label}` : t).toLowerCase().includes(q)
         );
-        return nameMatch || badgeMatch || descMatch || idMatch || tagMatch;
+        return nameMatch || badgeMatch || emailMatch || descMatch || idMatch || tagMatch;
       }
       return true;
     });
@@ -502,7 +505,7 @@ export function ConnectedSourceList({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by MCC, account ID, or name…"
+              placeholder="Search by MCC, account ID, Gmail, or name…"
               className="h-8.5 w-full rounded-lg border border-line bg-canvas pl-8.5 pr-8 text-xs text-ink placeholder:text-ink-mute focus:border-white/30 focus:outline-none transition-colors"
             />
             {searchQuery && (
@@ -634,6 +637,15 @@ export function ConnectedSourceList({
                             copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
                             title={`Click to copy ${r.managerBadge}`}
                             className="text-[10px] text-ink-mute border-line/70 bg-canvas/80"
+                          />
+                        )}
+                        {r.accountEmail && (
+                          <CopyableBadge
+                            text={r.accountEmail}
+                            copyValue={r.accountEmail}
+                            prefix="✉"
+                            title={`Authorized account: ${r.accountEmail}`}
+                            className="text-[10px] text-emerald-300 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20"
                           />
                         )}
                         {r.shortId && (
@@ -938,6 +950,15 @@ export function ConnectedSourceList({
                                   copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
                                   title={`Click to copy ${r.managerBadge}`}
                                   className="text-[10px] text-ink-mute border-line/70 bg-canvas/80"
+                                />
+                              )}
+                              {r.accountEmail && (
+                                <CopyableBadge
+                                  text={r.accountEmail}
+                                  copyValue={r.accountEmail}
+                                  prefix="✉"
+                                  title={`Authorized account: ${r.accountEmail}`}
+                                  className="text-[10px] text-emerald-300 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20"
                                 />
                               )}
                               {r.shortId && (

@@ -87,6 +87,8 @@ export default function SourcesPage() {
         status: string;
         errorMsg?: string;
         lastSync?: string;
+        managerBadge?: string | null;
+        accountEmail?: string | null;
     } | null>(null);
 
     /* #1 — Fix outgoingActionId race condition: Set instead of single string */
@@ -277,6 +279,8 @@ export default function SourcesPage() {
             status: integration.status,
             errorMsg: integration.errorMsg,
             lastSync: integration.lastSync,
+            managerBadge: integration.managerBadge,
+            accountEmail: integration.accountEmail,
         });
     }, []);
 
@@ -509,6 +513,8 @@ export default function SourcesPage() {
                 }
 
                 // Extract ad accounts, manager badges, and account tags
+                const accountEmail = (creds.accountEmail || creds.email || null) as string | null;
+                const accountName = (creds.accountName || null) as string | null;
                 let accountTags: Array<{ id: string; label: string } | string> = [];
                 let rawName = (conn.name || "").trim();
                 let displayName = rawName;
@@ -552,38 +558,46 @@ export default function SourcesPage() {
                             : String(id);
                         return { id: String(id), label: formatted };
                     });
-                    const mccId = creds.mccId || creds.managerCustomerId || null;
+                    const rawRemoteId = String(conn.remoteAccountId ?? "").replace(/\D/g, "");
+                    const isExplicitCustomer = creds.googleAdsRootType === "customer";
+                    const isExplicitManager = Boolean(creds.mccId || creds.managerCustomerId || creds.googleAdsRootType === "manager");
+                    // Treat as MCC if marked as manager, or if unclassified and remote ID differs from child accounts
+                    const resolvedMccId = isExplicitManager
+                        ? (creds.mccId || creds.managerCustomerId || (rawRemoteId.length > 0 ? rawRemoteId : null))
+                        : (!isExplicitCustomer && rawRemoteId.length > 0 && !list.includes(rawRemoteId) ? rawRemoteId : null);
                     const discoveredCustomerCount = Number(creds.discoveredCustomerCount);
                     const totalCount = Number.isFinite(discoveredCustomerCount) && discoveredCustomerCount > 0
                         ? discoveredCustomerCount
                         : accountTags.length;
-                    if (mccId && mccId !== "") {
-                        const cleanMcc = String(mccId).replace(/\D/g, '');
+                    const emailSuffix = accountEmail ? ` · ${accountEmail}` : "";
+                    if (resolvedMccId && resolvedMccId !== "") {
+                        const cleanMcc = String(resolvedMccId).replace(/\D/g, '');
                         const formattedMcc = cleanMcc.length === 10 
                             ? `${cleanMcc.slice(0, 3)}-${cleanMcc.slice(3, 6)}-${cleanMcc.slice(6)}`
-                            : mccId;
+                            : resolvedMccId;
                         managerBadge = `MCC: ${formattedMcc}`;
-                        scopeDesc = `${managerBadge} · ${totalCount} customer account${totalCount === 1 ? '' : 's'} synced`;
-                    } else if (list.length === 1) {
-                        const cleanCid = String(list[0]).replace(/\D/g, '');
+                        scopeDesc = `${managerBadge}${emailSuffix} · ${totalCount} customer account${totalCount === 1 ? '' : 's'} synced`;
+                    } else if (list.length === 1 || (isExplicitCustomer && rawRemoteId.length > 0)) {
+                        const directCid = list[0] || rawRemoteId;
+                        const cleanCid = String(directCid).replace(/\D/g, '');
                         const formattedCid = cleanCid.length === 10
                             ? `${cleanCid.slice(0, 3)}-${cleanCid.slice(3, 6)}-${cleanCid.slice(6)}`
-                            : list[0];
+                            : directCid;
                         managerBadge = `CID: ${formattedCid}`;
-                        scopeDesc = `Customer: ${formattedCid} · Direct Google Ads sync`;
+                        scopeDesc = `Customer: ${formattedCid}${emailSuffix} · Direct Google Ads sync`;
                     } else if (list.length > 1) {
                         const cleanFirst = String(list[0]).replace(/\D/g, '');
                         const formattedFirst = cleanFirst.length === 10
                             ? `${cleanFirst.slice(0, 3)}-${cleanFirst.slice(3, 6)}-${cleanFirst.slice(6)}`
                             : list[0];
                         managerBadge = `MCC: ${formattedFirst}`;
-                        scopeDesc = `MCC Manager · ${totalCount} customer accounts synced`;
+                        scopeDesc = `MCC Manager${emailSuffix} · ${totalCount} customer accounts synced`;
                     } else {
-                        scopeDesc = `Google Ads · ${totalCount} customer accounts synced`;
+                        scopeDesc = `Google Ads${emailSuffix} · ${totalCount} customer accounts synced`;
                     }
 
-                    // Clean auto-generated name strings like "Google Ads (8 accounts)" or "Google Ads (1 account)"
-                    const isDefaultName = !rawName || /^Google Ads(\s*\(\d+\s*accounts?\))?$/i.test(rawName);
+                    // Clean auto-generated name strings like "Google Ads (8 accounts)" or "Google Ads — MCC 123-456-7890" while preserving custom nicknames
+                    const isDefaultName = !rawName || /^Google Ads(\s*(\(\d+\s*accounts?\)|\s*—\s*(MCC|Customer)\s+[\d-]+))?$/i.test(rawName);
                     displayName = isDefaultName ? "Google Ads" : rawName;
                 } else if (conn.provider === 'tiktok_business') {
                     const list: string[] = creds.advertiserIds ?? [];
@@ -638,6 +652,8 @@ export default function SourcesPage() {
                     name: displayName,
                     description: scopeDesc,
                     managerBadge,
+                    accountEmail,
+                    accountName,
                     shortId: conn.id ? conn.id.slice(-4) : undefined,
                     // `healthState` is computed server-side from durable
                     // connection truth. Keep the fallback for older API
