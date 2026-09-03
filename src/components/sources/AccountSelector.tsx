@@ -157,11 +157,38 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
     );
   }
 
-  if (error || accounts.length === 0) {
+  if (needsReconnect) {
     return (
       <SourceReconnectBanner
         provider={provider}
-        needsReconnect={needsReconnect || Boolean(error)}
+        needsReconnect={true}
+        onReconnect={onReconnect}
+      />
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-line/80 bg-panel/50 p-5 shadow-xs">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-ink-mute">Failed to load accounts for this connection.</p>
+          <button
+            type="button"
+            onClick={() => mutate()}
+            className="rounded-lg border border-line bg-canvas px-3 py-1 text-xs text-ink hover:bg-panel transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (accounts.length === 0) {
+    return (
+      <SourceReconnectBanner
+        provider={provider}
+        needsReconnect={false}
         onReconnect={onReconnect}
       />
     );

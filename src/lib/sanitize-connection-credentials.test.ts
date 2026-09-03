@@ -23,6 +23,10 @@ describe("sanitizeConnectionCredentials", () => {
       mccId: "1234567890",
       managerCustomerId: "1234567890",
       customerIds: ["1234567890"],
+      shopDomain: "mystore.myshopify.com",
+      sellerId: "VN12345",
+      sellingPartnerId: "amzn1.sp.123",
+      googleAdsRootType: "manager",
     });
 
     const encrypted = encrypt(raw);
@@ -35,6 +39,10 @@ describe("sanitizeConnectionCredentials", () => {
     assert.equal(sanitized.mccId, "1234567890");
     assert.equal(sanitized.managerCustomerId, "1234567890");
     assert.deepEqual(sanitized.customerIds, ["1234567890"]);
+    assert.equal(sanitized.shopDomain, "mystore.myshopify.com");
+    assert.equal(sanitized.sellerId, "VN12345");
+    assert.equal(sanitized.sellingPartnerId, "amzn1.sp.123");
+    assert.equal(sanitized.googleAdsRootType, "manager");
   });
 
   it("returns empty object on invalid payload", () => {

@@ -26,6 +26,7 @@ describe("displayConnectionName", () => {
   it("keeps a user nickname", () => {
     assert.equal(displayConnectionName("google_ads", "US Brand MCC"), "US Brand MCC");
     assert.equal(displayConnectionName("shopee", "VN flagship"), "VN flagship");
+    assert.equal(displayConnectionName("lazada", "Lazada — Hanoi Store"), "Lazada — Hanoi Store");
   });
 
   it("normalizes default platform titles", () => {
@@ -33,6 +34,8 @@ describe("displayConnectionName", () => {
     assert.equal(displayConnectionName("google_ads", "Google Ads — MCC 120-847-3618"), "Google Ads");
     assert.equal(displayConnectionName("meta_ads", "Meta (2 accounts)"), "Meta Ads");
     assert.equal(displayConnectionName("tiktok_business", ""), "TikTok Ads");
+    assert.equal(displayConnectionName("lazada", "Lazada — 10012345"), "Lazada");
+    assert.equal(displayConnectionName("lazada", "Lazada (VN) — 10012345"), "Lazada");
   });
 });
 
@@ -155,6 +158,20 @@ describe("sourceManagerBadge", () => {
       sourceManagerBadge({ provider: "lazada", creds: { sellerId: "VN123", country: "VN" } }),
       "Seller: VN123 (VN)",
     );
+  });
+
+  it("does not label advertiser ID as BC when multiple advertisers are present", () => {
+    assert.equal(
+      sourceManagerBadge({ provider: "tiktok_business", creds: { advertiserIds: ["111", "222"] } }),
+      null,
+    );
+  });
+
+  it("falls back to remoteAccountId for single-account connectors", () => {
+    assert.equal(sourceManagerBadge({ provider: "shopify", remoteAccountId: "my-store.myshopify.com" }), "Store: my-store.myshopify.com");
+    assert.equal(sourceManagerBadge({ provider: "lazada", remoteAccountId: "LZD123" }), "Seller: LZD123");
+    assert.equal(sourceManagerBadge({ provider: "amazon", remoteAccountId: "amzn.sp.456" }), "SP: amzn.sp.456");
+    assert.equal(sourceManagerBadge({ provider: "shopee", remoteAccountId: "227420569" }), "Shop: 227420569");
   });
 });
 

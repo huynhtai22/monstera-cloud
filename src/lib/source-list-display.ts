@@ -72,7 +72,7 @@ export function isGenericConnectionName(provider: string, rawName: string): bool
   if (provider === "google_ads" && /^Google Ads(\s*(\(\d+\s*accounts?\)|\s*—\s*(MCC|Customer)\s+[\d-]+))?$/i.test(n)) {
     return true;
   }
-  if (provider === "lazada" && /^Lazada(\s*\([A-Z]{2}\))?(\s*—\s*.+)?$/i.test(n)) return true;
+  if (provider === "lazada" && /^Lazada(\s*\([A-Z]{2}\))?(\s*—\s*[a-zA-Z0-9_.-]+)?$/i.test(n)) return true;
   if (provider === "tiktok_shop" && /^TikTok Shop(\s*\(.+\))?$/i.test(n)) return true;
   if (provider === "amazon" && /^Amazon( Selling Partner)?$/i.test(n)) return true;
   const title = PROVIDER_DISPLAY_NAME[provider];
@@ -413,35 +413,36 @@ export function sourceManagerBadge(opts: {
     if (bcId) return `BC: ${bcId}`;
     const list = Array.isArray(creds.advertiserIds) ? (creds.advertiserIds as string[]) : [];
     if (list.length === 1) return `Adv: ${list[0]}`;
-    if (list.length > 1) return `BC: ${list[0]}`;
+    const remote = opts.remoteAccountId ? String(opts.remoteAccountId).trim() : "";
+    if (list.length === 0 && remote) return `Adv: ${remote}`;
     return null;
   }
 
   if (provider === "shopee") {
-    const shop = shopeeShopIdFrom(creds, opts.rawName);
+    const shop = shopeeShopIdFrom(creds, opts.rawName) || (opts.remoteAccountId ? String(opts.remoteAccountId).trim() : null);
     return shop ? `Shop: ${shop}` : null;
   }
 
   if (provider === "shopify") {
-    const domain = creds.shopDomain || creds.domain;
+    const domain = creds.shopDomain || creds.domain || opts.remoteAccountId;
     return domain ? `Store: ${String(domain)}` : null;
   }
 
   if (provider === "lazada") {
-    const seller = creds.sellerId || creds.seller_id;
+    const seller = creds.sellerId || creds.seller_id || opts.remoteAccountId;
     if (!seller) return null;
     const country = creds.country ? ` (${creds.country})` : "";
     return `Seller: ${seller}${country}`;
   }
 
   if (provider === "amazon") {
-    const sp = creds.sellingPartnerId;
+    const sp = creds.sellingPartnerId || opts.remoteAccountId;
     if (sp && sp !== "pending_user_config") return `SP: ${sp}`;
     return null;
   }
 
   if (provider === "tiktok_shop") {
-    const seller = creds.sellerId || creds.seller_id;
+    const seller = creds.sellerId || creds.seller_id || opts.remoteAccountId;
     return seller ? `Seller: ${seller}` : null;
   }
 
