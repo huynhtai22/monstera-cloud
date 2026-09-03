@@ -128,9 +128,8 @@ export function SetupWizard({ activation, plan, workspaceStatus, onDismiss }: Se
           <p className="mt-1 text-sm text-ink-mute">{doneCount} of 3 activation steps complete. You can leave and resume here at any time.</p>
         </div>
         <div className="rounded-md border border-line bg-canvas px-3 py-2 text-right text-[11px] text-ink-mute">
-          <p className="font-semibold text-ink">{workspaceStatus === "PILOT" ? "Agency Pro trial" : plan}</p>
-          {trialDate ? <p>{remaining} day{remaining === 1 ? "" : "s"} remaining · ends {trialDate}</p> : <p>Current plan: {plan}</p>}
-          <p>Then 1,490,000 VND/month</p>
+          <p className="font-semibold capitalize text-ink">{workspaceStatus === "PILOT" ? "Agency Pro trial" : plan}</p>
+          {trialDate ? <p>{remaining} day{remaining === 1 ? "" : "s"} remaining · ends {trialDate}</p> : <p>Active workspace</p>}
         </div>
       </div>
 

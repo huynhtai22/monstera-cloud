@@ -98,7 +98,7 @@ export default function RegisterPage() {
           )}
           {!inviteToken && isPilotOffer && (
             <div className="mt-4 w-full rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06] p-3 text-center text-xs text-emerald-100">
-              7-day Agency Pro pilot · no card required · continue for 1,490,000 VND/month
+              7-day Agency Pro pilot · No credit card required · Full feature access
             </div>
           )}
         </div>
