@@ -279,10 +279,6 @@ export function DashboardHomePage() {
 
   React.useEffect(() => {
     if (!workspaceId || !overview) return;
-    if (overview.pilotActivation.status !== "activated") {
-      setWizardDismissed(false);
-      return;
-    }
     try {
       setWizardDismissed(
         localStorage.getItem(`monstera_setup_wizard_dismissed_${workspaceId}`) === "1",
@@ -293,7 +289,6 @@ export function DashboardHomePage() {
   }, [overview, workspaceId]);
 
   const handleWizardDismiss = useCallback(() => {
-    if (overview?.pilotActivation.status !== "activated") return;
     setWizardDismissed(true);
     if (!workspaceId) return;
     try {
@@ -301,7 +296,7 @@ export function DashboardHomePage() {
     } catch {
       /* ignore */
     }
-  }, [overview?.pilotActivation.status, workspaceId]);
+  }, [workspaceId]);
 
   React.useEffect(() => {
     reviewRecordingRef.current = false;
@@ -479,14 +474,34 @@ export function DashboardHomePage() {
         )}
 
         {/* ── 1b. Onboarding setup wizard ───────────────────────────────────── */}
-        {!wizardDismissed && (
+        {!wizardDismissed ? (
           <SetupWizard
             activation={overview!.pilotActivation}
             plan={overview!.workspace.plan}
             workspaceStatus={overview!.workspace.status}
-            onDismiss={overview!.pilotActivation.status === "activated" ? handleWizardDismiss : undefined}
+            onDismiss={handleWizardDismiss}
           />
-        )}
+        ) : overview?.pilotActivation && overview.pilotActivation.status !== "activated" ? (
+          <div className="flex items-center justify-between rounded-lg border border-line bg-canvas/60 px-4 py-2 text-xs text-ink-mute">
+            <span>Setup guide hidden.</span>
+            <button
+              type="button"
+              onClick={() => {
+                setWizardDismissed(false);
+                if (workspaceId) {
+                  try {
+                    localStorage.removeItem(`monstera_setup_wizard_dismissed_${workspaceId}`);
+                  } catch {
+                    /* ignore */
+                  }
+                }
+              }}
+              className="font-medium text-emerald-400 hover:text-emerald-300 hover:underline transition-colors"
+            >
+              Resume setup guide
+            </button>
+          </div>
+        ) : null}
 
         {/* ── 2. Performance & Spend at a Glance ─────────────────────────────── */}
         <div id="performance-spend" ref={performancePanelRef} className="scroll-mt-24 rounded-xl border border-line bg-panel p-4 sm:p-5 shadow-xs">
