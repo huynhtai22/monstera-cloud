@@ -130,7 +130,13 @@ export function SetupWizard({ activation, plan, workspaceStatus, onDismiss }: Se
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
           <div className="rounded-md border border-line bg-canvas px-3 py-2 text-right text-[11px] text-ink-mute">
             <p className="font-semibold capitalize text-ink">{workspaceStatus === "PILOT" ? "Agency Pro trial" : plan}</p>
-            {trialDate ? <p>{remaining} day{remaining === 1 ? "" : "s"} remaining · ends {trialDate}</p> : <p>Active workspace</p>}
+            {trialDate ? (
+              <p>{remaining} day{remaining === 1 ? "" : "s"} remaining · ends {trialDate}</p>
+            ) : workspaceStatus === "SUSPENDED" ? (
+              <p className="text-amber-400">Suspended workspace</p>
+            ) : (
+              <p>Current plan: {plan}</p>
+            )}
           </div>
           {onDismiss && (
             <button
