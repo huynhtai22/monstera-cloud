@@ -23,7 +23,7 @@ import { OAuthSuccessBanner } from "@/components/sources/OAuthSuccessBanner";
 import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
 import { SourceOutcomeBanner, type SourceOutcomeNotice } from "@/components/sources/SourceOutcomeBanner";
 import { countSourceHealthStatuses } from "@/lib/source-health";
-import { displayConnectionName, shopeeShopIdFrom } from "@/lib/source-list-display";
+import { displayConnectionName, shopeeShopIdFrom, sourceManagerBadge } from "@/lib/source-list-display";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
@@ -634,9 +634,36 @@ export default function SourcesPage() {
                     }
                     displayName = displayConnectionName(conn.provider, rawName);
                     scopeDesc = domain ? `Store: ${domain} · E-commerce sync` : "Shopify Store sync";
+                } else if (conn.provider === "lazada") {
+                    const seller = creds.sellerId || creds.seller_id || null;
+                    if (seller) {
+                        accountTags = [{ id: String(seller), label: String(seller) }];
+                    }
+                    managerBadge = sourceManagerBadge({ provider: conn.provider, creds, rawName });
+                    displayName = displayConnectionName(conn.provider, rawName);
+                    scopeDesc = seller ? `Seller ${seller} · Orders & finance` : "Lazada Seller";
+                } else if (conn.provider === "amazon") {
+                    const sp = creds.sellingPartnerId && creds.sellingPartnerId !== "pending_user_config"
+                        ? creds.sellingPartnerId
+                        : null;
+                    if (sp) {
+                        accountTags = [{ id: String(sp), label: String(sp) }];
+                    }
+                    managerBadge = sourceManagerBadge({ provider: conn.provider, creds, rawName });
+                    displayName = displayConnectionName(conn.provider, rawName);
+                    scopeDesc = "Amazon Selling Partner";
+                } else if (conn.provider === "tiktok_shop") {
+                    const seller = creds.sellerId || creds.seller_id || null;
+                    if (seller) {
+                        accountTags = [{ id: String(seller), label: String(seller) }];
+                    }
+                    managerBadge = sourceManagerBadge({ provider: conn.provider, creds, rawName });
+                    displayName = displayConnectionName(conn.provider, rawName);
+                    scopeDesc = seller ? `Seller ${seller} · Catalog & orders` : "TikTok Shop";
                 } else {
                     const baseBlurb = SOURCE_BLURB_BY_PROVIDER[conn.provider] ?? `${conn.provider} — data for this workspace.`;
                     displayName = displayConnectionName(conn.provider, rawName) || conn.provider;
+                    managerBadge = sourceManagerBadge({ provider: conn.provider, creds, rawName, remoteAccountId: conn.remoteAccountId });
                     scopeDesc = baseBlurb;
                 }
 

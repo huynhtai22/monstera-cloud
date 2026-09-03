@@ -11,6 +11,7 @@ import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
 import type { SourceHealthState } from "@/lib/source-health";
 import {
+  PROVIDER_DISPLAY_NAME,
   formatLastSyncLabel,
   sourceStateFor,
   summarizeAccountScope,
@@ -75,13 +76,7 @@ function canDirectSync(provider: string | undefined): boolean {
   return provider != null && ["meta_ads", "google_ads", "tiktok_business", "shopee", "lazada"].includes(provider);
 }
 
-const PROVIDER_LABELS: Record<string, string> = {
-  google_ads: "Google Ads",
-  meta_ads: "Meta Ads",
-  tiktok_business: "TikTok Ads",
-  shopee: "Shopee",
-  shopify: "Shopify",
-};
+
 
 function statusBadgeClass(kind: SourceStateKind): string {
   if (kind === "auth-required") return "border-rose-500/30 bg-rose-500/10 text-rose-300";
@@ -212,7 +207,7 @@ export function ConnectedSourceList({
     }
     return Object.entries(counts).map(([id, count]) => ({
       id,
-      label: PROVIDER_LABELS[id] || id,
+      label: PROVIDER_DISPLAY_NAME[id] || id,
       count,
     }));
   }, [rows]);

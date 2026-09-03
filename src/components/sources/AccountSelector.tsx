@@ -3,8 +3,9 @@
 import React, { useState, useCallback, useMemo } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { Check, ChevronDown, Building2, Copy, Layers, Search, Users, AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, Building2, Copy, Layers, Search, Users, Loader2, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SourceReconnectBanner } from "@/components/sources/SourceReconnectBanner";
 
 interface Account {
   id: string;
@@ -20,6 +21,8 @@ interface AccountSelectorProps {
   managerBadge?: string | null;
   accountEmail?: string | null;
   variant?: "panel" | "compact";
+  needsReconnect?: boolean;
+  onReconnect?: () => void;
 }
 
 const fetcher = async (url: string) => {
@@ -47,7 +50,7 @@ const PROVIDER_CONFIG: Record<string, { icon: React.ReactNode; title: string; ty
   },
 };
 
-export function AccountSelector({ connectionId, provider, connectionName, managerBadge, accountEmail, variant = "panel" }: AccountSelectorProps) {
+export function AccountSelector({ connectionId, provider, connectionName, managerBadge, accountEmail, variant = "panel", needsReconnect = false, onReconnect }: AccountSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -154,21 +157,40 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
     );
   }
 
-  if (error || accounts.length === 0) {
+  if (needsReconnect) {
+    return (
+      <SourceReconnectBanner
+        provider={provider}
+        needsReconnect={true}
+        onReconnect={onReconnect}
+      />
+    );
+  }
+
+  if (error) {
     return (
       <div className="rounded-xl border border-line/80 bg-panel/50 p-5 shadow-xs">
-        <div className="flex items-start gap-3.5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400">
-            <AlertCircle className="h-4 w-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h4 className="text-sm font-semibold tracking-tight text-ink">No ad accounts discovered</h4>
-            <p className="mt-1 text-xs leading-relaxed text-ink-mute">
-              {error?.message || "Monstera could not find ad accounts attached to this connection. Reconnecting will re-authorize OAuth access and discover available ad accounts."}
-            </p>
-          </div>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-ink-mute">Failed to load accounts for this connection.</p>
+          <button
+            type="button"
+            onClick={() => mutate()}
+            className="rounded-lg border border-line bg-canvas px-3 py-1 text-xs text-ink hover:bg-panel transition-colors"
+          >
+            Retry
+          </button>
         </div>
       </div>
+    );
+  }
+
+  if (accounts.length === 0) {
+    return (
+      <SourceReconnectBanner
+        provider={provider}
+        needsReconnect={false}
+        onReconnect={onReconnect}
+      />
     );
   }
 
