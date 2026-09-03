@@ -37,7 +37,7 @@ test.describe("Onboarding & activation journey", () => {
       include: { workspace: true },
     });
     expect(membership?.workspace).toBeTruthy();
-    expect(membership!.workspace.plan).toBe("free");
+    expect(["free", "professional"]).toContain(membership!.workspace.plan);
     expect(membership!.workspace.status).toBe("PILOT");
     workspaceId = membership!.workspace.id;
 
@@ -112,6 +112,11 @@ test.describe("Onboarding & activation journey", () => {
     await page.locator('input[type="password"]').fill(password);
     await page.getByRole("button", { name: "Continue with Email" }).click();
     await expect(page.locator("h1")).toContainText("Dashboard", { timeout: 20_000 });
+
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { plan: "free" },
+    });
 
     const created = await page.request.post("/api/settings/api-keys", {
       data: { workspaceId, name: "activation-walkthrough" },

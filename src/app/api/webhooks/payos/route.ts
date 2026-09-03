@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ success: true, message: result.message });
             } else {
                 logger.warn(`[PAYOS WEBHOOK] Payment fulfillment failed: ${result.message}`);
+                return NextResponse.json({ error: result.message }, { status: 500 });
             }
         }
 

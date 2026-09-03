@@ -2,335 +2,555 @@
 
 import Link from "next/link";
 import {
-    ArrowRight,
     Check,
-    Clock,
+    Lock,
+    ShieldCheck,
+    Layers,
     Database,
     FileSpreadsheet,
-    Globe,
-    Info,
-    Search,
-    Shield,
-    SlidersHorizontal,
+    Clock,
     Users,
     Zap,
+    Globe,
+    Cpu,
+    Headphones,
+    Coins,
+    SlidersHorizontal,
+    Workflow,
+    Search,
+    QrCode,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { formatPlanPrice, PLAN_LIMITS, type PlanName } from "@/lib/plan-config";
+import { VietQrModal } from "@/components/pricing/VietQrModal";
+import { Suspense, useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
+import { metaPixelCustom } from "@/lib/meta-pixel";
+import { PLAN_PRICING, PLAN_VND_ANNUAL_TOTALS } from "@/lib/plan-config";
 import { cn } from "@/lib/utils";
 
-type Currency = "USD" | "VND";
-type ComparisonValue = boolean | string;
-
-interface ComparisonFeature {
-    name: string;
-    free: ComparisonValue;
-    starter: ComparisonValue;
-    professional: ComparisonValue;
-}
-
-interface ComparisonCategory {
-    title: string;
-    description: string;
-    icon: typeof Globe;
-    features: ComparisonFeature[];
-}
-
-interface PlanCard {
-    name: PlanName;
-    label: string;
-    eyebrow?: string;
-    description: string;
-    features: Array<{ icon: typeof Globe; text: string }>;
-    highlighted?: boolean;
-}
-
-function formatNumber(value: number) {
-    if (!Number.isFinite(value)) return "Unlimited";
-    return new Intl.NumberFormat("en-US").format(value);
-}
-
-function formatAnnualTotal(amount: number, currency: Currency) {
-    const total = amount * 12;
-    if (currency === "VND") {
-        return `${new Intl.NumberFormat("vi-VN").format(total)} đ / năm`;
-    }
-    return `$${new Intl.NumberFormat("en-US").format(total)} / year`;
-}
-
-function ComparisonCell({ value, emphasized = false }: { value: ComparisonValue; emphasized?: boolean }) {
-    if (typeof value === "boolean") {
-        return value ? (
-            <Check className={cn("h-3.5 w-3.5", emphasized ? "text-white" : "text-neutral-300")} />
-        ) : (
-            <span className="font-light text-neutral-700">—</span>
-        );
-    }
-
-    return (
-        <span className={cn("font-mono text-[10px] sm:text-[11px]", emphasized ? "font-medium text-white" : "text-neutral-300")}>
-            {value}
-        </span>
-    );
-}
-
-export default function PricingPage() {
-    const [isAnnual, setIsAnnual] = useState(true);
-    const [currency, setCurrency] = useState<Currency>("USD");
+function PricingPageContent() {
+    const searchParams = useSearchParams();
+    const workspaceId = searchParams.get("workspaceId") || undefined;
+    const [isAnnual, setIsAnnual] = useState(false);
+    const [payCurrency, setPayCurrency] = useState<"VND" | "USD">("USD");
     const [searchQuery, setSearchQuery] = useState("");
-    const isVnd = currency === "VND";
+
+    // VietQR Modal State
+    const [qrModalOpen, setQrModalOpen] = useState(false);
+    const [selectedQrPlan, setSelectedQrPlan] = useState<{
+        name: "professional" | "enterprise";
+        displayName: string;
+        amount: number;
+    }>({ name: "professional", displayName: "Agency Pro", amount: PLAN_PRICING.professional.vndMonthly });
 
     useEffect(() => {
-        let active = true;
-
-        async function resolveCurrency() {
+        let isMounted = true;
+        async function detectGeo() {
             try {
-                const response = await fetch("/api/geo");
-                if (!response.ok) return;
-                const geo = await response.json() as { currency?: string; country?: string; isVietnam?: boolean };
-                if (!active) return;
-                setCurrency(geo.currency === "VND" || geo.isVietnam || geo.country === "VN" ? "VND" : "USD");
+                const res = await fetch("/api/geo");
+                if (res.ok) {
+                    const data = await res.json();
+                    if (isMounted) {
+                        if (data?.isVietnam || data?.country === "VN") {
+                            setPayCurrency("VND");
+                        } else {
+                            setPayCurrency("USD");
+                        }
+                    }
+                }
             } catch {
-                // USD remains the safe fallback when location detection is unavailable.
+                // Fallback gracefully
             }
         }
-
-        void resolveCurrency();
+        detectGeo();
         return () => {
-            active = false;
+            isMounted = false;
         };
     }, []);
 
-    const planCards = useMemo<PlanCard[]>(() => [
-        {
-            name: "free",
-            label: "Start",
-            eyebrow: isVnd ? "Dùng thử" : "Trial",
-            description: isVnd
-                ? "Một nguồn, một tài khoản quảng cáo, đồng bộ khi bạn bấm, Google Sheets. Không phải gói trả phí."
-                : "One source, one ad account, on-demand sync, Google Sheets. This is the trial, not a paid plan.",
-            features: [
-                { icon: Shield, text: isVnd ? "1 workspace · 1 nguồn · 1 tài khoản" : "1 workspace · 1 source · 1 ad account" },
-                { icon: FileSpreadsheet, text: isVnd ? "Chỉ Google Sheets" : "Sheets only — no Looker Studio" },
-                { icon: Clock, text: isVnd ? "Đồng bộ khi bạn bấm" : "On-demand sync only" },
-                { icon: Database, text: isVnd ? "Lookback / lịch sử truy vấn 14 ngày" : "14-day lookback / query history" },
-            ],
-        },
-        {
-            name: "starter",
-            label: "Studio",
-            description: isVnd
-                ? "Kho + Sheets + Looker Studio trong cùng workspace. Không phụ phí đích đến."
-                : "Warehouse + Sheets + Looker Studio in one workspace. No destination fee.",
-            features: [
-                { icon: Shield, text: isVnd ? "1 workspace · 2 nguồn · 6 tài khoản" : "1 workspace · 2 sources · 6 ad accounts" },
-                { icon: Users, text: isVnd ? "Thành viên không giới hạn" : "Unlimited seats" },
-                { icon: Clock, text: isVnd ? "Đồng bộ hàng ngày + khi bấm" : "Daily scheduled sync + on-demand" },
-                { icon: Database, text: isVnd ? "Kho + Sheets + Looker Studio" : "Warehouse + Sheets + Looker Studio included" },
-            ],
-        },
-        {
-            name: "professional",
-            label: "Agency",
-            eyebrow: isVnd ? "Phù hợp cho agency" : "Best for agencies",
-            description: isVnd
-                ? "Nhiều workspace, bốn nguồn chứng nhận, CSV và REST API."
-                : "Multiple workspaces, four certified sources, CSV and REST API.",
-            features: [
-                { icon: SlidersHorizontal, text: isVnd ? "3 workspace · 4 nguồn · 15 tài khoản / workspace" : "3 workspaces · 4 sources · 15 accounts / workspace" },
-                { icon: Users, text: isVnd ? "Thành viên không giới hạn" : "Unlimited seats" },
-                { icon: Clock, text: isVnd ? "Đồng bộ hàng ngày + khi bấm" : "Daily + on-demand" },
-                { icon: Zap, text: isVnd ? "CSV + REST API · kho + Sheets + Looker" : "CSV + REST API · warehouse + Sheets + Looker" },
-            ],
-            highlighted: true,
-        },
-    ], [isVnd]);
+    const openVietQr = (planKey: "professional" | "enterprise", planDisplayName: string) => {
+        const effectiveAnnual = isAnnual;
+        let amount = PLAN_PRICING.professional.vndMonthly;
+        if (planKey === "professional") {
+            amount = effectiveAnnual
+                ? PLAN_VND_ANNUAL_TOTALS.professional!
+                : PLAN_PRICING.professional.vndMonthly;
+        }
 
-    const comparisonCategories = useMemo<ComparisonCategory[]>(() => [
+        setSelectedQrPlan({
+            name: planKey,
+            displayName: planDisplayName,
+            amount,
+        });
+        setQrModalOpen(true);
+
+        metaPixelCustom("MC_VietQR_Modal_Opened", {
+            plan: planKey,
+            billing_cycle: effectiveAnnual ? "annual" : "monthly",
+            amount_vnd: amount,
+        });
+    };
+
+    const proPricing = {
+        amountFormatted: payCurrency === "VND" ? (isAnnual ? "14.900.000" : "1.490.000") : isAnnual ? "$64" : "$79",
+        currencySymbol: payCurrency === "VND" ? "đ" : "",
+        unit: payCurrency === "VND" ? (isAnnual ? "/ năm" : "/ tháng") : "/ mo",
+    };
+
+    const enterprisePricing = {
+        amountFormatted: payCurrency === "VND" ? "Liên hệ" : "Custom",
+        currencySymbol: "",
+        unit: "",
+    };
+
+    const comparisonCategories = useMemo(() => [
         {
-            title: isVnd ? "Nguồn dữ liệu & đích đến" : "Sources & destinations",
+            title: payCurrency === "VND" ? "Kênh quảng cáo & Thu thập dữ liệu" : "Data Ingestion & Ad Channels",
             icon: Globe,
-            description: isVnd
-                ? "Các luồng kết nối hiện có trong sản phẩm. Quyền truy cập nhà cung cấp được xác nhận trong pilot."
-                : "Current product workflows. Provider access is confirmed during pilot onboarding.",
+            description: payCurrency === "VND" ? "Các kết nối đang được kích hoạt theo phạm vi pilot" : "Integrations available according to the current pilot scope",
             features: [
-                { name: "Meta Ads", free: true, starter: true, professional: true },
-                { name: "Google Ads", free: true, starter: true, professional: true },
-                { name: "TikTok Ads", free: false, starter: true, professional: true },
-                { name: "Shopee", free: false, starter: false, professional: true },
-                { name: "Google Sheets add-on", free: true, starter: true, professional: true },
-                { name: "Looker Studio connector", free: false, starter: true, professional: true },
-                { name: isVnd ? "Phụ phí đích đến thứ hai" : "Second-destination fee", free: false, starter: false, professional: false },
+                { name: "Meta Ads (Facebook & Instagram)", pro: true, enterprise: true },
+                { name: "TikTok Ads & TikTok Shop", pro: true, enterprise: true },
+                { name: "Google Ads (Search & PMax)", pro: true, enterprise: true },
+                { name: "Shopee Vietnam Open API", pro: true, enterprise: true },
+                { name: "Lazada & E-Commerce APIs", pro: false, enterprise: false },
+                { name: "Custom REST API / Webhook Sources", pro: false, enterprise: true },
             ],
         },
         {
-            title: isVnd ? "Dung lượng workspace" : "Workspace capacity",
+            title: payCurrency === "VND" ? "Kho dữ liệu & Động cơ chuẩn hóa" : "Data Warehouse & Execution Engine",
             icon: Database,
-            description: isVnd
-                ? "Giới hạn được lấy trực tiếp từ cấu hình gói hiện tại."
-                : "Limits shown directly from the current plan configuration.",
+            description: payCurrency === "VND" ? "Chuẩn hóa bảng dữ liệu đa kênh, tối ưu truy vấn tốc độ cao" : "Ultra-fast normalized multi-channel data schemas",
             features: [
-                { name: isVnd ? "Workspace" : "Workspaces", free: formatNumber(PLAN_LIMITS.free.maxWorkspaces), starter: formatNumber(PLAN_LIMITS.starter.maxWorkspaces), professional: formatNumber(PLAN_LIMITS.professional.maxWorkspaces) },
-                { name: isVnd ? "Nguồn (nền tảng)" : "Sources (platforms)", free: formatNumber(PLAN_LIMITS.free.maxSourceProviders), starter: formatNumber(PLAN_LIMITS.starter.maxSourceProviders), professional: formatNumber(PLAN_LIMITS.professional.maxSourceProviders) },
-                { name: isVnd ? "Tài khoản quảng cáo / workspace" : "Ad accounts / workspace", free: formatNumber(PLAN_LIMITS.free.maxConnections), starter: formatNumber(PLAN_LIMITS.starter.maxConnections), professional: formatNumber(PLAN_LIMITS.professional.maxConnections) },
-                { name: isVnd ? "Thành viên" : "Team seats", free: formatNumber(PLAN_LIMITS.free.maxSeats), starter: isVnd ? "Không giới hạn" : "Unlimited", professional: isVnd ? "Không giới hạn" : "Unlimited" },
-                { name: isVnd ? "Khoảng ngày mỗi truy vấn" : "Date range per query", free: `${PLAN_LIMITS.free.maxHistoryDays} ${isVnd ? "ngày" : "days"}`, starter: `${PLAN_LIMITS.starter.explorerMaxDateRangeDays} ${isVnd ? "ngày" : "days"}`, professional: `${PLAN_LIMITS.professional.explorerMaxDateRangeDays} ${isVnd ? "ngày" : "days"}` },
-                { name: isVnd ? "CSV + REST API" : "CSV + REST API", free: false, starter: false, professional: true },
+                { name: "Normalized ad_insights_daily Schema", pro: true, enterprise: true },
+                { name: "Campaign pacing schema", pro: true, enterprise: true },
+                { name: "Maximum Connected Accounts & Shops", pro: "20 accounts", enterprise: "Unlimited" },
+                { name: "Monthly Warehouse Sync Allowance", pro: "3,000 runs", enterprise: "Custom quota" },
+                { name: "Multi-Tenant Workspace Guard", pro: true, enterprise: true },
+                { name: "Dedicated warehouse support", pro: false, enterprise: true },
             ],
         },
         {
-            title: isVnd ? "Vận hành & kiểm soát" : "Operations & control",
+            title: payCurrency === "VND" ? "Kết nối báo cáo & Đầu ra" : "Destinations & Activation",
             icon: FileSpreadsheet,
-            description: isVnd
-                ? "Khả năng vận hành có thể kiểm tra trong console hiện tại."
-                : "Operational capabilities available in the current console.",
+            description: payCurrency === "VND" ? "Xuất dữ liệu tự động vào Google Sheets, Looker Studio và API" : "Live data delivery into Google Sheets, Looker Studio, and APIs",
             features: [
-                { name: isVnd ? "Nhịp đồng bộ" : "Sync cadence", free: PLAN_LIMITS.free.syncLabel, starter: PLAN_LIMITS.starter.syncLabel, professional: PLAN_LIMITS.professional.syncLabel },
-                { name: isVnd ? "Cô lập dữ liệu theo workspace" : "Workspace-scoped data isolation", free: true, starter: true, professional: true },
-                { name: isVnd ? "Kho token được mã hóa" : "Encrypted credential vault", free: true, starter: true, professional: true },
-                { name: isVnd ? "Lịch sử đồng bộ trong console" : "In-console sync history", free: true, starter: true, professional: true },
-                { name: isVnd ? "Kích hoạt gói có xác nhận" : "Operator-confirmed activation", free: true, starter: true, professional: true },
+                { name: "Google Sheets™ Official Add-on", pro: true, enterprise: true },
+                { name: "Looker Studio™ Partner Connector", pro: true, enterprise: true },
+                { name: "Scheduled refreshes where enabled", pro: true, enterprise: true },
+                { name: "Manual & nightly warehouse refreshes", pro: true, enterprise: true },
+                { name: "Workspace REST API Access", pro: true, enterprise: true },
+                { name: "Custom Webhook Trigger Notifications", pro: false, enterprise: true },
             ],
         },
-    ], [isVnd]);
+        {
+            title: payCurrency === "VND" ? "Bảo mật, Nhóm & Hỗ trợ" : "Security, Team & Support",
+            icon: ShieldCheck,
+            description: payCurrency === "VND" ? "Lưu trữ thông tin kết nối được mã hóa và hỗ trợ kỹ thuật" : "Encrypted connection storage and practical technical support",
+            features: [
+                { name: "Encrypted AES-256-GCM Token Vault", pro: true, enterprise: true },
+                { name: "Team Member Seats", pro: "3 Seats", enterprise: "Custom seats" },
+                { name: "VietQR payment", pro: true, enterprise: true },
+                { name: "1-on-1 Priority Support (Zalo / Telegram)", pro: true, enterprise: true },
+                { name: "Custom onboarding scope", pro: false, enterprise: true },
+                { name: "Dedicated Data Engineering Architect", pro: false, enterprise: true },
+            ],
+        },
+    ], [payCurrency]);
 
     const filteredCategories = useMemo(() => {
-        const query = searchQuery.trim().toLowerCase();
-        if (!query) return comparisonCategories;
-        return comparisonCategories
-            .map((category) => ({ ...category, features: category.features.filter((feature) => feature.name.toLowerCase().includes(query)) }))
-            .filter((category) => category.features.length > 0);
+        if (!searchQuery.trim()) return comparisonCategories;
+        const q = searchQuery.toLowerCase();
+        return comparisonCategories.map((cat) => ({
+            ...cat,
+            features: cat.features.filter((f) => f.name.toLowerCase().includes(q)),
+        })).filter((cat) => cat.features.length > 0);
     }, [comparisonCategories, searchQuery]);
 
     return (
-        <div className="min-h-screen bg-canvas pb-24 pt-20 font-sans text-ink antialiased">
-            <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-                <header className="mx-auto mb-9 max-w-3xl pt-6 text-center">
-                    <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-200/[0.06] px-3 py-1 font-mono text-[11px] font-medium text-amber-100">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                        <span>{isVnd ? "Catalog đã duyệt — chưa thu phí" : "Approved catalog — not charging yet"}</span>
+        <div className="min-h-screen pt-20 pb-24 bg-canvas font-sans text-ink antialiased">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+
+                {/* ── Top Header Section ── */}
+                <div className="text-center max-w-3xl mx-auto pt-6 mb-10">
+                    <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 font-mono text-[11px] font-medium text-ink-mute">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                        <span>Predictable Flat-Rate Pricing</span>
                     </div>
-                    <h1 className="text-4xl font-semibold leading-[1.12] tracking-tight text-ink sm:text-5xl">
-                        {isVnd ? (
-                            <>Mở rộng báo cáo.<br /><span className="text-neutral-400">Giữ dữ liệu trong tầm kiểm soát.</span></>
+
+                    <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight text-ink leading-[1.15]">
+                        {payCurrency === "VND" ? (
+                            <>Mở rộng quy mô,<br /><span className="text-neutral-400">kiểm soát chi phí.</span></>
                         ) : (
-                            <>Scale your reporting.<br /><span className="text-neutral-400">Keep your data stack controlled.</span></>
+                            <>Scale your marketing,<br /><span className="text-neutral-400">control your data stack.</span></>
                         )}
                     </h1>
-                    <p className="mx-auto mt-4 max-w-2xl text-sm font-normal leading-relaxed text-ink-mute sm:text-base">
-                        {isVnd
-                            ? "Một workspace thống nhất cho dữ liệu quảng cáo, Google Sheets và Looker Studio—với giới hạn rõ ràng trước khi triển khai."
-                            : "One workspace for advertising data, Google Sheets, and Looker Studio—with clear limits before you roll it out."}
-                    </p>
-                </header>
 
-                <div className="mb-8 flex items-center justify-center">
-                    <div className="inline-flex rounded-full border border-line bg-panel p-1 shadow-xs" aria-label="Billing period">
-                        <button type="button" aria-pressed={!isAnnual} onClick={() => setIsAnnual(false)} className={cn("rounded-full px-4 py-1.5 text-xs transition-all duration-150", !isAnnual ? "bg-white font-semibold text-black shadow-xs" : "font-medium text-ink-mute hover:text-ink")}>{isVnd ? "Theo tháng" : "Monthly"}</button>
-                        <button type="button" aria-pressed={isAnnual} onClick={() => setIsAnnual(true)} className={cn("flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs transition-all duration-150", isAnnual ? "bg-white font-semibold text-black shadow-xs" : "font-medium text-ink-mute hover:text-ink")}>
-                            <span>{isVnd ? "Theo năm" : "Yearly"}</span>
-                            <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-tight", isAnnual ? "bg-black text-white" : "border border-neutral-700 bg-neutral-800 text-neutral-300")}>{isVnd ? "tiết kiệm đến 20%" : "save up to 20%"}</span>
+                    <p className="mt-4 text-sm sm:text-base text-ink-mute font-normal max-w-xl mx-auto leading-relaxed">
+                        {payCurrency === "VND"
+                            ? "Kho dữ liệu quảng cáo hợp nhất cho Agency. Đồng bộ trực tiếp Meta, TikTok, Google và Shopee vào Google Sheets & Looker Studio."
+                            : "Monstera stores normalized reporting data in isolated PostgreSQL workspaces, then makes it available to Google Sheets and Looker Studio."}
+                    </p>
+                </div>
+
+                {/* ── Billing Cycle Controls ── */}
+                <div className="flex items-center justify-center mb-12">
+                    {/* Annual / Monthly Toggle */}
+                    <div className="inline-flex p-1 rounded-full bg-panel border border-line shadow-xs">
+                        <button
+                            type="button"
+                            onClick={() => setIsAnnual(false)}
+                            className={cn(
+                                "px-4 py-1.5 rounded-full text-xs transition-all duration-150",
+                                !isAnnual
+                                    ? "bg-white text-black font-semibold shadow-xs"
+                                    : "text-ink-mute hover:text-ink font-medium"
+                            )}
+                        >
+                            {payCurrency === "VND" ? "Theo tháng" : "Monthly"}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsAnnual(true)}
+                            className={cn(
+                                "px-4 py-1.5 rounded-full text-xs transition-all duration-150 flex items-center gap-1.5",
+                                isAnnual
+                                    ? "bg-white text-black font-semibold shadow-xs"
+                                    : "text-ink-mute hover:text-ink font-medium"
+                            )}
+                        >
+                            <span>{payCurrency === "VND" ? "Theo năm" : "Yearly"}</span>
+                            <span
+                                className={cn(
+                                    "px-1.5 py-0.5 rounded-full text-[10px] font-bold tracking-tight",
+                                    isAnnual
+                                        ? "bg-black text-white"
+                                        : "bg-neutral-800 text-neutral-300 border border-neutral-700"
+                                )}
+                            >
+                                Annual
+                            </span>
                         </button>
                     </div>
                 </div>
 
-                <div className="mx-auto mb-9 flex max-w-3xl items-start gap-3 rounded-lg border border-amber-300/15 bg-amber-200/[0.04] px-4 py-3 text-left">
-                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-200/70" />
-                    <p className="text-xs leading-relaxed text-neutral-400">
-                        {isVnd
-                            ? "Catalog Start / Studio / Agency đã được duyệt (27/08/2026). Checkout công khai vẫn là yêu cầu quyền pilot — chưa thu phí. VN thấy số VND (PayOS/VietQR); ngoài VN thấy USD (Paddle). Google đổi tên Looker Studio thành Data Studio ngày 16/04/2026 — sản phẩm vẫn dùng Looker Studio™."
-                            : "Start / Studio / Agency catalog approved 27 Aug 2026. Public checkout remains Request pilot access — not charging yet. VN visitors see VND (PayOS/VietQR); everyone else sees USD (Paddle). Google rebranded Looker Studio to Data Studio on 16 Apr 2026 — in-product copy still says Looker Studio™."}
-                    </p>
-                </div>
+                {/* Agency pricing and enterprise contact options. Legacy Starter workspaces remain supported in backend limits. */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl mx-auto items-stretch">
 
-                <section className="grid w-full grid-cols-1 items-stretch gap-6 md:grid-cols-3" aria-label="Pricing plans">
-                    {planCards.map((plan) => {
-                        const price = formatPlanPrice(plan.name, currency, isAnnual);
-                        const isFree = plan.name === "free";
-                        return (
-                            <article key={plan.name} className={cn("relative flex flex-col justify-between rounded-xl border bg-panel p-7 transition-all duration-200", plan.highlighted ? "border-white/25 shadow-xl shadow-black/20 ring-1 ring-white/10 md:-translate-y-2" : "border-line hover:border-white/20")}>
-                                {plan.highlighted ? <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/80 to-transparent" /> : null}
-                                <div>
-                                    <div className="mb-4 flex min-h-6 flex-wrap items-center gap-2">
-                                        <h2 className="text-sm font-medium tracking-tight text-ink">{plan.label}</h2>
-                                        {plan.eyebrow ? <span className="rounded border border-line bg-white/[0.07] px-2 py-0.5 text-[10px] font-semibold text-neutral-300">{plan.eyebrow}</span> : null}
-                                    </div>
-                                    <div className="mb-2 min-h-[54px]">
-                                        <div className="flex flex-wrap items-baseline gap-x-1.5">
-                                            <span className="text-4xl font-bold tracking-tight text-ink lg:text-5xl">{isFree ? (isVnd ? "0 đ" : "Free") : price.formatted}</span>
-                                            {isFree ? null : <span className="text-xs font-normal text-ink-mute">{isVnd ? "/ tháng" : "/ mo"}</span>}
-                                        </div>
-                                        <p className="mt-1 min-h-4 font-mono text-[10px] text-neutral-500">{isFree ? (isVnd ? "Dùng thử — không phải gói trả phí" : "Trial — not a paid plan") : isAnnual ? formatAnnualTotal(price.amount, currency) : isVnd ? "Thanh toán theo tháng" : "Billed monthly"}</p>
-                                    </div>
-                                    <p className="mb-6 min-h-[52px] text-xs leading-relaxed text-ink-mute">{plan.description}</p>
-                                    <ul className="mb-8 space-y-3 border-t border-line pt-5 text-xs text-neutral-300">
-                                        {plan.features.map((feature) => {
-                                            const FeatureIcon = feature.icon;
-                                            return <li key={feature.text} className="flex items-start gap-2.5"><FeatureIcon className="mt-0.5 h-4 w-4 shrink-0 text-ink-mute" /><span className="leading-relaxed">{feature.text}</span></li>;
-                                        })}
-                                    </ul>
-                                </div>
-                                <Link href={plan.name === "free" ? "/register" : `/support?pilot=1&plan=${plan.name}`} className={cn("flex w-full items-center justify-center gap-2 rounded-md px-4 py-2.5 text-xs font-semibold transition-colors", plan.highlighted ? "bg-white text-black hover:bg-neutral-200" : "border border-line bg-canvas text-ink hover:bg-white/[0.04]")}>
-                                    <span>{plan.name === "free" ? (isVnd ? "Tạo tài khoản miễn phí" : "Create free account") : (isVnd ? "Yêu cầu quyền truy cập pilot" : "Request pilot access")}</span>
-                                    <ArrowRight className="h-3.5 w-3.5" />
-                                </Link>
-                            </article>
-                        );
-                    })}
-                </section>
-
-                <section className="mt-24 w-full" aria-labelledby="comparison-heading">
-                    <div className="flex flex-col items-start justify-between gap-4 border-b border-line pb-6 sm:flex-row sm:items-end">
+                    {/* ── AGENCY PRO [POPULAR] ── */}
+                    <div className="relative rounded-xl p-7 bg-panel border border-white/20 flex flex-col justify-between transition-colors hover:border-white/30 ring-1 ring-white/10 shadow-lg">
                         <div>
-                            <h2 id="comparison-heading" className="text-xl font-bold tracking-tight text-ink">{isVnd ? "So sánh chi tiết" : "Compare the details"}</h2>
-                            <p className="mt-1 text-xs text-ink-mute">{isVnd ? "Giá trị cấu hình hiện tại, không phải hạn mức ước tính." : "Current configured values—not estimated allowances."}</p>
+                            <div className="flex items-center gap-2 mb-3">
+                                <h3 className="text-sm font-medium text-ink tracking-tight">Agency Pro</h3>
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/[0.1] text-ink border border-line">
+                                    {payCurrency === "VND" ? "Dành cho Agency" : "Recommended for Agencies"}
+                                </span>
+                            </div>
+
+                            {/* Stable Price Number */}
+                            <div className="mb-4 flex items-baseline min-h-[48px]">
+                                <span className="text-4xl lg:text-5xl font-bold tracking-tight text-ink">
+                                    {proPricing.amountFormatted}
+                                </span>
+                                {proPricing.currencySymbol ? (
+                                    <span className="text-xl font-bold text-ink-mute ml-1">
+                                        {proPricing.currencySymbol}
+                                    </span>
+                                ) : null}
+                                <span className="text-xs font-normal text-ink-mute ml-1.5">
+                                    {proPricing.unit}
+                                </span>
+                            </div>
+
+                            <p className="text-xs text-ink-mute leading-relaxed mb-6 min-h-[34px]">
+                                {payCurrency === "VND"
+                                    ? "Dành cho Agency vận hành và mở rộng báo cáo cho nhiều khách hàng."
+                                    : "For marketing agencies managing multiple client brands and dashboards."}
+                            </p>
+
+                            {/* Decision-led bullets */}
+                            <ul className="space-y-3 text-xs text-neutral-300 mb-8 border-t border-line pt-5">
+                                <li className="flex items-center gap-2.5">
+                                    <SlidersHorizontal className="w-4 h-4 text-ink-mute shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Tối đa 20 Tài khoản quảng cáo & Shop"
+                                            : "Up to 20 ad accounts & shop scopes"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Layers className="w-4 h-4 text-ink-mute shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Cô lập dữ liệu Workspace từng khách hàng"
+                                            : "Multi-tenant client workspace isolation"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Clock className="w-4 h-4 text-ink-mute shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Làm mới kho dữ liệu thủ công và hàng đêm"
+                                            : "Manual & nightly warehouse refreshes"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Users className="w-4 h-4 text-ink-mute shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "3 Thành viên nhóm & phân quyền chi tiết"
+                                            : "Team collaboration & 3 member seats"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Headphones className="w-4 h-4 text-ink-mute shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Hỗ trợ kỹ thuật 1-1 qua Zalo / Telegram"
+                                            : "1-on-1 Priority support (Zalo / Telegram)"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Zap className="w-4 h-4 text-ink-mute shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "3.000 Lượt làm mới dữ liệu ưu tiên"
+                                            : "3,000 Priority warehouse syncs"}
+                                    </span>
+                                </li>
+                            </ul>
                         </div>
-                        <label className="relative w-full sm:w-64">
-                            <span className="sr-only">{isVnd ? "Tìm tính năng" : "Search features"}</span>
-                            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-mute" />
-                            <input type="search" placeholder={isVnd ? "Tìm tính năng..." : "Search features..."} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="w-full rounded-md border border-line bg-panel py-2 pl-9 pr-3 text-xs text-ink placeholder:text-ink-mute/70 focus:border-white/25 focus:outline-none" />
-                        </label>
+
+                        {payCurrency === "VND" && workspaceId ? (
+                            <button
+                                onClick={() => openVietQr("professional", "Agency Pro")}
+                                className="w-full py-2.5 px-4 rounded-md bg-white hover:bg-neutral-200 text-black text-xs font-semibold transition-colors flex items-center justify-center gap-2 shadow-xs"
+                            >
+                                <QrCode className="w-3.5 h-3.5 text-black" />
+                                <span>Thanh toán VietQR</span>
+                            </button>
+                        ) : (
+                            <Link
+                                href="/register"
+                                className="w-full py-2.5 px-4 rounded-md bg-white hover:bg-neutral-200 text-black text-xs font-semibold transition-colors flex items-center justify-center gap-2 shadow-xs"
+                            >
+                                <span>{payCurrency === "VND" ? "Dùng thử Agency Pro 7 ngày" : "Start 7-day free pilot"}</span>
+                            </Link>
+                        )}
                     </div>
 
-                    <div className="sticky top-13 z-20 grid grid-cols-12 border-b border-line bg-canvas/95 py-3.5 text-sm font-semibold text-ink backdrop-blur-md">
-                        <div className="col-span-6 font-mono text-xs font-medium uppercase tracking-wider text-ink-mute">{isVnd ? "Tính năng" : "Feature"}</div>
-                        <div className="col-span-2 text-center text-[10px] font-semibold sm:text-xs">Start</div>
-                        <div className="col-span-2 text-center text-[10px] font-semibold sm:text-xs">Studio</div>
-                        <div className="col-span-2 text-center text-[10px] font-semibold text-white sm:text-xs">Agency</div>
+                    {/* ── ENTERPRISE ── */}
+                    <div className="relative rounded-xl p-7 bg-panel border border-line flex flex-col justify-between transition-colors hover:border-white/20">
+                        <div>
+                            <div className="mb-3">
+                                <h3 className="text-sm font-medium text-ink tracking-tight">Enterprise</h3>
+                            </div>
+
+                            {/* Stable Price Number */}
+                            <div className="mb-4 flex items-baseline min-h-[48px]">
+                                <span className="text-4xl lg:text-5xl font-bold tracking-tight text-ink">
+                                    {enterprisePricing.amountFormatted}
+                                </span>
+                            </div>
+
+                            <p className="text-xs text-ink-mute leading-relaxed mb-6 min-h-[34px]">
+                                {payCurrency === "VND"
+                                    ? "Bảo mật nâng cao, hỗ trợ kho dữ liệu riêng và hỗ trợ kỹ thuật chuyên sâu."
+                                    : "Dedicated warehouse support and custom pipeline guidance."}
+                            </p>
+
+                            {/* Decision-led bullets */}
+                            <ul className="space-y-3 text-xs text-neutral-300 mb-8 border-t border-line pt-5">
+                                <li className="flex items-center gap-2.5">
+                                    <Workflow className="w-4 h-4 text-ink-mute shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Không giới hạn tài khoản & pipeline tùy chỉnh"
+                                            : "Unlimited accounts & custom pipelines"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Database className="w-4 h-4 text-ink-mute shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Hỗ trợ kho dữ liệu riêng"
+                                            : "Dedicated warehouse support"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Lock className="w-4 h-4 text-ink-mute shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Phạm vi phân quyền theo nhu cầu"
+                                            : "Access controls scoped to your needs"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <ShieldCheck className="w-4 h-4 text-ink-mute shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Lộ trình triển khai và hỗ trợ theo phạm vi"
+                                            : "Implementation and support scope agreed together"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Cpu className="w-4 h-4 text-ink-mute shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Kỹ sư dữ liệu hỗ trợ triển khai riêng"
+                                            : "Dedicated data engineering architect"}
+                                    </span>
+                                </li>
+                                <li className="flex items-center gap-2.5">
+                                    <Coins className="w-4 h-4 text-ink-mute shrink-0" />
+                                    <span>
+                                        {payCurrency === "VND"
+                                            ? "Báo giá theo nhu cầu vận hành"
+                                            : "Custom commercial scope"}
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <Link
+                            href="mailto:support@monsteracloud.com?subject=Inquiry%20Enterprise%20Plan%20Monstera%20Cloud"
+                            className="w-full py-2.5 px-4 rounded-md border border-line bg-canvas hover:bg-white/[0.04] text-ink text-xs font-medium transition-colors flex items-center justify-center gap-2"
+                        >
+                            <span>{payCurrency === "VND" ? "Liên hệ tư vấn Enterprise" : "Contact sales"}</span>
+                        </Link>
+                    </div>
+
+                </div>
+
+                {/* ── Full Feature Comparison Matrix with Sticky Header & Row Hover ── */}
+                <div className="mt-28 w-full">
+                    {/* Comparison Header Bar */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-line">
+                        <div>
+                            <h2 className="text-xl font-bold tracking-tight text-ink">
+                                {payCurrency === "VND" ? "So sánh chi tiết tất cả tính năng" : "Compare all features"}
+                            </h2>
+                            <p className="text-xs text-ink-mute mt-1">
+                                {payCurrency === "VND"
+                                    ? "Chi tiết thông số kỹ thuật, giới hạn kết nối và quyền lợi từng gói dịch vụ."
+                                    : "Detailed technical breakdown, limits, and capabilities across all tiers."}
+                            </p>
+                        </div>
+
+                        {/* Search Feature Input */}
+                        <div className="relative w-full sm:w-64">
+                            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute" />
+                            <input
+                                type="text"
+                                placeholder={payCurrency === "VND" ? "Tìm kiếm tính năng..." : "Search feature..."}
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full bg-panel border border-line rounded-md pl-9 pr-3 py-1.5 text-xs text-ink placeholder:text-ink-mute/70 focus:outline-none focus:border-white/25 transition-colors"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Sticky Table Header */}
+                    <div className="sticky top-13 z-20 bg-canvas/95 backdrop-blur-md grid grid-cols-12 py-3.5 border-b border-line text-sm font-semibold text-ink">
+                        <div className="col-span-6 sm:col-span-6 text-ink-mute text-xs uppercase tracking-wider font-mono">
+                            {payCurrency === "VND" ? "TÍNH NĂNG" : "FEATURE"}
+                        </div>
+                        <div className="col-span-3 text-center text-xs sm:text-sm font-semibold text-white">Agency Pro</div>
+                        <div className="col-span-3 text-center text-xs sm:text-sm font-semibold">Enterprise</div>
                     </div>
 
                     <div className="divide-y divide-line/60">
-                        {filteredCategories.map((category) => {
+                        {filteredCategories.map((category, catIdx) => {
                             const CategoryIcon = category.icon;
                             return (
-                                <div key={category.title} className="pb-4 pt-6">
-                                    <div className="mb-1 flex items-center gap-2"><CategoryIcon className="h-4 w-4 text-ink-mute" /><h3 className="text-sm font-semibold text-ink">{category.title}</h3></div>
-                                    <p className="mb-4 max-w-2xl text-xs leading-relaxed text-ink-mute">{category.description}</p>
+                                <div key={catIdx} className="pt-6 pb-4">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <CategoryIcon className="w-4 h-4 text-ink-mute" />
+                                        <h3 className="text-sm font-semibold text-ink">{category.title}</h3>
+                                    </div>
+                                    <p className="text-xs text-ink-mute mb-4">{category.description}</p>
+
                                     <div className="space-y-0.5">
-                                        {category.features.map((feature) => (
-                                            <div key={feature.name} className="grid grid-cols-12 items-center rounded-md px-2 py-3 text-xs transition-colors hover:bg-white/[0.03]">
-                                                <div className="col-span-6 pr-3 font-normal text-neutral-300">{feature.name}</div>
-                                                <div className="col-span-2 flex items-center justify-center text-center"><ComparisonCell value={feature.free} /></div>
-                                                <div className="col-span-2 flex items-center justify-center text-center"><ComparisonCell value={feature.starter} /></div>
-                                                <div className="col-span-2 flex items-center justify-center text-center"><ComparisonCell value={feature.professional} emphasized /></div>
+                                        {category.features.map((feature, fIdx) => (
+                                            <div
+                                                key={fIdx}
+                                                className="grid grid-cols-12 py-3 px-2 rounded-md hover:bg-white/[0.03] transition-colors duration-150 items-center text-xs"
+                                            >
+                                                <div className="col-span-6 text-neutral-300 font-normal pr-2">
+                                                    {feature.name}
+                                                </div>
+
+                                                <div className="col-span-3 flex items-center justify-center text-center">
+                                                    {typeof feature.pro === "boolean" ? (
+                                                        feature.pro ? (
+                                                            <Check className="w-3.5 h-3.5 text-white" />
+                                                        ) : (
+                                                            <span className="text-neutral-700 font-light">—</span>
+                                                        )
+                                                    ) : (
+                                                        <span className="font-mono text-[11px] font-medium text-white">{feature.pro}</span>
+                                                    )}
+                                                </div>
+
+                                                <div className="col-span-3 flex items-center justify-center text-center">
+                                                    {typeof feature.enterprise === "boolean" ? (
+                                                        feature.enterprise ? (
+                                                            <Check className="w-3.5 h-3.5 text-neutral-300" />
+                                                        ) : (
+                                                            <span className="text-neutral-700 font-light">—</span>
+                                                        )
+                                                    ) : (
+                                                        <span className="font-mono text-[11px] text-neutral-300">{feature.enterprise}</span>
+                                                    )}
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
                                 </div>
                             );
                         })}
-                        {filteredCategories.length === 0 ? <div className="py-12 text-center text-sm text-ink-mute">{isVnd ? "Không tìm thấy tính năng phù hợp." : "No matching features found."}</div> : null}
                     </div>
-                </section>
+                </div>
 
-                <section className="mt-14 flex w-full flex-col items-center justify-between gap-4 rounded-xl border border-line bg-panel p-6 text-center sm:flex-row sm:text-left">
+                {/* Custom setup callout */}
+                <div className="mt-16 w-full rounded-xl p-6 bg-panel border border-line flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
                     <div>
-                        <h2 className="text-sm font-semibold text-ink">{isVnd ? "Bạn cần xác nhận cấu hình pilot?" : "Need to confirm a pilot setup?"}</h2>
-                        <p className="mt-1 max-w-3xl text-xs leading-relaxed text-ink-mute">{isVnd ? "Cho chúng tôi biết nguồn dữ liệu, đích đến và số workspace. Chúng tôi sẽ xác nhận quyền truy cập connector và dung lượng phù hợp trước khi kích hoạt." : "Tell us your sources, destinations, and workspace count. We’ll confirm connector access and the right capacity before activation."}</p>
+                        <h4 className="font-semibold text-sm text-ink">
+                            {payCurrency === "VND" ? "Bạn cần tư vấn kiến trúc dữ liệu riêng?" : "Looking for custom data engineering or bespoke setup?"}
+                        </h4>
+                        <p className="text-xs text-ink-mute mt-1">
+                            {payCurrency === "VND"
+                                ? "Đội ngũ kỹ thuật của Monstera Cloud sẵn sàng hỗ trợ setup và đào tạo trực tiếp cho Agency của bạn."
+                                : "Our engineering team provides direct onboarding, custom connector development, and dedicated warehouse support."}
+                        </p>
                     </div>
-                    <Link href="/support?pilot=1" className="inline-flex shrink-0 items-center gap-2 rounded-md border border-line bg-canvas px-4 py-2 text-xs font-medium text-ink transition-colors hover:bg-white/[0.04]">{isVnd ? "Trao đổi về pilot" : "Discuss your pilot"}<ArrowRight className="h-3.5 w-3.5" /></Link>
-                </section>
+                    <Link
+                        href="mailto:support@monsteracloud.com"
+                        className="px-4 py-2 rounded-md bg-canvas border border-line text-xs font-medium text-ink hover:bg-white/[0.04] transition-colors whitespace-nowrap"
+                    >
+                        {payCurrency === "VND" ? "Gặp chuyên gia tư vấn" : "Talk to Sales"}
+                    </Link>
+                </div>
+
             </div>
+
+            {/* VietQR Modal */}
+            <VietQrModal
+                isOpen={qrModalOpen}
+                onClose={() => setQrModalOpen(false)}
+                planName={selectedQrPlan.name}
+                planDisplayName={selectedQrPlan.displayName}
+                billingCycle={isAnnual ? "annual" : "monthly"}
+                amountVnd={selectedQrPlan.amount}
+                workspaceId={workspaceId}
+            />
         </div>
+    );
+}
+
+export default function PricingPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-canvas" />}>
+            <PricingPageContent />
+        </Suspense>
     );
 }

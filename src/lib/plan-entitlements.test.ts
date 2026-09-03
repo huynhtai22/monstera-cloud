@@ -127,9 +127,9 @@ describe("destination entitlements — no second-destination fee", () => {
 });
 
 describe("refresh, API keys, CSV, seats, workspaces", () => {
-  it("skips scheduled warehouse refresh on free (on-demand only)", () => {
-    assert.equal(evaluateScheduledRefresh("free"), false);
-    assert.equal(workspaceAllowsScheduledRefresh("free"), false);
+  it("allows one daily scheduled warehouse refresh on free", () => {
+    assert.equal(evaluateScheduledRefresh("free"), true);
+    assert.equal(workspaceAllowsScheduledRefresh("free"), true);
     assert.equal(evaluateScheduledRefresh("starter"), true);
     assert.equal(evaluateScheduledRefresh("professional"), true);
     assert.equal(PLAN_LIMITS.professional.syncLabel, "Daily + on-demand");

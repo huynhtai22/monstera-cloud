@@ -103,14 +103,15 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     maxSourceProviders: 1,
     maxWorkspaces: 1,
     maxQueriesPerMonth: 100,
-    syncIntervalMs: 60 * 1000,                    // TODO: restore to 15 min — temporarily relaxed for testing
+    // Public Free-plan promise: one scheduled sync per 24 hours.
+    syncIntervalMs: 24 * 60 * 60 * 1000,
     maxHistoryDays: 14,
     tiktokReportCooldownMs: 60 * 60 * 1000,      // 1 hour cooldown on reports
     metaReportCooldownMs: 60 * 60 * 1000,        // 1 hour cooldown
     googleReportCooldownMs: 60 * 60 * 1000,      // 1 hour cooldown
     priority: 1,
-    syncLabel: "On-demand",
-    scheduledRefresh: "none",
+    syncLabel: "Daily",
+    scheduledRefresh: "daily",
     allowLooker: false,
     allowApiKeys: false,
     allowCsvExport: false,
@@ -351,8 +352,8 @@ export const PLAN_PRICING: Record<PlanName, PlanPriceConfig> = {
   professional: {
     usdMonthly: 149,
     usdAnnualMonthly: 129, // $1,548/year
-    vndMonthly: 2_490_000,
-    vndAnnualMonthly: 2_190_000, // 26,280,000 đ/year
+    vndMonthly: 1_490_000,
+    vndAnnualMonthly: 1_241_667,
   },
   enterprise: {
     usdMonthly: 199,
@@ -360,6 +361,11 @@ export const PLAN_PRICING: Record<PlanName, PlanPriceConfig> = {
     vndMonthly: 2_490_000,
     vndAnnualMonthly: 1_990_000, // 23,880,000 đ/year
   },
+};
+
+/** Checkout uses exact annual totals rather than multiplying a rounded monthly display amount. */
+export const PLAN_VND_ANNUAL_TOTALS: Partial<Record<PlanName, number>> = {
+  professional: 14_900_000,
 };
 
 export function formatPlanPrice(
@@ -383,4 +389,3 @@ export function formatPlanPrice(
     billingCycleText: isAnnual ? '/mo (billed annually)' : '/mo',
   };
 }
-

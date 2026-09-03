@@ -24,11 +24,20 @@ function runPrisma(args) {
   return result;
 }
 
-if (!process.env.DATABASE_URL?.trim()) {
-  throw new Error("DATABASE_URL is required for deployment migrations");
+if (!process.env.DATABASE_URL?.trim() && !process.env.DIRECT_URL?.trim()) {
+  throw new Error("DATABASE_URL or DIRECT_URL is required for deployment migrations");
 }
 
-const prisma = new PrismaClient();
+const migrationDatabaseUrl = process.env.DIRECT_URL?.trim() || process.env.DATABASE_URL?.trim();
+if (process.env.DIRECT_URL?.trim()) {
+  process.env.DIRECT_URL = process.env.DIRECT_URL.trim();
+}
+
+const prisma = new PrismaClient({
+  datasources: {
+    db: { url: migrationDatabaseUrl },
+  },
+});
 let existingTables;
 let baselineApplied = false;
 let failedPilotMigration = false;

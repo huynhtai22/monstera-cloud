@@ -16,7 +16,7 @@ test("version endpoint exposes an uncached release identity", async ({ request }
   expect(response.headers()["cache-control"]).toContain("no-store");
   await expect(response.json()).resolves.toMatchObject({
     commitSource: expect.stringMatching(/^(build|vercel|development)$/),
-    schemaVersion: "20260827120000_shopee_sandbox_catalog",
+    schemaVersion: expect.stringMatching(/^\d{14}_/),
   });
 });
 

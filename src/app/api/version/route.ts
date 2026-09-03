@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveReleaseIdentity } from "@/lib/release-identity";
+import { resolveLatestMigrationVersion } from "@/lib/release-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export async function GET() {
     {
       ...releaseIdentity,
       buildTime: process.env.BUILD_TIME || null,
-      schemaVersion: "20260827120000_shopee_sandbox_catalog",
+      schemaVersion: resolveLatestMigrationVersion(),
       environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "unknown",
     },
     { headers: { "Cache-Control": "no-store, max-age=0" } },

@@ -57,6 +57,8 @@ export const TENANT_GUARDED_MODELS = new Set([
   "ShopeeCampaign",
   "ShopeeProduct",
   "ProviderSyncRun",
+  "PaymentOrder",
+  "ProviderAccountHealth",
 ]);
 
 /**
@@ -87,7 +89,13 @@ type GuardStore = { skip: boolean };
 const guardStore = new AsyncLocalStorage<GuardStore>();
 
 export function withSystemScope<T>(fn: () => T): T {
-  return guardStore.run({ skip: true }, fn);
+  return guardStore.run({ skip: true }, () => {
+    const result = fn();
+    if (result && typeof (result as any).then === "function") {
+      return (async () => await (result as any))() as unknown as T;
+    }
+    return result;
+  });
 }
 
 export function shouldSkipTenantGuard(): boolean {
@@ -133,6 +141,13 @@ function nodeHasWorkspaceScope(node: unknown, depth = 0): boolean {
     const pipeline = record.pipeline as Record<string, unknown>;
     const pipelineNode = pipeline.is ?? pipeline;
     if (nodeHasWorkspaceScope(pipelineNode, depth + 1)) return true;
+  }
+
+  if (record.connection && typeof record.connection === "object") {
+    const conn = record.connection as Record<string, unknown>;
+    const connNode = (conn.is ?? conn) as Record<string, unknown>;
+    if (isNonEmptyString(connNode.workspaceId)) return true;
+    if (nodeHasWorkspaceScope(connNode, depth + 1)) return true;
   }
 
   if (Array.isArray(record.AND) && record.AND.some((item) => nodeHasWorkspaceScope(item, depth + 1))) {

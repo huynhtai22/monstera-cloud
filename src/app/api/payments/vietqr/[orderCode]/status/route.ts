@@ -57,6 +57,7 @@ export async function GET(
             plan: order.plan,
             amount: order.amount,
             paidAt: order.paidAt,
+            paidThroughAt: order.paidThroughAt,
         });
     } catch (err: any) {
         return NextResponse.json({ error: err.message || "Failed to check status" }, { status: 500 });

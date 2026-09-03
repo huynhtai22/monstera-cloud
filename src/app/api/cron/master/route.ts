@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     ["warehouseJobs", "/api/cron/warehouse-jobs"],
     ["healthTick", "/api/cron/health-tick"],
     ["alerts", "/api/cron/performance-alerts"],
-    ["agentJobs", "/api/cron/agent-jobs"],
+    ["billingExpiry", "/api/cron/billing-expiry"],
   ] as const;
 
   const settled = await Promise.all(tasks.map(async ([name, path]) => {

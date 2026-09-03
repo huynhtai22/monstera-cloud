@@ -1,8 +1,29 @@
 import { fileURLToPath } from "url";
 import path from "path";
+import fs from "fs";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+function getLatestMigrationVersion() {
+  if (process.env.RELEASE_SCHEMA_VERSION) return process.env.RELEASE_SCHEMA_VERSION;
+  try {
+    const migrationsDir = path.join(__dirname, "prisma", "migrations");
+    if (fs.existsSync(migrationsDir)) {
+      const entries = fs.readdirSync(migrationsDir, { withFileTypes: true });
+      const dirs = entries
+        .filter((entry) => entry.isDirectory() && /^\d{14}_/.test(entry.name))
+        .map((entry) => entry.name)
+        .sort();
+      if (dirs.length > 0) {
+        return dirs[dirs.length - 1];
+      }
+    }
+  } catch {
+    // Ignore fallback
+  }
+  return "unknown";
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -12,6 +33,7 @@ const nextConfig = {
     // /api/version. Do not fall back to provider metadata here: production
     // release workflows must set RELEASE_COMMIT_SHA explicitly.
     RELEASE_COMMIT_SHA: process.env.RELEASE_COMMIT_SHA || "development",
+    RELEASE_SCHEMA_VERSION: getLatestMigrationVersion(),
   },
   // Pin workspace root explicitly so Next.js/Turbopack doesn't get confused
   // by a stale package-lock.json sitting in a parent directory.

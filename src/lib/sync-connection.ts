@@ -50,6 +50,8 @@ import {
   TIKTOK_ADVERTISER_RECONNECT_MESSAGE,
 } from "@/lib/tiktok-advertiser-id";
 import { ingestTiktokRows } from "@/lib/ad-platform-ingest";
+import { recordAccountOutcome, getSkippedAccountIds } from "@/lib/provider-account-health";
+import { computeStaleRowStats } from "@/lib/provider-row-reconciliation";
 import {
   type SyncChildResult,
   type SyncResult,
@@ -396,10 +398,18 @@ async function syncMetaAds(opts: {
   const children: SyncChildResult[] = [];
 
   logger.info(`[syncMetaAds] Starting sync for ${adAccounts.length} accounts`);
+  const skippedAccounts = await getSkippedAccountIds(connectionId, workspaceId);
 
   for (const account of adAccounts) {
     const accountId = account.id;
     const accountName = account.name;
+
+    if (skippedAccounts.has(String(accountId))) {
+      logger.info(`[syncMetaAds] Skipping quarantined/reconnect-required account ${accountId}`);
+      children.push({ id: String(accountId), kind: "ad_account", ok: true, rowsIngested: 0, skipped: "account_health" });
+      continue;
+    }
+
     logger.info(`[syncMetaAds] Processing account ${accountId}`);
 
     // Acquire sync lock
@@ -458,6 +468,34 @@ async function syncMetaAds(opts: {
 
         logger.info(`[syncMetaAds] Ingested ${result.upserted} rows, failed: ${result.failed}`);
         children.push({ id: String(accountId), kind: "ad_account", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+        await recordAccountOutcome({
+          workspaceId,
+          connectionId,
+          provider: "meta_ads",
+          accountId: String(accountId),
+          accountName,
+          ok: result.failed === 0,
+          retryable: result.failed > 0,
+          error: result.failed ? `${result.failed} row(s) could not be written` : undefined,
+        });
+
+        // Stale-row detection (observability only, rows always retained).
+        if (result.failed === 0 && since && until) {
+          try {
+            await computeStaleRowStats({
+              workspaceId,
+              connectionId,
+              accountId: String(accountId),
+              level: "ad",
+              since: new Date(`${since}T00:00:00.000Z`),
+              until: new Date(`${until}T23:59:59.999Z`),
+              providerEntityIds: rows.map((row: any) => String(row.ad_id ?? row.id ?? "")).filter(Boolean),
+              fetchComplete: true,
+            });
+          } catch (reconErr) {
+            logger.warn("[syncMetaAds] Stale-row detection failed (non-fatal):", reconErr);
+          }
+        }
 
         // Earlier warehouse refreshes stored Meta results at campaign level.
         // Once a complete ad-level replacement is written, remove only those
@@ -481,13 +519,38 @@ async function syncMetaAds(opts: {
       } else {
         logger.info(`[syncMetaAds] No rows to ingest for ${accountId}`);
         children.push({ id: String(accountId), kind: "ad_account", ok: true, rowsIngested: 0 });
+        await recordAccountOutcome({
+          workspaceId,
+          connectionId,
+          provider: "meta_ads",
+          accountId: String(accountId),
+          accountName,
+          ok: true,
+        });
       }
 
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: true });
     } catch (error: any) {
       await releaseMetaSyncLock({ scope: lock.scope, leaseId: lock.leaseId, success: false });
       const msg = error instanceof Error ? error.message : String(error);
-      if (error instanceof MetaOAuthRevokedError) {
+      const isRevoked = error instanceof MetaOAuthRevokedError;
+      const isAuth = isRevoked || /error validating access token|token.*revoked|code 190|oauthexception/i.test(msg);
+      const metaRetryable = isRetryableSyncError(error) && !isAuth;
+      const childError = isRevoked ? `Meta authorization revoked — reconnect required. (${msg})` : msg;
+      children.push({ id: String(accountId), kind: "ad_account", ok: false, error: childError, retryable: metaRetryable });
+      await recordAccountOutcome({
+        workspaceId,
+        connectionId,
+        provider: "meta_ads",
+        accountId: String(accountId),
+        accountName,
+        ok: false,
+        retryable: metaRetryable,
+        authFailure: isAuth,
+        error: childError,
+      });
+
+      if (isRevoked) {
         // OAuth revoked: a permanent connection-auth condition, not a per-account
         // failure. Route to the established revocation handler (disconnect +
         // ticket) so the connection does not look healthy and retrying stops.
@@ -496,12 +559,10 @@ async function syncMetaAds(opts: {
         } catch (revErr) {
           logger.error("[syncMetaAds] handleMetaRevocation failed:", revErr);
         }
-        children.push({ id: String(accountId), kind: "ad_account", ok: false, error: `Meta authorization revoked — reconnect required. (${msg})`, retryable: false });
         break; // token is revoked: remaining accounts share the same fate
       }
-      children.push({ id: String(accountId), kind: "ad_account", ok: false, error: msg, retryable: isRetryableSyncError(error) });
       logger.error(`[syncMetaAds] Failed for account ${accountId}:`, error);
-      // Continue with next account
+      // Sibling isolation: continue with next account
     }
   }
 
@@ -645,9 +706,16 @@ async function syncGoogleAds(opts: {
   }
 
   logger.info(`[syncGoogleAds] Total leaf accounts to query: ${leafAccounts.length}`);
+  const skippedCustomers = await getSkippedAccountIds(connectionId, workspaceId);
 
   // ── Step 2: Query each leaf account ────────────────────────────────────────
   for (const { customerId, mccId, descriptiveName } of leafAccounts) {
+    if (skippedCustomers.has(customerId)) {
+      logger.info(`[syncGoogleAds] Skipping quarantined/reconnect-required customer ${customerId}`);
+      children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0, skipped: "account_health" });
+      continue;
+    }
+
     try {
       logger.info(`[syncGoogleAds] Fetching campaigns for customerId=${customerId} login-customer-id=${mccId} (${descriptiveName})`);
 
@@ -662,6 +730,14 @@ async function syncGoogleAds(opts: {
 
       if (rows.length === 0) {
         children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0 });
+        await recordAccountOutcome({
+          workspaceId,
+          connectionId,
+          provider: "google_ads",
+          accountId: customerId,
+          accountName: descriptiveName,
+          ok: true,
+        });
         continue;
       }
 
@@ -670,17 +746,6 @@ async function syncGoogleAds(opts: {
       logger.info(`[syncGoogleAds] sample row: ${JSON.stringify(rows[0]).slice(0, 400)}`);
 
       const transformedRows = rows.map((r: any) => {
-        // The normalizer flattens nested objects using section_field naming:
-        //   campaign.id          → campaign_id  (Number)
-        //   campaign.name        → campaign_name
-        //   metrics.cost_micros  → metrics_cost  (divided by 1M — micros suffix stripped)
-        //   metrics.impressions  → metrics_impressions
-        //   metrics.clicks       → metrics_clicks
-        //   metrics.ctr          → metrics_ctr
-        //   metrics.average_cpc  → metrics_average_cpc
-        //   metrics.conversions  → metrics_conversions
-        //   segments.date        → segments_date
-        //   customer.currency_code → customer_currency_code
         const campaignId = String(r.campaign_id ?? r.campaign_name ?? "unknown");
         const date = r.segments_date ?? r.date ?? null;
 
@@ -710,6 +775,14 @@ async function syncGoogleAds(opts: {
 
       if (validRows.length === 0) {
         children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0 });
+        await recordAccountOutcome({
+          workspaceId,
+          connectionId,
+          provider: "google_ads",
+          accountId: customerId,
+          accountName: descriptiveName,
+          ok: true,
+        });
         continue;
       }
 
@@ -724,14 +797,57 @@ async function syncGoogleAds(opts: {
 
       logger.info(`[syncGoogleAds] customerId=${customerId} upserted=${result.upserted} failed=${result.failed}`);
       children.push({ id: customerId, kind: "customer", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+      await recordAccountOutcome({
+        workspaceId,
+        connectionId,
+        provider: "google_ads",
+        accountId: customerId,
+        accountName: descriptiveName,
+        ok: result.failed === 0,
+        retryable: result.failed > 0,
+        error: result.failed ? `${result.failed} row(s) could not be written` : undefined,
+      });
+
+      // Stale row detection for Google Ads
+      if (result.failed === 0 && opts.since && opts.until) {
+        try {
+          await computeStaleRowStats({
+            workspaceId,
+            connectionId,
+            accountId: customerId,
+            level: "campaign",
+            since: new Date(`${opts.since}T00:00:00.000Z`),
+            until: new Date(`${opts.until}T23:59:59.999Z`),
+            providerEntityIds: validRows.map((r) => r.campaign_id),
+            fetchComplete: true,
+          });
+        } catch (reconErr) {
+          logger.warn("[syncGoogleAds] Stale-row detection failed (non-fatal):", reconErr);
+        }
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Google Ads sync failed";
-      if (isGoogleAdsDeveloperTokenBlocked(error)) {
-        children.push({ id: customerId, kind: "customer", ok: false, error: "Google Ads rejected the configured developer token (DEVELOPER_TOKEN_NOT_APPROVED) — syncing is blocked at the application level.", retryable: false });
+      const isBlockedDevToken = isGoogleAdsDeveloperTokenBlocked(error);
+      const isAuth = isBlockedDevToken || /developer.?token|unauthorized|permission.*denied/i.test(msg);
+      const gRetryable = isRetryableSyncError(error) && !isAuth;
+      children.push({ id: customerId, kind: "customer", ok: false, error: msg, retryable: gRetryable });
+      await recordAccountOutcome({
+        workspaceId,
+        connectionId,
+        provider: "google_ads",
+        accountId: customerId,
+        accountName: descriptiveName,
+        ok: false,
+        retryable: gRetryable,
+        authFailure: isAuth,
+        error: msg,
+      });
+
+      if (isBlockedDevToken) {
         break; // every remaining customer fails identically
       }
-      children.push({ id: customerId, kind: "customer", ok: false, error: msg, retryable: isRetryableSyncError(error) });
       logger.error(`[syncGoogleAds] Failed for customerId=${customerId}: ${msg}`);
+      // Sibling isolation: continue with next account
     }
   }
 
@@ -801,6 +917,7 @@ async function syncTikTok(opts: {
   }
 
   logger.info(`[syncTikTok] Total advertiser IDs:`, advertiserIds.length);
+  const skippedAdvertisers = await getSkippedAccountIds(connectionId, workspaceId);
 
   const selectedIds: string[] | undefined = Array.isArray(extraFields.selectedAdvertiserIds)
     ? extraFields.selectedAdvertiserIds
@@ -833,6 +950,12 @@ async function syncTikTok(opts: {
   }
 
   for (const advertiserId of advertiserIds) {
+    if (skippedAdvertisers.has(String(advertiserId))) {
+      logger.info(`[syncTikTok] Skipping quarantined/reconnect-required advertiser ${advertiserId}`);
+      children.push({ id: String(advertiserId), kind: "advertiser", ok: true, rowsIngested: 0, skipped: "account_health" });
+      continue;
+    }
+
     let reportTaskIdForRetry: string | undefined;
     try {
       const taskParams: CreateReportTaskParams = {
@@ -852,6 +975,16 @@ async function syncTikTok(opts: {
           ? await ingestTiktokRows(rows, { workspaceId, connectionId, accountId: advertiserId, accountName: `Advertiser ${advertiserId}`, syncJobId: jobId, lease })
           : { upserted: 0, failed: 0 };
         children.push({ id: String(advertiserId), kind: "advertiser", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+        await recordAccountOutcome({
+          workspaceId,
+          connectionId,
+          provider: "tiktok_business",
+          accountId: String(advertiserId),
+          accountName: `Advertiser ${advertiserId}`,
+          ok: result.failed === 0,
+          retryable: result.failed > 0,
+          error: result.failed ? `${result.failed} row(s) could not be written` : undefined,
+        });
         continue;
       }
 
@@ -904,8 +1037,44 @@ async function syncTikTok(opts: {
           });
 
           children.push({ id: String(advertiserId), kind: "advertiser", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
+          await recordAccountOutcome({
+            workspaceId,
+            connectionId,
+            provider: "tiktok_business",
+            accountId: String(advertiserId),
+            accountName: `Advertiser ${advertiserId}`,
+            ok: result.failed === 0,
+            retryable: result.failed > 0,
+            error: result.failed ? `${result.failed} row(s) could not be written` : undefined,
+          });
+
+          // Stale row detection for TikTok
+          if (result.failed === 0 && startDate && endDate) {
+            try {
+              await computeStaleRowStats({
+                workspaceId,
+                connectionId,
+                accountId: String(advertiserId),
+                level: "campaign",
+                since: new Date(`${startDate}T00:00:00.000Z`),
+                until: new Date(`${endDate}T23:59:59.999Z`),
+                providerEntityIds: rows.map((r: any) => String(r.campaign_id ?? r.id ?? "")).filter(Boolean),
+                fetchComplete: true,
+              });
+            } catch (reconErr) {
+              logger.warn("[syncTikTok] Stale-row detection failed (non-fatal):", reconErr);
+            }
+          }
         } else {
           children.push({ id: String(advertiserId), kind: "advertiser", ok: true, rowsIngested: 0 });
+          await recordAccountOutcome({
+            workspaceId,
+            connectionId,
+            provider: "tiktok_business",
+            accountId: String(advertiserId),
+            accountName: `Advertiser ${advertiserId}`,
+            ok: true,
+          });
         }
       } else if (isTikTokReportTerminal(status.status)) {
         throw new Error(`TikTok report task ${taskId} ended with status ${status.status}`);
@@ -927,7 +1096,8 @@ async function syncTikTok(opts: {
     } catch (error) {
       logger.error(`[TikTok Sync] Failed for advertiser ${advertiserId}:`, error);
       const message = error instanceof Error ? error.message : "TikTok sync failed";
-      const retryable = isRetryableSyncError(error) || /did not complete before/i.test(message);
+      const isAuth = /token|auth|unauthorized|permission/i.test(message);
+      const retryable = (isRetryableSyncError(error) || /did not complete before/i.test(message)) && !isAuth;
       children.push({
         id: String(advertiserId),
         kind: "advertiser",
@@ -944,6 +1114,18 @@ async function syncTikTok(opts: {
             }
           : {}),
       });
+      await recordAccountOutcome({
+        workspaceId,
+        connectionId,
+        provider: "tiktok_business",
+        accountId: String(advertiserId),
+        accountName: `Advertiser ${advertiserId}`,
+        ok: false,
+        retryable,
+        authFailure: isAuth,
+        error: message,
+      });
+      // Sibling isolation: continue with next advertiser
     }
   }
 
