@@ -87,15 +87,25 @@ export default function SourceDetailPage() {
 
         if (connection.provider === "google_ads") {
             const rawRemoteId = String(connection.remoteAccountId ?? "").replace(/\D/g, "");
-            const mcc = (creds.mccId || creds.managerCustomerId || (rawRemoteId.length > 0 ? rawRemoteId : undefined)) as string | undefined;
-            if (mcc) {
-                const clean = String(mcc).replace(/\D/g, "");
-                return `MCC: ${clean.length === 10 ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}` : mcc}`;
-            }
+            const isExplicitCustomer = creds.googleAdsRootType === "customer";
+            const isExplicitManager = Boolean(creds.mccId || creds.managerCustomerId || creds.googleAdsRootType === "manager");
             const cids = creds.customerIds as string[] | undefined;
-            if (Array.isArray(cids) && cids.length > 0) {
-                const clean = String(cids[0]).replace(/\D/g, "");
-                return `MCC: ${clean.length === 10 ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}` : cids[0]}`;
+            const cidList = Array.isArray(cids) ? cids : [];
+            const resolvedMccId = isExplicitManager
+                ? (creds.mccId || creds.managerCustomerId || (rawRemoteId.length > 0 ? rawRemoteId : undefined))
+                : (!isExplicitCustomer && rawRemoteId.length > 0 && !cidList.includes(rawRemoteId) ? rawRemoteId : undefined);
+            if (resolvedMccId) {
+                const clean = String(resolvedMccId).replace(/\D/g, "");
+                return `MCC: ${clean.length === 10 ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}` : resolvedMccId}`;
+            }
+            if (cidList.length === 1 || (isExplicitCustomer && rawRemoteId.length > 0)) {
+                const targetCid = cidList[0] || rawRemoteId;
+                const clean = String(targetCid).replace(/\D/g, "");
+                return `CID: ${clean.length === 10 ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}` : targetCid}`;
+            }
+            if (cidList.length > 1) {
+                const clean = String(cidList[0]).replace(/\D/g, "");
+                return `MCC: ${clean.length === 10 ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}` : cidList[0]}`;
             }
         }
 

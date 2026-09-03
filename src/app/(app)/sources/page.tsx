@@ -559,24 +559,30 @@ export default function SourcesPage() {
                         return { id: String(id), label: formatted };
                     });
                     const rawRemoteId = String(conn.remoteAccountId ?? "").replace(/\D/g, "");
-                    const mccId = creds.mccId || creds.managerCustomerId || (rawRemoteId.length > 0 ? rawRemoteId : null);
+                    const isExplicitCustomer = creds.googleAdsRootType === "customer";
+                    const isExplicitManager = Boolean(creds.mccId || creds.managerCustomerId || creds.googleAdsRootType === "manager");
+                    // Treat as MCC if marked as manager, or if unclassified and remote ID differs from child accounts
+                    const resolvedMccId = isExplicitManager
+                        ? (creds.mccId || creds.managerCustomerId || (rawRemoteId.length > 0 ? rawRemoteId : null))
+                        : (!isExplicitCustomer && rawRemoteId.length > 0 && !list.includes(rawRemoteId) ? rawRemoteId : null);
                     const discoveredCustomerCount = Number(creds.discoveredCustomerCount);
                     const totalCount = Number.isFinite(discoveredCustomerCount) && discoveredCustomerCount > 0
                         ? discoveredCustomerCount
                         : accountTags.length;
                     const emailSuffix = accountEmail ? ` · ${accountEmail}` : "";
-                    if (mccId && mccId !== "") {
-                        const cleanMcc = String(mccId).replace(/\D/g, '');
+                    if (resolvedMccId && resolvedMccId !== "") {
+                        const cleanMcc = String(resolvedMccId).replace(/\D/g, '');
                         const formattedMcc = cleanMcc.length === 10 
                             ? `${cleanMcc.slice(0, 3)}-${cleanMcc.slice(3, 6)}-${cleanMcc.slice(6)}`
-                            : mccId;
+                            : resolvedMccId;
                         managerBadge = `MCC: ${formattedMcc}`;
                         scopeDesc = `${managerBadge}${emailSuffix} · ${totalCount} customer account${totalCount === 1 ? '' : 's'} synced`;
-                    } else if (list.length === 1) {
-                        const cleanCid = String(list[0]).replace(/\D/g, '');
+                    } else if (list.length === 1 || (isExplicitCustomer && rawRemoteId.length > 0)) {
+                        const directCid = list[0] || rawRemoteId;
+                        const cleanCid = String(directCid).replace(/\D/g, '');
                         const formattedCid = cleanCid.length === 10
                             ? `${cleanCid.slice(0, 3)}-${cleanCid.slice(3, 6)}-${cleanCid.slice(6)}`
-                            : list[0];
+                            : directCid;
                         managerBadge = `CID: ${formattedCid}`;
                         scopeDesc = `Customer: ${formattedCid}${emailSuffix} · Direct Google Ads sync`;
                     } else if (list.length > 1) {
@@ -590,8 +596,8 @@ export default function SourcesPage() {
                         scopeDesc = `Google Ads${emailSuffix} · ${totalCount} customer accounts synced`;
                     }
 
-                    // Clean auto-generated name strings like "Google Ads (8 accounts)" or "Google Ads (1 account)"
-                    const isDefaultName = !rawName || /^Google Ads(\s*(\(|—).*)?$/i.test(rawName);
+                    // Clean auto-generated name strings like "Google Ads (8 accounts)" or "Google Ads — MCC 123-456-7890" while preserving custom nicknames
+                    const isDefaultName = !rawName || /^Google Ads(\s*(\(\d+\s*accounts?\)|\s*—\s*(MCC|Customer)\s+[\d-]+))?$/i.test(rawName);
                     displayName = isDefaultName ? "Google Ads" : rawName;
                 } else if (conn.provider === 'tiktok_business') {
                     const list: string[] = creds.advertiserIds ?? [];
