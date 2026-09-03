@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { AlertTriangle, ArrowRight, CheckCircle2, Circle, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Circle, Sparkles, X } from "lucide-react";
 import { trackEvent } from "@/lib/analytics-events";
 import type { PilotActivationState } from "@/lib/pilot-activation";
 import { trialDaysRemaining } from "@/lib/pilot-activation";
@@ -127,10 +127,32 @@ export function SetupWizard({ activation, plan, workspaceStatus, onDismiss }: Se
           </h2>
           <p className="mt-1 text-sm text-ink-mute">{doneCount} of 3 activation steps complete. You can leave and resume here at any time.</p>
         </div>
-        <div className="rounded-md border border-line bg-canvas px-3 py-2 text-right text-[11px] text-ink-mute">
-          <p className="font-semibold text-ink">{workspaceStatus === "PILOT" ? "Agency Pro trial" : plan}</p>
-          {trialDate ? <p>{remaining} day{remaining === 1 ? "" : "s"} remaining · ends {trialDate}</p> : <p>Current plan: {plan}</p>}
-          <p>Then 1,490,000 VND/month</p>
+        <div className="flex items-center gap-2.5 self-start sm:self-auto">
+          <div className="rounded-md border border-line bg-canvas px-3 py-2 text-right text-[11px] text-ink-mute">
+            <p className="font-semibold capitalize text-ink">{workspaceStatus === "PILOT" ? "Agency Pro trial" : plan}</p>
+            {trialDate ? (
+              <p>{remaining} day{remaining === 1 ? "" : "s"} remaining · ends {trialDate}</p>
+            ) : workspaceStatus === "SUSPENDED" ? (
+              <p className="text-amber-400">Suspended workspace</p>
+            ) : (
+              <p>Current plan: {plan}</p>
+            )}
+          </div>
+          {onDismiss && (
+            <button
+              type="button"
+              onClick={() => {
+                trackEvent("pilot_activation_guide_dismissed");
+                onDismiss();
+              }}
+              className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-medium text-ink-mute hover:bg-white/[0.06] hover:text-ink transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+              title="Dismiss guide"
+              aria-label="Dismiss pilot activation guide"
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>Dismiss</span>
+            </button>
+          )}
         </div>
       </div>
 
