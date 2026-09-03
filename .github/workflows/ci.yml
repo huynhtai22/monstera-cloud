@@ -57,4 +57,5 @@ jobs:
           npm run test:e2e
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
+          DIRECT_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
       - run: npm audit --omit=dev --audit-level=high
