@@ -110,6 +110,7 @@ function accountNoun(provider: string | undefined, count: number): string {
 export function summarizeAccountScope(
   provider: string | undefined,
   tags: AccountTagEntry[] | undefined,
+  discoveredCount?: number,
 ): {
   chips: Array<{ id: string; label: string }>;
   moreCount: number;
@@ -118,7 +119,10 @@ export function summarizeAccountScope(
   const list = (tags ?? []).map((tag) =>
     typeof tag === "object" ? tag : { id: tag, label: tag },
   );
-  const countLabel = `${list.length} ${accountNoun(provider, list.length)}`;
+  const count = Number.isFinite(discoveredCount) && (discoveredCount as number) >= 0
+    ? (discoveredCount as number)
+    : list.length;
+  const countLabel = `${count} ${accountNoun(provider, count)}`;
   const named = list.filter((tag) => isHumanAccountLabel(tag.label, tag.id));
   if (named.length === 0) {
     return { chips: [], moreCount: 0, countLabel };

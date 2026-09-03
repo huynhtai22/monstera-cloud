@@ -69,6 +69,16 @@ describe("summarizeAccountScope", () => {
     assert.equal(summarizeAccountScope("shopee", []).countLabel, "0 shops");
   });
 
+  it("prefers the discovered Google Ads MCC child count over a single root tag", () => {
+    const summary = summarizeAccountScope(
+      "google_ads",
+      [{ id: "1208473618", label: "120-847-3618" }],
+      8,
+    );
+    assert.equal(summary.chips.length, 0);
+    assert.equal(summary.countLabel, "8 customer accounts");
+  });
+
   it("does not treat Shop ID labels as human names", () => {
     assert.equal(isHumanAccountLabel("Shop ID: 227420569", "227420569"), false);
     assert.equal(isHumanAccountLabel("Linh Lmour", "903"), true);

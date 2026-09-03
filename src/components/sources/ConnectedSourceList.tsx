@@ -39,6 +39,7 @@ type IntegrationRow = {
   logoSrc?: string;
   pipelineId?: string;
   accountTags?: AccountTagEntry[];
+  accountCount?: number;
 };
 
 type SortKey = "name" | "status" | "lastSync";
@@ -118,13 +119,15 @@ function StatusBadge({ state }: { state: SourceState }) {
 function AccountsCell({
   provider,
   tags,
+  accountCount,
   align = "start",
 }: {
   provider?: string;
   tags?: AccountTagEntry[];
+  accountCount?: number;
   align?: "start" | "end";
 }) {
-  const summary = summarizeAccountScope(provider, tags);
+  const summary = summarizeAccountScope(provider, tags, accountCount);
   if (summary.chips.length === 0) {
     return (
       <span className={cn("text-xs text-ink-mute", align === "end" && "text-right")}>
@@ -635,7 +638,7 @@ export function ConnectedSourceList({
                 <div className="my-4 space-y-2.5 text-xs">
                   <div className="flex items-center justify-between gap-2 text-xs py-1 border-t border-line/40">
                     <span className="text-ink-mute shrink-0">Accounts:</span>
-                    <AccountsCell provider={r.provider} tags={r.accountTags} align="end" />
+                    <AccountsCell provider={r.provider} tags={r.accountTags} accountCount={r.accountCount} align="end" />
                   </div>
                   <div className="flex items-center justify-between gap-2 text-xs py-1 border-t border-line/40">
                     <span className="text-ink-mute shrink-0">Last sync:</span>
@@ -766,7 +769,7 @@ export function ConnectedSourceList({
                         </div>
                       </td>
                       <td className="px-5 py-3.5">
-                        <AccountsCell provider={r.provider} tags={r.accountTags} />
+                        <AccountsCell provider={r.provider} tags={r.accountTags} accountCount={r.accountCount} />
                       </td>
                       <td className="px-5 py-3.5">
                         <StatusBadge state={sourceState} />

@@ -521,6 +521,7 @@ export default function SourcesPage() {
                 let displayName = rawName;
                 let managerBadge: string | null = null;
                 let scopeDesc = "";
+                let accountCount: number | undefined;
 
                 if (conn.provider === 'meta_ads') {
                     const list: Array<{ id: string; name?: string }> =
@@ -568,6 +569,7 @@ export default function SourcesPage() {
                     const totalCount = Number.isFinite(discoveredCustomerCount) && discoveredCustomerCount > 0
                         ? discoveredCustomerCount
                         : accountTags.length;
+                    accountCount = totalCount;
                     const emailSuffix = accountEmail ? ` · ${accountEmail}` : "";
                     if (resolvedMccId && resolvedMccId !== "") {
                         const cleanMcc = String(resolvedMccId).replace(/\D/g, '');
@@ -647,6 +649,7 @@ export default function SourcesPage() {
                     managerBadge,
                     accountEmail,
                     accountName,
+                    accountCount: accountCount ?? accountTags.length,
                     shortId: conn.id ? conn.id.slice(-4) : undefined,
                     // `healthState` is computed server-side from durable
                     // connection truth. Keep the fallback for older API
