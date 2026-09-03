@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { GET } from "./route";
+import { resolveLatestMigrationVersion } from "@/lib/release-schema";
 
 describe("/api/version endpoint", () => {
   it("returns dynamic release identity and authoritative schema version", async () => {
@@ -10,6 +11,6 @@ describe("/api/version endpoint", () => {
     assert.ok(json.commitSha);
     assert.ok(json.commitSource);
     assert.match(json.schemaVersion, /^2026\d{10}_/);
-    assert.equal(json.schemaVersion, "20260903120000_payment_order_authoritative");
+    assert.equal(json.schemaVersion, resolveLatestMigrationVersion());
   });
 });

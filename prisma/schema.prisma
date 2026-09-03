@@ -147,6 +147,7 @@ model Workspace {
   payloadDiscoveries  PayloadSchemaDiscovery[]
   schemaProposals     SchemaPatchProposal[]
   paymentOrders       PaymentOrder[]
+  providerAccountHealth ProviderAccountHealth[]
 
   @@index([subscriptionProvider, subscriptionEndsAt])
 }
@@ -267,6 +268,7 @@ model Connection {
   shopeeProducts       ShopeeProduct[]
   shopeeCatalogState   ShopeeCatalogSyncState?
   providerSyncRuns     ProviderSyncRun[]
+  accountHealth        ProviderAccountHealth[]
 
   @@unique([workspaceId, provider, remoteAccountId])
 }
@@ -1036,4 +1038,27 @@ model PaymentOrder {
   @@index([workspaceId, status])
   @@index([orderCode])
   @@index([expiresAt])
+}
+
+model ProviderAccountHealth {
+  id                  String     @id @default(cuid())
+  workspaceId         String
+  connectionId        String
+  provider            String
+  accountId           String
+  accountName         String?
+  status              String     @default("healthy") // healthy | degraded | quarantined | reconnect_required
+  errorCategory       String?    // AUTH_EXPIRED | PERMISSION_DENIED | RATE_LIMITED | SCHEMA_DRIFT | TRANSIENT_NETWORK | UNKNOWN
+  consecutiveFailures Int        @default(0)
+  lastError           String?
+  lastErrorAt         DateTime?
+  lastSuccessAt       DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  workspace           Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection          Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([connectionId, accountId])
+  @@index([workspaceId, provider, status])
+  @@index([connectionId, status])
 }

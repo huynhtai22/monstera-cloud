@@ -58,6 +58,7 @@ export const TENANT_GUARDED_MODELS = new Set([
   "ShopeeProduct",
   "ProviderSyncRun",
   "PaymentOrder",
+  "ProviderAccountHealth",
 ]);
 
 /**

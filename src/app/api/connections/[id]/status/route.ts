@@ -4,17 +4,17 @@
  */
 
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { getAccountHealth } from "@/lib/provider-account-health";
 
 export async function GET(
     _request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user?.id) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -47,12 +47,24 @@ export async function GET(
             );
         }
 
+        const accounts = await getAccountHealth(connection.id);
+
         return NextResponse.json({
             id: connection.id,
             status: connection.status,
             hasError: Boolean(connection.lastError),
             lastError: connection.lastError,
             updatedAt: connection.updatedAt,
+            accounts: accounts.map((acc) => ({
+                accountId: acc.accountId,
+                accountName: acc.accountName,
+                status: acc.status,
+                errorCategory: acc.errorCategory,
+                consecutiveFailures: acc.consecutiveFailures,
+                lastError: acc.lastError,
+                lastErrorAt: acc.lastErrorAt,
+                lastSuccessAt: acc.lastSuccessAt,
+            })),
         });
     } catch (error) {
         logger.error("[GET /api/connections/[id]/status]", error);
