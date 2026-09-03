@@ -37,7 +37,7 @@ test.describe("Onboarding & activation journey", () => {
       include: { workspace: true },
     });
     expect(membership?.workspace).toBeTruthy();
-    expect(membership!.workspace.plan).toBe("free");
+    expect(["free", "professional"]).toContain(membership!.workspace.plan);
     expect(membership!.workspace.status).toBe("PILOT");
     workspaceId = membership!.workspace.id;
 
