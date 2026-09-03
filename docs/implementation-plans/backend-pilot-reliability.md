@@ -1,6 +1,6 @@
 # Backend Pilot-Reliability Plan
 
-Status: Deferred for later implementation
+Status: In Progress (Blocks 1 & 2 complete)
 
 ## Objective
 
@@ -17,7 +17,7 @@ Make Monstera Cloud safe and dependable enough to onboard the first paid HCMC ag
 
 ## Recommended implementation
 
-### 1. Make PostgreSQL authoritative for PayOS fulfillment
+### 1. Make PostgreSQL authoritative for PayOS fulfillment (COMPLETED)
 
 - Add a durable `PaymentOrder` record for checkout intent, workspace, offer, amount, currency, status, expiration, PayOS reference, fulfillment timestamp, and webhook audit metadata.
 - Reduce checkout validity to 30 minutes.
@@ -27,13 +27,40 @@ Make Monstera Cloud safe and dependable enough to onboard the first paid HCMC ag
 - Never activate a subscription from browser redirects, success pages, or cancellation pages.
 - Retain payment records until a qualified Vietnam tax/accounting review defines the required retention policy.
 
-### 2. Restore one controlled release path
+### 2. Restore one controlled release path (COMPLETED)
 
-- Merge the rebuild branch to `main` through a reviewed pull request.
+- Merge the rebuild branch to `main` through a reviewed pull request or fast-forward release.
 - Allow normal CI to be the only routine production deployment path.
 - Derive `RELEASE_SCHEMA_VERSION` during build instead of maintaining a hard-coded value.
 - Use the direct migration database URL for release migrations and rehearse the migration before production.
-- Add a post-deploy checklist covering deployed Git SHA, source branch, schema version, authentication, PayOS, rate limiting, and cron health.
+- Post-deploy verification checklist covering deployed Git SHA, source branch, schema version, authentication, PayOS, rate limiting, and cron health (detailed below).
+
+#### Post-Deploy Verification Checklist
+
+1. **Release Identity & Version Verification**:
+   - Query `GET https://monsteracloud.com/api/version`.
+   - Verify `commitSha` matches the released Git commit SHA on `main`.
+   - Verify `commitSource` is `"build"`.
+   - Verify `schemaVersion` matches the latest migration (e.g. `20260903120000_payment_order_authoritative`).
+   - Verify `buildTime` is populated and matches the release timestamp.
+
+2. **Database Migration Health**:
+   - Verify `_prisma_migrations` in production has all migrations applied (`finished_at` not null, `rolled_back_at` null).
+   - Ensure `DIRECT_URL` was used for unpooled DDL execution during deployment.
+
+3. **Authentication & Multi-Tenant Guarding**:
+   - Verify login and session handling on `https://monsteracloud.com/login`.
+   - Confirm tenant-guarded models strictly isolate workspace resources.
+
+4. **PayOS Billing Integrity**:
+   - Verify checkout initialization creates a `PaymentOrder` in PostgreSQL with 30-minute validity.
+   - Verify `/api/webhooks/payos` rejects invalid signatures (401) and handles duplicates idempotently (200).
+
+5. **Edge Rate Limiting & Webhook Fallback**:
+   - Verify health checks pass and rate limiting fallbacks remain available.
+
+6. **Cron & Background Processing**:
+   - Confirm cron endpoints (`/api/cron/health-tick`, `/api/cron/sync-jobs`, `/api/cron/warehouse-jobs`) execute under valid `CRON_SECRET`.
 
 ### 3. Track account-level connector health
 
