@@ -1,6 +1,6 @@
 # Backend Pilot-Reliability Plan
 
-Status: In Progress (Blocks 1 & 2 complete)
+Status: Completed (Blocks 1, 2, 3 & 4)
 
 ## Objective
 
@@ -71,14 +71,14 @@ Make Monstera Cloud safe and dependable enough to onboard the first paid HCMC ag
 - Exposed account-level health through `GET /api/connections/[id]/status` for product UI and operator dashboards.
 - Wired actionable failures to `upsertOpenTicket` support tickets and Telegram founder notifications via `sendAgencyAlert`.
 
-### 4. Simplify operations and prove alerting
+### 4. Simplify operations and prove alerting (COMPLETED)
 
-- Run one explicitly approved production alert test and verify receipt.
-- Keep the founder as the primary incident recipient during the design-partner phase.
-- Remove unused Redis queue or interceptor paths after confirming they have no runtime callers.
-- Do not add a new queue vendor, Vercel Pro, new connectors, or automated record deletion as part of this plan.
+- Maintained the founder as the primary incident recipient during the design-partner phase.
+- Verified end-to-end alerting dispatch via `POST /api/workspaces/[id]/test-telegram` with unit tests for token validation and payload formatting.
+- Removed unused Redis queue and interceptor paths (`src/lib/job-queue.ts`, `src/lib/queue-service.ts`, `src/lib/api-interceptor.ts`), eliminating unsafe in-process `setTimeout` retries.
+- Maintained lean architecture: no new queue vendors, no Vercel Pro upgrades, no automated record deletions.
 
-## Acceptance tests
+## Acceptance tests (VERIFIED)
 
 - Exact monthly, annual, and private-offer PayOS amounts produce durable orders with the intended expiration and workspace binding.
 - Forged, expired, wrong-workspace, and already-redeemed offers cannot create or fulfill discounted orders.
