@@ -5,12 +5,12 @@ import { MarketingFooter } from "@/components/MarketingFooter";
 import { PRODUCT_SITE_URL } from "@/lib/site-url";
 
 export const metadata: Metadata = {
-    title: "Advertising data ready for Sheets and Looker Studio",
-    description: "Connect certified Meta Ads, Google Ads, TikTok Ads, and Shopee workflows to a workspace-scoped reporting warehouse.",
+    title: "Performance reporting for agencies in Vietnam",
+    description: "Give every agency client a separate reporting workspace for Meta Ads, Google Ads, TikTok Ads, and Shopee—with clean delivery to Sheets and Looker Studio.",
     alternates: { canonical: PRODUCT_SITE_URL },
     openGraph: {
-        title: "Advertising data ready for Sheets and Looker Studio",
-        description: "Normalize certified advertising and marketplace data into a reporting warehouse your team can verify.",
+        title: "More clients. Fewer hours spent reporting.",
+        description: "Monitor spend, provider-reported revenue, ROAS, and data health in a workspace built for agency reporting.",
         url: PRODUCT_SITE_URL,
     },
 };

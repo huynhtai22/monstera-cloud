@@ -148,6 +148,23 @@ describe("proxy page authentication (deny-by-default)", () => {
     assert.equal(getTokenCalls, 0);
   });
 
+  it("retires quick-start in favor of the canonical console before authentication", async () => {
+    let getTokenCalls = 0;
+    const proxy = __createProxyForTests({
+      getSessionToken: async () => {
+        getTokenCalls += 1;
+        return null;
+      },
+    });
+
+    for (const path of ["/quickstart", "/agencies/acme/quickstart"]) {
+      const res = await proxy(pageRequest(path));
+      assert.equal(res.status, 307);
+      assert.equal(new URL(res.headers.get("location") ?? "").pathname, "/console");
+    }
+    assert.equal(getTokenCalls, 0, "obsolete quick-start must redirect before session lookup");
+  });
+
   it("preserves agency-host rewrites after authentication succeeds", async () => {
     process.env.AGENCY_HOST_ROUTING_ENABLED = "1";
     process.env.AGENCY_DEV_SLUG = "acme";

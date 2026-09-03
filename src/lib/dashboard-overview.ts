@@ -4,6 +4,11 @@ import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentia
 import { logger } from "@/lib/logger";
 import { aggregateCurrencySafe } from "@/lib/currency-safe-aggregation";
 import { resolveSourceHealthState, type SourceHealthState } from "@/lib/source-health";
+import {
+  DASHBOARD_REVIEWED_ACTION,
+  derivePilotActivation,
+  type PilotActivationState,
+} from "@/lib/pilot-activation";
 
 export interface DashboardSourceItem {
   id: string;
@@ -63,7 +68,10 @@ export interface DashboardOverviewDTO {
     name: string;
     slug: string;
     plan: string;
+    status: string;
+    subscriptionEndsAt: string | null;
   };
+  pilotActivation: PilotActivationState;
   overallStatus: {
     state: "healthy" | "attention" | "syncing" | "onboarding";
     headline: string;
@@ -455,7 +463,14 @@ export async function getWorkspaceDashboardOverview(
 ): Promise<DashboardOverviewDTO | null> {
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    select: { id: true, name: true, slug: true, plan: true },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      plan: true,
+      status: true,
+      subscriptionEndsAt: true,
+    },
   });
 
   if (!workspace) return null;
@@ -476,6 +491,7 @@ export async function getWorkspaceDashboardOverview(
     syncLogCounts7d,
     apiKeysCount,
     lookerJobs,
+    dashboardReviewedEvent,
   ] = await Promise.all([
     // 1. All Connections in workspace
     prisma.connection.findMany({
@@ -575,6 +591,13 @@ export async function getWorkspaceDashboardOverview(
       where: { workspaceId },
       orderBy: { createdAt: "desc" },
       take: 5,
+    }),
+
+    // 12. Durable onboarding milestone
+    prisma.auditEvent.findFirst({
+      where: { workspaceId, action: DASHBOARD_REVIEWED_ACTION },
+      orderBy: { createdAt: "asc" },
+      select: { createdAt: true },
     }),
   ]);
 
@@ -1020,6 +1043,21 @@ export async function getWorkspaceDashboardOverview(
     (source) => source.state === "pending" || source.state === "syncing",
   ).length;
   const accountSummary = `${totalConnectedAccounts} account${totalConnectedAccounts === 1 ? "" : "s"}`;
+  const pilotActivation = derivePilotActivation({
+    workspaceStatus: workspace.status,
+    subscriptionEndsAt: workspace.subscriptionEndsAt,
+    sources: sourcesList.map((source) => ({
+      id: source.id,
+      state: source.state,
+      lastSyncAt: source.lastSyncAt,
+    })),
+    rows7d,
+    dataThroughDate: latestWarehouseDataDate,
+    dashboardReviewedAt: dashboardReviewedEvent?.createdAt ?? null,
+    latestImport: latestImportJob
+      ? { status: latestImportJob.status, approximateRows: latestImportJob.approximateRows }
+      : null,
+  });
 
   return {
     workspace: {
@@ -1027,7 +1065,10 @@ export async function getWorkspaceDashboardOverview(
       name: workspace.name,
       slug: workspace.slug,
       plan: workspace.plan,
+      status: workspace.status,
+      subscriptionEndsAt: workspace.subscriptionEndsAt?.toISOString() ?? null,
     },
+    pilotActivation,
     overallStatus: {
       state: overallState,
       headline: overallHeadline,

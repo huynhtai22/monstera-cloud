@@ -6,10 +6,10 @@ test.describe("Agency-First User Flow & Usability", () => {
     await page.goto("/");
 
     // 2. Verify Hero Headline (dark-first redesign, MarketingHomePage copy)
-    await expect(page.locator("h1")).toContainText("Your ad data, cleaned");
+    await expect(page.locator("h1")).toContainText(/More clients|Thêm khách hàng|Your ad data/);
 
-    // 3. Click Primary CTA: "Start free"
-    const ctaButton = page.getByRole("link", { name: /Start free/i }).first();
+    // 3. Click Primary CTA: "Start free" / "Try Agency Pro"
+    const ctaButton = page.getByRole("link", { name: /Agency Pro|Start free|Dùng thử/i }).first();
     await expect(ctaButton).toBeVisible();
     await ctaButton.click();
 

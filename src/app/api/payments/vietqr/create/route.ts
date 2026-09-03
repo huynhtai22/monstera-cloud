@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const { plan, billingCycle = "monthly", workspaceId } = body;
 
-        if (!plan || !["starter", "professional", "enterprise"].includes(plan)) {
-            return NextResponse.json({ error: "Invalid plan specified" }, { status: 400 });
+        if (plan !== "professional") {
+            return NextResponse.json({ error: "Only Agency Pro is available for self-serve checkout" }, { status: 400 });
         }
 
         const readiness = getPayOSReadiness();
