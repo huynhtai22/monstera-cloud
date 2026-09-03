@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
@@ -9,10 +9,17 @@ import { AlertCircle, CheckCircle2, ChevronDown, Clock, LayoutGrid, List, Loader
 import { cn } from "@/lib/utils";
 import { PrimaryButton, SecondaryButton, IntegrationMark } from "@/components/ui";
 import { CopyableBadge } from "@/components/ui/CopyableBadge";
-import { AccountSelector } from "@/components/sources/AccountSelector";
 import type { SourceHealthState } from "@/lib/source-health";
+import {
+  formatLastSyncLabel,
+  sourceStateFor,
+  summarizeAccountScope,
+  type AccountTagEntry,
+  type SourceState,
+  type SourceStateKind,
+} from "@/lib/source-list-display";
 
-export type AccountTagEntry = { id: string; label: string } | string;
+export type { AccountTagEntry, SourceState, SourceStateKind };
 
 type IntegrationRow = {
   id: string;
@@ -32,28 +39,10 @@ type IntegrationRow = {
   logoSrc?: string;
   pipelineId?: string;
   accountTags?: AccountTagEntry[];
+  accountCount?: number;
 };
 
 type SortKey = "name" | "status" | "lastSync";
-
-export type SourceStateKind =
-  | "connected"
-  | "not-synced"
-  | "syncing"
-  | "partial"
-  | "sync-issue"
-  | "auth-required"
-  | "stale"
-  | "attention";
-
-export type SourceState = {
-  kind: SourceStateKind;
-  label: string;
-  subtext: string;
-  detail: string;
-  needsReconnect: boolean;
-  canSync: boolean;
-};
 
 interface ConnectedSourceListProps {
   rows: IntegrationRow[];
@@ -63,123 +52,6 @@ interface ConnectedSourceListProps {
   onDisconnect: (connectionId: string, displayName: string) => void;
   onFixConnection: (integration: any) => void;
   onRenameConnection?: (connectionId: string, newName: string) => Promise<void> | void;
-}
-
-function isAuthFailure(row: IntegrationRow): boolean {
-  if (row.status === "disconnected" || row.healthState === "disconnected") return true;
-  const msg = (row.errorMsg || "").toLowerCase();
-  if (!msg) return false;
-  return (
-    msg.includes("token") ||
-    msg.includes("expired") ||
-    msg.includes("401") ||
-    msg.includes("unauthorized") ||
-    msg.includes("revoked") ||
-    msg.includes("oauth") ||
-    msg.includes("permission") ||
-    msg.includes("access denied") ||
-    msg.includes("forbidden") ||
-    msg.includes("403") ||
-    msg.includes("re-authenticate") ||
-    msg.includes("reconnect") ||
-    msg.includes("no active") ||
-    msg.includes("customer accounts are available") ||
-    msg.includes("session has expired")
-  );
-}
-
-function sourceStateFor(row: IntegrationRow, syncBusy: boolean): SourceState {
-  if (syncBusy || row.healthState === "syncing" || row.status === "syncing") {
-    return {
-      kind: "syncing",
-      label: "Syncing",
-      subtext: "Ingestion active",
-      detail: "A warehouse sync is currently running.",
-      needsReconnect: false,
-      canSync: false,
-    };
-  }
-
-  const isAuthErr = isAuthFailure(row);
-  const state = row.healthState ?? row.status;
-
-  if (isAuthErr) {
-    const isMissingAccounts =
-      (row.errorMsg || "").toLowerCase().includes("no active") ||
-      (row.accountTags?.length === 0 && (row.errorMsg || "").includes("account"));
-    return {
-      kind: "auth-required",
-      label: isMissingAccounts ? "No accounts" : "Re-auth required",
-      subtext: isMissingAccounts ? "Select accounts" : "OAuth expired",
-      detail: row.errorMsg || "Authorization expired. Re-authenticate to resume syncing.",
-      needsReconnect: true,
-      canSync: false,
-    };
-  }
-
-  if (state === "partial" || row.errorMsg?.startsWith("[partial]")) {
-    return {
-      kind: "partial",
-      label: "Partial sync",
-      subtext: "Some data failed",
-      detail: row.errorMsg || "Some requested data was imported; review and retry the affected source.",
-      needsReconnect: false,
-      canSync: true,
-    };
-  }
-
-  if (state === "error" || (row.errorMsg && !isAuthErr)) {
-    return {
-      kind: "sync-issue",
-      label: "Sync issue",
-      subtext: "Retry available",
-      detail: row.errorMsg || "Last sync attempt encountered an issue. You can retry the sync now.",
-      needsReconnect: false,
-      canSync: true,
-    };
-  }
-
-  if (state === "pending" || !row.lastSync || row.lastSync === "Never") {
-    return {
-      kind: "not-synced",
-      label: "Ready to sync",
-      subtext: "Pending initial sync",
-      detail: "Authorization is ready, but no successful warehouse sync is recorded yet.",
-      needsReconnect: false,
-      canSync: true,
-    };
-  }
-
-  if (state === "stale") {
-    return {
-      kind: "stale",
-      label: "Data stale",
-      subtext: "Last sync >24h ago",
-      detail: "The last successful sync is older than the one-day freshness threshold.",
-      needsReconnect: false,
-      canSync: true,
-    };
-  }
-
-  if (state === "unknown") {
-    return {
-      kind: "attention",
-      label: "Needs review",
-      subtext: "Unrecognized state",
-      detail: "This source has an unrecognized state and is not treated as healthy.",
-      needsReconnect: false,
-      canSync: true,
-    };
-  }
-
-  return {
-    kind: "connected",
-    label: "Connected",
-    subtext: "Active & verified",
-    detail: "Authorized and has at least one successful sync.",
-    needsReconnect: false,
-    canSync: true,
-  };
 }
 
 function statusRank(row: IntegrationRow): number {
@@ -211,35 +83,86 @@ const PROVIDER_LABELS: Record<string, string> = {
   shopify: "Shopify",
 };
 
-function formatSyncTime(dateStr?: string | null): string {
-  if (!dateStr || dateStr === "Never") return "Never";
-  try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    const timeStr = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-    if (isToday) {
-      return `Today at ${timeStr}`;
-    }
-    return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${timeStr}`;
-  } catch {
-    return dateStr;
-  }
+function statusBadgeClass(kind: SourceStateKind): string {
+  if (kind === "auth-required") return "border-rose-500/30 bg-rose-500/10 text-rose-300";
+  if (kind === "sync-issue" || kind === "partial") return "border-amber-500/30 bg-amber-500/10 text-amber-300";
+  if (kind === "not-synced") return "border-sky-500/30 bg-sky-500/10 text-sky-300";
+  if (kind === "syncing") return "border-cyan-500/30 bg-cyan-500/10 text-cyan-300";
+  if (kind === "stale") return "border-line/80 bg-panel text-ink-mute";
+  return "border-emerald-500/30 bg-emerald-500/10 text-emerald-300";
 }
 
-function sanitizeErrorMessage(msg?: string | null): string {
-  if (!msg) return "";
-  let cleaned = msg
-    .replace(/^\[(failed|partial|error)\]\s*/i, "")
-    .replace(/^connection:\s*/i, "")
-    .replace(/connection\s+[a-z0-9_]{15,40}\s+(has\s+)?/gi, "")
-    .replace(/request_id=[a-z0-9:_]+/gi, "")
-    .trim();
-  if (cleaned.length > 130) {
-    cleaned = cleaned.slice(0, 127) + "…";
+function StatusIcon({ kind }: { kind: SourceStateKind }) {
+  if (kind === "auth-required") return <AlertCircle className="h-3.5 w-3.5 text-rose-400 shrink-0" />;
+  if (kind === "sync-issue" || kind === "partial") return <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0" />;
+  if (kind === "syncing") return <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin text-cyan-400 shrink-0" />;
+  if (kind === "not-synced") return <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />;
+  if (kind === "stale") return <span className="h-1.5 w-1.5 rounded-full bg-amber-400/80 shrink-0" />;
+  return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" strokeWidth={2} />;
+}
+
+function StatusBadge({ state }: { state: SourceState }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium shadow-2xs",
+        statusBadgeClass(state.kind),
+      )}
+      title={state.detail || state.subtext}
+    >
+      <StatusIcon kind={state.kind} />
+      <span>{state.label}</span>
+    </span>
+  );
+}
+
+function AccountsCell({
+  provider,
+  tags,
+  accountCount,
+  align = "start",
+}: {
+  provider?: string;
+  tags?: AccountTagEntry[];
+  accountCount?: number;
+  align?: "start" | "end";
+}) {
+  const summary = summarizeAccountScope(provider, tags, accountCount);
+  if (summary.chips.length === 0) {
+    return (
+      <span className={cn("text-xs text-ink-mute", align === "end" && "text-right")}>
+        {summary.countLabel}
+      </span>
+    );
   }
-  return cleaned;
+  return (
+    <div className={cn("flex flex-wrap items-center gap-1.5", align === "end" && "justify-end")}>
+      {summary.chips.map((chip, idx) => (
+        <CopyableBadge
+          key={`${chip.id}-${idx}`}
+          text={chip.label}
+          copyValue={chip.id}
+          title={`Click to copy account ID "${chip.id}"`}
+          className="text-[11px] text-ink-mute font-mono py-0 px-1.5"
+        />
+      ))}
+      {summary.moreCount > 0 && (
+        <span className="rounded-md border border-line bg-canvas px-1.5 py-0.5 font-mono text-[10px] text-ink-mute">
+          +{summary.moreCount} more
+        </span>
+      )}
+    </div>
+  );
+}
+
+function LastSyncCell({ lastSync }: { lastSync?: string }) {
+  const formatted = formatLastSyncLabel(lastSync);
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-ink-mute" title={formatted.title}>
+      <Clock className="h-3 w-3 text-ink-mute/70 shrink-0" />
+      <span className="font-medium text-ink">{formatted.text}</span>
+    </div>
+  );
 }
 
 export function ConnectedSourceList({
@@ -257,13 +180,12 @@ export function ConnectedSourceList({
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [openTagsId, setOpenTagsId] = useState<string | null>(null);
   const [renamingRow, setRenamingRow] = useState<{ id: string; name: string } | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<string>("all");
-  const [viewMode, setViewMode] = useState<"detailed" | "lite">("detailed");
+  const [viewMode, setViewMode] = useState<"detailed" | "lite">("lite");
 
   useEffect(() => {
     try {
@@ -280,12 +202,6 @@ export function ConnectedSourceList({
       localStorage.setItem("monstera_sources_view_mode", mode);
     } catch {}
   };
-
-  useEffect(() => {
-    const close = () => setOpenTagsId(null);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
-  }, [openTagsId]);
 
   const availablePlatforms = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -418,9 +334,81 @@ export function ConnectedSourceList({
     }
   };
 
+  const renderRowAction = (r: IntegrationRow, sourceState: SourceState, syncBusy: boolean) => {
+    if (sourceState.needsReconnect) {
+      return (
+        <button
+          type="button"
+          onClick={() => onFixConnection(r)}
+          className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50 transition-all cursor-pointer shadow-xs"
+          data-no-row-click
+          data-no-card-click
+          title="Re-authenticate OAuth credentials"
+        >
+          <Wrench className="h-3.5 w-3.5 text-rose-400" />
+          <span>Reconnect</span>
+        </button>
+      );
+    }
+    if (sourceState.kind === "not-synced") {
+      return (
+        <button
+          type="button"
+          disabled={syncBusy}
+          onClick={() => runRowSync(r)}
+          className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-semibold text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/50 transition-all cursor-pointer shadow-xs"
+          data-no-row-click
+          data-no-card-click
+          title="Trigger initial warehouse sync"
+        >
+          {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <Play className="h-3.5 w-3.5 text-sky-400 fill-sky-400/30" />}
+          <span>{syncBusy ? "Syncing" : "First sync"}</span>
+        </button>
+      );
+    }
+    if (sourceState.kind === "sync-issue" || sourceState.kind === "partial") {
+      return (
+        <button
+          type="button"
+          disabled={syncBusy}
+          onClick={() => runRowSync(r)}
+          className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all cursor-pointer shadow-xs"
+          data-no-row-click
+          data-no-card-click
+          title="Retry failed sync directly"
+        >
+          {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-amber-400" />}
+          <span>{syncBusy ? "Syncing" : "Retry sync"}</span>
+        </button>
+      );
+    }
+    return (
+      <button
+        type="button"
+        disabled={syncBusy || !sourceState.canSync}
+        onClick={() => runRowSync(r)}
+        className={cn(
+          "inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer shadow-xs",
+          syncBusy || !sourceState.canSync
+            ? "cursor-not-allowed border-line bg-panel text-ink-mute"
+            : "border-line bg-canvas text-ink hover:bg-white/[0.06] hover:border-white/20",
+        )}
+        data-no-row-click
+        data-no-card-click
+        title={sourceState.kind === "syncing" ? sourceState.detail : "Trigger warehouse sync"}
+      >
+        {syncBusy || sourceState.kind === "syncing" ? (
+          <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
+        ) : (
+          <RefreshCw className="h-3.5 w-3.5" />
+        )}
+        <span>{syncBusy || sourceState.kind === "syncing" ? "Syncing" : "Sync"}</span>
+      </button>
+    );
+  };
+
   return (
     <div className="rounded-xl border border-line bg-panel shadow-xs overflow-hidden">
-      {/* Header & Controls */}
       <div className="flex flex-col gap-3 border-b border-line p-4 sm:p-5 bg-panel/70">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5 text-xs text-ink-mute">
@@ -442,7 +430,6 @@ export function ConnectedSourceList({
               </>
             )}
 
-            {/* View Mode Toggle: Detailed vs Lite */}
             <div className="flex items-center rounded-lg border border-line bg-canvas p-0.5 text-xs">
               <button
                 type="button"
@@ -497,7 +484,6 @@ export function ConnectedSourceList({
           </div>
         </div>
 
-        {/* Real-time Search & Platform Tabs for 20+ MCCs/BMs */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-line/50">
           <div className="relative flex-1 sm:max-w-xs">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-mute" />
@@ -572,19 +558,17 @@ export function ConnectedSourceList({
       ) : viewMode === "detailed" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 p-4 sm:p-6 bg-panel/30">
           {filteredAndSortedRows.map((r) => {
-            const isExpanded = expandedId === r.id;
             const syncBusy =
               (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
             const disconnectBusy = busyActions.has(r.id);
-            const sourceState = sourceStateFor(r, syncBusy);
-            const formattedSync = formatSyncTime(r.lastSync);
-            const cleanError = sanitizeErrorMessage(r.errorMsg || (sourceState.kind === "auth-required" || sourceState.kind === "sync-issue" ? sourceState.detail : ""));
+            const sourceState = sourceStateFor(r, Boolean(syncBusy));
+            const showDiagnostic = sourceState.kind === "auth-required" || sourceState.kind === "sync-issue" || sourceState.kind === "partial" || sourceState.kind === "syncing";
 
             return (
               <div
                 key={r.id}
                 onClick={(e) => {
-                  if (!(e.target as HTMLElement).closest('[data-no-card-click]')) {
+                  if (!(e.target as HTMLElement).closest("[data-no-card-click]")) {
                     router.push(`/sources/${r.id}`);
                   }
                 }}
@@ -594,12 +578,11 @@ export function ConnectedSourceList({
                     ? "border-rose-500/30 bg-rose-950/10 hover:border-rose-500/50"
                     : sourceState.kind === "sync-issue" || sourceState.kind === "partial"
                       ? "border-amber-500/30 bg-amber-950/10 hover:border-amber-500/50"
-                      : sourceState.kind === "not-synced"
+                      : sourceState.kind === "not-synced" || sourceState.kind === "syncing"
                         ? "border-sky-500/30 bg-sky-950/10 hover:border-sky-500/50"
                         : "border-line/70 bg-panel/75 hover:border-white/20 hover:bg-panel"
                 )}
               >
-                {/* Top: Logo + Name on Left, Status + Checkbox on Right */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3.5 min-w-0">
                     {r.logoSrc ? (
@@ -630,64 +613,19 @@ export function ConnectedSourceList({
                           <Pencil className="h-3 w-3" />
                         </button>
                       </div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {r.managerBadge && (
-                          <CopyableBadge
-                            text={r.managerBadge}
-                            copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
-                            title={`Click to copy ${r.managerBadge}`}
-                            className="text-[10px] text-ink-mute border-line/70 bg-canvas/80"
-                          />
-                        )}
-                        {r.accountEmail && (
-                          <CopyableBadge
-                            text={r.accountEmail}
-                            copyValue={r.accountEmail}
-                            prefix="✉"
-                            title={`Authorized account: ${r.accountEmail}`}
-                            className="text-[10px] text-emerald-300 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20"
-                          />
-                        )}
-                        {r.shortId && (
-                          <CopyableBadge
-                            text={`#${r.shortId}`}
-                            copyValue={r.id}
-                            title={`Click to copy full Connection ID (${r.id})`}
-                            className="text-[10px] text-ink-mute/70 border-line/40 bg-transparent hover:bg-canvas"
-                          />
-                        )}
-                      </div>
+                      {r.managerBadge && (
+                        <CopyableBadge
+                          text={r.managerBadge}
+                          copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
+                          title={r.accountEmail ? `${r.managerBadge} · ${r.accountEmail}` : `Click to copy ${r.managerBadge}`}
+                          className="text-[10px] text-ink-mute border-line/70 bg-canvas/80"
+                        />
+                      )}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2.5 shrink-0" data-no-card-click onClick={(e) => e.stopPropagation()}>
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium shadow-2xs",
-                        sourceState.kind === "auth-required"
-                          ? "border border-rose-500/30 bg-rose-500/10 text-rose-300"
-                          : sourceState.kind === "sync-issue" || sourceState.kind === "partial"
-                            ? "border border-amber-500/30 bg-amber-500/10 text-amber-300"
-                            : sourceState.kind === "not-synced"
-                              ? "border border-sky-500/30 bg-sky-500/10 text-sky-300"
-                              : sourceState.kind === "syncing"
-                                ? "border border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
-                                : "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                      )}
-                    >
-                      {sourceState.kind === "auth-required" ? (
-                        <AlertCircle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
-                      ) : sourceState.kind === "sync-issue" || sourceState.kind === "partial" ? (
-                        <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                      ) : sourceState.kind === "syncing" ? (
-                        <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin text-cyan-400 shrink-0" />
-                      ) : sourceState.kind === "not-synced" ? (
-                        <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />
-                      ) : (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" strokeWidth={2} />
-                      )}
-                      <span>{sourceState.label}</span>
-                    </span>
+                    <StatusBadge state={sourceState} />
                     <input
                       type="checkbox"
                       checked={selectedIds.has(r.id)}
@@ -697,151 +635,40 @@ export function ConnectedSourceList({
                   </div>
                 </div>
 
-                {/* Middle: Clean Symmetrical Key-Value Rows */}
                 <div className="my-4 space-y-2.5 text-xs">
-                  {r.description && (
-                    <p className="text-ink-mute/80 line-clamp-1 leading-relaxed text-[12px]">
-                      {r.description}
-                    </p>
-                  )}
-
-                  {/* Scoped accounts row */}
                   <div className="flex items-center justify-between gap-2 text-xs py-1 border-t border-line/40">
                     <span className="text-ink-mute shrink-0">Accounts:</span>
-                    <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
-                      {(r.accountTags ?? []).length > 0 ? (
-                        <>
-                          {(r.accountTags ?? []).slice(0, 2).map((item, idx) => {
-                            const label = typeof item === "object" ? item.label : item;
-                            const copyVal = typeof item === "object" ? item.id : item;
-                            return (
-                              <CopyableBadge
-                                key={`${copyVal}-${idx}`}
-                                text={label}
-                                copyValue={copyVal}
-                                title={`Click to copy account ID "${copyVal}"`}
-                                className="text-[11px] text-ink-mute font-mono py-0 px-1.5"
-                              />
-                            );
-                          })}
-                          {(r.accountTags?.length ?? 0) > 2 && (
-                            <span className="rounded-md border border-line bg-canvas px-1.5 py-0.5 font-mono text-[10px] text-ink-mute">
-                              +{(r.accountTags?.length ?? 0) - 2} more
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-[11px] text-ink-mute/70 font-medium">All accounts</span>
-                      )}
-                    </div>
+                    <AccountsCell provider={r.provider} tags={r.accountTags} accountCount={r.accountCount} align="end" />
                   </div>
-
-                  {/* Last sync timestamp row */}
                   <div className="flex items-center justify-between gap-2 text-xs py-1 border-t border-line/40">
-                    <span className="text-ink-mute shrink-0 flex items-center gap-1.5">
-                      <Clock className="h-3 w-3 text-ink-mute/70" /> Last sync:
-                    </span>
-                    <span className="font-medium text-ink text-right truncate">
-                      {formattedSync}
-                    </span>
+                    <span className="text-ink-mute shrink-0">Last sync:</span>
+                    <LastSyncCell lastSync={r.lastSync} />
                   </div>
-
-                  {/* Data through row if present */}
-                  {r.dataThroughDate && (
-                    <div className="flex items-center justify-between gap-2 text-[11px] text-ink-mute py-0.5">
-                      <span>Data coverage:</span>
-                      <span className="font-mono text-ink/90">
-                        Through {new Date(r.dataThroughDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Error Callout (Sanitized & Friendly) */}
-                  {cleanError && (
+                  {showDiagnostic && sourceState.detail && (
                     <div className={cn(
                       "rounded-xl p-3 text-xs leading-relaxed border flex items-start gap-2.5 mt-2",
                       sourceState.kind === "auth-required"
                         ? "border-rose-500/25 bg-rose-500/[0.08] text-rose-300"
-                        : "border-amber-500/25 bg-amber-500/[0.08] text-amber-300"
+                        : sourceState.kind === "syncing"
+                          ? "border-cyan-500/25 bg-cyan-500/[0.08] text-cyan-200"
+                          : "border-amber-500/25 bg-amber-500/[0.08] text-amber-300"
                     )}>
                       <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-[11px] uppercase tracking-wider opacity-80 mb-0.5">
-                          {sourceState.kind === "auth-required" ? "Authentication Notice" : "Sync Diagnostic"}
-                        </p>
-                        <p className="text-xs break-words opacity-90 line-clamp-2" title={r.errorMsg || sourceState.detail}>
-                          {cleanError}
-                        </p>
-                      </div>
+                      <p className="text-xs break-words opacity-90">{sourceState.detail}</p>
                     </div>
                   )}
                 </div>
 
-                {/* Bottom Bar: Action buttons */}
                 <div className="pt-3.5 mt-auto border-t border-line/50 flex items-center justify-between gap-2" data-no-card-click>
-                  {canDirectSync(r.provider) ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setExpandedId(isExpanded ? null : r.id);
-                      }}
-                      className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-mute hover:text-ink transition-colors cursor-pointer py-1"
-                    >
-                      <span>Scope accounts</span>
-                      <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", isExpanded && "rotate-180")} />
-                    </button>
-                  ) : (
-                    <span className="text-xs text-ink-mute/60">Single store</span>
-                  )}
-
+                  <Link
+                    href={`/sources/${r.id}`}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-mute hover:text-ink transition-colors py-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {canDirectSync(r.provider) ? "Manage accounts" : "Open details"}
+                  </Link>
                   <div className="flex items-center gap-1.5">
-                    {sourceState.needsReconnect ? (
-                      <button
-                        type="button"
-                        onClick={() => onFixConnection(r)}
-                        className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50 transition-all cursor-pointer shadow-xs"
-                      >
-                        <Wrench className="h-3.5 w-3.5 text-rose-400" />
-                        <span>Reconnect</span>
-                      </button>
-                    ) : sourceState.kind === "not-synced" ? (
-                      <button
-                        type="button"
-                        disabled={syncBusy}
-                        onClick={() => runRowSync(r)}
-                        className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-sky-500/30 bg-sky-500/10 text-xs font-semibold text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/50 transition-all cursor-pointer shadow-xs"
-                      >
-                        {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <Play className="h-3.5 w-3.5 text-sky-400 fill-sky-400/30" />}
-                        <span>{syncBusy ? "Syncing" : "First sync"}</span>
-                      </button>
-                    ) : sourceState.kind === "sync-issue" || sourceState.kind === "partial" ? (
-                      <button
-                        type="button"
-                        disabled={syncBusy}
-                        onClick={() => runRowSync(r)}
-                        className="inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all cursor-pointer shadow-xs"
-                      >
-                        {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-amber-400" />}
-                        <span>{syncBusy ? "Syncing" : "Retry sync"}</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={syncBusy}
-                        onClick={() => runRowSync(r)}
-                        className={cn(
-                          "inline-flex items-center gap-1.5 h-8.5 px-3.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer shadow-xs",
-                          syncBusy
-                            ? "cursor-not-allowed border-line bg-panel text-ink-mute"
-                            : "border-line bg-canvas text-ink hover:bg-white/[0.06] hover:border-white/20"
-                        )}
-                      >
-                        {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                        <span>{syncBusy ? "Syncing" : "Sync Now"}</span>
-                      </button>
-                    )}
-
+                    {renderRowAction(r, sourceState, Boolean(syncBusy))}
                     <button
                       type="button"
                       disabled={disconnectBusy}
@@ -853,44 +680,31 @@ export function ConnectedSourceList({
                     </button>
                   </div>
                 </div>
-
-                {/* Inline Account Selector if expanded */}
-                {isExpanded && canDirectSync(r.provider) && (
-                  <div className="mt-3.5 pt-3.5 border-t border-line/60" data-no-card-click>
-                    <AccountSelector
-                      connectionId={r.id}
-                      provider={r.provider!}
-                      connectionName={r.name}
-                      managerBadge={r.managerBadge}
-                      variant="compact"
-                    />
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="max-lg:overflow-x-auto">
           <table className="min-w-[960px] w-full text-sm">
             <colgroup>
               <col className="w-12" />
               <col className="w-[320px]" />
-              <col className="w-[240px]" />
+              <col className="w-[220px]" />
               <col className="w-[140px]" />
-              <col className="w-[180px]" />
-              <col className="w-[160px]" />
+              <col className="w-[140px]" />
+              <col className="w-[150px]" />
             </colgroup>
-            <thead className="bg-panel/40 border-b border-line">
+            <thead className="border-b border-line bg-panel lg:sticky lg:top-[41px] lg:z-[15]">
               <tr>
-                <th className="w-12 px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">
+                <th className="w-12 px-5 py-3 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute bg-panel">
                   <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} data-no-row-click />
                 </th>
-                <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Connector</th>
-                <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Accounts</th>
-                <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Status</th>
-                <th className="px-5 py-3.5 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Last sync</th>
-                <th className="px-5 py-3.5 text-right text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute">Actions</th>
+                <th className="px-5 py-3 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute bg-panel">Connector</th>
+                <th className="px-5 py-3 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute bg-panel">Accounts</th>
+                <th className="px-5 py-3 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute bg-panel">Status</th>
+                <th className="px-5 py-3 text-left text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute bg-panel">Last sync</th>
+                <th className="px-5 py-3 text-right text-[11px] font-mono font-medium uppercase tracking-wider text-ink-mute bg-panel">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -898,22 +712,22 @@ export function ConnectedSourceList({
                 const isExpanded = expandedId === r.id;
                 const syncBusy =
                   (r.pipelineId && busyActions.has(`sync:${r.pipelineId}`)) || busyActions.has(`direct-sync:${r.id}`);
-                const disconnectBusy = busyActions.has(r.id);
-                const sourceState = sourceStateFor(r, syncBusy);
+                const sourceState = sourceStateFor(r, Boolean(syncBusy));
+                const showDiagnostic = sourceState.kind === "auth-required" || sourceState.kind === "sync-issue" || sourceState.kind === "partial" || (sourceState.kind === "syncing" && Boolean(r.errorMsg));
                 return (
                   <React.Fragment key={r.id}>
-                    <tr 
+                    <tr
                       className="cursor-pointer hover:bg-white/[0.025] transition-colors duration-150 border-b border-line/40 last:border-0"
                       onClick={(e) => {
-                        if (!(e.target as HTMLElement).closest('[data-no-row-click]')) {
+                        if (!(e.target as HTMLElement).closest("[data-no-row-click]")) {
                           router.push(`/sources/${r.id}`);
                         }
                       }}
                     >
-                      <td className="px-5 py-4.5" data-no-row-click>
+                      <td className="px-5 py-3.5" data-no-row-click>
                         <input type="checkbox" checked={selectedIds.has(r.id)} onChange={() => toggleSelectOne(r.id)} />
                       </td>
-                      <td className="px-5 py-4.5">
+                      <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3.5">
                           {r.logoSrc ? (
                             <div className="p-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] shrink-0 shadow-2xs">
@@ -943,323 +757,102 @@ export function ConnectedSourceList({
                                 <Pencil className="h-3 w-3" />
                               </button>
                             </div>
-                            <div className="flex flex-wrap items-center gap-1.5 text-xs text-ink-mute">
-                              {r.managerBadge && (
-                                <CopyableBadge
-                                  text={r.managerBadge}
-                                  copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
-                                  title={`Click to copy ${r.managerBadge}`}
-                                  className="text-[10px] text-ink-mute border-line/70 bg-canvas/80"
-                                />
-                              )}
-                              {r.accountEmail && (
-                                <CopyableBadge
-                                  text={r.accountEmail}
-                                  copyValue={r.accountEmail}
-                                  prefix="✉"
-                                  title={`Authorized account: ${r.accountEmail}`}
-                                  className="text-[10px] text-emerald-300 border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20"
-                                />
-                              )}
-                              {r.shortId && (
-                                <CopyableBadge
-                                  text={`#${r.shortId}`}
-                                  copyValue={r.id}
-                                  title={`Click to copy full Connection ID (${r.id})`}
-                                  className="text-[10px] text-ink-mute/70 border-line/40 bg-transparent hover:bg-canvas"
-                                />
-                              )}
-                              {r.description && (
-                                <span className="truncate text-[11px] text-ink-mute/80" title={r.description}>
-                                  {r.description}
-                                </span>
-                              )}
-                            </div>
+                            {r.managerBadge && (
+                              <CopyableBadge
+                                text={r.managerBadge}
+                                copyValue={r.managerBadge.replace(/^\[|\]$/g, "").replace(/^(MCC|BM|BC|Shop|Store|CID|Adv|act_):\s*/, "")}
+                                title={r.accountEmail ? `${r.managerBadge} · ${r.accountEmail}` : `Click to copy ${r.managerBadge}`}
+                                className="text-[10px] text-ink-mute border-line/70 bg-canvas/80"
+                              />
+                            )}
                           </div>
                         </div>
                       </td>
-                    <td className="px-5 py-4.5">
-                      <div className="flex flex-wrap items-center gap-1.5 max-w-[240px]">
-                        {(r.accountTags ?? []).slice(0, 3).map((item, idx) => {
-                          const label = typeof item === "object" ? item.label : item;
-                          const copyVal = typeof item === "object" ? item.id : item;
-                          return (
-                            <CopyableBadge
-                              key={`${copyVal}-${idx}`}
-                              text={label}
-                              copyValue={copyVal}
-                              title={`Click to copy account ID "${copyVal}"`}
-                              className="text-[11px] text-ink-mute font-mono"
-                            />
-                          );
-                        })}
-                        {(r.accountTags?.length ?? 0) > 3 && (
-                          <div className="relative shrink-0" data-no-row-click>
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); setOpenTagsId(prev => prev === r.id ? null : r.id); }}
-                              className="inline-flex items-center rounded-md border border-line bg-panel px-2 py-0.5 font-mono text-[11px] font-medium text-ink-mute hover:bg-white/[0.06] hover:text-white transition-colors duration-150 cursor-pointer"
-                            >
-                              +{(r.accountTags?.length ?? 0) - 3} more
-                            </button>
-                            {openTagsId === r.id && (
-                              <div className="absolute left-0 top-full z-50 mt-1.5 min-w-[14rem] max-h-60 overflow-y-auto rounded-xl border border-line bg-panel shadow-elevated p-2 space-y-1.5">
-                                <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-ink-mute border-b border-line/50">
-                                  Scoped Accounts ({(r.accountTags?.length ?? 0)})
-                                </div>
-                                {(r.accountTags ?? []).slice(3).map((item, idx) => {
-                                  const label = typeof item === "object" ? item.label : item;
-                                  const copyVal = typeof item === "object" ? item.id : item;
-                                  return (
-                                    <div key={`${copyVal}-${idx}`} className="px-2.5 py-1.5 rounded-lg text-xs font-mono text-ink font-medium bg-canvas border border-line/60 truncate flex items-center justify-between" title={label}>
-                                      <span className="truncate mr-2">{label}</span>
-                                      <CopyableBadge text={copyVal} copyValue={copyVal} className="text-[10px]" />
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {(!r.accountTags || r.accountTags.length === 0) && (
-                          <span className="text-xs text-ink-mute/70 italic font-mono">
-                            All manager accounts
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-5 py-4.5">
-                      <div className="flex flex-col items-start gap-1">
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors shadow-2xs",
-                            sourceState.kind === "auth-required"
-                              ? "border border-rose-500/30 bg-rose-500/10 text-rose-300"
-                              : sourceState.kind === "sync-issue" || sourceState.kind === "partial"
-                                ? "border border-amber-500/30 bg-amber-500/10 text-amber-300"
-                                : sourceState.kind === "not-synced"
-                                  ? "border border-sky-500/30 bg-sky-500/10 text-sky-300"
-                                  : sourceState.kind === "syncing"
-                                    ? "border border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
-                                    : sourceState.kind === "stale"
-                                      ? "border border-line/80 bg-panel text-ink-mute"
-                                      : "border border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-                          )}
-                        >
-                          {sourceState.kind === "auth-required" ? (
-                            <AlertCircle className="h-3.5 w-3.5 text-rose-400 shrink-0" />
-                          ) : sourceState.kind === "sync-issue" || sourceState.kind === "partial" ? (
-                            <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                          ) : sourceState.kind === "syncing" ? (
-                            <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin text-cyan-400 shrink-0" />
-                          ) : sourceState.kind === "not-synced" ? (
-                            <span className="h-1.5 w-1.5 rounded-full bg-sky-400 shrink-0" />
-                          ) : sourceState.kind === "stale" ? (
-                            <span className="h-1.5 w-1.5 rounded-full bg-amber-400/80 shrink-0" />
-                          ) : (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" strokeWidth={2} />
-                          )}
-                          <span>{sourceState.label}</span>
-                        </span>
-                        <span
-                          className="text-[11px] font-mono text-ink-mute/70 pl-0.5 truncate max-w-[170px]"
-                          title={r.errorMsg || sourceState.detail}
-                        >
-                          {sourceState.subtext}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4.5 text-xs text-ink-mute">
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="h-3 w-3 text-ink-mute/70 shrink-0" />
-                        <span className="font-medium text-ink">{r.lastSync ?? "Never"}</span>
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1 rounded bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px] text-ink-mute border border-line/60">
-                          <span className={cn("h-1 w-1 rounded-full", sourceState.kind === "auth-required" ? "bg-rose-400" : "bg-emerald-400")} />
-                          Hourly auto-sync
-                        </span>
-                      </div>
-                      {r.dataThroughDate ? (
-                        <p className="mt-1 text-[11px] text-ink-mute font-mono">
-                          Data through {new Date(r.dataThroughDate).toLocaleDateString()}
-                        </p>
-                      ) : null}
-                      {sourceState.kind === "not-synced" && !r.dataThroughDate && (
-                        <p className="mt-1 text-[11px] text-sky-400/90 font-mono">Pending initial sync</p>
-                      )}
-                    </td>
-                    <td className="px-5 py-4.5">
-                      <div className="flex items-center justify-end gap-2">
-                        {sourceState.needsReconnect ? (
+                      <td className="px-5 py-3.5">
+                        <AccountsCell provider={r.provider} tags={r.accountTags} accountCount={r.accountCount} />
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <StatusBadge state={sourceState} />
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <LastSyncCell lastSync={r.lastSync} />
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center justify-end gap-2">
+                          {renderRowAction(r, sourceState, Boolean(syncBusy))}
                           <button
                             type="button"
-                            onClick={() => onFixConnection(r)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50 transition-all cursor-pointer shadow-xs"
-                            data-no-row-click
-                            title="Re-authenticate OAuth credentials"
-                          >
-                            <Wrench className="h-3.5 w-3.5 text-rose-400" />
-                            Reconnect
-                          </button>
-                        ) : sourceState.kind === "not-synced" ? (
-                          <button
-                            type="button"
-                            disabled={syncBusy}
-                            onClick={() => runRowSync(r)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-300 hover:bg-sky-500/20 hover:border-sky-500/50 transition-all cursor-pointer shadow-xs"
-                            data-no-row-click
-                            title="Trigger initial warehouse sync"
-                          >
-                            {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <Play className="h-3.5 w-3.5 text-sky-400 fill-sky-400/30" />}
-                            {syncBusy ? "Syncing" : "Run first sync"}
-                          </button>
-                        ) : sourceState.kind === "sync-issue" || sourceState.kind === "partial" ? (
-                          <button
-                            type="button"
-                            disabled={syncBusy}
-                            onClick={() => runRowSync(r)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 hover:border-amber-500/50 transition-all cursor-pointer shadow-xs"
-                            data-no-row-click
-                            title="Retry failed sync directly"
-                          >
-                            {syncBusy ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 text-amber-400" />}
-                            {syncBusy ? "Syncing" : "Retry sync"}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={syncBusy}
-                            onClick={() => runRowSync(r)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedId(isExpanded ? null : r.id);
+                            }}
                             className={cn(
-                              "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer",
-                              syncBusy
-                                ? "cursor-not-allowed border-line bg-panel text-ink-mute"
-                                : "border-line bg-canvas text-ink hover:bg-white/[0.06] hover:border-white/20",
+                              "rounded-lg p-1.5 text-ink-mute hover:text-ink hover:bg-white/[0.06] transition-all cursor-pointer",
+                              isExpanded && "bg-white/[0.06] text-ink rotate-180"
                             )}
+                            title={isExpanded ? "Collapse" : "Show diagnostic"}
                             data-no-row-click
-                            title="Trigger warehouse sync"
                           >
-                            {syncBusy ? (
-                              <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-3.5 w-3.5" />
-                            )}
-                            {syncBusy ? "Syncing" : "Sync"}
+                            <ChevronDown className="h-4 w-4" />
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExpandedId(isExpanded ? null : r.id);
-                          }}
-                          className={cn(
-                            "rounded-lg p-1.5 text-ink-mute hover:text-ink hover:bg-white/[0.06] transition-all cursor-pointer",
-                            isExpanded && "bg-white/[0.06] text-ink rotate-180"
-                          )}
-                          title={isExpanded ? "Collapse actions" : "Expand actions"}
-                          data-no-row-click
-                        >
-                          <ChevronDown className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {isExpanded && (
-                    <tr className="bg-canvas/50 border-b border-line/60">
-                      <td colSpan={6} className="px-6 py-4" data-no-row-click>
-                        <div className="space-y-4">
-                          {sourceState.kind === "auth-required" && (
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4">
-                              <div className="flex items-start gap-3">
-                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/15 text-rose-400">
-                                  <AlertCircle className="h-4 w-4" />
-                                </div>
-                                <div>
-                                  <h4 className="text-sm font-semibold text-rose-200">Re-authorization Required</h4>
-                                  <p className="mt-0.5 text-xs text-rose-300/90 leading-relaxed">
-                                    {r.errorMsg || sourceState.detail}
-                                  </p>
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => onFixConnection(r)}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 transition-all shadow-xs shrink-0 cursor-pointer"
-                              >
-                                <Wrench className="h-3.5 w-3.5" /> Reconnect source
-                              </button>
-                            </div>
-                          )}
-
-                          {(sourceState.kind === "sync-issue" || sourceState.kind === "partial") && (
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
-                              <div className="flex items-start gap-3">
-                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/15 text-amber-400">
-                                  <AlertCircle className="h-4 w-4" />
-                                </div>
-                                <div>
-                                  <h4 className="text-sm font-semibold text-amber-200">Sync Diagnostic</h4>
-                                  <p className="mt-0.5 text-xs text-amber-300/90 leading-relaxed">
-                                    {r.errorMsg || sourceState.detail}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                  type="button"
-                                  disabled={syncBusy}
-                                  onClick={() => runRowSync(r)}
-                                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 transition-all shadow-xs cursor-pointer"
-                                >
-                                  <RefreshCw className="h-3.5 w-3.5" /> Retry sync
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => onFixConnection(r)}
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/40 bg-transparent px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/10 transition-all cursor-pointer"
-                                >
-                                  <Wrench className="h-3.5 w-3.5" /> Re-authenticate
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {canDirectSync(r.provider) ? (
-                            <AccountSelector
-                              connectionId={r.id}
-                              provider={r.provider!}
-                              connectionName={r.name}
-                              managerBadge={r.managerBadge}
-                              variant="compact"
-                            />
-                          ) : null}
-
-                          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs text-ink-mute border-t border-line/60">
-                            <div className="flex flex-wrap items-center gap-3">
-                              <Link href={`/sources/${r.id}`} className="font-semibold text-ink hover:text-white transition-colors">
-                                Open source details →
-                              </Link>
-                              <span className="text-line">·</span>
-                              <Link href="/explorer" className="font-semibold text-ink hover:text-white transition-colors">
-                                View warehouse data →
-                              </Link>
-                            </div>
-                            {!r.pipelineId ? (
-                              <span className="font-mono text-[11px] text-ink-mute">
-                                Sync writes directly to warehouse
-                              </span>
-                            ) : null}
-                          </div>
                         </div>
                       </td>
                     </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
+
+                    {isExpanded && (
+                      <tr className="bg-canvas/50 border-b border-line/60">
+                        <td colSpan={6} className="px-6 py-3.5" data-no-row-click>
+                          <div className="space-y-3">
+                            {showDiagnostic && (
+                              <div className={cn(
+                                "flex items-start gap-3 rounded-xl border p-3.5",
+                                sourceState.kind === "auth-required"
+                                  ? "border-rose-500/30 bg-rose-500/10"
+                                  : sourceState.kind === "syncing"
+                                    ? "border-cyan-500/30 bg-cyan-500/10"
+                                    : "border-amber-500/30 bg-amber-500/10",
+                              )}>
+                                <AlertCircle className={cn(
+                                  "h-4 w-4 shrink-0 mt-0.5",
+                                  sourceState.kind === "auth-required" ? "text-rose-400" : sourceState.kind === "syncing" ? "text-cyan-400" : "text-amber-400",
+                                )} />
+                                <div className="min-w-0">
+                                  <h4 className={cn(
+                                    "text-sm font-semibold",
+                                    sourceState.kind === "auth-required" ? "text-rose-200" : sourceState.kind === "syncing" ? "text-cyan-200" : "text-amber-200",
+                                  )}>
+                                    {sourceState.kind === "auth-required" ? "Needs re-auth" : sourceState.kind === "syncing" ? "Still processing" : "Sync diagnostic"}
+                                  </h4>
+                                  <p className={cn(
+                                    "mt-0.5 text-xs leading-relaxed",
+                                    sourceState.kind === "auth-required" ? "text-rose-300/90" : sourceState.kind === "syncing" ? "text-cyan-200/90" : "text-amber-300/90",
+                                  )}>
+                                    {sourceState.detail}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-ink-mute">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <Link href={`/sources/${r.id}`} className="font-semibold text-ink hover:text-white transition-colors">
+                                  Open source details →
+                                </Link>
+                                <span className="text-line">·</span>
+                                <Link href="/explorer" className="font-semibold text-ink hover:text-white transition-colors">
+                                  View warehouse data →
+                                </Link>
+                              </div>
+                              <span className="font-mono text-[11px] text-ink-mute">
+                                Account scope is managed on the source page
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
