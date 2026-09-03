@@ -7,15 +7,16 @@ import { ArrowRight, Menu, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Logo } from "./Logo";
 import { readAppReturnPath } from "@/lib/app-return-path";
+import { trackEvent } from "@/lib/analytics-events";
 import { cn } from "@/lib/utils";
 
 const MARKETING_LANG_KEY = "marketing_lang";
 type Lang = "en" | "vi";
 
 const NAV_LINKS = [
-  { label: "Product", href: "/platform" },
-  { label: "Integrations", href: "/integrations" },
-  { label: "Pricing", href: "/pricing" },
+  { label: { en: "Product", vi: "Sản phẩm" }, href: "/platform" },
+  { label: { en: "Integrations", vi: "Tích hợp" }, href: "/integrations" },
+  { label: { en: "Pricing", vi: "Bảng giá" }, href: "/pricing" },
 ] as const;
 
 function isCurrentPath(pathname: string, href: string) {
@@ -110,7 +111,7 @@ export function MarketingNavbar() {
                   current ? "bg-white/[0.055] text-ink" : "text-ink-mute hover:bg-white/[0.03] hover:text-ink",
                 )}
               >
-                {item.label}
+                {item.label[lang]}
               </Link>
             );
           })}
@@ -125,17 +126,21 @@ export function MarketingNavbar() {
 
           {isAuthed ? (
             <Link href={consoleHref} className="inline-flex items-center rounded-md border border-line bg-panel px-3 py-1.5 text-[13px] font-medium text-ink transition-colors hover:bg-white/[0.04]">
-              Console
+              {lang === "vi" ? "Bảng điều khiển" : "Console"}
             </Link>
           ) : (
             <Link href="/login" className="hidden text-[13px] font-medium text-ink-mute transition-colors hover:text-ink sm:block">
-              Log in
+              {lang === "vi" ? "Đăng nhập" : "Log in"}
             </Link>
           )}
 
           {!isAuthed ? (
-            <Link href="/register" className="inline-flex items-center justify-center rounded-md bg-white px-3.5 py-1.5 text-[13px] font-semibold text-neutral-950 shadow-xs transition-colors hover:bg-neutral-200">
-              Start free
+            <Link
+              href="/register"
+              onClick={() => trackEvent("landing_pilot_cta_clicked", { location: "navbar", language: lang, offer: "agency_pro_7_day" })}
+              className="inline-flex items-center justify-center rounded-md bg-white px-3.5 py-1.5 text-[13px] font-semibold text-neutral-950 shadow-xs transition-colors hover:bg-neutral-200"
+            >
+              {lang === "vi" ? "Dùng thử 7 ngày" : "7-day pilot"}
               <ArrowRight className="ml-1.5 h-3.5 w-3.5" strokeWidth={2} />
             </Link>
           ) : null}
@@ -158,7 +163,7 @@ export function MarketingNavbar() {
           <div className="mx-auto max-w-6xl">
             {showLangToggle ? (
               <div className="mb-3 flex items-center justify-between border-b border-line pb-3 sm:hidden">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">Language</span>
+                <span className="font-mono text-[10px] uppercase tracking-wider text-ink-mute">{lang === "vi" ? "Ngôn ngữ" : "Language"}</span>
                 <LangToggle lang={lang} setLang={onSetLang} />
               </div>
             ) : null}
@@ -176,7 +181,7 @@ export function MarketingNavbar() {
                       current ? "bg-white/[0.055] text-ink" : "text-ink-mute hover:bg-white/[0.03] hover:text-ink",
                     )}
                   >
-                    {item.label}
+                      {item.label[lang]}
                     {current ? <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> : null}
                   </Link>
                 );
@@ -185,7 +190,7 @@ export function MarketingNavbar() {
 
             {!isAuthed ? (
               <Link href="/login" className="mt-3 block border-t border-line px-3 pt-3 text-sm font-medium text-ink-mute sm:hidden">
-                Log in
+                {lang === "vi" ? "Đăng nhập" : "Log in"}
               </Link>
             ) : null}
           </div>
