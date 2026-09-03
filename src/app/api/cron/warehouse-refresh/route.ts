@@ -9,6 +9,7 @@ import { runPostWarehouseRefreshQualityChecks } from "@/lib/observability/data-q
 import { claimNextImportJob } from "@/lib/warehouse-import-job";
 import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
 import { workspaceAllowsScheduledRefresh } from "@/lib/plan-config";
+import { withSystemScope } from "@/lib/tenant-guard";
 
 const PILOT_PROVIDERS = new Set(["meta_ads", "google_ads", "tiktok_business", "shopee"]);
 
@@ -129,17 +130,19 @@ export async function GET(request: Request) {
   let staleConnectionsCount = 0;
   try {
     const staleThreshold = new Date(Date.now() - 26 * 60 * 60 * 1000);
-    const staleList = await prisma.connection.findMany({
-      where: {
-        status: "connected",
-        type: "source",
-        OR: [
-          { lastSyncAt: { lt: staleThreshold } },
-          { lastSyncAt: null },
-        ],
-      },
-      select: { id: true, provider: true, lastSyncAt: true },
-    });
+    const staleList = await withSystemScope(() =>
+      prisma.connection.findMany({
+        where: {
+          status: "connected",
+          type: "source",
+          OR: [
+            { lastSyncAt: { lt: staleThreshold } },
+            { lastSyncAt: null },
+          ],
+        },
+        select: { id: true, provider: true, lastSyncAt: true },
+      })
+    );
     staleConnectionsCount = staleList.length;
     if (staleConnectionsCount > 0) {
       logger.warn("[WAREHOUSE_REFRESH_STALE_CANARY]", {

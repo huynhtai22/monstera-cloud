@@ -10,7 +10,7 @@ import { safeDecrypt, encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { metaAdsClient } from "@/lib/meta-ads";
-import { googleAdsOAuthClient } from "@/lib/google-ads";
+import { googleAdsOAuthClient, googleAdsReportClient } from "@/lib/google-ads";
 import { tiktokBusinessClient } from "@/lib/tiktok-business";
 import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import {
@@ -52,11 +52,14 @@ export async function GET(
             );
         }
 
+        const url = new URL(request.url);
+        const shouldRefresh = url.searchParams.get("refresh") === "true";
+
         await requireWorkspaceAccess({
             userId: session.user.id,
             workspaceId: connection.workspaceId,
-            minimumRole: "viewer",
-            operation: "list_connection_accounts",
+            minimumRole: shouldRefresh ? "member" : "viewer",
+            operation: shouldRefresh ? "refresh_connection_accounts" : "list_connection_accounts",
         });
 
         // Only certain providers support account listing
@@ -69,12 +72,8 @@ export async function GET(
         }
 
         // Decrypt credentials
-        const credentials = JSON.parse(safeDecrypt(connection.credentials));
-        const extraFields = credentials.extraFields || {};
-
-        // On-demand discovery of newly added ad accounts from provider API
-        const url = new URL(request.url);
-        const shouldRefresh = url.searchParams.get("refresh") === "true";
+        let credentials = JSON.parse(safeDecrypt(connection.credentials));
+        let extraFields = credentials.extraFields || {};
 
         if (shouldRefresh) {
             try {
@@ -83,6 +82,16 @@ export async function GET(
                     credentials: connection.credentials,
                     provider: connection.provider,
                 });
+
+                // Re-read latest credentials from database so newly rotated tokens are never overwritten
+                const latest = await prisma.connection.findUnique({
+                    where: { id: connection.id },
+                    select: { credentials: true },
+                });
+                if (latest?.credentials) {
+                    credentials = JSON.parse(safeDecrypt(latest.credentials));
+                    extraFields = credentials.extraFields || {};
+                }
 
                 if (connection.provider === "meta_ads" && accessToken) {
                     const discovered = await metaAdsClient.getAdAccounts(accessToken);
@@ -102,7 +111,21 @@ export async function GET(
                         });
                     }
                 } else if (connection.provider === "google_ads" && accessToken) {
-                    const discovered = await googleAdsOAuthClient.listAccessibleCustomers(accessToken);
+                    let discovered: string[] = [];
+                    if (connection.remoteAccountId) {
+                        try {
+                            const clients = await googleAdsReportClient.listCustomerClients(
+                                accessToken,
+                                connection.remoteAccountId
+                            );
+                            discovered = clients.filter((c) => !c.isManager).map((c) => c.customerId);
+                        } catch {
+                            discovered = await googleAdsOAuthClient.listAccessibleCustomers(accessToken);
+                        }
+                    } else {
+                        discovered = await googleAdsOAuthClient.listAccessibleCustomers(accessToken);
+                    }
+
                     if (discovered.length > 0) {
                         const existingIds: string[] = extraFields.customerIds || credentials.customerIds || [];
                         const mergedIds = Array.from(new Set([...existingIds, ...discovered]));

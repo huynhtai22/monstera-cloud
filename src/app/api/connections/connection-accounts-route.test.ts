@@ -106,6 +106,10 @@ describe("GET /api/connections/[id]/accounts", () => {
       credentials: encrypt(JSON.stringify(storedCreds)),
     });
 
+    (prisma.connection.findUnique as any) = async () => ({
+      credentials: encrypt(JSON.stringify(storedCreds)),
+    });
+
     (prisma.connection.update as any) = async ({ data }: any) => {
       storedCreds = JSON.parse(safeDecrypt(data.credentials));
       return {};
