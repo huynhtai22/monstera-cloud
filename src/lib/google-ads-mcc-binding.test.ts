@@ -33,4 +33,18 @@ describe("Google Ads MCC connection binding", () => {
     assert.equal(bindings.length, 1);
     assert.equal(bindings[0].remoteAccountId, "1581709190");
   });
+
+  it("attaches accountEmail and accountName when available", () => {
+    const bindings = buildGoogleAdsMccBindings({
+      credentials: { accessToken: "test-token" },
+      extraFields: { accountEmail: "media.buyer@agency.com", accountName: "Media Buyer" },
+      roots: [
+        { rootCustomerId: "123-456-7890", isManager: true, customerIds: ["111-222-3333"] },
+      ],
+    });
+
+    assert.equal(bindings.length, 1);
+    assert.equal(bindings[0].credentials.accountEmail, "media.buyer@agency.com");
+    assert.equal(bindings[0].credentials.accountName, "Media Buyer");
+  });
 });

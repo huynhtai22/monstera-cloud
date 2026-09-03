@@ -12,8 +12,14 @@ export function sanitizeConnectionCredentials(raw: string): string {
             adAccounts,
             customerIds,
             mccId,
+            managerCustomerId,
             sandbox,
             product,
+            accountEmail,
+            accountName,
+            mccName,
+            managerName,
+            discoveredCustomerCount,
         } = parsed as Record<string, unknown>;
         return JSON.stringify({
             spreadsheetId,
@@ -23,8 +29,14 @@ export function sanitizeConnectionCredentials(raw: string): string {
             adAccounts,
             customerIds,
             mccId,
+            managerCustomerId,
             sandbox,
             product,
+            accountEmail,
+            accountName,
+            mccName,
+            managerName,
+            discoveredCustomerCount,
         });
     } catch {
         return "{}";

@@ -53,6 +53,8 @@ export function buildGoogleAdsMccBindings(opts: {
       ? [...new Set(root.customerIds.map(cleanCustomerId).filter((id): id is string => Boolean(id)))]
       : [];
     const displayId = formatCustomerId(rootCustomerId);
+    const accountEmail = String(opts.credentials.accountEmail || opts.extraFields?.accountEmail || "").trim() || undefined;
+    const accountName = String(opts.credentials.accountName || opts.extraFields?.accountName || "").trim() || undefined;
     const connectionExtras: Record<string, unknown> = {
       ...(opts.extraFields ?? {}),
       // Only this root is a sync target. The full discovered child list is
@@ -61,6 +63,8 @@ export function buildGoogleAdsMccBindings(opts: {
       discoveredCustomerIds,
       discoveredCustomerCount: discoveredCustomerIds.length || 1,
       googleAdsRootType: isManager ? "manager" : "customer",
+      ...(accountEmail ? { accountEmail } : {}),
+      ...(accountName ? { accountName } : {}),
     };
 
     if (isManager) {

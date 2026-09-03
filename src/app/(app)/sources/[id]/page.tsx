@@ -65,6 +65,7 @@ export default function SourceDetailPage() {
               name: string;
               type: string;
               provider: string;
+              remoteAccountId?: string;
               status: string;
               lastError: string | null;
               lastSyncAt: string | null;
@@ -85,7 +86,8 @@ export default function SourceDetailPage() {
         }
 
         if (connection.provider === "google_ads") {
-            const mcc = (creds.mccId || creds.managerCustomerId) as string | undefined;
+            const rawRemoteId = String(connection.remoteAccountId ?? "").replace(/\D/g, "");
+            const mcc = (creds.mccId || creds.managerCustomerId || (rawRemoteId.length > 0 ? rawRemoteId : undefined)) as string | undefined;
             if (mcc) {
                 const clean = String(mcc).replace(/\D/g, "");
                 return `MCC: ${clean.length === 10 ? `${clean.slice(0, 3)}-${clean.slice(3, 6)}-${clean.slice(6)}` : mcc}`;
@@ -122,6 +124,17 @@ export default function SourceDetailPage() {
         }
 
         return null;
+    }, [connection]);
+
+    const accountEmail = React.useMemo(() => {
+        if (!connection) return null;
+        let creds: Record<string, unknown> = {};
+        try {
+            creds = typeof connection.credentials === "string" ? JSON.parse(connection.credentials) : (connection.credentials ?? {});
+        } catch {
+            creds = {};
+        }
+        return (creds.accountEmail || creds.email || null) as string | null;
     }, [connection]);
 
     const pipelines = React.useMemo(() => (data?.pipelines ?? []) as Array<{
@@ -381,6 +394,16 @@ export default function SourceDetailPage() {
                                     <CopyableBadge text={managerBadge} className="border-line bg-panel text-ink font-mono" />
                                 ) : null}
 
+                                {accountEmail ? (
+                                    <CopyableBadge
+                                        text={accountEmail}
+                                        copyValue={accountEmail}
+                                        prefix="✉"
+                                        title={`Authorized account: ${accountEmail}`}
+                                        className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300 font-mono"
+                                    />
+                                ) : null}
+
                                 <CopyableBadge text={`#${shortId}`} copyValue={connection.id} title={`Connection ID: ${connection.id}`} className="text-ink-mute/80" />
                             </div>
 
@@ -534,6 +557,7 @@ export default function SourceDetailPage() {
                         provider={connection.provider}
                         connectionName={connection.name}
                         managerBadge={managerBadge}
+                        accountEmail={accountEmail}
                         variant="compact"
                     />
                 </div>

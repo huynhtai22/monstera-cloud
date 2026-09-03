@@ -98,6 +98,13 @@ export interface GoogleTokenResponse {
   expires_in: number; // seconds (~3600)
   token_type: string;
   scope: string;
+  id_token?: string;
+}
+
+export interface GoogleUserInfo {
+  email?: string;
+  name?: string;
+  picture?: string;
 }
 
 // ── Report types ─────────────────────────────────────────────────────────────
@@ -140,7 +147,7 @@ export interface NormalizedGoogleAdsRow {
 export class GoogleAdsOAuthClient {
   /**
    * Build the Google OAuth consent URL.
-   * Single scope: https://www.googleapis.com/auth/adwords — must match “Google Ads API” on the same GCP project’s OAuth consent screen.
+   * Scopes: Google Ads API + openid / email / profile to identify the authenticating Google Account.
    */
   getAuthorizeUrl(state: string, redirectUri: string): string {
     const id = clientId();
@@ -150,7 +157,7 @@ export class GoogleAdsOAuthClient {
     url.searchParams.set('client_id', id);
     url.searchParams.set('redirect_uri', redirectUri);
     url.searchParams.set('response_type', 'code');
-    url.searchParams.set('scope', 'https://www.googleapis.com/auth/adwords');
+    url.searchParams.set('scope', 'https://www.googleapis.com/auth/adwords openid email profile');
     url.searchParams.set('state', state);
     url.searchParams.set('access_type', 'offline');   // get refresh_token
     url.searchParams.set('prompt', 'consent');         // force re-consent to always get refresh_token
@@ -208,6 +215,21 @@ export class GoogleAdsOAuthClient {
     if (json.error) throw new Error(`Google token refresh error: ${json.error}: ${json.error_description}`);
 
     return json;
+  }
+
+  /**
+   * Fetch authenticated user profile (email and name) using the access token.
+   */
+  async getUserInfo(accessToken: string): Promise<GoogleUserInfo | null> {
+    try {
+      const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) return null;
+      return await res.json() as GoogleUserInfo;
+    } catch {
+      return null;
+    }
   }
 
   /**

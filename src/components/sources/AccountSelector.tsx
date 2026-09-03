@@ -18,6 +18,7 @@ interface AccountSelectorProps {
   provider: string;
   connectionName?: string;
   managerBadge?: string | null;
+  accountEmail?: string | null;
   variant?: "panel" | "compact";
 }
 
@@ -46,7 +47,7 @@ const PROVIDER_CONFIG: Record<string, { icon: React.ReactNode; title: string; ty
   },
 };
 
-export function AccountSelector({ connectionId, provider, connectionName, managerBadge, variant = "panel" }: AccountSelectorProps) {
+export function AccountSelector({ connectionId, provider, connectionName, managerBadge, accountEmail, variant = "panel" }: AccountSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -185,6 +186,11 @@ export function AccountSelector({ connectionId, provider, connectionName, manage
               {managerBadge ? (
                 <span className="inline-flex items-center rounded-md border border-line/80 bg-panel px-2 py-0.5 font-mono text-[11px] font-medium text-ink-mute">
                   {managerBadge}
+                </span>
+              ) : null}
+              {accountEmail ? (
+                <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] font-medium text-emerald-300" title={`Authorized Google/Provider Account: ${accountEmail}`}>
+                  ✉ {accountEmail}
                 </span>
               ) : null}
               <span className="inline-flex items-center rounded-md border border-line/80 bg-panel px-2 py-0.5 font-mono text-[11px] font-medium text-ink-mute">
