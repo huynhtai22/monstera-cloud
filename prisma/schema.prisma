@@ -5,8 +5,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum WorkspaceRole {
@@ -87,6 +88,7 @@ model User {
   accounts       Account[]
   sessions       Session[]
   workspaces     WorkspaceMember[]
+  paymentOrders  PaymentOrder[]
 }
 
 model Workspace {
@@ -144,6 +146,7 @@ model Workspace {
   evidencePacks       EvidencePackRecord[]
   payloadDiscoveries  PayloadSchemaDiscovery[]
   schemaProposals     SchemaPatchProposal[]
+  paymentOrders       PaymentOrder[]
 
   @@index([subscriptionProvider, subscriptionEndsAt])
 }
@@ -995,4 +998,42 @@ model SupportTicket {
   @@index([status, createdAt])
   @@index([workspaceId, status])
   @@index([workspaceId, fingerprint])
+}
+
+enum PaymentOrderStatus {
+  CREATING
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+  FAILED
+}
+
+model PaymentOrder {
+  id                 String             @id @default(cuid())
+  orderCode          BigInt             @unique
+  workspaceId        String
+  userId             String?
+  plan               String
+  billingCycle       String
+  amount             Int
+  currency           String             @default("VND")
+  accessDurationDays Int                @default(30)
+  status             PaymentOrderStatus @default(CREATING)
+  paymentLinkId      String?            @unique
+  checkoutUrl        String?
+  qrCode             String?
+  transactionRef     String?
+  metadata           Json?
+  createdAt          DateTime           @default(now())
+  expiresAt          DateTime
+  paidAt             DateTime?
+  fulfilledAt        DateTime?
+  updatedAt          DateTime           @updatedAt
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user               User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@index([orderCode])
+  @@index([expiresAt])
 }

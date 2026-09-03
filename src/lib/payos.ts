@@ -122,6 +122,7 @@ export async function createPayOSPaymentLink(input: {
   returnUrl: string;
   cancelUrl: string;
   buyerEmail?: string;
+  expiredAt?: number;
 }): Promise<PayOSPaymentLink> {
   const signable = {
     amount: input.amount,
@@ -140,6 +141,7 @@ export async function createPayOSPaymentLink(input: {
   }>("/v2/payment-requests", {
     ...signable,
     ...(input.buyerEmail ? { buyerEmail: input.buyerEmail } : {}),
+    ...(input.expiredAt ? { expiredAt: input.expiredAt } : {}),
     signature: signPayOSData(signable),
   });
   if (!data.paymentLinkId || !data.checkoutUrl) {

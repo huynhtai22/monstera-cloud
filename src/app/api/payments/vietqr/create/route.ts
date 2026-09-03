@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
             plan: plan as PlanName,
             billingCycle: billingCycle === "annual" ? "annual" : "monthly",
             userEmail: session.user.email,
+            userId: session.user.id,
             workspaceId: billableWorkspaceId,
             returnUrl: `${origin}${checkoutPath}`,
             cancelUrl: `${origin}${checkoutPath}`,
