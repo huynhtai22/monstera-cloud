@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 function PricingPageContent() {
     const searchParams = useSearchParams();
     const workspaceId = searchParams.get("workspaceId") || undefined;
-    const [isAnnual, setIsAnnual] = useState(true);
+    const [isAnnual, setIsAnnual] = useState(false);
     const [payCurrency, setPayCurrency] = useState<"VND" | "USD">("USD");
     const [searchQuery, setSearchQuery] = useState("");
 
