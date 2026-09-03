@@ -114,7 +114,7 @@ export class GoogleAdsOAuthAdapter implements OAuthProviderAdapter {
 
         return {
             accessToken: refreshed.access_token,
-            refreshToken: refreshed.refresh_token,
+            refreshToken: refreshed.refresh_token ?? creds.refreshToken,
             expiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
         };
     }

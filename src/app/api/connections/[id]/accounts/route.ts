@@ -4,12 +4,15 @@
  */
 
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
-import { decrypt, encrypt } from "@/lib/encryption";
+import { safeDecrypt, encrypt } from "@/lib/encryption";
 import { logger } from "@/lib/logger";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { metaAdsClient } from "@/lib/meta-ads";
+import { googleAdsOAuthClient, googleAdsReportClient } from "@/lib/google-ads";
+import { tiktokBusinessClient } from "@/lib/tiktok-business";
+import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import {
     authorizedConnectionAccountIds,
     validateConnectionAccountSelection,
@@ -17,11 +20,11 @@ import {
 } from "@/lib/connection-account-selection";
 
 export async function GET(
-    _request: Request,
+    request: Request,
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user?.id) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -49,11 +52,14 @@ export async function GET(
             );
         }
 
+        const url = new URL(request.url);
+        const shouldRefresh = url.searchParams.get("refresh") === "true";
+
         await requireWorkspaceAccess({
             userId: session.user.id,
             workspaceId: connection.workspaceId,
-            minimumRole: "viewer",
-            operation: "list_connection_accounts",
+            minimumRole: shouldRefresh ? "member" : "viewer",
+            operation: shouldRefresh ? "refresh_connection_accounts" : "list_connection_accounts",
         });
 
         // Only certain providers support account listing
@@ -66,8 +72,87 @@ export async function GET(
         }
 
         // Decrypt credentials
-        const credentials = JSON.parse(decrypt(connection.credentials));
-        const extraFields = credentials.extraFields || {};
+        let credentials = JSON.parse(safeDecrypt(connection.credentials));
+        let extraFields = credentials.extraFields || {};
+
+        if (shouldRefresh) {
+            try {
+                const accessToken = await getValidOAuthToken({
+                    id: connection.id,
+                    credentials: connection.credentials,
+                    provider: connection.provider,
+                });
+
+                // Re-read latest credentials from database so newly rotated tokens are never overwritten
+                const latest = await prisma.connection.findUnique({
+                    where: { id: connection.id },
+                    select: { credentials: true },
+                });
+                if (latest?.credentials) {
+                    credentials = JSON.parse(safeDecrypt(latest.credentials));
+                    extraFields = credentials.extraFields || {};
+                }
+
+                if (connection.provider === "meta_ads" && accessToken) {
+                    const discovered = await metaAdsClient.getAdAccounts(accessToken);
+                    if (discovered.length > 0) {
+                        const existingAdAccounts: any[] = extraFields.adAccounts || credentials.adAccounts || [];
+                        const existingMap = new Map(existingAdAccounts.map((a: any) => [a.id, a]));
+                        for (const acc of discovered) {
+                            existingMap.set(acc.id, { id: acc.id, name: acc.name, currency: acc.currency });
+                        }
+                        const merged = Array.from(existingMap.values());
+                        extraFields.adAccounts = merged;
+                        extraFields.adAccountIds = merged.map((a: any) => a.id);
+                        credentials.extraFields = extraFields;
+                        await prisma.connection.update({
+                            where: { id: connection.id },
+                            data: { credentials: encrypt(JSON.stringify(credentials)) },
+                        });
+                    }
+                } else if (connection.provider === "google_ads" && accessToken) {
+                    let discovered: string[] = [];
+                    if (connection.remoteAccountId) {
+                        try {
+                            const clients = await googleAdsReportClient.listCustomerClients(
+                                accessToken,
+                                connection.remoteAccountId
+                            );
+                            discovered = clients.filter((c) => !c.isManager).map((c) => c.customerId);
+                        } catch {
+                            discovered = await googleAdsOAuthClient.listAccessibleCustomers(accessToken);
+                        }
+                    } else {
+                        discovered = await googleAdsOAuthClient.listAccessibleCustomers(accessToken);
+                    }
+
+                    if (discovered.length > 0) {
+                        const existingIds: string[] = extraFields.customerIds || credentials.customerIds || [];
+                        const mergedIds = Array.from(new Set([...existingIds, ...discovered]));
+                        extraFields.customerIds = mergedIds;
+                        credentials.extraFields = extraFields;
+                        await prisma.connection.update({
+                            where: { id: connection.id },
+                            data: { credentials: encrypt(JSON.stringify(credentials)) },
+                        });
+                    }
+                } else if (connection.provider === "tiktok_business" && accessToken) {
+                    const discovery = await tiktokBusinessClient.listAuthorizedAdvertisers(accessToken);
+                    if (discovery.advertiser_ids && discovery.advertiser_ids.length > 0) {
+                        const existingIds: string[] = extraFields.advertiserIds || credentials.advertiserIds || [];
+                        const mergedIds = Array.from(new Set([...existingIds, ...discovery.advertiser_ids]));
+                        extraFields.advertiserIds = mergedIds;
+                        credentials.extraFields = extraFields;
+                        await prisma.connection.update({
+                            where: { id: connection.id },
+                            data: { credentials: encrypt(JSON.stringify(credentials)) },
+                        });
+                    }
+                }
+            } catch (refreshErr) {
+                logger.warn(`[GET /api/connections/[id]/accounts] Live account discovery failed for connection ${connection.id}:`, refreshErr);
+            }
+        }
         
         // Extract accounts from stored credentials
         let accounts: Array<{ id: string; name: string; type: string; selected?: boolean }> = [];
@@ -160,7 +245,7 @@ export async function POST(
     { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user?.id) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -216,7 +301,7 @@ export async function POST(
         }
 
         // Decrypt and update credentials
-        const credentials = JSON.parse(decrypt(connection.credentials));
+        const credentials = JSON.parse(safeDecrypt(connection.credentials));
         credentials.extraFields = credentials.extraFields || {};
         const selection = validateConnectionAccountSelection({
             provider: connection.provider as AccountSelectionProvider,

@@ -8,23 +8,34 @@ export async function GET(request: Request) {
 
   const baseUrl = (process.env.NEXTAUTH_URL?.replace(/\/$/, "") || new URL(request.url).origin).replace(/\/$/, "");
   const authorization = `Bearer ${process.env.CRON_SECRET}`;
-  const tasks = [
-    ["warehouseRefresh", "/api/cron/warehouse-refresh"],
-    ["shopeeRefresh", "/api/cron/shopee/refresh"],
-    ["warehouseJobs", "/api/cron/warehouse-jobs"],
-    ["healthTick", "/api/cron/health-tick"],
-    ["alerts", "/api/cron/performance-alerts"],
-    ["billingExpiry", "/api/cron/billing-expiry"],
-  ] as const;
 
-  const settled = await Promise.all(tasks.map(async ([name, path]) => {
+  const executeTask = async (name: string, path: string) => {
     try {
       const response = await fetch(`${baseUrl}${path}`, { headers: { authorization }, cache: "no-store" });
       return [name, response.status] as const;
     } catch {
       return [name, "failed"] as const;
     }
-  }));
+  };
+
+  // Phase 1: Token prefetch & proactive refresh (ensures fresh access tokens)
+  const p1 = await Promise.all([executeTask("tokenPrefetch", "/api/cron/connections/token-prefetch")]);
+
+  // Phase 2: Warehouse metric refreshes
+  const p2 = await Promise.all([
+    executeTask("warehouseRefresh", "/api/cron/warehouse-refresh"),
+    executeTask("shopeeRefresh", "/api/cron/shopee/refresh"),
+  ]);
+
+  // Phase 3: Worker drain, health ticks, alerting, and billing expiry
+  const p3 = await Promise.all([
+    executeTask("warehouseJobs", "/api/cron/warehouse-jobs"),
+    executeTask("healthTick", "/api/cron/health-tick"),
+    executeTask("alerts", "/api/cron/performance-alerts"),
+    executeTask("billingExpiry", "/api/cron/billing-expiry"),
+  ]);
+
+  const settled = [...p1, ...p2, ...p3];
 
   return NextResponse.json({ timestamp: new Date().toISOString(), executed: Object.fromEntries(settled) });
 }
