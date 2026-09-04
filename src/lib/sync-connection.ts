@@ -38,6 +38,12 @@ import {
 // Google imports
 import { googleAdsReportClient, isGoogleAdsDeveloperTokenBlocked } from "@/lib/google-ads";
 import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
+import {
+  executeGoogleShadowRun,
+  isGoogleShadowEnabled,
+  type GoogleShadowCapture,
+  type GoogleShadowOptions,
+} from "@/lib/connector-runtime/google-shadow";
 
 // TikTok imports
 import {
@@ -78,6 +84,12 @@ export interface SyncOptions {
   userPlan?: string;
   /** Internal durable-worker continuation state; never accepted from public input. */
   providerState?: ProviderRetryState;
+  /**
+   * Connector Runtime shadow observation (Google only). When enabled, the
+   * legacy sync result stays authoritative while raw responses are captured
+   * for replay and comparison. Defaults from GOOGLE_CONNECTOR_RUNTIME_MODE.
+   */
+  shadow?: GoogleShadowOptions;
 }
 
 export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult> {
@@ -144,6 +156,7 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
         until: opts.until,
         userPlan: plan,
         lease,
+        shadow: opts.shadow ?? defaultGoogleShadowOptions(connectionId),
       });
     } else if (provider === "tiktok_business") {
       return await syncTikTok({
@@ -590,8 +603,10 @@ async function syncGoogleAds(opts: {
   since?: string;
   until?: string;
   userPlan: string;
+  shadow?: GoogleShadowOptions;
 }): Promise<SyncResult> {
   const { connectionId, credentials, workspaceId, userPlan, lease } = opts;
+  const shadowCaptures: GoogleShadowCapture[] = [];
 
   let accessToken: string;
   try {
@@ -729,15 +744,28 @@ async function syncGoogleAds(opts: {
     try {
       logger.info(`[syncGoogleAds] Fetching campaigns for customerId=${customerId} login-customer-id=${mccId} (${descriptiveName})`);
 
+      const shadowRawTexts: string[] = [];
       const rows = await googleAdsReportClient.getCampaignPerformance(
         accessToken,
         customerId,
         dateSpec,
         mccId,
+        opts.shadow?.enabled
+          ? { onRawResponse: (event) => shadowRawTexts.push(event.rawText) }
+          : undefined,
       );
 
       logger.info(`[syncGoogleAds] customerId=${customerId} returned ${rows.length} campaign rows`);
       if (rows.length) await recordProviderReportingContext({ workspaceId, connectionId, provider: "google_ads", accountId: customerId, timezone: rows[0].customer_time_zone, currency: rows[0].customer_currency_code });
+      if (opts.shadow?.enabled) {
+        shadowCaptures.push({
+          customerId,
+          rawTexts: shadowRawTexts,
+          normalizedRows: rows as unknown as Array<Record<string, unknown>>,
+          timezone: rows[0]?.customer_time_zone as string | undefined,
+          currency: rows[0]?.customer_currency_code as string | undefined,
+        });
+      }
 
       if (rows.length === 0) {
         children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0 });
@@ -862,10 +890,34 @@ async function syncGoogleAds(opts: {
     }
   }
 
+  if (opts.shadow?.enabled && shadowCaptures.length > 0) {
+    try {
+      await executeGoogleShadowRun({
+        workspaceId,
+        connectionId,
+        runId: opts.shadow.runId ?? `${connectionId}-${Date.now()}`,
+        legacyVersion: opts.shadow.legacyVersion ?? "legacy-sync",
+        captures: shadowCaptures,
+        lease,
+      });
+    } catch (shadowError) {
+      // Shadow evidence must never affect the authoritative legacy result.
+      logger.warn(
+        "[syncGoogleAds] Shadow evaluation failed without affecting legacy result:",
+        shadowError instanceof Error ? shadowError.message : shadowError,
+      );
+    }
+  }
+
   const summary = summarizeSyncOutcome(children);
   await persistConnectionSyncOutcome(connectionId, summary, lease);
   logger.info("[syncGoogleAds] Sync outcome", { connectionId, outcome: summary.outcome, targets: children.length, failedTargets: children.filter((child) => !child.ok).map((child) => child.id), rowsIngested: summary.rowsIngested });
   return { ...summary, children };
+}
+
+function defaultGoogleShadowOptions(connectionId: string): GoogleShadowOptions | undefined {
+  if (!isGoogleShadowEnabled()) return undefined;
+  return { enabled: true, runId: `${connectionId}-${Date.now()}`, legacyVersion: "legacy-sync" };
 }
 
 async function syncTikTok(opts: {

@@ -25,6 +25,11 @@ function canonical(value: unknown): unknown {
   return value;
 }
 
+/** Deterministic JSON for canonical keys, ordering and stable comparisons. */
+export function stableStringify(value: unknown): string {
+  return JSON.stringify(canonical(value) ?? null);
+}
+
 export function hashArtifactPayload(payload: unknown): string {
   return createHash("sha256")
     .update(JSON.stringify(canonical(payload) ?? null))

@@ -263,6 +263,14 @@ export class GoogleAdsOAuthClient {
 
 export const googleAdsOAuthClient = new GoogleAdsOAuthClient();
 
+/**
+ * Raw-response capture hooks for Connector Runtime shadow mode.
+ * All fields are plain strings; the observer must treat rawText as opaque.
+ */
+export interface GoogleAdsRawCaptureHooks {
+  onRawResponse?: (event: { customerId: string; rawText: string }) => void;
+}
+
 // ── Google Ads report client ─────────────────────────────────────────────────
 
 export class GoogleAdsReportClient {
@@ -280,6 +288,7 @@ export class GoogleAdsReportClient {
     customerId: string,
     gaql: string,
     mccId?: string,
+    hooks?: GoogleAdsRawCaptureHooks,
   ): Promise<NormalizedGoogleAdsRow[]> {
     const devToken = developerToken();
     if (!devToken) throw new Error('GOOGLE_ADS_DEVELOPER_TOKEN not configured');
@@ -306,6 +315,18 @@ export class GoogleAdsReportClient {
     );
 
     const text = await res.text();
+
+    // Shadow-capture boundary: fan the raw provider response out to the
+    // runtime observer from this single extraction. Legacy callers pass no
+    // hooks, so their behavior is byte-identical. Hook failures must never
+    // break extraction; the observer records them as bounded capture errors.
+    if (hooks?.onRawResponse) {
+      try {
+        hooks.onRawResponse({ customerId: cleanCustomerId, rawText: text });
+      } catch {
+        // Intentionally ignored: extraction stays authoritative.
+      }
+    }
 
     // SearchStream returns a JSON array of batches
     let batches: GoogleAdsSearchStreamResult[];
@@ -509,6 +530,7 @@ export class GoogleAdsReportClient {
     customerId: string,
     dateDuringOrBetween: string,
     mccId?: string,
+    hooks?: GoogleAdsRawCaptureHooks,
   ): Promise<NormalizedGoogleAdsRow[]> {
     const dateClause = dateDuringOrBetween.trim().startsWith("BETWEEN")
       ? `segments.date ${dateDuringOrBetween.trim()}`
@@ -537,7 +559,7 @@ export class GoogleAdsReportClient {
       ORDER BY metrics.cost_micros DESC
     `;
 
-    return this.searchStream(accessToken, customerId, gaql, mccId);
+    return this.searchStream(accessToken, customerId, gaql, mccId, hooks);
   }
 
   /**
