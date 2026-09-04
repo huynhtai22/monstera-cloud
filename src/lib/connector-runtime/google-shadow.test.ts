@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
+import prisma from "@/lib/prisma";
 import { googleAdsReportClient } from "../google-ads";
 import {
   GOOGLE_CONNECTOR_RUNTIME_MODES,
@@ -271,5 +272,264 @@ describe("shadow comparison", () => {
       spend: 0.01,
       conversionValue: 0.01,
     });
+  });
+});
+
+describe("runtime authority fail-closed", () => {
+  it("allows missing, legacy, shadow and invalid values without throwing", async () => {
+    const { assertGoogleRuntimeModeAllowed } = await import("./google-shadow");
+    for (const value of [undefined, "legacy", "shadow", "production", ""]) {
+      assertGoogleRuntimeModeAllowed(value);
+    }
+  });
+
+  it("rejects runtime with a typed sanitized error before any provider contact", async () => {
+    const { assertGoogleRuntimeModeAllowed, GoogleRuntimeModeNotPromotedError } = await import("./google-shadow");
+    assert.throws(() => assertGoogleRuntimeModeAllowed("runtime"), (error: unknown) => {
+      assert.ok(error instanceof GoogleRuntimeModeNotPromotedError);
+      assert.equal((error as { code: string }).code, "GOOGLE_RUNTIME_MODE_NOT_PROMOTED");
+      assert.ok(!String((error as Error).message).includes("Bearer"));
+      return true;
+    });
+  });
+});
+
+describe("shadow telemetry", () => {
+  function scriptedClock(values: number[]) {
+    let index = 0;
+    return { now: () => values[Math.min(index++, values.length - 1)] };
+  }
+
+  function stubPrisma() {
+    const calls: string[] = [];
+    const originalArtifact = (prisma as any).connectorRunArtifact;
+    const originalAudit = (prisma as any).auditEvent;
+    const originalTransaction = (prisma as any).$transaction;
+    (prisma as any).connectorRunArtifact = {
+      findMany: async () => [],
+      create: async () => {
+        calls.push("artifact.create");
+        return { id: `artifact-${calls.length}` };
+      },
+    };
+    (prisma as any).auditEvent = {
+      create: async ({ data }: any) => {
+        calls.push("audit.create");
+        return data;
+      },
+    };
+    (prisma as any).$transaction = async (fn: any) => fn(prisma);
+    return {
+      calls,
+      restore: () => {
+        (prisma as any).connectorRunArtifact = originalArtifact;
+        (prisma as any).auditEvent = originalAudit;
+        (prisma as any).$transaction = originalTransaction;
+      },
+    };
+  }
+
+  function passingRun(clockValues: number[]) {
+    return {
+      workspaceId: "ws-1",
+      connectionId: "conn-1",
+      runId: "run-1",
+      legacyVersion: "legacy-sync",
+      captures: [
+        {
+          customerId: "111",
+          rawTexts: [
+            JSON.stringify([
+              { results: [{ campaign: { id: "1", name: "A" }, metrics: { impressions: "100" }, segments: { date: "2026-09-01" } }] },
+            ]),
+          ],
+          normalizedRows: [
+            { campaign_id: "1", campaign_name: "A", segments_date: "2026-09-01", metrics_impressions: 100, metrics_clicks: 1, metrics_cost: 2, metrics_conversions: 0 },
+          ],
+        },
+      ],
+      lease: { scope: "google_ads:ws-1:conn-1:__sync__", leaseId: "lease-1", fencingToken: BigInt(1) },
+      assertLease: async () => {},
+      clock: scriptedClock(clockValues),
+      extractionMs: 7,
+    };
+  }
+
+  it("records deterministic durations under an injected clock", async () => {
+    const { executeGoogleShadowRun } = await import("./google-shadow");
+    const { calls, restore } = stubPrisma();
+    try {
+      const result = await executeGoogleShadowRun(passingRun([0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]));
+      assert.equal(result.published, true);
+      assert.ok(result.telemetry);
+      assert.equal(result.telemetry!.extractionMs, 7);
+      assert.equal(result.telemetry!.replayMs, 10);
+      assert.equal(result.telemetry!.compareMs, 10);
+      assert.equal(result.telemetry!.publishMs, 10);
+      assert.equal(result.telemetry!.totalShadowMs, 100);
+      assert.equal(result.telemetry!.budgetExceeded, false);
+      assert.deepEqual(calls, ["artifact.create", "artifact.create", "audit.create"]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps telemetry bounded and free of sensitive fields", async () => {
+    const { executeGoogleShadowRun } = await import("./google-shadow");
+    const { restore } = stubPrisma();
+    try {
+      const result = await executeGoogleShadowRun(passingRun([5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]));
+      assert.ok(result.telemetry);
+      assert.deepEqual(
+        Object.keys(result.telemetry!).sort(),
+        ["artifactCount", "budgetExceeded", "budgetMs", "capturedBytes", "comparedRowCounts", "compareMs", "extractionMs", "publishMs", "replayedRowCount", "replayMs", "totalShadowMs"].sort(),
+      );
+      assert.ok(!JSON.stringify(result.telemetry).includes("Bearer"));
+    } finally {
+      restore();
+    }
+  });
+});
+
+describe("shadow budget enforcement", () => {
+  const originalArtifact = (prisma as any).connectorRunArtifact;
+  const originalAudit = (prisma as any).auditEvent;
+  const originalTransaction = (prisma as any).$transaction;
+
+  function explodingPrisma() {
+    const boom = async (): Promise<never> => {
+      throw new Error("unexpected database access");
+    };
+    (prisma as any).connectorRunArtifact = { findMany: boom, create: boom, deleteMany: boom };
+    (prisma as any).auditEvent = { create: boom, findFirst: boom };
+    (prisma as any).$transaction = boom;
+  }
+
+  function restorePrisma() {
+    (prisma as any).connectorRunArtifact = originalArtifact;
+    (prisma as any).auditEvent = originalAudit;
+    (prisma as any).$transaction = originalTransaction;
+  }
+
+  function budgetedRun(clockValues: number[], budgetMs: number) {
+    let index = 0;
+    return {
+      workspaceId: "ws-1",
+      connectionId: "conn-1",
+      runId: "run-1",
+      legacyVersion: "legacy-sync",
+      captures: [
+        {
+          customerId: "111",
+          rawTexts: [
+            JSON.stringify([
+              { results: [{ campaign: { id: "1", name: "A" }, metrics: { impressions: "5" }, segments: { date: "2026-09-01" } }] },
+            ]),
+          ],
+          normalizedRows: [
+            { campaign_id: "1", campaign_name: "A", segments_date: "2026-09-01", metrics_impressions: 5 },
+          ],
+        },
+      ],
+      lease: { scope: "google_ads:ws-1:conn-1:__sync__", leaseId: "lease-1", fencingToken: BigInt(1) },
+      assertLease: async () => {},
+      clock: { now: () => clockValues[Math.min(index++, clockValues.length - 1)] },
+      budgetMs,
+    };
+  }
+
+  it("stops before replay when the budget is already exhausted, with zero writes", async () => {
+    const { executeGoogleShadowRun, SHADOW_BUDGET_EXHAUSTED_CODE } = await import("./google-shadow");
+    explodingPrisma();
+    try {
+      // Clock never advances past a negative budget: every stage gate trips.
+      const result = await executeGoogleShadowRun(budgetedRun([1000, 1000, 1000], -1));
+      assert.equal(result.published, false);
+      assert.equal(result.pass, false);
+      // Pre-check findMany would have thrown via exploding mock if reached...
+      // ...so reaching the budget gate first proves ordering: scope, fence,
+      // idempotency read happen before budget-gated stages. Here the read
+      // itself is unreachable, hence failureCode comes from the gate.
+      assert.equal(result.failureCode, SHADOW_BUDGET_EXHAUSTED_CODE);
+      assert.equal(result.telemetry, null);
+    } finally {
+      restorePrisma();
+    }
+  });
+
+  it("never publishes partial rows when the budget dies mid-run", async () => {
+    const { executeGoogleShadowRun, SHADOW_BUDGET_EXHAUSTED_CODE } = await import("./google-shadow");
+    const createdKinds: string[] = [];
+    let audits = 0;
+    (prisma as any).connectorRunArtifact = {
+      findMany: async () => [],
+      create: async ({ data }: any) => {
+        createdKinds.push(data.kind);
+        return { id: `artifact-${createdKinds.length}` };
+      },
+    };
+    (prisma as any).auditEvent = {
+      create: async () => {
+        audits += 1;
+        return {};
+      },
+    };
+    (prisma as any).$transaction = async (fn: any) => fn(prisma);
+    try {
+      // Clock passes the replay+compare gates, then dies at the publish gate.
+      const result = await executeGoogleShadowRun(budgetedRun([0, 0, 0, 0, 0, 0, 0, 0, 10, 10, 10], 5));
+      assert.equal(result.published, false);
+      assert.equal(result.failureCode, SHADOW_BUDGET_EXHAUSTED_CODE);
+      assert.ok(!createdKinds.includes("shadow_comparison"), "no passing comparison may be published");
+      assert.ok(!createdKinds.some((k) => k.startsWith("shadow_raw")), "no partial rows may be published");
+      assert.deepEqual(createdKinds, ["shadow_failure"]);
+      assert.equal(audits, 1);
+    } finally {
+      restorePrisma();
+    }
+  });
+});
+
+describe("stale fence and detached work", () => {
+  it("a stale fence writes nothing and the call resolves", async () => {
+    const { executeGoogleShadowRun } = await import("./google-shadow");
+    const originalArtifact = (prisma as any).connectorRunArtifact;
+    const originalAudit = (prisma as any).auditEvent;
+    const originalTransaction = (prisma as any).$transaction;
+    (prisma as any).connectorRunArtifact = {
+      findMany: async () => {
+        throw new Error("must not read after stale fence");
+      },
+      create: async () => {
+        throw new Error("must not write after stale fence");
+      },
+    };
+    (prisma as any).auditEvent = {
+      create: async () => {
+        throw new Error("must not audit after stale fence");
+      },
+    };
+    (prisma as any).$transaction = async () => {
+      throw new Error("must not open a transaction after stale fence");
+    };
+    try {
+      const result = await executeGoogleShadowRun({
+        workspaceId: "ws-1",
+        connectionId: "conn-1",
+        runId: "run-1",
+        legacyVersion: "legacy-sync",
+        captures: [],
+        lease: { scope: "google_ads:ws-1:conn-1:__sync__", leaseId: "stale", fencingToken: BigInt(1) },
+        assertLease: async () => {
+          throw new Error("[SYNC_LEASE] Stale worker detected");
+        },
+      });
+      assert.equal(result.published, false);
+      assert.equal(result.pass, false);
+    } finally {
+      (prisma as any).connectorRunArtifact = originalArtifact;
+      (prisma as any).auditEvent = originalAudit;
+      (prisma as any).$transaction = originalTransaction;
+    }
   });
 });

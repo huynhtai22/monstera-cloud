@@ -39,6 +39,7 @@ import {
 import { googleAdsReportClient, isGoogleAdsDeveloperTokenBlocked } from "@/lib/google-ads";
 import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
 import {
+  assertGoogleRuntimeModeAllowed,
   executeGoogleShadowRun,
   isGoogleShadowEnabled,
   type GoogleShadowCapture,
@@ -148,6 +149,7 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
         lease,
       });
     } else if (provider === "google_ads") {
+      assertGoogleRuntimeModeAllowed();
       return await syncGoogleAds({
         connectionId,
         credentials,
@@ -607,6 +609,7 @@ async function syncGoogleAds(opts: {
 }): Promise<SyncResult> {
   const { connectionId, credentials, workspaceId, userPlan, lease } = opts;
   const shadowCaptures: GoogleShadowCapture[] = [];
+  let shadowExtractionMsTotal = 0;
 
   let accessToken: string;
   try {
@@ -745,6 +748,7 @@ async function syncGoogleAds(opts: {
       logger.info(`[syncGoogleAds] Fetching campaigns for customerId=${customerId} login-customer-id=${mccId} (${descriptiveName})`);
 
       const shadowRawTexts: string[] = [];
+      const shadowExtractStart = opts.shadow?.enabled ? Date.now() : 0;
       const rows = await googleAdsReportClient.getCampaignPerformance(
         accessToken,
         customerId,
@@ -754,10 +758,13 @@ async function syncGoogleAds(opts: {
           ? { onRawResponse: (event) => shadowRawTexts.push(event.rawText) }
           : undefined,
       );
+      const shadowExtractionMs =
+        opts.shadow?.enabled && shadowExtractStart > 0 ? Date.now() - shadowExtractStart : null;
 
       logger.info(`[syncGoogleAds] customerId=${customerId} returned ${rows.length} campaign rows`);
       if (rows.length) await recordProviderReportingContext({ workspaceId, connectionId, provider: "google_ads", accountId: customerId, timezone: rows[0].customer_time_zone, currency: rows[0].customer_currency_code });
       if (opts.shadow?.enabled) {
+        shadowExtractionMsTotal += shadowExtractionMs ?? 0;
         shadowCaptures.push({
           customerId,
           rawTexts: shadowRawTexts,
@@ -898,6 +905,7 @@ async function syncGoogleAds(opts: {
         runId: opts.shadow.runId ?? `${connectionId}-${Date.now()}`,
         legacyVersion: opts.shadow.legacyVersion ?? "legacy-sync",
         captures: shadowCaptures,
+        extractionMs: shadowExtractionMsTotal,
         lease,
       });
     } catch (shadowError) {

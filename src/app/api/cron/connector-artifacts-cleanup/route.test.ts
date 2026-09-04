@@ -52,4 +52,25 @@ describe("POST /api/cron/connector-artifacts-cleanup", () => {
     assert.equal(body.cleanup.deleted, 0);
     assert.equal(body.cleanup.hasMore, false);
   });
+
+  it("caps the batch limit from the request body", async () => {
+    process.env.CRON_SECRET = "a-32-character-test-cron-secret-value";
+    let seenLimit = 0;
+    (prisma as any).connectorRunArtifact = {
+      findMany: async (args: any) => {
+        seenLimit = args.take;
+        return [];
+      },
+      deleteMany: async () => ({ count: 0 }),
+    };
+    (prisma as any).auditEvent = {
+      create: async () => {
+        throw new Error("audit must not be written when nothing was deleted");
+      },
+    };
+    const response = await POST(authedRequest({ limit: 5000 }));
+    assert.equal(response.status, 200);
+    // take = batchLimit + 1, capped at MAX_CLEANUP_BATCH_LIMIT
+    assert.equal(seenLimit, 1001);
+  });
 });

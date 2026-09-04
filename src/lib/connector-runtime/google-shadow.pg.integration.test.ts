@@ -270,4 +270,57 @@ describe("Google shadow integration — real PostgreSQL", { skip: !process.env.D
     assert.equal(cleanups, 1);
     await db.evidencePackRecord.deleteMany({ where: { workspaceId: ws } });
   });
+
+  it("persists bounded telemetry with the comparison artifact", async () => {
+    const lease = await leaseFor(ws, conn);
+    const result = await executeGoogleShadowRun({
+      workspaceId: ws,
+      connectionId: conn,
+      runId: run,
+      legacyVersion: "legacy-sync-test",
+      captures: [capture("111", [{ id: "1", spendMicros: "10000000" }])],
+      lease,
+    });
+    assert.equal(result.published, true);
+    assert.ok(result.telemetry);
+    const stored = await db.connectorRunArtifact.findFirstOrThrow({
+      where: { workspaceId: ws, runId: run, kind: "shadow_comparison" },
+    });
+    const telemetry = (stored.payload as any).telemetry;
+    assert.ok(telemetry);
+    assert.equal(typeof telemetry.replayMs, "number");
+    assert.equal(typeof telemetry.compareMs, "number");
+    assert.equal(telemetry.budgetExceeded, false);
+    assert.ok(telemetry.artifactCount >= 2);
+    assert.ok(telemetry.capturedBytes > 0);
+    assert.equal(telemetry.replayedRowCount, 1);
+    assert.deepEqual(telemetry.comparedRowCounts, { legacy: 1, runtime: 1 });
+    assert.deepEqual(result.telemetry!.comparedRowCounts, { legacy: 1, runtime: 1 });
+  });
+
+  it("exhausted budget fails on real fencing with only a bounded failure record", async () => {
+    const lease = await leaseFor(ws, conn);
+    const result = await executeGoogleShadowRun({
+      workspaceId: ws,
+      connectionId: conn,
+      runId: run,
+      legacyVersion: "legacy-sync-test",
+      captures: [capture("111", [{ id: "1", spendMicros: "10000000" }])],
+      lease,
+      budgetMs: -1,
+    });
+    assert.equal(result.published, false);
+    assert.equal(result.failureCode, "shadow-budget-exhausted");
+    // Exactly one bounded failure artifact — never partial rows or a comparison.
+    assert.equal(await artifactCount(ws), 1);
+    assert.equal(
+      await db.connectorRunArtifact.count({ where: { workspaceId: ws, kind: "shadow_failure" } }),
+      1,
+    );
+    assert.equal(
+      await db.connectorRunArtifact.count({ where: { workspaceId: ws, kind: "shadow_comparison" } }),
+      0,
+    );
+    assert.equal(await auditCount(ws), 1);
+  });
 });

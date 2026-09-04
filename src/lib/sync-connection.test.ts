@@ -290,3 +290,32 @@ describe("provider HTTP failures preserve sync correctness", () => {
     }));
   });
 });
+
+describe("google runtime authority fail-closed", () => {
+  it("rejects runtime mode before any provider contact or writes", async () => {
+    const previousMode = process.env.GOOGLE_CONNECTOR_RUNTIME_MODE;
+    process.env.GOOGLE_CONNECTOR_RUNTIME_MODE = "runtime";
+    let calls = 0;
+    try {
+      await withFastRetries(() => withSyncHarness((async () => {
+        calls++;
+        throw new Error("provider must not be contacted");
+      }) as typeof fetch, async () => {
+        process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "test-token";
+        const result = await syncConnectionData({
+          connectionId: "google-connection",
+          provider: "google_ads",
+          credentials: { ...freshCredentials, customerIds: ["111"] },
+          workspaceId: "workspace-1",
+          userPlan: "pilot",
+        });
+        assert.equal(result.success, false);
+        assert.match(String(result.error ?? ""), /GOOGLE_RUNTIME_MODE_NOT_PROMOTED/);
+        assert.equal(calls, 0);
+      }));
+    } finally {
+      if (previousMode === undefined) delete process.env.GOOGLE_CONNECTOR_RUNTIME_MODE;
+      else process.env.GOOGLE_CONNECTOR_RUNTIME_MODE = previousMode;
+    }
+  });
+});

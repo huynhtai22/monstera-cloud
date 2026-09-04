@@ -10,7 +10,11 @@
 import { METRIC_CONTRACTS } from "../ad-certification/metric-contracts";
 import { normalizeGoogleAdsRow } from "../google-ads";
 import type { ConnectionLease } from "../connection-sync-lease";
-import { assertConnectionSyncLease, buildConnectionScope } from "../connection-sync-lease";
+import {
+  LEASE_DURATION_MS,
+  assertConnectionSyncLease,
+  buildConnectionScope,
+} from "../connection-sync-lease";
 import { createHash } from "node:crypto";
 import prisma from "@/lib/prisma";
 import { withSystemScope } from "@/lib/tenant-guard";
@@ -40,6 +44,52 @@ export function isGoogleShadowEnabled(
 ): boolean {
   return resolveGoogleRuntimeMode(raw) === "shadow";
 }
+
+/**
+ * Typed fail-closed error for the unpromoted `runtime` authority state.
+ * The `code` is stable for operator triage; the message carries no
+ * credentials, payloads, or customer identifiers.
+ */
+export class GoogleRuntimeModeNotPromotedError extends Error {
+  readonly code = "GOOGLE_RUNTIME_MODE_NOT_PROMOTED";
+  constructor() {
+    super(
+      "GOOGLE_RUNTIME_MODE_NOT_PROMOTED: Google connector runtime authority is not promoted. Set GOOGLE_CONNECTOR_RUNTIME_MODE to legacy or shadow.",
+    );
+    this.name = "GoogleRuntimeModeNotPromotedError";
+  }
+}
+
+/**
+ * Reject the unpromoted `runtime` authority state before any provider
+ * contact, artifact creation, or legacy mutation. Missing, `legacy`,
+ * `shadow` and unknown values never throw here: unknown values resolve
+ * to legacy, which enables nothing.
+ */
+export function assertGoogleRuntimeModeAllowed(
+  raw: string | undefined = process.env.GOOGLE_CONNECTOR_RUNTIME_MODE,
+): void {
+  if (resolveGoogleRuntimeMode(raw) === "runtime") {
+    throw new GoogleRuntimeModeNotPromotedError();
+  }
+}
+
+/** Injectable monotonic clock boundary; tests use a manual clock. */
+export interface ShadowClock {
+  now(): number;
+}
+
+export function monotonicClock(): ShadowClock {
+  return { now: () => performance.now() };
+}
+
+/**
+ * Shadow execution budget derived from the worker lease window: shadow
+ * work must never consume more than a tenth of the lease, so the legacy
+ * outcome always retains its safe publication window.
+ */
+export const SHADOW_BUDGET_MS = Math.floor(LEASE_DURATION_MS / 10);
+export const SHADOW_BUDGET_EXHAUSTED_CODE = "shadow-budget-exhausted";
 
 /** Cap raw captures per run so one giant account cannot blow the bounds. */
 export interface GoogleShadowOptions {
@@ -225,8 +275,25 @@ export interface ShadowMetricDifference {
   within: boolean;
 }
 
+/**
+ * Bounded per-run telemetry. Fixed numeric fields only — no payloads,
+ * tokens, identifiers beyond the run scope, or raw provider errors.
+ */
+export interface ShadowTelemetry {
+  extractionMs: number | null;
+  replayMs: number;
+  compareMs: number;
+  artifactCount: number;
+  capturedBytes: number;
+  replayedRowCount: number;
+  comparedRowCounts: { legacy: number; runtime: number };
+  budgetMs: number;
+  budgetExceeded: false;
+}
+
 export interface ShadowEvidence {
   pass: boolean;
+  telemetry: ShadowTelemetry | null;
   comparedRowCounts: { legacy: number; runtime: number };
   missingKeys: string[];
   missingKeysTruncated: boolean;
@@ -340,6 +407,7 @@ export function compareGoogleShadowRun(input: {
     runId: input.runId,
     artifactIds: [...input.artifactIds],
     sanitizedError: null,
+    telemetry: null,
   };
 }
 
@@ -505,6 +573,7 @@ export interface GoogleShadowRunResult {
   pass: boolean;
   artifactIds: string[];
   failureCode: string | null;
+  telemetry: (ShadowTelemetry & { publishMs: number; totalShadowMs: number }) | null;
 }
 
 function sanitizeShadowError(error: unknown): { code: string; retryable: boolean } {
@@ -532,6 +601,9 @@ export async function executeGoogleShadowRun(input: {
   captures: GoogleShadowCapture[];
   lease: ConnectionLease;
   assertLease?: AssertLease;
+  clock?: ShadowClock;
+  budgetMs?: number;
+  extractionMs?: number | null;
 }): Promise<GoogleShadowRunResult> {
   const assertLease = input.assertLease ?? assertConnectionSyncLease;
   const fail = async (stage: string, error: unknown): Promise<GoogleShadowRunResult> => {
@@ -550,7 +622,7 @@ export async function executeGoogleShadowRun(input: {
     } catch {
       // Fence lost or persistence down: log the taxonomy only, never payloads.
     }
-    return { published: false, pass: false, artifactIds: [], failureCode: sanitized.code };
+    return { published: false, pass: false, artifactIds: [], failureCode: sanitized.code, telemetry: null };
   };
 
   try {
@@ -559,6 +631,20 @@ export async function executeGoogleShadowRun(input: {
     }
     assertLeaseScope(input.lease, input.workspaceId, input.connectionId);
     await assertLease(input.lease);
+
+    // Stage-gated execution: every stage re-asserts the fence and checks
+    // the remaining budget. There is no detached work here — each stage is
+    // awaited inline, so when this function returns nothing keeps running.
+    const clock = input.clock ?? monotonicClock();
+    const budgetMs = input.budgetMs ?? SHADOW_BUDGET_MS;
+    const runStartMs = clock.now();
+    const checkStage = async (stage: string) => {
+      await assertLease(input.lease);
+      if (clock.now() - runStartMs > budgetMs) {
+        throw new Error(`${SHADOW_BUDGET_EXHAUSTED_CODE}: ${stage}`);
+      }
+    };
+    await checkStage("schedule");
 
     // Idempotent repeat: a published comparison for this run is a
     // deterministic conflict, not a second publication.
@@ -574,6 +660,7 @@ export async function executeGoogleShadowRun(input: {
         pass: false,
         artifactIds: existing.map((row) => row.id),
         failureCode: "already-published",
+        telemetry: null,
       };
     }
 
@@ -599,6 +686,8 @@ export async function executeGoogleShadowRun(input: {
       throw new Error("shadow-run: capture-overflow");
     }
 
+    await checkStage("replay");
+    const replayStartMs = clock.now();
     // Replay from the chunk payloads (what is persisted), never from memory.
     // Chunks are reassembled per customer so account identity survives.
     const chunksByCustomer = new Map<string, string[]>();
@@ -614,6 +703,9 @@ export async function executeGoogleShadowRun(input: {
     );
     runtimeRows.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 
+    const replayMs = clock.now() - replayStartMs;
+    await checkStage("compare");
+    const compareStartMs = clock.now();
     const evidence = compareGoogleShadowRun({
       runId: input.runId,
       artifactIds: [],
@@ -621,7 +713,20 @@ export async function executeGoogleShadowRun(input: {
       legacyRows,
       runtimeRows,
     });
+    const compareMs = clock.now() - compareStartMs;
 
+    const capturedBytes = chunkPayloads.reduce((total, chunk) => total + chunk.rawText.length, 0);
+    const telemetry: ShadowTelemetry = {
+      extractionMs: input.extractionMs ?? null,
+      replayMs,
+      compareMs,
+      artifactCount: chunkPayloads.length + 1,
+      capturedBytes,
+      replayedRowCount: runtimeRows.length,
+      comparedRowCounts: { legacy: legacyRows.length, runtime: runtimeRows.length },
+      budgetMs,
+      budgetExceeded: false,
+    };
     const chunkArtifacts = chunkPayloads.map((chunk, position) =>
       buildArtifact({
         workspaceId: input.workspaceId,
@@ -634,6 +739,7 @@ export async function executeGoogleShadowRun(input: {
     );
     const evidenceWithIds: typeof evidence = {
       ...evidence,
+      telemetry,
       artifactIds: chunkArtifacts.map((artifact) => artifact.id),
     };
     const comparisonArtifact = buildArtifact({
@@ -654,7 +760,8 @@ export async function executeGoogleShadowRun(input: {
       }
     }
 
-    await assertLease(input.lease);
+    await checkStage("publish");
+    const publishStartMs = clock.now();
     const artifactIds = await withSystemScope(() =>
       prisma.$transaction(async (tx) => {
         const ids: string[] = [];
@@ -687,13 +794,22 @@ export async function executeGoogleShadowRun(input: {
               pass: evidenceWithIds.pass,
               system: "connector-runtime-worker",
               leaseScope: input.lease.scope,
+              telemetry: evidenceWithIds.telemetry,
             },
           },
         });
         return ids;
       }),
     );
-    return { published: true, pass: evidenceWithIds.pass, artifactIds, failureCode: null };
+    const publishMs = clock.now() - publishStartMs;
+    const totalShadowMs = clock.now() - runStartMs;
+    return {
+      published: true,
+      pass: evidenceWithIds.pass,
+      artifactIds,
+      failureCode: null,
+      telemetry: { ...telemetry, publishMs, totalShadowMs },
+    };
   } catch (error) {
     return fail("shadow-run", error);
   }
