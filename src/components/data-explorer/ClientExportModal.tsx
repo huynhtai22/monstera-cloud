@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { X, Copy, Check, FileSpreadsheet, Download, MessageSquare, Sparkles } from "lucide-react";
+import { X, Copy, Check, FileSpreadsheet, Download, MessageSquare, Sparkles, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useMounted } from "@/hooks/useMounted";
 import {
@@ -22,6 +22,9 @@ interface ClientExportModalProps {
   dateRange: { start: string; end: string };
   dataThrough?: string | null;
   clientName?: string;
+  hasMore?: boolean;
+  isLoadingAll?: boolean;
+  onLoadAll?: () => Promise<void>;
 }
 
 export function ClientExportModal({
@@ -31,6 +34,9 @@ export function ClientExportModal({
   dateRange,
   dataThrough,
   clientName,
+  hasMore,
+  isLoadingAll,
+  onLoadAll,
 }: ClientExportModalProps) {
   const mounted = useMounted();
   const [activeTab, setActiveTab] = useState<"brief" | "excel" | "raw">("brief");
@@ -48,8 +54,10 @@ export function ClientExportModal({
       dateRange,
       dataThrough,
       clientName,
+      isPartialData: Boolean(hasMore),
+      totalRecordsLoaded: rows.length,
     });
-  }, [overall, platformRollups, campaignRollups, dateRange, dataThrough, clientName]);
+  }, [overall, platformRollups, campaignRollups, dateRange, dataThrough, clientName, hasMore, rows.length]);
 
   const handleCopyBrief = async () => {
     try {
@@ -63,45 +71,67 @@ export function ClientExportModal({
   };
 
   const handleDownloadExecutiveExcel = () => {
-    const summarySheetRows = [
-      { Metric: "Total Ad Spend", Value: formatCurrencyValue(overall.totalSpend, overall.currency) },
+    const summarySheetRows: Array<{ Metric: string; Value: string | number; Currency?: string }> = [];
+
+    if (overall.isMixedCurrency && overall.currencyBreakdowns && overall.currencyBreakdowns.length > 0) {
+      for (const cb of overall.currencyBreakdowns) {
+        summarySheetRows.push(
+          { Metric: `Ad Spend (${cb.currency})`, Value: cb.spend, Currency: cb.currency },
+          { Metric: `Attributed Revenue (${cb.currency})`, Value: cb.revenue, Currency: cb.currency },
+          { Metric: `ROAS (${cb.currency})`, Value: `${cb.roas.toFixed(2)}x`, Currency: cb.currency },
+          { Metric: `CPA (${cb.currency})`, Value: cb.cpa > 0 ? Number(cb.cpa.toFixed(2)) : "—", Currency: cb.currency },
+        );
+      }
+    } else {
+      summarySheetRows.push(
+        { Metric: "Total Ad Spend", Value: overall.totalSpend, Currency: overall.currency },
+        { Metric: "Attributed Revenue", Value: overall.totalRevenue, Currency: overall.currency },
+        { Metric: "Blended ROAS", Value: `${overall.blendedRoas.toFixed(2)}x`, Currency: overall.currency },
+        { Metric: "Blended CPA", Value: overall.blendedCpa > 0 ? Number(overall.blendedCpa.toFixed(2)) : "—", Currency: overall.currency },
+        { Metric: "Average CPC", Value: overall.averageCpc > 0 ? Number(overall.averageCpc.toFixed(2)) : "—", Currency: overall.currency },
+      );
+    }
+
+    summarySheetRows.push(
       { Metric: "Total Conversions", Value: overall.totalConversions },
-      { Metric: "Blended CPA", Value: formatCurrencyValue(overall.blendedCpa, overall.currency) },
-      { Metric: "Attributed Revenue", Value: formatCurrencyValue(overall.totalRevenue, overall.currency) },
-      { Metric: "Blended ROAS", Value: `${overall.blendedRoas.toFixed(2)}x` },
       { Metric: "Total Clicks", Value: overall.totalClicks },
       { Metric: "Average CTR", Value: `${overall.blendedCtr.toFixed(2)}%` },
-      { Metric: "Average CPC", Value: formatCurrencyValue(overall.averageCpc, overall.currency) },
       { Metric: "Total Impressions", Value: overall.totalImpressions },
       { Metric: "Reporting Period", Value: `${dateRange.start} to ${dateRange.end}` },
       { Metric: "Data Through", Value: dataThrough || "Latest" },
-    ];
+      { Metric: "Total Records Exported", Value: rows.length },
+    );
 
     const platformSheetRows = platformRollups.map((p) => ({
       Platform: p.platformLabel,
-      "Spend": p.spend,
+      Spend: p.spend,
+      Currency: p.currency,
       "Share of Spend (%)": Number(p.shareOfSpend.toFixed(1)),
-      "Conversions": p.conversions,
-      "CPA": Number(p.cpa.toFixed(2)),
-      "Revenue": p.revenue,
-      "ROAS": Number(p.roas.toFixed(2)),
-      "Clicks": p.clicks,
+      Conversions: p.conversions,
+      CPA: Number(p.cpa.toFixed(2)),
+      Revenue: p.revenue,
+      ROAS: Number(p.roas.toFixed(2)),
+      Clicks: p.clicks,
       "CTR (%)": Number(p.ctr.toFixed(2)),
-      "CPC": Number(p.cpc.toFixed(2)),
-      "Impressions": p.impressions,
+      CPC: Number(p.cpc.toFixed(2)),
+      Impressions: p.impressions,
     }));
 
     const campaignSheetRows = campaignRollups.map((c) => ({
       Campaign: c.campaignName,
       Platform: c.platformLabel,
+      Account: c.accountName || c.accountId || "Default",
+      "Campaign ID": c.campaignId || "",
       Spend: c.spend,
+      Currency: c.currency,
       Conversions: c.conversions,
       CPA: Number(c.cpa.toFixed(2)),
       Revenue: c.revenue,
       ROAS: Number(c.roas.toFixed(2)),
     }));
 
-    const rawExportRows = rows.slice(0, 5000).map((r) => ({
+    // Export ALL loaded records without arbitrary truncation
+    const rawExportRows = rows.map((r) => ({
       Date: r.date.split("T")[0],
       Platform: pLabel(r.platform),
       Account: r.accountName || r.accountId || "",
@@ -139,7 +169,7 @@ export function ClientExportModal({
       Clicks: p.clicks,
       CTR: Number(p.ctr.toFixed(2)),
       CPC: Number(p.cpc.toFixed(2)),
-      Currency: overall.currency,
+      Currency: p.currency,
     }));
     downloadCsv(csvRows, `Platform-Summary-${dateRange.start}-${dateRange.end}`);
     toast.success("Summary CSV downloaded!");
@@ -210,6 +240,27 @@ export function ClientExportModal({
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {hasMore && (
+            <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  Showing {rows.length.toLocaleString()} records loaded. Additional warehouse records exist for this date range.
+                </span>
+              </div>
+              {onLoadAll && (
+                <button
+                  type="button"
+                  onClick={onLoadAll}
+                  disabled={isLoadingAll}
+                  className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 text-xs font-semibold transition disabled:opacity-50 shrink-0 cursor-pointer"
+                >
+                  {isLoadingAll ? "Loading remaining..." : "Load all records"}
+                </button>
+              )}
+            </div>
+          )}
+
           {activeTab === "brief" ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">

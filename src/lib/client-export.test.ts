@@ -53,6 +53,53 @@ describe("client-export helpers", () => {
       assert.equal(kpi.averageCpc, 1.0);
       assert.equal(kpi.currency, "USD");
     });
+    it("separates currencies cleanly and prevents nominal blending when multiple currencies exist", () => {
+      const mixedRows: MetricRowExport[] = [
+        {
+          platform: "google_ads",
+          campaignName: "Search US",
+          date: "2026-08-30",
+          spend: 100,
+          impressions: 1000,
+          clicks: 50,
+          conversions: 5,
+          revenue: 300,
+          currency: "USD",
+        },
+        {
+          platform: "meta_ads",
+          campaignName: "VN Promo",
+          date: "2026-08-30",
+          spend: 25000000,
+          impressions: 50000,
+          clicks: 2000,
+          conversions: 100,
+          revenue: 75000000,
+          currency: "VND",
+        },
+      ];
+
+      const kpis = calculateOverallKPIs(mixedRows);
+      assert.equal(kpis.isMixedCurrency, true);
+      assert.equal(kpis.currency, "MIXED");
+      assert.equal(kpis.currencyBreakdowns.length, 2);
+
+      const vndBreakdown = kpis.currencyBreakdowns.find((c) => c.currency === "VND")!;
+      assert.equal(vndBreakdown.spend, 25000000);
+      assert.equal(vndBreakdown.revenue, 75000000);
+      assert.equal(vndBreakdown.roas, 3.0);
+      assert.equal(vndBreakdown.cpa, 250000);
+
+      const usdBreakdown = kpis.currencyBreakdowns.find((c) => c.currency === "USD")!;
+      assert.equal(usdBreakdown.spend, 100);
+      assert.equal(usdBreakdown.revenue, 300);
+      assert.equal(usdBreakdown.roas, 3.0);
+      assert.equal(usdBreakdown.cpa, 20);
+
+      // Conversions and clicks still aggregate accurately across currencies
+      assert.equal(kpis.totalConversions, 105);
+      assert.equal(kpis.totalClicks, 2050);
+    });
   });
 
   describe("calculatePlatformRollups", () => {
@@ -86,6 +133,46 @@ describe("client-export helpers", () => {
       assert.equal(camps[1].campaignName, "Search Brand");
       assert.equal(camps[1].spend, 1000);
     });
+
+    it("uses stable identity across accounts with identical campaign names", () => {
+      const collisionRows: MetricRowExport[] = [
+        {
+          platform: "google_ads",
+          accountId: "acc_alpha",
+          accountName: "Brand Alpha",
+          campaignId: "camp_001",
+          campaignName: "Black Friday Sale",
+          date: "2026-08-30",
+          spend: 1500,
+          impressions: 10000,
+          clicks: 500,
+          conversions: 30,
+          revenue: 4500,
+          currency: "USD",
+        },
+        {
+          platform: "google_ads",
+          accountId: "acc_beta",
+          accountName: "Brand Beta",
+          campaignId: "camp_002",
+          campaignName: "Black Friday Sale",
+          date: "2026-08-30",
+          spend: 800,
+          impressions: 5000,
+          clicks: 250,
+          conversions: 20,
+          revenue: 2400,
+          currency: "USD",
+        },
+      ];
+
+      const rollups = calculateCampaignRollups(collisionRows);
+      assert.equal(rollups.length, 2, "Identical campaign names in different accounts should not be merged");
+      assert.equal(rollups[0].accountName, "Brand Alpha");
+      assert.equal(rollups[0].spend, 1500);
+      assert.equal(rollups[1].accountName, "Brand Beta");
+      assert.equal(rollups[1].spend, 800);
+    });
   });
 
   describe("generateClientBriefMarkdown", () => {
@@ -118,6 +205,19 @@ describe("client-export helpers", () => {
       assert.equal(formatCurrencyValue(1234.56, "USD"), "$1,234.56");
       assert.equal(formatCurrencyValue(1234.56, "MIXED"), "1,234.56 MIXED");
       assert.equal(formatCurrencyValue(0, "USD"), "$0.00");
+    });
+
+    it("includes note for partial dataset when specified", () => {
+      const overall = calculateOverallKPIs(sampleRows);
+      const text = generateClientBriefMarkdown({
+        overall,
+        platformRollups: [],
+        dateRange: { start: "2026-08-01", end: "2026-08-31" },
+        isPartialData: true,
+        totalRecordsLoaded: 500,
+      });
+
+      assert.match(text, /Note: Summary based on 500 loaded records/);
     });
   });
 });

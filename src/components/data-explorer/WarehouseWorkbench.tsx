@@ -605,8 +605,10 @@ export function WarehouseWorkbench() {
     },
   });
 
+  const [isLoadingAll, setIsLoadingAll] = useState(false);
+
   const loadMore = async () => {
-    if (!queryUrl || !cursor || isLoadingMore) return;
+    if (!queryUrl || !cursor || isLoadingMore || isLoadingAll) return;
     setIsLoadingMore(true);
     try {
       const url = new URL(queryUrl, window.location.origin);
@@ -622,6 +624,35 @@ export function WarehouseWorkbench() {
       console.error(e);
     } finally {
       setIsLoadingMore(false);
+    }
+  };
+
+  const fetchAllPages = async () => {
+    if (!queryUrl || !cursor || isLoadingMore || isLoadingAll) return;
+    setIsLoadingAll(true);
+    try {
+      let currentCursor = cursor;
+      let keepGoing = true;
+      while (keepGoing && currentCursor) {
+        const url = new URL(queryUrl, window.location.origin);
+        url.searchParams.set("cursor", currentCursor);
+        const res = await fetch(url.toString());
+        const newData = await res.json();
+        if (newData.metrics && newData.metrics.length > 0) {
+          setAllMetrics((prev) => [...prev, ...newData.metrics]);
+          currentCursor = newData.pagination?.nextCursor || null;
+          keepGoing = Boolean(newData.pagination?.hasMore && currentCursor);
+          setCursor(currentCursor);
+          setHasMore(keepGoing);
+        } else {
+          keepGoing = false;
+          setHasMore(false);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load all warehouse records", e);
+    } finally {
+      setIsLoadingAll(false);
     }
   };
 
@@ -1590,6 +1621,9 @@ export function WarehouseWorkbench() {
         rows={processedRows}
         dateRange={{ start: startDate, end: endDate }}
         dataThrough={resolveDataThrough(summary?.dateRange?.latest ?? null)}
+        hasMore={hasMore}
+        isLoadingAll={isLoadingAll}
+        onLoadAll={fetchAllPages}
       />
     </div>
   );

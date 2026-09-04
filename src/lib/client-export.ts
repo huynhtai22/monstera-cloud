@@ -19,6 +19,16 @@ export interface MetricRowExport {
   currency?: string | null;
 }
 
+export interface CurrencyBreakdown {
+  currency: string;
+  spend: number;
+  revenue: number;
+  conversions: number;
+  roas: number;
+  cpa: number;
+  spendShare: number;
+}
+
 export interface OverallKPIs {
   totalSpend: number;
   totalImpressions: number;
@@ -30,11 +40,14 @@ export interface OverallKPIs {
   blendedCtr: number;
   averageCpc: number;
   currency: string;
+  isMixedCurrency: boolean;
+  currencyBreakdowns: CurrencyBreakdown[];
 }
 
 export interface PlatformRollup {
   platform: string;
   platformLabel: string;
+  currency: string;
   spend: number;
   impressions: number;
   clicks: number;
@@ -48,9 +61,13 @@ export interface PlatformRollup {
 }
 
 export interface CampaignRollup {
+  campaignId?: string;
   campaignName: string;
+  accountId?: string;
+  accountName?: string;
   platform: string;
   platformLabel: string;
+  currency: string;
   spend: number;
   conversions: number;
   revenue: number;
@@ -86,43 +103,90 @@ export function formatCurrencyValue(amount: number, currency: string = "USD"): s
 }
 
 export function calculateOverallKPIs(rows: MetricRowExport[]): OverallKPIs {
-  const totalSpend = rows.reduce((s, r) => s + (r.spend ?? 0), 0);
+  const currencyMap = new Map<string, {
+    spend: number;
+    impressions: number;
+    clicks: number;
+    conversions: number;
+    revenue: number;
+  }>();
+
+  for (const r of rows) {
+    const c = (r.currency || "").trim().toUpperCase() || "USD";
+    const cur = currencyMap.get(c) || { spend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0 };
+    cur.spend += r.spend ?? 0;
+    cur.impressions += r.impressions ?? 0;
+    cur.clicks += r.clicks ?? 0;
+    cur.conversions += r.conversions ?? 0;
+    cur.revenue += r.revenue ?? 0;
+    currencyMap.set(c, cur);
+  }
+
+  const isMixedCurrency = currencyMap.size > 1;
+  const currencyBreakdowns: CurrencyBreakdown[] = [];
+
+  for (const [curr, d] of currencyMap.entries()) {
+    const roas = d.spend > 0 ? d.revenue / d.spend : 0;
+    const cpa = d.conversions > 0 ? d.spend / d.conversions : 0;
+    currencyBreakdowns.push({
+      currency: curr,
+      spend: d.spend,
+      revenue: d.revenue,
+      conversions: d.conversions,
+      roas,
+      cpa,
+      spendShare: 0,
+    });
+  }
+  currencyBreakdowns.sort((a, b) => b.spend - a.spend);
+
   const totalImpressions = rows.reduce((s, r) => s + (r.impressions ?? 0), 0);
   const totalClicks = rows.reduce((s, r) => s + (r.clicks ?? 0), 0);
   const totalConversions = rows.reduce((s, r) => s + (r.conversions ?? 0), 0);
-  const totalRevenue = rows.reduce((s, r) => s + (r.revenue ?? 0), 0);
-
-  const blendedRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-  const blendedCpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
   const blendedCtr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0;
-  const averageCpc = totalClicks > 0 ? totalSpend / totalClicks : 0;
 
-  // Determine dominant currency
-  const currencyCounts = new Map<string, number>();
-  for (const r of rows) {
-    const c = (r.currency || "").trim().toUpperCase();
-    if (c) currencyCounts.set(c, (currencyCounts.get(c) || 0) + 1);
+  if (isMixedCurrency) {
+    return {
+      totalSpend: 0,
+      totalImpressions,
+      totalClicks,
+      totalConversions,
+      totalRevenue: 0,
+      blendedRoas: 0,
+      blendedCpa: 0,
+      blendedCtr,
+      averageCpc: 0,
+      currency: "MIXED",
+      isMixedCurrency: true,
+      currencyBreakdowns,
+    };
   }
-  let dominantCurrency = "USD";
-  let maxCount = 0;
-  for (const [cur, cnt] of currencyCounts.entries()) {
-    if (cnt > maxCount) {
-      maxCount = cnt;
-      dominantCurrency = cur;
-    }
-  }
+
+  const single = currencyBreakdowns[0] || {
+    currency: "USD",
+    spend: 0,
+    revenue: 0,
+    conversions: 0,
+    roas: 0,
+    cpa: 0,
+    spendShare: 100,
+  };
+
+  const averageCpc = totalClicks > 0 ? single.spend / totalClicks : 0;
 
   return {
-    totalSpend,
+    totalSpend: single.spend,
     totalImpressions,
     totalClicks,
     totalConversions,
-    totalRevenue,
-    blendedRoas,
-    blendedCpa,
+    totalRevenue: single.revenue,
+    blendedRoas: single.roas,
+    blendedCpa: single.cpa,
     blendedCtr,
     averageCpc,
-    currency: dominantCurrency,
+    currency: single.currency,
+    isMixedCurrency: false,
+    currencyBreakdowns,
   };
 }
 
@@ -133,19 +197,29 @@ export function calculatePlatformRollups(rows: MetricRowExport[]): PlatformRollu
     clicks: number;
     conversions: number;
     revenue: number;
+    currencies: Set<string>;
   }>();
 
   for (const r of rows) {
     const p = r.platform || "unknown";
-    const existing = groups.get(p) || { spend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0 };
+    const existing = groups.get(p) || {
+      spend: 0,
+      impressions: 0,
+      clicks: 0,
+      conversions: 0,
+      revenue: 0,
+      currencies: new Set<string>(),
+    };
     existing.spend += r.spend ?? 0;
     existing.impressions += r.impressions ?? 0;
     existing.clicks += r.clicks ?? 0;
     existing.conversions += r.conversions ?? 0;
     existing.revenue += r.revenue ?? 0;
+    if (r.currency) existing.currencies.add(r.currency.trim().toUpperCase());
     groups.set(p, existing);
   }
 
+  // Calculate total spend across single-currency dataset or nominal
   const totalSpend = rows.reduce((s, r) => s + (r.spend ?? 0), 0);
 
   const result: PlatformRollup[] = [];
@@ -155,10 +229,12 @@ export function calculatePlatformRollups(rows: MetricRowExport[]): PlatformRollu
     const ctr = data.impressions > 0 ? (data.clicks / data.impressions) * 100 : 0;
     const cpc = data.clicks > 0 ? data.spend / data.clicks : 0;
     const shareOfSpend = totalSpend > 0 ? (data.spend / totalSpend) * 100 : 0;
+    const cur = data.currencies.size === 1 ? [...data.currencies][0] : data.currencies.size > 1 ? "MIXED" : "USD";
 
     result.push({
       platform,
       platformLabel: getPlatformLabel(platform),
+      currency: cur,
       spend: data.spend,
       impressions: data.impressions,
       clicks: data.clicks,
@@ -178,8 +254,12 @@ export function calculatePlatformRollups(rows: MetricRowExport[]): PlatformRollu
 
 export function calculateCampaignRollups(rows: MetricRowExport[], limit: number = 20): CampaignRollup[] {
   const map = new Map<string, {
+    campaignId?: string;
     campaignName: string;
+    accountId?: string;
+    accountName?: string;
     platform: string;
+    currency: string;
     spend: number;
     conversions: number;
     revenue: number;
@@ -188,8 +268,23 @@ export function calculateCampaignRollups(rows: MetricRowExport[], limit: number 
   for (const r of rows) {
     const name = (r.campaignName || r.campaignId || "Uncategorized").trim();
     const p = r.platform || "unknown";
-    const key = `${p}:::${name}`;
-    const existing = map.get(key) || { campaignName: name, platform: p, spend: 0, conversions: 0, revenue: 0 };
+    const acc = (r.accountId || r.accountName || "default_acc").trim();
+    const campId = (r.campaignId || name).trim();
+    const cur = (r.currency || "USD").trim().toUpperCase();
+
+    // Stable identity combining platform, account, campaign ID/name, and currency
+    const key = `${p}:::${acc}:::${campId}:::${cur}`;
+    const existing = map.get(key) || {
+      campaignId: r.campaignId || undefined,
+      campaignName: name,
+      accountId: r.accountId || undefined,
+      accountName: r.accountName || undefined,
+      platform: p,
+      currency: cur,
+      spend: 0,
+      conversions: 0,
+      revenue: 0,
+    };
     existing.spend += r.spend ?? 0;
     existing.conversions += r.conversions ?? 0;
     existing.revenue += r.revenue ?? 0;
@@ -201,9 +296,13 @@ export function calculateCampaignRollups(rows: MetricRowExport[], limit: number 
     const roas = data.spend > 0 ? data.revenue / data.spend : 0;
     const cpa = data.conversions > 0 ? data.spend / data.conversions : 0;
     result.push({
+      campaignId: data.campaignId,
       campaignName: data.campaignName,
+      accountId: data.accountId,
+      accountName: data.accountName,
       platform: data.platform,
       platformLabel: getPlatformLabel(data.platform),
+      currency: data.currency,
       spend: data.spend,
       conversions: data.conversions,
       revenue: data.revenue,
@@ -226,33 +325,61 @@ export function generateClientBriefMarkdown(params: {
   dateRange: { start: string; end: string };
   dataThrough?: string | null;
   clientName?: string;
+  isPartialData?: boolean;
+  totalRecordsLoaded?: number;
 }): string {
-  const { overall, platformRollups, campaignRollups, dateRange, dataThrough, clientName } = params;
-  const cur = overall.currency;
+  const { overall, platformRollups, campaignRollups, dateRange, dataThrough, clientName, isPartialData, totalRecordsLoaded } = params;
 
   const header = clientName
     ? `📊 **Performance Summary — ${clientName}**`
     : `📊 **Weekly Marketing Performance Summary**`;
 
-  const dateLine = dataThrough
-    ? `📅 **Period:** ${dateRange.start || "Start"} to ${dateRange.end || "End"} *(Data verified through ${dataThrough})*`
-    : `📅 **Period:** ${dateRange.start || "Start"} to ${dateRange.end || "End"}`;
+  const dateParts: string[] = [
+    `📅 **Period:** ${dateRange.start || "Start"} to ${dateRange.end || "End"}`
+  ];
+  if (dataThrough) {
+    dateParts.push(`*(Data verified through ${dataThrough})*`);
+  }
+  if (isPartialData && totalRecordsLoaded) {
+    dateParts.push(`\n⚠️ *Note: Summary based on ${totalRecordsLoaded.toLocaleString()} loaded records (partial page)*`);
+  }
+  const dateLine = dateParts.join(" ");
 
-  const kpis = [
-    `💰 **Total Ad Spend:** ${formatCurrencyValue(overall.totalSpend, cur)}`,
-    `🎯 **Conversions:** ${overall.totalConversions.toLocaleString()} · **Blended CPA:** ${overall.blendedCpa > 0 ? formatCurrencyValue(overall.blendedCpa, cur) : "—"}`,
-    `📈 **Attributed Revenue:** ${formatCurrencyValue(overall.totalRevenue, cur)} · **Blended ROAS:** ${overall.blendedRoas > 0 ? `${overall.blendedRoas.toFixed(2)}x` : "—"}`,
-    `👆 **Traffic:** ${overall.totalClicks.toLocaleString()} clicks · **CTR:** ${overall.blendedCtr.toFixed(2)}% · **CPC:** ${formatCurrencyValue(overall.averageCpc, cur)}`,
-  ].join("\n");
+  let kpis: string;
+  if (overall.isMixedCurrency && overall.currencyBreakdowns && overall.currencyBreakdowns.length > 0) {
+    const currencyLines = overall.currencyBreakdowns.map((cb) => {
+      const spendStr = formatCurrencyValue(cb.spend, cb.currency);
+      const revStr = formatCurrencyValue(cb.revenue, cb.currency);
+      const roasStr = cb.roas > 0 ? `${cb.roas.toFixed(2)}x` : "—";
+      const cpaStr = cb.cpa > 0 ? formatCurrencyValue(cb.cpa, cb.currency) : "—";
+      return `• **${cb.currency}:** Spend ${spendStr} · Rev ${revStr} · ROAS ${roasStr} · CPA ${cpaStr} (${cb.conversions.toLocaleString()} conv)`;
+    });
+    kpis = [
+      `💰 **Financial Performance (by Currency):**`,
+      ...currencyLines,
+      `🎯 **Total Conversions:** ${overall.totalConversions.toLocaleString()}`,
+      `👆 **Traffic:** ${overall.totalClicks.toLocaleString()} clicks · **CTR:** ${overall.blendedCtr.toFixed(2)}%`,
+    ].join("\n");
+  } else {
+    const cur = overall.currency;
+    kpis = [
+      `💰 **Total Ad Spend:** ${formatCurrencyValue(overall.totalSpend, cur)}`,
+      `🎯 **Conversions:** ${overall.totalConversions.toLocaleString()} · **Blended CPA:** ${overall.blendedCpa > 0 ? formatCurrencyValue(overall.blendedCpa, cur) : "—"}`,
+      `📈 **Attributed Revenue:** ${formatCurrencyValue(overall.totalRevenue, cur)} · **Blended ROAS:** ${overall.blendedRoas > 0 ? `${overall.blendedRoas.toFixed(2)}x` : "—"}`,
+      `👆 **Traffic:** ${overall.totalClicks.toLocaleString()} clicks · **CTR:** ${overall.blendedCtr.toFixed(2)}% · **CPC:** ${formatCurrencyValue(overall.averageCpc, cur)}`,
+    ].join("\n");
+  }
 
   const platformLines = platformRollups.length > 0
     ? [
         `\n**Platform Breakdown:**`,
         ...platformRollups.map((p) => {
-          const spendStr = formatCurrencyValue(p.spend, cur);
+          const pCur = p.currency && p.currency !== "MIXED" ? p.currency : overall.currency;
+          const spendStr = formatCurrencyValue(p.spend, pCur);
           const roasStr = p.roas > 0 ? `${p.roas.toFixed(2)}x ROAS` : "—";
-          const cpaStr = p.cpa > 0 ? `${formatCurrencyValue(p.cpa, cur)} CPA` : "—";
-          return `• **${p.platformLabel}:** ${spendStr} (${p.shareOfSpend.toFixed(1)}%) | ${p.conversions} conv (${cpaStr}) | ${roasStr}`;
+          const cpaStr = p.cpa > 0 ? `${formatCurrencyValue(p.cpa, pCur)} CPA` : "—";
+          const shareStr = p.shareOfSpend > 0 ? ` (${p.shareOfSpend.toFixed(1)}%)` : "";
+          return `• **${p.platformLabel}:** ${spendStr}${shareStr} | ${p.conversions} conv (${cpaStr}) | ${roasStr}`;
         }),
       ].join("\n")
     : "";
@@ -261,9 +388,11 @@ export function generateClientBriefMarkdown(params: {
     ? [
         `\n**Top Campaigns by Spend:**`,
         ...campaignRollups.slice(0, 5).map((c, i) => {
-          const spendStr = formatCurrencyValue(c.spend, cur);
+          const cCur = c.currency && c.currency !== "MIXED" ? c.currency : overall.currency;
+          const spendStr = formatCurrencyValue(c.spend, cCur);
           const roasStr = c.roas > 0 ? `${c.roas.toFixed(2)}x ROAS` : "—";
-          return `${i + 1}. **${c.campaignName}** [${c.platformLabel}]: ${spendStr} · ${c.conversions} conv · ${roasStr}`;
+          const accSuffix = c.accountName ? ` (${c.accountName})` : "";
+          return `${i + 1}. **${c.campaignName}**${accSuffix} [${c.platformLabel}]: ${spendStr} · ${c.conversions} conv · ${roasStr}`;
         }),
       ].join("\n")
     : "";
