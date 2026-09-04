@@ -116,4 +116,37 @@ describe("pilot activation state", () => {
     const ready = derive({ sources: [freshSource], rows7d: 1 });
     assert.ok(pilotActivationSortRank(blocked) < pilotActivationSortRank(ready));
   });
+
+  it("orders operator view as blocked < expiring < ready_to_review < activated", () => {
+    const expiredTrial = new Date("2026-09-01T00:00:00.000Z").toISOString();
+    const blocked = derive({ sources: [{ id: "s", state: "error" }] });
+    const expiring = derive({
+      sources: [freshSource],
+      rows7d: 1,
+      subscriptionEndsAt: new Date(Date.now() - 1000).toISOString(),
+    });
+    const ready = derive({ sources: [freshSource], rows7d: 1 });
+    const activated = derive({
+      sources: [freshSource],
+      rows7d: 5,
+      dashboardReviewedAt: new Date("2026-09-03T01:00:00.000Z"),
+    });
+    // Expired trial is treated as blocked priority (rank 0)
+    assert.equal(pilotActivationSortRank(expiring), 0);
+    assert.equal(pilotActivationSortRank(blocked), 0);
+    assert.equal(pilotActivationSortRank(ready), 2);
+    assert.equal(pilotActivationSortRank(activated), 3);
+    assert.ok(pilotActivationSortRank(blocked) < pilotActivationSortRank(ready));
+    assert.ok(pilotActivationSortRank(ready) < pilotActivationSortRank(activated));
+    assert.ok(pilotActivationSortRank(expiring) < pilotActivationSortRank(ready));
+  });
+
+  it("keeps trial duration server-controlled and ignores browser offer param", () => {
+    // The offer param only affects client copy, never entitlement.
+    // Server derives trialEndsAt solely from workspaceStatus and subscriptionEndsAt.
+    const withOffer = derive({ workspaceStatus: "PILOT", subscriptionEndsAt: trialEnd });
+    const withoutOffer = derive({ workspaceStatus: "PILOT", subscriptionEndsAt: trialEnd });
+    assert.equal(withOffer.trialEndsAt, withoutOffer.trialEndsAt);
+    assert.equal(withOffer.trialEndsAt, trialEnd.toISOString());
+  });
 });

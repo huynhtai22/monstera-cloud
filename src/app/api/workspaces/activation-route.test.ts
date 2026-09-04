@@ -60,4 +60,108 @@ describe("POST /api/workspaces/[id]/activation", () => {
     });
     assert.equal(response.status, 400);
   });
+
+  it("rejects review when no recent KPI rows exist (409)", async () => {
+    const originalCampaignMetric = (prisma as any).campaignMetric;
+    const originalAuditEvent = (prisma as any).auditEvent;
+    (prisma as any).campaignMetric = { count: async () => 0, aggregate: async () => ({ _max: { date: null } }) };
+    (prisma as any).auditEvent = { findFirst: async () => null, upsert: async () => ({ createdAt: new Date() }) };
+    try {
+      const response = await POST(request({ action: "dashboard_reviewed" }), {
+        params: Promise.resolve({ id: "workspace-a" }),
+      });
+      assert.equal(response.status, 409);
+      const body = await response.json();
+      assert.match(body.error, /Recent KPI rows are required/);
+    } finally {
+      (prisma as any).campaignMetric = originalCampaignMetric;
+      (prisma as any).auditEvent = originalAuditEvent;
+    }
+  });
+
+  it("is idempotent: second identical review reuses the existing audit event", async () => {
+    const originalCampaignMetric = (prisma as any).campaignMetric;
+    const originalAuditEvent = (prisma as any).auditEvent;
+    const originalWorkspaceFind = (prisma as any).workspace.findUnique;
+    const originalConnectionFind = (prisma as any).connection?.findMany;
+    const fixedDate = new Date("2026-09-03T01:00:00.000Z");
+    let upsertCalls = 0;
+    (prisma as any).campaignMetric = {
+      count: async () => 5,
+      aggregate: async () => ({ _max: { date: new Date("2026-09-03T00:00:00.000Z") } }),
+    };
+    (prisma as any).auditEvent = {
+      findFirst: async () => null,
+      upsert: async () => {
+        upsertCalls += 1;
+        return { createdAt: fixedDate };
+      },
+    };
+    // Mock the dashboard overview dependencies so the final refresh succeeds
+    const mockWorkspace = {
+      id: "workspace-a",
+      name: "Test Workspace",
+      slug: "test-workspace",
+      plan: "pilot",
+      status: "PILOT",
+      subscriptionEndsAt: new Date(Date.now() + 7 * 86400000),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    (prisma as any).workspace.findUnique = async () => mockWorkspace;
+    (prisma as any).connection = { findMany: async () => [] };
+    (prisma as any).pipeline = { findMany: async () => [] };
+    (prisma as any).campaignMetric = {
+      count: async (args: any) => {
+        if (args.where?.date?.gte) return 5;
+        return 5;
+      },
+      aggregate: async () => ({ _max: { date: new Date("2026-09-03T00:00:00.000Z"), pulledAt: new Date() }, _count: { id: 5 } }),
+      groupBy: async () => [],
+    };
+    (prisma as any).retailOrder = { aggregate: async () => ({ _count: { _all: 0 }, _max: { pulledAt: null, createdAtIso: null } }) };
+    (prisma as any).syncJob = { findFirst: async () => null, groupBy: async () => [] };
+    (prisma as any).warehouseImportJob = { findFirst: async () => null };
+    (prisma as any).syncLog = { findMany: async () => [], groupBy: async () => [] };
+    (prisma as any).apiKey = { count: async () => 0 };
+    (prisma as any).lookerJob = { findMany: async () => [] };
+    (prisma as any).auditEvent = {
+      findFirst: async (args: any) => {
+        if (args.where?.action === "onboarding.dashboard_reviewed") return null;
+        return null;
+      },
+      upsert: async () => {
+        upsertCalls += 1;
+        return { createdAt: fixedDate };
+      },
+    };
+    try {
+      const first = await POST(request({ action: "dashboard_reviewed" }), {
+        params: Promise.resolve({ id: "workspace-a" }),
+      });
+      assert.equal(first.status, 200);
+      const beforeCalls = upsertCalls;
+      (prisma as any).auditEvent.findFirst = async () => ({ createdAt: fixedDate });
+      const second = await POST(request({ action: "dashboard_reviewed" }), {
+        params: Promise.resolve({ id: "workspace-a" }),
+      });
+      assert.equal(second.status, 200);
+      assert.equal(upsertCalls, beforeCalls, "second call should not create a new audit event");
+    } finally {
+      (prisma as any).campaignMetric = originalCampaignMetric;
+      (prisma as any).auditEvent = originalAuditEvent;
+      (prisma as any).workspace.findUnique = originalWorkspaceFind;
+      if (originalConnectionFind) (prisma as any).connection.findMany = originalConnectionFind;
+    }
+  });
+
+  it("denies a non-member even for their own workspace id", async () => {
+    (prisma as any).workspaceMember = {
+      findFirst: async () => null,
+    };
+    const response = await POST(request({ action: "dashboard_reviewed" }), {
+      params: Promise.resolve({ id: "workspace-a" }),
+    });
+    assert.equal(response.status, 403);
+  });
 });
