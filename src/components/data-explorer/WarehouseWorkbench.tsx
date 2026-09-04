@@ -26,6 +26,8 @@ import { downloadCsv, downloadExcel } from "@/lib/export-utils";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { RefreshWarehouseModal } from "./RefreshWarehouseModal";
+import { ClientExportModal } from "./ClientExportModal";
+import { calculatePlatformRollups } from "@/lib/client-export";
 import { AnalystPane } from "./AnalystPane";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -509,6 +511,7 @@ export function WarehouseWorkbench() {
   const [accountFilterIds, setAccountFilterIds] = useState<string[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [isRefreshOpen, setIsRefreshOpen] = useState(false);
+  const [isClientExportOpen, setIsClientExportOpen] = useState(false);
 
   const [allMetrics, setAllMetrics] = useState<MetricRow[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -565,7 +568,7 @@ export function WarehouseWorkbench() {
     () => activeWorkspaceId ? `/api/data-explorer/shopee-catalog?workspaceId=${activeWorkspaceId}` : null,
     [activeWorkspaceId],
   );
-  const { data: shopeeCatalog, isLoading: shopeeCatalogLoading } = useSWR(catalogUrl, fetcher);
+  const { data: shopeeCatalog } = useSWR(catalogUrl, fetcher);
   const {
     data: accountsDimensions,
     isLoading: accountsDimensionsLoading,
@@ -602,8 +605,10 @@ export function WarehouseWorkbench() {
     },
   });
 
+  const [isLoadingAll, setIsLoadingAll] = useState(false);
+
   const loadMore = async () => {
-    if (!queryUrl || !cursor || isLoadingMore) return;
+    if (!queryUrl || !cursor || isLoadingMore || isLoadingAll) return;
     setIsLoadingMore(true);
     try {
       const url = new URL(queryUrl, window.location.origin);
@@ -619,6 +624,35 @@ export function WarehouseWorkbench() {
       console.error(e);
     } finally {
       setIsLoadingMore(false);
+    }
+  };
+
+  const fetchAllPages = async () => {
+    if (!queryUrl || !cursor || isLoadingMore || isLoadingAll) return;
+    setIsLoadingAll(true);
+    try {
+      let currentCursor = cursor;
+      let keepGoing = true;
+      while (keepGoing && currentCursor) {
+        const url = new URL(queryUrl, window.location.origin);
+        url.searchParams.set("cursor", currentCursor);
+        const res = await fetch(url.toString());
+        const newData = await res.json();
+        if (newData.metrics && newData.metrics.length > 0) {
+          setAllMetrics((prev) => [...prev, ...newData.metrics]);
+          currentCursor = newData.pagination?.nextCursor || null;
+          keepGoing = Boolean(newData.pagination?.hasMore && currentCursor);
+          setCursor(currentCursor);
+          setHasMore(keepGoing);
+        } else {
+          keepGoing = false;
+          setHasMore(false);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load all warehouse records", e);
+    } finally {
+      setIsLoadingAll(false);
     }
   };
 
@@ -824,6 +858,27 @@ export function WarehouseWorkbench() {
       </span>
     );
   }, [processedRows]);
+
+  const cpaKpiNode = useMemo(() => {
+    const totalSpend = processedRows.reduce((s, m) => s + (m.spend ?? 0), 0);
+    const totalConv = totals.conversions;
+    if (!totalConv || totalConv === 0 || !totalSpend) return <span className="text-ink-mute">—</span>;
+    const entries = [...moneyTotals.entries()].filter(([c]) => c !== "—");
+    const dominantCur = entries.length > 0 ? entries[0][0] : "USD";
+    const cpa = totalSpend / totalConv;
+    return (
+      <span className="font-semibold text-ink">
+        {formatMoney(cpa, dominantCur)}
+      </span>
+    );
+  }, [processedRows, totals.conversions, moneyTotals]);
+
+  const platformRollups = useMemo(() => calculatePlatformRollups(processedRows), [processedRows]);
+
+  const overallCurrency = useMemo(() => {
+    const entries = [...moneyTotals.entries()].filter(([c]) => c !== "—");
+    return entries.length > 0 ? entries[0][0] : "USD";
+  }, [moneyTotals]);
 
   const ctrLabel = (m: MetricRow) => {
     if (typeof m.ctr !== "number") return "-";
@@ -1103,20 +1158,58 @@ export function WarehouseWorkbench() {
 
       {/* ─── 3. SUMMARY METRICS ─── */}
       {metrics.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
-          {([
-            ["Spend", moneyKpiNode("spend")],
-            ["Impressions", `${(totals.impressions / 1000).toFixed(1)}K`],
-            ["Clicks", totals.clicks.toLocaleString()],
-            ["Conversions", totals.conversions.toFixed(0)],
-            ["Revenue", moneyKpiNode("revenue")],
-            ["ROAS", roasKpiNode],
-          ] as Array<[string, React.ReactNode]>).map(([k, v]) => (
-            <div key={k} className="rounded-lg border border-line bg-panel px-4 py-3">
-              <p className="text-xs font-medium text-ink-mute">{k}</p>
-              <p className="mt-1 text-base font-semibold text-ink">{v}</p>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+            {([
+              ["Spend", moneyKpiNode("spend")],
+              ["Conversions", totals.conversions.toFixed(0)],
+              ["Blended CPA", cpaKpiNode],
+              ["Revenue", moneyKpiNode("revenue")],
+              ["Blended ROAS", roasKpiNode],
+              ["Traffic", `${totals.clicks.toLocaleString()} clicks · ${(totals.impressions / 1000).toFixed(1)}K imp`],
+            ] as Array<[string, React.ReactNode]>).map(([k, v]) => (
+              <div key={k} className="rounded-lg border border-line bg-panel px-4 py-3">
+                <p className="text-xs font-medium text-ink-mute">{k}</p>
+                <p className="mt-1 text-base font-semibold text-ink">{v}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Platform Performance Split Bar */}
+          {platformRollups.length > 0 && (
+            <div className="rounded-lg border border-line bg-panel/60 p-3.5 text-xs">
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="font-semibold text-ink">Platform Performance Breakdown</span>
+                <button
+                  type="button"
+                  onClick={() => setIsClientExportOpen(true)}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-accent hover:underline"
+                >
+                  <Sparkles className="h-3 w-3" />
+                  Client Report & Brief →
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                {platformRollups.map((p) => (
+                  <div key={p.platform} className="rounded-md border border-line/60 bg-canvas/80 p-2.5">
+                    <div className="flex items-center justify-between font-medium text-ink">
+                      <span>{p.platformLabel}</span>
+                      <span className="text-ink-mute text-[11px]">{p.shareOfSpend.toFixed(0)}% spend</span>
+                    </div>
+                    <div className="mt-1.5 flex items-baseline justify-between text-[11px]">
+                      <span className="font-semibold text-ink">{formatMoney(p.spend, overallCurrency)}</span>
+                      <span className={p.roas >= 2 ? "text-emerald-400 font-semibold" : p.roas >= 1 ? "text-blue-400" : "text-ink-mute"}>
+                        {p.roas > 0 ? `${p.roas.toFixed(2)}x ROAS` : "—"}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-[10px] text-ink-mute">
+                      {p.conversions} conv {p.cpa > 0 ? `(${formatMoney(p.cpa, overallCurrency)} CPA)` : ""}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
+          )}
         </div>
       )}
 
@@ -1266,13 +1359,29 @@ export function WarehouseWorkbench() {
                 </div>
               </div>
             </details>
+            <button
+              type="button"
+              onClick={() => setIsClientExportOpen(true)}
+              disabled={!processedRows.length}
+              className="flex h-8 items-center gap-1.5 rounded-md bg-white/[0.08] px-2.5 text-xs font-semibold text-ink hover:bg-white/[0.12] transition-colors disabled:opacity-40"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-accent" /> Client Report
+            </button>
             <details className="group relative">
               <summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-md border border-line bg-canvas px-2.5 text-xs font-medium text-ink-mute hover:text-ink [&::-webkit-details-marker]:hidden">
                 <Download className="h-3.5 w-3.5" strokeWidth={1.5} /> Export <ChevronDown className="h-3 w-3" />
               </summary>
-              <div className="absolute right-0 top-[calc(100%+4px)] z-30 w-36 rounded-md border border-line bg-panel p-1 shadow-xl">
-                <button type="button" onClick={() => handleExport("csv")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-2 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">CSV</button>
-                <button type="button" onClick={() => handleExport("excel")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-2 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">Excel (.xlsx)</button>
+              <div className="absolute right-0 top-[calc(100%+4px)] z-30 w-48 rounded-md border border-line bg-panel p-1 shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => setIsClientExportOpen(true)}
+                  disabled={!processedRows.length}
+                  className="w-full flex items-center gap-1.5 rounded px-2.5 py-2 text-left text-xs font-medium text-ink hover:bg-white/[0.05] disabled:opacity-50 border-b border-line/40 mb-1"
+                >
+                  <Sparkles className="h-3 w-3 text-accent" /> Client Brief & Summary…
+                </button>
+                <button type="button" onClick={() => handleExport("csv")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-1.5 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">Raw CSV</button>
+                <button type="button" onClick={() => handleExport("excel")} disabled={!processedRows.length} className="w-full rounded px-2.5 py-1.5 text-left text-xs text-ink hover:bg-white/[0.05] disabled:opacity-50">Raw Excel (.xlsx)</button>
               </div>
             </details>
           </div>
@@ -1503,6 +1612,18 @@ export function WarehouseWorkbench() {
         onRefreshStarted={() => {
           void mutate();
         }}
+      />
+
+      {/* ─── 6. CLIENT EXPORT & BRIEF MODAL ─── */}
+      <ClientExportModal
+        isOpen={isClientExportOpen}
+        onClose={() => setIsClientExportOpen(false)}
+        rows={processedRows}
+        dateRange={{ start: startDate, end: endDate }}
+        dataThrough={resolveDataThrough(summary?.dateRange?.latest ?? null)}
+        hasMore={hasMore}
+        isLoadingAll={isLoadingAll}
+        onLoadAll={fetchAllPages}
       />
     </div>
   );

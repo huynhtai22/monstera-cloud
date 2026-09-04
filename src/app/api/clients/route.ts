@@ -32,7 +32,18 @@ export async function GET(req: Request) {
             include: {
                 _count: {
                     select: { pipelines: true, connections: true }
-                }
+                },
+                connections: {
+                    where: { type: "source" },
+                    select: {
+                        id: true,
+                        name: true,
+                        provider: true,
+                        status: true,
+                        lastSyncAt: true,
+                        lastError: true,
+                    },
+                },
             }
         });
 

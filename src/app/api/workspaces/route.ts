@@ -38,7 +38,7 @@ export async function GET() {
             },
             connections: {
               where: { type: "source" },
-              select: { status: true, lastSyncAt: true, lastError: true },
+              select: { id: true, name: true, provider: true, status: true, lastSyncAt: true, lastError: true },
               orderBy: { lastSyncAt: "desc" },
             },
             pipelines: {
@@ -94,12 +94,26 @@ export async function GET() {
             syncLabel: limits.syncLabel,
           };
         })(),
+        sources: workspace.connections.map((c) => ({
+          id: c.id,
+          name: c.name,
+          provider: c.provider,
+          status: c.status,
+          lastSyncAt: c.lastSyncAt,
+          hasError: Boolean(c.status === "error" || c.lastError),
+        })),
         health: {
           status: failing.length > 0 ? "error" : latestSyncAt ? "healthy" : "not_synced",
           latestSyncAt,
           latestJobStatus: latestJob?.status ?? null,
           latestJobFinishedAt: latestJob?.finishedAt ?? null,
           failingConnections: failing.length,
+          failingDetails: failing.map((c) => ({
+            id: c.id,
+            name: c.name,
+            provider: c.provider,
+            errorMsg: c.lastError,
+          })),
         },
       };
     }));
