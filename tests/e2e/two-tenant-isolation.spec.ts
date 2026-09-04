@@ -49,6 +49,27 @@ test.describe("two-tenant isolation", () => {
     expect(beta?.id).toBeTruthy();
     expect(bobList.some((workspace) => workspace.slug === "alpha-agency")).toBeFalsy();
 
+    // New money and analyst surfaces must reject a real authenticated rival,
+    // not merely contain a workspaceId in their query implementation.
+    const bobBilling = await bob.page.request.get(`/api/workspaces/${alpha!.id}/billing`);
+    expect(bobBilling.status()).toBe(403);
+    const bobClients = await bob.page.request.get(`/api/clients?workspaceId=${alpha!.id}`);
+    expect(bobClients.status()).toBe(403);
+    const bobHistory = await bob.page.request.get(`/api/ai/analyst/turns?workspaceId=${alpha!.id}`);
+    expect(bobHistory.status()).toBe(403);
+    const bobTurn = await bob.page.request.post('/api/ai/analyst/turns', {
+      data: { workspaceId: alpha!.id, question: 'Show spend', acknowledgeBestEffort: true },
+    });
+    expect(bobTurn.status()).toBe(403);
+    const viewerTurn = await charlie.page.request.post('/api/ai/analyst/turns', {
+      data: { workspaceId: alpha!.id, question: 'Show spend' },
+    });
+    expect(viewerTurn.status()).toBe(403);
+    const manualPayment = await alice.page.request.post('/api/payments/vietqr/manual-confirm', {
+      data: { orderCode: 1, workspaceId: alpha!.id },
+    });
+    expect([403, 410]).toContain(manualPayment.status());
+
     const bobOnAliceMetrics = await bob.page.request.get(
       `/api/metrics/query?workspaceId=${encodeURIComponent(alpha!.id)}&startDate=2026-08-01&endDate=2026-08-19`,
     );

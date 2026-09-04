@@ -17,6 +17,7 @@ export const queryMetricsTool: AiTool = {
     }
     const result = await queryMetricsAggregate({
       workspaceId,
+      clientId: ctx.clientId,
       startDateStr,
       endDateStr,
       platform: typeof args.platform === "string" ? args.platform : null,

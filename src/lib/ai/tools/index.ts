@@ -12,7 +12,7 @@ const getReportingReadinessTool: AiTool = {
     const data = await deriveReportingReadiness(ctx.workspaceId, {
       since: typeof args.since === "string" ? args.since : undefined,
       until: typeof args.until === "string" ? args.until : undefined,
-      clientId: typeof args.clientId === "string" ? args.clientId : undefined,
+      clientId: ctx.clientId,
     });
     return { ok: true, data: sanitizeToolResult(data), evidenceRefs: [] };
   },
@@ -24,7 +24,7 @@ const getSourceHealthTool: AiTool = {
   async execute(ctx: AiToolContext): Promise<AiToolResult> {
     const staleBefore = new Date(Date.now() - SOURCE_HEALTH_STALE_AFTER_MS);
     const connections = await prisma.connection.findMany({
-      where: { workspaceId: ctx.workspaceId, type: "source" },
+      where: { workspaceId: ctx.workspaceId, type: "source", ...(ctx.clientId ? { clientId: ctx.clientId } : {}) },
       select: {
         id: true,
         provider: true,

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import { getVietQrOrder } from "@/lib/vietqr-gateway";
 import { isPlatformAdminEmail } from "@/lib/admin-auth";
 import prisma from "@/lib/prisma";
@@ -15,7 +14,7 @@ export async function GET(
     req: NextRequest,
     { params }: { params: Promise<{ orderCode: string }> }
 ) {
-    const session = await getServerSession(authOptions);
+    const session = await getAuthSession();
     if (!session?.user?.id) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

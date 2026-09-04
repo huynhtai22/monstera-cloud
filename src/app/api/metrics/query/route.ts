@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { getPlanLimits } from "@/lib/plan-config";
 import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-cache";
@@ -31,7 +30,7 @@ interface MetricWhereClause {
 }
 
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { productionRouteDisabled } from "@/lib/request-auth";
@@ -12,7 +11,7 @@ export async function GET(req: Request) {
   if (productionRouteDisabled("ENABLE_GOVERNED_ANALYST")) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const workspaceId = new URL(req.url).searchParams.get("workspaceId") ?? "";
   if (!workspaceId) return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
@@ -39,7 +38,7 @@ export async function POST(req: Request) {
   if (productionRouteDisabled("ENABLE_GOVERNED_ANALYST")) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
@@ -60,6 +59,10 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     return toRbacResponse(error) ?? NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  if (clientId && !await prisma.client.findFirst({ where: { id: clientId, workspaceId }, select: { id: true } })) {
+    return NextResponse.json({ error: "Client not found" }, { status: 404 });
   }
 
   const budget = await getMonthlyAiBudget(workspaceId);

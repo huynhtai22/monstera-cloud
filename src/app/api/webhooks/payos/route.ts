@@ -16,6 +16,13 @@ export async function POST(req: NextRequest) {
         }
 
         const payment = data as Record<string, unknown>;
+        // The signed inner result is authoritative; the outer envelope is not
+        // covered by PayOS's data checksum.
+        if (payment.code !== "00") return NextResponse.json({ success: true });
+        if (!Number.isSafeInteger(payment.orderCode) || Number(payment.orderCode) <= 0
+            || !Number.isSafeInteger(payment.amount) || Number(payment.amount) <= 0) {
+            return NextResponse.json({ error: "Invalid payment data" }, { status: 400 });
+        }
         logger.info("[PAYOS WEBHOOK] Received verified event", { code, success, orderCode: payment.orderCode });
 
         if (code === "00" && success === true && payment.orderCode) {
@@ -34,6 +41,6 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true });
     } catch (err: any) {
         logger.error("[PAYOS WEBHOOK] Handler error", err);
-        return NextResponse.json({ error: err.message || "Internal error" }, { status: 500 });
+        return NextResponse.json({ error: "Payment processing unavailable; retry delivery" }, { status: 500 });
     }
 }

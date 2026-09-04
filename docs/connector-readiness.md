@@ -1,13 +1,13 @@
 # Connector Readiness Matrix
 
-**Scope:** branch `feat/harden-reliability-security-release`  
+**Scope:** historical evidence, refreshed 2026-09-04 against `2613253` plus local security-validation changes; no new live provider certification
 **Purpose:** Connector audit, configuration alias verification, and live provider proof status for the Monstera Cloud agency pilot.
 
 ---
 
 ## 1. Executive Summary
 
-- **Tenant Safety & RBAC:** Passed and enforced across all connector lookup, account discovery, credential encryption, and warehouse sync paths (verified via PostgreSQL integration test suite).
+- **Tenant Safety & RBAC:** Existing scoped PostgreSQL suites pass locally. September validation adds billing, analyst tools/routes, client/export queries and portfolio coverage. This is evidence for the exercised paths, not a claim that every route or provider has been independently certified. See [security validation](./SECURITY-VALIDATION-2026-09-04.md).
 - **OAuth Framework & Configuration Aliases:** Passed. Aliases for TikTok Business (`TIKTOK_BUSINESS_CLIENT_KEY` / `SECRET`) and Amazon SP-API (`AMAZON_LWA_CLIENT_ID` / `SECRET`) are registered and validated via unit tests.
 - **Live Upstream Provider Proof:** Mixed. Automated code coverage is available for connector behavior. Shopee sandbox API Tool evidence has demonstrated limited upstream campaign discovery, but an authenticated Monstera sandbox → warehouse → Google Sheets workflow has not yet been recorded in a reviewer-accessible run.
 - **Pilot Directive:** **Do not invite users on a "live connectors work" claim until sandbox/live provider credentials are provided and end-to-end sync runs are recorded.**
@@ -15,6 +15,8 @@
 ---
 
 ## 2. Connector Readiness Matrix
+
+Historical "Certified" labels below mean code-path coverage only, **not live certification**. Pending credential/token evidence remains pending. Do not market those rows as end-to-end verified.
 
 | Provider | ID | Pilot Scope | Config Keys & Aliases | Tenant / RBAC Guard | Live API Sandbox Proof | Notes |
 |---|---|---|---|---|---|---|
@@ -32,6 +34,9 @@
 ---
 
 ## 3. Automated Evidence
+
+- `9d6f572`: durable account quarantine/reconnect state and skip logic for Meta, Google Ads and TikTok; complete-snapshot stale-row comparisons are **observability only**. September local unit/real-PG tests pass. No deletion/retention policy is enabled by these changes.
+- `security-boundaries.pg.integration.test.ts`: real handler/RBAC/database checks for the newer billing, analyst, portfolio and export-input surfaces; synthetic credentials only. This is not a live provider sync test.
 
 - `src/lib/oauth-framework/registry.test.ts`: Confirms `isProviderConfigured` correctly resolves primary and alias environment variables for `tiktok_business` and `amazon`.
 - `src/lib/shopee-ads-mapper.test.ts`: Confirms Shopee ads CPC metric normalization, date parsing, breakdown hashing, and ROAS calculations.

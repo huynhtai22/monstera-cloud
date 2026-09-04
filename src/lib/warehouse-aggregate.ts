@@ -10,6 +10,7 @@ import { aggregationNeedsCurrencyDimension } from "@/lib/currency-safe-aggregati
 
 export type WarehouseAggregateSpec = {
   workspaceId: string;
+  clientId?: string;
   startDateStr: string;
   endDateStr: string;
   platform?: string | null;
@@ -36,6 +37,7 @@ export type WarehouseAggregateResult = {
 
 type MetricWhereClause = {
   workspaceId: string;
+  connection?: { workspaceId: string; clientId: string };
   date?: { gte?: Date; lte?: Date };
   platform?: string | { in: string[] };
   accountId?: string | { in: string[] };
@@ -56,6 +58,7 @@ export async function queryMetricsAggregate(spec: WarehouseAggregateSpec): Promi
   const plan = spec.plan ?? "free";
   const limits = getPlanLimits(plan);
   const where: MetricWhereClause = { workspaceId: spec.workspaceId };
+  if (spec.clientId) where.connection = { workspaceId: spec.workspaceId, clientId: spec.clientId };
 
   const startOfRange = new Date(spec.startDateStr);
   if (!spec.startDateStr.includes("T")) startOfRange.setUTCHours(0, 0, 0, 0);

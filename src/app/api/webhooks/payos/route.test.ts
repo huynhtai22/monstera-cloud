@@ -53,6 +53,7 @@ describe("PayOS webhook fulfillment without a real payment", () => {
       update: async (args: any) => ({ ...dbOrderRecord, ...args.data }),
     };
     (prisma as any).$transaction = async (callback: any) => callback({
+      $queryRaw: async () => [],
       paymentOrder: {
         findUnique: async () => dbOrderRecord,
         update: async (args: any) => ({ ...dbOrderRecord, ...args.data }),
@@ -120,7 +121,8 @@ describe("PayOS webhook fulfillment without a real payment", () => {
     // Must return retryable 5xx so PayOS retries delivery
     assert.equal(response.status, 500);
     const json = await response.json();
-    assert.match(json.error, /database offline/i);
+    assert.match(json.error, /retry delivery/i);
+    assert.doesNotMatch(json.error, /database offline/i);
   });
 
   it("handles duplicate webhook deliveries with 200 without double-extending", async () => {
@@ -138,6 +140,7 @@ describe("PayOS webhook fulfillment without a real payment", () => {
 
     let workspaceUpdated = false;
     (prisma as any).$transaction = async (callback: any) => callback({
+      $queryRaw: async () => [],
       paymentOrder: {
         findUnique: async () => dbOrderRecord,
       },
@@ -188,6 +191,7 @@ describe("PayOS webhook fulfillment without a real payment", () => {
     };
 
     (prisma as any).$transaction = async (callback: any) => callback({
+      $queryRaw: async () => [],
       paymentOrder: {
         findUnique: async () => dbOrderRecord,
       },

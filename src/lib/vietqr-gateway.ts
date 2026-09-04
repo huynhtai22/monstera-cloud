@@ -332,9 +332,10 @@ export async function listRecentVietQrOrders(limit = 20): Promise<VietQrOrder[]>
  * less — underpayment must not fulfill (upgrade) an order.
  */
 export function isTransferAmountValid(orderAmount: number, transferAmount: unknown): boolean {
-    if (transferAmount === undefined || transferAmount === null) return true; // manual/admin-verified path
+    if (transferAmount === undefined || transferAmount === null) return false;
+    if (typeof transferAmount !== "number" && typeof transferAmount !== "string") return false;
     const paid = Number(transferAmount);
-    return Number.isFinite(paid) && paid >= orderAmount;
+    return Number.isSafeInteger(paid) && paid >= orderAmount;
 }
 
 export function calculatePaidThrough(input: {
@@ -370,52 +371,17 @@ export async function fulfillVietQrPayment(
 
     return withSystemScope(async () => {
         return prisma.$transaction(async (tx) => {
-            // 1. Claim only a pending order from authoritative DB
+            // Serialize duplicate deliveries before reading status. Parameterized
+            // row locks last until commit/rollback; no Redis lock is involved.
+            await tx.$queryRaw`SELECT id FROM "PaymentOrder" WHERE "orderCode" = ${BigInt(orderCode)} FOR UPDATE`;
             const order = await tx.paymentOrder.findUnique({
                 where: { orderCode: BigInt(orderCode) },
             });
 
             if (!order) {
-                // Fallback for legacy cache-only order
-                const legacyOrder = await getVietQrOrder(orderCode);
-                if (!legacyOrder) {
-                    return { success: false, message: `Order ${orderCode} not found` };
-                }
-                if (legacyOrder.status === "PAID") {
-                    return { success: true, message: `Order ${orderCode} was already fulfilled`, duplicate: true };
-                }
-                if (!legacyOrder.workspaceId) {
-                    return { success: false, message: `Order ${orderCode} is missing its workspace binding` };
-                }
-                if (!isTransferAmountValid(legacyOrder.amount, transferredAmount)) {
-                    return {
-                        success: false,
-                        message: `Order ${orderCode} underpaid: expected >= ${legacyOrder.amount}, received ${String(transferredAmount)}`,
-                    };
-                }
-                const workspace = await tx.workspace.findUnique({
-                    where: { id: legacyOrder.workspaceId },
-                    select: { id: true, subscriptionEndsAt: true },
-                });
-                if (!workspace) return { success: false, message: `Workspace ${legacyOrder.workspaceId} not found` };
-                const paidAt = new Date();
-                const accessDurationDays = legacyOrder.accessDurationDays ?? (legacyOrder.billingCycle === "annual" ? 365 : 30);
-                const subscriptionEndsAt = calculatePaidThrough({
-                    currentPaidThrough: workspace.subscriptionEndsAt,
-                    paidAt,
-                    accessDurationDays,
-                });
-                await tx.workspace.update({
-                    where: { id: legacyOrder.workspaceId },
-                    data: {
-                        plan: legacyOrder.plan,
-                        status: "ACTIVE",
-                        subscriptionProvider: "vietqr_domestic",
-                        subscriptionId: `vietqr_${orderCode}`,
-                        subscriptionEndsAt,
-                    },
-                });
-                return { success: true, message: `Order ${orderCode} fulfilled successfully` };
+                // Cache-only orders cannot be fulfilled atomically or audited.
+                // Leave them for reconciliation; never grant access from Redis.
+                return { success: false, message: `Order ${orderCode} not found in durable storage` };
             }
 
             // Duplicate webhook: return success without extending access twice
@@ -452,7 +418,17 @@ export async function fulfillVietQrPayment(
                 };
             }
 
-            // Extend subscription
+            if (transactionDetails?.currency && transactionDetails.currency !== order.currency) {
+                return { success: false, message: "Payment currency mismatch" };
+            }
+            if (transactionDetails?.paymentLinkId && order.paymentLinkId
+                && transactionDetails.paymentLinkId !== order.paymentLinkId) {
+                return { success: false, message: "Payment link mismatch" };
+            }
+
+            // Different paid orders for one workspace must also serialize, so
+            // simultaneous renewals add both terms instead of losing one.
+            await tx.$queryRaw`SELECT id FROM "Workspace" WHERE id = ${order.workspaceId} FOR UPDATE`;
             const workspace = await tx.workspace.findUnique({
                 where: { id: order.workspaceId },
                 select: { id: true, subscriptionEndsAt: true },
@@ -512,21 +488,8 @@ export async function fulfillVietQrPayment(
                 },
             });
 
-            // Optional Redis cache update
-            try {
-                const redis = getRedis();
-                const cachedDto: VietQrOrder = {
-                    ...mapPaymentOrderToDto(order),
-                    status: "PAID",
-                    paidAt: paidAt.getTime(),
-                    fulfilledAt: paidAt.getTime(),
-                    paidThroughAt: subscriptionEndsAt.getTime(),
-                    transactionRef,
-                };
-                await redis.set(`vietqr_order_${orderCode}`, JSON.stringify(cachedDto), { ex: 86400 * 30 });
-            } catch {
-                // Redis cache failure does not fail transaction
-            }
+            // Status reads use PostgreSQL. Do not publish PAID to a cache before
+            // commit or hold database locks while waiting on an external service.
 
             logger.info(`[VIETQR] Successfully fulfilled order ${orderCode} in database transaction`, {
                 orderCode,

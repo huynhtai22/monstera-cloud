@@ -3,6 +3,7 @@ import { getAiTool } from "@/lib/ai/tools";
 import type { AiToolContext, AiToolResult } from "@/lib/ai/tools/types";
 import type { EvidencePack } from "@/lib/ai/evidence-pack";
 import type { ReportingReadiness } from "@/lib/reporting-readiness";
+import prisma from "@/lib/prisma";
 
 export type AnalystTurnStatus = "answered" | "refused" | "queued";
 
@@ -56,6 +57,13 @@ export async function runAnalystTurn(opts: {
   role?: AiToolContext["role"];
 }): Promise<AnalystTurnResult> {
   const role = opts.role ?? "interactive";
+  // Revalidate persisted jobs too; a browser-supplied client must never widen
+  // the authorized workspace, even when best-effort reporting is requested.
+  if (opts.clientId && !await prisma.client.findFirst({
+    where: { id: opts.clientId, workspaceId: opts.workspaceId }, select: { id: true },
+  })) {
+    return { status: "refused", refusalCode: "tenant_mismatch", blockers: ["tenant_mismatch"] };
+  }
   const classified: QuestionClass = classifyQuestion(opts.question);
   if (classified.refuse) {
     return {
@@ -73,6 +81,7 @@ export async function runAnalystTurn(opts: {
 
   const ctx: AiToolContext = {
     workspaceId: opts.workspaceId,
+    clientId: opts.clientId,
     actorUserId: opts.actorUserId,
     jobId: opts.jobId ?? (role === "cron" ? "cron" : "interactive"),
     role,
