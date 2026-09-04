@@ -126,29 +126,25 @@ export interface DestinationStatusBreakdown {
   details: string;
 }
 
-export interface HumanReviewSignOff {
-  reviewerName: string;
+export interface VerifiedOperatorSignOff {
+  reviewerUserId: string;
   reviewerRole: string;
   signedAt: string;
+  evidencePackId: string;
+  evidencePackHash: string;
+  commitSha: string;
+  schemaVersion: string;
   comments?: string;
 }
 
-export interface CertificationSimulationOptions {
-  simulatedConnection?: boolean;
-  simulatedWarehouseRows?: number;
-  simulatedWarehouseTotals?: {
-    spend: number;
-    impressions: number;
-    clicks: number;
-    conversions: number;
-    revenue: number;
-    accountTimezone?: string;
-    currency?: string;
-  };
-  simulatedDestinationReceiptId?: string;
-  simulatedRecoveryPassed?: boolean;
-  unjustifiedSandboxExemption?: boolean;
-  unjustifiedGateExemption?: CertificationLevel;
+export interface EvidencePackSignOffInput {
+  workspaceId: string;
+  evidencePackId: string;
+  expectedEvidencePackHash: string;
+  reviewerUserId: string;
+  reviewerRole: string;
+  comments?: string;
+  trustedRuntimeMetadata?: TrustedRuntimeMetadata;
 }
 
 export type CertificationStorageType =
@@ -190,8 +186,6 @@ export interface CertificationHarnessInput {
     [key: string]: number | undefined;
   };
   varianceExplanations?: Record<string, string>;
-  humanReviewSignOff?: HumanReviewSignOff;
-  simulation?: CertificationSimulationOptions;
   // Immutable runtime metadata and traceability overrides
   trustedRuntimeMetadata?: TrustedRuntimeMetadata;
   clientSuppliedCommitSha?: string;
@@ -228,6 +222,7 @@ export interface CertificationEvidencePack {
   gateOutcomes: CertificationGateResult[];
   reconciliation?: ReconciliationSummary;
   blockers: CertificationBlocker[];
+  operatorSignOff?: VerifiedOperatorSignOff;
   metadata: {
     monsteraVersion: string;
     gitCommit?: string;

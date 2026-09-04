@@ -13,6 +13,7 @@ import {
   evaluateReconciliation,
 } from "./metric-contracts";
 import { CertificationHarness, RUNTIME_CONNECTOR_API_VERSIONS, getExactCommitSha } from "./harness";
+import { TestCertificationHarness } from "./test-simulation-adapter";
 import { CERTIFICATION_LEVELS } from "./types";
 
 describe("Certification Harness & Standards Suite", () => {
@@ -254,7 +255,28 @@ describe("Certification Harness & Standards Suite", () => {
       assert.ok(evidencePack.blockers.some((b) => b.category === "MISSING_TIKTOK_CREDENTIALS"));
     });
 
-    it("rejects skipping levels: human sign-off cannot award PILOT_CERTIFIED if earlier gates are blocked", async () => {
+    it("rejects skipping levels: inline sign-off is rejected and signOffEvidencePack cannot award PILOT_CERTIFIED if earlier gates are blocked", async () => {
+      // 1. Inline humanReviewSignOff in execution input is strictly rejected
+      await assert.rejects(
+        () =>
+          harness.execute({
+            workspaceId: "ws-test-pilot",
+            provider: "google_ads",
+            accountId: "123-456-7890",
+            startDate: "2026-08-01",
+            endDate: "2026-08-07",
+            buildId: "commit-test-signoff",
+            humanReviewSignOff: {
+              reviewerName: "Lead Auditor",
+              reviewerRole: "Platform Lead",
+              signedAt: new Date().toISOString(),
+              comments: "Attempting premature sign-off",
+            },
+          } as any),
+        /Security violation: Field 'humanReviewSignOff' is prohibited in harness execution input/
+      );
+
+      // 2. Execute legitimate run without credentials (blocks at LIVE_CONNECTED)
       const { evidencePack } = await harness.execute({
         workspaceId: "ws-test-pilot",
         provider: "google_ads",
@@ -262,19 +284,33 @@ describe("Certification Harness & Standards Suite", () => {
         startDate: "2026-08-01",
         endDate: "2026-08-07",
         buildId: "commit-test-signoff",
-        humanReviewSignOff: {
-          reviewerName: "Lead Auditor",
-          reviewerRole: "Platform Lead",
-          signedAt: new Date().toISOString(),
-          comments: "Attempting premature sign-off",
+        trustedRuntimeMetadata: {
+          commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
+          schemaVersion: "20260904160000",
+          workingTreeDirty: false,
         },
       });
 
-      // Must NOT skip to PILOT_CERTIFIED!
+      // Must NOT reach PILOT_CERTIFIED!
       assert.equal(evidencePack.highestProvenLevel, "CODE_VERIFIED");
       assert.equal(evidencePack.pilotEligible, false);
       const pilotGate = evidencePack.gateOutcomes.find((g) => g.gate === "PILOT_CERTIFIED");
       assert.equal(pilotGate?.status, "NOT_EXECUTED");
+
+      // 3. Attempting signOffEvidencePack on a blocked pack is strictly rejected
+      const packHash = CertificationHarness.computeEvidencePackHash(evidencePack);
+      await assert.rejects(
+        () =>
+          harness.signOffEvidencePack({
+            workspaceId: "ws-test-pilot",
+            evidencePackId: evidencePack.runId,
+            expectedEvidencePackHash: packHash,
+            reviewerUserId: "usr-auditor-01",
+            reviewerRole: "PLATFORM_SECURITY_LEAD",
+            comments: "Attempting premature sign-off on blocked run",
+          }),
+        /Security violation: Cannot sign off evidence pack because mandatory gate 'LIVE_CONNECTED' has status 'BLOCKED'/
+      );
     });
 
     it("ensures zero secrets leak into JSON or Markdown even if injected into inputs", async () => {
@@ -588,7 +624,7 @@ describe("Certification Harness & Standards Suite", () => {
       assert.equal(evidencePack.buildId, "build-sha-12345");
       assert.ok(evidencePack.metadata.gitCommit);
       assert.equal(evidencePack.metadata.schemaVersion, "20260904160000");
-      assert.equal(evidencePack.metadata.harnessVersion, "1.1.0");
+      assert.equal(evidencePack.metadata.harnessVersion, "1.2.0");
       assert.equal(evidencePack.metadata.contractVersion, "1.0.0");
       assert.ok(Array.isArray(evidencePack.metadata.commandsUsed));
     });
@@ -597,14 +633,16 @@ describe("Certification Harness & Standards Suite", () => {
   describe("Progression, Boundary Enforcement & Runtime Configuration", () => {
     const harness = new CertificationHarness();
 
-    it("proves complete simulated Google transition through PILOT_CERTIFIED with approved NOT_APPLICABLE sandbox gate", async () => {
-      const { evidencePack, markdownReport } = await harness.execute({
+    it("proves synthetic fixtures strictly ineligible: never advances through live gates or produces PILOT_CERTIFIED even with matching simulated metrics", async () => {
+      const testHarness = new TestCertificationHarness();
+      const { evidencePack, markdownReport } = await testHarness.executeTestSimulation({
         workspaceId: "ws-pilot-sim-google",
         provider: "google_ads",
         accountId: "123-456-7890",
         startDate: "2026-08-01",
         endDate: "2026-08-07",
         buildId: "commit-sim-google-pilot-pass",
+        evidenceClass: "synthetic_fixture",
         simulation: {
           simulatedConnection: true,
           simulatedWarehouseRows: 150,
@@ -636,29 +674,23 @@ describe("Certification Harness & Standards Suite", () => {
           reportingGranularity: "TOTAL",
           nativeComparisonSource: "AD_MANAGER_UI",
         },
-        humanReviewSignOff: {
-          reviewerName: "Chief Security Auditor",
-          reviewerRole: "Platform Compliance Officer",
-          signedAt: new Date().toISOString(),
-          comments: "Simulated transition verified: all mandatory gates passed, Google sandbox legitimately not applicable",
-        },
       });
 
-      // 1. Highest proven level reached PILOT_CERTIFIED and pilot eligible is true
-      assert.equal(evidencePack.highestProvenLevel, "PILOT_CERTIFIED");
-      assert.equal(evidencePack.pilotEligible, true);
-      assert.equal(evidencePack.blockers.length, 0);
+      // 1. Highest proven level for synthetic_fixture is strictly capped at CODE_VERIFIED
+      assert.equal(evidencePack.highestProvenLevel, "CODE_VERIFIED");
+      assert.equal(evidencePack.pilotEligible, false);
+      assert.equal(evidencePack.certificationEligible, false);
+      assert.ok(evidencePack.blockers.some((b) => b.category === "SYNTHETIC_FIXTURE_INELIGIBLE"));
 
-      // 2. SANDBOX_VERIFIED was NOT_APPLICABLE and NOT counted as passed evidence
+      // 2. SANDBOX_VERIFIED was NOT_APPLICABLE with legitimate Google exemption
       const sandboxGate = evidencePack.gateOutcomes.find((g) => g.gate === "SANDBOX_VERIFIED");
       assert.equal(sandboxGate?.status, "NOT_APPLICABLE");
       assert.equal(sandboxGate?.isApplicable, false);
       assert.ok(sandboxGate?.notApplicableReason);
       assert.ok(sandboxGate?.alternativeVerificationPath);
 
-      // 3. All other mandatory applicable gates are strictly PASSED
-      const mandatoryGates = [
-        "CODE_VERIFIED",
+      // 3. All live gates are strictly NOT_EXECUTED for synthetic fixtures
+      const liveGates = [
         "LIVE_CONNECTED",
         "LIVE_IMPORTED",
         "LIVE_RECONCILED",
@@ -666,19 +698,38 @@ describe("Certification Harness & Standards Suite", () => {
         "RECOVERY_VERIFIED",
         "PILOT_CERTIFIED",
       ];
-      for (const mg of mandatoryGates) {
-        const gateRes = evidencePack.gateOutcomes.find((g) => g.gate === mg);
-        assert.equal(gateRes?.status, "PASSED", `Gate ${mg} must be PASSED`);
+      for (const lg of liveGates) {
+        const gateRes = evidencePack.gateOutcomes.find((g) => g.gate === lg);
+        assert.equal(gateRes?.status, "NOT_EXECUTED", `Gate ${lg} must be NOT_EXECUTED for synthetic fixtures`);
+        assert.equal(gateRes?.blockerCategory, "SYNTHETIC_FIXTURE_INELIGIBLE");
       }
 
-      // 4. Markdown report reflects controlled pilot eligible
-      assert.ok(markdownReport.includes("Controlled Pilot Eligible:** **YES ✅**"));
-      assert.ok(markdownReport.includes("Highest Proven Level:** **`PILOT_CERTIFIED`**"));
+      // 4. Attempting sign-off on synthetic fixture is strictly rejected
+      const packHash = CertificationHarness.computeEvidencePackHash(evidencePack);
+      await assert.rejects(
+        () =>
+          testHarness.signOffEvidencePack({
+            workspaceId: "ws-pilot-sim-google",
+            evidencePackId: evidencePack.runId,
+            expectedEvidencePackHash: packHash,
+            reviewerUserId: "usr-lead-auditor",
+            reviewerRole: "PLATFORM_SECURITY_LEAD",
+            comments: "Attempting to sign off synthetic fixture",
+          }),
+        /Security violation: Only live_certification_evidence packs are eligible for human review sign-off/
+      );
+
+      // 5. Markdown report reflects strictly ineligible synthetic fixture
+      assert.ok(markdownReport.includes("Controlled Pilot Eligible:** **NO ❌**"));
+      assert.ok(markdownReport.includes("Certification Eligible:** **NO ❌**"));
+      assert.ok(markdownReport.includes("Synthetic Fixture"));
     });
 
     it("proves unjustified exemptions cannot progress to PILOT_CERTIFIED", async () => {
+      const testHarness = new TestCertificationHarness();
+
       // Case A: Meta Ads cannot claim NOT_APPLICABLE on SANDBOX_VERIFIED
-      const metaUnjustified = await harness.execute({
+      const metaUnjustified = await testHarness.executeTestSimulation({
         workspaceId: "ws-unjustified-meta",
         provider: "meta_ads",
         accountId: "act_12345678",
@@ -694,12 +745,6 @@ describe("Certification Harness & Standards Suite", () => {
           simulatedRecoveryPassed: true,
         },
         nativeComparison: { spend: 100, impressions: 1000, clicks: 50, conversions: 5, revenue: 200 },
-        humanReviewSignOff: {
-          reviewerName: "Attempted Auditor",
-          reviewerRole: "Reviewer",
-          signedAt: new Date().toISOString(),
-          comments: "Attempting to waive Meta sandbox",
-        },
       });
 
       assert.notEqual(metaUnjustified.evidencePack.highestProvenLevel, "PILOT_CERTIFIED");
@@ -713,7 +758,7 @@ describe("Certification Harness & Standards Suite", () => {
       );
 
       // Case B: Attempting unjustified NOT_APPLICABLE on a mandatory gate (e.g. LIVE_RECONCILED)
-      const gadsMandatoryUnjustified = await harness.execute({
+      const gadsMandatoryUnjustified = await testHarness.executeTestSimulation({
         workspaceId: "ws-unjustified-gate",
         provider: "google_ads",
         accountId: "123-456-7890",
@@ -721,17 +766,12 @@ describe("Certification Harness & Standards Suite", () => {
         endDate: "2026-08-07",
         buildId: "commit-gate-unjustified",
         simulation: {
+          simulatePersistedLiveState: true,
           simulatedConnection: true,
           simulatedWarehouseRows: 100,
           unjustifiedGateExemption: "LIVE_RECONCILED",
           simulatedDestinationReceiptId: "rcpt_gads_001",
           simulatedRecoveryPassed: true,
-        },
-        humanReviewSignOff: {
-          reviewerName: "Attempted Auditor",
-          reviewerRole: "Reviewer",
-          signedAt: new Date().toISOString(),
-          comments: "Attempting to waive reconciliation",
         },
       });
 
@@ -856,24 +896,47 @@ describe("Certification Harness & Standards Suite", () => {
       assert.equal(tiktokRun.evidencePack.providerAccessFacts?.observedApiVersion, "v1.3");
       assert.equal(tiktokRun.evidencePack.providerAccessFacts?.status, "UNVERIFIED");
 
-      // When portal owner confirms, claims are marked verified
-      const confirmedRun = await harness.execute({
+      // When caller claims verified status without persisted confirmation, it is rejected
+      await assert.rejects(
+        () =>
+          harness.execute({
+            workspaceId: "ws-api-ver-check",
+            provider: "google_ads",
+            accountId: "123-456-7890",
+            startDate: "2026-08-01",
+            endDate: "2026-08-07",
+            buildId: "build-unverified-claim",
+            providerAccessFacts: {
+              observedApiVersion: "v23",
+              status: "VERIFIED",
+              verificationSource: "portal_owner_confirmed",
+            } as any,
+          }),
+        /Security violation: Caller attempted to assert verified provider access facts/
+      );
+
+      // When persisted confirmation is present (simulated via TestCertificationHarness), claims are verified
+      const testHarness = new TestCertificationHarness();
+      const confirmedRun = await testHarness.executeTestSimulation({
         workspaceId: "ws-api-ver-check",
         provider: "google_ads",
         accountId: "123-456-7890",
         startDate: "2026-08-01",
         endDate: "2026-08-07",
         buildId: "build-confirmed",
-        providerAccessFacts: {
-          observedApiVersion: "v23",
-          appAccountMode: "live",
-          grantedScopesOrPermissions: ["https://www.googleapis.com/auth/adwords"],
-          accessLevelStatus: "basic",
-          authorizationModel: "oauth2_user_consent",
-          tokenLifecycleModel: "refreshable_offline",
-          verificationSource: "portal_owner_confirmed",
-          verifiedAt: new Date().toISOString(),
-          status: "VERIFIED",
+        simulation: {
+          simulatePersistedLiveState: true,
+          simulatedProviderAccessFacts: {
+            observedApiVersion: "v23",
+            appAccountMode: "live",
+            grantedScopesOrPermissions: ["https://www.googleapis.com/auth/adwords"],
+            accessLevelStatus: "basic",
+            authorizationModel: "oauth2_user_consent",
+            tokenLifecycleModel: "refreshable_offline",
+            verificationSource: "portal_owner_confirmed",
+            verifiedAt: new Date().toISOString(),
+            status: "VERIFIED",
+          },
         },
       });
       assert.equal(confirmedRun.evidencePack.providerAccessFacts?.status, "VERIFIED");
@@ -897,17 +960,6 @@ describe("Certification Harness & Standards Suite", () => {
           workingTreeDirty: false,
           commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
           schemaVersion: "20260904160000",
-        },
-        providerAccessFacts: {
-          observedApiVersion: "v23",
-          appAccountMode: "live",
-          grantedScopesOrPermissions: ["https://www.googleapis.com/auth/adwords"],
-          accessLevelStatus: "basic",
-          authorizationModel: "oauth2_user_consent",
-          tokenLifecycleModel: "refreshable_offline",
-          verificationSource: "portal_owner_confirmed",
-          verifiedAt: new Date().toISOString(),
-          status: "VERIFIED",
         },
       });
       assert.equal(defaultLiveRun.evidencePack.storageType, "database_backed");
@@ -953,17 +1005,6 @@ describe("Certification Harness & Standards Suite", () => {
             workingTreeDirty: false,
             commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
             schemaVersion: "20260904160000",
-          },
-          providerAccessFacts: {
-            observedApiVersion: "v23",
-            appAccountMode: "live",
-            grantedScopesOrPermissions: ["https://www.googleapis.com/auth/adwords"],
-            accessLevelStatus: "basic",
-            authorizationModel: "oauth2_user_consent",
-            tokenLifecycleModel: "refreshable_offline",
-            verificationSource: "portal_owner_confirmed",
-            verifiedAt: new Date().toISOString(),
-            status: "VERIFIED",
           },
         });
 
@@ -1179,61 +1220,104 @@ describe("Certification Harness & Standards Suite", () => {
     });
 
     it("8. clean matching metadata permits certification progression", async () => {
-      const run = await harness.execute({
-        workspaceId: "ws-traceability-8",
-        provider: "google_ads",
-        accountId: "123-456-7890",
-        startDate: "2026-08-01",
-        endDate: "2026-08-07",
-        buildId: "build-clean-progression",
-        evidenceClass: "synthetic_fixture",
-        trustedRuntimeMetadata: {
-          commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
-          schemaVersion: "20260904160000",
-          workingTreeDirty: false,
-        },
-        providerAccessFacts: {
-          observedApiVersion: "v23",
-          appAccountMode: "live",
-          grantedScopesOrPermissions: ["https://www.googleapis.com/auth/adwords"],
-          accessLevelStatus: "basic",
-          authorizationModel: "oauth2_user_consent",
-          tokenLifecycleModel: "refreshable_offline",
-          verificationSource: "portal_owner_confirmed",
-          verifiedAt: new Date().toISOString(),
-          status: "VERIFIED",
-        },
-        simulation: {
-          simulatedConnection: true,
-          simulatedWarehouseRows: 42,
-          simulatedWarehouseTotals: { spend: 5000, impressions: 20000, clicks: 1200, conversions: 80, revenue: 15000 },
-          simulatedDestinationReceiptId: "rcpt_clean_01",
-          simulatedRecoveryPassed: true,
-        },
-        nativeComparison: { spend: 5000, impressions: 20000, clicks: 1200, conversions: 80, revenue: 15000 },
-        snapshotTiming: {
-          accountTimezone: "Asia/Ho_Chi_Minh",
-          currency: "VND",
-          nativeRetrievalTime: "2026-08-08T01:00:00Z",
-          monsteraDataThroughTime: "2026-08-08T01:00:00Z",
-          warehouseQueryTime: "2026-08-08T01:02:00Z",
-        },
-        humanReviewSignOff: {
-          reviewerName: "Traceability Auditor",
-          reviewerRole: "Platform Security Lead",
-          signedAt: new Date().toISOString(),
-          comments: "Clean deployed commit and matching schema verified",
-        },
-      });
+      const testHarness = new TestCertificationHarness();
+      const tmpExportDir = path.join(os.tmpdir(), `monstera-audit-traceability-8-${Date.now()}`);
 
-      assert.equal(run.evidencePack.workingTreeDirty, false);
-      assert.equal(run.evidencePack.highestProvenLevel, "PILOT_CERTIFIED");
-      assert.equal(run.evidencePack.pilotEligible, true);
-      assert.equal(run.evidencePack.certificationEligible, true);
-      assert.equal(run.evidencePack.metadata.workingTreeDirty, false);
-      assert.equal(run.evidencePack.metadata.certificationEligible, true);
-      assert.ok(run.markdownReport.includes("Certification Eligible:** **YES ✅"));
-      assert.ok(run.markdownReport.includes("Working Tree Dirty:** **NO (Clean) ✅"));
+      try {
+        // 1. Production harness strictly rejects simulation and inline sign-off
+        await assert.rejects(
+          () =>
+            harness.execute({
+              workspaceId: "ws-traceability-8",
+              provider: "google_ads",
+              accountId: "123-456-7890",
+              startDate: "2026-08-01",
+              endDate: "2026-08-07",
+              buildId: "build-clean-progression",
+              simulation: { simulatedConnection: true },
+            } as any),
+          /Security violation: Field 'simulation' is prohibited in runtime certification input/
+        );
+
+        // 2. Execute live certification with simulated persisted records via TestCertificationHarness
+        const run = await testHarness.executeTestSimulation({
+          workspaceId: "ws-traceability-8",
+          provider: "google_ads",
+          accountId: "123-456-7890",
+          startDate: "2026-08-01",
+          endDate: "2026-08-07",
+          buildId: "build-clean-progression",
+          evidenceClass: "live_certification_evidence",
+          allowOperatorLocalExport: true,
+          outputDirectory: tmpExportDir,
+          trustedRuntimeMetadata: {
+            commitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
+            schemaVersion: "20260904160000",
+            workingTreeDirty: false,
+          },
+          expectedCommitSha: "b3058dad3cfd45eab1697dac307d94f598edcbe7",
+          expectedSchemaVersion: "20260904160000",
+          simulation: {
+            simulatePersistedLiveState: true,
+            simulatedProviderAccessFacts: {
+              observedApiVersion: "v23",
+              appAccountMode: "live",
+              grantedScopesOrPermissions: ["https://www.googleapis.com/auth/adwords"],
+              accessLevelStatus: "basic",
+              authorizationModel: "oauth2_user_consent",
+              tokenLifecycleModel: "refreshable_offline",
+              verificationSource: "portal_owner_confirmed",
+              verifiedAt: new Date().toISOString(),
+              status: "VERIFIED",
+            },
+            simulatedConnection: true,
+            simulatedWarehouseRows: 42,
+            simulatedWarehouseTotals: { spend: 5000, impressions: 20000, clicks: 1200, conversions: 80, revenue: 15000 },
+            simulatedDestinationReceiptId: "rcpt_clean_01",
+            simulatedRecoveryPassed: true,
+          },
+          nativeComparison: { spend: 5000, impressions: 20000, clicks: 1200, conversions: 80, revenue: 15000 },
+          snapshotTiming: {
+            accountTimezone: "Asia/Ho_Chi_Minh",
+            currency: "VND",
+            nativeRetrievalTime: "2026-08-08T01:00:00Z",
+            monsteraDataThroughTime: "2026-08-08T01:00:00Z",
+            warehouseQueryTime: "2026-08-08T01:02:00Z",
+          },
+        });
+
+        assert.equal(run.evidencePack.workingTreeDirty, false);
+        assert.equal(run.evidencePack.highestProvenLevel, "RECOVERY_VERIFIED");
+        assert.equal(run.evidencePack.pilotEligible, false); // Pending authenticated sign-off
+        const pilotGate = run.evidencePack.gateOutcomes.find((g) => g.gate === "PILOT_CERTIFIED");
+        assert.equal(pilotGate?.status, "BLOCKED");
+
+        // 3. Authenticated operator sign-off elevates to PILOT_CERTIFIED
+        const packHash = CertificationHarness.computeEvidencePackHash(run.evidencePack);
+        const { signedEvidencePack, markdownReport } = await testHarness.signOffEvidencePack({
+          workspaceId: "ws-traceability-8",
+          evidencePackId: run.evidencePack.runId,
+          expectedEvidencePackHash: packHash,
+          reviewerUserId: "usr-traceability-auditor",
+          reviewerRole: "PLATFORM_SECURITY_LEAD",
+          comments: "Clean deployed commit and matching schema verified",
+        });
+
+        assert.equal(signedEvidencePack.workingTreeDirty, false);
+        assert.equal(signedEvidencePack.highestProvenLevel, "PILOT_CERTIFIED");
+        assert.equal(signedEvidencePack.pilotEligible, true);
+        assert.equal(signedEvidencePack.certificationEligible, true);
+        assert.equal(signedEvidencePack.metadata.workingTreeDirty, false);
+        assert.equal(signedEvidencePack.metadata.certificationEligible, true);
+        assert.ok(markdownReport.includes("Certification Eligible:** **YES ✅"));
+        assert.ok(markdownReport.includes("Controlled Pilot Eligible:** **YES ✅"));
+        assert.ok(markdownReport.includes("Working Tree Dirty:** **NO (Clean) ✅"));
+        assert.ok(markdownReport.includes("usr-traceability-auditor"));
+      } finally {
+        if (fs.existsSync(tmpExportDir)) {
+          fs.rmSync(tmpExportDir, { recursive: true, force: true });
+        }
+      }
     });
 
     it("9. generated evidence includes all traceability versions", async () => {
@@ -1284,12 +1368,6 @@ describe("Certification Harness & Standards Suite", () => {
           spend: `Explained with token: ${secretToken}`,
           clientSecret: clientSecret,
         },
-        humanReviewSignOff: {
-          reviewerName: "Auditor",
-          reviewerRole: "Security",
-          signedAt: new Date().toISOString(),
-          comments: `Reviewed token ${secretToken}`,
-        },
       });
 
       const serializedPack = JSON.stringify(run.evidencePack);
@@ -1299,6 +1377,340 @@ describe("Certification Harness & Standards Suite", () => {
       assert.equal(serializedPack.includes(clientSecret), false, "Client secret must not leak into evidence JSON");
       assert.equal(serializedReport.includes(secretToken), false, "Raw bearer token must not leak into Markdown report");
       assert.equal(serializedReport.includes(clientSecret), false, "Client secret must not leak into Markdown report");
+    });
+  });
+
+  describe("Security: Malicious Request Input Rejection", () => {
+    const harness = new CertificationHarness();
+
+    it("rejects caller-supplied simulation fields in runtime harness input", async () => {
+      const maliciousFields = [
+        { simulation: { simulatedConnection: true } },
+        { simulatedConnection: true },
+        { simulatedWarehouseRows: 50 },
+        { simulatedWarehouseTotals: { spend: 10 } },
+        { simulatedDestinationReceiptId: "rcpt_fake" },
+        { simulatedRecoveryPassed: true },
+      ];
+
+      for (const field of maliciousFields) {
+        await assert.rejects(
+          () =>
+            harness.execute({
+              workspaceId: "ws-malicious-input",
+              provider: "google_ads",
+              accountId: "123-456-7890",
+              startDate: "2026-08-01",
+              endDate: "2026-08-07",
+              buildId: "build-malicious",
+              ...(field as any),
+            }),
+          /Security violation: Field '.*' is prohibited/
+        );
+      }
+    });
+
+    it("rejects caller-supplied sign-off and reviewer fields in runtime harness input", async () => {
+      const signOffAttempts = [
+        { humanReviewSignOff: { reviewerName: "Attacker", reviewerRole: "Lead" } },
+        { reviewerName: "Attacker" },
+        { reviewerRole: "PLATFORM_SECURITY_LEAD" },
+        { operatorSignOff: { reviewerUserId: "usr-fake" } },
+      ];
+
+      for (const attempt of signOffAttempts) {
+        await assert.rejects(
+          () =>
+            harness.execute({
+              workspaceId: "ws-malicious-signoff",
+              provider: "google_ads",
+              accountId: "123-456-7890",
+              startDate: "2026-08-01",
+              endDate: "2026-08-07",
+              buildId: "build-malicious-signoff",
+              ...(attempt as any),
+            }),
+          /Security violation: Field '.*' is prohibited in harness execution input/
+        );
+      }
+    });
+
+    it("rejects fabricated destination receipt and recovery fields in runtime harness input", async () => {
+      const fabricatedFields = [
+        { destinationReceiptId: "rcpt_fabricated_999" },
+        { recoveryPassed: true },
+      ];
+
+      for (const field of fabricatedFields) {
+        await assert.rejects(
+          () =>
+            harness.execute({
+              workspaceId: "ws-malicious-receipt",
+              provider: "google_ads",
+              accountId: "123-456-7890",
+              startDate: "2026-08-01",
+              endDate: "2026-08-07",
+              buildId: "build-malicious-receipt",
+              ...(field as any),
+            }),
+          /Security violation: Field '.*' is prohibited. Delivery receipts and recovery evidence must be resolved server-side/
+        );
+      }
+    });
+
+    it("rejects caller assertion of verified provider access facts without database confirmation", async () => {
+      await assert.rejects(
+        () =>
+          harness.execute({
+            workspaceId: "ws-unverified-facts",
+            provider: "google_ads",
+            accountId: "123-456-7890",
+            startDate: "2026-08-01",
+            endDate: "2026-08-07",
+            buildId: "build-unverified-facts",
+            providerAccessFacts: {
+              observedApiVersion: "v23",
+              status: "VERIFIED",
+              verificationSource: "portal_owner_confirmed",
+            } as any,
+          }),
+        /Security violation: Caller attempted to assert verified provider access facts, but no authorized portal confirmation audit record exists/
+      );
+    });
+  });
+
+  describe("Security: Synthetic Fixture Ineligibility Invariants", () => {
+    const testHarness = new TestCertificationHarness();
+
+    it("ensures synthetic fixtures remain ineligible under every combination of simulated success", async () => {
+      const combinations: Array<{
+        name: string;
+        provider: "google_ads" | "meta_ads" | "tiktok_business";
+        simulation: any;
+      }> = [
+        {
+          name: "All simulated metrics passing with Google",
+          provider: "google_ads",
+          simulation: {
+            simulatedConnection: true,
+            simulatedWarehouseRows: 100,
+            simulatedWarehouseTotals: { spend: 50, impressions: 500, clicks: 10, conversions: 1, revenue: 100 },
+            simulatedDestinationReceiptId: "rcpt_combo_1",
+            simulatedRecoveryPassed: true,
+          },
+        },
+        {
+          name: "All simulated metrics passing with Meta",
+          provider: "meta_ads",
+          simulation: {
+            simulatedConnection: true,
+            simulatedWarehouseRows: 100,
+            simulatedWarehouseTotals: { spend: 50, impressions: 500, clicks: 10, conversions: 1, revenue: 100 },
+            simulatedDestinationReceiptId: "rcpt_combo_2",
+            simulatedRecoveryPassed: true,
+          },
+        },
+        {
+          name: "All simulated metrics passing with TikTok",
+          provider: "tiktok_business",
+          simulation: {
+            simulatedConnection: true,
+            simulatedWarehouseRows: 100,
+            simulatedWarehouseTotals: { spend: 50, impressions: 500, clicks: 10, conversions: 1, revenue: 100 },
+            simulatedDestinationReceiptId: "rcpt_combo_3",
+            simulatedRecoveryPassed: true,
+          },
+        },
+      ];
+
+      for (const combo of combinations) {
+        const { evidencePack, markdownReport } = await testHarness.executeTestSimulation({
+          workspaceId: "ws-synthetic-invariant",
+          provider: combo.provider,
+          accountId: "act_test_combo",
+          startDate: "2026-08-01",
+          endDate: "2026-08-07",
+          buildId: `build-${combo.provider}-combo`,
+          evidenceClass: "synthetic_fixture",
+          simulation: combo.simulation,
+        });
+
+        // INVARIANT 1: certificationEligible is ALWAYS false
+        assert.equal(evidencePack.certificationEligible, false, `${combo.name}: certificationEligible must be false`);
+
+        // INVARIANT 2: pilotEligible is ALWAYS false
+        assert.equal(evidencePack.pilotEligible, false, `${combo.name}: pilotEligible must be false`);
+
+        // INVARIANT 3: highestProvenLevel can NEVER be PILOT_CERTIFIED
+        assert.notEqual(evidencePack.highestProvenLevel, "PILOT_CERTIFIED", `${combo.name}: highestProvenLevel cannot be PILOT_CERTIFIED`);
+
+        // INVARIANT 4: Live gates must NEVER be executed
+        const liveGates = ["LIVE_CONNECTED", "LIVE_IMPORTED", "LIVE_RECONCILED", "DESTINATION_VERIFIED", "RECOVERY_VERIFIED", "PILOT_CERTIFIED"];
+        for (const lg of liveGates) {
+          const gate = evidencePack.gateOutcomes.find((g) => g.gate === lg);
+          assert.equal(gate?.status, "NOT_EXECUTED", `${combo.name}: Gate ${lg} must be NOT_EXECUTED`);
+          assert.equal(gate?.blockerCategory, "SYNTHETIC_FIXTURE_INELIGIBLE");
+        }
+
+        // INVARIANT 5: signOffEvidencePack must fail on synthetic pack
+        const packHash = CertificationHarness.computeEvidencePackHash(evidencePack);
+        await assert.rejects(
+          () =>
+            testHarness.signOffEvidencePack({
+              workspaceId: "ws-synthetic-invariant",
+              evidencePackId: evidencePack.runId,
+              expectedEvidencePackHash: packHash,
+              reviewerUserId: "usr-auditor-invariant",
+              reviewerRole: "PLATFORM_SECURITY_LEAD",
+            }),
+          /Security violation: Only live_certification_evidence packs are eligible for human review sign-off/
+        );
+
+        // INVARIANT 6: Markdown report contains warning banner and Controlled Pilot Eligible: NO
+        assert.ok(markdownReport.includes("Controlled Pilot Eligible:** **NO ❌**"));
+        assert.ok(markdownReport.includes("Certification Eligible:** **NO ❌**"));
+      }
+    });
+  });
+
+  describe("Security: Authenticated Operator Sign-Off Workflow", () => {
+    const testHarness = new TestCertificationHarness();
+
+    it("rejects sign-off when reviewerUserId is missing or empty", async () => {
+      await assert.rejects(
+        () =>
+          testHarness.signOffEvidencePack({
+            workspaceId: "ws-test",
+            evidencePackId: "pack-123",
+            expectedEvidencePackHash: "hash-123",
+            reviewerUserId: "",
+            reviewerRole: "PLATFORM_SECURITY_LEAD",
+          }),
+        /Security violation: Valid authenticated reviewerUserId is required/
+      );
+    });
+
+    it("rejects sign-off when reviewerRole is unauthorized", async () => {
+      await assert.rejects(
+        () =>
+          testHarness.signOffEvidencePack({
+            workspaceId: "ws-test",
+            evidencePackId: "pack-123",
+            expectedEvidencePackHash: "hash-123",
+            reviewerUserId: "usr-123",
+            reviewerRole: "GUEST" as any,
+          }),
+        /Security violation: Reviewer role 'GUEST' is not authorized for certification sign-off/
+      );
+    });
+
+    it("rejects sign-off when evidence pack hash does not match computed hash", async () => {
+      const { evidencePack } = await testHarness.execute({
+        workspaceId: "ws-hash-mismatch",
+        provider: "google_ads",
+        accountId: "123-456-7890",
+        startDate: "2026-08-01",
+        endDate: "2026-08-07",
+        buildId: "build-hash-test",
+        trustedRuntimeMetadata: {
+          commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
+          schemaVersion: "20260904160000",
+          workingTreeDirty: false,
+        },
+      });
+
+      await assert.rejects(
+        () =>
+          testHarness.signOffEvidencePack({
+            workspaceId: "ws-hash-mismatch",
+            evidencePackId: evidencePack.runId,
+            expectedEvidencePackHash: "tampered_hash_value_1234567890abcdef",
+            reviewerUserId: "usr-security-lead",
+            reviewerRole: "PLATFORM_SECURITY_LEAD",
+          }),
+        /Security violation: Evidence pack hash mismatch/
+      );
+    });
+
+    it("rejects sign-off when evidence pack was produced on a dirty working tree", async () => {
+      const { evidencePack } = await testHarness.execute({
+        workspaceId: "ws-dirty-tree-signoff",
+        provider: "google_ads",
+        accountId: "123-456-7890",
+        startDate: "2026-08-01",
+        endDate: "2026-08-07",
+        buildId: "build-dirty-test",
+        trustedRuntimeMetadata: {
+          commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
+          schemaVersion: "20260904160000",
+          workingTreeDirty: true,
+        },
+      });
+
+      const packHash = CertificationHarness.computeEvidencePackHash(evidencePack);
+      await assert.rejects(
+        () =>
+          testHarness.signOffEvidencePack({
+            workspaceId: "ws-dirty-tree-signoff",
+            evidencePackId: evidencePack.runId,
+            expectedEvidencePackHash: packHash,
+            reviewerUserId: "usr-security-lead",
+            reviewerRole: "PLATFORM_SECURITY_LEAD",
+          }),
+        /Security violation: Cannot sign off an evidence pack produced from a dirty or uncommitted working tree/
+      );
+    });
+  });
+
+  describe("Security: Production Import-Boundary Enforcement", () => {
+    it("proves test-simulation-adapter is never imported in production application code", () => {
+      const srcDir = path.resolve(process.cwd(), "src");
+
+      function findFiles(dir: string, fileList: string[] = []): string[] {
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+          const fullPath = path.join(dir, file);
+          const stat = fs.statSync(fullPath);
+          if (stat.isDirectory()) {
+            findFiles(fullPath, fileList);
+          } else if (
+            (file.endsWith(".ts") || file.endsWith(".tsx") || file.endsWith(".js") || file.endsWith(".mjs")) &&
+            !file.includes(".test.") &&
+            !file.includes(".spec.") &&
+            file !== "test-simulation-adapter.ts"
+          ) {
+            fileList.push(fullPath);
+          }
+        }
+        return fileList;
+      }
+
+      const prodFiles = findFiles(srcDir);
+      assert.ok(prodFiles.length > 20, "Expected to inspect multiple production files in src/");
+
+      for (const filePath of prodFiles) {
+        const content = fs.readFileSync(filePath, "utf8");
+        assert.equal(
+          content.includes("test-simulation-adapter"),
+          false,
+          `Production file ${filePath} must NOT import or reference test-simulation-adapter!`
+        );
+      }
+    });
+
+    it("verifies ad-certification/index.ts does not export test-simulation-adapter", () => {
+      const indexPath = path.resolve(process.cwd(), "src/lib/ad-certification/index.ts");
+      const indexContent = fs.readFileSync(indexPath, "utf8");
+      assert.equal(
+        indexContent.includes("test-simulation-adapter"),
+        false,
+        "ad-certification/index.ts must NOT export test-simulation-adapter"
+      );
+      assert.equal(
+        indexContent.includes("TestCertificationHarness"),
+        false,
+        "ad-certification/index.ts must NOT export TestCertificationHarness"
+      );
     });
   });
 });
