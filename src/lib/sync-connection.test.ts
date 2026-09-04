@@ -121,6 +121,7 @@ describe("provider HTTP failures preserve sync correctness", () => {
     let failedDownloadAttempts = 0;
     await withFastRetries(() => withSyncHarness((async (input, init) => {
       const url = String(input);
+      if (url.includes("/advertiser/info/")) return Response.json({code:0,data:{list:[]}});
       if (url.includes("/report/task/create/")) {
         const body = JSON.parse(String(init?.body ?? "{}")) as { advertiser_id: string };
         return new Response(JSON.stringify({ code: 0, data: { task_id: `${body.advertiser_id}-task` } }), { status: 200 });

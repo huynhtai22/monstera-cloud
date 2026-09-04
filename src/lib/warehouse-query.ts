@@ -4,11 +4,13 @@ import prisma from "@/lib/prisma";
 const DEFAULT_LIMIT = 1_000;
 const HARD_LIMIT = 100_000;
 const STALE_AFTER_MS = 26 * 60 * 60 * 1_000;
+export type ScopedTransaction = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
 export type WarehouseFreshnessStatus = "fresh" | "stale" | "refreshing" | "failed" | "never";
 
 export interface WarehouseQueryInput {
   workspaceId: string;
+  clientId?: string;
   startDate?: Date;
   endDate?: Date;
   platforms?: string[];
@@ -51,9 +53,10 @@ function adNameFromRawData(rawData: string | null): string | null {
   }
 }
 
-export async function queryWarehouse(input: WarehouseQueryInput) {
+export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTransaction = prisma) {
   const take = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), HARD_LIMIT);
   const where: Prisma.CampaignMetricWhereInput = { workspaceId: input.workspaceId };
+  if (input.clientId) where.connection = { workspaceId: input.workspaceId, clientId: input.clientId, type: "source" };
 
   if (input.startDate || input.endDate) {
     where.date = {
@@ -82,16 +85,16 @@ export async function queryWarehouse(input: WarehouseQueryInput) {
   delete countWhere.AND;
 
   const [foundRows, totalCount, asOfAggregate, lastSyncAggregate, latestJob] = await Promise.all([
-    prisma.campaignMetric.findMany({
+    db.campaignMetric.findMany({
       where,
       orderBy: [{ date: "desc" }, { id: "desc" }],
       ...(!decodedCursor && input.offset ? { skip: input.offset } : {}),
       take: take + 1,
     }),
-    input.includeTotalCount ? prisma.campaignMetric.count({ where: countWhere }) : Promise.resolve(undefined),
-    prisma.campaignMetric.aggregate({ where: countWhere, _max: { pulledAt: true } }),
-    prisma.connection.aggregate({ where: { workspaceId: input.workspaceId }, _max: { lastSyncAt: true } }),
-    prisma.syncJob.findFirst({
+    input.includeTotalCount ? db.campaignMetric.count({ where: countWhere }) : Promise.resolve(undefined),
+    db.campaignMetric.aggregate({ where: countWhere, _max: { pulledAt: true } }),
+    db.connection.aggregate({ where: { workspaceId: input.workspaceId }, _max: { lastSyncAt: true } }),
+    db.syncJob.findFirst({
       where: { pipeline: { workspaceId: input.workspaceId } },
       orderBy: { createdAt: "desc" },
       select: { id: true, status: true, finishedAt: true, errorMsg: true },

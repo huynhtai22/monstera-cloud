@@ -4,6 +4,7 @@
  */
 
 import prisma from "@/lib/prisma";
+import { recordProviderReportingContext } from "@/lib/reporting-context-server";
 import { logger } from "@/lib/logger";
 import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import { encrypt } from "@/lib/encryption";
@@ -338,10 +339,14 @@ async function syncMetaAds(opts: {
   // 3. Resolve currencies from Meta itself. Older connections were saved before
   // currency was included in OAuth metadata; never label their source amounts
   // as USD merely because the field is absent.
-  if ((!adAccounts || adAccounts.length === 0 || adAccounts.some((account: any) => !account.currency)) && accessToken) {
+  const freshMetaContexts = new Map<string, { timezone_name?: string; currency?: string }>();
+  if (accessToken) {
     try {
       logger.info(`[syncMetaAds] Querying Meta Graph API dynamically for accessible ad accounts`);
       const apiAccounts = await metaAdsClient.getAdAccounts(accessToken);
+      for (const account of apiAccounts) {
+        freshMetaContexts.set(String(account.id).replace(/^act_/, ""), account);
+      }
       if (apiAccounts && apiAccounts.length > 0) {
         const byId = new Map(
           apiAccounts.map((account) => [String(account.id).replace(/^act_/, ""), account]),
@@ -403,6 +408,11 @@ async function syncMetaAds(opts: {
   for (const account of adAccounts) {
     const accountId = account.id;
     const accountName = account.name;
+    const freshContext = freshMetaContexts.get(String(accountId).replace(/^act_/, ""));
+    if (freshContext) {
+      // Persist only selected accounts, using the same ID spelling as metric rows.
+      await recordProviderReportingContext({ workspaceId, connectionId, provider: "meta_ads", accountId: String(accountId), timezone: freshContext.timezone_name, currency: freshContext.currency });
+    }
 
     if (skippedAccounts.has(String(accountId))) {
       logger.info(`[syncMetaAds] Skipping quarantined/reconnect-required account ${accountId}`);
@@ -727,6 +737,7 @@ async function syncGoogleAds(opts: {
       );
 
       logger.info(`[syncGoogleAds] customerId=${customerId} returned ${rows.length} campaign rows`);
+      if (rows.length) await recordProviderReportingContext({ workspaceId, connectionId, provider: "google_ads", accountId: customerId, timezone: rows[0].customer_time_zone, currency: rows[0].customer_currency_code });
 
       if (rows.length === 0) {
         children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0 });
@@ -957,7 +968,16 @@ async function syncTikTok(opts: {
     }
 
     let reportTaskIdForRetry: string | undefined;
+    let providerCurrency: string | undefined;
     try {
+      try {
+        const context = await tiktokReportClient.getAdvertiserReportingContext(accessToken, advertiserId, credentials.sandbox === true);
+        const stored = await recordProviderReportingContext({ workspaceId, connectionId, provider: "tiktok_business", accountId: advertiserId, ...context });
+        providerCurrency = stored.providerCurrency ?? undefined;
+      } catch {
+        // Do not stop import because a metadata permission is missing. Readiness remains independently conservative.
+        logger.warn("[syncTikTok] Reporting context could not be refreshed", { connectionId, advertiserId });
+      }
       const taskParams: CreateReportTaskParams = {
         advertiser_id: advertiserId,
         report_type: "BASIC",
@@ -972,7 +992,7 @@ async function syncTikTok(opts: {
       if (credentials.sandbox === true) {
         const rows = await tiktokReportClient.getSyncReport(accessToken, taskParams);
         const result = rows.length > 0
-          ? await ingestTiktokRows(rows, { workspaceId, connectionId, accountId: advertiserId, accountName: `Advertiser ${advertiserId}`, syncJobId: jobId, lease })
+          ? await ingestTiktokRows(rows, { workspaceId, connectionId, accountId: advertiserId, accountName: `Advertiser ${advertiserId}`, providerCurrency, syncJobId: jobId, lease })
           : { upserted: 0, failed: 0 };
         children.push({ id: String(advertiserId), kind: "advertiser", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
         await recordAccountOutcome({
@@ -1028,6 +1048,7 @@ async function syncTikTok(opts: {
 
         if (rows.length > 0) {
           const result = await ingestTiktokRows(rows, {
+            providerCurrency,
             workspaceId,
             connectionId,
             accountId: advertiserId,

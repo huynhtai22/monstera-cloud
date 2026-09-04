@@ -16,6 +16,7 @@ const env = {
   PILOT_MODE: '1', ENABLE_GOVERNED_ANALYST: 'true',
 };
 const files = process.argv.includes('--all') ? ['src/**/*.test.ts'] : [
+  'src/lib/report-readiness*.test.ts',
   'src/lib/security-boundaries.pg.integration.test.ts',
   'src/lib/vietqr-gateway.test.ts',
   'src/lib/payment-workspace.test.ts',

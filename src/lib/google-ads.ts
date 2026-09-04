@@ -520,6 +520,7 @@ export class GoogleAdsReportClient {
         campaign.status,
         campaign.advertising_channel_type,
         customer.currency_code,
+        customer.time_zone,
         metrics.impressions,
         metrics.clicks,
         metrics.cost_micros,

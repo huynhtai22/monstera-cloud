@@ -26,6 +26,7 @@ import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
 import type { PerformanceReportData, DailyTrendPoint } from "@/lib/performance-reports";
 import type { MarketingAnomaly } from "@/lib/marketing-anomalies";
+import { ClientReportReadiness } from "@/components/reports/ReportReadinessPanel";
 
 interface PerformanceReportDashboardProps {
   workspaceId: string;
@@ -254,6 +255,8 @@ export function PerformanceReportDashboard({
       ) : null}
 
       {/* ─── LOADING STATE ─── */}
+      <ClientReportReadiness workspaceId={workspaceId} clientId={selectedClientId} start={startDateStr} end={endDateStr} />
+
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[...Array(6)].map((_, i) => (
