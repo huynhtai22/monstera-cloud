@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
+import { getAuthSession } from "@/lib/auth-session";
 import { createVietQrOrder } from "@/lib/vietqr-gateway";
 import { type PlanName } from "@/lib/plan-config";
-import { authOptions } from "@/lib/auth";
 import { confirmPayOSWebhook, getPayOSReadiness } from "@/lib/payos";
 import { getRedis } from "@/lib/redis";
 import { PaymentWorkspaceError, resolveBillableWorkspaceId, requireSelfServeAgencyPro } from "@/lib/payment-workspace";
@@ -24,7 +23,7 @@ async function ensurePayOSWebhook(webhookUrl: string): Promise<void> {
 
 export async function POST(req: NextRequest) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user?.id || !session.user.email) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }

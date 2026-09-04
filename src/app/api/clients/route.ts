@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { isMockClientId } from "@/lib/mock-console-data";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
@@ -11,7 +10,7 @@ import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
  */
 export async function GET(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -34,7 +33,7 @@ export async function GET(req: Request) {
                     select: { pipelines: true, connections: true }
                 },
                 connections: {
-                    where: { type: "source" },
+                    where: { workspaceId, type: "source" },
                     select: {
                         id: true,
                         name: true,
@@ -61,7 +60,7 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -99,7 +98,7 @@ export async function POST(req: Request) {
  */
 export async function DELETE(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -139,7 +138,7 @@ export async function DELETE(req: Request) {
  */
 export async function PATCH(req: Request) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }

@@ -1,11 +1,13 @@
 # Monstera Cloud — Known Limitations
 
-Last reviewed: 2026-08-21
+Last reviewed: 2026-09-04 (targeted billing, AI/tenant and provider-health review; not a fresh production audit)
 Release stage: Controlled Pilot
 
 ## Current release posture
 
 Production-capable architecture, suitable for controlled pilot use, with documented operational hardening remaining before broad GA.
+
+The August evidence is historical, not blanket approval of newer billing/AI/portfolio surfaces. See [September security validation](./SECURITY-VALIDATION-2026-09-04.md) for local fixes, test coverage, and separate production acceptance gates. Local validation does not establish that these changes have been deployed.
 
 **Google Ads status update (2026-08-25):** Basic Access is approved, removing the prior external developer-token approval blocker. Production connector validation is still pending: a real authorized account must complete bounded OAuth, MCC/customer selection, a seven-day sync, reconciliation, and destination retrieval. This is not a claim of controlled-pilot readiness; see [google-ads-basic-access.md](./google-ads-basic-access.md).
 
@@ -32,19 +34,17 @@ Coverage as of this hardening pass:
 
 ### 2. Deleted / missing provider row reconciliation
 
-**Status:** Limitation
+**Status:** Partially addressed — observability implemented; deletion/reconciliation policy remains a limitation.
 
-Rolling re-sync and deterministic upserts correctly update returned rows, including late-arriving attribution changes. However, when a provider permanently stops returning a previously stored row, Monstera does not universally reconcile or soft-delete that missing row.
+`9d6f572` added complete-snapshot stale-row detection in `provider-row-reconciliation.ts`, invoked by Meta, Google Ads and TikTok sync paths. Unit and real-PostgreSQL tests verify that incomplete fetches do not produce false comparisons, tenant scope is retained, and missing rows are detected **without mutation**.
 
-**Future:** Provider snapshot reconciliation / stale-row detection.
+Missing rows are still retained. This is not automatic provider deletion reconciliation, soft deletion, or a retention policy. Do not move the entire limitation to Resolved or enable deletion without an approved retention decision and isolated drill.
 
 ### 3. Data-through-date semantics
 
-**Status:** Limitation
+**Status:** Separate reporting date implemented; provider-level accuracy remains a certification concern.
 
-`lastSyncAt` currently represents successful sync completion time, not the maximum reporting date actually present in the warehouse.
-
-**Future:** Expose a separate `dataThroughDate` / reporting-freshness indicator.
+`lastSyncAt` represents sync completion, not the latest reporting date. `Connection.lastDataThrough` and reporting-readiness/warehouse DTOs now expose separate reporting freshness. Do not substitute completion time for reporting date, or assume every provider's real-account reporting coverage is certified merely because the field exists.
 
 ### 4. Retry pickup latency
 
@@ -56,11 +56,9 @@ Provider retry backoff may be eligible within seconds or minutes, but production
 
 ### 5. Poison-account isolation
 
-**Status:** Limitation
+**Status:** Resolved in code for Meta, Google Ads and TikTok — see Resolved §16.
 
-Individual provider-account failures are isolated within a sync run, but there is no durable per-account quarantine / reconnect-required state. Permanently broken child accounts may be retried on later jobs.
-
-**Future:** Durable account-health state and quarantine policy.
+Live provider recovery/certification evidence remains separate; do not infer equivalent quarantine behavior for every marketplace connector.
 
 ## Provider-specific
 
@@ -186,6 +184,12 @@ An agency may eventually want output ordered as Account 1 → Account 3 → Acco
 Do not add custom account ordering before Marketplace approval unless pilot users demonstrate a clear recurring need.
 
 ## Resolved
+
+### 16. Durable poison-account health and quarantine
+
+`9d6f572` (2026-09-03) added durable `ProviderAccountHealth` records, reconnect-required/quarantined states, sibling-account isolation, and skip sets consumed by Meta, Google Ads and TikTok sync. `provider-account-health.test.ts` and `provider-account-health.pg.integration.test.ts` pass in the September 4 isolated PostgreSQL validation.
+
+This resolves the absence of durable account state described in §5; it does not certify real provider credentials, approval status, or operator alert delivery.
 
 ### 15. Source disconnect no longer deletes historical warehouse data
 

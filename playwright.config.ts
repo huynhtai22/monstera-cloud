@@ -27,6 +27,7 @@ export default defineConfig({
       CRON_SECRET: process.env.CRON_SECRET || "e2e-cron-secret-at-least-32-characters",
       GOOGLE_ID_TOKEN_AUDIENCES: process.env.GOOGLE_ID_TOKEN_AUDIENCES || "e2e-client.apps.googleusercontent.com",
       PILOT_MODE: "1",
+      ENABLE_GOVERNED_ANALYST: "1",
     },
   },
   projects: [

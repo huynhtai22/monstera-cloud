@@ -54,6 +54,7 @@ describe("VietQR payment fulfillment", () => {
     };
 
     (prisma as any).$transaction = async (callback: any) => callback({
+      $queryRaw: async () => [],
       paymentOrder: {
         findUnique: async () => dbOrderRecord,
         update: async (args: any) => {
@@ -137,6 +138,7 @@ describe("VietQR payment fulfillment", () => {
     assert.equal(fetched.status, "PENDING");
 
     (prisma as any).$transaction = async (callback: any) => callback({
+      $queryRaw: async () => [],
       paymentOrder: {
         findUnique: async () => dbOrderRecord,
         update: async (args: any) => ({ ...dbOrderRecord, ...args.data }),
@@ -172,6 +174,7 @@ describe("VietQR payment fulfillment", () => {
 
     let expiredUpdateArgs: any;
     (prisma as any).$transaction = async (callback: any) => callback({
+      $queryRaw: async () => [],
       paymentOrder: {
         findUnique: async () => dbOrderRecord,
         update: async (args: any) => {
@@ -207,6 +210,7 @@ describe("VietQR payment fulfillment", () => {
 
     let workspaceUpdated = false;
     (prisma as any).$transaction = async (callback: any) => callback({
+      $queryRaw: async () => [],
       paymentOrder: {
         findUnique: async () => dbOrderRecord,
         update: async () => { throw new Error("PaymentOrder must not be updated again"); },
@@ -238,6 +242,7 @@ describe("VietQR payment fulfillment", () => {
 
     let workspaceUpdated = false;
     (prisma as any).$transaction = async (callback: any) => callback({
+      $queryRaw: async () => [],
       paymentOrder: {
         findUnique: async () => dbOrderRecord,
       },
@@ -267,6 +272,7 @@ describe("VietQR payment fulfillment", () => {
     };
 
     (prisma as any).$transaction = async (callback: any) => callback({
+      $queryRaw: async () => [],
       paymentOrder: {
         findUnique: async () => dbOrderRecord,
       },
