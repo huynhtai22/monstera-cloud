@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { canPurchaseAgencyPro } from "./public-plan-catalog";
 
 /** A payment must apply to exactly one tenant, never every workspace a user owns. */
 export class PaymentWorkspaceError extends Error {
@@ -8,6 +9,17 @@ export class PaymentWorkspaceError extends Error {
   ) {
     super(message);
     this.name = "PaymentWorkspaceError";
+  }
+}
+
+/** Never silently replace a different paid tier with an unquoted Pro order. */
+export async function requireSelfServeAgencyPro(workspaceId: string): Promise<void> {
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { plan: true, status: true, subscriptionProvider: true, subscriptionEndsAt: true },
+  });
+  if (!workspace || !canPurchaseAgencyPro(workspace.plan, workspace.status, { provider: workspace.subscriptionProvider, endsAt: workspace.subscriptionEndsAt })) {
+    throw new PaymentWorkspaceError("This workspace needs a billing review before changing plans. Contact support.", 409);
   }
 }
 

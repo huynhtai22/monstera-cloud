@@ -41,6 +41,7 @@ export async function GET(
         plan: true,
         status: true,
         subscriptionEndsAt: true,
+        subscriptionProvider: true,
         _count: {
           select: {
             connections: { where: { type: "source" } },
@@ -81,6 +82,7 @@ export async function GET(
       plan: workspace.plan,
       status: workspace.status,
       subscriptionEndsAt: workspace.subscriptionEndsAt,
+      subscriptionProvider: workspace.subscriptionProvider,
       limits,
       usage: {
         connectionsCount: workspace._count.connections,

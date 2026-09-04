@@ -5,7 +5,7 @@ import { type PlanName } from "@/lib/plan-config";
 import { authOptions } from "@/lib/auth";
 import { confirmPayOSWebhook, getPayOSReadiness } from "@/lib/payos";
 import { getRedis } from "@/lib/redis";
-import { PaymentWorkspaceError, resolveBillableWorkspaceId } from "@/lib/payment-workspace";
+import { PaymentWorkspaceError, resolveBillableWorkspaceId, requireSelfServeAgencyPro } from "@/lib/payment-workspace";
 
 async function ensurePayOSWebhook(webhookUrl: string): Promise<void> {
     const key = "payos_confirmed_webhook_url";
@@ -34,6 +34,9 @@ export async function POST(req: NextRequest) {
         if (plan !== "professional") {
             return NextResponse.json({ error: "Only Agency Pro is available for self-serve checkout" }, { status: 400 });
         }
+        if (billingCycle !== "monthly" && billingCycle !== "annual") {
+            return NextResponse.json({ error: "Choose monthly or annual billing" }, { status: 400 });
+        }
 
         const readiness = getPayOSReadiness();
         if (!readiness.ready) {
@@ -44,6 +47,8 @@ export async function POST(req: NextRequest) {
             userId: session.user.id,
             requestedWorkspaceId: typeof workspaceId === "string" ? workspaceId : undefined,
         });
+
+        await requireSelfServeAgencyPro(billableWorkspaceId);
 
         const origin = (process.env.NEXTAUTH_URL?.replace(/\/$/, "") || new URL(req.url).origin).replace(/\/$/, "");
         // PayOS's embedded checkout requires its return URL to be the same
