@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth-session";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import prisma from "@/lib/prisma";
+import { sendClientBriefEmail } from "@/lib/mail";
 import {
   parseRecipients,
   compileClientBrief,
@@ -88,13 +90,39 @@ export async function POST(req: Request) {
       }
     }
 
+    // Send Email
+    let emailsDelivered = 0;
+    let emailsFailed = 0;
+    if (recipients.emails.length > 0) {
+      const workspace = await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { name: true },
+      });
+      const workspaceName = workspace?.name || "Monstera Cloud";
+
+      for (const email of recipients.emails) {
+        const mailRes = await sendClientBriefEmail(email, clientName, workspaceName, messageToSend);
+        if (mailRes.success) {
+          emailsDelivered++;
+        } else {
+          emailsFailed++;
+          errors.push(`Email delivery failed to ${email}`);
+        }
+      }
+    }
+
+    const anyDelivered = slackDelivered > 0 || telegramDelivered > 0 || emailsDelivered > 0;
+    const hasChannels = recipients.slackWebhooks.length > 0 || recipients.telegramChatIds.length > 0 || recipients.emails.length > 0;
+
     return NextResponse.json({
-      success: errors.length === 0 || slackDelivered > 0 || telegramDelivered > 0,
+      success: anyDelivered || (errors.length === 0 && hasChannels),
       clientName,
       slackDelivered,
       slackFailed,
       telegramDelivered,
       telegramFailed,
+      emailsDelivered,
+      emailsFailed,
       emailRecipients: recipients.emails,
       errors,
     });

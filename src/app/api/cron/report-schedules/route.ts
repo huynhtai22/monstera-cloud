@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireCronSecret } from "@/lib/request-auth";
 import prisma from "@/lib/prisma";
-import { executeScheduleDispatch } from "@/lib/report-dispatch";
+import { executeScheduleDispatch, isScheduleDue } from "@/lib/report-dispatch";
 import { logger } from "@/lib/logger";
 
 /**
  * GET /api/cron/report-schedules
- * Cron job endpoint that processes active report schedules and dispatches briefs.
+ * Cron job endpoint that processes active report schedules and dispatches briefs
+ * only for schedules that are currently due according to their cron expression.
  */
 export async function GET(request: Request) {
   const denied = requireCronSecret(request);
@@ -17,11 +18,20 @@ export async function GET(request: Request) {
       where: { enabled: true },
     });
 
+    const now = new Date();
     const results = [];
+    let dueCount = 0;
+    let skipped = 0;
     let succeeded = 0;
     let failed = 0;
 
     for (const schedule of activeSchedules) {
+      if (!isScheduleDue(schedule.cron, schedule.lastSentAt, now)) {
+        skipped++;
+        continue;
+      }
+
+      dueCount++;
       try {
         const dispatchResult = await executeScheduleDispatch(schedule.id);
         results.push(dispatchResult);
@@ -39,7 +49,9 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      processed: activeSchedules.length,
+      totalActive: activeSchedules.length,
+      due: dueCount,
+      skipped,
       succeeded,
       failed,
       results,

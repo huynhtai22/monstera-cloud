@@ -73,4 +73,41 @@ describe("marketing-anomalies watchdog", () => {
     const anomalies = detectMarketingAnomalies(rows);
     assert.equal(anomalies.length, 0);
   });
+
+  it("preserves connectionId on detected anomalies", () => {
+    const rows: MetricRowExport[] = [
+      { platform: "meta_ads", campaignName: "Conn Test", connectionId: "conn-xyz-123", date: "2026-08-20", spend: 40, impressions: 1000, clicks: 50, conversions: 5, revenue: 150, currency: "USD" },
+      { platform: "meta_ads", campaignName: "Conn Test", connectionId: "conn-xyz-123", date: "2026-08-21", spend: 40, impressions: 1000, clicks: 50, conversions: 5, revenue: 150, currency: "USD" },
+      { platform: "meta_ads", campaignName: "Conn Test", connectionId: "conn-xyz-123", date: "2026-08-22", spend: 55, impressions: 1000, clicks: 50, conversions: 0, revenue: 0, currency: "USD" },
+      { platform: "meta_ads", campaignName: "Conn Test", connectionId: "conn-xyz-123", date: "2026-08-23", spend: 55, impressions: 1000, clicks: 50, conversions: 0, revenue: 0, currency: "USD" },
+    ];
+
+    const anomalies = detectMarketingAnomalies(rows, { zeroConversionSpendThresholdUsd: 50 });
+    assert.equal(anomalies.length, 1);
+    assert.equal(anomalies[0].connectionId, "conn-xyz-123");
+  });
+
+  it("suppresses anomaly detection when data is older than maxStaleDays from referenceDate", () => {
+    const rows: MetricRowExport[] = [
+      // Old data from 2 weeks ago
+      { platform: "meta_ads", campaignName: "Stale Camp", date: "2026-08-10", spend: 50, impressions: 1000, clicks: 50, conversions: 5, revenue: 200, currency: "USD" },
+      { platform: "meta_ads", campaignName: "Stale Camp", date: "2026-08-11", spend: 50, impressions: 1000, clicks: 50, conversions: 5, revenue: 200, currency: "USD" },
+      { platform: "meta_ads", campaignName: "Stale Camp", date: "2026-08-12", spend: 60, impressions: 1000, clicks: 50, conversions: 0, revenue: 0, currency: "USD" },
+      { platform: "meta_ads", campaignName: "Stale Camp", date: "2026-08-13", spend: 60, impressions: 1000, clicks: 50, conversions: 0, revenue: 0, currency: "USD" },
+    ];
+
+    // Reference date is 2026-08-25 (12 days after latest data) -> should suppress
+    const anomaliesStale = detectMarketingAnomalies(rows, {
+      referenceDate: "2026-08-25",
+      maxStaleDays: 4,
+    });
+    assert.equal(anomaliesStale.length, 0);
+
+    // Reference date is 2026-08-14 (1 day after latest data) -> should detect
+    const anomaliesFresh = detectMarketingAnomalies(rows, {
+      referenceDate: "2026-08-14",
+      maxStaleDays: 4,
+    });
+    assert.equal(anomaliesFresh.length, 1);
+  });
 });

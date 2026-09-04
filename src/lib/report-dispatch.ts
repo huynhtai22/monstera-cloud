@@ -6,6 +6,7 @@
 
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { sendClientBriefEmail } from "@/lib/mail";
 import {
   calculateOverallKPIs,
   calculatePlatformRollups,
@@ -29,6 +30,7 @@ export interface DispatchResult {
   telegramDelivered: number;
   telegramFailed: number;
   emailsDelivered: number;
+  emailsFailed: number;
   errors: string[];
 }
 
@@ -118,6 +120,75 @@ export async function sendTelegramBrief(
     logger.error("[report-dispatch] Failed to send Telegram brief:", err);
     return false;
   }
+}
+
+/**
+ * Evaluates whether a report schedule is due for execution.
+ * Standard 5-part cron: minute hour day-of-month month day-of-week
+ * Prevents repeat sends within the schedule cycle window.
+ */
+export function isScheduleDue(
+  cronExpr: string,
+  lastSentAt?: Date | string | null,
+  now = new Date()
+): boolean {
+  if (!cronExpr || typeof cronExpr !== "string") return false;
+
+  const parts = cronExpr.trim().split(/\s+/);
+  if (parts.length < 5) return false;
+
+  const [, hourStr, domStr, monStr, dowStr] = parts;
+
+  const currentHour = now.getUTCHours();
+  const currentDom = now.getUTCDate();
+  const currentMonth = now.getUTCMonth() + 1; // 1-12
+  const currentDow = now.getUTCDay(); // 0-6 (0=Sun)
+
+  // 1. Day of week check
+  if (dowStr !== "*") {
+    const allowedDows = dowStr.split(",").map((d) => {
+      const num = parseInt(d.trim(), 10);
+      return num === 7 ? 0 : num; // 7 is Sunday in standard cron
+    });
+    if (!allowedDows.includes(currentDow)) return false;
+  }
+
+  // 2. Month check
+  if (monStr !== "*") {
+    const allowedMonths = monStr.split(",").map((m) => parseInt(m.trim(), 10));
+    if (!allowedMonths.includes(currentMonth)) return false;
+  }
+
+  // 3. Day of month check
+  if (domStr !== "*") {
+    const allowedDoms = domStr.split(",").map((d) => parseInt(d.trim(), 10));
+    if (!allowedDoms.includes(currentDom)) return false;
+  }
+
+  // 4. Hour check:
+  // When scheduled via cron, the schedule is due if currentHour >= targetHour
+  if (hourStr !== "*") {
+    const targetHour = parseInt(hourStr, 10);
+    if (!isNaN(targetHour) && currentHour < targetHour) return false;
+  }
+
+  // 5. Prevent repeat dispatch if already sent in this cycle
+  if (lastSentAt) {
+    const lastSent = new Date(lastSentAt).getTime();
+    if (!isNaN(lastSent)) {
+      const elapsedMs = now.getTime() - lastSent;
+
+      // If weekly (dow !== "*"), minimum 5 days before next send
+      if (dowStr !== "*") {
+        if (elapsedMs < 5 * 24 * 60 * 60 * 1000) return false;
+      } else {
+        // If daily, minimum 20 hours before next send
+        if (elapsedMs < 20 * 60 * 60 * 1000) return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -265,6 +336,12 @@ export async function executeScheduleDispatch(scheduleId: string): Promise<Dispa
     clientId: schedule.clientId,
   });
 
+  const workspace = await prisma.workspace.findUnique({
+    where: { id: schedule.workspaceId },
+    select: { name: true },
+  });
+  const workspaceName = workspace?.name || "Monstera Cloud";
+
   const result: DispatchResult = {
     scheduleId: schedule.id,
     clientId: schedule.clientId,
@@ -274,6 +351,7 @@ export async function executeScheduleDispatch(scheduleId: string): Promise<Dispa
     telegramDelivered: 0,
     telegramFailed: 0,
     emailsDelivered: 0,
+    emailsFailed: 0,
     errors: [],
   };
 
@@ -307,16 +385,25 @@ export async function executeScheduleDispatch(scheduleId: string): Promise<Dispa
     }
   }
 
-  // 3. Email recipients (recorded for audit)
-  if (recipients.emails.length > 0) {
-    result.emailsDelivered += recipients.emails.length;
+  // 3. Deliver to Email recipients
+  for (const email of recipients.emails) {
+    const emailResult = await sendClientBriefEmail(email, clientName, workspaceName, markdown);
+    if (emailResult.success) {
+      result.emailsDelivered++;
+    } else {
+      result.emailsFailed++;
+      result.errors.push(`Email send failed for ${email}`);
+    }
   }
 
-  // Update schedule lastSentAt
-  await prisma.reportSchedule.update({
-    where: { id: schedule.id },
-    data: { lastSentAt: new Date() },
-  });
+  // Only advance lastSentAt if at least one delivery succeeded
+  const totalDelivered = result.slackDelivered + result.telegramDelivered + result.emailsDelivered;
+  if (totalDelivered > 0) {
+    await prisma.reportSchedule.update({
+      where: { id: schedule.id },
+      data: { lastSentAt: new Date() },
+    });
+  }
 
   return result;
 }

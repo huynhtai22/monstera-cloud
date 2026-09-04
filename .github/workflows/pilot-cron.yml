@@ -32,7 +32,8 @@ jobs:
             /api/cron/warehouse-jobs \
             /api/cron/connections/token-prefetch \
             /api/cron/shopee/refresh \
-            /api/cron/health-tick
+            /api/cron/health-tick \
+            /api/cron/report-schedules
           do
             echo "::group::${path}"
             code=$(curl -sS -o /tmp/cron-body -w "%{http_code}" \

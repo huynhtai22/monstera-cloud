@@ -94,6 +94,7 @@ export async function GET(req: Request) {
       accountName: m.accountName,
       campaignId: m.campaignId,
       campaignName: m.campaignName,
+      connectionId: m.connectionId,
       date: m.date.toISOString().split("T")[0],
       spend: Number(m.spend) || 0,
       impressions: Number(m.impressions) || 0,
@@ -103,18 +104,30 @@ export async function GET(req: Request) {
       currency: m.currency || "USD",
     }));
 
-    // Detect anomalies
-    const detected = detectMarketingAnomalies(rows);
+    // Detect anomalies with freshness verification against today
+    const detected = detectMarketingAnomalies(rows, {
+      referenceDate: new Date().toISOString().split("T")[0],
+      maxStaleDays: 4,
+    });
 
-    // Enrich anomalies with client information
+    // Enrich anomalies with client information using connectionId or exact identity
     const enrichedAnomalies: MarketingAnomaly[] = detected.map((a) => {
-      // Find matching metric row to trace connectionId
-      const match = metrics.find(
-        (m) =>
-          m.platform === a.platform &&
-          (m.campaignId === a.campaignId || m.campaignName === a.campaignName)
-      );
-      const clientInfo = match ? connToClientMap.get(match.connectionId) : undefined;
+      // 1. Direct connectionId match (highest accuracy)
+      let clientInfo = a.connectionId ? connToClientMap.get(a.connectionId) : undefined;
+
+      // 2. Exact match on platform + account + campaign ID
+      if (!clientInfo) {
+        const match = metrics.find(
+          (m) =>
+            m.platform === a.platform &&
+            m.accountId === a.accountId &&
+            (a.campaignId && m.campaignId ? m.campaignId === a.campaignId : m.campaignName === a.campaignName)
+        );
+        if (match) {
+          clientInfo = connToClientMap.get(match.connectionId);
+        }
+      }
+
       return {
         ...a,
         clientId: clientInfo?.clientId,

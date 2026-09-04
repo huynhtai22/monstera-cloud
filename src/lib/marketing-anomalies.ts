@@ -20,6 +20,7 @@ export interface MarketingAnomaly {
   campaignName: string;
   accountId?: string;
   accountName?: string;
+  connectionId?: string;
   clientId?: string;
   clientName?: string;
   currency: string;
@@ -34,6 +35,8 @@ export interface MarketingAnomaly {
 }
 
 export interface AnomalyDetectionOptions {
+  referenceDate?: string;
+  maxStaleDays?: number;
   zeroConversionSpendThresholdUsd?: number;
   zeroConversionSpendThresholdVnd?: number;
   cpaSpikeMultiplier?: number;
@@ -61,6 +64,20 @@ export function detectMarketingAnomalies(
   const dates = [...new Set(rows.map((r) => r.date))].sort();
   if (dates.length <= 1) return [];
 
+  // Anchor recent window to reference date if provided and check freshness
+  if (options.referenceDate) {
+    const refTime = new Date(options.referenceDate).getTime();
+    const maxStale = options.maxStaleDays ?? 4;
+    const latestDate = dates[dates.length - 1];
+    const latestTime = new Date(latestDate).getTime();
+    const daysDiff = (refTime - latestTime) / (1000 * 60 * 60 * 24);
+
+    // If latest data is older than maxStaleDays from referenceDate, suppress false active alerts
+    if (daysDiff > maxStale) {
+      return [];
+    }
+  }
+
   const recentDates = new Set(dates.slice(-recentDaysCount));
   const baselineDates = new Set(dates.slice(0, -recentDaysCount));
 
@@ -71,6 +88,7 @@ export function detectMarketingAnomalies(
     campaignName: string;
     accountId?: string;
     accountName?: string;
+    connectionId?: string;
     currency: string;
     recentSpend: number;
     recentConversions: number;
@@ -96,6 +114,7 @@ export function detectMarketingAnomalies(
       campaignName: name,
       accountId: r.accountId || undefined,
       accountName: r.accountName || undefined,
+      connectionId: r.connectionId || undefined,
       currency: cur,
       recentSpend: 0,
       recentConversions: 0,
@@ -139,6 +158,7 @@ export function detectMarketingAnomalies(
         campaignName: c.campaignName,
         accountId: c.accountId,
         accountName: c.accountName,
+        connectionId: c.connectionId,
         currency: c.currency,
         currentSpend: c.recentSpend,
         currentConversions: 0,
@@ -169,6 +189,7 @@ export function detectMarketingAnomalies(
           campaignName: c.campaignName,
           accountId: c.accountId,
           accountName: c.accountName,
+          connectionId: c.connectionId,
           currency: c.currency,
           currentSpend: c.recentSpend,
           currentConversions: c.recentConversions,
@@ -202,6 +223,7 @@ export function detectMarketingAnomalies(
           campaignName: c.campaignName,
           accountId: c.accountId,
           accountName: c.accountName,
+          connectionId: c.connectionId,
           currency: c.currency,
           currentSpend: c.recentSpend,
           currentConversions: c.recentConversions,

@@ -311,3 +311,56 @@ export const sendPerformanceAlertEmail = async (to: string, workspaceName: strin
     return { success: false, error: err };
   }
 };
+
+export const sendClientBriefEmail = async (
+  to: string,
+  clientName: string,
+  workspaceName: string,
+  markdownBrief: string
+): Promise<{ success: boolean; data?: any; error?: any }> => {
+  try {
+    if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === "re_dummy") {
+      logger.warn('[MAIL] RESEND_API_KEY not configured, simulating delivery to:', to);
+      return { success: true, data: { simulated: true } };
+    }
+
+    const formattedHtml = markdownBrief
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/### (.*?)\n/g, '<h3 style="color:#0f172a; margin-top:16px; margin-bottom:8px;">$1</h3>')
+      .replace(/## (.*?)\n/g, '<h2 style="color:#0f172a; margin-top:20px; margin-bottom:8px;">$1</h2>')
+      .replace(/# (.*?)\n/g, '<h1 style="color:#0f172a; margin-top:24px; margin-bottom:12px;">$1</h1>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br/>');
+
+    const { data, error } = await resend.emails.send({
+      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+      to: [to],
+      subject: `Marketing Brief: ${clientName} – Monstera Cloud`,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 650px; margin: 0 auto; padding: 28px; border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff; color: #1e293b;">
+          <h2 style="color: #0f172a; margin-bottom: 4px;">Marketing Brief: ${clientName}</h2>
+          <p style="color: #64748b; margin-top: 0; margin-bottom: 20px; font-size: 13px;">
+            Workspace: <strong>${workspaceName}</strong> · Automated Executive Summary
+          </p>
+          <div style="font-size: 14px; line-height: 1.6; border-top: 1px solid #f1f5f9; padding-top: 16px;">
+            ${formattedHtml}
+          </div>
+          <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
+            © 2026 Monstera Cloud. All rights reserved.
+          </div>
+        </div>
+      `,
+    });
+
+    if (error) {
+      logger.error('[MAIL] ClientBrief Resend Error:', error);
+      return { success: false, error };
+    }
+    return { success: true, data };
+  } catch (err) {
+    logger.error('[MAIL] ClientBrief Unexpected Error:', err);
+    return { success: false, error: err };
+  }
+};
