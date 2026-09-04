@@ -25,6 +25,9 @@ import {
   ExternalLink,
   Layers,
   Sparkles,
+  ShieldAlert,
+  Send,
+  Flame,
 } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
@@ -40,17 +43,13 @@ import {
   type WorkspacePortfolioItem,
   type ClientWithConnections,
 } from "@/lib/agency-portfolio";
+import { ScheduleReportModal, type ReportScheduleData } from "@/components/clients/ScheduleReportModal";
+import { AnomalyDetailsModal } from "@/components/clients/AnomalyDetailsModal";
+import type { MarketingAnomaly } from "@/lib/marketing-anomalies";
 
-type ReportSchedule = {
-  id: string;
-  workspaceId: string;
-  clientId: string | null;
-  cron: string;
-  recipients: string;
-  enabled: boolean;
-  lastSentAt: string | null;
-  createdAt: string;
-  updatedAt: string;
+type ReportSchedule = ReportScheduleData & {
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 const fetcher = async (url: string) => {
@@ -94,6 +93,13 @@ export function ClientsClient() {
   const schedulesKey = activeWorkspaceId ? `/api/report-schedules?workspaceId=${activeWorkspaceId}` : null;
   const { data: schedules } = useSWR<ReportSchedule[]>(schedulesKey, fetcher);
 
+  const anomaliesKey = activeWorkspaceId ? `/api/anomalies?workspaceId=${activeWorkspaceId}` : null;
+  const { data: anomaliesData } = useSWR<{
+    anomalies: MarketingAnomaly[];
+    summary: { total: number; critical: number; warning: number };
+    byClient: Record<string, { clientName: string; anomalies: MarketingAnomaly[] }>;
+  }>(anomaliesKey, fetcher);
+
   const { data: workspaces, error: workspacesError, isLoading: workspacesLoading } = useSWR<WorkspacePortfolioItem[]>(
     "/api/workspaces",
     fetcher
@@ -106,7 +112,7 @@ export function ClientsClient() {
 
   // Portfolio controls
   const [viewMode, setViewMode] = useState<"clients" | "workspaces">("clients");
-  const [statusFilter, setStatusFilter] = useState<"all" | "attention" | "healthy">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "attention" | "healthy" | "anomalies">("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   // CRUD Form states
@@ -117,10 +123,10 @@ export function ClientsClient() {
   const [logoUrl, setLogoUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Schedule email form states
-  const [scheduleClientId, setScheduleClientId] = useState<string | null>(null);
-  const [scheduleRecipients, setScheduleRecipients] = useState("");
-  const [savingSchedule, setSavingSchedule] = useState(false);
+  // New Modal States
+  const [selectedClientForSchedule, setSelectedClientForSchedule] = useState<ClientWithConnections | null>(null);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [selectedAnomalies, setSelectedAnomalies] = useState<{ clientName?: string; anomalies: MarketingAnomaly[] } | null>(null);
 
   const resetForm = () => {
     setEditingId(null);
@@ -216,86 +222,16 @@ export function ClientsClient() {
     return m;
   }, [schedules]);
 
-  const openScheduleFor = (clientId: string) => {
-    const existing = scheduleByClient.get(clientId);
-    setScheduleClientId(clientId);
-    setScheduleRecipients(existing?.recipients ?? "");
+  const openScheduleModalFor = (client: ClientWithConnections) => {
+    setSelectedClientForSchedule(client);
+    setIsScheduleModalOpen(true);
   };
 
-  const closeSchedule = () => {
-    setScheduleClientId(null);
-    setScheduleRecipients("");
-  };
-
-  const saveSchedule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeWorkspaceId || !scheduleClientId) return;
-    const recipients = scheduleRecipients
-      .split(/[,\n;]/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (recipients.length === 0) {
-      toast.error("Add at least one recipient email.");
-      return;
-    }
-    setSavingSchedule(true);
-    try {
-      const res = await fetch("/api/report-schedules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          workspaceId: activeWorkspaceId,
-          clientId: scheduleClientId,
-          recipients: recipients.join(","),
-          cron: "0 9 * * 1",
-          enabled: true,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to save schedule");
-      toast.success("Weekly report scheduled — first send next Monday 09:00 UTC.");
-      await mutate(schedulesKey);
-      closeSchedule();
-    } catch (err: any) {
-      toast.error(err?.message || "Could not save schedule.");
-    } finally {
-      setSavingSchedule(false);
-    }
-  };
-
-  const pauseSchedule = async (scheduleId: string, nextEnabled: boolean) => {
-    try {
-      const res = await fetch("/api/report-schedules", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: scheduleId, enabled: nextEnabled }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed");
-      }
-      toast.success(nextEnabled ? "Schedule resumed." : "Schedule paused.");
-      await mutate(schedulesKey);
-    } catch (err: any) {
-      toast.error(err?.message || "Could not update schedule.");
-    }
-  };
-
-  const deleteSchedule = async (scheduleId: string) => {
-    if (!window.confirm("Remove this weekly report schedule?")) return;
-    try {
-      const res = await fetch(`/api/report-schedules?id=${encodeURIComponent(scheduleId)}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed");
-      }
-      toast.success("Schedule removed.");
-      await mutate(schedulesKey);
-    } catch (err: any) {
-      toast.error(err?.message || "Could not remove schedule.");
-    }
+  const openAnomaliesModal = (clientName?: string, anomalies?: MarketingAnomaly[]) => {
+    setSelectedAnomalies({
+      clientName,
+      anomalies: anomalies || anomaliesData?.anomalies || [],
+    });
   };
 
   // Summaries
@@ -311,6 +247,10 @@ export function ClientsClient() {
       const h = deriveClientHealth(c);
       if (statusFilter === "attention" && h.status !== "needs_attention") return false;
       if (statusFilter === "healthy" && h.status !== "healthy") return false;
+      if (statusFilter === "anomalies") {
+        const brandAnomalies = anomaliesData?.byClient?.[c.id]?.anomalies || [];
+        if (brandAnomalies.length === 0) return false;
+      }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchName = c.name.toLowerCase().includes(q);
@@ -319,7 +259,7 @@ export function ClientsClient() {
       }
       return true;
     });
-  }, [clientsList, statusFilter, searchQuery]);
+  }, [clientsList, statusFilter, searchQuery, anomaliesData]);
 
   const filteredWorkspaces = useMemo(() => {
     return workspacesList.filter((ws) => {
@@ -452,13 +392,31 @@ export function ClientsClient() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-line bg-panel/60 p-4">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-ink-mute">Sync Coverage</p>
-          <p className="mt-1 text-sm font-semibold text-ink">
-            {viewMode === "clients"
-              ? `${clientsSummary.healthyCount} of ${clientsSummary.totalClients} active`
-              : `${workspacesSummary.healthyCount} of ${workspacesSummary.totalWorkspaces} healthy`}
+        <div
+          onClick={() => openAnomaliesModal()}
+          className={cn(
+            "rounded-xl border p-4 cursor-pointer transition",
+            (anomaliesData?.summary?.total ?? 0) > 0
+              ? "border-rose-500/30 bg-rose-500/[0.06] hover:border-rose-500/50"
+              : "border-line bg-panel/60 hover:border-white/20"
+          )}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-ink-mute">Marketing Watchdog</p>
+            <ShieldAlert className={cn("w-4 h-4", (anomaliesData?.summary?.total ?? 0) > 0 ? "text-rose-400" : "text-ink-mute")} />
+          </div>
+          <p className="mt-1 text-2xl font-bold tracking-tight text-ink">
+            {anomaliesData?.summary?.total ?? 0}
           </p>
+          <div className="mt-2 flex items-center gap-1.5 text-xs">
+            {(anomaliesData?.summary?.critical ?? 0) > 0 ? (
+              <span className="text-rose-300 font-semibold">{anomaliesData?.summary?.critical} critical spend burn</span>
+            ) : (anomaliesData?.summary?.total ?? 0) > 0 ? (
+              <span className="text-amber-300 font-semibold">{anomaliesData?.summary?.warning} efficiency alerts</span>
+            ) : (
+              <span className="text-emerald-400 font-medium">Tracking healthy</span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -490,6 +448,19 @@ export function ClientsClient() {
             <AlertCircle className="h-3 w-3 text-red-400" />
             Needs Attention (
             {viewMode === "clients" ? clientsSummary.attentionCount : workspacesSummary.attentionCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter("anomalies")}
+            className={cn(
+              "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1.5",
+              statusFilter === "anomalies"
+                ? "bg-rose-950/40 text-rose-200 font-semibold border border-rose-900/50"
+                : "text-ink-mute hover:text-rose-300"
+            )}
+          >
+            <ShieldAlert className="h-3 w-3 text-rose-400" />
+            Anomalies ({anomaliesData?.summary?.total ?? 0})
           </button>
           <button
             type="button"
@@ -633,22 +604,69 @@ export function ClientsClient() {
                       ) : null}
                     </div>
 
+                    {/* Marketing Anomaly Alert Banner */}
+                    {(() => {
+                      const clientAnomalies = anomaliesData?.byClient?.[c.id]?.anomalies || [];
+                      if (clientAnomalies.length === 0) return null;
+                      const hasCritical = clientAnomalies.some((a) => a.severity === "critical");
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => openAnomaliesModal(c.name, clientAnomalies)}
+                          className={cn(
+                            "mb-3 w-full text-left rounded-lg border p-2.5 transition-colors group/anom",
+                            hasCritical
+                              ? "border-rose-900/50 bg-rose-950/30 hover:bg-rose-950/45"
+                              : "border-amber-900/50 bg-amber-950/20 hover:bg-amber-950/35"
+                          )}
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <span
+                              className={cn(
+                                "font-semibold flex items-center gap-1.5",
+                                hasCritical ? "text-rose-300" : "text-amber-300"
+                              )}
+                            >
+                              <Flame className="h-3.5 w-3.5 shrink-0" />
+                              {clientAnomalies.length} Anomaly {clientAnomalies.length === 1 ? "Alert" : "Alerts"}
+                            </span>
+                            <span
+                              className={cn(
+                                "text-[11px] group-hover/anom:underline flex items-center gap-0.5",
+                                hasCritical ? "text-rose-400" : "text-amber-400"
+                              )}
+                            >
+                              Triage <ArrowRight className="h-3 w-3" />
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] text-ink-mute truncate">
+                            {clientAnomalies[0].message}
+                          </p>
+                        </button>
+                      );
+                    })()}
+
                     {/* Weekly Schedule Banner */}
                     {schedule ? (
-                      <div
+                      <button
+                        type="button"
+                        onClick={() => openScheduleModalFor(c)}
                         className={cn(
-                          "mb-4 rounded-lg border px-3 py-2 text-xs",
+                          "mb-4 w-full text-left rounded-lg border px-3 py-2 text-xs transition-colors hover:border-white/30",
                           schedule.enabled
                             ? "border-emerald-900/40 bg-emerald-950/20 text-emerald-200"
                             : "border-line bg-canvas text-ink-mute"
                         )}
                       >
-                        <div className="flex items-center gap-1.5 font-semibold">
-                          <Calendar className="h-3.5 w-3.5" />
-                          {schedule.enabled ? "Weekly report: Mon 09:00 UTC" : "Weekly report paused"}
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 font-semibold">
+                            <Calendar className="h-3.5 w-3.5" />
+                            {schedule.enabled ? "Auto Brief Active" : "Brief Paused"}
+                          </span>
+                          <span className="text-[10px] text-ink-mute uppercase tracking-wider">Edit</span>
                         </div>
                         <div className="mt-0.5 truncate text-[11px] opacity-80">{schedule.recipients}</div>
-                      </div>
+                      </button>
                     ) : null}
 
                     {/* Card Actions */}
@@ -672,11 +690,11 @@ export function ClientsClient() {
                         <>
                           <button
                             type="button"
-                            onClick={() => openScheduleFor(c.id)}
+                            onClick={() => openScheduleModalFor(c)}
                             className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-medium text-ink-mute hover:text-ink hover:bg-white/[0.04] transition-colors"
                           >
-                            <Mail className="h-3.5 w-3.5" />
-                            {schedule ? "Schedule" : "Email"}
+                            <Send className="h-3.5 w-3.5" />
+                            {schedule ? "Dispatch" : "Schedule"}
                           </button>
                           <div className="ml-auto flex items-center gap-1">
                             <button
@@ -948,59 +966,31 @@ export function ClientsClient() {
         </div>
       ) : null}
 
-      {/* Schedule Email Modal */}
-      {scheduleClientId ? (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-4 sm:items-center backdrop-blur-xs">
-          <form
-            onSubmit={saveSchedule}
-            className="w-full max-w-md rounded-xl border border-line bg-panel p-6 shadow-2xl space-y-4"
-          >
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-bold text-ink">Weekly report schedule</h2>
-              <button
-                type="button"
-                onClick={closeSchedule}
-                className="rounded-md p-1 text-ink-mute hover:bg-white/[0.06] hover:text-white"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="text-xs text-ink-mute">
-              We’ll email a rolled-up sync summary every Monday at 09:00 UTC.
-            </p>
+      {/* Schedule Dispatch Modal */}
+      {selectedClientForSchedule && activeWorkspaceId ? (
+        <ScheduleReportModal
+          isOpen={isScheduleModalOpen}
+          onClose={() => {
+            setIsScheduleModalOpen(false);
+            setSelectedClientForSchedule(null);
+          }}
+          workspaceId={activeWorkspaceId}
+          client={{ id: selectedClientForSchedule.id, name: selectedClientForSchedule.name }}
+          initialSchedule={scheduleByClient.get(selectedClientForSchedule.id) || null}
+          onSaved={async () => {
+            if (schedulesKey) await mutate(schedulesKey);
+          }}
+        />
+      ) : null}
 
-            <div>
-              <label className="block text-xs font-semibold text-ink">
-                Recipients (comma-separated)
-              </label>
-              <textarea
-                value={scheduleRecipients}
-                onChange={(e) => setScheduleRecipients(e.target.value)}
-                rows={3}
-                placeholder="client@brand.com, you@agency.com"
-                className="mt-1 w-full resize-none rounded-md border border-line bg-canvas px-3 py-2 text-xs text-ink placeholder:text-ink-mute focus:border-white focus:outline-none"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-line">
-              <button
-                type="button"
-                onClick={closeSchedule}
-                className="rounded-md border border-line bg-canvas px-3.5 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.06]"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={savingSchedule || !scheduleRecipients.trim()}
-                className="rounded-md bg-white hover:bg-neutral-200 px-4 py-1.5 text-xs font-semibold text-black disabled:opacity-60 transition-colors shadow-xs"
-              >
-                {savingSchedule ? "Saving…" : "Save schedule"}
-              </button>
-            </div>
-          </form>
-        </div>
+      {/* Marketing Anomaly Details Modal */}
+      {selectedAnomalies ? (
+        <AnomalyDetailsModal
+          isOpen={Boolean(selectedAnomalies)}
+          onClose={() => setSelectedAnomalies(null)}
+          anomalies={selectedAnomalies.anomalies}
+          clientName={selectedAnomalies.clientName}
+        />
       ) : null}
     </PageShell>
   );

@@ -27,11 +27,12 @@ export async function GET(request: Request) {
     executeTask("shopeeRefresh", "/api/cron/shopee/refresh"),
   ]);
 
-  // Phase 3: Worker drain, health ticks, alerting, and billing expiry
+  // Phase 3: Worker drain, health ticks, alerting, reporting, and billing expiry
   const p3 = await Promise.all([
     executeTask("warehouseJobs", "/api/cron/warehouse-jobs"),
     executeTask("healthTick", "/api/cron/health-tick"),
     executeTask("alerts", "/api/cron/performance-alerts"),
+    executeTask("reportSchedules", "/api/cron/report-schedules"),
     executeTask("billingExpiry", "/api/cron/billing-expiry"),
   ]);
 

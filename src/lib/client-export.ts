@@ -9,6 +9,7 @@ export interface MetricRowExport {
   accountId?: string | null;
   campaignName?: string | null;
   campaignId?: string | null;
+  connectionId?: string | null;
   date: string;
   spend: number;
   impressions: number;
