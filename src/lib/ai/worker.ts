@@ -75,6 +75,12 @@ export async function executeClaimedAgentJob(
       evidence: turn.evidence,
       queuedCopy: turn.queuedCopy,
     },
+    model: turn.usage?.model,
+    provider: turn.usage?.provider,
+    promptVersion: turn.usage?.promptVersion,
+    inputTokens: turn.usage?.inputTokens,
+    outputTokens: turn.usage?.outputTokens,
+    costUsd: turn.usage?.costUsd,
   });
   return written ? "completed" : "lost";
 }

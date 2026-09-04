@@ -26,6 +26,11 @@ export async function enqueueAgentJob(opts: {
   result?: Record<string, unknown>;
   refusalCode?: string;
   costUsd?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  model?: string;
+  provider?: string;
+  promptVersion?: string;
 }): Promise<{ id: string }> {
   const created = await prisma.agentJob.create({
     data: {
@@ -37,6 +42,11 @@ export async function enqueueAgentJob(opts: {
       result: opts.result ?? undefined,
       refusalCode: opts.refusalCode,
       costUsd: opts.costUsd ?? 0,
+      inputTokens: opts.inputTokens ?? 0,
+      outputTokens: opts.outputTokens ?? 0,
+      model: opts.model,
+      provider: opts.provider,
+      promptVersion: opts.promptVersion,
       finishedAt: opts.status === "completed" ? new Date() : undefined,
     },
   });
@@ -140,6 +150,12 @@ export async function completeAgentJob(opts: {
   leaseId: string;
   result: Record<string, unknown>;
   refusalCode?: string;
+  model?: string;
+  provider?: string;
+  promptVersion?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
 }): Promise<boolean> {
   const now = new Date();
   const updated = await prisma.agentJob.updateMany({
@@ -153,9 +169,12 @@ export async function completeAgentJob(opts: {
       leaseId: null,
       leaseExpiresAt: null,
       heartbeatAt: now,
-      model: "deterministic",
-      provider: "deterministic",
-      promptVersion: "analyst.tools.v1",
+      model: opts.model ?? "deterministic",
+      provider: opts.provider ?? "deterministic",
+      promptVersion: opts.promptVersion ?? "analyst.tools.v1",
+      inputTokens: opts.inputTokens ?? 0,
+      outputTokens: opts.outputTokens ?? 0,
+      costUsd: opts.costUsd ?? 0,
     },
   });
   return updated.count === 1;

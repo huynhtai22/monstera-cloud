@@ -3,6 +3,12 @@ import { getAiTool } from "@/lib/ai/tools";
 import type { AiToolContext, AiToolResult } from "@/lib/ai/tools/types";
 import type { EvidencePack } from "@/lib/ai/evidence-pack";
 import type { ReportingReadiness } from "@/lib/reporting-readiness";
+import {
+  contextStrip,
+  formatGovernedAnswer,
+  generateGovernedNarrative,
+  type NarrativeUsage,
+} from "@/lib/ai/narrative";
 
 export type AnalystTurnStatus = "answered" | "refused" | "queued";
 
@@ -14,6 +20,7 @@ export type AnalystTurnResult = {
   blockers?: string[];
   evidence?: EvidencePack;
   queuedCopy?: string;
+  usage?: NarrativeUsage;
 };
 
 const QUEUED_COPY = "Deeper briefs queue for the nightly AI worker.";
@@ -81,6 +88,7 @@ export async function runAnalystTurn(opts: {
   const citations: EvidencePack["citations"] = [];
   const toolNotes: string[] = [];
   let readiness: ReportingReadiness | null = null;
+  let bestEffort = false;
 
   for (const name of classified.tools) {
     const tool = getAiTool(name);
@@ -119,21 +127,30 @@ export async function runAnalystTurn(opts: {
           evidence: packFromReadiness(readiness, citations),
         };
       }
+      if (readiness.status === "blocked" && opts.acknowledgeBestEffort) {
+        bestEffort = true;
+      }
     }
     toolNotes.push(`${name}: ${JSON.stringify(result.data).slice(0, 4000)}`);
   }
 
-  const mixed = (readiness?.currencies.length ?? 0) > 1;
-  const banners = [
-    `Freshness: ${readiness?.freshness ?? "unknown"}`,
-    `Currency: ${readiness?.currencies.join(", ") || "unknown"}${mixed ? " (per-currency totals only; not blended)" : ""}`,
-    "Attribution: platform-reported conversions (CampaignMetric.conversions / revenue)",
-    `Completeness: ${readiness?.sources.length ?? 0} sources; blockers: ${(readiness?.blockers ?? []).join(", ") || "none"}`,
-  ];
+  const strip = contextStrip(readiness, { bestEffort });
+  const dump = toolNotes.join("\n\n");
+  let body = dump;
+  let usage: NarrativeUsage | undefined;
+  // Interactive only: nightly Hobby budget cannot wait on Grok for a batch of jobs.
+  if (role === "interactive") {
+    const narrative = await generateGovernedNarrative({ question: opts.question, toolNotes });
+    if (narrative?.prose) {
+      body = narrative.prose;
+      usage = narrative.usage;
+    }
+  }
 
   return {
     status: "answered",
-    answer: `${banners.map((b) => `- ${b}`).join("\n")}\n\n${toolNotes.join("\n\n")}`,
+    answer: formatGovernedAnswer(strip, body),
+    blockers: bestEffort ? ["best_effort", ...(readiness?.blockers ?? [])] : readiness?.blockers,
     evidence: readiness
       ? packFromReadiness(readiness, citations)
       : {
@@ -144,5 +161,6 @@ export async function runAnalystTurn(opts: {
           attribution: { model: "platform_reported" },
           citations,
         },
+    usage,
   };
 }
