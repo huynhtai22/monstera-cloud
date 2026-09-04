@@ -19,6 +19,8 @@ export const CERTIFICATION_LEVELS = [
 
 export type CertificationLevel = (typeof CERTIFICATION_LEVELS)[number];
 
+export const MANDATORY_PRIOR_GATES: readonly CertificationLevel[] = CERTIFICATION_LEVELS.filter(level => level !== "PILOT_CERTIFIED");
+
 export type AdProvider = "google_ads" | "meta_ads" | "tiktok_business";
 
 export type GateStatus =

@@ -18,7 +18,7 @@
  * - Human review sign-off is a separate authenticated operator action.
  */
 
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -38,11 +38,13 @@ import {
   type EvidencePackSignOffInput,
   type GateStatus,
   type ProviderAccessFacts,
-  type VerifiedOperatorSignOff,
 } from "./types";
 import { METRIC_CONTRACTS, evaluateReconciliation } from "./metric-contracts";
 import { maskAccountId, sanitizeEvidence } from "./redaction";
 import { generateReviewerMarkdown } from "./report-generator";
+
+import { approveEvidence, attestEvidence, evidenceHash } from "./sign-off";
+export { assertMandatoryPriorGatesPassed } from "./sign-off";
 
 export interface InternalSimulationOptions {
   simulatedConnection?: boolean;
@@ -64,9 +66,9 @@ export interface InternalSimulationOptions {
   simulatePersistedLiveState?: boolean;
 }
 
-export const CURRENT_SCHEMA_VERSION = "20260904160000";
-export const HARNESS_VERSION = "1.2.0";
-export const EVIDENCE_PACK_SCHEMA_VERSION = "1.0.0";
+export const CURRENT_SCHEMA_VERSION = "20260905000000";
+export const HARNESS_VERSION = "1.3.0";
+export const EVIDENCE_PACK_SCHEMA_VERSION = "1.1.0";
 
 export function resolveRuntimeCommitSha(input?: CertificationHarnessInput): string {
   // 1. Trusted runtime metadata injected by server runtime (never browser client parameters)
@@ -158,10 +160,7 @@ export class CertificationHarness {
   }
 
   public static computeEvidencePackHash(pack: CertificationEvidencePack): string {
-    const { operatorSignOff: _unusedSignOff, ...basePack } = pack;
-    void _unusedSignOff;
-    const canonicalJson = JSON.stringify(basePack, Object.keys(basePack).sort());
-    return createHash("sha256").update(canonicalJson).digest("hex");
+    return evidenceHash(pack);
   }
 
   /**
@@ -793,298 +792,15 @@ export class CertificationHarness {
    * Requires verified platform role, server timestamp, and SHA-256 hash match.
    * STRICTLY REFUSES synthetic fixtures, dirty working trees, or incomplete prior gates.
    */
-  public async signOffEvidencePack(
-    input: EvidencePackSignOffInput
-  ): Promise<{
-    signedEvidencePack: CertificationEvidencePack;
-    markdownReport: string;
-  }> {
-    if (!input.workspaceId || typeof input.workspaceId !== "string") {
-      throw new Error("workspaceId is required for sign-off");
-    }
-    if (!input.evidencePackId || typeof input.evidencePackId !== "string") {
-      throw new Error("evidencePackId is required for sign-off");
-    }
-    if (!input.expectedEvidencePackHash || typeof input.expectedEvidencePackHash !== "string") {
-      throw new Error("expectedEvidencePackHash is required for sign-off");
-    }
-    if (!input.reviewerUserId || typeof input.reviewerUserId !== "string" || input.reviewerUserId.trim().length === 0) {
-      throw new Error("Security violation: Valid authenticated reviewerUserId is required for sign-off.");
-    }
-    if (input.reviewerRole !== "OPERATOR") {
-      throw new Error(
-        `Security violation: Reviewer role '${input.reviewerRole}' is not authorized for certification sign-off. Final pilot certification requires OPERATOR platform role.`
-      );
-    }
-
-    // Resolve pack from active memory cache or database
-    let pack = CertificationHarness.getActiveEvidencePack(input.evidencePackId);
-    if (pack && pack.workspaceId !== input.workspaceId) {
-      pack = undefined;
-    }
-    if (!pack) {
-      try {
-        const record = await withSystemScope(() =>
-          prisma.evidencePackRecord.findFirst({
-            where: {
-              workspaceId: input.workspaceId,
-              jobId: input.evidencePackId,
-            },
-            orderBy: { createdAt: "desc" },
-          })
-        );
-        if (record?.pack && typeof record.pack === "object") {
-          pack = record.pack as unknown as CertificationEvidencePack;
-        }
-      } catch {
-        // DB lookup failure
-      }
-    }
-
-    if (!pack || pack.workspaceId !== input.workspaceId) {
-      throw new Error(`Evidence pack '${input.evidencePackId}' not found in workspace '${input.workspaceId}'.`);
-    }
-
-    // Replay / Double approval check
-    if (pack.operatorSignOff || pack.highestProvenLevel === "PILOT_CERTIFIED") {
-      throw new Error(
-        `Security violation: Evidence pack '${input.evidencePackId}' has already been signed off at ${pack.operatorSignOff?.signedAt || "an earlier time"}. Repeated approval is prohibited.`
-      );
-    }
-
-    // 1. Prohibit signing off synthetic fixtures
-    if (pack.evidenceClass === "synthetic_fixture") {
-      throw new Error(
-        "Security violation: Only live_certification_evidence packs are eligible for human review sign-off. Synthetic fixtures cannot be signed off."
-      );
-    }
-
-    // 2. Prohibit signing off dirty tree
-    if (pack.workingTreeDirty) {
-      throw new Error(
-        "Security violation: Cannot sign off an evidence pack produced from a dirty or uncommitted working tree."
-      );
-    }
-
-    // 3. Verify cryptographic hash
-    const computedHash = CertificationHarness.computeEvidencePackHash(pack);
-    if (computedHash !== input.expectedEvidencePackHash) {
-      throw new Error(
-        `Security violation: Evidence pack hash mismatch. Expected ${input.expectedEvidencePackHash}, computed ${computedHash}. Pack may have been tampered with.`
-      );
-    }
-
-    // 4. Verify that all mandatory prior gates passed
-    const requiredPriorGates: CertificationLevel[] = [
-      "CODE_VERIFIED",
-      "LIVE_CONNECTED",
-      "LIVE_IMPORTED",
-      "LIVE_RECONCILED",
-      "DESTINATION_VERIFIED",
-      "RECOVERY_VERIFIED",
-    ];
-
-    for (const gate of requiredPriorGates) {
-      const gateResult = pack.gateOutcomes.find((g) => g.gate === gate);
-      if (!gateResult || gateResult.status !== "PASSED") {
-        throw new Error(
-          `Security violation: Cannot sign off evidence pack because mandatory gate '${gate}' has status '${gateResult?.status || "MISSING"}'. All prior gates must be PASSED.`
-        );
-      }
-    }
-
-    // Sandbox check: must be PASSED or legitimately NOT_APPLICABLE
-    const sandboxResult = pack.gateOutcomes.find((g) => g.gate === "SANDBOX_VERIFIED");
-    if (sandboxResult && sandboxResult.status !== "PASSED" && sandboxResult.status !== "NOT_APPLICABLE") {
-      throw new Error(
-        `Security violation: Cannot sign off evidence pack because gate 'SANDBOX_VERIFIED' has status '${sandboxResult.status}'.`
-      );
-    }
-
-    // 5. Apply authenticated sign-off
-    const signedAt = new Date().toISOString();
-    const operatorSignOff: VerifiedOperatorSignOff = {
-      reviewerUserId: input.reviewerUserId,
-      reviewerRole: "OPERATOR",
-      signedAt,
-      evidencePackId: pack.runId,
-      evidencePackHash: computedHash,
-      commitSha: pack.metadata.commitSha,
-      schemaVersion: pack.metadata.schemaVersion,
-      comments: input.comments,
-    };
-
-    pack.operatorSignOff = operatorSignOff;
-    pack.highestProvenLevel = "PILOT_CERTIFIED";
-    pack.pilotEligible = true;
-    pack.certificationEligible = true;
-    pack.metadata.certificationEligible = true;
-
-    // Remove HUMAN_SIGN_OFF_REQUIRED blocker
-    pack.blockers = pack.blockers.filter((b) => b.category !== "HUMAN_SIGN_OFF_REQUIRED");
-
-    // Update PILOT_CERTIFIED gate outcome
-    const pilotGateIdx = pack.gateOutcomes.findIndex((g) => g.gate === "PILOT_CERTIFIED");
-    const pilotGateOutcome: CertificationGateResult = {
-      gate: "PILOT_CERTIFIED",
-      status: "PASSED",
-      timestamp: signedAt,
-      details: `Pilot certification signed off by verified ${input.reviewerRole} (${input.reviewerUserId}) with hash ${computedHash.slice(0, 12)}...`,
-      evidence: {
-        operatorSignOff,
-      },
-    };
-
-    if (pilotGateIdx >= 0) {
-      pack.gateOutcomes[pilotGateIdx] = pilotGateOutcome;
-    } else {
-      pack.gateOutcomes.push(pilotGateOutcome);
-    }
-
-    // Persist signed pack
-    await this.persistEvidenceDurable(pack, input.workspaceId, pack.runId);
-
-    // Emit explicit sign-off audit event
-    try {
-      await withSystemScope(async () => {
-        await prisma.auditEvent.create({
-          data: {
-            workspaceId: input.workspaceId,
-            action: "ad_connector_certification.signed_off",
-            resource: "connection",
-            resourceId: pack.provider,
-            metadata: {
-              runId: pack.runId,
-              provider: pack.provider,
-              reviewerUserId: input.reviewerUserId,
-              reviewerRole: input.reviewerRole,
-              signedAt,
-              evidencePackHash: computedHash,
-              highestProvenLevel: "PILOT_CERTIFIED",
-            },
-          },
-        });
-      });
-    } catch {
-      // Best effort for test runs without live DB
-    }
-
-    // Save in in-memory registry
-    CertificationHarness.registerActiveEvidencePack(pack);
-
-    const markdownReport = generateReviewerMarkdown(pack);
-
-    return {
-      signedEvidencePack: pack,
-      markdownReport,
-    };
+  public async signOffEvidencePack(input: EvidencePackSignOffInput) {
+    return approveEvidence(input, { commitSha: resolveRuntimeCommitSha(), schemaVersion: resolveRuntimeSchemaVersion() });
   }
 
-  /**
-   * Workspace-owner attestation: represents formal acknowledgment by the workspace owner.
-   * CRITICAL SECURITY INVARIANT: Workspace-owner attestation DOES NOT award PILOT_CERTIFIED status.
-   */
   public async attestWorkspaceOwner(input: {
-    workspaceId: string;
-    evidencePackId: string;
-    expectedEvidencePackHash: string;
-    ownerUserId: string;
-    comments?: string;
-  }): Promise<{ pack: CertificationEvidencePack; markdownReport: string }> {
-    if (!input.workspaceId || typeof input.workspaceId !== "string") {
-      throw new Error("workspaceId is required for attestation");
-    }
-    if (!input.evidencePackId || typeof input.evidencePackId !== "string") {
-      throw new Error("evidencePackId is required for attestation");
-    }
-    if (!input.expectedEvidencePackHash || typeof input.expectedEvidencePackHash !== "string") {
-      throw new Error("expectedEvidencePackHash is required for attestation");
-    }
-    if (!input.ownerUserId || typeof input.ownerUserId !== "string" || input.ownerUserId.trim().length === 0) {
-      throw new Error("Security violation: Valid authenticated ownerUserId is required for attestation.");
-    }
-
-    let pack = CertificationHarness.getActiveEvidencePack(input.evidencePackId);
-    if (!pack || pack.workspaceId !== input.workspaceId) {
-      try {
-        const record = await withSystemScope(() =>
-          prisma.evidencePackRecord.findFirst({
-            where: {
-              workspaceId: input.workspaceId,
-              jobId: input.evidencePackId,
-            },
-            orderBy: { createdAt: "desc" },
-          })
-        );
-        if (record?.pack && typeof record.pack === "object") {
-          pack = record.pack as unknown as CertificationEvidencePack;
-        }
-      } catch {
-        // DB lookup failure
-      }
-    }
-
-    if (!pack || pack.workspaceId !== input.workspaceId) {
-      throw new Error(`Evidence pack '${input.evidencePackId}' not found in workspace '${input.workspaceId}'.`);
-    }
-
-    if (pack.evidenceClass === "synthetic_fixture") {
-      throw new Error("Security violation: Synthetic fixtures cannot receive workspace owner attestation.");
-    }
-
-    const computedHash = CertificationHarness.computeEvidencePackHash(pack);
-    if (computedHash !== input.expectedEvidencePackHash) {
-      throw new Error(
-        `Security violation: Evidence pack hash mismatch. Expected ${input.expectedEvidencePackHash}, computed ${computedHash}. Pack may have been tampered with.`
-      );
-    }
-
-    if (pack.ownerAttestation) {
-      throw new Error(
-        `Security violation: Evidence pack '${input.evidencePackId}' has already received workspace owner attestation at ${pack.ownerAttestation.attestedAt}.`
-      );
-    }
-
-    const attestedAt = new Date().toISOString();
-    pack.ownerAttestation = {
-      ownerUserId: input.ownerUserId,
-      ownerRole: "owner",
-      attestedAt,
-      comments: input.comments,
-    };
-
-    // Note: Workspace owner attestation does NOT award PILOT_CERTIFIED status.
-    // pack.highestProvenLevel remains at its existing level (e.g. RECOVERY_VERIFIED).
-
-    await this.persistEvidenceDurable(pack, input.workspaceId, pack.runId);
-
-    try {
-      await withSystemScope(async () => {
-        await prisma.auditEvent.create({
-          data: {
-            workspaceId: input.workspaceId,
-            action: "ad_connector_certification.owner_attested",
-            resource: "connection",
-            resourceId: pack.provider,
-            metadata: {
-              runId: pack.runId,
-              provider: pack.provider,
-              ownerUserId: input.ownerUserId,
-              ownerRole: "owner",
-              attestedAt,
-              highestProvenLevel: pack.highestProvenLevel,
-              pilotEligible: pack.pilotEligible,
-            },
-          },
-        });
-      });
-    } catch {
-      // Best-effort
-    }
-
-    CertificationHarness.registerActiveEvidencePack(pack);
-    const markdownReport = generateReviewerMarkdown(pack);
-    return { pack, markdownReport };
+    workspaceId: string; evidencePackId: string; expectedEvidencePackHash: string;
+    ownerUserId: string; comments?: string;
+  }) {
+    return attestEvidence(input, { commitSha: resolveRuntimeCommitSha(), schemaVersion: resolveRuntimeSchemaVersion() });
   }
 
   private validateInput(input: CertificationHarnessInput): void {

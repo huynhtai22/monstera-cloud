@@ -984,6 +984,7 @@ model EvidencePackRecord {
   workspaceId String
   jobId       String
   pack        Json
+  certifiedPack Json? // Approved projection; immutable base evidence remains in pack.
   createdAt   DateTime @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 

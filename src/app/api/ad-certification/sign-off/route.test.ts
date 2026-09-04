@@ -12,6 +12,11 @@ const originalWorkspace = (prisma as any).workspace;
 const originalWorkspaceMember = (prisma as any).workspaceMember;
 const originalEvidencePackRecord = (prisma as any).evidencePackRecord;
 const originalAuditEvent = (prisma as any).auditEvent;
+const originalTransaction = (prisma as any).$transaction;
+const originalQueryRaw = prisma.$queryRaw;
+const originalSha = process.env.RUNTIME_COMMIT_SHA;
+
+let mockDbRecords: Map<string, any>;
 
 function jsonRequest(body: unknown) {
   return new Request("https://monstera.test/api/ad-certification/sign-off", {
@@ -31,6 +36,7 @@ describe("POST /api/ad-certification/sign-off (Server-Authenticated Certificatio
 
   beforeEach(async () => {
     auditEvents = [];
+    process.env.RUNTIME_COMMIT_SHA = "2d963fd5e0bf226197abf5c65679462e6d915d90";
 
     // Create a complete live evidence pack with all prior gates passed
     const liveRun = await testHarness.executeTestSimulation(
@@ -44,7 +50,7 @@ describe("POST /api/ad-certification/sign-off (Server-Authenticated Certificatio
         evidenceClass: "live_certification_evidence",
         trustedRuntimeMetadata: {
           commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
-          schemaVersion: "20260904160000",
+          schemaVersion: "20260905000000",
           workingTreeDirty: false,
         },
         simulation: {
@@ -90,7 +96,7 @@ describe("POST /api/ad-certification/sign-off (Server-Authenticated Certificatio
       evidenceClass: "synthetic_fixture",
       trustedRuntimeMetadata: {
         commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
-        schemaVersion: "20260904160000",
+        schemaVersion: "20260905000000",
         workingTreeDirty: false,
       },
     });
@@ -158,28 +164,71 @@ describe("POST /api/ad-certification/sign-off (Server-Authenticated Certificatio
         return null;
       },
     };
+    mockDbRecords = new Map<string, any>();
+    mockDbRecords.set(`ws-primary:${livePack.runId}`, {
+      id: "rec-live-1",
+      workspaceId: "ws-primary",
+      jobId: livePack.runId,
+      pack: JSON.parse(JSON.stringify(livePack)),
+      createdAt: new Date(),
+    });
+    mockDbRecords.set(`ws-primary:${syntheticPack.runId}`, {
+      id: "rec-synth-1",
+      workspaceId: "ws-primary",
+      jobId: syntheticPack.runId,
+      pack: JSON.parse(JSON.stringify(syntheticPack)),
+      createdAt: new Date(),
+    });
+    mockDbRecords.set(`ws-primary:${incompletePack.runId}`, {
+      id: "rec-inc-1",
+      workspaceId: "ws-primary",
+      jobId: incompletePack.runId,
+      pack: JSON.parse(JSON.stringify(incompletePack)),
+      createdAt: new Date(),
+    });
 
     (prisma as any).evidencePackRecord = {
       findFirst: async ({ where }: any) => {
-        if (where.workspaceId === "ws-primary" && where.jobId === livePack.runId) {
-          return { workspaceId: "ws-primary", jobId: livePack.runId, pack: livePack };
-        }
-        if (where.workspaceId === "ws-primary" && where.jobId === syntheticPack.runId) {
-          return { workspaceId: "ws-primary", jobId: syntheticPack.runId, pack: syntheticPack };
-        }
-        if (where.workspaceId === "ws-primary" && where.jobId === incompletePack.runId) {
-          return { workspaceId: "ws-primary", jobId: incompletePack.runId, pack: incompletePack };
+        const key = `${where.workspaceId}:${where.jobId}`;
+        const rec = mockDbRecords.get(key);
+        return rec ? JSON.parse(JSON.stringify(rec)) : null;
+      },
+      update: async ({ where, data }: any) => {
+        for (const rec of mockDbRecords.values()) {
+          if (rec.id === where.id) {
+            Object.assign(rec, JSON.parse(JSON.stringify(data)));
+            return rec;
+          }
         }
         return null;
       },
-      create: async ({ data }: any) => data,
+      create: async ({ data }: any) => {
+        const id = "rec-" + Math.random().toString(36).slice(2);
+        const rec = { id, ...data, createdAt: new Date() };
+        mockDbRecords.set(`${data.workspaceId}:${data.jobId}`, rec);
+        return rec;
+      },
     };
 
     (prisma as any).auditEvent = {
+      findFirst: async ({ where }: any) => auditEvents.find((event: any) => event.action === where.action && event.metadata.evidenceRecordId === where.metadata.equals) ?? null,
       create: async ({ data }: any) => {
         auditEvents.push(data);
         return data;
       },
+    };
+
+    (prisma as any).$queryRaw = async (_sql: unknown, workspaceId: string, runId: string) => {
+      const record = mockDbRecords.get(`${workspaceId}:${runId}`);
+      return record ? [structuredClone(record)] : [];
+    };
+    // Model transaction serialization for route unit tests only; real lock/rollback
+    // behavior is verified independently by sign-off.pg.integration.test.ts.
+    let pending = Promise.resolve();
+    (prisma as any).$transaction = (fn: any) => {
+      const result = pending.then(() => fn(prisma));
+      pending = result.then(() => undefined, () => undefined);
+      return result;
     };
   });
 
@@ -190,6 +239,9 @@ describe("POST /api/ad-certification/sign-off (Server-Authenticated Certificatio
     (prisma as any).workspaceMember = originalWorkspaceMember;
     (prisma as any).evidencePackRecord = originalEvidencePackRecord;
     (prisma as any).auditEvent = originalAuditEvent;
+    (prisma as any).$transaction = originalTransaction;
+    (prisma as any).$queryRaw = originalQueryRaw;
+    if (originalSha === undefined) delete process.env.RUNTIME_COMMIT_SHA; else process.env.RUNTIME_COMMIT_SHA = originalSha;
   });
 
   // 1. Signed-out users
@@ -534,5 +586,152 @@ describe("POST /api/ad-certification/sign-off (Server-Authenticated Certificatio
     assert.equal((signOffAudit.metadata as any).reviewerUserId, "user-operator");
     assert.equal((signOffAudit.metadata as any).reviewerRole, "OPERATOR");
     assert.equal((signOffAudit.metadata as any).highestProvenLevel, "PILOT_CERTIFIED");
+  });
+
+  // 11. Transactional Concurrency: Multiple simultaneous sign-off requests
+  it("handles multiple simultaneous sign-off requests: exactly one succeeds with 200, others return 409 Conflict without duplicate audit events", async () => {
+    setAuthSessionOverride(async () => ({
+      user: { id: "user-operator" },
+      expires: new Date(Date.now() + 86400000).toISOString(),
+    }));
+
+    const requests = [
+      jsonRequest({
+        workspaceId: "ws-primary",
+        evidencePackId: livePack.runId,
+        expectedEvidencePackHash: livePackHash,
+        comments: "Simultaneous attempt 1",
+      }),
+      jsonRequest({
+        workspaceId: "ws-primary",
+        evidencePackId: livePack.runId,
+        expectedEvidencePackHash: livePackHash,
+        comments: "Simultaneous attempt 2",
+      }),
+      jsonRequest({
+        workspaceId: "ws-primary",
+        evidencePackId: livePack.runId,
+        expectedEvidencePackHash: livePackHash,
+        comments: "Simultaneous attempt 3",
+      }),
+    ];
+
+    const responses = await Promise.all(requests.map((req) => POST(req)));
+    const statuses = responses.map((res) => res.status);
+
+    const successCount = statuses.filter((s) => s === 200).length;
+    const conflictCount = statuses.filter((s) => s === 409).length;
+
+    assert.equal(successCount, 1, "Exactly one sign-off request must succeed with 200");
+    assert.equal(conflictCount, 2, "Other simultaneous requests must return 409 Conflict");
+
+    // Verify audit events: exactly one signed_off audit event exists
+    const signOffAudits = auditEvents.filter(
+      (e) => e.action === "ad_connector_certification.signed_off"
+    );
+    assert.equal(signOffAudits.length, 1, "Exactly one sign-off audit event must be created without duplicates");
+  });
+
+  // 12. Authoritative State Machine: Missing LIVE_IMPORTED prevents certification
+  it("rejects sign-off when LIVE_IMPORTED gate is missing or blocked with 400 Bad Request", async () => {
+    setAuthSessionOverride(async () => ({
+      user: { id: "user-operator" },
+      expires: new Date(Date.now() + 86400000).toISOString(),
+    }));
+
+    const packWithoutImport = JSON.parse(JSON.stringify(livePack));
+    packWithoutImport.runId = "pack-no-import";
+    const importGate = packWithoutImport.gateOutcomes.find((g: any) => g.gate === "LIVE_IMPORTED");
+    if (importGate) {
+      importGate.status = "BLOCKED";
+      importGate.details = "Import pipeline execution failed";
+    }
+    const packHash = CertificationHarness.computeEvidencePackHash(packWithoutImport);
+
+    mockDbRecords.set(`ws-primary:${packWithoutImport.runId}`, {
+      id: "rec-no-import",
+      workspaceId: "ws-primary",
+      jobId: packWithoutImport.runId,
+      pack: packWithoutImport,
+      createdAt: new Date(),
+    });
+
+    const res = await POST(
+      jsonRequest({
+        workspaceId: "ws-primary",
+        evidencePackId: packWithoutImport.runId,
+        expectedEvidencePackHash: packHash,
+      })
+    );
+
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.ok(body.error.includes("LIVE_IMPORTED"));
+    assert.ok(body.error.includes("BLOCKED"));
+  });
+
+  // 13. Authoritative State Machine: Missing DESTINATION_VERIFIED prevents certification
+  it("rejects sign-off when DESTINATION_VERIFIED gate is missing or blocked with 400 Bad Request", async () => {
+    setAuthSessionOverride(async () => ({
+      user: { id: "user-operator" },
+      expires: new Date(Date.now() + 86400000).toISOString(),
+    }));
+
+    const packWithoutDest = JSON.parse(JSON.stringify(livePack));
+    packWithoutDest.runId = "pack-no-dest";
+    const destGate = packWithoutDest.gateOutcomes.find((g: any) => g.gate === "DESTINATION_VERIFIED");
+    if (destGate) {
+      destGate.status = "BLOCKED";
+      destGate.details = "Destination verification pending delivery receipt";
+    }
+    const packHash = CertificationHarness.computeEvidencePackHash(packWithoutDest);
+
+    mockDbRecords.set(`ws-primary:${packWithoutDest.runId}`, {
+      id: "rec-no-dest",
+      workspaceId: "ws-primary",
+      jobId: packWithoutDest.runId,
+      pack: packWithoutDest,
+      createdAt: new Date(),
+    });
+
+    const res = await POST(
+      jsonRequest({
+        workspaceId: "ws-primary",
+        evidencePackId: packWithoutDest.runId,
+        expectedEvidencePackHash: packHash,
+      })
+    );
+
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.ok(body.error.includes("DESTINATION_VERIFIED"));
+    assert.ok(body.error.includes("BLOCKED"));
+  });
+
+  // 14. PostgreSQL Only: In-memory cache alone is rejected
+  it("rejects sign-off when evidence pack is only in in-memory cache but not in PostgreSQL with 404 Not Found", async () => {
+    setAuthSessionOverride(async () => ({
+      user: { id: "user-operator" },
+      expires: new Date(Date.now() + 86400000).toISOString(),
+    }));
+
+    const inMemoryOnlyPack = JSON.parse(JSON.stringify(livePack));
+    inMemoryOnlyPack.runId = "pack-memory-only";
+    CertificationHarness.registerActiveEvidencePack(inMemoryOnlyPack);
+    const packHash = CertificationHarness.computeEvidencePackHash(inMemoryOnlyPack);
+
+    // Note: Record is deliberately NOT added to mockDbRecords (not in PostgreSQL)
+
+    const res = await POST(
+      jsonRequest({
+        workspaceId: "ws-primary",
+        evidencePackId: inMemoryOnlyPack.runId,
+        expectedEvidencePackHash: packHash,
+      })
+    );
+
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.ok(body.error.includes("not found in database"));
   });
 });

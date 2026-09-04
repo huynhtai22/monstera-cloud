@@ -15,6 +15,7 @@ const FORBIDDEN_CALLER_INPUT_FIELDS = [
   "certificationEligible",
 ];
 
+
 export async function POST(request: Request) {
   // 1. Session authentication
   const session = await getAuthSession();
@@ -27,6 +28,9 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
@@ -43,6 +47,9 @@ export async function POST(request: Request) {
   }
 
   const { workspaceId, evidencePackId, expectedEvidencePackHash, comments, action } = body;
+  if (action !== undefined && action !== "owner_attest" && action !== "sign_off") {
+    return NextResponse.json({ error: "Unknown certification action" }, { status: 400 });
+  }
 
   if (!workspaceId || typeof workspaceId !== "string" || workspaceId.trim().length === 0) {
     return NextResponse.json({ error: "workspaceId is required" }, { status: 400 });
@@ -135,17 +142,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
   }
 
-  // 8. Execute Sign-Off via CertificationHarness
+  // 8. Execute Sign-Off via CertificationHarness in an atomic transaction with concurrency control
   const harness = new CertificationHarness();
   try {
     const result = await harness.signOffEvidencePack({
-      workspaceId,
-      evidencePackId,
-      expectedEvidencePackHash,
-      reviewerUserId: user.id,
-      reviewerRole: "OPERATOR",
-      comments: typeof comments === "string" ? comments : undefined,
-    });
+        workspaceId,
+        evidencePackId,
+        expectedEvidencePackHash,
+        reviewerUserId: user.id,
+        reviewerRole: "OPERATOR",
+        comments: typeof comments === "string" ? comments : undefined,
+      });
 
     return NextResponse.json({
       ok: true,
@@ -157,7 +164,10 @@ export async function POST(request: Request) {
     if (message.includes("not found")) {
       return NextResponse.json({ error: message }, { status: 404 });
     }
-    if (message.includes("already been signed off")) {
+    if (
+      message.includes("already been signed off") ||
+      message.includes("Repeated approval is prohibited")
+    ) {
       return NextResponse.json({ error: message }, { status: 409 });
     }
     return NextResponse.json({ error: message }, { status: 400 });
