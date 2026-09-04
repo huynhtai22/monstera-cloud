@@ -144,6 +144,7 @@ model Workspace {
   agentJobs           AgentJob[]
   agentTraces         AgentTrace[]
   evidencePacks       EvidencePackRecord[]
+  connectorRunArtifacts ConnectorRunArtifact[]
   payloadDiscoveries  PayloadSchemaDiscovery[]
   schemaProposals     SchemaPatchProposal[]
   paymentOrders       PaymentOrder[]
@@ -989,6 +990,24 @@ model EvidencePackRecord {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, jobId])
+}
+
+model ConnectorRunArtifact {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  connectionId  String
+  runId         String
+  provider      String
+  kind          String
+  payloadHash   String
+  payload       Json
+  retainedUntil DateTime
+  createdAt     DateTime @default(now())
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // One verdict artifact per run: repeat publication conflicts instead of duplicating.
+  @@unique([runId, kind])
+  @@index([workspaceId, connectionId])
 }
 
 model PayloadSchemaDiscovery {
