@@ -30,18 +30,24 @@ export async function GET(req: Request) {
 
     await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer" });
 
-    // Validate date bounds (default to last 7 days)
+    // Validate date bounds (default to last 7 days, max range 90 days)
     const now = new Date();
     const end = endDateParam ? new Date(endDateParam) : now;
     if (!endDateParam || !endDateParam.includes("T")) {
       end.setUTCHours(23, 59, 59, 999);
     }
 
-    const start = startDateParam
+    let start = startDateParam
       ? new Date(startDateParam)
       : new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     if (!startDateParam || !startDateParam.includes("T")) {
       start.setUTCHours(0, 0, 0, 0);
+    }
+
+    // Safety: bound maximum date range to 90 days
+    const MAX_RANGE_MS = 90 * 24 * 60 * 60 * 1000;
+    if (end.getTime() - start.getTime() > MAX_RANGE_MS) {
+      start = new Date(end.getTime() - MAX_RANGE_MS);
     }
 
     let clientInfo: { id: string; name: string } | null = null;
@@ -52,26 +58,27 @@ export async function GET(req: Request) {
         where: { id: clientId, workspaceId },
         select: { id: true, name: true },
       });
-      if (client) {
-        clientInfo = client;
-        const conns = await prisma.connection.findMany({
-          where: { workspaceId, clientId },
-          select: { id: true },
-        });
-        connectionIds = conns.map((c) => c.id);
+      if (!client) {
+        return NextResponse.json({ error: "Client not found in this workspace" }, { status: 404 });
+      }
+      clientInfo = client;
+      const conns = await prisma.connection.findMany({
+        where: { workspaceId, clientId },
+        select: { id: true },
+      });
+      connectionIds = conns.map((c) => c.id);
 
-        if (connectionIds.length === 0) {
-          return NextResponse.json({
-            report: buildPerformanceReport([]),
-            client: clientInfo,
-            anomalies: [],
-            dateRange: {
-              startDate: start.toISOString().split("T")[0],
-              endDate: end.toISOString().split("T")[0],
-            },
-            latestDataDate: null,
-          });
-        }
+      if (connectionIds.length === 0) {
+        return NextResponse.json({
+          report: buildPerformanceReport([]),
+          client: clientInfo,
+          anomalies: [],
+          dateRange: {
+            startDate: start.toISOString().split("T")[0],
+            endDate: end.toISOString().split("T")[0],
+          },
+          latestDataDate: null,
+        });
       }
     }
 
@@ -89,6 +96,7 @@ export async function GET(req: Request) {
 
     const dbRows = await prisma.campaignMetric.findMany({
       where: whereClause,
+      take: 10_000,
       select: {
         platform: true,
         accountId: true,
