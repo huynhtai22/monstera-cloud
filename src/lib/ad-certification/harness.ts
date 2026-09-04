@@ -159,6 +159,7 @@ export class CertificationHarness {
 
   public static computeEvidencePackHash(pack: CertificationEvidencePack): string {
     const { operatorSignOff: _unusedSignOff, ...basePack } = pack;
+    void _unusedSignOff;
     const canonicalJson = JSON.stringify(basePack, Object.keys(basePack).sort());
     return createHash("sha256").update(canonicalJson).digest("hex");
   }
@@ -810,15 +811,17 @@ export class CertificationHarness {
     if (!input.reviewerUserId || typeof input.reviewerUserId !== "string" || input.reviewerUserId.trim().length === 0) {
       throw new Error("Security violation: Valid authenticated reviewerUserId is required for sign-off.");
     }
-    const authorizedRoles = ["WORKSPACE_OWNER", "PLATFORM_SECURITY_LEAD", "COMPLIANCE_OFFICER"];
-    if (!authorizedRoles.includes(input.reviewerRole)) {
+    if (input.reviewerRole !== "OPERATOR") {
       throw new Error(
-        `Security violation: Reviewer role '${input.reviewerRole}' is not authorized for certification sign-off. Authorized roles: ${authorizedRoles.join(", ")}`
+        `Security violation: Reviewer role '${input.reviewerRole}' is not authorized for certification sign-off. Final pilot certification requires OPERATOR platform role.`
       );
     }
 
     // Resolve pack from active memory cache or database
     let pack = CertificationHarness.getActiveEvidencePack(input.evidencePackId);
+    if (pack && pack.workspaceId !== input.workspaceId) {
+      pack = undefined;
+    }
     if (!pack) {
       try {
         const record = await withSystemScope(() =>
@@ -838,8 +841,15 @@ export class CertificationHarness {
       }
     }
 
-    if (!pack) {
+    if (!pack || pack.workspaceId !== input.workspaceId) {
       throw new Error(`Evidence pack '${input.evidencePackId}' not found in workspace '${input.workspaceId}'.`);
+    }
+
+    // Replay / Double approval check
+    if (pack.operatorSignOff || pack.highestProvenLevel === "PILOT_CERTIFIED") {
+      throw new Error(
+        `Security violation: Evidence pack '${input.evidencePackId}' has already been signed off at ${pack.operatorSignOff?.signedAt || "an earlier time"}. Repeated approval is prohibited.`
+      );
     }
 
     // 1. Prohibit signing off synthetic fixtures
@@ -895,7 +905,7 @@ export class CertificationHarness {
     const signedAt = new Date().toISOString();
     const operatorSignOff: VerifiedOperatorSignOff = {
       reviewerUserId: input.reviewerUserId,
-      reviewerRole: input.reviewerRole,
+      reviewerRole: "OPERATOR",
       signedAt,
       evidencePackId: pack.runId,
       evidencePackHash: computedHash,
@@ -934,6 +944,31 @@ export class CertificationHarness {
     // Persist signed pack
     await this.persistEvidenceDurable(pack, input.workspaceId, pack.runId);
 
+    // Emit explicit sign-off audit event
+    try {
+      await withSystemScope(async () => {
+        await prisma.auditEvent.create({
+          data: {
+            workspaceId: input.workspaceId,
+            action: "ad_connector_certification.signed_off",
+            resource: "connection",
+            resourceId: pack.provider,
+            metadata: {
+              runId: pack.runId,
+              provider: pack.provider,
+              reviewerUserId: input.reviewerUserId,
+              reviewerRole: input.reviewerRole,
+              signedAt,
+              evidencePackHash: computedHash,
+              highestProvenLevel: "PILOT_CERTIFIED",
+            },
+          },
+        });
+      });
+    } catch {
+      // Best effort for test runs without live DB
+    }
+
     // Save in in-memory registry
     CertificationHarness.registerActiveEvidencePack(pack);
 
@@ -943,6 +978,113 @@ export class CertificationHarness {
       signedEvidencePack: pack,
       markdownReport,
     };
+  }
+
+  /**
+   * Workspace-owner attestation: represents formal acknowledgment by the workspace owner.
+   * CRITICAL SECURITY INVARIANT: Workspace-owner attestation DOES NOT award PILOT_CERTIFIED status.
+   */
+  public async attestWorkspaceOwner(input: {
+    workspaceId: string;
+    evidencePackId: string;
+    expectedEvidencePackHash: string;
+    ownerUserId: string;
+    comments?: string;
+  }): Promise<{ pack: CertificationEvidencePack; markdownReport: string }> {
+    if (!input.workspaceId || typeof input.workspaceId !== "string") {
+      throw new Error("workspaceId is required for attestation");
+    }
+    if (!input.evidencePackId || typeof input.evidencePackId !== "string") {
+      throw new Error("evidencePackId is required for attestation");
+    }
+    if (!input.expectedEvidencePackHash || typeof input.expectedEvidencePackHash !== "string") {
+      throw new Error("expectedEvidencePackHash is required for attestation");
+    }
+    if (!input.ownerUserId || typeof input.ownerUserId !== "string" || input.ownerUserId.trim().length === 0) {
+      throw new Error("Security violation: Valid authenticated ownerUserId is required for attestation.");
+    }
+
+    let pack = CertificationHarness.getActiveEvidencePack(input.evidencePackId);
+    if (!pack || pack.workspaceId !== input.workspaceId) {
+      try {
+        const record = await withSystemScope(() =>
+          prisma.evidencePackRecord.findFirst({
+            where: {
+              workspaceId: input.workspaceId,
+              jobId: input.evidencePackId,
+            },
+            orderBy: { createdAt: "desc" },
+          })
+        );
+        if (record?.pack && typeof record.pack === "object") {
+          pack = record.pack as unknown as CertificationEvidencePack;
+        }
+      } catch {
+        // DB lookup failure
+      }
+    }
+
+    if (!pack || pack.workspaceId !== input.workspaceId) {
+      throw new Error(`Evidence pack '${input.evidencePackId}' not found in workspace '${input.workspaceId}'.`);
+    }
+
+    if (pack.evidenceClass === "synthetic_fixture") {
+      throw new Error("Security violation: Synthetic fixtures cannot receive workspace owner attestation.");
+    }
+
+    const computedHash = CertificationHarness.computeEvidencePackHash(pack);
+    if (computedHash !== input.expectedEvidencePackHash) {
+      throw new Error(
+        `Security violation: Evidence pack hash mismatch. Expected ${input.expectedEvidencePackHash}, computed ${computedHash}. Pack may have been tampered with.`
+      );
+    }
+
+    if (pack.ownerAttestation) {
+      throw new Error(
+        `Security violation: Evidence pack '${input.evidencePackId}' has already received workspace owner attestation at ${pack.ownerAttestation.attestedAt}.`
+      );
+    }
+
+    const attestedAt = new Date().toISOString();
+    pack.ownerAttestation = {
+      ownerUserId: input.ownerUserId,
+      ownerRole: "owner",
+      attestedAt,
+      comments: input.comments,
+    };
+
+    // Note: Workspace owner attestation does NOT award PILOT_CERTIFIED status.
+    // pack.highestProvenLevel remains at its existing level (e.g. RECOVERY_VERIFIED).
+
+    await this.persistEvidenceDurable(pack, input.workspaceId, pack.runId);
+
+    try {
+      await withSystemScope(async () => {
+        await prisma.auditEvent.create({
+          data: {
+            workspaceId: input.workspaceId,
+            action: "ad_connector_certification.owner_attested",
+            resource: "connection",
+            resourceId: pack.provider,
+            metadata: {
+              runId: pack.runId,
+              provider: pack.provider,
+              ownerUserId: input.ownerUserId,
+              ownerRole: "owner",
+              attestedAt,
+              highestProvenLevel: pack.highestProvenLevel,
+              pilotEligible: pack.pilotEligible,
+            },
+          },
+        });
+      });
+    } catch {
+      // Best-effort
+    }
+
+    CertificationHarness.registerActiveEvidencePack(pack);
+    const markdownReport = generateReviewerMarkdown(pack);
+    return { pack, markdownReport };
   }
 
   private validateInput(input: CertificationHarnessInput): void {
@@ -958,7 +1100,7 @@ export class CertificationHarness {
     }
 
     // 2. Strict rejection of sign-off / reviewer fields in harness execution input
-    const signOffFields = ["humanReviewSignOff", "reviewerName", "reviewerRole", "operatorSignOff"];
+    const signOffFields = ["humanReviewSignOff", "reviewerName", "reviewerRole", "reviewerUserId", "operatorSignOff", "ownerAttestation"];
     for (const field of signOffFields) {
       if (field in rawInput && rawInput[field] !== undefined) {
         throw new Error(

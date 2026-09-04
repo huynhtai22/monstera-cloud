@@ -306,7 +306,7 @@ describe("Certification Harness & Standards Suite", () => {
             evidencePackId: evidencePack.runId,
             expectedEvidencePackHash: packHash,
             reviewerUserId: "usr-auditor-01",
-            reviewerRole: "PLATFORM_SECURITY_LEAD",
+            reviewerRole: "OPERATOR",
             comments: "Attempting premature sign-off on blocked run",
           }),
         /Security violation: Cannot sign off evidence pack because mandatory gate 'LIVE_CONNECTED' has status 'BLOCKED'/
@@ -713,7 +713,7 @@ describe("Certification Harness & Standards Suite", () => {
             evidencePackId: evidencePack.runId,
             expectedEvidencePackHash: packHash,
             reviewerUserId: "usr-lead-auditor",
-            reviewerRole: "PLATFORM_SECURITY_LEAD",
+            reviewerRole: "OPERATOR",
             comments: "Attempting to sign off synthetic fixture",
           }),
         /Security violation: Only live_certification_evidence packs are eligible for human review sign-off/
@@ -1299,7 +1299,7 @@ describe("Certification Harness & Standards Suite", () => {
           evidencePackId: run.evidencePack.runId,
           expectedEvidencePackHash: packHash,
           reviewerUserId: "usr-traceability-auditor",
-          reviewerRole: "PLATFORM_SECURITY_LEAD",
+          reviewerRole: "OPERATOR",
           comments: "Clean deployed commit and matching schema verified",
         });
 
@@ -1561,7 +1561,7 @@ describe("Certification Harness & Standards Suite", () => {
               evidencePackId: evidencePack.runId,
               expectedEvidencePackHash: packHash,
               reviewerUserId: "usr-auditor-invariant",
-              reviewerRole: "PLATFORM_SECURITY_LEAD",
+              reviewerRole: "OPERATOR",
             }),
           /Security violation: Only live_certification_evidence packs are eligible for human review sign-off/
         );
@@ -1584,13 +1584,13 @@ describe("Certification Harness & Standards Suite", () => {
             evidencePackId: "pack-123",
             expectedEvidencePackHash: "hash-123",
             reviewerUserId: "",
-            reviewerRole: "PLATFORM_SECURITY_LEAD",
+            reviewerRole: "OPERATOR",
           }),
         /Security violation: Valid authenticated reviewerUserId is required/
       );
     });
 
-    it("rejects sign-off when reviewerRole is unauthorized", async () => {
+    it("rejects sign-off when reviewerRole is unauthorized (including WORKSPACE_OWNER)", async () => {
       await assert.rejects(
         () =>
           testHarness.signOffEvidencePack({
@@ -1598,9 +1598,21 @@ describe("Certification Harness & Standards Suite", () => {
             evidencePackId: "pack-123",
             expectedEvidencePackHash: "hash-123",
             reviewerUserId: "usr-123",
-            reviewerRole: "GUEST" as any,
+            reviewerRole: "WORKSPACE_OWNER" as any,
           }),
-        /Security violation: Reviewer role 'GUEST' is not authorized for certification sign-off/
+        /Security violation: Reviewer role 'WORKSPACE_OWNER' is not authorized for certification sign-off. Final pilot certification requires OPERATOR platform role./
+      );
+
+      await assert.rejects(
+        () =>
+          testHarness.signOffEvidencePack({
+            workspaceId: "ws-test",
+            evidencePackId: "pack-123",
+            expectedEvidencePackHash: "hash-123",
+            reviewerUserId: "usr-123",
+            reviewerRole: "USER" as any,
+          }),
+        /Security violation: Reviewer role 'USER' is not authorized for certification sign-off. Final pilot certification requires OPERATOR platform role./
       );
     });
 
@@ -1626,7 +1638,7 @@ describe("Certification Harness & Standards Suite", () => {
             evidencePackId: evidencePack.runId,
             expectedEvidencePackHash: "tampered_hash_value_1234567890abcdef",
             reviewerUserId: "usr-security-lead",
-            reviewerRole: "PLATFORM_SECURITY_LEAD",
+            reviewerRole: "OPERATOR",
           }),
         /Security violation: Evidence pack hash mismatch/
       );
@@ -1655,10 +1667,145 @@ describe("Certification Harness & Standards Suite", () => {
             evidencePackId: evidencePack.runId,
             expectedEvidencePackHash: packHash,
             reviewerUserId: "usr-security-lead",
-            reviewerRole: "PLATFORM_SECURITY_LEAD",
+            reviewerRole: "OPERATOR",
           }),
         /Security violation: Cannot sign off an evidence pack produced from a dirty or uncommitted working tree/
       );
+    });
+
+    it("rejects repeated sign-off (double approval / replay prevention)", async () => {
+      // Create completed live simulation run
+      const { evidencePack } = await testHarness.executeTestSimulation({
+        workspaceId: "ws-double-approval",
+        provider: "google_ads",
+        accountId: "123-456-7890",
+        startDate: "2026-08-01",
+        endDate: "2026-08-07",
+        buildId: "b-replay-test",
+        evidenceClass: "live_certification_evidence",
+        trustedRuntimeMetadata: {
+          commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
+          schemaVersion: "20260904160000",
+          workingTreeDirty: false,
+        },
+        nativeComparison: { spend: 5000, impressions: 20000, clicks: 1200, conversions: 80, revenue: 15000 },
+        snapshotTiming: {
+          accountTimezone: "Asia/Ho_Chi_Minh",
+          currency: "VND",
+          nativeRetrievalTime: "2026-08-08T01:00:00Z",
+          monsteraDataThroughTime: "2026-08-08T01:00:00Z",
+          warehouseQueryTime: "2026-08-08T01:02:00Z",
+        },
+        simulation: {
+          simulatePersistedLiveState: true,
+          simulatedProviderAccessFacts: {
+            observedApiVersion: "v23",
+            appAccountMode: "live",
+            grantedScopesOrPermissions: ["https://www.googleapis.com/auth/adwords"],
+            accessLevelStatus: "basic",
+            authorizationModel: "oauth2_user_consent",
+            tokenLifecycleModel: "refreshable_offline",
+            verificationSource: "portal_owner_confirmed",
+            verifiedAt: new Date().toISOString(),
+            status: "VERIFIED",
+          },
+          simulatedConnection: true,
+          simulatedWarehouseRows: 100,
+          simulatedWarehouseTotals: { spend: 5000, impressions: 20000, clicks: 1200, conversions: 80, revenue: 15000 },
+          simulatedDestinationReceiptId: "rcpt-replay-test",
+          simulatedRecoveryPassed: true,
+        },
+      });
+
+      assert.equal(evidencePack.highestProvenLevel, "RECOVERY_VERIFIED");
+      const packHash = CertificationHarness.computeEvidencePackHash(evidencePack);
+      // First sign-off succeeds
+      const { signedEvidencePack } = await testHarness.signOffEvidencePack({
+        workspaceId: "ws-double-approval",
+        evidencePackId: evidencePack.runId,
+        expectedEvidencePackHash: packHash,
+        reviewerUserId: "usr-operator-1",
+        reviewerRole: "OPERATOR",
+      });
+      assert.equal(signedEvidencePack.highestProvenLevel, "PILOT_CERTIFIED");
+
+      // Second sign-off on the same pack must be rejected
+      const secondHash = CertificationHarness.computeEvidencePackHash(signedEvidencePack);
+      await assert.rejects(
+        () =>
+          testHarness.signOffEvidencePack({
+            workspaceId: "ws-double-approval",
+            evidencePackId: signedEvidencePack.runId,
+            expectedEvidencePackHash: secondHash,
+            reviewerUserId: "usr-operator-2",
+            reviewerRole: "OPERATOR",
+          }),
+        /Security violation: Evidence pack .* has already been signed off/
+      );
+    });
+
+    it("verifies workspace-owner attestation records acknowledgment without awarding PILOT_CERTIFIED", async () => {
+      const { evidencePack } = await testHarness.executeTestSimulation({
+        workspaceId: "ws-owner-attest-test",
+        provider: "google_ads",
+        accountId: "123-456-7890",
+        startDate: "2026-08-01",
+        endDate: "2026-08-07",
+        buildId: "b-attest-test",
+        evidenceClass: "live_certification_evidence",
+        trustedRuntimeMetadata: {
+          commitSha: "2d963fd5e0bf226197abf5c65679462e6d915d90",
+          schemaVersion: "20260904160000",
+          workingTreeDirty: false,
+        },
+        nativeComparison: { spend: 5000, impressions: 20000, clicks: 1200, conversions: 80, revenue: 15000 },
+        snapshotTiming: {
+          accountTimezone: "Asia/Ho_Chi_Minh",
+          currency: "VND",
+          nativeRetrievalTime: "2026-08-08T01:00:00Z",
+          monsteraDataThroughTime: "2026-08-08T01:00:00Z",
+          warehouseQueryTime: "2026-08-08T01:02:00Z",
+        },
+        simulation: {
+          simulatePersistedLiveState: true,
+          simulatedProviderAccessFacts: {
+            observedApiVersion: "v23",
+            appAccountMode: "live",
+            grantedScopesOrPermissions: ["https://www.googleapis.com/auth/adwords"],
+            accessLevelStatus: "basic",
+            authorizationModel: "oauth2_user_consent",
+            tokenLifecycleModel: "refreshable_offline",
+            verificationSource: "portal_owner_confirmed",
+            verifiedAt: new Date().toISOString(),
+            status: "VERIFIED",
+          },
+          simulatedConnection: true,
+          simulatedWarehouseRows: 100,
+          simulatedWarehouseTotals: { spend: 5000, impressions: 20000, clicks: 1200, conversions: 80, revenue: 15000 },
+          simulatedDestinationReceiptId: "rcpt-attest-test",
+          simulatedRecoveryPassed: true,
+        },
+      });
+
+      assert.equal(evidencePack.highestProvenLevel, "RECOVERY_VERIFIED");
+      const packHash = CertificationHarness.computeEvidencePackHash(evidencePack);
+
+      const { pack: attestedPack, markdownReport } = await testHarness.attestWorkspaceOwner({
+        workspaceId: "ws-owner-attest-test",
+        evidencePackId: evidencePack.runId,
+        expectedEvidencePackHash: packHash,
+        ownerUserId: "usr-ws-owner",
+        comments: "Reviewed and confirmed by agency client owner",
+      });
+
+      // CRITICAL INVARIANT: highestProvenLevel is UNCHANGED (does NOT become PILOT_CERTIFIED)
+      assert.equal(attestedPack.highestProvenLevel, "RECOVERY_VERIFIED");
+      assert.equal(attestedPack.pilotEligible, false);
+      assert.ok(attestedPack.ownerAttestation);
+      assert.equal(attestedPack.ownerAttestation.ownerUserId, "usr-ws-owner");
+      assert.equal(attestedPack.ownerAttestation.ownerRole, "owner");
+      assert.ok(markdownReport.includes("Workspace Owner Attestation"));
+      assert.ok(markdownReport.includes("does not award PILOT_CERTIFIED status"));
     });
   });
 

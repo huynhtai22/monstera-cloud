@@ -128,7 +128,7 @@ export interface DestinationStatusBreakdown {
 
 export interface VerifiedOperatorSignOff {
   reviewerUserId: string;
-  reviewerRole: string;
+  reviewerRole: "OPERATOR";
   signedAt: string;
   evidencePackId: string;
   evidencePackHash: string;
@@ -137,12 +137,19 @@ export interface VerifiedOperatorSignOff {
   comments?: string;
 }
 
+export interface WorkspaceOwnerAttestation {
+  ownerUserId: string;
+  ownerRole: "owner";
+  attestedAt: string;
+  comments?: string;
+}
+
 export interface EvidencePackSignOffInput {
   workspaceId: string;
   evidencePackId: string;
   expectedEvidencePackHash: string;
   reviewerUserId: string;
-  reviewerRole: string;
+  reviewerRole: "OPERATOR" | string;
   comments?: string;
   trustedRuntimeMetadata?: TrustedRuntimeMetadata;
 }
@@ -223,6 +230,7 @@ export interface CertificationEvidencePack {
   reconciliation?: ReconciliationSummary;
   blockers: CertificationBlocker[];
   operatorSignOff?: VerifiedOperatorSignOff;
+  ownerAttestation?: WorkspaceOwnerAttestation;
   metadata: {
     monsteraVersion: string;
     gitCommit?: string;
