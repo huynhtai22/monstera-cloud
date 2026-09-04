@@ -5,13 +5,14 @@ import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, Clock, Database, Bookmark, Info, RefreshCw, Search } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock, Database, Bookmark, Info, RefreshCw, Search, Activity, TrendingUp } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
 import { PageShell, SyncLogDiagnosticsDrawer, type SyncLogWithPipeline } from "@/components/ui";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { REPORTS_SOURCE_CHIPS, pipelineMatchesSourceFilter } from "@/lib/reports-source-filters";
 import { SyncActivityTableSkeleton } from "@/components/reports/SyncActivityLoadingState";
+import { PerformanceReportDashboard } from "@/components/reports/PerformanceReportDashboard";
 
 const REPORTS_VIEW_STORAGE = "monstera_reports_view_v1";
 
@@ -29,12 +30,25 @@ export function ReportsClient() {
     const pathname = usePathname();
     const sourceFilter = searchParams.get("source") ?? "";
     const clientFilter = searchParams.get("clientId") ?? "";
+    const viewParam = searchParams.get("view");
+    const viewMode: "performance" | "sync" = viewParam === "sync" ? "sync" : "performance";
 
     const [statusFilter, setStatusFilter] = React.useState<"all" | "success" | "error">("all");
     const [dateFrom, setDateFrom] = React.useState("");
     const [dateTo, setDateTo] = React.useState("");
     const [selectedLog, setSelectedLog] = React.useState<SyncLogWithPipeline | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
+
+    const setViewMode = React.useCallback((mode: "performance" | "sync") => {
+        const q = new URLSearchParams(searchParams.toString());
+        if (mode === "sync") {
+            q.set("view", "sync");
+        } else {
+            q.delete("view");
+        }
+        const qs = q.toString();
+        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }, [searchParams, router, pathname]);
 
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const { data: clientsPayload } = useSWR(
@@ -63,14 +77,23 @@ export function ReportsClient() {
                 statusFilter?: "all" | "success" | "error";
                 dateFrom?: string;
                 dateTo?: string;
+                viewMode?: "performance" | "sync";
             };
             if (v.statusFilter) setStatusFilter(v.statusFilter);
             if (typeof v.dateFrom === "string") setDateFrom(v.dateFrom);
             if (typeof v.dateTo === "string") setDateTo(v.dateTo);
+            const q = new URLSearchParams(searchParams.toString());
+            let changed = false;
             if (v.source !== undefined && v.source !== (searchParams.get("source") ?? "")) {
-                const q = new URLSearchParams(searchParams.toString());
                 if (v.source) q.set("source", v.source);
                 else q.delete("source");
+                changed = true;
+            }
+            if (v.viewMode && !searchParams.get("view") && v.viewMode === "sync") {
+                q.set("view", "sync");
+                changed = true;
+            }
+            if (changed) {
                 const qs = q.toString();
                 router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
             }
@@ -82,7 +105,7 @@ export function ReportsClient() {
     const statusQuery = statusFilter === "all" ? "" : `&status=${statusFilter}`;
     const clientQuery = clientFilter ? `&clientId=${encodeURIComponent(clientFilter)}` : "";
     const { data, error, isLoading, isValidating, mutate: retryLogs } = useSWR(
-        activeWorkspaceId ? `/api/sync-logs?workspaceId=${activeWorkspaceId}${statusQuery}${clientQuery}` : null,
+        activeWorkspaceId && viewMode === "sync" ? `/api/sync-logs?workspaceId=${activeWorkspaceId}${statusQuery}${clientQuery}` : null,
         fetcher
     );
 
@@ -149,9 +172,10 @@ export function ReportsClient() {
                     statusFilter,
                     dateFrom,
                     dateTo,
+                    viewMode,
                 })
             );
-            toast.success("Saved as your default Sync Activity view on this browser.");
+            toast.success(`Saved as your default ${viewMode === "performance" ? "Executive Performance" : "Sync Activity"} view on this browser.`);
         } catch {
             toast.error("Could not save view.");
         }
@@ -191,20 +215,66 @@ export function ReportsClient() {
 
     return (
         <PageShell>
-            <div className="relative z-10 mb-5">
-                <div className="mb-3">
-                    <h1 className="text-xl font-semibold tracking-tight text-ink">Sync activity</h1>
-                    <p className="mt-1 max-w-2xl text-sm text-ink-mute">
-                        Destination pipeline run history and row counts for {activeWorkspace?.name ?? "the active workspace"}.
-                    </p>
+            <div className="relative z-10 mb-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h1 className="text-xl font-semibold tracking-tight text-ink">
+                            {viewMode === "performance" ? "Executive Performance" : "Sync Activity"}
+                        </h1>
+                        <p className="mt-1 max-w-2xl text-sm text-ink-mute">
+                            {viewMode === "performance"
+                                ? `Holistic marketing performance, ROAS, and campaign analytics for ${activeWorkspace?.name ?? "the active workspace"}.`
+                                : `Destination pipeline run history and row counts for ${activeWorkspace?.name ?? "the active workspace"}.`}
+                        </p>
+                    </div>
+                    <div className="flex items-center rounded-lg border border-line bg-panel p-1">
+                        <button
+                            type="button"
+                            onClick={() => setViewMode("performance")}
+                            className={cn(
+                                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
+                                viewMode === "performance"
+                                    ? "bg-white/[0.08] text-ink shadow-sm"
+                                    : "text-ink-mute hover:text-ink hover:bg-white/[0.02]"
+                            )}
+                        >
+                            <TrendingUp className="h-3.5 w-3.5" />
+                            Executive Performance
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode("sync")}
+                            className={cn(
+                                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all",
+                                viewMode === "sync"
+                                    ? "bg-white/[0.08] text-ink shadow-sm"
+                                    : "text-ink-mute hover:text-ink hover:bg-white/[0.02]"
+                            )}
+                        >
+                            <Activity className="h-3.5 w-3.5" />
+                            Sync Activity & Logs
+                        </button>
+                    </div>
                 </div>
-                <div className="flex max-w-3xl items-start gap-2 rounded-md border border-line bg-panel px-3 py-2 text-xs text-ink-mute">
-                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink" aria-hidden="true" />
-                    <p>
-                        This page records source-to-destination pipeline runs. Manual and nightly Warehouse source refresh status lives on{" "}
-                        <Link href="/sources" className="font-medium text-ink underline underline-offset-2">Sources</Link>.
-                    </p>
-                </div>
+            </div>
+
+            {viewMode === "performance" ? (
+                <PerformanceReportDashboard
+                    workspaceId={activeWorkspaceId ?? ""}
+                    clients={clients}
+                    selectedClientId={clientFilter}
+                    onClientChange={setClient}
+                />
+            ) : (
+                <>
+                    <div className="relative z-10 mb-5">
+                        <div className="flex max-w-3xl items-start gap-2 rounded-md border border-line bg-panel px-3 py-2 text-xs text-ink-mute">
+                            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink" aria-hidden="true" />
+                            <p>
+                                This page records source-to-destination pipeline runs. Manual and nightly Warehouse source refresh status lives on{" "}
+                                <Link href="/sources" className="font-medium text-ink underline underline-offset-2">Sources</Link>.
+                            </p>
+                        </div>
                 {clients.length > 0 ? (
                     <div className="mt-4 flex flex-wrap items-center gap-2">
                         <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">Client</span>
@@ -474,6 +544,8 @@ export function ReportsClient() {
                     </div>
                 )}
             </div>
+                </>
+            )}
 
             <SyncLogDiagnosticsDrawer
                 isOpen={isDrawerOpen}

@@ -132,7 +132,7 @@ export function Sidebar({
             label: "Pipelines",
             items: [
                 { name: "Sources", href: "/sources", icon: DatabaseZap },
-                { name: "Sync activity", href: "/reports", icon: LineChart },
+                { name: "Reports", href: "/reports", icon: LineChart },
             ],
         },
         {
