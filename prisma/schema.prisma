@@ -1002,8 +1002,8 @@ model ConnectorRunArtifact {
   kind          String
   payloadHash   String
   payload       Json
-  retainedUntil DateTime
-  createdAt     DateTime  @default(now())
+  retainedUntil DateTime  @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6)
   workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   // One verdict artifact per run: repeat publication conflicts instead of duplicating.
