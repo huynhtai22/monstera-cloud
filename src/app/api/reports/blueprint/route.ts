@@ -92,6 +92,13 @@ export async function GET(req: Request) {
     if (!workspaceId || !clientId) {
       return NextResponse.json({ error: "workspaceId and clientId are required" }, { status: 400 });
     }
+    // Reject half-specified windows instead of silently substituting the default.
+    if (Boolean(windowStart) !== Boolean(windowEnd)) {
+      return NextResponse.json(
+        { error: "Provide both windowStart and windowEnd, or neither." },
+        { status: 400 },
+      );
+    }
     await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer" });
 
     const result = await reopenWeeklyBlueprint({

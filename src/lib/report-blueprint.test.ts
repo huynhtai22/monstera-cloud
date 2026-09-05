@@ -54,7 +54,7 @@ function verificationInput(overrides: Partial<VerificationInput> = {}): Verifica
         includedProviders: ["google_ads"],
         hasMetricData: true,
         aggregationCompatible: true,
-        aggregationGrainAmbiguous: false,
+        grainUnsupportedProviders: [],
         currencyVerified: true,
         windowComplete: true,
         timezoneVerified: true,
@@ -381,10 +381,10 @@ describe("report blueprint: dependency hashing / staleness", () => {
 });
 
 describe("report blueprint: grain, identity and date boundaries", () => {
-    it("fails verification closed when aggregation grains are mixed", () => {
-        const result = computeVerificationStatus(verificationInput({ aggregationGrainAmbiguous: true }));
+    it("fails verification closed when a provider's grain is unsupported", () => {
+        const result = computeVerificationStatus(verificationInput({ grainUnsupportedProviders: ["google_ads"] }));
         assert.equal(result.status, "NOT_VERIFIED");
-        assert.ok(result.reasons.includes("aggregation_grain_ambiguous"));
+        assert.ok(result.reasons.includes("aggregation_grain_unsupported:google_ads"));
     });
 
     it("keeps a renamed campaign as ONE identity row (stable key, latest name)", () => {
@@ -410,6 +410,6 @@ describe("report blueprint: constants and contracts", () => {
     it("binds the blueprint identity, version and metric contract", () => {
         assert.equal(BLUEPRINT_ID, "weekly-paid-media-performance");
         assert.equal(BLUEPRINT_VERSION, 1);
-        assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v2");
+        assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v3");
     });
 });

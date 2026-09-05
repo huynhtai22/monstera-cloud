@@ -163,21 +163,44 @@ test.describe("verified weekly report blueprint", () => {
           revenue: 250_000_000,
           currency: "VND",
         },
+        // Meta rows shaped like the active syncMetaAds output: level "ad",
+        // entityId = ad_id, two ads per campaign.
         {
           workspaceId,
           connectionId: metaConnectionId,
           platform: "meta_ads",
           accountId: `m-${SUFFIX}`,
-          level: "campaign",
-          entityId: `e-m-${SUFFIX}`,
+          level: "ad",
+          entityId: `ad-a-${SUFFIX}`,
           campaignId: "120210543958",
           campaignName: "Retargeting",
+          adsetId: `adset-${SUFFIX}`,
+          adId: `ad-a-${SUFFIX}`,
           date: new Date(`${day}T00:00:00.000Z`),
-          impressions: 2000,
-          clicks: 60,
-          spend: 20_000_000,
-          conversions: 2,
-          revenue: 50_000_000,
+          impressions: 1200,
+          clicks: 40,
+          spend: 12_000_000,
+          conversions: 1,
+          revenue: 30_000_000,
+          currency: "VND",
+        },
+        {
+          workspaceId,
+          connectionId: metaConnectionId,
+          platform: "meta_ads",
+          accountId: `m-${SUFFIX}`,
+          level: "ad",
+          entityId: `ad-b-${SUFFIX}`,
+          campaignId: "120210543958",
+          campaignName: "Retargeting",
+          adsetId: `adset-${SUFFIX}`,
+          adId: `ad-b-${SUFFIX}`,
+          date: new Date(`${day}T00:00:00.000Z`),
+          impressions: 800,
+          clicks: 20,
+          spend: 8_000_000,
+          conversions: 1,
+          revenue: 20_000_000,
           currency: "VND",
         },
       ])),
@@ -302,6 +325,16 @@ test.describe("verified weekly report blueprint", () => {
       data: { workspaceId, clientId, requiredProviders: ["google_ads"] },
     });
     expect([404, 405]).toContain(gone.status());
+
+    // GET rejects either half-specified window boundary with HTTP 400.
+    const halfStart = await page.request.get(
+      `/api/reports/blueprint?workspaceId=${workspaceId}&clientId=${clientId}&windowStart=${WINDOW.start}`,
+    );
+    expect(halfStart.status()).toBe(400);
+    const halfEnd = await page.request.get(
+      `/api/reports/blueprint?workspaceId=${workspaceId}&clientId=${clientId}&windowEnd=${WINDOW.end}`,
+    );
+    expect(halfEnd.status()).toBe(400);
 
     // Requirement mutation follows PR #152's configuration route (admin).
     const patch = await page.request.patch("/api/reports/readiness/configuration", {

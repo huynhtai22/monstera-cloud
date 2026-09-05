@@ -4,9 +4,11 @@ import { PrismaClient } from "@prisma/client";
 import {
     BLUEPRINT_ID,
     BLUEPRINT_VERSION,
+    comparisonWindowFor,
     computeVerificationStatus,
     evaluateSnapshotFreshness,
     generateWeeklyBlueprint,
+    computeGenerationKey,
     METRIC_CONTRACT_VERSION,
     reopenWeeklyBlueprint,
 } from "./report-blueprint";
@@ -22,6 +24,36 @@ import { assertCiDatabaseReachableWhenMissing } from "./pg-test-discipline";
  * evidence-based evaluator. NOT mocks: uniqueness, staleness, receipt scoping
  * and tenant isolation are proven against the database.
  */
+/**
+ * Deterministic concurrency barriers. These poll DATABASE state (ungranted
+ * advisory locks) until the forced interleaving is actually established —
+ * they never depend on wall-clock timing, retries, or race windows.
+ */
+const POLL_INTERVAL_MS = 10;
+const POLL_MAX_TRIES = 2_000;
+
+async function countBlockedAdvisoryWaiters(dbForLocks: PrismaClient): Promise<number> {
+    const rows = await dbForLocks.$queryRaw<Array<{ n: bigint }>>`
+        SELECT count(*)::bigint AS n
+        FROM pg_locks l
+        JOIN pg_stat_activity a ON l.pid = a.pid
+        WHERE l.locktype = 'advisory' AND NOT l.granted
+          AND a.query ILIKE '%pg_advisory_xact_lock%'`;
+    return Number(rows[0]?.n ?? 0);
+}
+
+async function waitForCondition(
+    condition: () => boolean | Promise<boolean>,
+    label: string,
+    dbForLocks?: PrismaClient,
+): Promise<void> {
+    for (let attempt = 0; attempt < POLL_MAX_TRIES; attempt += 1) {
+        if (await condition()) return;
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
+    throw new Error(`Deterministic barrier not established: ${label}`);
+}
+
 describe("PostgreSQL integration: verified weekly report blueprint", () => {
     let db: PrismaClient | null = null;
     const suffix = `bp-${Date.now()}-${process.pid}`;
@@ -172,6 +204,7 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         const rows: Array<{
             workspaceId: string; connectionId: string; platform: string; accountId: string;
             level: string; entityId: string; campaignId: string; campaignName: string;
+            adsetId?: string; adId?: string;
             date: Date; impressions: number; clicks: number; spend: number;
             conversions: number; revenue: number; currency: string;
         }> = [];
@@ -184,12 +217,24 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
                     date: new Date(`${day}T00:00:00.000Z`),
                     impressions: 1000, clicks: 100, spend: 5_000_000, conversions: 4, revenue: 25_000_000, currency: "VND",
                 },
+                // Meta rows shaped EXACTLY like the active syncMetaAds output:
+                // level "ad", entityId = ad_id, adsetId/adId set, campaign
+                // identity carried on every ad row. Two ads per campaign.
                 {
                     workspaceId: ids.workspaceA, connectionId: ids.connMetaA, platform: "meta_ads",
-                    accountId: "m-account-1", level: "campaign", entityId: `e-m-${suffix}`,
+                    accountId: "m-account-1", level: "ad", entityId: `ad-a-${suffix}`,
                     campaignId: "120210543958", campaignName: "Retargeting",
+                    adsetId: "adset-1", adId: `ad-a-${suffix}`,
                     date: new Date(`${day}T00:00:00.000Z`),
-                    impressions: 2000, clicks: 60, spend: 2_000_000, conversions: 2, revenue: 6_000_000, currency: "VND",
+                    impressions: 1200, clicks: 40, spend: 1_200_000, conversions: 1, revenue: 3_000_000, currency: "VND",
+                },
+                {
+                    workspaceId: ids.workspaceA, connectionId: ids.connMetaA, platform: "meta_ads",
+                    accountId: "m-account-1", level: "ad", entityId: `ad-b-${suffix}`,
+                    campaignId: "120210543958", campaignName: "Retargeting",
+                    adsetId: "adset-1", adId: `ad-b-${suffix}`,
+                    date: new Date(`${day}T00:00:00.000Z`),
+                    impressions: 800, clicks: 20, spend: 800_000, conversions: 1, revenue: 2_000_000, currency: "VND",
                 },
             );
         }
@@ -590,7 +635,7 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
 
         // Warehouse data mutates (a row is re-pulled) without touching receipts.
         await db.campaignMetric.updateMany({
-            where: { entityId: `e-m-${suffix}`, date: new Date("2026-08-24T00:00:00.000Z") },
+            where: { entityId: `ad-a-${suffix}`, date: new Date("2026-08-24T00:00:00.000Z") },
             data: { pulledAt: new Date() },
         });
         const stored = await db.reportSnapshot.findUniqueOrThrow({ where: { id: baseline.snapshot.id } });
@@ -749,30 +794,57 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         assert.equal(resultB.report.overview.currency, "USD");
     });
 
-    it("aggregates ONLY the campaign grain and fails closed on mixed grains (P1-3)", async () => {
+    it("Meta ad rows roll up to campaign identity without double-counting (P1-3)", async () => {
+        if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
+        });
+        // A legacy campaign-level aggregate from an earlier warehouse refresh:
+        // non-authoritative for meta_ads, must be ignored — never summed.
+        // Created BEFORE the receipt so delivery evidence covers the dataset.
+        await db.campaignMetric.create({
+            data: {
+                workspaceId: ids.workspaceA, connectionId: ids.connMetaA, platform: "meta_ads",
+                accountId: "m-account-1", level: "campaign", entityId: `legacy-m-${suffix}`,
+                campaignId: "120210543958", campaignName: "Retargeting",
+                date: new Date("2026-08-25T00:00:00.000Z"),
+                impressions: 100_000, clicks: 5_000, spend: 90_000_000, conversions: 50, revenue: 900_000_000, currency: "VND",
+            },
+        });
+        await seedCurrentReceipt();
+        const result = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        // Meta provider totals = ad rows only (2000 impr/day × 7 = 14000),
+        // the legacy campaign aggregate (700,000 impr) must not inflate it.
+        const meta = result.report.providers.find((provider) => provider.provider === "meta_ads");
+        assert.equal(meta?.metrics.impressions, 14_000);
+        assert.equal(meta?.metrics.spend, 14_000_000);
+        // One campaign row for the Meta campaign despite multiple ads + legacy row.
+        const metaCampaigns = result.report.campaigns.filter((campaign) => campaign.campaignId === "120210543958");
+        assert.equal(metaCampaigns.length, 1);
+        // Verification is unaffected by the ignored duplicate grain.
+        assert.equal(result.snapshot.verificationStatus, "VERIFIED");
+
+        await db.campaignMetric.deleteMany({ where: { entityId: `legacy-m-${suffix}` } });
+    });
+
+    it("fails verification closed when a provider holds only unsupported grains (P1-3)", async () => {
         if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
         await seedCurrentReceipt();
-        // Ad-grain and account-grain rows inside the window for a covered account.
-        await db.campaignMetric.createMany({
-            data: [
-                {
-                    workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, platform: "google_ads",
-                    accountId: "g-account-1", level: "ad", entityId: `e-ad-${suffix}`,
-                    campaignId: "1795849302486751234", campaignName: "Always On",
-                    date: new Date("2026-08-25T00:00:00.000Z"),
-                    impressions: 5000, clicks: 500, spend: 25_000_000, conversions: 20, revenue: 125_000_000, currency: "VND",
-                },
-                {
-                    workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, platform: "google_ads",
-                    accountId: "g-account-1", level: "account", entityId: `e-acct-${suffix}`,
-                    campaignId: "", campaignName: "",
-                    date: new Date("2026-08-25T00:00:00.000Z"),
-                    impressions: 9000, clicks: 900, spend: 45_000_000, conversions: 36, revenue: 225_000_000, currency: "VND",
-                },
-            ],
+        // Demote the google campaign rows to ad grain: for google_ads the
+        // authoritative grain is campaign, so the window now holds only
+        // unsupported grain evidence for that provider.
+        await db.campaignMetric.updateMany({
+            where: { connectionId: ids.connGoogleA, platform: "google_ads", date: { gte: new Date(`${WINDOW.start}T00:00:00.000Z`), lte: new Date(`${WINDOW.end}T23:59:59.999Z`) } },
+            data: { level: "ad" },
         });
         const result = await generateWeeklyBlueprint({
             workspaceId: ids.workspaceA,
@@ -781,17 +853,16 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             windowEnd: WINDOW.end,
             now: NOW,
         });
-        // Mixed grains fail verification closed.
         assert.equal(result.snapshot.verificationStatus, "NOT_VERIFIED");
-        assert.ok(result.snapshot.verificationReasons.includes("aggregation_grain_ambiguous"));
-        // And the totals never sum other grains: google campaign-only = 7000,
-        // meta campaign-only = 14000, combined campaign-grain total = 21000
-        // (the ad/account rows would have pushed it to 35000).
+        assert.ok(result.snapshot.verificationReasons.includes("aggregation_grain_unsupported:google_ads"));
+        // Google contributes no aggregated rows; Meta (authoritative ad grain) still does.
         const google = result.report.providers.find((provider) => provider.provider === "google_ads");
-        assert.equal(google?.metrics.impressions, 7000);
-        assert.equal(result.report.totals.impressions, 21000);
-
-        await db.campaignMetric.deleteMany({ where: { entityId: { in: [`e-ad-${suffix}`, `e-acct-${suffix}`] } } });
+        assert.equal(google?.metrics.impressions, 0);
+        // Restore the authoritative grain.
+        await db.campaignMetric.updateMany({
+            where: { connectionId: ids.connGoogleA, platform: "google_ads", date: { gte: new Date(`${WINDOW.start}T00:00:00.000Z`), lte: new Date(`${WINDOW.end}T23:59:59.999Z`) } },
+            data: { level: "campaign" },
+        });
     });
 
     it("a correction to previous-week data makes the snapshot stale and regeneration versions (P1-2)", async () => {
@@ -903,22 +974,12 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         assert.equal(uniqueSequences.size, (await db.reportSnapshot.findMany({ where: { generationKey: results[0].snapshot.generationKey } })).length);
     });
 
-    it("concurrent divergent generation allocates distinct sequences without failure (P2-1)", async () => {
+    it("forced identical concurrency stores one row and every caller reads the winner (P2-1)", async () => {
         if (!db) return;
-        // Own fixture row: the race must not depend on prior tests' state.
-        await db.campaignMetric.create({
-            data: {
-                workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, platform: "google_ads",
-                accountId: "g-account-1", level: "campaign", entityId: `e-race-${suffix}`,
-                campaignId: "race-campaign", campaignName: "Race",
-                date: new Date("2026-08-27T00:00:00.000Z"),
-                impressions: 100, clicks: 10, spend: 500_000, conversions: 1, revenue: 2_000_000, currency: "VND",
-            },
-        }).catch(() => undefined);
-        const mutate = () => db!.campaignMetric.updateMany({
-            where: { entityId: `e-race-${suffix}`, date: new Date("2026-08-27T00:00:00.000Z") },
-            data: { pulledAt: new Date() },
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
+        await seedCurrentReceipt();
         const params = {
             workspaceId: ids.workspaceA,
             clientId: ids.clientA,
@@ -926,38 +987,210 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             windowEnd: WINDOW.end,
             now: NOW,
         };
-        // Fire two generations racing a dataset mutation. Whether the first
-        // read lands before or after the mutation, BOTH must succeed and the
-        // stored (generationKey, sequence) pairs must stay unique and
-        // contiguous. Bounded attempts until the race genuinely diverges, so
-        // the retry path is exercised — never skipped.
-        let diverged = false;
-        for (let attempt = 0; attempt < 12 && !diverged; attempt += 1) {
-            // The mutation lands a few milliseconds into the first
-            // generation — after its dataset read but while the whole
-            // generation is still in flight — so the second generation
-            // observes the newer dataset mid-race and the two dependency
-            // states diverge.
-            const first = generateWeeklyBlueprint(params);
-            const second = (async () => {
-                await new Promise((resolve) => setTimeout(resolve, 2 + attempt * 8));
-                await mutate();
-                return generateWeeklyBlueprint(params);
-            })();
-            const [a, b] = await Promise.all([first, second]);
-            const stored = await db.reportSnapshot.findMany({
-                where: { generationKey: a.snapshot.generationKey },
-            });
-            const sequences: number[] = stored.map((row: { sequence: number }) => row.sequence);
-            assert.equal(new Set(sequences).size, sequences.length, "no duplicate sequences");
-            assert.deepEqual([...sequences].sort((x, y) => x - y), Array.from({ length: sequences.length }, (_, i) => i + 1), "sequences contiguous from 1");
-            if (a.snapshot.dependencyHash !== b.snapshot.dependencyHash) {
-                diverged = true;
-                assert.equal(new Set([a.snapshot.sequence, b.snapshot.sequence]).size, 2);
-            }
+        const generationKey = computeGenerationKey(
+            ids.workspaceA, ids.clientA, WINDOW, comparisonWindowFor(WINDOW),
+        );
+
+        // Deterministic database barrier: a holder transaction takes the SAME
+        // transaction-scoped advisory lock the service uses, so both
+        // generations park at their create transaction. No timing involved —
+        // the test releases the barrier only after both are verifiably blocked.
+        const lockClient = new PrismaClient();
+        await lockClient.$connect();
+        let holderOpen = false;
+        const barrier: { release: (() => void) | null } = { release: null };
+        const holder = lockClient.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${generationKey}))`;
+            holderOpen = true;
+            await new Promise<void>((resolve) => { barrier.release = resolve; });
+            return true;
+        }, { timeout: 120_000 });
+        await waitForCondition(() => holderOpen, "barrier holder open");
+
+        const first = generateWeeklyBlueprint(params);
+        const second = generateWeeklyBlueprint(params);
+        const lockDb = db as PrismaClient;
+        try {
+            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb)) >= 2, "both generations blocked on the barrier", lockDb);
+        } finally {
+            barrier.release?.();
         }
-        assert.equal(diverged, true, "racing generations must observe divergent dependency states within bounded attempts");
-        await db.campaignMetric.deleteMany({ where: { entityId: `e-race-${suffix}` } });
+        await holder;
+
+        const [a, b] = await Promise.all([first, second]);
+        assert.equal(a.snapshot.id, b.snapshot.id, "identical concurrency must agree on one snapshot");
+        assert.equal(a.created !== b.created, true, "exactly one caller reports created:true");
+        const rows = await db.reportSnapshot.count({ where: { generationKey, dependencyHash: a.snapshot.dependencyHash } });
+        assert.equal(rows, 1, "exactly one snapshot row stored for this dependency state");
+        await lockClient.$disconnect();
+    });
+
+    it("forced divergent concurrency creates distinct ordered versions (P2-1)", async () => {
+        if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
+        });
+        // Own mutable row so the race never depends on other tests' state.
+        await db.campaignMetric.create({
+            data: {
+                workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, platform: "google_ads",
+                accountId: "g-account-1", level: "campaign", entityId: `e-race2-${suffix}`,
+                campaignId: "race-campaign", campaignName: "Race",
+                date: new Date("2026-08-27T00:00:00.000Z"),
+                impressions: 100, clicks: 10, spend: 500_000, conversions: 1, revenue: 2_000_000, currency: "VND",
+            },
+        }).catch(() => undefined);
+        await seedCurrentReceipt();
+        const params = {
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        };
+        const generationKey = computeGenerationKey(
+            ids.workspaceA, ids.clientA, WINDOW, comparisonWindowFor(WINDOW),
+        );
+        const mutate = () => db!.campaignMetric.updateMany({
+            where: { entityId: `e-race2-${suffix}`, date: new Date("2026-08-27T00:00:00.000Z") },
+            data: { pulledAt: new Date() },
+        });
+
+        const lockClient = new PrismaClient();
+        await lockClient.$connect();
+        let holderOpen = false;
+        const barrier: { release: (() => void) | null } = { release: null };
+        const holder = lockClient.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${generationKey}))`;
+            holderOpen = true;
+            await new Promise<void>((resolve) => { barrier.release = resolve; });
+            return true;
+        }, { timeout: 120_000 });
+        await waitForCondition(() => holderOpen, "barrier holder open");
+
+        // Generation A reads the pre-mutation dataset, then parks at create.
+        const a = generateWeeklyBlueprint(params);
+        let b: ReturnType<typeof generateWeeklyBlueprint> | null = null;
+        const lockDbA = db as PrismaClient;
+        try {
+            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDbA)) >= 1, "generation A blocked", lockDbA);
+            // Dataset mutates only after A is parked: B must read the new state.
+            await mutate();
+            b = generateWeeklyBlueprint(params);
+            const lockDbB = db as PrismaClient;
+            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDbB)) >= 2, "generation B blocked", lockDbB);
+        } finally {
+            barrier.release?.();
+        }
+        await holder;
+
+        const [ra, rb] = await Promise.all([a, b!]);
+        assert.notEqual(ra.snapshot.dependencyHash, rb.snapshot.dependencyHash, "divergent dependencies must differ");
+        assert.equal(ra.created, true);
+        assert.equal(rb.created, true);
+        assert.notEqual(ra.snapshot.sequence, rb.snapshot.sequence, "divergent states occupy distinct immutable sequences");
+        // Both of THIS test's dependency states are stored exactly once each.
+        const own = await db.reportSnapshot.count({
+            where: { generationKey, dependencyHash: { in: [ra.snapshot.dependencyHash, rb.snapshot.dependencyHash] } },
+        });
+        assert.equal(own, 2);
+        // The key's full version history stays duplicate-free.
+        const rows = await db.reportSnapshot.findMany({ where: { generationKey } });
+        const sequences = rows.map((row: { sequence: number }) => row.sequence);
+        assert.equal(new Set(sequences).size, sequences.length, "no duplicate sequences");
+        await db.campaignMetric.deleteMany({ where: { entityId: `e-race2-${suffix}` } });
+        await lockClient.$disconnect();
+    });
+
+    it("enforces the UNIQUE (generationKey, dependencyHash) constraint in the database (P2-1)", async () => {
+        if (!db) return;
+        const indexes = await db.$queryRaw<Array<{ indexdef: string }>>`
+            SELECT indexdef FROM pg_indexes
+            WHERE tablename = 'ReportSnapshot' AND indexdef LIKE '%generationKey_dependencyHash%'`;
+        assert.equal(indexes.length, 1);
+        assert.match(indexes[0].indexdef, /UNIQUE INDEX/);
+    });
+
+    it("rejects half-specified windows when reopening (low-cost)", async () => {
+        if (!db) return;
+        await assert.rejects(
+            reopenWeeklyBlueprint({
+                workspaceId: ids.workspaceA,
+                clientId: ids.clientA,
+                windowStart: WINDOW.start,
+                now: NOW,
+            }),
+            (error: unknown) => (error as { code?: string }).code === "window_boundary_incomplete",
+        );
+        await assert.rejects(
+            reopenWeeklyBlueprint({
+                workspaceId: ids.workspaceA,
+                clientId: ids.clientA,
+                windowEnd: WINDOW.end,
+                now: NOW,
+            }),
+            (error: unknown) => (error as { code?: string }).code === "window_boundary_incomplete",
+        );
+    });
+
+    it("derives Google manager-account evidence from rows: customer ID + real connection ID (P2-3)", async () => {
+        if (!db) return;
+        // Manager-account scenario: the connection's remoteAccountId is the
+        // MCC manager, while the persisted metric rows carry the CUSTOMER
+        // account id — exactly how Google Ads manager linkage stores rows.
+        const ws = ids.workspaceB;
+        const clientM = `client-mcc-${suffix}`;
+        const connM = `conn-mcc-${suffix}`;
+        await db.client.create({
+            data: {
+                id: clientM, workspaceId: ws, name: "MCC Client",
+                requiredProviders: ["google_ads"], requiredDestinations: ["google_sheets"],
+                requirementsConfiguredAt: new Date("2026-08-20T00:00:00.000Z"),
+            },
+        });
+        await db.connection.create({
+            data: {
+                id: connM, workspaceId: ws, clientId: clientM, name: "MCC Manager",
+                type: "source", provider: "google_ads", credentials: "enc:v1:test",
+                remoteAccountId: "manager-999-999-9999", // manager, NOT the customer
+                status: "connected", lastSyncAt: new Date(),
+            },
+        });
+        await db.accountReportingContext.create({
+            data: {
+                workspaceId: ws, connectionId: connM, accountId: "customer-123-4567",
+                providerTimezone: "UTC", providerCurrency: "USD", providerObservedAt: NOW,
+            },
+        });
+        await db.campaignMetric.createMany({
+            data: WEEK_DAYS.map((day) => ({
+                workspaceId: ws, connectionId: connM, platform: "google_ads",
+                accountId: "customer-123-4567", level: "campaign", entityId: `e-mcc-${suffix}`,
+                campaignId: "mcc-campaign", campaignName: "MCC Campaign",
+                date: new Date(`${day}T00:00:00.000Z`),
+                impressions: 400, clicks: 40, spend: 10, conversions: 1, revenue: 30, currency: "USD",
+            })),
+        });
+        await db.destinationDeliveryReceipt.deleteMany({ where: { clientId: clientM } });
+        const dataset = await datasetOf(ws, clientM, WINDOW);
+        await db.destinationDeliveryReceipt.create({
+            data: {
+                workspaceId: ws, clientId: clientM, destination: "google_sheets",
+                windowStart: WINDOW.start, windowEnd: WINDOW.end,
+                dataThroughDate: dataset.dataThroughDate ?? WINDOW.end,
+                datasetFingerprint: dataset.fingerprint, rowCount: dataset.rowCount,
+                actorId: ids.owner,
+            },
+        });
+        const result = await generateWeeklyBlueprint({
+            workspaceId: ws, clientId: clientM,
+            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
+        });
+        const accounts = result.report.overview.includedAccounts
+            .filter((account) => account.provider === "google_ads");
+        assert.deepEqual(accounts.map((account) => account.accountId), ["customer-123-4567"], "customer id from the metric rows");
+        assert.deepEqual(accounts.map((account) => account.connectionId), [connM], "the REAL connection id, not a remoteAccountId match");
+        assert.equal(result.snapshot.verificationStatus, "VERIFIED");
     });
 
     it("derives included accounts from metric evidence, not connection labels (P2-3)", async () => {
@@ -1048,7 +1281,7 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             includedProviders: [],
             hasMetricData: false,
             aggregationCompatible: false,
-            aggregationGrainAmbiguous: false,
+            grainUnsupportedProviders: [],
             currencyVerified: false,
             windowComplete: false,
             timezoneVerified: false,
@@ -1061,6 +1294,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         assert.equal(forged.status, "NOT_VERIFIED");
         // The service signature accepts no verification input at all; the
         // contract version is server-owned.
-        assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v2");
+        assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v3");
     });
 });

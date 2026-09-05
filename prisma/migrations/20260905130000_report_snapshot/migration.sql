@@ -37,11 +37,12 @@ CREATE TABLE "ReportSnapshot" (
 -- CreateIndex
 CREATE INDEX "ReportSnapshot_workspaceId_clientId_generatedAt_idx" ON "ReportSnapshot"("workspaceId", "clientId", "generatedAt");
 
--- CreateIndex
-CREATE INDEX "ReportSnapshot_generationKey_dependencyHash_idx" ON "ReportSnapshot"("generationKey", "dependencyHash");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ReportSnapshot_generationKey_sequence_key" ON "ReportSnapshot"("generationKey", "sequence");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "ReportSnapshot_generationKey_dependencyHash_key" ON "ReportSnapshot"("generationKey", "dependencyHash");
 
 -- AddForeignKey
 ALTER TABLE "ReportSnapshot" ADD CONSTRAINT "ReportSnapshot_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;

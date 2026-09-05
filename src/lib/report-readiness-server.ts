@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import type { ScopedTransaction } from "./warehouse-query";
 import { RbacError } from "@/lib/rbac";
 import { evaluateReportReadiness, type ReportingWindow, type SyncEvidence } from "./report-readiness";
 import { parseReadinessRequest } from "./report-readiness-request";
@@ -16,12 +17,27 @@ function outcome(value: unknown): SyncEvidence["status"] {
   return "unknown";
 }
 
-/** Read-only, bounded, consistent snapshot. Caller must authorize workspace membership first. */
-export async function loadReportReadiness(workspaceId: string, window: ReportingWindow, options: { clientId?: string; after?: string; limit?: number } = {}) {
-  if (!parseReadinessRequest({ workspaceId, start: window.start, end: window.end, ...options })) {
+export type LoadReportReadinessOptions = { clientId?: string; after?: string; limit?: number; tx?: ScopedTransaction };
+
+/**
+ * Read-only, bounded, consistent readiness snapshot. Caller must authorize
+ * workspace membership first. Runs in its own RepeatableRead transaction, or
+ * inside a caller-provided transaction client so consumers (e.g. the verified
+ * report blueprint) can evaluate readiness in the SAME database snapshot as
+ * their own metric rows, dataset fingerprints and delivery receipts.
+ */
+export async function loadReportReadiness(workspaceId: string, window: ReportingWindow, options: LoadReportReadinessOptions = {}) {
+  const { tx: _tx, ...validationOptions } = options;
+  void _tx;
+  if (!parseReadinessRequest({ workspaceId, start: window.start, end: window.end, ...validationOptions })) {
     throw new RbacError("Invalid readiness request", "INVALID_REQUEST", 400);
   }
-  return prisma.$transaction(async tx => {
+  const run = (tx: ScopedTransaction) => loadReportReadinessInTransaction(tx, workspaceId, window, options);
+  if (options.tx) return run(options.tx);
+  return prisma.$transaction(run, { isolationLevel: "RepeatableRead", timeout: 15_000 });
+}
+
+async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspaceId: string, window: ReportingWindow, options: { clientId?: string; after?: string; limit?: number }) {
     const limit = options.clientId ? 1 : Math.min(options.limit ?? 50, 50);
     const clients = await tx.client.findMany({
       where: { workspaceId, ...(options.clientId ? { id: options.clientId } : options.after ? { id: { gt: options.after } } : {}) },
@@ -135,6 +151,5 @@ export async function loadReportReadiness(workspaceId: string, window: Reporting
         })),
       });
     }));
-    return { evaluations, nextCursor: clients.length > limit ? selected.at(-1)!.id : null };
-  }, { isolationLevel: "RepeatableRead", timeout: 15_000 });
+  return { evaluations, nextCursor: clients.length > limit ? selected.at(-1)!.id : null };
 }

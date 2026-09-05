@@ -225,8 +225,8 @@ model ReportSnapshot {
   client    Client    @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
 
   @@unique([generationKey, sequence])
+  @@unique([generationKey, dependencyHash])
   @@index([workspaceId, clientId, generatedAt])
-  @@index([generationKey, dependencyHash])
 }
 
 /// Provider facts are retained independently of explicit, audited operator overrides.

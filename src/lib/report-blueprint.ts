@@ -31,6 +31,8 @@ import { loadReportReadiness } from "@/lib/report-readiness-server";
 import { REPORT_DATASET_CAP, reportingDataset } from "@/lib/report-delivery";
 import type { ScopedTransaction } from "@/lib/warehouse-query";
 import { getPlatformLabel } from "@/lib/client-export";
+import { RbacError } from "@/lib/rbac";
+import { withSystemScope } from "@/lib/tenant-guard";
 
 export const BLUEPRINT_ID = "weekly-paid-media-performance";
 export const BLUEPRINT_VERSION = 1;
@@ -40,14 +42,30 @@ export const BLUEPRINT_SCHEMA_VERSION = 2;
  * Source of truth: the CampaignMetric table (UTC-day rows, string IDs,
  * per-row currency) written by the existing provider ingestion mappers.
  */
-export const METRIC_CONTRACT_VERSION = "weekly-blueprint-metrics-v2";
+export const METRIC_CONTRACT_VERSION = "weekly-blueprint-metrics-v3";
 /**
- * The ONE authoritative aggregation grain. Totals, provider breakdowns and
- * the campaign table aggregate ONLY `level = "campaign"` rows. Rows at
- * account/adset/ad grain in the same window make the grain ambiguous and
- * fail verification closed — they are never summed together with it.
+ * Authoritative aggregation grain PER PROVIDER, derived from each active
+ * ingestion path's actually persisted rows (not assumed):
+ *   - google_ads:  "campaign"  (ad-platform-ingest.ts ingestGoogleAdsRows)
+ *   - meta_ads:    "ad"        (sync-connection.ts syncMetaAds — the active
+ *     sync fetches level:"ad" and deletes legacy campaign aggregates after a
+ *     complete replacement, so production windows hold ad rows)
+ *   - tiktok_business: "campaign" (ad-platform-ingest.ts ingestTiktokRows)
+ *   - shopee / lazada: "campaign" (sync-marketplace-warehouse.ts daily
+ *     order rollups)
+ * Rows at a provider's authoritative grain are aggregated (Meta ad rows roll
+ * up to stable campaign identities). Rows at other grains are
+ * non-authoritative duplicates and are ignored — never summed. A required
+ * provider whose window rows exist ONLY at a non-authoritative grain has
+ * unsupported grain evidence and fails verification closed.
  */
-export const AUTHORITATIVE_AGGREGATION_GRAIN = "campaign";
+export const PROVIDER_SOURCE_GRAINS: Record<string, string> = {
+  google_ads: "campaign",
+  meta_ads: "ad",
+  tiktok_business: "campaign",
+  shopee: "campaign",
+  lazada: "campaign",
+};
 export const MAX_CAMPAIGN_ROWS = 100;
 
 export type BlueprintVerificationLabel = "VERIFIED" | "NOT_VERIFIED";
@@ -398,8 +416,9 @@ export type VerificationInput = {
   includedProviders: string[];
   hasMetricData: boolean;
   aggregationCompatible: boolean;
-  /** True when non-campaign rows share the window — mixed grains fail closed. */
-  aggregationGrainAmbiguous: boolean;
+  /** Required providers whose window rows exist only at a non-authoritative
+   *  grain (unknown/unsupported grain evidence) — fails verification closed. */
+  grainUnsupportedProviders: string[];
   currencyVerified: boolean;
   windowComplete: boolean;
   timezoneVerified: boolean;
@@ -438,7 +457,9 @@ export function computeVerificationStatus(input: VerificationInput): Verificatio
   }
   if (!input.hasMetricData) reasons.push("no_metric_data");
   if (!input.aggregationCompatible) reasons.push("incompatible_metric_semantics");
-  if (input.aggregationGrainAmbiguous) reasons.push("aggregation_grain_ambiguous");
+  if (input.grainUnsupportedProviders.length > 0) {
+    reasons.push(`aggregation_grain_unsupported:${input.grainUnsupportedProviders.sort().join(",")}`);
+  }
   if (!input.currencyVerified) reasons.push("currency_unverified");
   if (!input.windowComplete) reasons.push("window_incomplete");
   if (!input.timezoneVerified) reasons.push("reporting_timezone_unverified");
@@ -675,7 +696,7 @@ type GenerationContext = {
   currentRows: MetricRowInput[];
   previousRows: MetricRowInput[];
   /** Rows at other grains in the window make aggregation ambiguous. */
-  grainAmbiguous: boolean;
+  grainUnsupportedProviders: string[];
   rowsLimited: boolean;
   evaluation: ReportReadinessEvaluation;
   dataset: Awaited<ReturnType<typeof reportingDataset>>;
@@ -703,7 +724,7 @@ function buildDependencyState(ctx: GenerationContext): DependencyState {
   };
 }
 
-function computeGenerationKey(
+export function computeGenerationKey(
   workspaceId: string,
   clientId: string,
   window: ReportingWindow,
@@ -754,19 +775,13 @@ function buildProviderBreakdowns(ctx: GenerationContext): {
     const hasData = currentRows.length > 0;
     if (hasData) {
       includedProviders.push(provider);
-      // Included accounts are derived from ACTUAL metric evidence: the
-      // distinct account ids present in the campaign-grain rows themselves.
-      const accountIds = [...new Set(currentRows.map((row) => row.accountId))].sort();
-      const connectionByAccount = new Map(
-        ctx.connections.filter((c) => c.provider === provider).map((c) => [c.remoteAccountId, c.id]),
-      );
-      for (const accountId of accountIds) {
-        includedAccounts.push({
-          provider,
-          accountId,
-          connectionId: connectionByAccount.get(accountId) ?? "",
-        });
-      }
+      // Included account/connection evidence is derived from ACTUAL metric
+      // rows: distinct (connectionId, accountId) pairs as stored. Never
+      // reconstructed by matching account ids against Connection labels.
+      const pairs = [...new Map(
+        currentRows.map((row) => [`${row.connectionId}::${row.accountId}`, { provider, accountId: row.accountId, connectionId: row.connectionId }]),
+      ).values()].sort((a, b) => compareStrings(a.accountId, b.accountId) || compareStrings(a.connectionId, b.connectionId));
+      includedAccounts.push(...pairs);
     }
     const dataThrough = ctx.evaluation.providers
       .find((entry) => entry.provider === provider)?.latestDataDate ?? null;
@@ -837,7 +852,7 @@ function buildVerification(
     includedProviders,
     hasMetricData: ctx.currentRows.length > 0,
     aggregationCompatible: aggregationCompatibleFor(ctx.currentRows, totals),
-    aggregationGrainAmbiguous: ctx.grainAmbiguous,
+    grainUnsupportedProviders: ctx.grainUnsupportedProviders,
     currencyVerified: currencyVerifiedFor(totals, ctx.evaluation),
     windowComplete: windowIsComplete(ctx.window),
     timezoneVerified: ctx.evaluation.timezones.length === 1,
@@ -914,6 +929,17 @@ function isUniqueViolation(error: unknown): boolean {
   return Boolean(error) && typeof error === "object" && (error as { code?: string }).code === "P2002";
 }
 
+/** Create a snapshot row through an explicit transaction client. The tenant
+ *  guard's bulk/create rule is satisfied by the explicit workspaceId fields. */
+function prismaReportSnapshotCreate(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  data: Record<string, unknown>,
+) {
+  return withSystemScope(() => (tx as unknown as {
+    reportSnapshot: { create: (args: { data: Record<string, unknown> }) => Promise<{ id: string; sequence: number; blueprintId: string; blueprintVersion: number; generationKey: string; dependencyHash: string; verificationStatus: string; verificationReasons: string[]; generatedAt: Date; reportingWindowStart: Date; reportingWindowEnd: Date }> };
+  }).reportSnapshot.create({ data }));
+}
+
 /**
  * Generate (or idempotently return) the blueprint snapshot for a canonical
  * input. Existing snapshots are never overwritten: when dependencies changed
@@ -965,20 +991,19 @@ export async function generateWeeklyBlueprint(params: {
     : lastCompleteWeek(now);
   const comparisonWindow = comparisonWindowFor(window);
 
-  // EVERYTHING the snapshot binds — client requirements, both dataset
-  // fingerprints, exact metric rows, and destination receipts with
-  // currentness evaluated against THESE fingerprints — is loaded through ONE
-  // RepeatableRead transaction. A receipt evaluated against dataset A can
-  // never verify dataset B, because currentness and the bound fingerprint
-  // come from the same read.
-  const { dataset, comparisonDataset, connections, currentWindow, previousWindow, receiptRows, txClient } = await prisma.$transaction(async (tx) => {
-    const [dataset, comparisonDataset, txClient, connections, currentWindow, previousWindow, receiptRows] = await Promise.all([
+  // EVERYTHING the snapshot binds — client requirements, shared readiness
+  // evaluation (source health, coverage, sync/import evidence, reporting
+  // context), both dataset fingerprints, exact metric rows, and destination
+  // receipts with currentness — is loaded through ONE RepeatableRead
+  // transaction via PR #152's transactional readiness core. No cross-transaction
+  // comparison or approximation: every read shares one database snapshot.
+  const { dataset, comparisonDataset, connections, currentWindow, previousWindow, receiptRows, txRequirement, evaluation } = await prisma.$transaction(async (tx) => {
+    const readiness = await loadReportReadiness(workspaceId, window, { clientId, tx });
+    const [dataset, comparisonDataset] = await Promise.all([
       reportingDataset(tx, workspaceId, clientId, window),
       reportingDataset(tx, workspaceId, clientId, comparisonWindow),
-      tx.client.findFirst({
-        where: { id: clientId, workspaceId },
-        select: { requiredProviders: true, requiredDestinations: true, requirementsConfiguredAt: true },
-      }),
+    ]);
+    const [connections, currentWindow, previousWindow, receiptRows] = await Promise.all([
       tx.connection.findMany({
         where: {
           workspaceId,
@@ -1003,23 +1028,17 @@ export async function generateWeeklyBlueprint(params: {
           orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
         }))),
     ]);
-    return { dataset, comparisonDataset, connections, currentWindow, previousWindow, receiptRows, txClient };
+    return { dataset, comparisonDataset, connections, currentWindow, previousWindow, receiptRows, txRequirement: readiness.evaluations[0] ?? null, evaluation: readiness.evaluations[0] ?? null };
   }, { isolationLevel: "RepeatableRead", timeout: 30_000 });
 
-  // A requirement change between the header read and the transaction must
-  // fail closed rather than mix two configurations.
-  if (!txClient
-    || canonicalJson(txClient.requiredProviders) !== canonicalJson(client.requiredProviders)
-    || canonicalJson(txClient.requiredDestinations) !== canonicalJson(client.requiredDestinations)
-    || txClient.requirementsConfiguredAt?.toISOString() !== client.requirementsConfiguredAt.toISOString()) {
-    throw new BlueprintInputError(
-      "Reporting requirements changed while the report was being read. Retry generation.",
-      "evidence_inconsistent",
-    );
+  if (!evaluation) {
+    throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
   }
 
   // Receipt currentness is evaluated against THIS transaction's dataset
-  // fingerprint (PR #152's exact rule) — never against another read's.
+  // fingerprint (PR #152's exact rule) — the same read that produced the
+  // bound fingerprint, so a receipt can never verify a dataset it was not
+  // evaluated against.
   const receipts: DependencyState["receipts"] = receiptRows.flatMap((receipt) => receipt ? [{
     id: receipt.id,
     destination: receipt.destination,
@@ -1030,36 +1049,39 @@ export async function generateWeeklyBlueprint(params: {
       && receipt.retrievedAt.getTime() >= dataset.evidenceAt,
   }] : []);
 
-  // Authoritative readiness: evidence-based evaluator from PR #152's server
-  // layer. Its destination view must agree with the transaction's receipts —
-  // divergence means data moved between the two reads, and generation fails
-  // closed instead of mixing datasets.
-  const readiness = await loadReportReadiness(workspaceId, window, { clientId });
-  const evaluation = readiness.evaluations[0];
-  if (!evaluation) {
-    throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
-  }
-  const evaluationReceiptKey = (receipts: Array<{ id: string; destination: string; current: boolean }>) =>
-    canonicalJson([...receipts].sort((a, b) => a.id.localeCompare(b.id)).map((receipt) => ({ id: receipt.id, destination: receipt.destination, current: receipt.current })));
-  if (evaluationReceiptKey(evaluation.destination.receipts ?? []) !== evaluationReceiptKey(receipts)) {
-    throw new BlueprintInputError(
-      "Reporting evidence changed while the report was being read. Retry generation.",
-      "evidence_inconsistent",
-    );
-  }
-
-  // ONE aggregation grain: campaign-level rows only.
-  const currentCampaignRows = currentWindow.rows.filter((row) => row.level === AUTHORITATIVE_AGGREGATION_GRAIN);
-  const previousCampaignRows = previousWindow.rows.filter((row) => row.level === AUTHORITATIVE_AGGREGATION_GRAIN);
-  const grainAmbiguous = currentWindow.rows.some((row) => row.level !== AUTHORITATIVE_AGGREGATION_GRAIN)
-    || previousWindow.rows.some((row) => row.level !== AUTHORITATIVE_AGGREGATION_GRAIN);
+  // Per-provider authoritative grain resolution: aggregate each provider's
+  // OWN persisted grain; ignore non-authoritative duplicate grains; fail
+  // closed when a provider's window rows exist only at an unsupported grain.
+  const requiredProviders = [...client.requiredProviders].sort();
+  const splitByGrain = (rows: MetricRowInput[]) => {
+    const authoritative: MetricRowInput[] = [];
+    const unsupportedOnly = new Set<string>();
+    for (const provider of requiredProviders) {
+      const grain = PROVIDER_SOURCE_GRAINS[provider];
+      const providerRows = rows.filter((row) => row.platform === provider);
+      if (!grain) {
+        if (providerRows.length > 0) unsupportedOnly.add(provider);
+        continue;
+      }
+      const authoritativeRows = providerRows.filter((row) => row.level === grain);
+      if (authoritativeRows.length > 0) {
+        authoritative.push(...authoritativeRows);
+      } else if (providerRows.length > 0) {
+        unsupportedOnly.add(provider);
+      }
+    }
+    return { authoritative, unsupportedOnly };
+  };
+  const { authoritative: currentCampaignRows, unsupportedOnly: currentUnsupported } = splitByGrain(currentWindow.rows);
+  const { authoritative: previousCampaignRows, unsupportedOnly: previousUnsupported } = splitByGrain(previousWindow.rows);
+  const grainUnsupportedProviders = [...new Set([...currentUnsupported, ...previousUnsupported])];
 
   const ctx: GenerationContext = {
     workspaceId,
     clientId,
     clientName: client.name,
     clientRequirement: {
-      requiredProviders: [...client.requiredProviders].sort(),
+      requiredProviders,
       requiredDestinations: [...client.requiredDestinations].sort(),
       requirementsConfiguredAt: client.requirementsConfiguredAt.toISOString(),
     },
@@ -1068,7 +1090,7 @@ export async function generateWeeklyBlueprint(params: {
     connections,
     currentRows: currentCampaignRows,
     previousRows: previousCampaignRows,
-    grainAmbiguous,
+    grainUnsupportedProviders,
     rowsLimited: currentWindow.limited,
     evaluation,
     dataset,
@@ -1083,14 +1105,16 @@ export async function generateWeeklyBlueprint(params: {
 
   // Idempotent: same canonical input + same dependency state returns the
   // stored snapshot and its stored result, byte-for-byte — never a rebuild.
-  const existing = await prisma.reportSnapshot.findFirst({
+  // Cheap pre-check to skip report building when this exact snapshot exists;
+  // the authoritative lookup happens again inside the locked create below.
+  const preExisting = await prisma.reportSnapshot.findFirst({
     where: { generationKey, dependencyHash },
     orderBy: [{ sequence: "desc" }],
   });
-  if (existing) {
+  if (preExisting) {
     return {
-      snapshot: toSnapshotMeta(existing),
-      report: existing.result as unknown as BlueprintReport,
+      snapshot: toSnapshotMeta(preExisting),
+      report: preExisting.result as unknown as BlueprintReport,
       created: false,
       readiness: {
         status: evaluation.status,
@@ -1110,14 +1134,34 @@ export async function generateWeeklyBlueprint(params: {
 
   const dateRange = windowDateRange(window);
   const comparisonRange = windowDateRange(comparisonWindow);
-  const createSnapshot = (sequence: number) => prisma.reportSnapshot.create({
-    data: {
+
+  // Concurrent generations serialize on a transaction-scoped advisory lock
+  // keyed by the generation key. Lookup → sequence allocation → insertion is
+  // therefore atomic per logical report:
+  //   - identical dependency state: the loser reads and returns the stored
+  //     winner byte-for-byte (created: false) — exactly one row is stored,
+  //     backed by the UNIQUE (generationKey, dependencyHash) constraint;
+  //   - divergent dependency states: each receives its own immutable
+  //     sequence, allocated serially, with no spurious failures.
+  const created = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${generationKey}))`;
+    const winner = await tx.reportSnapshot.findFirst({
+      where: { generationKey, dependencyHash },
+      orderBy: [{ sequence: "desc" }],
+    });
+    if (winner) return { row: winner, created: false as const };
+    const maxSequence = await tx.reportSnapshot.findFirst({
+      where: { generationKey },
+      orderBy: [{ sequence: "desc" }],
+      select: { sequence: true },
+    });
+    const row = await prismaReportSnapshotCreate(tx, {
       workspaceId,
       clientId,
       blueprintId: BLUEPRINT_ID,
       blueprintVersion: BLUEPRINT_VERSION,
       generationKey,
-      sequence,
+      sequence: (maxSequence?.sequence ?? 0) + 1,
       reportingWindowStart: dateRange.gte,
       reportingWindowEnd: dateRange.lte,
       comparisonWindowStart: comparisonRange.gte,
@@ -1152,47 +1196,38 @@ export async function generateWeeklyBlueprint(params: {
       schemaVersion: BLUEPRINT_SCHEMA_VERSION,
       dependencyHash,
       result: report as unknown as Record<string, unknown>,
-    },
+    });
+    return { row, created: true as const };
+  }, { isolationLevel: "ReadCommitted", timeout: 15_000 }).catch((error: unknown) => {
+    // Backstop: the unique constraint makes double-allocation impossible.
+    // Contention escaping the lock (e.g. lock timeout) is a retryable server
+    // error per the repository's RbacError convention — never a client 400.
+    if (isUniqueViolation(error)) {
+      throw new RbacError(
+        "Snapshot storage contended with a concurrent generation. Retry.",
+        "SNAPSHOT_CONTENTION",
+        503,
+      );
+    }
+    throw error;
   });
 
-  // Concurrent generations for the same canonical input either agree (same
-  // dependency state → one snapshot, idempotent) or race on the sequence
-  // counter. A P2002 loser retries the allocation so every distinct
-  // dependency state gets its own immutable version and no generation fails
-  // spuriously.
-  let created: Awaited<ReturnType<typeof createSnapshot>> | null = null;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const maxSequence = await prisma.reportSnapshot.findFirst({
-      where: { generationKey },
-      orderBy: [{ sequence: "desc" }],
-      select: { sequence: true },
-    });
-    try {
-      created = await createSnapshot((maxSequence?.sequence ?? 0) + 1);
-      break;
-    } catch (error: unknown) {
-      if (!isUniqueViolation(error) || attempt === 4) throw error;
-      // Same-state winner takes precedence: identical input + deps is
-      // idempotent even when two generations raced.
-      const winner = await prisma.reportSnapshot.findFirst({
-        where: { generationKey, dependencyHash },
-        orderBy: [{ sequence: "desc" }],
-      });
-      if (winner) {
-        created = winner;
-        break;
-      }
-    }
-  }
-  if (!created) {
-    throw new BlueprintInputError(
-      "Snapshot could not be written under concurrent generation. Retry.",
-      "sequence_contention",
-    );
+  if (!created.created) {
+    return {
+      snapshot: toSnapshotMeta(created.row),
+      report: created.row.result as unknown as BlueprintReport,
+      created: false,
+      readiness: {
+        status: evaluation.status,
+        blockers: evaluation.blockers.map((issue) => issue.code),
+        warnings: evaluation.warnings.map((issue) => issue.code),
+        destinationState: evaluation.destination.state,
+      },
+    };
   }
 
   return {
-    snapshot: toSnapshotMeta(created),
+    snapshot: toSnapshotMeta(created.row),
     report,
     created: true,
     readiness: report.overview.readiness,
@@ -1340,6 +1375,12 @@ export async function reopenWeeklyBlueprint(params: {
   });
   if (!client) {
     throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
+  }
+  if (Boolean(params.windowStart) !== Boolean(params.windowEnd)) {
+    throw new BlueprintInputError(
+      "Provide both windowStart and windowEnd, or neither (the last complete week is used).",
+      "window_boundary_incomplete",
+    );
   }
   const window = params.windowStart && params.windowEnd
     ? resolveExplicitWindow(params.windowStart, params.windowEnd)
