@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { REPORTS_SOURCE_CHIPS, pipelineMatchesSourceFilter } from "@/lib/reports-source-filters";
 import { SyncActivityTableSkeleton } from "@/components/reports/SyncActivityLoadingState";
 import { PerformanceReportDashboard } from "@/components/reports/PerformanceReportDashboard";
+import { WeeklyPerformanceBlueprint } from "@/components/reports/WeeklyPerformanceBlueprint";
 
 const REPORTS_VIEW_STORAGE = "monstera_reports_view_v1";
 
@@ -259,12 +260,22 @@ export function ReportsClient() {
             </div>
 
             {viewMode === "performance" ? (
-                <PerformanceReportDashboard
-                    workspaceId={activeWorkspaceId ?? ""}
-                    clients={clients}
-                    selectedClientId={clientFilter}
-                    onClientChange={setClient}
-                />
+                <>
+                    <WeeklyPerformanceBlueprint
+                        workspaceId={activeWorkspaceId ?? ""}
+                        clients={clients}
+                        selectedClientId={clientFilter}
+                        onClientChange={setClient}
+                    />
+                    <div className="mt-6">
+                        <PerformanceReportDashboard
+                            workspaceId={activeWorkspaceId ?? ""}
+                            clients={clients}
+                            selectedClientId={clientFilter}
+                            onClientChange={setClient}
+                        />
+                    </div>
+                </>
             ) : (
                 <>
                     <div className="relative z-10 mb-5">

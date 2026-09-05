@@ -148,6 +148,8 @@ model Workspace {
   schemaProposals     SchemaPatchProposal[]
   paymentOrders       PaymentOrder[]
   providerAccountHealth ProviderAccountHealth[]
+  reportingRequirements ClientReportingRequirement[]
+  reportSnapshots     ReportSnapshot[]
 
   @@index([subscriptionProvider, subscriptionEndsAt])
 }
@@ -163,8 +165,82 @@ model Client {
   workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   pipelines   Pipeline[]
   connections Connection[]
+  reportingRequirement ClientReportingRequirement?
+  reportSnapshots      ReportSnapshot[]
 
   @@index([workspaceId])
+}
+
+/// Per-client reporting configuration for verified report blueprints.
+/// Explicitly configured by workspace admins — never inferred from connections.
+model ClientReportingRequirement {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  clientId          String   @unique
+  /// Subset of paid-media providers this client requires in verified reports.
+  requiredProviders String[]
+  /// When true, verified reports require a configured destination connection.
+  requireDestination Boolean  @default(false)
+  /// IANA timezone the client reports in (e.g. "Asia/Ho_Chi_Minh").
+  reportingTimezone String?
+  /// Expected reporting currency (ISO 4217). Null = accept any single currency.
+  reportingCurrency String?
+  /// Bumped by the blueprint service whenever configuration changes.
+  configVersion     Int      @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, clientId])
+  @@index([clientId])
+}
+
+/// Immutable, reproducible snapshot of a verified report blueprint run.
+/// Generation is idempotent per (generationKey, dependencyHash); changed
+/// dependencies create a new sequence instead of overwriting history.
+model ReportSnapshot {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  clientId          String
+  blueprintId       String
+  blueprintVersion  Int
+  /// SHA-256 of the canonical generation input (workspace, client, blueprint,
+  /// windows, timezone). Snapshots sharing a generationKey are versions of the
+  /// same logical report.
+  generationKey     String
+  sequence          Int
+  reportingWindowStart   DateTime
+  reportingWindowEnd     DateTime
+  comparisonWindowStart  DateTime?
+  comparisonWindowEnd    DateTime?
+  reportingTimezone String
+  reportingCurrency String?
+  requiredProviders String[]
+  includedProviders String[]
+  includedAccountIds String[]
+  dataThroughByProvider Json
+  metricContractVersions Json
+  readinessStatus   String
+  verificationStatus String
+  verificationReasons String[]
+  readinessEvidence Json
+  destinationConnectionId String?
+  destinationEvidence Json?
+  generatorCommitSha String?
+  schemaVersion     Int      @default(1)
+  /// SHA-256 of the canonical dependency state at generation time.
+  dependencyHash    String
+  result            Json
+  generatedAt       DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client    Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([generationKey, sequence])
+  @@index([workspaceId, clientId, generatedAt])
+  @@index([generationKey, dependencyHash])
 }
 
 model WorkspaceMember {
