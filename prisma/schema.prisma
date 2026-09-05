@@ -144,6 +144,7 @@ model Workspace {
   agentJobs           AgentJob[]
   agentTraces         AgentTrace[]
   evidencePacks       EvidencePackRecord[]
+  connectorRunArtifacts ConnectorRunArtifact[]
   payloadDiscoveries  PayloadSchemaDiscovery[]
   schemaProposals     SchemaPatchProposal[]
   paymentOrders       PaymentOrder[]
@@ -163,8 +164,51 @@ model Client {
   workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   pipelines   Pipeline[]
   connections Connection[]
+  requiredProviders String[] @default([])
+  requiredDestinations String[] @default([])
+  requirementsConfiguredAt DateTime?
+  deliveryReceipts DestinationDeliveryReceipt[]
 
+  @@unique([workspaceId, id])
   @@index([workspaceId])
+}
+
+/// Provider facts are retained independently of explicit, audited operator overrides.
+model AccountReportingContext {
+  id String @id @default(cuid())
+  workspaceId String
+  connectionId String
+  accountId String
+  providerTimezone String?
+  providerCurrency String?
+  providerObservedAt DateTime?
+  overrideTimezone String?
+  overrideCurrency String?
+  overrideReason String?
+  overrideBy String?
+  overrideAt DateTime?
+  updatedAt DateTime @updatedAt
+  connection Connection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@unique([workspaceId, connectionId, accountId])
+}
+
+/// A successful authenticated, complete client/window warehouse retrieval, not a connection or UI assertion.
+model DestinationDeliveryReceipt {
+  id String @id @default(cuid())
+  workspaceId String
+  clientId String
+  destination String
+  windowStart String
+  windowEnd String
+  dataThroughDate String
+  datasetFingerprint String
+  rowCount Int
+  retrievedAt DateTime @default(now())
+  actorId String
+  client Client @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@index([workspaceId, clientId, windowStart, windowEnd, retrievedAt], map: "DestinationDeliveryReceipt_workspaceId_clientId_windowStart_idx")
 }
 
 model WorkspaceMember {
@@ -270,6 +314,8 @@ model Connection {
   providerSyncRuns     ProviderSyncRun[]
   accountHealth        ProviderAccountHealth[]
 
+  reportingContexts AccountReportingContext[]
+  @@unique([workspaceId, id])
   @@unique([workspaceId, provider, remoteAccountId])
 }
 
@@ -939,10 +985,29 @@ model EvidencePackRecord {
   workspaceId String
   jobId       String
   pack        Json
+  certifiedPack Json? // Approved projection; immutable base evidence remains in pack.
   createdAt   DateTime @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, jobId])
+}
+
+model ConnectorRunArtifact {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  connectionId  String
+  runId         String
+  provider      String
+  kind          String
+  payloadHash   String
+  payload       Json
+  retainedUntil DateTime
+  createdAt     DateTime @default(now())
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // One verdict artifact per run: repeat publication conflicts instead of duplicating.
+  @@unique([runId, kind])
+  @@index([workspaceId, connectionId])
 }
 
 model PayloadSchemaDiscovery {

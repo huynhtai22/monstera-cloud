@@ -310,6 +310,8 @@ export async function ingestTiktokRows(
     connectionId: string;
     accountId: string;
     accountName?: string;
+    /** Explicit currency returned by the authenticated advertiser-info API; not a default. */
+    providerCurrency?: string;
     syncJobId: string;
     lease?: ConnectionLease;
   }
@@ -372,7 +374,7 @@ export async function ingestTiktokRows(
       const conversions = parseFloat(String(metrics.conversion ?? metrics.conversions ?? 0));
       const revenue = parseFloat(String(metrics.revenue ?? metrics.conversion_value ?? 0));
       const roas = parseFloat(String(metrics.roas ?? 0));
-      const currency = typeof metrics.currency === 'string' ? metrics.currency : undefined;
+      const currency = typeof metrics.currency === 'string' ? metrics.currency : opts.providerCurrency;
 
       await upsertCampaignMetric({
         workspaceId: opts.workspaceId,

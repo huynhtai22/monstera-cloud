@@ -336,6 +336,18 @@ export interface ReportRow {
 // Production : https://business-api.tiktok.com/open_api/v1.3
 // Sandbox    : https://sandbox-ads.tiktok.com/open_api/v1.3
 export class TikTokReportClient {
+  /** Account facts, never derived from browser locale or report amounts. */
+  async getAdvertiserReportingContext(accessToken: string, advertiserId: string, sandbox = false) {
+    const url = new URL(`${this.getBase(sandbox)}/advertiser/info/`);
+    url.searchParams.set("advertiser_ids", JSON.stringify([advertiserId]));
+    url.searchParams.set("fields", JSON.stringify(["advertiser_id", "timezone", "currency"]));
+    const response = await fetch(url.toString(), { headers: { "Access-Token": accessToken }, signal: AbortSignal.timeout(10_000) });
+    const json = await response.json();
+    if (!response.ok || json.code !== 0) throw new Error("TikTok reporting context unavailable");
+    const account = Array.isArray(json.data?.list) ? json.data.list.find((a: { advertiser_id?: unknown }) => String(a.advertiser_id) === advertiserId) : undefined;
+    if (!account) throw new Error("TikTok advertiser context missing");
+    return { timezone: account.timezone as unknown, currency: account.currency as unknown };
+  }
   private getBase(sandbox = false): string {
     return sandbox
       ? 'https://sandbox-ads.tiktok.com/open_api/v1.3'
