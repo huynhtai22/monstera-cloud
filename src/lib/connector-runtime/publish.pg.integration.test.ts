@@ -174,7 +174,14 @@ describe("Connector Runtime v1 fenced publication — real PostgreSQL", { skip: 
         reconciliation: { variances: [{ metric: "spend", percentVariance: 1 }], tolerancePercent: 5 },
       }),
     );
-    assert.deepEqual(replayed, direct);
+    // evaluatedAt is wall-clock metadata: compare everything else exactly,
+    // then assert its presence and shape separately (millisecond straddles
+    // across two evaluations are expected, not evidence of divergence).
+    const { evaluatedAt: _replayedAt, ...replayedRest } = replayed;
+    const { evaluatedAt: _directAt, ...directRest } = direct;
+    assert.deepEqual(replayedRest, directRest);
+    assert.match(_replayedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.match(_directAt, /^\d{4}-\d{2}-\d{2}T/);
     assert.equal(replayed.verdict, "PASS");
     assert.equal(providerCalls, 0);
   });
