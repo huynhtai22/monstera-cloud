@@ -133,41 +133,41 @@ model Workspace {
   userDashboards UserDashboard[]
 
   // Looker Studio integration jobs
-  lookerJobs          LookerJob[]
-  warehouseImportJobs WarehouseImportJob[]
-  providerAccess      WorkspaceProviderAccess[]
-  invitations         WorkspaceInvitation[]
-  oauthAttempts       OAuthAttempt[]
-  auditEvents         AuditEvent[]
-  supportTickets      SupportTicket[]
-  aiPolicy            WorkspaceAiPolicy?
-  agentJobs           AgentJob[]
-  agentTraces         AgentTrace[]
-  evidencePacks       EvidencePackRecord[]
+  lookerJobs            LookerJob[]
+  warehouseImportJobs   WarehouseImportJob[]
+  providerAccess        WorkspaceProviderAccess[]
+  invitations           WorkspaceInvitation[]
+  oauthAttempts         OAuthAttempt[]
+  auditEvents           AuditEvent[]
+  supportTickets        SupportTicket[]
+  aiPolicy              WorkspaceAiPolicy?
+  agentJobs             AgentJob[]
+  agentTraces           AgentTrace[]
+  evidencePacks         EvidencePackRecord[]
   connectorRunArtifacts ConnectorRunArtifact[]
-  payloadDiscoveries  PayloadSchemaDiscovery[]
-  schemaProposals     SchemaPatchProposal[]
-  paymentOrders       PaymentOrder[]
+  payloadDiscoveries    PayloadSchemaDiscovery[]
+  schemaProposals       SchemaPatchProposal[]
+  paymentOrders         PaymentOrder[]
   providerAccountHealth ProviderAccountHealth[]
 
   @@index([subscriptionProvider, subscriptionEndsAt])
 }
 
 model Client {
-  id          String       @id @default(cuid())
-  workspaceId String
-  name        String
-  description String?
-  logoUrl     String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  pipelines   Pipeline[]
-  connections Connection[]
-  requiredProviders String[] @default([])
-  requiredDestinations String[] @default([])
+  id                       String                       @id @default(cuid())
+  workspaceId              String
+  name                     String
+  description              String?
+  logoUrl                  String?
+  createdAt                DateTime                     @default(now())
+  updatedAt                DateTime                     @updatedAt
+  workspace                Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pipelines                Pipeline[]
+  connections              Connection[]
+  requiredProviders        String[]                     @default([])
+  requiredDestinations     String[]                     @default([])
   requirementsConfiguredAt DateTime?
-  deliveryReceipts DestinationDeliveryReceipt[]
+  deliveryReceipts         DestinationDeliveryReceipt[]
 
   @@unique([workspaceId, id])
   @@index([workspaceId])
@@ -175,38 +175,38 @@ model Client {
 
 /// Provider facts are retained independently of explicit, audited operator overrides.
 model AccountReportingContext {
-  id String @id @default(cuid())
-  workspaceId String
-  connectionId String
-  accountId String
-  providerTimezone String?
-  providerCurrency String?
+  id                 String     @id @default(cuid())
+  workspaceId        String
+  connectionId       String
+  accountId          String
+  providerTimezone   String?
+  providerCurrency   String?
   providerObservedAt DateTime?
-  overrideTimezone String?
-  overrideCurrency String?
-  overrideReason String?
-  overrideBy String?
-  overrideAt DateTime?
-  updatedAt DateTime @updatedAt
-  connection Connection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+  overrideTimezone   String?
+  overrideCurrency   String?
+  overrideReason     String?
+  overrideBy         String?
+  overrideAt         DateTime?
+  updatedAt          DateTime   @updatedAt
+  connection         Connection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
 
   @@unique([workspaceId, connectionId, accountId])
 }
 
 /// A successful authenticated, complete client/window warehouse retrieval, not a connection or UI assertion.
 model DestinationDeliveryReceipt {
-  id String @id @default(cuid())
-  workspaceId String
-  clientId String
-  destination String
-  windowStart String
-  windowEnd String
-  dataThroughDate String
+  id                 String   @id @default(cuid())
+  workspaceId        String
+  clientId           String
+  destination        String
+  windowStart        String
+  windowEnd          String
+  dataThroughDate    String
   datasetFingerprint String
-  rowCount Int
-  retrievedAt DateTime @default(now())
-  actorId String
-  client Client @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  rowCount           Int
+  retrievedAt        DateTime @default(now())
+  actorId            String
+  client             Client   @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
 
   @@index([workspaceId, clientId, windowStart, windowEnd, retrievedAt], map: "DestinationDeliveryReceipt_workspaceId_clientId_windowStart_idx")
 }
@@ -288,24 +288,24 @@ model AuditEvent {
 }
 
 model Connection {
-  id                   String           @id @default(cuid())
+  id                   String                  @id @default(cuid())
   workspaceId          String
   clientId             String? // Agency UX: Group by Client
   name                 String
   type                 String
   provider             String
   credentials          String
-  remoteAccountId      String           @default("") // Identity key for deduplication (e.g. adAccountId, shop domain)
-  status               String           @default("connected")
+  remoteAccountId      String                  @default("") // Identity key for deduplication (e.g. adAccountId, shop domain)
+  status               String                  @default("connected")
   lastError            String? // UX: Actionable Error Tracking
   lastSyncAt           DateTime? // UX: Freshness Tracking
   lastDataThrough      DateTime? // Latest CampaignMetric.date for this connection; not the sync clock
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
-  workspace            Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  client               Client?          @relation(fields: [clientId], references: [id])
-  destinationPipelines Pipeline[]       @relation("DestinationConnection")
-  sourcePipelines      Pipeline[]       @relation("SourceConnection")
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  workspace            Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client               Client?                 @relation(fields: [clientId], references: [id])
+  destinationPipelines Pipeline[]              @relation("DestinationConnection")
+  sourcePipelines      Pipeline[]              @relation("SourceConnection")
   campaignMetrics      CampaignMetric[]
   orders               RetailOrder[]
   shopeeCampaigns      ShopeeCampaign[]
@@ -315,6 +315,7 @@ model Connection {
   accountHealth        ProviderAccountHealth[]
 
   reportingContexts AccountReportingContext[]
+
   @@unique([workspaceId, id])
   @@unique([workspaceId, provider, remoteAccountId])
 }
@@ -483,7 +484,7 @@ model CampaignMetric {
 /// from dated performance rows so an empty sandbox performance response cannot
 /// be mistaken for zero-valued metrics.
 model ShopeeCampaign {
-  id                 String   @id @default(cuid())
+  id                 String     @id @default(cuid())
   workspaceId        String
   connectionId       String
   environment        String
@@ -495,10 +496,10 @@ model ShopeeCampaign {
   campaignName       String?
   campaignStatus     String?
   sourceRequestId    String?
-  syncedAt           DateTime @default(now())
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  syncedAt           DateTime   @default(now())
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  workspace          Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   connection         Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, environment, shopId, externalCampaignId])
@@ -509,22 +510,22 @@ model ShopeeCampaign {
 /// Provider-discovered Shopee product identity. Performance remains in
 /// CampaignMetric; catalog rows retain their own source timestamp and status.
 model ShopeeProduct {
-  id               String   @id @default(cuid())
-  workspaceId      String
-  connectionId     String
-  environment      String
-  shopId           String
-  region           String
-  externalItemId   String
-  itemName         String?
-  itemStatus       String?
-  sourceUpdatedAt  DateTime?
-  sourceRequestId  String?
-  syncedAt         DateTime @default(now())
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  connection       Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  id              String     @id @default(cuid())
+  workspaceId     String
+  connectionId    String
+  environment     String
+  shopId          String
+  region          String
+  externalItemId  String
+  itemName        String?
+  itemStatus      String?
+  sourceUpdatedAt DateTime?
+  sourceRequestId String?
+  syncedAt        DateTime   @default(now())
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  workspace       Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  connection      Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, environment, shopId, externalItemId])
   @@index([workspaceId, environment, shopId])
@@ -534,17 +535,17 @@ model ShopeeProduct {
 /// Per-connection catalog watermark. The first catalog run deliberately leaves
 /// this null and performs a full product scan; subsequent runs overlap it.
 model ShopeeCatalogSyncState {
-  id                 String   @id @default(cuid())
-  connectionId       String   @unique
+  id                 String     @id @default(cuid())
+  connectionId       String     @unique
   productWatermarkAt DateTime?
-  updatedAt          DateTime @updatedAt
+  updatedAt          DateTime   @updatedAt
   connection         Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 }
 
 /// Sanitized per-endpoint provider call record. It intentionally has no URL,
 /// credential, token, request body, or signature fields.
 model ProviderSyncRun {
-  id                String    @id @default(cuid())
+  id                String     @id @default(cuid())
   workspaceId       String
   connectionId      String
   provider          String
@@ -554,13 +555,13 @@ model ProviderSyncRun {
   httpStatus        Int?
   providerRequestId String?
   status            String
-  rowsReceived      Int       @default(0)
-  rowsWritten       Int       @default(0)
+  rowsReceived      Int        @default(0)
+  rowsWritten       Int        @default(0)
   errorCategory     String?
   errorMessage      String?
-  startedAt         DateTime  @default(now())
+  startedAt         DateTime   @default(now())
   completedAt       DateTime?
-  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace         Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   connection        Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, connectionId, startedAt])
@@ -887,31 +888,31 @@ model SyncLock {
 
 // Durable execution for asynchronous warehouse batch imports
 model WarehouseImportJob {
-  id             String    @id @default(cuid())
-  workspaceId    String
-  userId         String
-  plan           String    @default("pilot")
-  since          String
-  until          String
-  items          Json      // BatchImportItem[]
-  status         String    @default("queued") // queued | running | completed | partial | failed
-  totalItems     Int       @default(0)
-  completedItems Int       @default(0)
-  approximateRows Int      @default(0)
-  results        Json?     // BatchImportJobResult[]
-  errorMsg       String?
-  priority       Int       @default(1)
-  retryCount     Int       @default(0)
-  maxRetries     Int       @default(3)
-  leaseId        String?
-  leaseExpiresAt DateTime?
-  heartbeatAt    DateTime?
-  scheduledAt    DateTime  @default(now())
-  startedAt      DateTime?
-  finishedAt     DateTime?
-  idempotencyKey String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  workspaceId     String
+  userId          String
+  plan            String    @default("pilot")
+  since           String
+  until           String
+  items           Json // BatchImportItem[]
+  status          String    @default("queued") // queued | running | completed | partial | failed
+  totalItems      Int       @default(0)
+  completedItems  Int       @default(0)
+  approximateRows Int       @default(0)
+  results         Json? // BatchImportJobResult[]
+  errorMsg        String?
+  priority        Int       @default(1)
+  retryCount      Int       @default(0)
+  maxRetries      Int       @default(3)
+  leaseId         String?
+  leaseExpiresAt  DateTime?
+  heartbeatAt     DateTime?
+  scheduledAt     DateTime  @default(now())
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  idempotencyKey  String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -922,14 +923,14 @@ model WarehouseImportJob {
 }
 
 model WorkspaceAiPolicy {
-  workspaceId                    String    @id
-  enabledFeatures                String[]
-  monthlyTokenBudget             Int       @default(2000000)
-  monthlyUsdBudget               Float     @default(25)
-  budgetWriteOptIn               Boolean   @default(false)
-  acknowledgeBestEffortDefault   Boolean   @default(false)
-  updatedAt                      DateTime  @updatedAt
-  workspace                      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspaceId                  String    @id
+  enabledFeatures              String[]
+  monthlyTokenBudget           Int       @default(2000000)
+  monthlyUsdBudget             Float     @default(25)
+  budgetWriteOptIn             Boolean   @default(false)
+  acknowledgeBestEffortDefault Boolean   @default(false)
+  updatedAt                    DateTime  @updatedAt
+  workspace                    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 }
 
 model AgentJob {
@@ -966,7 +967,7 @@ model AgentJob {
 }
 
 model AgentTrace {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workspaceId String
   jobId       String
   step        Int
@@ -974,26 +975,26 @@ model AgentTrace {
   toolArgs    Json?
   toolResult  Json?
   durationMs  Int
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, jobId])
 }
 
 model EvidencePackRecord {
-  id          String   @id @default(cuid())
-  workspaceId String
-  jobId       String
-  pack        Json
+  id            String    @id @default(cuid())
+  workspaceId   String
+  jobId         String
+  pack          Json
   certifiedPack Json? // Approved projection; immutable base evidence remains in pack.
-  createdAt   DateTime @default(now())
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, jobId])
 }
 
 model ConnectorRunArtifact {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   workspaceId   String
   connectionId  String
   runId         String
@@ -1002,7 +1003,7 @@ model ConnectorRunArtifact {
   payloadHash   String
   payload       Json
   retainedUntil DateTime
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
   workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   // One verdict artifact per run: repeat publication conflicts instead of duplicating.
@@ -1011,13 +1012,13 @@ model ConnectorRunArtifact {
 }
 
 model PayloadSchemaDiscovery {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   workspaceId  String
   connectionId String
   provider     String
   schemaHash   String
   fields       String
-  discoveredAt DateTime @default(now())
+  discoveredAt DateTime  @default(now())
   workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([connectionId, schemaHash])
@@ -1113,7 +1114,7 @@ model ProviderAccountHealth {
   accountId           String
   accountName         String?
   status              String     @default("healthy") // healthy | degraded | quarantined | reconnect_required
-  errorCategory       String?    // AUTH_EXPIRED | PERMISSION_DENIED | RATE_LIMITED | SCHEMA_DRIFT | TRANSIENT_NETWORK | UNKNOWN
+  errorCategory       String? // AUTH_EXPIRED | PERMISSION_DENIED | RATE_LIMITED | SCHEMA_DRIFT | TRANSIENT_NETWORK | UNKNOWN
   consecutiveFailures Int        @default(0)
   lastError           String?
   lastErrorAt         DateTime?
