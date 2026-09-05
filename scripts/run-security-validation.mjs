@@ -7,6 +7,8 @@ if (!['localhost', '127.0.0.1'].includes(url.hostname)
 }
 const env = {
   PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR,
+  // Preserve an operator-supplied offline preload in isolated verification.
+  NODE_OPTIONS: process.env.NODE_OPTIONS,
   CI: 'true', NODE_ENV: 'test', DATABASE_URL: url.href, DIRECT_URL: url.href,
   NEXTAUTH_SECRET: 'isolated-test-nextauth-secret-32-characters',
   NEXTAUTH_URL: 'http://localhost:3000',
@@ -16,6 +18,9 @@ const env = {
   PILOT_MODE: '1', ENABLE_GOVERNED_ANALYST: 'true',
 };
 const files = process.argv.includes('--all') ? ['src/**/*.test.ts'] : [
+  'src/lib/ad-certification/*.test.ts',
+  'src/app/api/ad-certification/sign-off/route.test.ts',
+  'src/lib/report-readiness*.test.ts',
   'src/lib/security-boundaries.pg.integration.test.ts',
   'src/lib/vietqr-gateway.test.ts',
   'src/lib/payment-workspace.test.ts',

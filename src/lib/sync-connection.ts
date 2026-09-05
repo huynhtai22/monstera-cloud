@@ -4,6 +4,7 @@
  */
 
 import prisma from "@/lib/prisma";
+import { recordProviderReportingContext } from "@/lib/reporting-context-server";
 import { logger } from "@/lib/logger";
 import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import { encrypt } from "@/lib/encryption";
@@ -37,6 +38,13 @@ import {
 // Google imports
 import { googleAdsReportClient, isGoogleAdsDeveloperTokenBlocked } from "@/lib/google-ads";
 import { ingestGoogleAdsRows } from "@/lib/ad-platform-ingest";
+import {
+  assertGoogleRuntimeModeAllowed,
+  executeGoogleShadowRun,
+  isGoogleShadowEnabled,
+  type GoogleShadowCapture,
+  type GoogleShadowOptions,
+} from "@/lib/connector-runtime/google-shadow";
 
 // TikTok imports
 import {
@@ -77,6 +85,12 @@ export interface SyncOptions {
   userPlan?: string;
   /** Internal durable-worker continuation state; never accepted from public input. */
   providerState?: ProviderRetryState;
+  /**
+   * Connector Runtime shadow observation (Google only). When enabled, the
+   * legacy sync result stays authoritative while raw responses are captured
+   * for replay and comparison. Defaults from GOOGLE_CONNECTOR_RUNTIME_MODE.
+   */
+  shadow?: GoogleShadowOptions;
 }
 
 export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult> {
@@ -135,6 +149,7 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
         lease,
       });
     } else if (provider === "google_ads") {
+      assertGoogleRuntimeModeAllowed();
       return await syncGoogleAds({
         connectionId,
         credentials,
@@ -143,6 +158,7 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
         until: opts.until,
         userPlan: plan,
         lease,
+        shadow: opts.shadow ?? defaultGoogleShadowOptions(connectionId),
       });
     } else if (provider === "tiktok_business") {
       return await syncTikTok({
@@ -338,10 +354,14 @@ async function syncMetaAds(opts: {
   // 3. Resolve currencies from Meta itself. Older connections were saved before
   // currency was included in OAuth metadata; never label their source amounts
   // as USD merely because the field is absent.
-  if ((!adAccounts || adAccounts.length === 0 || adAccounts.some((account: any) => !account.currency)) && accessToken) {
+  const freshMetaContexts = new Map<string, { timezone_name?: string; currency?: string }>();
+  if (accessToken) {
     try {
       logger.info(`[syncMetaAds] Querying Meta Graph API dynamically for accessible ad accounts`);
       const apiAccounts = await metaAdsClient.getAdAccounts(accessToken);
+      for (const account of apiAccounts) {
+        freshMetaContexts.set(String(account.id).replace(/^act_/, ""), account);
+      }
       if (apiAccounts && apiAccounts.length > 0) {
         const byId = new Map(
           apiAccounts.map((account) => [String(account.id).replace(/^act_/, ""), account]),
@@ -403,6 +423,11 @@ async function syncMetaAds(opts: {
   for (const account of adAccounts) {
     const accountId = account.id;
     const accountName = account.name;
+    const freshContext = freshMetaContexts.get(String(accountId).replace(/^act_/, ""));
+    if (freshContext) {
+      // Persist only selected accounts, using the same ID spelling as metric rows.
+      await recordProviderReportingContext({ workspaceId, connectionId, provider: "meta_ads", accountId: String(accountId), timezone: freshContext.timezone_name, currency: freshContext.currency });
+    }
 
     if (skippedAccounts.has(String(accountId))) {
       logger.info(`[syncMetaAds] Skipping quarantined/reconnect-required account ${accountId}`);
@@ -580,8 +605,11 @@ async function syncGoogleAds(opts: {
   since?: string;
   until?: string;
   userPlan: string;
+  shadow?: GoogleShadowOptions;
 }): Promise<SyncResult> {
   const { connectionId, credentials, workspaceId, userPlan, lease } = opts;
+  const shadowCaptures: GoogleShadowCapture[] = [];
+  let shadowExtractionMsTotal = 0;
 
   let accessToken: string;
   try {
@@ -719,14 +747,32 @@ async function syncGoogleAds(opts: {
     try {
       logger.info(`[syncGoogleAds] Fetching campaigns for customerId=${customerId} login-customer-id=${mccId} (${descriptiveName})`);
 
+      const shadowRawTexts: string[] = [];
+      const shadowExtractStart = opts.shadow?.enabled ? Date.now() : 0;
       const rows = await googleAdsReportClient.getCampaignPerformance(
         accessToken,
         customerId,
         dateSpec,
         mccId,
+        opts.shadow?.enabled
+          ? { onRawResponse: (event) => shadowRawTexts.push(event.rawText) }
+          : undefined,
       );
+      const shadowExtractionMs =
+        opts.shadow?.enabled && shadowExtractStart > 0 ? Date.now() - shadowExtractStart : null;
 
       logger.info(`[syncGoogleAds] customerId=${customerId} returned ${rows.length} campaign rows`);
+      if (rows.length) await recordProviderReportingContext({ workspaceId, connectionId, provider: "google_ads", accountId: customerId, timezone: rows[0].customer_time_zone, currency: rows[0].customer_currency_code });
+      if (opts.shadow?.enabled) {
+        shadowExtractionMsTotal += shadowExtractionMs ?? 0;
+        shadowCaptures.push({
+          customerId,
+          rawTexts: shadowRawTexts,
+          normalizedRows: rows as unknown as Array<Record<string, unknown>>,
+          timezone: rows[0]?.customer_time_zone as string | undefined,
+          currency: rows[0]?.customer_currency_code as string | undefined,
+        });
+      }
 
       if (rows.length === 0) {
         children.push({ id: customerId, kind: "customer", ok: true, rowsIngested: 0 });
@@ -851,10 +897,35 @@ async function syncGoogleAds(opts: {
     }
   }
 
+  if (opts.shadow?.enabled && shadowCaptures.length > 0) {
+    try {
+      await executeGoogleShadowRun({
+        workspaceId,
+        connectionId,
+        runId: opts.shadow.runId ?? `${connectionId}-${Date.now()}`,
+        legacyVersion: opts.shadow.legacyVersion ?? "legacy-sync",
+        captures: shadowCaptures,
+        extractionMs: shadowExtractionMsTotal,
+        lease,
+      });
+    } catch (shadowError) {
+      // Shadow evidence must never affect the authoritative legacy result.
+      logger.warn(
+        "[syncGoogleAds] Shadow evaluation failed without affecting legacy result:",
+        shadowError instanceof Error ? shadowError.message : shadowError,
+      );
+    }
+  }
+
   const summary = summarizeSyncOutcome(children);
   await persistConnectionSyncOutcome(connectionId, summary, lease);
   logger.info("[syncGoogleAds] Sync outcome", { connectionId, outcome: summary.outcome, targets: children.length, failedTargets: children.filter((child) => !child.ok).map((child) => child.id), rowsIngested: summary.rowsIngested });
   return { ...summary, children };
+}
+
+function defaultGoogleShadowOptions(connectionId: string): GoogleShadowOptions | undefined {
+  if (!isGoogleShadowEnabled()) return undefined;
+  return { enabled: true, runId: `${connectionId}-${Date.now()}`, legacyVersion: "legacy-sync" };
 }
 
 async function syncTikTok(opts: {
@@ -957,7 +1028,16 @@ async function syncTikTok(opts: {
     }
 
     let reportTaskIdForRetry: string | undefined;
+    let providerCurrency: string | undefined;
     try {
+      try {
+        const context = await tiktokReportClient.getAdvertiserReportingContext(accessToken, advertiserId, credentials.sandbox === true);
+        const stored = await recordProviderReportingContext({ workspaceId, connectionId, provider: "tiktok_business", accountId: advertiserId, ...context });
+        providerCurrency = stored.providerCurrency ?? undefined;
+      } catch {
+        // Do not stop import because a metadata permission is missing. Readiness remains independently conservative.
+        logger.warn("[syncTikTok] Reporting context could not be refreshed", { connectionId, advertiserId });
+      }
       const taskParams: CreateReportTaskParams = {
         advertiser_id: advertiserId,
         report_type: "BASIC",
@@ -972,7 +1052,7 @@ async function syncTikTok(opts: {
       if (credentials.sandbox === true) {
         const rows = await tiktokReportClient.getSyncReport(accessToken, taskParams);
         const result = rows.length > 0
-          ? await ingestTiktokRows(rows, { workspaceId, connectionId, accountId: advertiserId, accountName: `Advertiser ${advertiserId}`, syncJobId: jobId, lease })
+          ? await ingestTiktokRows(rows, { workspaceId, connectionId, accountId: advertiserId, accountName: `Advertiser ${advertiserId}`, providerCurrency, syncJobId: jobId, lease })
           : { upserted: 0, failed: 0 };
         children.push({ id: String(advertiserId), kind: "advertiser", ok: result.failed === 0, rowsIngested: result.upserted, error: result.failed ? `${result.failed} row(s) could not be written` : undefined, retryable: result.failed > 0 });
         await recordAccountOutcome({
@@ -1028,6 +1108,7 @@ async function syncTikTok(opts: {
 
         if (rows.length > 0) {
           const result = await ingestTiktokRows(rows, {
+            providerCurrency,
             workspaceId,
             connectionId,
             accountId: advertiserId,

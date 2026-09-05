@@ -52,6 +52,7 @@ export const TENANT_GUARDED_MODELS = new Set([
   "AgentJob",
   "AgentTrace",
   "EvidencePackRecord",
+  "ConnectorRunArtifact",
   "PayloadSchemaDiscovery",
   "SchemaPatchProposal",
   "ShopeeCampaign",
@@ -59,6 +60,8 @@ export const TENANT_GUARDED_MODELS = new Set([
   "ProviderSyncRun",
   "PaymentOrder",
   "ProviderAccountHealth",
+  "AccountReportingContext",
+  "DestinationDeliveryReceipt",
 ]);
 
 /**

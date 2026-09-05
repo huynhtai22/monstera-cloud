@@ -141,6 +141,9 @@
   <div class="section">
   <div class="section-heading">2 · Report setup</div>
   <label>Report Level</label>
+  <label for="reportClientId">Client ID (optional, from Reporting configuration)</label>
+  <input id="reportClientId" type="text" placeholder="For client/window delivery verification" />
+  <p class="tip-box">For delivery evidence, select All Platforms, no account filter, and the exact reporting dates. A successful retrieval is not proof that a report was viewed.</p>
   <select id="reportLevel">
     <option value="adset">Ad Set / Ad Group</option>
     <option value="campaign">Campaign</option>
@@ -371,6 +374,7 @@
     var selectedAccounts = getSelectedAccountIds();
     var params = {
       workspaceId: document.getElementById('workspace').value,
+      clientId: document.getElementById('reportClientId').value.trim(),
       platform:    document.getElementById('platform').value    || null,
       reportLevel: document.getElementById('reportLevel').value || 'adset',
       reportType:  document.getElementById('reportType').value  || '',
