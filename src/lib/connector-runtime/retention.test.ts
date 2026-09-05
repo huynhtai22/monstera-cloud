@@ -45,8 +45,9 @@ describe("cleanupExpiredArtifacts with mocked storage", () => {
       findMany: async (args: any) =>
         rows.map((row) => ({ ...row })).slice(0, (args?.take ?? rows.length) + 0 || rows.length),
       deleteMany: async ({ where }: any) => {
-        deleted = rows.map((row) => row.id).filter((id) => where.id.in.includes(id));
-        return { count: deleted.length };
+        const matching = rows.filter((row) => where.id.in.includes(row.id) && (!where.workspaceId || where.workspaceId === row.workspaceId));
+        deleted.push(...matching.map((r) => r.id));
+        return { count: matching.length };
       },
     };
     (prisma as any).auditEvent = {
@@ -99,6 +100,31 @@ describe("cleanupExpiredArtifacts with mocked storage", () => {
       assert.equal(summary.hasMore, true);
       const drained = await cleanupExpiredArtifacts({ limit: 10 });
       assert.equal(drained.hasMore, false);
+    } finally {
+      restore();
+    }
+  });
+
+  it("groups audit events strictly per workspace for mixed-tenant batches", async () => {
+    const { audits } = mockDb([
+      { id: "old-ws1-1", workspaceId: "ws-1" },
+      { id: "old-ws1-2", workspaceId: "ws-1" },
+      { id: "old-ws2-1", workspaceId: "ws-2" },
+      { id: "old-ws3-1", workspaceId: "ws-3" },
+    ]);
+    try {
+      const summary = await cleanupExpiredArtifacts({ limit: 500 });
+      assert.equal(summary.deleted, 4);
+      assert.equal(audits.length, 3);
+      const auditWs1 = audits.find((a: any) => a.workspaceId === "ws-1") as any;
+      const auditWs2 = audits.find((a: any) => a.workspaceId === "ws-2") as any;
+      const auditWs3 = audits.find((a: any) => a.workspaceId === "ws-3") as any;
+      assert.ok(auditWs1);
+      assert.equal(auditWs1.metadata.deleted, 2);
+      assert.ok(auditWs2);
+      assert.equal(auditWs2.metadata.deleted, 1);
+      assert.ok(auditWs3);
+      assert.equal(auditWs3.metadata.deleted, 1);
     } finally {
       restore();
     }

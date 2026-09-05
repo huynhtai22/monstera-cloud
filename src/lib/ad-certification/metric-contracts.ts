@@ -276,7 +276,7 @@ export function evaluateReconciliation(
   let inconclusiveReason: string | undefined = undefined;
 
   // Handle snapshot timing mismatch without loosening tolerances
-  if (!passed && !isSnapshotAligned) {
+  if (!isSnapshotAligned) {
     isInconclusive = true;
     inconclusiveReason =
       `Snapshot timing mismatch: Provider native retrieval time (${context.nativeRetrievalTime}) ` +

@@ -657,6 +657,32 @@ describe("Certification Harness & Standards Suite", () => {
       assert.equal(impComp?.tolerance, 0); // Still 0, not artificially inflated!
     });
 
+    it("9b. marks reconciliation as INCONCLUSIVE and NOT passed even when metrics match exactly if snapshots are misaligned", () => {
+      const identicalTotals = { impressions: 1000, clicks: 50, spend: 200, conversions: 10, revenue: 500 };
+
+      // Snapshots are 1 hour apart, but metrics match exactly (0 variance)
+      const result = evaluateReconciliation(
+        "google_ads",
+        identicalTotals,
+        identicalTotals,
+        {
+          accountTimezone: "Asia/Ho_Chi_Minh",
+          currency: "VND",
+          dateRange: { start: "2026-08-01", end: "2026-08-07" },
+          nativeRetrievalTime: "2026-08-08T10:00:00Z",
+          monsteraDataThroughTime: "2026-08-08T09:00:00Z",
+          warehouseQueryTime: "2026-08-08T10:05:00Z",
+          reportingGranularity: "TOTAL",
+          nativeComparisonSource: "AD_MANAGER_UI",
+        }
+      );
+
+      assert.equal(result.passed, false, "Reconciliation must not pass when snapshots are misaligned, even with zero variance");
+      assert.equal(result.isSnapshotAligned, false);
+      assert.equal(result.isInconclusive, true);
+      assert.ok(result.inconclusiveReason?.includes("Snapshot timing mismatch"));
+    });
+
     it("10. binds certification evidence pack to buildId, commitSha, and schemaVersion", async () => {
       const { evidencePack } = await harness.execute({
         workspaceId: "ws-test-traceability",

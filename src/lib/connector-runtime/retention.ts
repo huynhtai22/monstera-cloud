@@ -48,26 +48,41 @@ export async function cleanupExpiredArtifacts(input: {
     const batch = expired.slice(0, batchLimit);
     let deleted = 0;
     if (batch.length > 0) {
-      const removed = await prisma.connectorRunArtifact.deleteMany({
-        // Re-check the cutoff inside the delete so concurrent expiries stay exact.
-        where: { id: { in: batch.map((row) => row.id) }, retainedUntil: { lt: cutoff } },
-      });
-      deleted = removed.count;
-      await prisma.auditEvent.create({
-        data: {
-          workspaceId: batch[0].workspaceId,
-          actorUserId: null,
-          action: "connector_runtime.cleanup",
-          resource: "system",
-          resourceId: "connector-artifacts",
-          metadata: {
-            system: "connector-runtime-worker",
-            deleted,
-            cutoff: cutoff.toISOString(),
-            batchLimit,
+      const workspaceGroups = new Map<string, string[]>();
+      for (const row of batch) {
+        const ids = workspaceGroups.get(row.workspaceId) || [];
+        ids.push(row.id);
+        workspaceGroups.set(row.workspaceId, ids);
+      }
+
+      for (const [workspaceId, ids] of workspaceGroups) {
+        const removed = await prisma.connectorRunArtifact.deleteMany({
+          // Re-check the cutoff inside the delete so concurrent expiries stay exact.
+          where: {
+            workspaceId,
+            id: { in: ids },
+            retainedUntil: { lt: cutoff },
           },
-        },
-      });
+        });
+        if (removed.count > 0) {
+          deleted += removed.count;
+          await prisma.auditEvent.create({
+            data: {
+              workspaceId,
+              actorUserId: null,
+              action: "connector_runtime.cleanup",
+              resource: "system",
+              resourceId: "connector-artifacts",
+              metadata: {
+                system: "connector-runtime-worker",
+                deleted: removed.count,
+                cutoff: cutoff.toISOString(),
+                batchLimit,
+              },
+            },
+          });
+        }
+      }
     }
     return {
       deleted,
