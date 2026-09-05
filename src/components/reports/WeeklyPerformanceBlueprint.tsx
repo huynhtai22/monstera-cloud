@@ -77,8 +77,9 @@ type BlueprintReport = {
   providers: Array<{
     provider: string;
     providerLabel: string;
+    status: "included" | "no_data" | "unsupported";
     included: boolean;
-    metrics: BlueprintMetrics;
+    metrics: BlueprintMetrics | null;
     changes: PercentDelta[];
     dataThrough: string | null;
     explanation: string;
@@ -490,7 +491,11 @@ export function WeeklyPerformanceBlueprint({
                 <div key={provider.provider} className="rounded-lg border border-line bg-canvas p-3">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold text-ink">{provider.providerLabel}</p>
-                    {provider.included ? (
+                    {provider.status === "unsupported" ? (
+                      <span className="rounded-full border border-line bg-canvas px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-mute">
+                        Out of scope
+                      </span>
+                    ) : provider.included ? (
                       <span className="inline-flex items-center gap-1 rounded-full border border-line px-2 py-0.5 text-[10px] font-semibold text-ink">
                         <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
                         Included
@@ -502,12 +507,12 @@ export function WeeklyPerformanceBlueprint({
                     )}
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-ink-mute">
-                    <span>Spend: <span className="font-medium text-ink">{formatMetric(provider.metrics.spend, provider.metrics.currency, "money")}</span></span>
-                    <span>ROAS: <span className="font-medium text-ink">{formatMetric(provider.metrics.roas, null, "ratio")}</span></span>
-                    <span>Clicks: <span className="font-medium text-ink">{formatMetric(provider.metrics.clicks, null, "count")}</span></span>
-                    <span>CTR: <span className="font-medium text-ink">{formatMetric(provider.metrics.ctr, null, "percent")}</span></span>
-                    <span>Conv.: <span className="font-medium text-ink">{formatMetric(provider.metrics.conversions, null, "count")}</span></span>
-                    <span>CPA: <span className="font-medium text-ink">{formatMetric(provider.metrics.cpa, provider.metrics.currency, "money")}</span></span>
+                    <span>Spend: <span className="font-medium text-ink">{formatMetric(provider.metrics?.spend ?? null, provider.metrics?.currency ?? null, "money")}</span></span>
+                    <span>ROAS: <span className="font-medium text-ink">{formatMetric(provider.metrics?.roas ?? null, null, "ratio")}</span></span>
+                    <span>Clicks: <span className="font-medium text-ink">{formatMetric(provider.metrics?.clicks ?? null, null, "count")}</span></span>
+                    <span>CTR: <span className="font-medium text-ink">{formatMetric(provider.metrics?.ctr ?? null, null, "percent")}</span></span>
+                    <span>Conv.: <span className="font-medium text-ink">{formatMetric(provider.metrics?.conversions ?? null, null, "count")}</span></span>
+                    <span>CPA: <span className="font-medium text-ink">{formatMetric(provider.metrics?.cpa ?? null, provider.metrics?.currency ?? null, "money")}</span></span>
                   </div>
                   <p className="mt-2 text-[10px] text-ink-mute">
                     Data through: {provider.dataThrough ?? "no data yet"}

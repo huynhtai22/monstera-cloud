@@ -123,7 +123,7 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
     const evaluations = await Promise.all(selected.map(async client => {
       const assigned = sources.slice(0, CAP).filter(s => s.clientId === client.id);
       const [snapshot, contexts, latestReceipts] = await Promise.all([
-        reportingDataset(tx, workspaceId, client.id, window),
+        reportingDataset(tx, workspaceId, client.id, window, client.requirementsConfiguredAt && client.requiredProviders.length > 0 ? client.requiredProviders : undefined),
         tx.accountReportingContext.findMany({ where: { workspaceId, connectionId: { in: assigned.map(s => s.id) }, connection: { workspaceId, clientId: client.id } }, take: CAP + 1, orderBy: { id: "asc" } }),
         Promise.all(client.requiredDestinations.map(destination => tx.destinationDeliveryReceipt.findFirst({ where: { workspaceId, clientId: client.id, destination, windowStart: window.start, windowEnd: window.end }, orderBy: [{ retrievedAt: "desc" }, { id: "desc" }] }))),
       ]);

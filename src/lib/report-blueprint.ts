@@ -559,12 +559,19 @@ export function computeDependencyHash(state: DependencyState): string {
 // Report model
 // ---------------------------------------------------------------------------
 
+export type ProviderBreakdownStatus = "included" | "no_data" | "unsupported";
+
 export type ProviderBreakdown = {
   provider: string;
   providerLabel: string;
   required: boolean;
+  /** included = authoritative rows aggregated; no_data = supported, no rows;
+   *  unsupported = outside blueprint scope — metrics are deliberately null. */
+  status: ProviderBreakdownStatus;
   included: boolean;
-  metrics: BlueprintMetrics;
+  /** null when the provider is out of scope: never render numeric zeros or
+   *  derived metrics for a provider this blueprint does not support. */
+  metrics: BlueprintMetrics | null;
   changes: PercentDelta[];
   dataThrough: string | null;
   explanation: string;
@@ -611,13 +618,13 @@ export class BlueprintInputError extends Error {
 function explanationFor(
   provider: string,
   evaluation: ReportReadinessEvaluation,
-  metrics: BlueprintMetrics,
+  metrics: BlueprintMetrics | null,
   included: boolean,
 ): string {
   if (!(BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider)) {
-    return "This provider is outside Verified Weekly Performance Blueprint v1 scope (Google Ads, Meta Ads, TikTok Ads). Its rows are never aggregated in this report; remove it from the client's required providers or use the broader reporting workflows.";
+    return "Out of scope. This provider is outside Verified Weekly Performance Blueprint v1 (Google Ads, Meta Ads, TikTok Ads). Its rows are never aggregated in this report; remove it from the client's required providers or use the broader reporting workflows.";
   }
-  if (!included) {
+  if (!included || !metrics) {
     const entry = evaluation.providers.find((p) => p.provider === provider);
     const message = entry?.blockers.map((issue) => READINESS_MESSAGES[issue.code]).find(Boolean)
       ?? READINESS_MESSAGES.SOURCE_MISSING;
@@ -781,6 +788,21 @@ function buildProviderBreakdowns(ctx: GenerationContext): {
   const includedAccounts: Array<{ provider: string; accountId: string; connectionId: string }> = [];
 
   for (const provider of ctx.clientRequirement.requiredProviders) {
+    const isSupported = (BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider);
+    if (!isSupported) {
+      const partial: Omit<ProviderBreakdown, "explanation"> = {
+        provider,
+        providerLabel: getPlatformLabel(provider),
+        required: true,
+        status: "unsupported",
+        included: false,
+        metrics: null,
+        changes: [],
+        dataThrough: null,
+      };
+      providers.push({ ...partial, explanation: explanationFor(provider, ctx.evaluation, null, false) });
+      continue;
+    }
     const currentRows = ctx.currentRows.filter((row) => row.platform === provider);
     const previousRows = ctx.previousRows.filter((row) => row.platform === provider);
     const metrics = aggregateBlueprintMetrics(currentRows);
@@ -801,6 +823,7 @@ function buildProviderBreakdowns(ctx: GenerationContext): {
       provider,
       providerLabel: getPlatformLabel(provider),
       required: true,
+      status: hasData ? "included" as const : "no_data" as const,
       included: hasData,
       metrics,
       changes: computeMetricsDeltas(metrics, aggregateBlueprintMetrics(previousRows)),
@@ -944,14 +967,69 @@ function isUniqueViolation(error: unknown): boolean {
   return Boolean(error) && typeof error === "object" && (error as { code?: string }).code === "P2002";
 }
 
+/** Candidate discarded because a canonical dependency moved during publication. */
+class CandidateSupersededError extends Error {
+  constructor() {
+    super("Publication candidate superseded by newer dependencies");
+    this.name = "CandidateSupersededError";
+  }
+}
+
+/** Prisma wraps Postgres 40001 serialization failures as P2034. */
+function isSerializationFailure(error: unknown): boolean {
+  const code = (error as { code?: string })?.code;
+  return code === "P2034" || code === "40001";
+}
+
+/**
+ * @internal TEST-ONLY seam for deterministic publication interleaving.
+ * Never called by routes; not exposed through any API or Zod input.
+ */
+const publicationHooks: { afterEvidence?: (info: { generationKey: string }) => Promise<void> } = {};
+
+/** @internal TEST-ONLY. Install/remove deterministic publication hooks. */
+export function _setPublicationTestHooks(hooks: { afterEvidence?: (info: { generationKey: string }) => Promise<void> }): void {
+  publicationHooks.afterEvidence = hooks.afterEvidence;
+}
+
 /** Create a snapshot row through an explicit transaction client. The tenant
  *  guard's bulk/create rule is satisfied by the explicit workspaceId fields. */
 function prismaReportSnapshotCreate(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
   data: Record<string, unknown>,
-) {
+): Promise<{
+  id: string;
+  sequence: number;
+  blueprintId: string;
+  blueprintVersion: number;
+  generationKey: string;
+  dependencyHash: string;
+  verificationStatus: string;
+  verificationReasons: string[];
+  readinessStatus: string;
+  readinessEvidence: unknown;
+  result: unknown;
+  generatedAt: Date;
+  reportingWindowStart: Date;
+  reportingWindowEnd: Date;
+}> {
   return withSystemScope(() => (tx as unknown as {
-    reportSnapshot: { create: (args: { data: Record<string, unknown> }) => Promise<{ id: string; sequence: number; blueprintId: string; blueprintVersion: number; generationKey: string; dependencyHash: string; verificationStatus: string; verificationReasons: string[]; generatedAt: Date; reportingWindowStart: Date; reportingWindowEnd: Date }> };
+    reportSnapshot: { create: (args: { data: Record<string, unknown> }) => Promise<{
+      id: string;
+      sequence: number;
+      blueprintId: string;
+      blueprintVersion: number;
+      generationKey: string;
+      dependencyHash: string;
+      verificationStatus: string;
+      verificationReasons: string[];
+      readinessStatus: string;
+      readinessEvidence: unknown;
+      result: unknown;
+      generatedAt: Date;
+      reportingWindowStart: Date;
+      reportingWindowEnd: Date;
+    }> };
   }).reportSnapshot.create({ data }));
 }
 
@@ -994,283 +1072,309 @@ export async function generateWeeklyBlueprint(params: {
     ? resolveExplicitWindow(params.windowStart, params.windowEnd)
     : lastCompleteWeek(now);
   const comparisonWindow = comparisonWindowFor(window);
-
-  // EVERYTHING the snapshot binds — client requirements, shared readiness
-  // evaluation (source health, coverage, sync/import evidence, reporting
-  // context), both dataset fingerprints, exact metric rows, and destination
-  // receipts with currentness — is loaded through ONE RepeatableRead
-  // transaction via PR #152's transactional readiness core. No cross-transaction
-  // comparison or approximation: every read shares one database snapshot.
-  const { client, dataset, comparisonDataset, connections, currentWindow, previousWindow, receiptRows, evaluation } = await prisma.$transaction(async (tx) => {
-    // The AUTHORITATIVE client record — read inside the same RepeatableRead
-    // snapshot as everything else. No outer mutable field participates.
-    const client = await tx.client.findFirst({
-      where: { id: clientId, workspaceId },
-      select: {
-        id: true,
-        name: true,
-        requiredProviders: true,
-        requiredDestinations: true,
-        requirementsConfiguredAt: true,
-      },
-    });
-    if (!client) {
-      throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
-    }
-    if (client.requiredProviders.length === 0 || client.requiredDestinations.length === 0
-      || !client.requirementsConfiguredAt) {
-      throw new BlueprintInputError(
-        "Reporting requirements are not configured for this client. An owner or admin must choose required providers and destinations in Clients before a verified report can be generated.",
-        "requirements_not_configured",
-      );
-    }
-    const readiness = await loadReportReadiness(workspaceId, window, { clientId, tx });
-    const [dataset, comparisonDataset] = await Promise.all([
-      reportingDataset(tx, workspaceId, clientId, window),
-      reportingDataset(tx, workspaceId, clientId, comparisonWindow),
-    ]);
-    const [connections, currentWindow, previousWindow, receiptRows] = await Promise.all([
-      tx.connection.findMany({
-        where: {
-          workspaceId,
-          clientId,
-          type: "source",
-          provider: { in: client.requiredProviders },
-        },
-        select: {
-          id: true,
-          provider: true,
-          remoteAccountId: true,
-          status: true,
-          lastDataThrough: true,
-        },
-        orderBy: [{ id: "asc" }],
-      }),
-      loadWindowRows(tx, workspaceId, clientId, client.requiredProviders, window),
-      loadWindowRows(tx, workspaceId, clientId, client.requiredProviders, comparisonWindow),
-      Promise.all(client.requiredDestinations.map((destination) =>
-        tx.destinationDeliveryReceipt.findFirst({
-          where: { workspaceId, clientId, destination, windowStart: window.start, windowEnd: window.end },
-          orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
-        }))),
-    ]);
-    return { client, dataset, comparisonDataset, connections, currentWindow, previousWindow, receiptRows, evaluation: readiness.evaluations[0] ?? null };
-  }, { isolationLevel: "RepeatableRead", timeout: 30_000 });
-
-  if (!evaluation) {
-    throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
-  }
-  // The transactional record is the only requirement state; it was validated
-  // inside the snapshot. Narrow for the type system without re-reading.
-  if (!client.requirementsConfiguredAt) {
-    throw new BlueprintInputError(
-      "Reporting requirements are not configured for this client.",
-      "requirements_not_configured",
-    );
-  }
-
-  // Receipt currentness is evaluated against THIS transaction's dataset
-  // fingerprint (PR #152's exact rule) — the same read that produced the
-  // bound fingerprint, so a receipt can never verify a dataset it was not
-  // evaluated against.
-  const receipts: DependencyState["receipts"] = receiptRows.flatMap((receipt) => receipt ? [{
-    id: receipt.id,
-    destination: receipt.destination,
-    retrievedAt: receipt.retrievedAt.toISOString(),
-    dataThroughDate: receipt.dataThroughDate,
-    current: !dataset.limited
-      && receipt.datasetFingerprint === dataset.fingerprint
-      && receipt.retrievedAt.getTime() >= dataset.evidenceAt,
-  }] : []);
-
-  // Per-provider authoritative grain resolution: aggregate each provider's
-  // OWN persisted grain; ignore non-authoritative duplicate grains; fail
-  // closed when a provider's window rows exist only at an unsupported grain.
-  const requiredProviders = [...client.requiredProviders].sort();
-  // Providers outside the blueprint's supported scope fail closed explicitly
-  // and are never aggregated — their rows (ad facts or order rollups) are
-  // excluded from every total.
-  const unsupportedProviders = requiredProviders.filter(
-    (provider) => !(BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
-  );
-  const supportedProviders = requiredProviders.filter(
-    (provider) => (BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
-  );
-  const splitByGrain = (rows: MetricRowInput[]) => {
-    const authoritative: MetricRowInput[] = [];
-    const unsupportedOnly = new Set<string>();
-    for (const provider of supportedProviders) {
-      const grain = PROVIDER_SOURCE_GRAINS[provider];
-      const providerRows = rows.filter((row) => row.platform === provider);
-      const authoritativeRows = providerRows.filter((row) => row.level === grain);
-      if (authoritativeRows.length > 0) {
-        authoritative.push(...authoritativeRows);
-      } else if (providerRows.length > 0) {
-        unsupportedOnly.add(provider);
-      }
-    }
-    return { authoritative, unsupportedOnly };
-  };
-  const { authoritative: currentCampaignRows, unsupportedOnly: currentUnsupported } = splitByGrain(currentWindow.rows);
-  const { authoritative: previousCampaignRows, unsupportedOnly: previousUnsupported } = splitByGrain(previousWindow.rows);
-  const grainUnsupportedProviders = [...new Set([...currentUnsupported, ...previousUnsupported])];
-
-  const ctx: GenerationContext = {
-    workspaceId,
-    clientId,
-    clientName: client.name,
-    clientRequirement: {
-      requiredProviders,
-      requiredDestinations: [...client.requiredDestinations].sort(),
-      requirementsConfiguredAt: client.requirementsConfiguredAt.toISOString(),
-    },
-    window,
-    comparisonWindow,
-    connections,
-    currentRows: currentCampaignRows,
-    previousRows: previousCampaignRows,
-    grainUnsupportedProviders,
-    rowsLimited: currentWindow.limited,
-    evaluation,
-    dataset,
-    comparisonDataset,
-    receipts,
-  };
-
-  const totals = aggregateBlueprintMetrics(currentCampaignRows);
-  const dependencyState = buildDependencyState(ctx);
-  const dependencyHash = computeDependencyHash(dependencyState);
   const generationKey = computeGenerationKey(workspaceId, clientId, window, comparisonWindow);
 
-  // Idempotent: same canonical input + same dependency state returns the
-  // stored snapshot and its stored result, byte-for-byte — never a rebuild.
-  // Cheap pre-check to skip report building when this exact snapshot exists;
-  // the authoritative lookup happens again inside the locked create below.
-  const preExisting = await prisma.reportSnapshot.findFirst({
-    where: { generationKey, dependencyHash },
-    orderBy: [{ sequence: "desc" }],
-  });
-  if (preExisting) {
-    return {
-      snapshot: toSnapshotMeta(preExisting),
-      report: preExisting.result as unknown as BlueprintReport,
-      created: false,
-      readiness: {
-        status: evaluation.status,
-        blockers: evaluation.blockers.map((issue) => issue.code),
-        warnings: evaluation.warnings.map((issue) => issue.code),
-        destinationState: evaluation.destination.state,
-      },
-    };
-  }
+  /**
+   * ATOMIC VERIFICATION-PUBLICATION POINT.
+   *
+   * One READ COMMITTED transaction performs, in order:
+   *   1. generation serialization (advisory lock) as the FIRST statement —
+   *      while it blocks, no snapshot is established, so the evidence read
+   *      that follows is always fresh (never a stale RepeatableRead view
+   *      captured while queued);
+   *   2. the client requirement row locked FOR UPDATE — requirement PATCHes
+   *      cannot commit between requirement evaluation and snapshot publication;
+   *   3. readiness, requirements, reporting context, both scoped dataset
+   *      fingerprints, exact metric rows and receipt currentness from this
+   *      authoritative transaction state;
+   *   4. idempotency lookup, sequence allocation and snapshot insertion in the
+   *      same transaction;
+   *   5. a final re-validation that recomputes the canonical dependency state
+   *      from fresh reads and DISCARDS the candidate (retry, bounded) when any
+   *      dependency moved between evaluation and publication. If the candidate
+   *      cannot be stabilized, the error is retryable — a stale VERIFIED result
+   *      is never returned.
+   * `generatedAt` comes from the successful publication state.
+   */
+  const MAX_PUBLICATION_ATTEMPTS = 3;
+  let lastContention: unknown = null;
+  for (let attempt = 1; attempt <= MAX_PUBLICATION_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${generationKey}))`;
+        // Lock the requirement row so requirement PATCHes wait for publication.
+        await tx.$queryRaw`SELECT id FROM "Client" WHERE id = ${clientId} AND "workspaceId" = ${workspaceId} FOR UPDATE`;
+        const client = await tx.client.findFirst({
+          where: { id: clientId, workspaceId },
+          select: {
+            id: true,
+            name: true,
+            requiredProviders: true,
+            requiredDestinations: true,
+            requirementsConfiguredAt: true,
+          },
+        });
+        if (!client) {
+          throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
+        }
+        if (client.requiredProviders.length === 0 || client.requiredDestinations.length === 0
+          || !client.requirementsConfiguredAt) {
+          throw new BlueprintInputError(
+            "Reporting requirements are not configured for this client. An owner or admin must choose required providers and destinations in Clients before a verified report can be generated.",
+            "requirements_not_configured",
+          );
+        }
 
-  const verification = buildVerification(ctx, totals, currentWindow.limited, true);
-  const report = buildReport(ctx, verification);
-  const campaigns = buildCampaignTable(currentCampaignRows, previousCampaignRows);
-  report.campaigns = campaigns.campaigns;
-  report.campaignTruncated = campaigns.truncated;
-  report.campaignTotal = campaigns.totalTracked;
+        const readiness = await loadReportReadiness(workspaceId, window, { clientId, tx });
+        const evaluation = readiness.evaluations[0];
+        if (!evaluation) {
+          throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
+        }
 
-  const dateRange = windowDateRange(window);
-  const comparisonRange = windowDateRange(comparisonWindow);
+        const providerScope = [...client.requiredProviders].sort();
+        const [dataset, comparisonDataset] = await Promise.all([
+          reportingDataset(tx, workspaceId, clientId, window, providerScope),
+          reportingDataset(tx, workspaceId, clientId, comparisonWindow, providerScope),
+        ]);
+        const [connections, currentWindow, previousWindow, receiptRows] = await Promise.all([
+          tx.connection.findMany({
+            where: {
+              workspaceId,
+              clientId,
+              type: "source",
+              provider: { in: client.requiredProviders },
+            },
+            select: {
+              id: true,
+              provider: true,
+              remoteAccountId: true,
+              status: true,
+              lastDataThrough: true,
+            },
+            orderBy: [{ id: "asc" }],
+          }),
+          loadWindowRows(tx, workspaceId, clientId, client.requiredProviders, window),
+          loadWindowRows(tx, workspaceId, clientId, client.requiredProviders, comparisonWindow),
+          Promise.all(client.requiredDestinations.map((destination) =>
+            tx.destinationDeliveryReceipt.findFirst({
+              where: { workspaceId, clientId, destination, windowStart: window.start, windowEnd: window.end },
+              orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
+            }))),
+        ]);
 
-  // Concurrent generations serialize on a transaction-scoped advisory lock
-  // keyed by the generation key. Lookup → sequence allocation → insertion is
-  // therefore atomic per logical report:
-  //   - identical dependency state: the loser reads and returns the stored
-  //     winner byte-for-byte (created: false) — exactly one row is stored,
-  //     backed by the UNIQUE (generationKey, dependencyHash) constraint;
-  //   - divergent dependency states: each receives its own immutable
-  //     sequence, allocated serially, with no spurious failures.
-  const created = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${generationKey}))`;
-    const winner = await tx.reportSnapshot.findFirst({
-      where: { generationKey, dependencyHash },
-      orderBy: [{ sequence: "desc" }],
-    });
-    if (winner) return { row: winner, created: false as const };
-    const maxSequence = await tx.reportSnapshot.findFirst({
-      where: { generationKey },
-      orderBy: [{ sequence: "desc" }],
-      select: { sequence: true },
-    });
-    const row = await prismaReportSnapshotCreate(tx, {
-      workspaceId,
-      clientId,
-      blueprintId: BLUEPRINT_ID,
-      blueprintVersion: BLUEPRINT_VERSION,
-      generationKey,
-      sequence: (maxSequence?.sequence ?? 0) + 1,
-      reportingWindowStart: dateRange.gte,
-      reportingWindowEnd: dateRange.lte,
-      comparisonWindowStart: comparisonRange.gte,
-      comparisonWindowEnd: comparisonRange.lte,
-      reportingTimezone: report.overview.reportingTimezone,
-      reportingCurrency: totals.currency,
-      requiredProviders: ctx.clientRequirement.requiredProviders,
-      requiredDestinations: ctx.clientRequirement.requiredDestinations,
-      includedProviders: report.overview.includedProviders,
-      includedAccountIds: report.overview.includedAccounts.map((account) => account.accountId),
-      dataThroughByProvider: Object.fromEntries(
-        report.providers.map((provider) => [provider.provider, provider.dataThrough]),
-      ),
-      metricContractVersions: dependencyState.contractVersions,
-      datasetFingerprint: dependencyState.datasetFingerprint,
-      readinessStatus: report.overview.readiness.status,
-      verificationStatus: verification.status,
-      verificationReasons: verification.reasons,
-      readinessEvidence: {
-        evaluatedAt: evaluation.evaluatedAt,
-        blockers: evaluation.blockers,
-        warnings: evaluation.warnings,
-        currencies: evaluation.currencies,
-        timezones: evaluation.timezones,
-        destinationState: evaluation.destination.state,
-        latestDataDate: evaluation.latestDataDate,
-        evidenceIdentifier: dependencyHash,
-        dependencyState,
-      },
-      destinationReceipts: dependencyState.receipts,
-      generatorCommitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GIT_COMMIT_SHA ?? null,
-      schemaVersion: BLUEPRINT_SCHEMA_VERSION,
-      dependencyHash,
-      result: report as unknown as Record<string, unknown>,
-    });
-    return { row, created: true as const };
-  }, { isolationLevel: "ReadCommitted", timeout: 15_000 }).catch((error: unknown) => {
-    // Backstop: the unique constraint makes double-allocation impossible.
-    // Contention escaping the lock (e.g. lock timeout) is a retryable server
-    // error per the repository's RbacError convention — never a client 400.
-    if (isUniqueViolation(error)) {
-      throw new RbacError(
-        "Snapshot storage contended with a concurrent generation. Retry.",
-        "SNAPSHOT_CONTENTION",
-        503,
-      );
+        // Receipt currentness is evaluated against THIS transaction's scoped
+        // dataset fingerprint (PR #152's exact rule).
+        const receipts: DependencyState["receipts"] = receiptRows.flatMap((receipt) => receipt ? [{
+          id: receipt.id,
+          destination: receipt.destination,
+          retrievedAt: receipt.retrievedAt.toISOString(),
+          dataThroughDate: receipt.dataThroughDate,
+          current: !dataset.limited
+            && receipt.datasetFingerprint === dataset.fingerprint
+            && receipt.retrievedAt.getTime() >= dataset.evidenceAt,
+        }] : []);
+
+        // Per-provider authoritative grain resolution (blueprint scope only).
+        const requiredProviders = [...client.requiredProviders].sort();
+        const unsupportedProviders = requiredProviders.filter(
+          (provider) => !(BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
+        );
+        const supportedProviders = requiredProviders.filter(
+          (provider) => (BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
+        );
+        const splitByGrain = (rows: MetricRowInput[]) => {
+          const authoritative: MetricRowInput[] = [];
+          const unsupportedOnly = new Set<string>();
+          for (const provider of supportedProviders) {
+            const grain = PROVIDER_SOURCE_GRAINS[provider];
+            const providerRows = rows.filter((row) => row.platform === provider);
+            const authoritativeRows = providerRows.filter((row) => row.level === grain);
+            if (authoritativeRows.length > 0) {
+              authoritative.push(...authoritativeRows);
+            } else if (providerRows.length > 0) {
+              unsupportedOnly.add(provider);
+            }
+          }
+          return { authoritative, unsupportedOnly };
+        };
+        const { authoritative: currentCampaignRows, unsupportedOnly: currentUnsupported } = splitByGrain(currentWindow.rows);
+        const { authoritative: previousCampaignRows, unsupportedOnly: previousUnsupported } = splitByGrain(previousWindow.rows);
+        const grainUnsupportedProviders = [...new Set([...currentUnsupported, ...previousUnsupported])];
+
+        const ctx: GenerationContext = {
+          workspaceId,
+          clientId,
+          clientName: client.name,
+          clientRequirement: {
+            requiredProviders,
+            requiredDestinations: [...client.requiredDestinations].sort(),
+            requirementsConfiguredAt: client.requirementsConfiguredAt.toISOString(),
+          },
+          window,
+          comparisonWindow,
+          connections,
+          currentRows: currentCampaignRows,
+          previousRows: previousCampaignRows,
+          grainUnsupportedProviders,
+          rowsLimited: currentWindow.limited,
+          evaluation,
+          dataset,
+          comparisonDataset,
+          receipts,
+        };
+
+        const totals = aggregateBlueprintMetrics(currentCampaignRows);
+        const dependencyState = buildDependencyState(ctx);
+        const dependencyHash = computeDependencyHash(dependencyState);
+
+        // Candidate re-validation: recompute the canonical dependency state
+        // from FRESH reads inside the same transaction. Any change that
+        // committed since evaluation (dataset, receipts) discards the
+        // candidate and forces a regeneration attempt.
+        await publicationHooks.afterEvidence?.({ generationKey });
+        const [recheckDataset, recheckComparisonDataset, recheckReceiptRows] = await Promise.all([
+          reportingDataset(tx, workspaceId, clientId, window, providerScope),
+          reportingDataset(tx, workspaceId, clientId, comparisonWindow, providerScope),
+          Promise.all(client.requiredDestinations.map((destination) =>
+            tx.destinationDeliveryReceipt.findFirst({
+              where: { workspaceId, clientId, destination, windowStart: window.start, windowEnd: window.end },
+              orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
+            }))),
+        ]);
+        const recheckState: DependencyState = {
+          requirement: { ...ctx.clientRequirement },
+          datasetFingerprint: recheckDataset.fingerprint,
+          evidenceAt: new Date(recheckDataset.evidenceAt).toISOString(),
+          dataThroughDate: recheckDataset.dataThroughDate,
+          rowCount: recheckDataset.rowCount,
+          comparisonDatasetFingerprint: recheckComparisonDataset.fingerprint,
+          comparisonEvidenceAt: new Date(recheckComparisonDataset.evidenceAt).toISOString(),
+          comparisonDataThroughDate: recheckComparisonDataset.dataThroughDate,
+          comparisonRowCount: recheckComparisonDataset.rowCount,
+          receipts: recheckReceiptRows.flatMap((receipt) => receipt ? [{
+            id: receipt.id,
+            destination: receipt.destination,
+            retrievedAt: receipt.retrievedAt.toISOString(),
+            dataThroughDate: receipt.dataThroughDate,
+            current: !recheckDataset.limited
+              && receipt.datasetFingerprint === recheckDataset.fingerprint
+              && receipt.retrievedAt.getTime() >= recheckDataset.evidenceAt,
+          }] : []),
+          contractVersions: dependencyState.contractVersions,
+        };
+        if (canonicalJson(recheckState) !== canonicalJson(dependencyState)) {
+          throw new CandidateSupersededError();
+        }
+
+        // Idempotency lookup, sequence allocation and insertion inside the
+        // same publication transaction.
+        const winner = await tx.reportSnapshot.findFirst({
+          where: { generationKey, dependencyHash },
+          orderBy: [{ sequence: "desc" }],
+        });
+        if (winner) {
+          return { kind: "existing" as const, row: winner };
+        }
+
+        const verification = buildVerification(ctx, totals, currentWindow.limited, true);
+        const report = buildReport(ctx, verification);
+        const campaigns = buildCampaignTable(currentCampaignRows, previousCampaignRows);
+        report.campaigns = campaigns.campaigns;
+        report.campaignTruncated = campaigns.truncated;
+        report.campaignTotal = campaigns.totalTracked;
+
+        const publicationNow = new Date();
+        report.overview.generatedAt = publicationNow.toISOString();
+        const dateRange = windowDateRange(window);
+        const comparisonRange = windowDateRange(comparisonWindow);
+        const maxSequence = await tx.reportSnapshot.findFirst({
+          where: { generationKey },
+          orderBy: [{ sequence: "desc" }],
+          select: { sequence: true },
+        });
+        const row = await prismaReportSnapshotCreate(tx, {
+          workspaceId,
+          clientId,
+          blueprintId: BLUEPRINT_ID,
+          blueprintVersion: BLUEPRINT_VERSION,
+          generationKey,
+          sequence: (maxSequence?.sequence ?? 0) + 1,
+          reportingWindowStart: dateRange.gte,
+          reportingWindowEnd: dateRange.lte,
+          comparisonWindowStart: comparisonRange.gte,
+          comparisonWindowEnd: comparisonRange.lte,
+          reportingTimezone: report.overview.reportingTimezone,
+          reportingCurrency: totals.currency,
+          requiredProviders: ctx.clientRequirement.requiredProviders,
+          requiredDestinations: ctx.clientRequirement.requiredDestinations,
+          includedProviders: report.overview.includedProviders,
+          includedAccountIds: report.overview.includedAccounts.map((account) => account.accountId),
+          dataThroughByProvider: Object.fromEntries(
+            report.providers.map((provider) => [provider.provider, provider.dataThrough]),
+          ),
+          metricContractVersions: dependencyState.contractVersions,
+          datasetFingerprint: dependencyState.datasetFingerprint,
+          readinessStatus: report.overview.readiness.status,
+          verificationStatus: verification.status,
+          verificationReasons: verification.reasons,
+          readinessEvidence: {
+            evaluatedAt: evaluation.evaluatedAt,
+            blockers: evaluation.blockers,
+            warnings: evaluation.warnings,
+            currencies: evaluation.currencies,
+            timezones: evaluation.timezones,
+            destinationState: evaluation.destination.state,
+            latestDataDate: evaluation.latestDataDate,
+            evidenceIdentifier: dependencyHash,
+            dependencyState,
+          },
+          destinationReceipts: dependencyState.receipts,
+          generatorCommitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GIT_COMMIT_SHA ?? null,
+          schemaVersion: BLUEPRINT_SCHEMA_VERSION,
+          dependencyHash,
+          result: report as unknown as Record<string, unknown>,
+          generatedAt: publicationNow,
+        });
+        return { kind: "created" as const, row };
+      }, { timeout: 30_000 });
+
+      if (result.kind === "existing") {
+        return {
+          snapshot: toSnapshotMeta(result.row),
+          report: result.row.result as unknown as BlueprintReport,
+          created: false,
+          readiness: {
+            status: result.row.readinessStatus as BlueprintReadinessStatus,
+            blockers: (result.row.readinessEvidence as { blockers?: Array<{ code: string }> }).blockers?.map((issue) => issue.code) ?? [],
+            warnings: (result.row.readinessEvidence as { warnings?: Array<{ code: string }> }).warnings?.map((issue) => issue.code) ?? [],
+            destinationState: (result.row.readinessEvidence as { destinationState?: ReportReadinessEvaluation["destination"]["state"] }).destinationState ?? "unverified",
+          },
+        };
+      }
+      const storedReport = result.row.result as unknown as BlueprintReport;
+      return {
+        snapshot: toSnapshotMeta(result.row),
+        report: storedReport,
+        created: true,
+        readiness: storedReport.overview.readiness,
+      };
+    } catch (error: unknown) {
+      if (error instanceof CandidateSupersededError) {
+        lastContention = error;
+        continue; // discard the candidate and regenerate with fresh reads
+      }
+      if (isSerializationFailure(error)) {
+        lastContention = error;
+        continue; // a concurrent requirement/data write: fresh transaction retry
+      }
+      throw error;
     }
-    throw error;
-  });
-
-  if (!created.created) {
-    return {
-      snapshot: toSnapshotMeta(created.row),
-      report: created.row.result as unknown as BlueprintReport,
-      created: false,
-      readiness: {
-        status: evaluation.status,
-        blockers: evaluation.blockers.map((issue) => issue.code),
-        warnings: evaluation.warnings.map((issue) => issue.code),
-        destinationState: evaluation.destination.state,
-      },
-    };
   }
-
-  return {
-    snapshot: toSnapshotMeta(created.row),
-    report,
-    created: true,
-    readiness: report.overview.readiness,
-  };
+  throw new RbacError(
+    "Report generation could not stabilize against concurrent reporting changes. Retry.",
+    "SNAPSHOT_CONTENTION",
+    503,
+  );
 }
 
 export type FreshnessResult = {
@@ -1307,17 +1411,20 @@ export async function evaluateSnapshotFreshness(snapshot: {
   // ONE RepeatableRead transaction so the recomputed dependency state can
   // never mix reads from different moments.
   const currentState = await prisma.$transaction(async (tx) => {
-    const [client, dataset, comparisonDataset] = await Promise.all([
-      tx.client.findFirst({
-        where: { id: snapshot.clientId, workspaceId: snapshot.workspaceId },
-        select: {
-          requiredProviders: true,
-          requiredDestinations: true,
-          requirementsConfiguredAt: true,
-        },
-      }),
-      reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, window),
-      reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, comparisonWindow),
+    const client = await tx.client.findFirst({
+      where: { id: snapshot.clientId, workspaceId: snapshot.workspaceId },
+      select: {
+        requiredProviders: true,
+        requiredDestinations: true,
+        requirementsConfiguredAt: true,
+      },
+    });
+    const scope = client?.requirementsConfiguredAt && client.requiredProviders.length > 0
+      ? client.requiredProviders
+      : undefined;
+    const [dataset, comparisonDataset] = await Promise.all([
+      reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, window, scope),
+      reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, comparisonWindow, scope),
     ]);
     // Latest receipt per required destination, with PR #152 currentness
     // (exact window + destination + fingerprint + not older than evidence),

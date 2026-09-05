@@ -239,7 +239,14 @@ test.describe("verified weekly report blueprint", () => {
   });
 
   async function seedCurrentReceipt() {
-    const dataset = await reportingDataset(prisma, workspaceId, clientId, WINDOW);
+    // Same explicit provider scope generation uses, so the receipt matches
+    // the scoped fingerprint contract.
+    const scope = await prisma.client.findFirst({
+      where: { id: clientId },
+      select: { requiredProviders: true },
+    }).then((client) => client?.requiredProviders.length ? client.requiredProviders : undefined);
+    const dataset = await prisma.$transaction((tx) =>
+      reportingDataset(tx as Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0], workspaceId, clientId, WINDOW, scope));
     return prisma.destinationDeliveryReceipt.create({
       data: {
         workspaceId,

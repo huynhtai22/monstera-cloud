@@ -8,9 +8,12 @@ import {
     computeVerificationStatus,
     evaluateSnapshotFreshness,
     generateWeeklyBlueprint,
+    computeDependencyHash,
     computeGenerationKey,
     METRIC_CONTRACT_VERSION,
     reopenWeeklyBlueprint,
+    _setPublicationTestHooks,
+    type DependencyState,
 } from "./report-blueprint";
 import { reportingDataset } from "./report-delivery";
 import type { ScopedTransaction } from "./warehouse-query";
@@ -33,18 +36,30 @@ const POLL_INTERVAL_MS = 10;
 const POLL_MAX_TRIES = 2_000;
 
 async function countBlockedAdvisoryWaiters(dbForLocks: PrismaClient, generationKey: string): Promise<number> {
-    // Counts ONLY waiters on the exact advisory-lock key the service uses:
-    // pg_advisory_xact_lock(hashtext(key)) stores the 64-bit key split across
-    // classid (high 32 bits) and objid (low 32 bits, unsigned). Unrelated
-    // advisory waiters (different keys) can never satisfy the barrier.
-    const rows = await dbForLocks.$queryRaw<Array<{ n: bigint }>>`
-        SELECT count(*)::bigint AS n
+    return (await blockedAdvisoryWaiters(dbForLocks, generationKey)).length;
+}
+
+/**
+ * Waiters on the EXACT advisory-lock key the service uses, identified by:
+ * the 64-bit key split (classid = high 32 bits, objid = low 32 bits),
+ * objsubid = 1 (single-key advisory form), and the CURRENT database OID —
+ * plus the blocking sessions' backend PIDs with their database names.
+ * Unrelated advisory waiters (different keys, two-integer forms, other
+ * databases) can never satisfy the barrier.
+ */
+async function blockedAdvisoryWaiters(dbForLocks: PrismaClient, generationKey: string): Promise<Array<{ pid: number; datname: string | null }>> {
+    const rows = await dbForLocks.$queryRaw<Array<{ pid: number; datname: string | null }>>`
+        SELECT a.pid::int AS pid, current_database() AS datname
         FROM pg_locks l
         CROSS JOIN (SELECT hashtext(${generationKey})::bigint AS v) k
+        CROSS JOIN (SELECT oid AS dboid FROM pg_database WHERE datname = current_database()) d
+        LEFT JOIN pg_stat_activity a ON a.pid = l.pid
         WHERE l.locktype = 'advisory' AND NOT l.granted
+          AND l.objsubid = 1
           AND l.classid = ((k.v >> 32) & 4294967295)
-          AND l.objid = (k.v & 4294967295)`;
-    return Number(rows[0]?.n ?? 0);
+          AND l.objid = (k.v & 4294967295)
+          AND l.database = d.dboid`;
+    return rows;
 }
 
 async function waitForCondition(
@@ -58,6 +73,7 @@ async function waitForCondition(
     }
     throw new Error(`Deterministic barrier not established: ${label}`);
 }
+
 
 describe("PostgreSQL integration: verified weekly report blueprint", () => {
     let db: PrismaClient | null = null;
@@ -274,10 +290,20 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         await db.$disconnect();
     });
 
-    /** Canonical dataset fingerprint through a real transaction client. */
+    /** Canonical dataset fingerprint through a real transaction client, with
+     *  the same explicit provider scope generation uses. */
     async function datasetOf(workspaceId: string, clientId: string, window: { start: string; end: string }) {
         if (!db) throw new Error("db unavailable");
-        return db.$transaction((tx) => reportingDataset(tx as ScopedTransaction, workspaceId, clientId, window));
+        return db.$transaction(async (tx) => {
+            const client = await (tx as ScopedTransaction).client.findFirst({
+                where: { id: clientId, workspaceId },
+                select: { requiredProviders: true, requirementsConfiguredAt: true },
+            });
+            const scope = client?.requirementsConfiguredAt && client.requiredProviders.length > 0
+                ? client.requiredProviders
+                : undefined;
+            return reportingDataset(tx as ScopedTransaction, workspaceId, clientId, window, scope);
+        });
     }
 
     /** Latest receipt for a destination with the CURRENT dataset fingerprint. */
@@ -827,8 +853,8 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         // Meta provider totals = ad rows only (2000 impr/day × 7 = 14000),
         // the legacy campaign aggregate (700,000 impr) must not inflate it.
         const meta = result.report.providers.find((provider) => provider.provider === "meta_ads");
-        assert.equal(meta?.metrics.impressions, 14_000);
-        assert.equal(meta?.metrics.spend, 14_000_000);
+        assert.equal(meta?.metrics?.impressions, 14_000);
+        assert.equal(meta?.metrics?.spend, 14_000_000);
         // One campaign row for the Meta campaign despite multiple ads + legacy row.
         const metaCampaigns = result.report.campaigns.filter((campaign) => campaign.campaignId === "120210543958");
         assert.equal(metaCampaigns.length, 1);
@@ -862,7 +888,7 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         assert.ok(result.snapshot.verificationReasons.includes("aggregation_grain_unsupported:google_ads"));
         // Google contributes no aggregated rows; Meta (authoritative ad grain) still does.
         const google = result.report.providers.find((provider) => provider.provider === "google_ads");
-        assert.equal(google?.metrics.impressions, 0);
+        assert.equal(google?.metrics?.impressions, 0);
         // Restore the authoritative grain.
         await db.campaignMetric.updateMany({
             where: { connectionId: ids.connGoogleA, platform: "google_ads", date: { gte: new Date(`${WINDOW.start}T00:00:00.000Z`), lte: new Date(`${WINDOW.end}T23:59:59.999Z`) } },
@@ -1028,17 +1054,63 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${unrelatedKey}))`;
             return true;
         }, { timeout: 60_000 });
+        // Negative control: a two-integer advisory lock whose BOTH integers
+        // equal the raw hashtext value — a naive filter without the exact
+        // key split would mistake it for our key. It must not count.
+        const twoIntKey = `two-int-${suffix}`;
+        let twoIntHolderOpen = false;
+        const twoIntBarrier: { release: (() => void) | null } = { release: null };
+        const twoIntHolder = lockClient.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${twoIntKey}), hashtext(${twoIntKey}))`;
+            twoIntHolderOpen = true;
+            await new Promise<void>((resolve) => { twoIntBarrier.release = resolve; });
+            return true;
+        }, { timeout: 60_000 });
+        await waitForCondition(() => twoIntHolderOpen, "two-int holder open");
+        const twoIntWaiter = lockClient.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${twoIntKey}), hashtext(${twoIntKey}))`;
+            return true;
+        }, { timeout: 60_000 });
+        // Negative control: a waiter on the NEGATED hashtext value as a plain
+        // bigint — a different 64-bit target than the service's key.
+        const negativeWaiter = lockClient.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(-hashtext(${generationKey})::bigint)`;
+            return true;
+        }, { timeout: 60_000 });
         const lockDb = db as PrismaClient;
         try {
             await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb, unrelatedKey)) >= 1, "unrelated waiter blocked", lockDb);
-            assert.equal(await countBlockedAdvisoryWaiters(lockDb, generationKey), 0, "negative control: unrelated waiters are not counted for this key");
+            // The two-int waiter is verified blocked with its OWN lock shape
+            // (classid=objid=hashtext, objsubid=2) — our exact-key barrier
+            // (objsubid=1, split key) must not count it.
+            await waitForCondition(async () => {
+                const twoIntBlocked = await lockDb.$queryRaw<Array<{ n: bigint }>>`
+                    SELECT count(*)::bigint AS n
+                    FROM pg_locks l
+                    CROSS JOIN (SELECT hashtext(${twoIntKey})::int AS h) k
+                    WHERE l.locktype = 'advisory' AND NOT l.granted
+                      AND l.objsubid = 2
+                      AND l.classid = k.h
+                      AND l.objid = k.h`;
+                return Number(twoIntBlocked[0]?.n ?? 0) >= 1;
+            }, "two-int waiter blocked on its own lock shape", lockDb);
+            assert.equal(await countBlockedAdvisoryWaiters(lockDb, generationKey), 0, "negative controls: unrelated, two-int and negative-target waiters are not counted for this key");
 
             const first = generateWeeklyBlueprint(params);
             const second = generateWeeklyBlueprint(params);
             await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb, generationKey)) >= 2, "both generations blocked on the barrier", lockDb);
+            // The blocked sessions are generators in THIS database.
+            const currentDb = await lockDb.$queryRaw<Array<{ db: string }>>`SELECT current_database() AS db`;
+            for (const waiter of await blockedAdvisoryWaiters(lockDb, generationKey)) {
+                assert.equal(waiter.datname, currentDb[0]?.db);
+            }
             unrelatedBarrier.release?.();
+            twoIntBarrier.release?.();
             await unrelatedHolder;
             await unrelatedWaiter.catch(() => undefined);
+            await twoIntHolder.catch(() => undefined);
+            await twoIntWaiter.catch(() => undefined);
+            await negativeWaiter.catch(() => undefined);
             barrier.release?.();
             await holder;
 
@@ -1057,16 +1129,16 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         await lockClient.$disconnect();
     });
 
-    it("forced divergent concurrency creates distinct ordered versions (P2-1)", async () => {
+    it("dataset change during candidate generation discards and republishes bound to the new state (P2-1, F1)", async () => {
         if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
-        // Own mutable row so the race never depends on other tests' state.
+        // Own mutable row so the candidate change never depends on other tests.
         await db.campaignMetric.create({
             data: {
                 workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, platform: "google_ads",
-                accountId: "g-account-1", level: "campaign", entityId: `e-race2-${suffix}`,
+                accountId: "g-account-1", level: "campaign", entityId: `e-race3-${suffix}`,
                 campaignId: "race-campaign", campaignName: "Race",
                 date: new Date("2026-08-27T00:00:00.000Z"),
                 impressions: 100, clicks: 10, spend: 500_000, conversions: 1, revenue: 2_000_000, currency: "VND",
@@ -1084,54 +1156,52 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             ids.workspaceA, ids.clientA, WINDOW, comparisonWindowFor(WINDOW),
         );
         const mutate = () => db!.campaignMetric.updateMany({
-            where: { entityId: `e-race2-${suffix}`, date: new Date("2026-08-27T00:00:00.000Z") },
+            where: { entityId: `e-race3-${suffix}`, date: new Date("2026-08-27T00:00:00.000Z") },
             data: { pulledAt: new Date() },
         });
 
-        const lockClient = new PrismaClient();
-        await lockClient.$connect();
-        let holderOpen = false;
-        const barrier: { release: (() => void) | null } = { release: null };
-        const holder = lockClient.$transaction(async (tx) => {
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${generationKey}))`;
-            holderOpen = true;
-            await new Promise<void>((resolve) => { barrier.release = resolve; });
-            return true;
-        }, { timeout: 120_000 });
-        await waitForCondition(() => holderOpen, "barrier holder open");
-
-        // Generation A reads the pre-mutation dataset, then parks at create.
-        const a = generateWeeklyBlueprint(params);
-        let b: ReturnType<typeof generateWeeklyBlueprint> | null = null;
-        const lockDbA = db as PrismaClient;
-        try {
-            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDbA, generationKey)) >= 1, "generation A blocked", lockDbA);
-            // Dataset mutates only after A is parked: B must read the new state.
-            await mutate();
-            b = generateWeeklyBlueprint(params);
-            const lockDbB = db as PrismaClient;
-            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDbB, generationKey)) >= 2, "generation B blocked", lockDbB);
-        } finally {
-            barrier.release?.();
-        }
-        await holder;
-
-        const [ra, rb] = await Promise.all([a, b!]);
-        assert.notEqual(ra.snapshot.dependencyHash, rb.snapshot.dependencyHash, "divergent dependencies must differ");
-        assert.equal(ra.created, true);
-        assert.equal(rb.created, true);
-        assert.notEqual(ra.snapshot.sequence, rb.snapshot.sequence, "divergent states occupy distinct immutable sequences");
-        // Both of THIS test's dependency states are stored exactly once each.
-        const own = await db.reportSnapshot.count({
-            where: { generationKey, dependencyHash: { in: [ra.snapshot.dependencyHash, rb.snapshot.dependencyHash] } },
+        // Deterministic publication interleaving via the internal test hook:
+        // the candidate parks AFTER evaluation (holding the generation lock
+        // and having computed the S1 binding), the dataset mutates, then the
+        // candidate resumes. Re-validation must discard it and the retry must
+        // publish bound to S2 — never the stale S1 VERIFIED result.
+        const parkedRelease: { release: (() => void) | null } = { release: null };
+        const parkedPromise = new Promise<void>((resolve) => { parkedRelease.release = () => resolve(); });
+        let sawParkedGeneration = false;
+        _setPublicationTestHooks({
+            afterEvidence: async (info) => {
+                if (info.generationKey !== generationKey) return;
+                sawParkedGeneration = true;
+                await parkedPromise;
+            },
         });
-        assert.equal(own, 2);
-        // The key's full version history stays duplicate-free.
+        const lockDb = db as PrismaClient;
+        try {
+            const pending = generateWeeklyBlueprint(params);
+            await waitForCondition(() => sawParkedGeneration, "generation parked after evidence", lockDb);
+            // The dataset mutates only while the candidate is parked.
+            await mutate();
+            parkedRelease.release?.();
+            const result = await pending;
+            assert.equal(sawParkedGeneration, true, "the deterministic seam was reached");
+            assert.equal(result.created, true);
+            // Bound to the POST-mutation dataset: only reachable through the
+            // discard-and-regenerate path.
+            const datasetAfter = await datasetOf(ids.workspaceA, ids.clientA, WINDOW);
+            const stored = await db.reportSnapshot.findUniqueOrThrow({ where: { id: result.snapshot.id } });
+            const storedState = (stored.readinessEvidence as { dependencyState: DependencyState }).dependencyState;
+            assert.equal(stored.datasetFingerprint, datasetAfter.fingerprint, "published binding is the superseding dataset S2, not the stale S1");
+            assert.equal(computeDependencyHash(storedState), stored.dependencyHash, "stored hash matches its own state");
+            assert.equal(result.report.overview.verification.status, "NOT_VERIFIED", "the receipt no longer matches the superseding dataset — honest, never a stale VERIFIED");
+        } finally {
+            _setPublicationTestHooks({});
+        }
+
+        // The versioned history keeps exactly one row per dependency state.
         const rows = await db.reportSnapshot.findMany({ where: { generationKey } });
         const sequences = rows.map((row: { sequence: number }) => row.sequence);
         assert.equal(new Set(sequences).size, sequences.length, "no duplicate sequences");
-        await db.campaignMetric.deleteMany({ where: { entityId: `e-race2-${suffix}` } });
-        await lockClient.$disconnect();
+        await db.campaignMetric.deleteMany({ where: { entityId: `e-race3-${suffix}` } });
     });
 
     it("enforces the UNIQUE (generationKey, dependencyHash) constraint in the database (P2-1)", async () => {
@@ -1143,9 +1213,8 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         assert.match(indexes[0].indexdef, /UNIQUE INDEX/);
     });
 
-    it("binds exactly one requirement state when requirements change mid-generation (F1)", async () => {
+    it("R1→R2 interleave: generation must not return a verified R1 snapshot after R2 commits before publication (F1)", async () => {
         if (!db) return;
-        // Dedicated client + rows so the barrier test owns its whole state.
         const clientD = `client-req-${suffix}`;
         const connDG = `conn-reqg-${suffix}`;
         const connDM = `conn-reqm-${suffix}`;
@@ -1203,8 +1272,9 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         const params = { workspaceId: ids.workspaceA, clientId: clientD, windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW };
         const generationKey = computeGenerationKey(ids.workspaceA, clientD, WINDOW, comparisonWindowFor(WINDOW));
 
-        // Deterministic barrier on the create transaction, exactly like the
-        // service's own advisory lock.
+        // Deterministic barrier: the holder takes the SAME advisory lock the
+        // publication transaction takes as its FIRST statement, so generation
+        // A parks before ANY evidence read (no stale snapshot while queued).
         const lockClient = new PrismaClient();
         await lockClient.$connect();
         let holderOpen = false;
@@ -1219,49 +1289,30 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
 
         const a = generateWeeklyBlueprint(params);
         const lockDb = db as PrismaClient;
-        let b: ReturnType<typeof generateWeeklyBlueprint> | null = null;
         try {
-            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb, generationKey)) >= 1, "generation A blocked", lockDb);
-            // Requirements change while A is parked: R1 -> R2, with the
-            // configuration clock advanced exactly like the admin route does.
+            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb, generationKey)) >= 1, "generation A blocked before evaluation", lockDb);
+            // R2 commits while A is parked — strictly before A's evaluation
+            // AND publication. The requirement row is not locked by anyone yet.
             await db.client.update({
                 where: { workspaceId_id: { workspaceId: ids.workspaceA, id: clientD } },
                 data: { requiredProviders: ["google_ads"], requirementsConfiguredAt: new Date() },
             });
-            b = generateWeeklyBlueprint(params);
-            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb, generationKey)) >= 2, "generation B blocked", lockDb);
         } finally {
             barrier.release?.();
         }
-        await holder;
+        const ra = await a;
 
-        const [ra, rb] = await Promise.all([a, b!]);
-        // A binds requirement state R1 ONLY: both providers, and its stored
-        // dependency state carries exactly R1 — no field from R2 leaks in.
-        assert.deepEqual(ra.snapshot.verificationStatus, "VERIFIED");
-        assert.deepEqual(ra.report.overview.requiredProviders, ["google_ads", "meta_ads"]);
-        const raEvidence = (await db.reportSnapshot.findUniqueOrThrow({ where: { id: ra.snapshot.id } }))
-            .readinessEvidence as { dependencyState: { requirement: { requiredProviders: string[] } } };
-        assert.deepEqual(raEvidence.dependencyState.requirement.requiredProviders, ["google_ads", "meta_ads"]);
-        assert.ok(ra.report.providers.some((provider) => provider.provider === "meta_ads"));
-        // B binds requirement state R2 ONLY: google provider, no meta anywhere.
-        assert.deepEqual(rb.report.overview.requiredProviders, ["google_ads"]);
-        assert.ok(rb.report.providers.every((provider) => provider.provider !== "meta_ads"));
-        assert.notEqual(ra.snapshot.dependencyHash, rb.snapshot.dependencyHash, "mixed requirement states cannot share a snapshot");
-        // The R1-bound snapshot cannot stay VERIFIED once requirements moved:
-        // recomputing ITS dependency state is stale with an explicit reason.
-        const aRow = await db.reportSnapshot.findUniqueOrThrow({ where: { id: ra.snapshot.id } });
-        const staleA = await evaluateSnapshotFreshness(aRow);
-        assert.equal(staleA.freshness, "STALE");
-        assert.ok(staleA.staleReasons.includes("requirement_changed"));
-        // And the latest reopen (snapshot B, bound to R2) reports the change too.
-        const reopenAfterChange = await reopenWeeklyBlueprint({
-            workspaceId: ids.workspaceA, clientId: clientD,
-            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
-        });
-        assert.equal(reopenAfterChange.snapshot?.verification.status, "NOT_VERIFIED");
+        // A must NOT return a verified R1 snapshot: it evaluates and binds R2.
+        const isVerifiedR1 = ra.snapshot.verificationStatus === "VERIFIED"
+            && JSON.stringify(ra.report.overview.requiredProviders) === JSON.stringify(["google_ads", "meta_ads"]);
+        assert.equal(isVerifiedR1, false, "no verified R1 snapshot may be returned after R2 committed");
+        assert.deepEqual(ra.report.overview.requiredProviders, ["google_ads"]);
+        const raStored = await db.reportSnapshot.findUniqueOrThrow({ where: { id: ra.snapshot.id } });
+        const raState = (raStored.readinessEvidence as { dependencyState: { requirement: { requiredProviders: string[] } } }).dependencyState.requirement;
+        assert.deepEqual(raState.requiredProviders, ["google_ads"], "exactly one requirement state is bound");
+        // With R2 the receipt no longer matches the scoped fingerprint — honest NOT_VERIFIED.
+        assert.equal(ra.snapshot.verificationStatus, "NOT_VERIFIED");
 
-        // Cleanup for later tests.
         await db.campaignMetric.deleteMany({ where: { entityId: { in: [`e-reqg-${suffix}`, `e-reqm-${suffix}`] } } });
         await db.destinationDeliveryReceipt.deleteMany({ where: { clientId: clientD } });
         await db.accountReportingContext.deleteMany({ where: { connectionId: { in: [connDG, connDM] } } });
@@ -1319,8 +1370,8 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         });
         // TikTok's authoritative grain is campaign: rows aggregate once.
         const tiktok = result.report.providers.find((provider) => provider.provider === "tiktok_business");
-        assert.equal(tiktok?.metrics.impressions, 14_000);
-        assert.equal(tiktok?.metrics.spend, 14_000_000);
+        assert.equal(tiktok?.metrics?.impressions, 14_000);
+        assert.equal(tiktok?.metrics?.spend, 14_000_000);
         assert.equal(result.snapshot.verificationStatus, "VERIFIED");
 
         await db.campaignMetric.deleteMany({ where: { entityId: `e-tt-${suffix}` } });
@@ -1396,8 +1447,9 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         // out-of-scope with zero aggregated metrics.
         const shopee = result.report.providers.find((provider) => provider.provider === "shopee");
         assert.ok(shopee, "shopee must be visible as unsupported");
-        assert.equal(shopee?.metrics.impressions, 0);
-        assert.match(shopee?.explanation ?? "", /outside Verified Weekly Performance Blueprint v1 scope/);
+        assert.equal(shopee?.status, "unsupported");
+        assert.equal(shopee?.metrics, null, "unsupported providers carry null metrics — never numeric zero");
+        assert.match(shopee?.explanation ?? "", /Out of scope/);
         assert.ok(result.report.campaigns.every((campaign) => !campaign.campaignId.startsWith("shopee")));
         assert.equal(result.report.overview.verification.reasons.includes("unsupported_provider:shopee"), true);
 
