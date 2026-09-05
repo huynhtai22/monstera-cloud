@@ -25,24 +25,45 @@ export const GOOGLE_CONNECTOR_RUNTIME_MODES = ["legacy", "shadow", "runtime"] as
 export type GoogleConnectorRuntimeMode = (typeof GOOGLE_CONNECTOR_RUNTIME_MODES)[number];
 
 /**
- * Resolves the Google runtime mode. Defaults to legacy; unknown values
- * fail closed to legacy. "runtime" is modeled but NOT enabled by this
- * task: it behaves as legacy until a promotion decision lands.
+ * Single canonical parser/validator for GOOGLE_CONNECTOR_RUNTIME_MODE.
+ * Only a genuinely absent setting resolves to legacy. Every other value
+ * must be an exact lowercase match: empty strings, whitespace, typos and
+ * case variants (e.g. SHADOW) throw rather than silently enabling —
+ * or silently disabling — anything. Values are never echoed: error text
+ * is fixed so environment contents cannot leak through logs or responses.
  */
 export function resolveGoogleRuntimeMode(
   raw: string | undefined = process.env.GOOGLE_CONNECTOR_RUNTIME_MODE,
 ): GoogleConnectorRuntimeMode {
+  if (raw === undefined) return "legacy";
+  if (raw === "legacy") return "legacy";
   if (raw === "shadow") return "shadow";
   // "runtime" is a modeled but unpromotable state: resolvers report it
-  // truthfully while every behavior gate treats it as legacy.
+  // truthfully while every behavior gate rejects it (see below).
   if (raw === "runtime") return "runtime";
-  return "legacy";
+  throw new InvalidGoogleConnectorRuntimeModeError();
 }
 
 export function isGoogleShadowEnabled(
   raw: string | undefined = process.env.GOOGLE_CONNECTOR_RUNTIME_MODE,
 ): boolean {
   return resolveGoogleRuntimeMode(raw) === "shadow";
+}
+
+/**
+ * Typed fail-closed error for malformed mode configuration (empty,
+ * whitespace-only, unknown, or wrong-case values). Fixed message text:
+ * the raw value is never echoed, so environment contents, credentials
+ * and customer identifiers cannot leak through logs or responses.
+ */
+export class InvalidGoogleConnectorRuntimeModeError extends Error {
+  readonly code = "INVALID_GOOGLE_CONNECTOR_RUNTIME_MODE";
+  constructor() {
+    super(
+      "INVALID_GOOGLE_CONNECTOR_RUNTIME_MODE: Google connector runtime mode is not configured correctly. Unset GOOGLE_CONNECTOR_RUNTIME_MODE or set it to legacy or shadow.",
+    );
+    this.name = "InvalidGoogleConnectorRuntimeModeError";
+  }
 }
 
 /**
@@ -62,9 +83,9 @@ export class GoogleRuntimeModeNotPromotedError extends Error {
 
 /**
  * Reject the unpromoted `runtime` authority state before any provider
- * contact, artifact creation, or legacy mutation. Missing, `legacy`,
- * `shadow` and unknown values never throw here: unknown values resolve
- * to legacy, which enables nothing.
+ * contact, artifact creation, or legacy mutation. Only a genuinely absent
+ * setting plus exact `legacy`/`shadow` values pass; malformed values throw
+ * INVALID_GOOGLE_CONNECTOR_RUNTIME_MODE via the canonical parser.
  */
 export function assertGoogleRuntimeModeAllowed(
   raw: string | undefined = process.env.GOOGLE_CONNECTOR_RUNTIME_MODE,

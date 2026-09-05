@@ -54,16 +54,34 @@ function legacyRow(key: string, spend = 10): CanonicalGoogleRow {
 }
 
 describe("google runtime mode flag", () => {
-  it("defaults to legacy and fails closed on unknown values", () => {
+  it("resolves only genuinely-absent, legacy, shadow and runtime values", () => {
     assert.deepEqual([...GOOGLE_CONNECTOR_RUNTIME_MODES].sort(), ["legacy", "runtime", "shadow"]);
     assert.equal(resolveGoogleRuntimeMode(undefined), "legacy");
     assert.equal(resolveGoogleRuntimeMode("legacy"), "legacy");
     assert.equal(resolveGoogleRuntimeMode("shadow"), "shadow");
     assert.equal(resolveGoogleRuntimeMode("runtime"), "runtime");
-    assert.equal(resolveGoogleRuntimeMode("production"), "legacy");
+  });
+
+  it("rejects empty, whitespace, typo and case-variant values", async () => {
+    const { InvalidGoogleConnectorRuntimeModeError } = await import("./google-shadow");
+    const expectedMessage =
+      "INVALID_GOOGLE_CONNECTOR_RUNTIME_MODE: Google connector runtime mode is not configured correctly. Unset GOOGLE_CONNECTOR_RUNTIME_MODE or set it to legacy or shadow.";
+    for (const value of ["", "   ", "\t\n ", "production", "shado", "SHADOW", "Shadow", "LEGACY", "Runtime"]) {
+      assert.throws(() => resolveGoogleRuntimeMode(value), (error: unknown) => {
+        assert.ok(error instanceof InvalidGoogleConnectorRuntimeModeError);
+        assert.equal((error as { code: string }).code, "INVALID_GOOGLE_CONNECTOR_RUNTIME_MODE");
+        // Exact fixed text: it cannot contain the raw value or any secret.
+        assert.equal((error as Error).message, expectedMessage);
+        assert.ok(!String((error as Error).message).includes("Bearer"));
+        return true;
+      });
+    }
+  });
+  it("gates shadow behavior on the exact shadow value", () => {
     assert.equal(isGoogleShadowEnabled("shadow"), true);
     assert.equal(isGoogleShadowEnabled("runtime"), false);
     assert.equal(isGoogleShadowEnabled(undefined), false);
+    assert.equal(isGoogleShadowEnabled("legacy"), false);
   });
 });
 
@@ -276,10 +294,16 @@ describe("shadow comparison", () => {
 });
 
 describe("runtime authority fail-closed", () => {
-  it("allows missing, legacy, shadow and invalid values without throwing", async () => {
-    const { assertGoogleRuntimeModeAllowed } = await import("./google-shadow");
-    for (const value of [undefined, "legacy", "shadow", "production", ""]) {
+  it("allows only missing, legacy and shadow values without throwing", async () => {
+    const { assertGoogleRuntimeModeAllowed, InvalidGoogleConnectorRuntimeModeError } = await import("./google-shadow");
+    for (const value of [undefined, "legacy", "shadow"]) {
       assertGoogleRuntimeModeAllowed(value);
+    }
+    for (const value of ["", "   ", "production", "SHADOW"]) {
+      assert.throws(() => assertGoogleRuntimeModeAllowed(value), (error: unknown) => {
+        assert.ok(error instanceof InvalidGoogleConnectorRuntimeModeError);
+        return true;
+      });
     }
   });
 
