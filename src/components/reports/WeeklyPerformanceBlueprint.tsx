@@ -320,7 +320,11 @@ export function WeeklyPerformanceBlueprint({
         <ContextItem label="Currency" value={report?.overview.currency ?? "Unverified"} />
         <ContextItem
           label="Required providers"
-          value={(clientRequirement?.requiredProviders ?? []).map((p) => PROVIDER_LABELS[p] ?? p).join(", ") || "Not configured"}
+          value={(clientRequirement?.requiredProviders ?? []).map((p) => {
+            const label = PROVIDER_LABELS[p] ?? p;
+            // Blueprint v1 scope: the three paid-media providers only.
+            return p === "google_ads" || p === "meta_ads" || p === "tiktok_business" ? label : `${label} (unsupported in blueprint v1)`;
+          }).join(", ") || "Not configured"}
         />
         <ContextItem
           label="Required destinations"
@@ -592,8 +596,9 @@ function BlueprintHeader({ status }: { status: string | null }) {
           <span className="rounded-full border border-line bg-canvas px-2 py-0.5 text-[10px] font-medium text-ink-mute">Blueprint v1</span>
         </div>
         <p className="mt-1 max-w-2xl text-xs text-ink-mute">
-          One opinionated, verified weekly client report built from Monstera&apos;s warehouse, shared readiness
-          evaluation and delivery receipts. Never calls ad platforms directly and never converts currency.
+          One opinionated, verified weekly client report for Google Ads, Meta Ads and TikTok Ads, built from
+          Monstera&apos;s warehouse, shared readiness evaluation and delivery receipts. Never calls ad platforms
+          directly and never converts currency; marketplace providers are out of scope for this blueprint.
         </p>
       </div>
       <VerificationBadge status={status ?? "UNKNOWN"} />

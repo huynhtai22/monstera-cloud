@@ -55,6 +55,7 @@ function verificationInput(overrides: Partial<VerificationInput> = {}): Verifica
         hasMetricData: true,
         aggregationCompatible: true,
         grainUnsupportedProviders: [],
+        unsupportedProviders: [],
         currencyVerified: true,
         windowComplete: true,
         timezoneVerified: true,
@@ -385,6 +386,12 @@ describe("report blueprint: grain, identity and date boundaries", () => {
         const result = computeVerificationStatus(verificationInput({ grainUnsupportedProviders: ["google_ads"] }));
         assert.equal(result.status, "NOT_VERIFIED");
         assert.ok(result.reasons.includes("aggregation_grain_unsupported:google_ads"));
+    });
+
+    it("fails verification closed for providers outside the blueprint scope", () => {
+        const result = computeVerificationStatus(verificationInput({ unsupportedProviders: ["shopee"] }));
+        assert.equal(result.status, "NOT_VERIFIED");
+        assert.ok(result.reasons.includes("unsupported_provider:shopee"));
     });
 
     it("keeps a renamed campaign as ONE identity row (stable key, latest name)", () => {

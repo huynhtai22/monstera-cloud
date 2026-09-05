@@ -44,27 +44,31 @@ export const BLUEPRINT_SCHEMA_VERSION = 2;
  */
 export const METRIC_CONTRACT_VERSION = "weekly-blueprint-metrics-v3";
 /**
- * Authoritative aggregation grain PER PROVIDER, derived from each active
- * ingestion path's actually persisted rows (not assumed):
+ * Blueprint v1 provider scope: the three paid-media providers this blueprint
+ * supports. Marketplace providers (shopee, lazada) are deliberately OUT of
+ * scope — their ad facts and order rollups are never combined here.
+ */
+export const BLUEPRINT_SUPPORTED_PROVIDERS = ["google_ads", "meta_ads", "tiktok_business"] as const;
+/**
+ * Authoritative aggregation grain PER SUPPORTED PROVIDER, derived from each
+ * active ingestion path's actually persisted rows (not assumed):
  *   - google_ads:  "campaign"  (ad-platform-ingest.ts ingestGoogleAdsRows)
  *   - meta_ads:    "ad"        (sync-connection.ts syncMetaAds — the active
  *     sync fetches level:"ad" and deletes legacy campaign aggregates after a
  *     complete replacement, so production windows hold ad rows)
  *   - tiktok_business: "campaign" (ad-platform-ingest.ts ingestTiktokRows)
- *   - shopee / lazada: "campaign" (sync-marketplace-warehouse.ts daily
- *     order rollups)
  * Rows at a provider's authoritative grain are aggregated (Meta ad rows roll
  * up to stable campaign identities). Rows at other grains are
  * non-authoritative duplicates and are ignored — never summed. A required
- * provider whose window rows exist ONLY at a non-authoritative grain has
- * unsupported grain evidence and fails verification closed.
+ * supported provider whose window rows exist ONLY at a non-authoritative
+ * grain has unsupported grain evidence and fails verification closed.
+ * Providers outside BLUEPRINT_SUPPORTED_PROVIDERS fail closed with
+ * `unsupported_provider:<provider>` and are never aggregated.
  */
 export const PROVIDER_SOURCE_GRAINS: Record<string, string> = {
   google_ads: "campaign",
   meta_ads: "ad",
   tiktok_business: "campaign",
-  shopee: "campaign",
-  lazada: "campaign",
 };
 export const MAX_CAMPAIGN_ROWS = 100;
 
@@ -419,6 +423,8 @@ export type VerificationInput = {
   /** Required providers whose window rows exist only at a non-authoritative
    *  grain (unknown/unsupported grain evidence) — fails verification closed. */
   grainUnsupportedProviders: string[];
+  /** Required providers outside the blueprint's supported scope. */
+  unsupportedProviders: string[];
   currencyVerified: boolean;
   windowComplete: boolean;
   timezoneVerified: boolean;
@@ -459,6 +465,9 @@ export function computeVerificationStatus(input: VerificationInput): Verificatio
   if (!input.aggregationCompatible) reasons.push("incompatible_metric_semantics");
   if (input.grainUnsupportedProviders.length > 0) {
     reasons.push(`aggregation_grain_unsupported:${input.grainUnsupportedProviders.sort().join(",")}`);
+  }
+  if (input.unsupportedProviders.length > 0) {
+    reasons.push(`unsupported_provider:${input.unsupportedProviders.sort().join(",")}`);
   }
   if (!input.currencyVerified) reasons.push("currency_unverified");
   if (!input.windowComplete) reasons.push("window_incomplete");
@@ -605,6 +614,9 @@ function explanationFor(
   metrics: BlueprintMetrics,
   included: boolean,
 ): string {
+  if (!(BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider)) {
+    return "This provider is outside Verified Weekly Performance Blueprint v1 scope (Google Ads, Meta Ads, TikTok Ads). Its rows are never aggregated in this report; remove it from the client's required providers or use the broader reporting workflows.";
+  }
   if (!included) {
     const entry = evaluation.providers.find((p) => p.provider === provider);
     const message = entry?.blockers.map((issue) => READINESS_MESSAGES[issue.code]).find(Boolean)
@@ -853,6 +865,9 @@ function buildVerification(
     hasMetricData: ctx.currentRows.length > 0,
     aggregationCompatible: aggregationCompatibleFor(ctx.currentRows, totals),
     grainUnsupportedProviders: ctx.grainUnsupportedProviders,
+    unsupportedProviders: ctx.clientRequirement.requiredProviders.filter(
+      (provider) => !(BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
+    ),
     currencyVerified: currencyVerifiedFor(totals, ctx.evaluation),
     windowComplete: windowIsComplete(ctx.window),
     timezoneVerified: ctx.evaluation.timezones.length === 1,
@@ -956,25 +971,14 @@ export async function generateWeeklyBlueprint(params: {
 }): Promise<GenerateResult> {
   const { workspaceId, clientId, now = new Date() } = params;
 
-  const client = await prisma.client.findFirst({
+  // Outer lookup: authorization/existence ONLY. Its mutable reporting fields
+  // are deliberately NOT selected — they can never participate in generation.
+  const clientExists = await prisma.client.findFirst({
     where: { id: clientId, workspaceId },
-    select: {
-      id: true,
-      name: true,
-      requiredProviders: true,
-      requiredDestinations: true,
-      requirementsConfiguredAt: true,
-    },
+    select: { id: true },
   });
-  if (!client) {
+  if (!clientExists) {
     throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
-  }
-  if (client.requiredProviders.length === 0 || client.requiredDestinations.length === 0
-    || !client.requirementsConfiguredAt) {
-    throw new BlueprintInputError(
-      "Reporting requirements are not configured for this client. An owner or admin must choose required providers and destinations in Clients before a verified report can be generated.",
-      "requirements_not_configured",
-    );
   }
 
   if (Boolean(params.windowStart) !== Boolean(params.windowEnd)) {
@@ -997,7 +1001,29 @@ export async function generateWeeklyBlueprint(params: {
   // receipts with currentness — is loaded through ONE RepeatableRead
   // transaction via PR #152's transactional readiness core. No cross-transaction
   // comparison or approximation: every read shares one database snapshot.
-  const { dataset, comparisonDataset, connections, currentWindow, previousWindow, receiptRows, txRequirement, evaluation } = await prisma.$transaction(async (tx) => {
+  const { client, dataset, comparisonDataset, connections, currentWindow, previousWindow, receiptRows, evaluation } = await prisma.$transaction(async (tx) => {
+    // The AUTHORITATIVE client record — read inside the same RepeatableRead
+    // snapshot as everything else. No outer mutable field participates.
+    const client = await tx.client.findFirst({
+      where: { id: clientId, workspaceId },
+      select: {
+        id: true,
+        name: true,
+        requiredProviders: true,
+        requiredDestinations: true,
+        requirementsConfiguredAt: true,
+      },
+    });
+    if (!client) {
+      throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
+    }
+    if (client.requiredProviders.length === 0 || client.requiredDestinations.length === 0
+      || !client.requirementsConfiguredAt) {
+      throw new BlueprintInputError(
+        "Reporting requirements are not configured for this client. An owner or admin must choose required providers and destinations in Clients before a verified report can be generated.",
+        "requirements_not_configured",
+      );
+    }
     const readiness = await loadReportReadiness(workspaceId, window, { clientId, tx });
     const [dataset, comparisonDataset] = await Promise.all([
       reportingDataset(tx, workspaceId, clientId, window),
@@ -1028,11 +1054,19 @@ export async function generateWeeklyBlueprint(params: {
           orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
         }))),
     ]);
-    return { dataset, comparisonDataset, connections, currentWindow, previousWindow, receiptRows, txRequirement: readiness.evaluations[0] ?? null, evaluation: readiness.evaluations[0] ?? null };
+    return { client, dataset, comparisonDataset, connections, currentWindow, previousWindow, receiptRows, evaluation: readiness.evaluations[0] ?? null };
   }, { isolationLevel: "RepeatableRead", timeout: 30_000 });
 
   if (!evaluation) {
     throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
+  }
+  // The transactional record is the only requirement state; it was validated
+  // inside the snapshot. Narrow for the type system without re-reading.
+  if (!client.requirementsConfiguredAt) {
+    throw new BlueprintInputError(
+      "Reporting requirements are not configured for this client.",
+      "requirements_not_configured",
+    );
   }
 
   // Receipt currentness is evaluated against THIS transaction's dataset
@@ -1053,16 +1087,21 @@ export async function generateWeeklyBlueprint(params: {
   // OWN persisted grain; ignore non-authoritative duplicate grains; fail
   // closed when a provider's window rows exist only at an unsupported grain.
   const requiredProviders = [...client.requiredProviders].sort();
+  // Providers outside the blueprint's supported scope fail closed explicitly
+  // and are never aggregated — their rows (ad facts or order rollups) are
+  // excluded from every total.
+  const unsupportedProviders = requiredProviders.filter(
+    (provider) => !(BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
+  );
+  const supportedProviders = requiredProviders.filter(
+    (provider) => (BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
+  );
   const splitByGrain = (rows: MetricRowInput[]) => {
     const authoritative: MetricRowInput[] = [];
     const unsupportedOnly = new Set<string>();
-    for (const provider of requiredProviders) {
+    for (const provider of supportedProviders) {
       const grain = PROVIDER_SOURCE_GRAINS[provider];
       const providerRows = rows.filter((row) => row.platform === provider);
-      if (!grain) {
-        if (providerRows.length > 0) unsupportedOnly.add(provider);
-        continue;
-      }
       const authoritativeRows = providerRows.filter((row) => row.level === grain);
       if (authoritativeRows.length > 0) {
         authoritative.push(...authoritativeRows);

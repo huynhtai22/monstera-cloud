@@ -32,13 +32,18 @@ import { assertCiDatabaseReachableWhenMissing } from "./pg-test-discipline";
 const POLL_INTERVAL_MS = 10;
 const POLL_MAX_TRIES = 2_000;
 
-async function countBlockedAdvisoryWaiters(dbForLocks: PrismaClient): Promise<number> {
+async function countBlockedAdvisoryWaiters(dbForLocks: PrismaClient, generationKey: string): Promise<number> {
+    // Counts ONLY waiters on the exact advisory-lock key the service uses:
+    // pg_advisory_xact_lock(hashtext(key)) stores the 64-bit key split across
+    // classid (high 32 bits) and objid (low 32 bits, unsigned). Unrelated
+    // advisory waiters (different keys) can never satisfy the barrier.
     const rows = await dbForLocks.$queryRaw<Array<{ n: bigint }>>`
         SELECT count(*)::bigint AS n
         FROM pg_locks l
-        JOIN pg_stat_activity a ON l.pid = a.pid
+        CROSS JOIN (SELECT hashtext(${generationKey})::bigint AS v) k
         WHERE l.locktype = 'advisory' AND NOT l.granted
-          AND a.query ILIKE '%pg_advisory_xact_lock%'`;
+          AND l.classid = ((k.v >> 32) & 4294967295)
+          AND l.objid = (k.v & 4294967295)`;
     return Number(rows[0]?.n ?? 0);
 }
 
@@ -1007,21 +1012,48 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         }, { timeout: 120_000 });
         await waitForCondition(() => holderOpen, "barrier holder open");
 
-        const first = generateWeeklyBlueprint(params);
-        const second = generateWeeklyBlueprint(params);
+        // Negative control: an unrelated advisory-lock waiter (different key)
+        // exists but can never satisfy this barrier.
+        const unrelatedKey = `unrelated-${suffix}`;
+        let unrelatedOpen = false;
+        const unrelatedBarrier: { release: (() => void) | null } = { release: null };
+        const unrelatedHolder = lockClient.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${unrelatedKey}))`;
+            unrelatedOpen = true;
+            await new Promise<void>((resolve) => { unrelatedBarrier.release = resolve; });
+            return true;
+        }, { timeout: 60_000 });
+        await waitForCondition(() => unrelatedOpen, "unrelated holder open");
+        const unrelatedWaiter = lockClient.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${unrelatedKey}))`;
+            return true;
+        }, { timeout: 60_000 });
         const lockDb = db as PrismaClient;
         try {
-            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb)) >= 2, "both generations blocked on the barrier", lockDb);
+            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb, unrelatedKey)) >= 1, "unrelated waiter blocked", lockDb);
+            assert.equal(await countBlockedAdvisoryWaiters(lockDb, generationKey), 0, "negative control: unrelated waiters are not counted for this key");
+
+            const first = generateWeeklyBlueprint(params);
+            const second = generateWeeklyBlueprint(params);
+            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb, generationKey)) >= 2, "both generations blocked on the barrier", lockDb);
+            unrelatedBarrier.release?.();
+            await unrelatedHolder;
+            await unrelatedWaiter.catch(() => undefined);
+            barrier.release?.();
+            await holder;
+
+            const [a, b] = await Promise.all([first, second]);
+            assert.equal(a.snapshot.id, b.snapshot.id, "identical concurrency must agree on one snapshot");
+            assert.equal(a.created !== b.created, true, "exactly one caller reports created:true");
+            const rows = await db.reportSnapshot.count({ where: { generationKey, dependencyHash: a.snapshot.dependencyHash } });
+            assert.equal(rows, 1, "exactly one snapshot row stored for this dependency state");
         } finally {
             barrier.release?.();
+            unrelatedBarrier.release?.();
         }
         await holder;
-
-        const [a, b] = await Promise.all([first, second]);
-        assert.equal(a.snapshot.id, b.snapshot.id, "identical concurrency must agree on one snapshot");
-        assert.equal(a.created !== b.created, true, "exactly one caller reports created:true");
-        const rows = await db.reportSnapshot.count({ where: { generationKey, dependencyHash: a.snapshot.dependencyHash } });
-        assert.equal(rows, 1, "exactly one snapshot row stored for this dependency state");
+        await unrelatedHolder.catch(() => undefined);
+        await unrelatedWaiter.catch(() => undefined);
         await lockClient.$disconnect();
     });
 
@@ -1073,12 +1105,12 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         let b: ReturnType<typeof generateWeeklyBlueprint> | null = null;
         const lockDbA = db as PrismaClient;
         try {
-            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDbA)) >= 1, "generation A blocked", lockDbA);
+            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDbA, generationKey)) >= 1, "generation A blocked", lockDbA);
             // Dataset mutates only after A is parked: B must read the new state.
             await mutate();
             b = generateWeeklyBlueprint(params);
             const lockDbB = db as PrismaClient;
-            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDbB)) >= 2, "generation B blocked", lockDbB);
+            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDbB, generationKey)) >= 2, "generation B blocked", lockDbB);
         } finally {
             barrier.release?.();
         }
@@ -1109,6 +1141,270 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             WHERE tablename = 'ReportSnapshot' AND indexdef LIKE '%generationKey_dependencyHash%'`;
         assert.equal(indexes.length, 1);
         assert.match(indexes[0].indexdef, /UNIQUE INDEX/);
+    });
+
+    it("binds exactly one requirement state when requirements change mid-generation (F1)", async () => {
+        if (!db) return;
+        // Dedicated client + rows so the barrier test owns its whole state.
+        const clientD = `client-req-${suffix}`;
+        const connDG = `conn-reqg-${suffix}`;
+        const connDM = `conn-reqm-${suffix}`;
+        await db.client.create({
+            data: {
+                id: clientD, workspaceId: ids.workspaceA, name: "Requirement Client",
+                requiredProviders: ["google_ads", "meta_ads"], requiredDestinations: ["google_sheets"],
+                requirementsConfiguredAt: new Date("2026-08-20T00:00:00.000Z"),
+            },
+        });
+        await db.connection.createMany({
+            data: [
+                { id: connDG, workspaceId: ids.workspaceA, clientId: clientD, name: "Req G", type: "source", provider: "google_ads", credentials: "enc:v1:test", remoteAccountId: `req-g-${suffix}`, status: "connected", lastSyncAt: new Date() },
+                { id: connDM, workspaceId: ids.workspaceA, clientId: clientD, name: "Req M", type: "source", provider: "meta_ads", credentials: "enc:v1:test", remoteAccountId: `req-m-${suffix}`, status: "connected", lastSyncAt: new Date() },
+            ],
+        });
+        await db.accountReportingContext.createMany({
+            data: [
+                { workspaceId: ids.workspaceA, connectionId: connDG, accountId: `req-g-${suffix}`, providerTimezone: "Asia/Ho_Chi_Minh", providerCurrency: "VND", providerObservedAt: NOW },
+                { workspaceId: ids.workspaceA, connectionId: connDM, accountId: `req-m-${suffix}`, providerTimezone: "Asia/Ho_Chi_Minh", providerCurrency: "VND", providerObservedAt: NOW },
+            ],
+        });
+        await db.campaignMetric.createMany({
+            data: WEEK_DAYS.flatMap((day) => ([
+                {
+                    workspaceId: ids.workspaceA, connectionId: connDG, platform: "google_ads",
+                    accountId: `req-g-${suffix}`, level: "campaign", entityId: `e-reqg-${suffix}`,
+                    campaignId: "req-camp-g", campaignName: "Req G Campaign",
+                    date: new Date(`${day}T00:00:00.000Z`),
+                    impressions: 1000, clicks: 100, spend: 1_000_000, conversions: 2, revenue: 4_000_000, currency: "VND",
+                },
+                {
+                    workspaceId: ids.workspaceA, connectionId: connDM, platform: "meta_ads",
+                    accountId: `req-m-${suffix}`, level: "ad", entityId: `e-reqm-${suffix}`,
+                    campaignId: "req-camp-m", campaignName: "Req M Campaign",
+                    date: new Date(`${day}T00:00:00.000Z`),
+                    impressions: 500, clicks: 50, spend: 500_000, conversions: 1, revenue: 2_000_000, currency: "VND",
+                },
+            ])),
+        });
+        const seedReceiptFor = async () => {
+            const dataset = await datasetOf(ids.workspaceA, clientD, WINDOW);
+            return db!.destinationDeliveryReceipt.create({
+                data: {
+                    workspaceId: ids.workspaceA, clientId: clientD, destination: "google_sheets",
+                    windowStart: WINDOW.start, windowEnd: WINDOW.end,
+                    dataThroughDate: dataset.dataThroughDate ?? WINDOW.end,
+                    datasetFingerprint: dataset.fingerprint, rowCount: dataset.rowCount,
+                    actorId: ids.owner,
+                },
+            });
+        };
+        await seedReceiptFor();
+
+        const params = { workspaceId: ids.workspaceA, clientId: clientD, windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW };
+        const generationKey = computeGenerationKey(ids.workspaceA, clientD, WINDOW, comparisonWindowFor(WINDOW));
+
+        // Deterministic barrier on the create transaction, exactly like the
+        // service's own advisory lock.
+        const lockClient = new PrismaClient();
+        await lockClient.$connect();
+        let holderOpen = false;
+        const barrier: { release: (() => void) | null } = { release: null };
+        const holder = lockClient.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${generationKey}))`;
+            holderOpen = true;
+            await new Promise<void>((resolve) => { barrier.release = resolve; });
+            return true;
+        }, { timeout: 120_000 });
+        await waitForCondition(() => holderOpen, "barrier holder open");
+
+        const a = generateWeeklyBlueprint(params);
+        const lockDb = db as PrismaClient;
+        let b: ReturnType<typeof generateWeeklyBlueprint> | null = null;
+        try {
+            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb, generationKey)) >= 1, "generation A blocked", lockDb);
+            // Requirements change while A is parked: R1 -> R2, with the
+            // configuration clock advanced exactly like the admin route does.
+            await db.client.update({
+                where: { workspaceId_id: { workspaceId: ids.workspaceA, id: clientD } },
+                data: { requiredProviders: ["google_ads"], requirementsConfiguredAt: new Date() },
+            });
+            b = generateWeeklyBlueprint(params);
+            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb, generationKey)) >= 2, "generation B blocked", lockDb);
+        } finally {
+            barrier.release?.();
+        }
+        await holder;
+
+        const [ra, rb] = await Promise.all([a, b!]);
+        // A binds requirement state R1 ONLY: both providers, and its stored
+        // dependency state carries exactly R1 — no field from R2 leaks in.
+        assert.deepEqual(ra.snapshot.verificationStatus, "VERIFIED");
+        assert.deepEqual(ra.report.overview.requiredProviders, ["google_ads", "meta_ads"]);
+        const raEvidence = (await db.reportSnapshot.findUniqueOrThrow({ where: { id: ra.snapshot.id } }))
+            .readinessEvidence as { dependencyState: { requirement: { requiredProviders: string[] } } };
+        assert.deepEqual(raEvidence.dependencyState.requirement.requiredProviders, ["google_ads", "meta_ads"]);
+        assert.ok(ra.report.providers.some((provider) => provider.provider === "meta_ads"));
+        // B binds requirement state R2 ONLY: google provider, no meta anywhere.
+        assert.deepEqual(rb.report.overview.requiredProviders, ["google_ads"]);
+        assert.ok(rb.report.providers.every((provider) => provider.provider !== "meta_ads"));
+        assert.notEqual(ra.snapshot.dependencyHash, rb.snapshot.dependencyHash, "mixed requirement states cannot share a snapshot");
+        // The R1-bound snapshot cannot stay VERIFIED once requirements moved:
+        // recomputing ITS dependency state is stale with an explicit reason.
+        const aRow = await db.reportSnapshot.findUniqueOrThrow({ where: { id: ra.snapshot.id } });
+        const staleA = await evaluateSnapshotFreshness(aRow);
+        assert.equal(staleA.freshness, "STALE");
+        assert.ok(staleA.staleReasons.includes("requirement_changed"));
+        // And the latest reopen (snapshot B, bound to R2) reports the change too.
+        const reopenAfterChange = await reopenWeeklyBlueprint({
+            workspaceId: ids.workspaceA, clientId: clientD,
+            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
+        });
+        assert.equal(reopenAfterChange.snapshot?.verification.status, "NOT_VERIFIED");
+
+        // Cleanup for later tests.
+        await db.campaignMetric.deleteMany({ where: { entityId: { in: [`e-reqg-${suffix}`, `e-reqm-${suffix}`] } } });
+        await db.destinationDeliveryReceipt.deleteMany({ where: { clientId: clientD } });
+        await db.accountReportingContext.deleteMany({ where: { connectionId: { in: [connDG, connDM] } } });
+        await db.connection.deleteMany({ where: { id: { in: [connDG, connDM] } } });
+        await db.client.deleteMany({ where: { id: clientD } });
+        await lockClient.$disconnect();
+    });
+
+    it("keeps TikTok campaign-grain rows authoritative and verifiable (F2)", async () => {
+        if (!db) return;
+        const clientT = `client-tt-${suffix}`;
+        const connT = `conn-tt-${suffix}`;
+        await db.client.create({
+            data: {
+                id: clientT, workspaceId: ids.workspaceA, name: "TikTok Client",
+                requiredProviders: ["tiktok_business"], requiredDestinations: ["google_sheets"],
+                requirementsConfiguredAt: new Date("2026-08-20T00:00:00.000Z"),
+            },
+        });
+        await db.connection.create({
+            data: {
+                id: connT, workspaceId: ids.workspaceA, clientId: clientT, name: "TikTok",
+                type: "source", provider: "tiktok_business", credentials: "enc:v1:test",
+                remoteAccountId: `tt-${suffix}`, status: "connected", lastSyncAt: new Date(),
+            },
+        });
+        await db.accountReportingContext.create({
+            data: {
+                workspaceId: ids.workspaceA, connectionId: connT, accountId: `tt-${suffix}`,
+                providerTimezone: "Asia/Ho_Chi_Minh", providerCurrency: "VND", providerObservedAt: NOW,
+            },
+        });
+        await db.campaignMetric.createMany({
+            data: WEEK_DAYS.map((day) => ({
+                workspaceId: ids.workspaceA, connectionId: connT, platform: "tiktok_business",
+                accountId: `tt-${suffix}`, level: "campaign", entityId: `e-tt-${suffix}`,
+                campaignId: "tt-campaign-1", campaignName: "TT Launch",
+                date: new Date(`${day}T00:00:00.000Z`),
+                impressions: 2000, clicks: 200, spend: 2_000_000, conversions: 5, revenue: 10_000_000, currency: "VND",
+            })),
+        });
+        const dataset = await datasetOf(ids.workspaceA, clientT, WINDOW);
+        await db.destinationDeliveryReceipt.create({
+            data: {
+                workspaceId: ids.workspaceA, clientId: clientT, destination: "google_sheets",
+                windowStart: WINDOW.start, windowEnd: WINDOW.end,
+                dataThroughDate: dataset.dataThroughDate ?? WINDOW.end,
+                datasetFingerprint: dataset.fingerprint, rowCount: dataset.rowCount,
+                actorId: ids.owner,
+            },
+        });
+        const result = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA, clientId: clientT,
+            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
+        });
+        // TikTok's authoritative grain is campaign: rows aggregate once.
+        const tiktok = result.report.providers.find((provider) => provider.provider === "tiktok_business");
+        assert.equal(tiktok?.metrics.impressions, 14_000);
+        assert.equal(tiktok?.metrics.spend, 14_000_000);
+        assert.equal(result.snapshot.verificationStatus, "VERIFIED");
+
+        await db.campaignMetric.deleteMany({ where: { entityId: `e-tt-${suffix}` } });
+        await db.destinationDeliveryReceipt.deleteMany({ where: { clientId: clientT } });
+        await db.accountReportingContext.deleteMany({ where: { connectionId: connT } });
+        await db.connection.deleteMany({ where: { id: connT } });
+        await db.client.deleteMany({ where: { id: clientT } });
+    });
+
+    it("never combines or verifies marketplace rows for a Shopee requirement (F2)", async () => {
+        if (!db) return;
+        const clientS = `client-sh-${suffix}`;
+        const connS = `conn-sh-${suffix}`;
+        await db.client.create({
+            data: {
+                id: clientS, workspaceId: ids.workspaceA, name: "Shopee Client",
+                requiredProviders: ["google_ads", "shopee"], requiredDestinations: ["google_sheets"],
+                requirementsConfiguredAt: new Date("2026-08-20T00:00:00.000Z"),
+            },
+        });
+        const connSG = `conn-shg-${suffix}`;
+        await db.connection.createMany({
+            data: [
+                { id: connSG, workspaceId: ids.workspaceA, clientId: clientS, name: "Google S", type: "source", provider: "google_ads", credentials: "enc:v1:test", remoteAccountId: `shg-${suffix}`, status: "connected", lastSyncAt: new Date() },
+                { id: connS, workspaceId: ids.workspaceA, clientId: clientS, name: "Shopee", type: "source", provider: "shopee", credentials: "enc:v1:test", remoteAccountId: `sh-${suffix}`, status: "connected", lastSyncAt: new Date() },
+            ],
+        });
+        await db.accountReportingContext.createMany({
+            data: [
+                { workspaceId: ids.workspaceA, connectionId: connSG, accountId: `shg-${suffix}`, providerTimezone: "Asia/Ho_Chi_Minh", providerCurrency: "VND", providerObservedAt: NOW },
+                { workspaceId: ids.workspaceA, connectionId: connS, accountId: `sh-${suffix}`, providerTimezone: "Asia/Ho_Chi_Minh", providerCurrency: "VND", providerObservedAt: NOW },
+            ],
+        });
+        await db.campaignMetric.createMany({
+            data: WEEK_DAYS.map((day) => ({
+                workspaceId: ids.workspaceA, connectionId: connSG, platform: "google_ads",
+                accountId: `shg-${suffix}`, level: "campaign", entityId: `e-shg-${suffix}`,
+                campaignId: "sh-camp-g", campaignName: "SH Google Campaign",
+                date: new Date(`${day}T00:00:00.000Z`),
+                impressions: 1000, clicks: 100, spend: 1_000_000, conversions: 2, revenue: 4_000_000, currency: "VND",
+            })),
+        });
+        // Both marketplace row kinds: Shopee paid-ad campaign rows AND the
+        // daily order rollup. Neither may be aggregated into the blueprint.
+        await db.campaignMetric.createMany({
+            data: [
+                ...WEEK_DAYS.map((day) => ({
+                    workspaceId: ids.workspaceA, connectionId: connS, platform: "shopee",
+                    accountId: `sh-${suffix}`, level: "campaign", entityId: `sh-ads-${suffix}`,
+                    campaignId: "shopee-ads-camp", campaignName: "Shopee Ads",
+                    date: new Date(`${day}T00:00:00.000Z`),
+                    impressions: 3000, clicks: 300, spend: 3_000_000, conversions: 3, revenue: 9_000_000, currency: "VND",
+                })),
+                ...WEEK_DAYS.map((day) => ({
+                    workspaceId: ids.workspaceA, connectionId: connS, platform: "shopee",
+                    accountId: `sh-${suffix}`, level: "campaign", entityId: "shopee-orders-daily",
+                    campaignId: "shopee-orders-daily", campaignName: "Shopee orders (daily rollup)",
+                    date: new Date(`${day}T00:00:00.000Z`),
+                    impressions: 0, clicks: 0, spend: 7_000_000, conversions: 7, revenue: 70_000_000, currency: "VND",
+                })),
+            ],
+        });
+        const result = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA, clientId: clientS,
+            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
+        });
+        // Fail closed with an explicit unsupported_provider reason.
+        assert.equal(result.snapshot.verificationStatus, "NOT_VERIFIED");
+        assert.ok(result.snapshot.verificationReasons.includes("unsupported_provider:shopee"));
+        // Shopee rows (ads AND rollups) are excluded from every aggregation.
+        assert.equal(result.report.totals.impressions, 7000, "only the google campaign-grain rows");
+        // ...but never SILENTLY omitted: shopee is listed explicitly as
+        // out-of-scope with zero aggregated metrics.
+        const shopee = result.report.providers.find((provider) => provider.provider === "shopee");
+        assert.ok(shopee, "shopee must be visible as unsupported");
+        assert.equal(shopee?.metrics.impressions, 0);
+        assert.match(shopee?.explanation ?? "", /outside Verified Weekly Performance Blueprint v1 scope/);
+        assert.ok(result.report.campaigns.every((campaign) => !campaign.campaignId.startsWith("shopee")));
+        assert.equal(result.report.overview.verification.reasons.includes("unsupported_provider:shopee"), true);
+
+        await db.campaignMetric.deleteMany({ where: { connectionId: { in: [connS, connSG] } } });
+        await db.accountReportingContext.deleteMany({ where: { connectionId: { in: [connS, connSG] } } });
+        await db.connection.deleteMany({ where: { id: { in: [connS, connSG] } } });
+        await db.client.deleteMany({ where: { id: clientS } });
     });
 
     it("rejects half-specified windows when reopening (low-cost)", async () => {
@@ -1282,6 +1578,7 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             hasMetricData: false,
             aggregationCompatible: false,
             grainUnsupportedProviders: [],
+            unsupportedProviders: [],
             currencyVerified: false,
             windowComplete: false,
             timezoneVerified: false,
