@@ -13,7 +13,7 @@ import crypto from "node:crypto";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
-const LEASE_DURATION_MS = 20 * 60 * 1000; // 20 minutes — stale workers release by expiry
+export const LEASE_DURATION_MS = 20 * 60 * 1000; // 20 minutes — stale workers release by expiry
 
 export type ConnectionLease = {
   scope: string;

@@ -198,6 +198,7 @@ function pullData(params) {
   var accountIds  = normalizeAccountIds(params.accountIds);
   var targetCell  = params.targetCell  || 'A1';
   var workspaceId = params.workspaceId || '';
+  var reportClientId = params.clientId || '';
   if (!workspaceId) throw new Error('Select an agency workspace first.');
 
   var qp = [
@@ -207,6 +208,7 @@ function pullData(params) {
     'reportLevel=' + encodeURIComponent(reportLevel),
   ];
   if (platform) qp.push('platform=' + encodeURIComponent(platform));
+  if (reportClientId) qp.push('clientId=' + encodeURIComponent(reportClientId));
   accountIds.forEach(function(id) { qp.push('accountId=' + encodeURIComponent(id)); });
 
   if (reportType) qp.push('reportType=' + encodeURIComponent(reportType));
@@ -227,7 +229,7 @@ function pullData(params) {
     accountIds: accountIds
   });
 
-  var cached = cache.get(cacheKey);
+  var cached = reportClientId ? null : cache.get(cacheKey);
   if (cached) {
     try {
       responseData = JSON.parse(cached);
@@ -257,7 +259,7 @@ function pullData(params) {
       throw new Error('Unexpected response from Monstera Cloud.');
     }
 
-    if (Array.isArray(responseData.data) && responseData.data.length > 0) {
+    if (!reportClientId && Array.isArray(responseData.data) && responseData.data.length > 0) {
       try { cache.put(cacheKey, body, CACHE_TTL_SECONDS); } catch(e) {}
     }
   }

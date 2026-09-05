@@ -66,6 +66,8 @@ Potential deliverables: client portfolio, cross-client summary, authorized roles
 
 ### Phase 3 — Data Trust
 
+Local implementation: [Report Readiness](./REPORT_READINESS.md) derives scoped client/window evidence in Clients and Reports. The additive [persisted-evidence slice](./REPORT_READINESS_EVIDENCE.md) supplies account timezone/currency, explicit provider/destination requirements and authenticated retrieval receipts. Real READY requires all checks to pass; source reconciliation, expected-account completeness and live destination acceptance still require operator certification.
+
 **Goal:** detect incomplete or inaccurate reporting before client delivery.
 
 Potential deliverables: provider reconciliation, freshness policies, quality rules, schema-change detection, per-account quarantine, lineage, and reporting-readiness checks. Entry gate: validation evidence identifies recurring classes of mismatch. Exit gate: report readiness is attributable to a bounded, inspectable evaluation.

@@ -96,6 +96,8 @@ function getIdToken_() {
 
 function getConfig(request) {
   var config = cc.getConfig();
+  config.newTextInput().setId("workspaceId").setName("Workspace ID").setHelpText("Required for client-scoped report delivery evidence.");
+  config.newTextInput().setId("reportClientId").setName("Client ID (optional)").setHelpText("Copy from Monstera Reporting configuration. Use all platforms/accounts and the exact reporting window for delivery verification.");
 
   // --- Account selection (multi-select) ---
   var accountSelect = config
@@ -467,6 +469,8 @@ function getData(request) {
     : [];
 
   var cacheTtl = getCacheTtl(request);
+  var reportClientId = request.configParams && request.configParams.reportClientId;
+  var workspaceId = request.configParams && request.configParams.workspaceId;
 
   // --- Build API parameters ---
   var params = [
@@ -476,6 +480,8 @@ function getData(request) {
     "maxRows=" + MAX_ROWS_PER_REQUEST,
   ];
   if (platform) params.push("platform=" + encodeURIComponent(platform));
+  if (reportClientId) params.push("clientId=" + encodeURIComponent(reportClientId));
+  if (workspaceId) params.push("workspaceId=" + encodeURIComponent(workspaceId));
   if (accountIds.length > 0) {
     accountIds.forEach(function(id) {
       params.push("accountId=" + encodeURIComponent(id));
@@ -493,7 +499,7 @@ function getData(request) {
   );
   var parsedResponse = null;
 
-  var cached = cache.get(cacheKey);
+  var cached = reportClientId ? null : cache.get(cacheKey);
   if (cached) {
     try {
       parsedResponse = JSON.parse(cached);
@@ -571,7 +577,7 @@ function getData(request) {
 
     // Store in cache with user-selected TTL (silent fail if response exceeds 100 KB limit)
     try {
-      cache.put(cacheKey, JSON.stringify(parsedResponse), cacheTtl);
+      if (!reportClientId) cache.put(cacheKey, JSON.stringify(parsedResponse), cacheTtl);
     } catch (e) {
       // Response too large to cache — continue without caching
     }

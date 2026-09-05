@@ -121,6 +121,7 @@ describe("provider HTTP failures preserve sync correctness", () => {
     let failedDownloadAttempts = 0;
     await withFastRetries(() => withSyncHarness((async (input, init) => {
       const url = String(input);
+      if (url.includes("/advertiser/info/")) return Response.json({code:0,data:{list:[]}});
       if (url.includes("/report/task/create/")) {
         const body = JSON.parse(String(init?.body ?? "{}")) as { advertiser_id: string };
         return new Response(JSON.stringify({ code: 0, data: { task_id: `${body.advertiser_id}-task` } }), { status: 200 });
@@ -287,5 +288,80 @@ describe("provider HTTP failures preserve sync correctness", () => {
       const disconnect = updates.find((u) => u.data && (u.data as any).status === "disconnected");
       assert.ok(disconnect, "handleMetaRevocation must disconnect the connection");
     }));
+  });
+});
+
+describe("google runtime configuration fail-closed", () => {
+  for (const mode of ["shado", "SHADOW", ""]) {
+    it(`rejects invalid mode ${JSON.stringify(mode)} before any provider contact or writes`, async () => {
+      const previousMode = process.env.GOOGLE_CONNECTOR_RUNTIME_MODE;
+      const previousArtifact = (prisma as any).connectorRunArtifact;
+      const previousAudit = (prisma as any).auditEvent;
+      process.env.GOOGLE_CONNECTOR_RUNTIME_MODE = mode;
+      let calls = 0;
+      let writes = 0;
+      (prisma as any).connectorRunArtifact = {
+        findMany: async () => { writes++; return []; },
+        create: async () => { writes++; return { id: "x" }; },
+        deleteMany: async () => { writes++; return { count: 0 }; },
+      };
+      (prisma as any).auditEvent = {
+        create: async () => { writes++; return {}; },
+        findFirst: async () => { writes++; return null; },
+      };
+      try {
+        await withFastRetries(() => withSyncHarness((async () => {
+          calls++;
+          throw new Error("provider must not be contacted");
+        }) as typeof fetch, async () => {
+          process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "test-token";
+          const result = await syncConnectionData({
+            connectionId: "google-connection",
+            provider: "google_ads",
+            credentials: { ...freshCredentials, customerIds: ["111"] },
+            workspaceId: "workspace-1",
+            userPlan: "pilot",
+          });
+          assert.equal(result.success, false);
+          assert.match(String(result.error ?? ""), /INVALID_GOOGLE_CONNECTOR_RUNTIME_MODE/);
+          assert.equal(calls, 0);
+          assert.equal(writes, 0);
+        }));
+      } finally {
+        if (previousMode === undefined) delete process.env.GOOGLE_CONNECTOR_RUNTIME_MODE;
+        else process.env.GOOGLE_CONNECTOR_RUNTIME_MODE = previousMode;
+        (prisma as any).connectorRunArtifact = previousArtifact;
+        (prisma as any).auditEvent = previousAudit;
+      }
+    });
+  }
+});
+
+describe("google runtime authority fail-closed", () => {
+  it("rejects runtime mode before any provider contact or writes", async () => {
+    const previousMode = process.env.GOOGLE_CONNECTOR_RUNTIME_MODE;
+    process.env.GOOGLE_CONNECTOR_RUNTIME_MODE = "runtime";
+    let calls = 0;
+    try {
+      await withFastRetries(() => withSyncHarness((async () => {
+        calls++;
+        throw new Error("provider must not be contacted");
+      }) as typeof fetch, async () => {
+        process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "test-token";
+        const result = await syncConnectionData({
+          connectionId: "google-connection",
+          provider: "google_ads",
+          credentials: { ...freshCredentials, customerIds: ["111"] },
+          workspaceId: "workspace-1",
+          userPlan: "pilot",
+        });
+        assert.equal(result.success, false);
+        assert.match(String(result.error ?? ""), /GOOGLE_RUNTIME_MODE_NOT_PROMOTED/);
+        assert.equal(calls, 0);
+      }));
+    } finally {
+      if (previousMode === undefined) delete process.env.GOOGLE_CONNECTOR_RUNTIME_MODE;
+      else process.env.GOOGLE_CONNECTOR_RUNTIME_MODE = previousMode;
+    }
   });
 });

@@ -8,6 +8,8 @@ import { hashApiKey, resolveApiKey } from "@/lib/api-key-security";
 import { queryWarehouse } from "@/lib/warehouse-query";
 import { createNodeRedis } from "@/lib/node-redis";
 import { assertLookerAllowed, toPlanLimitResponse } from "@/lib/plan-entitlements";
+import { retrieveClientDelivery } from "@/lib/report-delivery";
+import { toRbacResponse } from "@/lib/rbac";
 
 type RateLimitResult = {
   success: boolean;
@@ -62,7 +64,8 @@ function parseDateFilter(value: string): Date | null {
     const mo = Number(compact[2]);
     const d = Number(compact[3]);
     if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-    return new Date(Date.UTC(y, mo - 1, d));
+    const date = new Date(Date.UTC(y, mo - 1, d));
+    return date.toISOString().slice(0,10).replaceAll("-", "") === value ? date : null;
   }
   const dashed = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (dashed) {
@@ -70,7 +73,8 @@ function parseDateFilter(value: string): Date | null {
     const mo = Number(dashed[2]);
     const d = Number(dashed[3]);
     if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-    return new Date(Date.UTC(y, mo - 1, d));
+    const date = new Date(Date.UTC(y, mo - 1, d));
+    return date.toISOString().slice(0,10) === value ? date : null;
   }
   return null;
 }
@@ -105,6 +109,8 @@ export async function GET(req: NextRequest) {
 
     let workspaceId: string;
     let workspacePlan: string;
+    let deliveryActor: string;
+    let deliveryDestination: "google_sheets" | "looker_studio" | null = null;
 
     if (isGoogleJwt(apiKey)) {
       // Google Sheets add-on: identity token auth
@@ -115,6 +121,13 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "Invalid or expired Google token" }, { status: 401 });
       }
       const email = verification.email;
+      // Bind shared-route receipts to the verified OAuth application, not a browser destination parameter.
+      const addonAudience = process.env.GOOGLE_ADDON_CLIENT_ID?.trim();
+      const lookerAudience = process.env.LOOKER_OAUTH_CLIENT_ID?.trim();
+      if (addonAudience !== lookerAudience) {
+        if (addonAudience && verification.aud === addonAudience) deliveryDestination = "google_sheets";
+        if (lookerAudience && verification.aud === lookerAudience) deliveryDestination = "looker_studio";
+      }
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user) {
         return NextResponse.json({ error: "No Monstera account found", code: "NO_ACCOUNT" }, { status: 404 });
@@ -145,6 +158,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "No workspace found", code: "NO_WORKSPACE" }, { status: 404 });
       }
       workspaceId = workspace.id;
+      deliveryActor = user.id;
       workspacePlan = workspace.plan;
       await assertLookerAllowed({ plan: workspacePlan, auth: "jwt-sheets" });
 
@@ -159,6 +173,8 @@ export async function GET(req: NextRequest) {
       }
 
       workspaceId = keyRecord.workspaceId;
+      deliveryActor = `api-key:${keyRecord.id}`;
+      deliveryDestination = "looker_studio";
       workspacePlan = keyRecord.workspace.plan;
       await assertLookerAllowed({ plan: workspacePlan, auth: "api-key-looker" });
 
@@ -211,6 +227,7 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(limitParam > 0 ? limitParam : 10000, MAX_ROWS_PER_REQUEST);
     const cursorParam = req.nextUrl.searchParams.get("cursor");
     const includeCount = req.nextUrl.searchParams.get("includeCount") === "1";
+    const clientId = req.nextUrl.searchParams.get("clientId");
 
     // Check cache early
     const cacheKey = generateCacheKey("looker-v2", {
@@ -220,7 +237,7 @@ export async function GET(req: NextRequest) {
     
     // Looker Studio dashboards change infrequently and trigger many concurrent queries.
     // Cache for 15 minutes (900 seconds).
-    const cached = await getCachedQuery(cacheKey);
+    const cached = clientId ? null : await getCachedQuery(cacheKey);
     if (cached) {
       return NextResponse.json(cached);
     }
@@ -250,8 +267,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const result = await queryWarehouse({
+    const query = {
       workspaceId,
+      clientId: clientId || undefined,
       startDate,
       endDate,
       platforms: platform && platform !== "all" ? [platform] : undefined,
@@ -259,7 +277,11 @@ export async function GET(req: NextRequest) {
       cursor: cursorParam,
       limit,
       includeTotalCount: includeCount,
-    });
+    };
+    // Unknown OAuth app identity cannot mint evidence; keep the existing query compatible.
+    const result = clientId
+      ? await retrieveClientDelivery({ ...query, clientId }, deliveryDestination, deliveryActor)
+      : await queryWarehouse(query);
 
     const formattedData = result.rows.map((m) => ({
       date: m.date.toISOString().split("T")[0].replace(/-/g, ""),
@@ -289,6 +311,7 @@ export async function GET(req: NextRequest) {
       data: formattedData,
       asOf: result.asOf,
       freshness: result.freshness,
+      receiptId: "receiptId" in result ? result.receiptId : null,
     };
     if (result.pagination.nextCursor) resObj.nextCursor = result.pagination.nextCursor;
     if (typeof result.totalCount === "number") resObj.totalRows = result.totalCount;
@@ -308,10 +331,11 @@ export async function GET(req: NextRequest) {
     // Empty responses are often transient immediately after a warehouse refresh.
     // Keep only useful pages in the server cache; the Sheets add-on has its own
     // 10-minute user-cache for the same non-empty response type.
-    if (formattedData.length > 0) await setCachedQuery(cacheKey, resObj, 900);
+    if (!clientId && formattedData.length > 0) await setCachedQuery(cacheKey, resObj, 900);
 
-    return NextResponse.json(resObj);
+    return NextResponse.json(resObj, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error: unknown) {
+    const rbac = toRbacResponse(error); if (rbac) return rbac;
     const planLimit = toPlanLimitResponse(error);
     if (planLimit) return planLimit;
     logger.error("Looker Studio API Error:", error);

@@ -35,22 +35,40 @@ Historical "Certified" labels below mean code-path coverage only, **not live cer
 
 ## 3. Automated Evidence
 
+- Report Readiness adds a client/window advisory check over account health, imports, daily coverage, persisted account context, explicit client requirements and authenticated destination receipts. See [semantics](./REPORT_READINESS.md) and [exact remaining live-certification gaps](./REPORT_READINESS_EVIDENCE.md). Real READY requires all evidence to pass; local fixture success is not live connector certification.
+
 - `9d6f572`: durable account quarantine/reconnect state and skip logic for Meta, Google Ads and TikTok; complete-snapshot stale-row comparisons are **observability only**. September local unit/real-PG tests pass. No deletion/retention policy is enabled by these changes.
 - `security-boundaries.pg.integration.test.ts`: real handler/RBAC/database checks for the newer billing, analyst, portfolio and export-input surfaces; synthetic credentials only. This is not a live provider sync test.
 
 - `src/lib/oauth-framework/registry.test.ts`: Confirms `isProviderConfigured` correctly resolves primary and alias environment variables for `tiktok_business` and `amazon`.
 - `src/lib/shopee-ads-mapper.test.ts`: Confirms Shopee ads CPC metric normalization, date parsing, breakdown hashing, and ROAS calculations.
 - PR #128 (`ca141b4`) merged the Shopee sandbox warehouse-sync fix; its focused and CI evidence covers campaign discovery, idempotency, bounded Ads windows, source outcome truthfulness, and the catalog schema.
+- `src/lib/ad-certification/harness.ts`: Standardized 8-tier live certification harness (`CODE_VERIFIED` to `PILOT_CERTIFIED`), metric contracts v1.0.0, zero-leakage redaction, and deterministic reconciliation. All three advertising connectors (Google Ads, Meta Ads, TikTok Ads) are currently **`CODE_VERIFIED`** and blocked from live pilot claims pending live credentials, real OAuth connection, and native comparison reconciliation. See [summary matrix](./certification/summary-matrix.md).
 - `src/lib/tenant-isolation.pg.integration.test.ts`: Confirms that connection lookup, credential access, sync timestamps, and warehouse pipelines cannot be accessed or mutated across tenant boundaries.
 
 ---
 
-## 4. Live Certification Requirements (Before External Agency Pilot)
+## 4. Live Certification Requirements & Ordered Progression
 
-Before moving any certified provider from **Pending** to **Passed** for live agency onboarding:
-1. Provide active sandbox/developer credentials in `.env.local` for Meta Ads, Google Ads, TikTok Business, and Shopee.
-2. Execute live OAuth consent flows and store encrypted connection records.
-3. Perform an initial data sync and verify that rows populate `CampaignMetric` / `RetailOrder` tables with accurate freshness timestamps.
-4. Test token refresh / renewal lifecycle for each certified connector.
+> [!IMPORTANT]
+> **Governance & Verification Rules for Live Certification:**
+> - **No connector is currently live-certified.** Google Ads, Meta Ads, and TikTok Ads connectors remain at **`CODE_VERIFIED`**.
+> - **Clean Deployed Build Required:** A clean, committed, and deployed build is strictly required for live certification runs. Dirty working tree runs are marked `certificationEligible: false` and cannot execute live certification.
+> - **Immutable Traceability:** The commit SHA must identify the actual deployed source state, and schema version must match the applied deployment migration (`20260904160000_reporting_evidence`). Client-provided SHAs or schema versions are never trusted.
+> - **Owner Authorization:** The live Google Ads run begins only after deployment verification and explicit owner authorization.
+> - **Platform Secret Management:** Provider credentials must be injected exclusively via deployment platform secret management (never `.env.local`, Git, or chat). No secrets may be pasted into Codex, Git, reports, or chat.
+
+The initial setup items below only enable the live run to begin (`LIVE_CONNECTED` / `LIVE_IMPORTED`); **they do not award `PILOT_CERTIFIED`**:
+1. Configure verified provider application credentials via deployment platform secret manager (never `.env.local` or chat).
+2. Complete live OAuth consent on an authorized account with real advertising history.
+3. Perform a bounded initial data sync populating `CampaignMetric` / `RetailOrder` tables.
+4. Verify token lifecycle and encrypted credential persistence.
+
+Progression to **`PILOT_CERTIFIED`** strictly requires completing all subsequent mandatory gates:
+- **Gate 5: `LIVE_RECONCILED`** — Native platform totals reconciled against warehouse totals under identical semantics (timezone, currency, attribution) with strict snapshot alignment.
+- **Gate 6: `DESTINATION_VERIFIED`** — Authenticated retrieval via Google Sheets Add-on or Looker Studio connector with verified `DestinationDeliveryReceipt`.
+- **Gate 7: `RECOVERY_VERIFIED`** — Idempotent duplicate sync pass confirming zero row duplication and valid error taxonomy handling.
+- **Gate 8: `PILOT_CERTIFIED`** — Formal human review and sign-off on the sanitized evidence pack by an authorized platform lead.
 
 For Shopee Ads Service specifically, do not mark the full workflow passed from unit tests or API Tool calls alone. The final proof is an authenticated, reviewer-accessible recording of sandbox campaign `210343` → Monstera Sync Now → one warehouse campaign identity → Google Sheets **Shopee Campaigns** export.
+

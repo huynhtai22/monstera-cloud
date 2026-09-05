@@ -182,13 +182,13 @@ export class MetaAdsClient {
   /**
    * Fetch the list of ad accounts the token has access to.
    */
-  async getAdAccounts(accessToken: string): Promise<Array<{ id: string; name: string; currency: string; account_status: number }>> {
+  async getAdAccounts(accessToken: string): Promise<Array<{ id: string; name: string; currency: string; timezone_name?: string; account_status: number }>> {
     const url = new URL(`${META_GRAPH_BASE}/me/adaccounts`);
-    url.searchParams.set('fields', 'id,name,currency,account_status');
+    url.searchParams.set('fields', 'id,name,currency,timezone_name,account_status');
     url.searchParams.set('access_token', accessToken);
 
     const res = await fetch(url.toString());
-    const json = await res.json() as { data: Array<{ id: string; name: string; currency: string; account_status: number }>; error?: { message: string } };
+    const json = await res.json() as { data: Array<{ id: string; name: string; currency: string; timezone_name?: string; account_status: number }>; error?: { message: string } };
     if (json.error) throw new Error(`Meta adaccounts error: ${(json as any).error.message}`);
     return json.data ?? [];
   }

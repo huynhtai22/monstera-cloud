@@ -1,6 +1,8 @@
 import prisma from "@/lib/prisma";
 import { resolveSourceHealthState, SOURCE_HEALTH_STALE_AFTER_MS, type SourceHealthState } from "@/lib/source-health";
 import { reduceFreshness, type EvidenceFreshness } from "@/lib/ai/evidence-pack";
+import { loadReportReadiness } from "./report-readiness-server";
+import { defaultReportingWindow } from "./report-readiness";
 
 export type ReadinessStatus = "ready" | "best_effort" | "blocked";
 
@@ -38,6 +40,22 @@ export async function deriveReportingReadiness(
   workspaceId: string,
   window: ReadinessWindow = {},
 ): Promise<ReportingReadiness> {
+  // Preserve the legacy consumer shape, but never maintain a second client decision rule.
+  if (window.clientId) {
+    const defaults = defaultReportingWindow();
+    const { evaluations: [evaluation] } = await loadReportReadiness(workspaceId, {
+      start: window.since ?? defaults.start, end: window.until ?? defaults.end,
+    }, { clientId: window.clientId });
+    return {
+      status: evaluation.status === "READY" ? "ready" : evaluation.status === "WARNING" ? "best_effort" : "blocked",
+      exportable: evaluation.status === "READY",
+      freshness: reduceFreshness(evaluation.providers.map(p => p.health)),
+      currencies: evaluation.currencies, lastDataThrough: evaluation.latestDataDate,
+      destinationConfigured: evaluation.destination.configuredCount > 0,
+      blockers: [...evaluation.blockers, ...evaluation.warnings].map(i => i.code),
+      sources: evaluation.providers.map(p => ({ connectionId: p.connectionId, provider: p.provider, health: p.health, lastDataThrough: p.latestDataDate })),
+    };
+  }
   const staleBefore = new Date(Date.now() - SOURCE_HEALTH_STALE_AFTER_MS);
   const connections = await prisma.connection.findMany({
     where: {

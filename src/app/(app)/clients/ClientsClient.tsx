@@ -4,6 +4,7 @@ import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import useSWR, { useSWRConfig } from "swr";
+import useSWRInfinite from "swr/infinite";
 import { toast } from "sonner";
 import {
   Plus,
@@ -46,6 +47,8 @@ import {
 import { ScheduleReportModal, type ReportScheduleData } from "@/components/clients/ScheduleReportModal";
 import { AnomalyDetailsModal } from "@/components/clients/AnomalyDetailsModal";
 import type { MarketingAnomaly } from "@/lib/marketing-anomalies";
+import { ReportReadinessPanel, readinessFetcher } from "@/components/reports/ReportReadinessPanel";
+import type { ReportReadinessEvaluation } from "@/lib/report-readiness";
 
 type ReportSchedule = ReportScheduleData & {
   createdAt?: string;
@@ -91,6 +94,15 @@ export function ClientsClient() {
   );
 
   const schedulesKey = activeWorkspaceId ? `/api/report-schedules?workspaceId=${activeWorkspaceId}` : null;
+  const { data: readinessPages, error: readinessError, isLoading: readinessLoading, isValidating: readinessValidating, mutate: recheckReadiness, size: readinessSize, setSize: setReadinessSize } = useSWRInfinite<{
+    evaluations: ReportReadinessEvaluation[]; nextCursor: string | null;
+  }>((index, previous) => {
+    if (!activeWorkspaceId || (index > 0 && !previous?.nextCursor)) return null;
+    const params = new URLSearchParams({ workspaceId: activeWorkspaceId });
+    if (index > 0) params.set("after", previous.nextCursor);
+    return `/api/reports/readiness?${params}`;
+  }, readinessFetcher, { keepPreviousData: false, persistSize: false, errorRetryCount: 1 });
+  const readinessByClient = new Map((readinessPages?.flatMap(page => page.evaluations) ?? []).filter(e => e.workspaceId === activeWorkspaceId).map(e => [e.clientId, e]));
   const { data: schedules } = useSWR<ReportSchedule[]>(schedulesKey, fetcher);
 
   const anomaliesKey = activeWorkspaceId ? `/api/anomalies?workspaceId=${activeWorkspaceId}` : null;
@@ -490,6 +502,11 @@ export function ClientsClient() {
       </div>
 
       {/* ─── 4. CLIENTS VIEW ─── */}
+      {viewMode === "clients" && readinessPages?.at(-1)?.nextCursor ? (
+        <button type="button" disabled={readinessValidating} onClick={() => void setReadinessSize(readinessSize + 1)} className="mb-3 text-xs text-ink underline disabled:opacity-50">
+          {readinessValidating ? "Checking more clients…" : "Evaluate next 50 clients"}
+        </button>
+      ) : null}
       {viewMode === "clients" && (
         <>
           {clientsLoading ? (
@@ -521,7 +538,7 @@ export function ClientsClient() {
               }
             />
           ) : (
-            <div className="grid auto-rows-fr grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {filteredClients.map((c) => {
                 const health = deriveClientHealth(c);
                 const schedule = scheduleByClient.get(c.id);
@@ -603,6 +620,14 @@ export function ClientsClient() {
                         </div>
                       ) : null}
                     </div>
+
+                    <ReportReadinessPanel
+                      compact
+                      evaluation={readinessByClient.get(c.id)}
+                      loading={readinessLoading || readinessValidating}
+                      error={Boolean(readinessError)}
+                      onRetry={() => void recheckReadiness()}
+                    />
 
                     {/* Marketing Anomaly Alert Banner */}
                     {(() => {

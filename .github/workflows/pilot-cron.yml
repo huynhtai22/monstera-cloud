@@ -33,6 +33,7 @@ jobs:
             /api/cron/connections/token-prefetch \
             /api/cron/shopee/refresh \
             /api/cron/health-tick \
+            /api/cron/connector-artifacts-cleanup \
             /api/cron/report-schedules
           do
             echo "::group::${path}"

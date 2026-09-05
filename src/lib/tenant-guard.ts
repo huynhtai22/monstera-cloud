@@ -52,6 +52,7 @@ export const TENANT_GUARDED_MODELS = new Set([
   "AgentJob",
   "AgentTrace",
   "EvidencePackRecord",
+  "ConnectorRunArtifact",
   "PayloadSchemaDiscovery",
   "SchemaPatchProposal",
   "ShopeeCampaign",
@@ -59,8 +60,9 @@ export const TENANT_GUARDED_MODELS = new Set([
   "ProviderSyncRun",
   "PaymentOrder",
   "ProviderAccountHealth",
+  "AccountReportingContext",
+  "DestinationDeliveryReceipt",
   // Verified weekly report blueprint (2026-09): direct workspaceId owners
-  "ClientReportingRequirement",
   "ReportSnapshot",
 ]);
 
