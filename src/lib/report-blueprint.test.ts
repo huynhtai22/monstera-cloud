@@ -6,21 +6,20 @@ import {
     BLUEPRINT_VERSION,
     buildCampaignTable,
     canonicalJson,
-    computeDependencyHash,
-    computeVerificationStatus,
     comparisonWindowFor,
+    computeDependencyHash,
     computeMetricsDeltas,
+    computeVerificationStatus,
     daysBetween,
+    defaultBlueprintWindow,
     formatBlueprintMetric,
     lastCompleteWeek,
-    mapReadinessStatus,
     METRIC_CONTRACT_VERSION,
     resolveExplicitWindow,
     safeRatio,
     sha256Hex,
-    SUPPORTED_PROVIDERS,
     windowIsComplete,
-    windowToDateRange,
+    type DependencyState,
     type MetricRowInput,
     type VerificationInput,
 } from "./report-blueprint";
@@ -48,42 +47,61 @@ function row(overrides: Partial<MetricRowInput> = {}): MetricRowInput {
 function verificationInput(overrides: Partial<VerificationInput> = {}): VerificationInput {
     return {
         readinessStatus: "READY",
+        requiredProvidersBasis: "explicit",
         requiredProviders: ["google_ads"],
         includedProviders: ["google_ads"],
-        coverageComplete: true,
-        timezoneConfigured: true,
-        currencyVerified: true,
-        windowComplete: true,
         hasMetricData: true,
         aggregationCompatible: true,
-        destinationSatisfied: true,
+        currencyVerified: true,
+        windowComplete: true,
+        timezoneVerified: true,
+        destinationsRequired: ["google_sheets"],
+        destinationsVerified: true,
+        datasetLimited: false,
+        generatorVersionRecorded: true,
         dependencyHashMatches: true,
         ...overrides,
     };
 }
 
+function dependencyState(overrides: Partial<DependencyState> = {}): DependencyState {
+    return {
+        requirement: {
+            requiredProviders: ["google_ads"],
+            requiredDestinations: ["google_sheets"],
+            requirementsConfiguredAt: "2026-08-20T00:00:00.000Z",
+        },
+        datasetFingerprint: "fp-1",
+        evidenceAt: "2026-08-31T00:00:00.000Z",
+        dataThroughDate: "2026-08-30",
+        rowCount: 7,
+        receipts: [{
+            id: "r-1",
+            destination: "google_sheets",
+            retrievedAt: "2026-08-31T01:00:00.000Z",
+            dataThroughDate: "2026-08-30",
+            current: true,
+        }],
+        contractVersions: { metrics: METRIC_CONTRACT_VERSION, dataset: "reporting-dataset-v1" },
+        ...overrides,
+    };
+}
+
 describe("report blueprint: windows", () => {
-    it("computes last complete Monday–Sunday week in the reporting timezone (1)", () => {
-        // Wed 2026-09-02 23:30 in Asia/Ho_Chi_Minh (+07) → last complete week
-        // Mon 2026-08-24 .. Sun 2026-08-30 in that timezone.
-        const now = new Date("2026-09-02T16:30:00.000Z");
-        const week = lastCompleteWeek("Asia/Ho_Chi_Minh", now);
-        assert.equal(week.start, "2026-08-24");
-        assert.equal(week.end, "2026-08-30");
+    it("computes the last complete Monday–Sunday week in UTC (1)", () => {
+        const week = lastCompleteWeek(new Date("2026-09-02T16:30:00.000Z"));
+        assert.deepEqual(week, { start: "2026-08-24", end: "2026-08-30" });
         assert.equal(daysBetween(week.start, week.end), 6);
     });
 
-    it("last complete week respects the timezone day boundary (1)", () => {
-        // Sun 2026-08-30 23:00 in Ho_Chi_Minh is still Sunday locally → the
-        // last complete week ends the PREVIOUS Sunday (2026-08-23).
-        const utcSundayEvening = new Date("2026-08-30T16:00:00.000Z");
-        const week = lastCompleteWeek("Asia/Ho_Chi_Minh", utcSundayEvening);
+    it("keeps Sunday-evening input inside the current (incomplete) week", () => {
+        const week = lastCompleteWeek(new Date("2026-08-30T16:00:00.000Z"));
         assert.equal(week.end, "2026-08-23");
-        // Same instant in UTC: still Sunday 2026-08-30, week ends 2026-08-23 too
-        // (UTC Sunday) — different day START though.
-        const utcWeek = lastCompleteWeek("UTC", utcSundayEvening);
-        assert.equal(utcWeek.start, "2026-08-17");
-        assert.equal(utcWeek.end, "2026-08-23");
+    });
+
+    it("exposes PR #152's shared default window unchanged", () => {
+        const shared = defaultBlueprintWindow(new Date("2026-09-02T16:30:00.000Z"));
+        assert.deepEqual(shared, { start: "2026-08-26", end: "2026-09-01" });
     });
 
     it("preserves an explicit window exactly and requires 7 days (2)", () => {
@@ -99,23 +117,10 @@ describe("report blueprint: windows", () => {
         assert.deepEqual(comparison, { start: "2026-08-17", end: "2026-08-23" });
     });
 
-    it("marks an unfinished window incomplete in its reporting timezone", () => {
+    it("marks an unfinished window incomplete", () => {
         const window = { start: "2026-08-24", end: "2026-08-30" };
-        assert.equal(windowIsComplete(window, "UTC", new Date("2026-08-31T00:00:00.000Z")), true);
-        assert.equal(windowIsComplete(window, "UTC", new Date("2026-08-30T12:00:00.000Z")), false);
-        assert.equal(
-            windowIsComplete(window, "Asia/Ho_Chi_Minh", new Date("2026-08-30T17:30:00.000Z")),
-            true,
-        );
-    });
-
-    it("maps window day bounds through the reporting timezone", () => {
-        const range = windowToDateRange(
-            { start: "2026-08-24", end: "2026-08-30" },
-            "Asia/Ho_Chi_Minh",
-        );
-        assert.equal(range.gte.toISOString(), "2026-08-23T17:00:00.000Z");
-        assert.equal(range.lte.toISOString(), "2026-08-29T17:00:00.000Z");
+        assert.equal(windowIsComplete(window, new Date("2026-08-31T00:00:00.000Z")), true);
+        assert.equal(windowIsComplete(window, new Date("2026-08-30T12:00:00.000Z")), false);
     });
 });
 
@@ -130,7 +135,7 @@ describe("report blueprint: aggregation", () => {
         assert.equal(metrics.roas, 5);
     });
 
-    it("renders zero denominators as unavailable, never zero (8)", () => {
+    it("renders zero denominators as unavailable, never zero", () => {
         const metrics = aggregateBlueprintMetrics([row({ impressions: 0, clicks: 0, conversions: 0, revenue: 0, spend: 25 })]);
         assert.equal(metrics.ctr, null);
         assert.equal(metrics.cpc, null);
@@ -141,7 +146,7 @@ describe("report blueprint: aggregation", () => {
         assert.equal(safeRatio(10, 0), null);
     });
 
-    it("never sums monetary totals across currencies (6)", () => {
+    it("never sums monetary totals across currencies (15)", () => {
         const metrics = aggregateBlueprintMetrics([
             row({ currency: "USD", spend: 100, revenue: 300 }),
             row({ currency: "VND", spend: 1_000_000, revenue: 2_000_000, campaignId: "c-2" }),
@@ -175,7 +180,7 @@ describe("report blueprint: aggregation", () => {
         );
     });
 
-    it("preserves provider and campaign IDs as exact strings (9)", () => {
+    it("preserves provider and campaign IDs as exact strings (16)", () => {
         const bigId = "123456789012345678901234";
         const table = buildCampaignTable([row({ campaignId: bigId, accountId: "998877665544332211" })], []);
         assert.equal(table.campaigns[0].campaignId, bigId);
@@ -183,7 +188,7 @@ describe("report blueprint: aggregation", () => {
         assert.equal(typeof table.campaigns[0].campaignId, "string");
     });
 
-    it("orders campaigns deterministically across repeated builds (10)", () => {
+    it("orders campaigns deterministically across repeated builds", () => {
         const rows = [
             row({ campaignId: "z-1", campaignName: "Zeta", platform: "meta_ads" }),
             row({ campaignId: "a-9", campaignName: "Alpha", platform: "google_ads" }),
@@ -216,13 +221,7 @@ describe("report blueprint: aggregation", () => {
 });
 
 describe("report blueprint: verification semantics", () => {
-    it("maps shared readiness statuses onto the blueprint vocabulary", () => {
-        assert.equal(mapReadinessStatus("ready"), "READY");
-        assert.equal(mapReadinessStatus("best_effort"), "WARNING");
-        assert.equal(mapReadinessStatus("blocked"), "NOT_READY");
-    });
-
-    it("produces VERIFIED only when every gate passes (13)", () => {
+    it("produces VERIFIED only when every gate passes", () => {
         const result = computeVerificationStatus(verificationInput());
         assert.equal(result.status, "VERIFIED");
         assert.deepEqual(result.reasons, []);
@@ -245,91 +244,135 @@ describe("report blueprint: verification semantics", () => {
         assert.ok(result.reasons.includes("required_providers_missing:tiktok_business"));
     });
 
-    it("blocks verification on unverified timezone, currency, coverage and destination (7)", () => {
-        const result = computeVerificationStatus(verificationInput({
-            timezoneConfigured: false,
-            currencyVerified: false,
-            coverageComplete: false,
-            destinationSatisfied: false,
-            aggregationCompatible: false,
-        }));
+    it("blocks verification when requirements are inferred rather than configured (3)", () => {
+        const result = computeVerificationStatus(verificationInput({ requiredProvidersBasis: "assigned_sources" }));
         assert.equal(result.status, "NOT_VERIFIED");
-        for (const reason of [
-            "reporting_timezone_unverified",
-            "currency_unverified",
-            "account_coverage_incomplete",
-            "destination_evidence_missing",
-            "incompatible_metric_semantics",
-        ]) {
-            assert.ok(result.reasons.includes(reason));
-        }
+        assert.ok(result.reasons.includes("required_providers_inferred"));
     });
 
-    it("blocks verification when dependency evidence changed (15, part)", () => {
+    it("blocks verification on unverified timezone or currency context (7)", () => {
+        const result = computeVerificationStatus(verificationInput({
+            timezoneVerified: false,
+            currencyVerified: false,
+        }));
+        assert.equal(result.status, "NOT_VERIFIED");
+        assert.ok(result.reasons.includes("reporting_timezone_unverified"));
+        assert.ok(result.reasons.includes("currency_unverified"));
+    });
+
+    it("blocks verification when delivery evidence is missing or not required-configured", () => {
+        const missing = computeVerificationStatus(verificationInput({ destinationsVerified: false }));
+        assert.equal(missing.status, "NOT_VERIFIED");
+        assert.ok(missing.reasons.includes("destination_evidence_missing"));
+
+        const unconfigured = computeVerificationStatus(verificationInput({ destinationsRequired: [] }));
+        assert.equal(unconfigured.status, "NOT_VERIFIED");
+        assert.ok(unconfigured.reasons.includes("destination_requirements_missing"));
+    });
+
+    it("blocks verification on limited evidence or an unrecorded generator version", () => {
+        const result = computeVerificationStatus(verificationInput({
+            datasetLimited: true,
+            generatorVersionRecorded: false,
+        }));
+        assert.equal(result.status, "NOT_VERIFIED");
+        assert.ok(result.reasons.includes("evidence_limit_reached"));
+        assert.ok(result.reasons.includes("generator_version_unrecorded"));
+    });
+
+    it("blocks verification when dependency evidence changed", () => {
         const result = computeVerificationStatus(verificationInput({ dependencyHashMatches: false }));
         assert.equal(result.status, "NOT_VERIFIED");
         assert.ok(result.reasons.includes("dependency_evidence_changed"));
     });
+
+    it("rejects caller-forged verification because the label is purely derived (17)", () => {
+        // There is no input that can inject a verification label; a report
+        // claiming VERIFIED must satisfy every gate. A fully failing input
+        // cannot be talked into VERIFIED.
+        const forged = computeVerificationStatus(verificationInput({
+            readinessStatus: "NOT_READY",
+            requiredProvidersBasis: "assigned_sources",
+            requiredProviders: [],
+            includedProviders: [],
+            hasMetricData: false,
+            aggregationCompatible: false,
+            currencyVerified: false,
+            windowComplete: false,
+            timezoneVerified: false,
+            destinationsRequired: [],
+            destinationsVerified: false,
+            datasetLimited: true,
+            generatorVersionRecorded: false,
+            dependencyHashMatches: false,
+        }));
+        assert.equal(forged.status, "NOT_VERIFIED");
+        assert.ok(forged.reasons.length >= 11);
+    });
 });
 
 describe("report blueprint: dependency hashing / staleness", () => {
-    it("produces a stable canonical hash for identical dependency states (17, pure part)", () => {
-        const state = {
-            requirement: { configVersion: 1, requiredProviders: ["google_ads"], requireDestination: false, reportingTimezone: "Asia/Ho_Chi_Minh", reportingCurrency: null },
-            requirementUpdatedAt: "2026-08-31T00:00:00.000Z",
-            accounts: [{ connectionId: "a", provider: "google_ads", accountId: "1", status: "connected" }],
-            dataThrough: { a: "2026-08-30T00:00:00.000Z" },
-            currencySet: ["USD"],
-            readinessBlockers: [],
-            destination: null,
-            contractVersions: { metrics: METRIC_CONTRACT_VERSION },
-        };
+    it("produces a stable canonical hash for identical dependency states", () => {
+        const base = dependencyState();
         const reordered = {
-            contractVersions: { metrics: METRIC_CONTRACT_VERSION },
-            destination: null,
-            readinessBlockers: [],
-            currencySet: ["USD"],
-            dataThrough: { a: "2026-08-30T00:00:00.000Z" },
-            accounts: [{ status: "connected", accountId: "1", provider: "google_ads", connectionId: "a" }],
-            requirement: { requiredProviders: ["google_ads"], configVersion: 1, requireDestination: false, reportingTimezone: "Asia/Ho_Chi_Minh", reportingCurrency: null },
-            requirementUpdatedAt: "2026-08-31T00:00:00.000Z",
+            contractVersions: base.contractVersions,
+            receipts: base.receipts,
+            rowCount: base.rowCount,
+            dataThroughDate: base.dataThroughDate,
+            evidenceAt: base.evidenceAt,
+            datasetFingerprint: base.datasetFingerprint,
+            requirement: base.requirement,
         };
-        assert.equal(canonicalJson(state), canonicalJson(reordered));
-        assert.equal(computeDependencyHash(state), computeDependencyHash(reordered));
-        assert.equal(computeDependencyHash(state), sha256Hex(canonicalJson(state)));
+        assert.equal(canonicalJson(base), canonicalJson(reordered));
+        assert.equal(computeDependencyHash(base), computeDependencyHash(reordered));
+        assert.equal(computeDependencyHash(base), sha256Hex(canonicalJson(base)));
     });
 
-    it("changes the hash when underlying data or requirements change (15)", () => {
-        const base = {
-            requirement: { configVersion: 1, requiredProviders: ["google_ads"], requireDestination: false, reportingTimezone: "Asia/Ho_Chi_Minh", reportingCurrency: null },
-            requirementUpdatedAt: "2026-08-31T00:00:00.000Z",
-            dataThrough: { a: "2026-08-30T00:00:00.000Z" },
-            currencySet: ["USD"],
-            accounts: [],
-            readinessBlockers: [],
-            destination: null,
-            contractVersions: { metrics: METRIC_CONTRACT_VERSION },
-        };
-        const dataAdvanced = {
-            ...base,
-            dataThrough: { a: "2026-08-31T00:00:00.000Z" },
-        };
-        const requirementChanged = {
-            ...base,
-            requirement: { configVersion: 2, requiredProviders: ["google_ads", "meta_ads"], requireDestination: false, reportingTimezone: "Asia/Ho_Chi_Minh", reportingCurrency: null },
-            requirementUpdatedAt: "2026-09-01T00:00:00.000Z",
-        };
-        const original = computeDependencyHash(base);
-        assert.notEqual(computeDependencyHash(dataAdvanced), original);
-        assert.notEqual(computeDependencyHash(requirementChanged), original);
+    it("changes the hash when data, requirements or receipts change", () => {
+        const base = computeDependencyHash(dependencyState());
+        assert.notEqual(
+            computeDependencyHash(dependencyState({ datasetFingerprint: "fp-2" })),
+            base,
+            "dataset change must invalidate",
+        );
+        assert.notEqual(
+            computeDependencyHash(dependencyState({
+                requirement: {
+                    requiredProviders: ["google_ads", "meta_ads"],
+                    requiredDestinations: ["google_sheets"],
+                    requirementsConfiguredAt: "2026-08-20T00:00:00.000Z",
+                },
+            })),
+            base,
+            "requirement change must invalidate",
+        );
+        assert.notEqual(
+            computeDependencyHash(dependencyState({
+                receipts: [{ ...dependencyState().receipts[0], current: false }],
+            })),
+            base,
+            "receipt currentness change must invalidate",
+        );
+        assert.notEqual(
+            computeDependencyHash(dependencyState({ receipts: [] })),
+            base,
+            "receipt replacement/removal must invalidate",
+        );
+    });
+
+    it("binds receipt identity and currentness so expiry or replacement goes stale (12)", () => {
+        const base = dependencyState();
+        const expired = dependencyState({
+            receipts: [{ ...base.receipts[0], retrievedAt: "2026-08-31T00:30:00.000Z", current: false }],
+        });
+        assert.notEqual(computeDependencyHash(expired), computeDependencyHash(base));
     });
 });
 
 describe("report blueprint: constants and contracts", () => {
-    it("binds the blueprint identity, version and metric contract (3, part)", () => {
+    it("binds the blueprint identity, version and metric contract", () => {
         assert.equal(BLUEPRINT_ID, "weekly-paid-media-performance");
         assert.equal(BLUEPRINT_VERSION, 1);
         assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v1");
-        assert.deepEqual([...SUPPORTED_PROVIDERS], ["google_ads", "meta_ads", "tiktok_business"]);
     });
 });

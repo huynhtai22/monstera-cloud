@@ -26,7 +26,10 @@ function blueprintErrorResponse(error: unknown) {
 /**
  * POST /api/reports/blueprint
  * Generate (idempotently) the Verified Weekly Performance snapshot for a
- * client + exact seven-day window. Generation reads only warehouse data.
+ * client + exact seven-day window. Requirements come from the client's
+ * explicit `requiredProviders`/`requiredDestinations` (PR #152); delivery
+ * evidence comes from `DestinationDeliveryReceipt` currentness. Generation
+ * reads only warehouse data via the shared readiness server.
  */
 export async function POST(req: Request) {
   try {
@@ -52,13 +55,7 @@ export async function POST(req: Request) {
       snapshot: result.snapshot,
       report: result.report,
       created: result.created,
-      readiness: {
-        status: result.readiness.status,
-        blockers: result.readiness.blockers,
-        currencies: result.readiness.currencies,
-        freshness: result.readiness.freshness,
-        lastDataThrough: result.readiness.lastDataThrough,
-      },
+      readiness: result.readiness,
     });
   } catch (error: unknown) {
     return blueprintErrorResponse(error);
@@ -68,8 +65,9 @@ export async function POST(req: Request) {
 /**
  * GET /api/reports/blueprint?workspaceId=&clientId=&windowStart=&windowEnd=
  * Reopens the latest saved snapshot for the canonical input (default: the
- * last complete week in the client's reporting timezone), recomputes its
- * staleness and verification, and returns requirements for context.
+ * shared default window), recomputes its staleness and verification, and
+ * returns the client's explicit requirements for context. Requirements
+ * mutation happens exclusively through /api/reports/readiness/configuration.
  */
 export async function GET(req: Request) {
   try {
@@ -95,8 +93,7 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.json({
-      requirement: result.requirement,
-      client: { id: clientId },
+      client: result.client,
       snapshot: result.snapshot
         ? {
           ...result.snapshot,

@@ -1,10 +1,14 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
+import { reportingDataset } from "../../src/lib/report-delivery";
 
 /**
- * Verified Weekly Performance Blueprint v1 — browser + API acceptance.
- * Runs on both desktop-chromium and mobile-chromium projects.
- * Requires DATABASE_URL (the rehearsal seed users from global-setup).
+ * Verified Weekly Performance Blueprint v1 — browser + API acceptance on the
+ * PR #152 architecture. Requirements live on `Client` (managed via
+ * /api/reports/readiness/configuration), delivery proof is a current
+ * DestinationDeliveryReceipt. Runs on both desktop and mobile projects.
+ * Shares one authenticated session per identity: the login endpoint
+ * rate-limits per user (10 / 15 min) across the whole e2e suite.
  */
 
 const SUFFIX = `bpe2e-${Date.now()}-${process.pid}`;
@@ -31,25 +35,14 @@ async function login(page: Page, email: string, password: string) {
   expect(session.user?.email).toBe(email);
 }
 
-async function authedBrowser(browser: Browser, email: string, password: string) {
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  await login(page, email, password);
-  return { context, page };
-}
+type Session = { context: Awaited<ReturnType<Browser["newContext"]>>; page: Page };
 
-/**
- * One authenticated session per identity per project. The login endpoint
- * rate-limits per identity (10 / 15 min), and the full e2e suite logs in as
- * these rehearsal users across many specs — so serial tests here MUST reuse
- * a single session instead of logging in per test.
- */
 async function sharedSession(
   browser: Browser,
   email: string,
   password: string,
-  cache: { context?: Awaited<ReturnType<Browser["newContext"]>>; page?: Page },
-) {
+  cache: { context?: Session["context"]; page?: Page },
+): Promise<Session> {
   if (!cache.context || !cache.page) {
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -57,11 +50,11 @@ async function sharedSession(
     cache.context = context;
     cache.page = page;
   }
-  return cache;
+  return { context: cache.context, page: cache.page };
 }
 
-const aliceSession: { context?: Awaited<ReturnType<Browser["newContext"]>>; page?: Page } = {};
-const bobSession: { context?: Awaited<ReturnType<Browser["newContext"]>>; page?: Page } = {};
+const aliceSession: { context?: Session["context"]; page?: Page } = {};
+const bobSession: { context?: Session["context"]; page?: Page } = {};
 
 async function noHorizontalOverflow(page: Page) {
   await expect
@@ -79,8 +72,8 @@ test.describe("verified weekly report blueprint", () => {
   let clientId: string;
   let googleConnectionId: string;
   let metaConnectionId: string;
-  let destinationConnectionId: string;
   const WINDOW = { start: "2026-08-24", end: "2026-08-30" };
+  const WEEK_DAYS = ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30"];
 
   test.beforeAll(async () => {
     prisma = new PrismaClient();
@@ -89,10 +82,16 @@ test.describe("verified weekly report blueprint", () => {
     if (!workspace) throw new Error("alpha-agency rehearsal workspace missing; run global-setup seed");
     workspaceId = workspace.id;
 
-    clientId = await prisma.client.create({
-      data: { workspaceId, name: `Blueprint Client ${SUFFIX}` },
+    clientId = (await prisma.client.create({
+      data: {
+        workspaceId,
+        name: `Blueprint Client ${SUFFIX}`,
+        requiredProviders: ["google_ads", "meta_ads"],
+        requiredDestinations: ["google_sheets"],
+        requirementsConfiguredAt: new Date(),
+      },
       select: { id: true },
-    }).then((client) => client.id);
+    })).id;
 
     googleConnectionId = (await prisma.connection.create({
       data: {
@@ -105,7 +104,6 @@ test.describe("verified weekly report blueprint", () => {
         remoteAccountId: `g-${SUFFIX}`,
         status: "connected",
         lastSyncAt: new Date(),
-        lastDataThrough: new Date("2026-08-30T00:00:00.000Z"),
       },
       select: { id: true },
     })).id;
@@ -121,38 +119,33 @@ test.describe("verified weekly report blueprint", () => {
         remoteAccountId: `m-${SUFFIX}`,
         status: "connected",
         lastSyncAt: new Date(),
-        lastDataThrough: new Date("2026-08-30T00:00:00.000Z"),
       },
       select: { id: true },
     })).id;
 
-    // The shared readiness evaluator treats a workspace without any
-    // destination as `no_destination`-blocked, so seed one for VERIFIED.
-    destinationConnectionId = (await prisma.connection.create({
-      data: {
-        workspaceId,
-        name: `Sheets Destination ${SUFFIX}`,
-        type: "destination",
-        provider: "google_sheets",
-        credentials: "enc:v1:e2e",
-        remoteAccountId: `dest-${SUFFIX}`,
-        status: "connected",
-      },
-      select: { id: true },
-    })).id;
-
-    await prisma.clientReportingRequirement.create({
-      data: {
-        workspaceId,
-        clientId,
-        requiredProviders: ["google_ads", "meta_ads"],
-        reportingTimezone: "Asia/Ho_Chi_Minh",
-        reportingCurrency: "VND",
-      },
+    await prisma.accountReportingContext.createMany({
+      data: [
+        {
+          workspaceId,
+          connectionId: googleConnectionId,
+          accountId: `g-${SUFFIX}`,
+          providerTimezone: "Asia/Ho_Chi_Minh",
+          providerCurrency: "VND",
+          providerObservedAt: new Date(),
+        },
+        {
+          workspaceId,
+          connectionId: metaConnectionId,
+          accountId: `m-${SUFFIX}`,
+          providerTimezone: "Asia/Ho_Chi_Minh",
+          providerCurrency: "VND",
+          providerObservedAt: new Date(),
+        },
+      ],
     });
 
     await prisma.campaignMetric.createMany({
-      data: [
+      data: WEEK_DAYS.flatMap((day) => ([
         {
           workspaceId,
           connectionId: googleConnectionId,
@@ -162,7 +155,7 @@ test.describe("verified weekly report blueprint", () => {
           entityId: `e-g-${SUFFIX}`,
           campaignId: "1795849302486751234",
           campaignName: "Always On",
-          date: new Date("2026-08-25T00:00:00.000Z"),
+          date: new Date(`${day}T00:00:00.000Z`),
           impressions: 1000,
           clicks: 100,
           spend: 50_000_000,
@@ -179,7 +172,7 @@ test.describe("verified weekly report blueprint", () => {
           entityId: `e-m-${SUFFIX}`,
           campaignId: "120210543958",
           campaignName: "Retargeting",
-          date: new Date("2026-08-25T00:00:00.000Z"),
+          date: new Date(`${day}T00:00:00.000Z`),
           impressions: 2000,
           clicks: 60,
           spend: 20_000_000,
@@ -187,25 +180,27 @@ test.describe("verified weekly report blueprint", () => {
           revenue: 50_000_000,
           currency: "VND",
         },
-        // Previous window rows (2026-08-17..23) for week-over-week deltas.
-        {
-          workspaceId,
-          connectionId: googleConnectionId,
-          platform: "google_ads",
-          accountId: `g-${SUFFIX}`,
-          level: "campaign",
-          entityId: `e-g-prev-${SUFFIX}`,
-          campaignId: "1795849302486751234",
-          campaignName: "Always On",
-          date: new Date("2026-08-18T00:00:00.000Z"),
-          impressions: 800,
-          clicks: 80,
-          spend: 40_000_000,
-          conversions: 3,
-          revenue: 150_000_000,
-          currency: "VND",
-        },
-      ],
+      ])),
+    });
+    // Previous-window rows for week-over-week deltas.
+    await prisma.campaignMetric.createMany({
+      data: ["2026-08-18", "2026-08-19"].map((day) => ({
+        workspaceId,
+        connectionId: googleConnectionId,
+        platform: "google_ads",
+        accountId: `g-${SUFFIX}`,
+        level: "campaign",
+        entityId: `e-g-prev-${SUFFIX}`,
+        campaignId: "1795849302486751234",
+        campaignName: "Always On",
+        date: new Date(`${day}T00:00:00.000Z`),
+        impressions: 800,
+        clicks: 80,
+        spend: 40_000_000,
+        conversions: 3,
+        revenue: 150_000_000,
+        currency: "VND",
+      })),
     });
   });
 
@@ -214,64 +209,107 @@ test.describe("verified weekly report blueprint", () => {
     await aliceSession.context?.close().catch(() => undefined);
     await bobSession.context?.close().catch(() => undefined);
     await prisma.campaignMetric.deleteMany({ where: { connectionId: { in: [googleConnectionId, metaConnectionId] } } });
-    await prisma.connection.deleteMany({ where: { id: { in: [googleConnectionId, metaConnectionId, destinationConnectionId] } } }).catch(() => undefined);
+    await prisma.accountReportingContext.deleteMany({ where: { connectionId: { in: [googleConnectionId, metaConnectionId] } } }).catch(() => undefined);
+    await prisma.connection.deleteMany({ where: { id: { in: [googleConnectionId, metaConnectionId] } } }).catch(() => undefined);
     await prisma.client.deleteMany({ where: { id: clientId } }).catch(() => undefined);
     await prisma.$disconnect();
   });
 
-  test("API: generate → VERIFIED → idempotent reopen reproduces hash and result (13, 17, 18, 19)", async ({ browser }) => {
-    test.setTimeout(120_000);
-    const alice = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", aliceSession);
+  async function seedCurrentReceipt() {
+    const dataset = await reportingDataset(prisma, workspaceId, clientId, WINDOW);
+    return prisma.destinationDeliveryReceipt.create({
+      data: {
+        workspaceId,
+        clientId,
+        destination: "google_sheets",
+        windowStart: WINDOW.start,
+        windowEnd: WINDOW.end,
+        dataThroughDate: dataset.dataThroughDate ?? WINDOW.end,
+        datasetFingerprint: dataset.fingerprint,
+        rowCount: dataset.rowCount,
+        actorId: "e2e",
+      },
+    });
+  }
 
-    const generate = await alice.page.request.post("/api/reports/blueprint", {
+  test("API: without delivery evidence the report cannot verify (5)", async ({ browser }) => {
+    test.setTimeout(120_000);
+    const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", aliceSession);
+
+    const generate = await page.request.post("/api/reports/blueprint", {
+      data: { workspaceId, clientId, windowStart: WINDOW.start, windowEnd: WINDOW.end },
+    });
+    expect(generate.ok()).toBeTruthy();
+    const generated = (await generate.json()) as {
+      created: boolean;
+      snapshot: { id: string; verificationStatus: string; verificationReasons: string[] };
+      report: { overview: { reportingTimezone: string | null; currency: string | null; requiredProviders: string[]; requiredDestinations: string[]; readiness: { status: string; destinationState: string } } };
+    };
+    expect(generated.snapshot.verificationStatus).toBe("NOT_VERIFIED");
+    expect(generated.snapshot.verificationReasons).toContain("destination_evidence_missing");
+    expect(generated.report.overview.requiredProviders).toEqual(["google_ads", "meta_ads"]);
+    expect(generated.report.overview.requiredDestinations).toEqual(["google_sheets"]);
+    expect(generated.report.overview.reportingTimezone).toBe("Asia/Ho_Chi_Minh");
+    expect(generated.report.overview.currency).toBe("VND");
+    expect(generated.report.overview.readiness.destinationState).toBe("unverified");
+  });
+
+  test("API: valid current receipt verifies; reopen is idempotent and reproduces hash + result (11, 13, 14)", async ({ browser }) => {
+    test.setTimeout(120_000);
+    const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", aliceSession);
+    await seedCurrentReceipt();
+
+    const generate = await page.request.post("/api/reports/blueprint", {
       data: { workspaceId, clientId, windowStart: WINDOW.start, windowEnd: WINDOW.end },
     });
     expect(generate.ok()).toBeTruthy();
     const generated = (await generate.json()) as {
       created: boolean;
       snapshot: { id: string; dependencyHash: string; verificationStatus: string; sequence: number };
-      report: {
-        overview: { verification: { status: string }; readiness: { status: string }; reportingTimezone: string; currency: string | null };
-        totals: { currency: string | null; monetaryAvailable: boolean; spend: number | null };
-      };
+      report: { overview: { verification: { status: string }; readiness: { status: string; destinationState: string } } };
     };
     expect(generated.snapshot.verificationStatus).toBe("VERIFIED");
     expect(generated.report.overview.readiness.status).toBe("READY");
-    expect(generated.report.overview.reportingTimezone).toBe("Asia/Ho_Chi_Minh");
-    expect(generated.report.overview.currency).toBe("VND");
-    expect(generated.report.totals.monetaryAvailable).toBe(true);
+    expect(generated.report.overview.readiness.destinationState).toBe("verified");
 
-    const regenerate = await alice.page.request.post("/api/reports/blueprint", {
+    const regenerate = await page.request.post("/api/reports/blueprint", {
       data: { workspaceId, clientId, windowStart: WINDOW.start, windowEnd: WINDOW.end },
     });
-    const regenerated = (await regenerate.json()) as typeof generated & { created: boolean; snapshot: { id: string } };
+    const regenerated = (await regenerate.json()) as typeof generated & { created: boolean };
     expect(regenerated.created).toBe(false);
     expect(regenerated.snapshot.id).toBe(generated.snapshot.id);
 
-    const reopen = await alice.page.request.get(
+    const reopen = await page.request.get(
       `/api/reports/blueprint?workspaceId=${workspaceId}&clientId=${clientId}&windowStart=${WINDOW.start}&windowEnd=${WINDOW.end}`,
     );
     expect(reopen.ok()).toBeTruthy();
     const reopened = (await reopen.json()) as {
-      snapshot: { id: string; dependencyHash: string; verification: { status: string }; freshness: { freshness: string }; report?: unknown };
-      report: { totals: { spend: number | null } };
+      snapshot: { id: string; dependencyHash: string; verification: { status: string }; freshness: { freshness: string } };
+      report: unknown;
     };
     expect(reopened.snapshot.id).toBe(generated.snapshot.id);
     expect(reopened.snapshot.dependencyHash).toBe(generated.snapshot.dependencyHash);
     expect(reopened.snapshot.freshness.freshness).toBe("CURRENT");
     expect(reopened.snapshot.verification.status).toBe("VERIFIED");
-
   });
 
-  test("API: staleness when warehouse data advances; VERIFIED drops (15)", async ({ browser }) => {
-    const alice = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", aliceSession);
+  test("API: requirement changes via the owner/admin configuration route go stale; duplicate requirements route is gone (3, 13)", async ({ browser }) => {
+    test.setTimeout(120_000);
+    const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", aliceSession);
 
-    await prisma.connection.update({
-      where: { id: googleConnectionId },
-      data: { lastDataThrough: new Date("2026-08-30T12:00:00.000Z") },
+    // The blueprint's own requirements route was removed (one source of truth).
+    const gone = await page.request.put("/api/reports/blueprint/requirements", {
+      data: { workspaceId, clientId, requiredProviders: ["google_ads"] },
     });
+    expect([404, 405]).toContain(gone.status());
 
-    const reopen = await alice.page.request.get(
+    // Requirement mutation follows PR #152's configuration route (admin).
+    const patch = await page.request.patch("/api/reports/readiness/configuration", {
+      data: { workspaceId, clientId, requirements: { providers: ["google_ads"], destinations: ["google_sheets"] } },
+    });
+    expect(patch.ok()).toBeTruthy();
+
+    const reopen = await page.request.get(
       `/api/reports/blueprint?workspaceId=${workspaceId}&clientId=${clientId}&windowStart=${WINDOW.start}&windowEnd=${WINDOW.end}`,
     );
     const reopened = (await reopen.json()) as {
@@ -281,16 +319,22 @@ test.describe("verified weekly report blueprint", () => {
       };
     };
     expect(reopened.snapshot.freshness.freshness).toBe("STALE");
-    expect(reopened.snapshot.freshness.staleReasons.map((reason) => reason.code)).toContain("data_through_changed");
+    expect(reopened.snapshot.freshness.staleReasons.map((reason) => reason.code)).toContain("requirement_changed");
     expect(reopened.snapshot.verification.status).toBe("NOT_VERIFIED");
 
-    await prisma.connection.update({
-      where: { id: googleConnectionId },
-      data: { lastDataThrough: new Date("2026-08-30T00:00:00.000Z") },
+    // Restore the original requirements; the changed clock creates a new version.
+    await page.request.patch("/api/reports/readiness/configuration", {
+      data: { workspaceId, clientId, requirements: { providers: ["google_ads", "meta_ads"], destinations: ["google_sheets"] } },
     });
+    const regenerate = await page.request.post("/api/reports/blueprint", {
+      data: { workspaceId, clientId, windowStart: WINDOW.start, windowEnd: WINDOW.end },
+    });
+    const regenerated = (await regenerate.json()) as { created: boolean; snapshot: { sequence: number }; snapshot_verification?: string };
+    expect(regenerated.created).toBe(true);
   });
 
-  test("API: rival workspace fails closed and caller-declared verification is ignored (11, 12)", async ({ browser }) => {
+  test("API: rival workspace fails closed and caller-declared verification is ignored (17, 18)", async ({ browser }) => {
+    test.setTimeout(120_000);
     const bob = await sharedSession(browser, "bob@beta-media.test", "Pilot_Beta_2026!", bobSession);
 
     const rival = await bob.page.request.post("/api/reports/blueprint", {
@@ -298,13 +342,10 @@ test.describe("verified weekly report blueprint", () => {
     });
     expect(rival.status()).toBe(403);
 
-    const rivalRequirements = await bob.page.request.put("/api/reports/blueprint/requirements", {
-      data: { workspaceId, clientId, requiredProviders: ["google_ads"] },
-    });
-    expect([403, 404]).toContain(rivalRequirements.status());
-
     // Injected verification state in the request body must not change the
-    // derived snapshot verification: the service has no such input.
+    // derived snapshot verification: the service has no such input. The
+    // current dataset has no current receipt after regeneration, so the
+    // honest label is NOT_VERIFIED regardless of the forged field.
     const forge = await bob.page.request.post("/api/reports/blueprint", {
       data: {
         workspaceId: (await bob.page.request.get("/api/workspaces").then((r) => r.json() as Promise<Array<{ id: string; slug: string }>>))
@@ -317,16 +358,18 @@ test.describe("verified weekly report blueprint", () => {
     });
     expect([403, 404, 409, 400]).toContain(forge.status());
 
+    // Re-seed the receipt so the UI tests below see a verifiable report.
+    await seedCurrentReceipt();
   });
 
-  test("UI: blueprint generates, shows VERIFIED badge, provider and campaign tables without overflow (21, 22, 23)", async ({ browser }) => {
+  test("UI: blueprint generates, shows VERIFIED badge, provider and campaign tables without overflow (21-23)", async ({ browser }) => {
     test.setTimeout(120_000);
     const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", aliceSession);
     await page.goto(`/reports?clientId=${clientId}`);
     await expect(page.getByRole("region", { name: "Verified Weekly Performance Blueprint" })).toBeVisible();
     await expect(page.getByText("Weekly Paid Media Performance").first()).toBeVisible();
 
-    // Context is shown BEFORE generation (5): timezone + currency + providers.
+    // Context is shown BEFORE generation: timezone + currency + requirements.
     await expect(page.getByText("Asia/Ho_Chi_Minh").first()).toBeVisible();
     await expect(page.getByText("Google Ads, Meta Ads").first()).toBeVisible();
 
@@ -342,7 +385,7 @@ test.describe("verified weekly report blueprint", () => {
     await noHorizontalOverflow(page);
   });
 
-  test("UI: mobile viewport renders without horizontal overflow (21)", async ({ browser }) => {
+  test("UI: mobile viewport renders without horizontal overflow (23)", async ({ browser }) => {
     test.setTimeout(120_000);
     const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", aliceSession);
     await page.goto(`/reports?clientId=${clientId}`);

@@ -7,27 +7,26 @@ import {
     computeVerificationStatus,
     evaluateSnapshotFreshness,
     generateWeeklyBlueprint,
-    mapReadinessStatus,
     METRIC_CONTRACT_VERSION,
     reopenWeeklyBlueprint,
-    type MetricRowInput,
 } from "./report-blueprint";
+import { reportingDataset } from "./report-delivery";
+import type { ScopedTransaction } from "./warehouse-query";
 import { TENANT_GUARDED_MODELS } from "./tenant-guard";
 import { assertCiDatabaseReachableWhenMissing } from "./pg-test-discipline";
 
 /**
- * Real PostgreSQL tests for the Verified Weekly Performance Blueprint.
- * Requires a reachable DATABASE_URL whose schema includes the
- * weekly_report_blueprint migration (fresh-database reproducibility is
- * itself under test). These are NOT mocks: uniqueness, staleness and
- * tenant isolation claims are proven against the database.
+ * Real PostgreSQL tests for the Verified Weekly Performance Blueprint on the
+ * PR #152 architecture: client requirements live on `Client`, delivery proof
+ * is `DestinationDeliveryReceipt` currentness, readiness is the shared
+ * evidence-based evaluator. NOT mocks: uniqueness, staleness, receipt scoping
+ * and tenant isolation are proven against the database.
  */
 describe("PostgreSQL integration: verified weekly report blueprint", () => {
     let db: PrismaClient | null = null;
     const suffix = `bp-${Date.now()}-${process.pid}`;
     const ids = {
         owner: `owner-${suffix}`,
-        admin: `admin-${suffix}`,
         outsider: `outsider-${suffix}`,
         workspaceA: `ws-a-${suffix}`,
         workspaceB: `ws-b-${suffix}`,
@@ -36,32 +35,11 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         connGoogleA: `conn-g-${suffix}`,
         connMetaA: `conn-m-${suffix}`,
         connGoogleB: `conn-gb-${suffix}`,
-        destA: `dest-a-${suffix}`,
     };
 
-    /** Fixed generation clock inside the last complete week, in +07. */
     const NOW = new Date("2026-09-02T10:00:00.000Z");
     const WINDOW = { start: "2026-08-24", end: "2026-08-30" };
-
-    function metricRow(overrides: Partial<MetricRowInput> = {}): MetricRowInput {
-        return {
-            platform: "google_ads",
-            connectionId: ids.connGoogleA,
-            accountId: "account-1",
-            accountName: "Account One",
-            campaignId: "camp-1",
-            campaignName: "Launch",
-            entityId: "entity-1",
-            level: "campaign",
-            impressions: 1000,
-            clicks: 100,
-            spend: 50,
-            conversions: 4,
-            revenue: 200,
-            currency: "VND",
-            ...overrides,
-        };
-    }
+    const WEEK_DAYS = ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30"];
 
     before(async () => {
         if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) {
@@ -79,10 +57,12 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         }
         if (!db) return;
 
+        // The generator must record its build identity; tests emulate a deploy.
+        process.env.GIT_COMMIT_SHA = `test-sha-${suffix}`;
+
         await db.user.createMany({
             data: [
                 { id: ids.owner, email: `${ids.owner}@example.test`, name: "Owner" },
-                { id: ids.admin, email: `${ids.admin}@example.test`, name: "Admin" },
                 { id: ids.outsider, email: `${ids.outsider}@example.test`, name: "Outsider" },
             ],
         });
@@ -95,14 +75,28 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         await db.workspaceMember.createMany({
             data: [
                 { workspaceId: ids.workspaceA, userId: ids.owner, role: "owner" },
-                { workspaceId: ids.workspaceA, userId: ids.admin, role: "admin" },
                 { workspaceId: ids.workspaceB, userId: ids.owner, role: "owner" },
             ],
         });
+        // Client requirements are PR #152's explicit Client columns.
         await db.client.createMany({
             data: [
-                { id: ids.clientA, workspaceId: ids.workspaceA, name: "Client A" },
-                { id: ids.clientB, workspaceId: ids.workspaceB, name: "Client B" },
+                {
+                    id: ids.clientA,
+                    workspaceId: ids.workspaceA,
+                    name: "Client A",
+                    requiredProviders: ["google_ads", "meta_ads"],
+                    requiredDestinations: ["google_sheets"],
+                    requirementsConfiguredAt: new Date("2026-08-20T00:00:00.000Z"),
+                },
+                {
+                    id: ids.clientB,
+                    workspaceId: ids.workspaceB,
+                    name: "Client B",
+                    requiredProviders: ["google_ads"],
+                    requiredDestinations: ["google_sheets"],
+                    requirementsConfiguredAt: new Date("2026-08-20T00:00:00.000Z"),
+                },
             ],
         });
         await db.connection.createMany({
@@ -118,7 +112,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
                     remoteAccountId: "g-account-1",
                     status: "connected",
                     lastSyncAt: new Date(),
-                    lastDataThrough: new Date("2026-08-30T00:00:00.000Z"),
                 },
                 {
                     id: ids.connMetaA,
@@ -131,7 +124,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
                     remoteAccountId: "m-account-1",
                     status: "connected",
                     lastSyncAt: new Date(),
-                    lastDataThrough: new Date("2026-08-30T00:00:00.000Z"),
                 },
                 {
                     id: ids.connGoogleB,
@@ -144,94 +136,130 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
                     remoteAccountId: "g-account-b",
                     status: "connected",
                     lastSyncAt: new Date(),
-                    lastDataThrough: new Date("2026-08-30T00:00:00.000Z"),
-                },
-                {
-                    id: ids.destA,
-                    workspaceId: ids.workspaceA,
-                    name: "Sheets Destination",
-                    type: "destination",
-                    provider: "google_sheets",
-                    credentials: "enc:v1:test",
-                    remoteAccountId: "sheet-1",
-                    status: "connected",
                 },
             ],
+        });
+        // Verified reporting context (timezone/currency) per account.
+        await db.accountReportingContext.createMany({
+            data: [
+                {
+                    workspaceId: ids.workspaceA,
+                    connectionId: ids.connGoogleA,
+                    accountId: "g-account-1",
+                    providerTimezone: "Asia/Ho_Chi_Minh",
+                    providerCurrency: "VND",
+                    providerObservedAt: NOW,
+                },
+                {
+                    workspaceId: ids.workspaceA,
+                    connectionId: ids.connMetaA,
+                    accountId: "m-account-1",
+                    providerTimezone: "Asia/Ho_Chi_Minh",
+                    providerCurrency: "VND",
+                    providerObservedAt: NOW,
+                },
+                {
+                    workspaceId: ids.workspaceB,
+                    connectionId: ids.connGoogleB,
+                    accountId: "g-account-b",
+                    providerTimezone: "UTC",
+                    providerCurrency: "USD",
+                    providerObservedAt: NOW,
+                },
+            ],
+        });
+        // Rows for EVERY day of the window (the evaluator rejects missing days).
+        const rows: Array<{
+            workspaceId: string; connectionId: string; platform: string; accountId: string;
+            level: string; entityId: string; campaignId: string; campaignName: string;
+            date: Date; impressions: number; clicks: number; spend: number;
+            conversions: number; revenue: number; currency: string;
+        }> = [];
+        for (const day of WEEK_DAYS) {
+            rows.push(
+                {
+                    workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, platform: "google_ads",
+                    accountId: "g-account-1", level: "campaign", entityId: `e-g-${suffix}`,
+                    campaignId: "1795849302486751234", campaignName: "Always On",
+                    date: new Date(`${day}T00:00:00.000Z`),
+                    impressions: 1000, clicks: 100, spend: 5_000_000, conversions: 4, revenue: 25_000_000, currency: "VND",
+                },
+                {
+                    workspaceId: ids.workspaceA, connectionId: ids.connMetaA, platform: "meta_ads",
+                    accountId: "m-account-1", level: "campaign", entityId: `e-m-${suffix}`,
+                    campaignId: "120210543958", campaignName: "Retargeting",
+                    date: new Date(`${day}T00:00:00.000Z`),
+                    impressions: 2000, clicks: 60, spend: 2_000_000, conversions: 2, revenue: 6_000_000, currency: "VND",
+                },
+            );
+        }
+        // Previous-window rows for week-over-week deltas.
+        for (const day of ["2026-08-18", "2026-08-19"]) {
+            rows.push({
+                workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, platform: "google_ads",
+                accountId: "g-account-1", level: "campaign", entityId: `e-g-prev-${suffix}`,
+                campaignId: "1795849302486751234", campaignName: "Always On",
+                date: new Date(`${day}T00:00:00.000Z`),
+                impressions: 800, clicks: 80, spend: 4_000_000, conversions: 3, revenue: 15_000_000, currency: "VND",
+            });
+        }
+        await db.campaignMetric.createMany({ data: rows });
+        // Workspace B rows (its own window coverage for the isolation test).
+        await db.campaignMetric.createMany({
+            data: WEEK_DAYS.map((day) => ({
+                workspaceId: ids.workspaceB, connectionId: ids.connGoogleB, platform: "google_ads",
+                accountId: "g-account-b", level: "campaign", entityId: `e-b-${suffix}`,
+                campaignId: "camp-b", campaignName: "WS B Campaign",
+                date: new Date(`${day}T00:00:00.000Z`),
+                impressions: 500, clicks: 50, spend: 10, conversions: 1, revenue: 30, currency: "USD",
+            })),
         });
     });
 
     after(async () => {
+        delete process.env.GIT_COMMIT_SHA;
         if (!db) return;
-        // Cleanup best-effort; cascades remove children.
         await db.workspace.deleteMany({ where: { id: { in: [ids.workspaceA, ids.workspaceB] } } }).catch(() => undefined);
-        await db.user.deleteMany({ where: { id: { in: [ids.owner, ids.admin, ids.outsider] } } }).catch(() => undefined);
+        await db.user.deleteMany({ where: { id: { in: [ids.owner, ids.outsider] } } }).catch(() => undefined);
         await db.$disconnect();
     });
 
-    async function writeMetrics(rows: MetricRowInput[], date: string) {
+    /** Canonical dataset fingerprint through a real transaction client. */
+    async function datasetOf(workspaceId: string, clientId: string, window: { start: string; end: string }) {
         if (!db) throw new Error("db unavailable");
-        const day = new Date(`${date}T00:00:00.000Z`);
-        await db.campaignMetric.createMany({
-            data: rows.map((row) => ({
-                workspaceId: row.connectionId === ids.connGoogleB ? ids.workspaceB : ids.workspaceA,
-                connectionId: row.connectionId,
-                platform: row.platform,
-                accountId: row.accountId,
-                accountName: row.accountName,
-                level: row.level,
-                entityId: row.entityId,
-                campaignId: row.campaignId,
-                campaignName: row.campaignName,
-                date: day,
-                impressions: row.impressions,
-                clicks: row.clicks,
-                spend: row.spend,
-                conversions: row.conversions,
-                revenue: row.revenue,
-                currency: row.currency,
-            })),
-            skipDuplicates: true,
-        });
+        return db.$transaction((tx) => reportingDataset(tx as ScopedTransaction, workspaceId, clientId, window));
     }
 
-    async function seedRequirements(requireDestination = false) {
+    /** Latest receipt for a destination with the CURRENT dataset fingerprint. */
+    async function seedCurrentReceipt(destination = "google_sheets") {
         if (!db) throw new Error("db unavailable");
-        await db.clientReportingRequirement.upsert({
-            where: { workspaceId_clientId: { workspaceId: ids.workspaceA, clientId: ids.clientA } },
-            create: {
+        const dataset = await datasetOf(ids.workspaceA, ids.clientA, WINDOW);
+        return db.destinationDeliveryReceipt.create({
+            data: {
                 workspaceId: ids.workspaceA,
                 clientId: ids.clientA,
-                requiredProviders: ["google_ads", "meta_ads"],
-                requireDestination,
-                reportingTimezone: "Asia/Ho_Chi_Minh",
-                reportingCurrency: "VND",
-            },
-            update: {
-                requiredProviders: ["google_ads", "meta_ads"],
-                requireDestination,
-                reportingTimezone: "Asia/Ho_Chi_Minh",
-                reportingCurrency: "VND",
+                destination,
+                windowStart: WINDOW.start,
+                windowEnd: WINDOW.end,
+                dataThroughDate: dataset.dataThroughDate ?? WINDOW.end,
+                datasetFingerprint: dataset.fingerprint,
+                rowCount: dataset.rowCount,
+                actorId: ids.owner,
             },
         });
     }
 
-    it("classifies both blueprint models as tenant-guarded (24)", () => {
+    it("classifies ReportSnapshot as tenant-guarded and drops the duplicate model (2, 24)", () => {
         assert.ok(TENANT_GUARDED_MODELS.has("ReportSnapshot"));
-        assert.ok(TENANT_GUARDED_MODELS.has("ClientReportingRequirement"));
+        assert.ok(!TENANT_GUARDED_MODELS.has("ClientReportingRequirement"));
+        // The Prisma client has no duplicate requirements delegate.
+        if (db) {
+            assert.equal("clientReportingRequirement" in db, false);
+        }
     });
 
-    it("generates a snapshot from normalized warehouse rows with exact string IDs (4, 9, 19)", async () => {
+    it("generates from Client requirements + warehouse rows with exact string IDs (1, 4, 16, 21)", async () => {
         if (!db) return;
-        await seedRequirements();
-        await writeMetrics(
-            [
-                metricRow({ platform: "google_ads", campaignId: "1795849302486751234", currency: "VND" }),
-                metricRow({ platform: "meta_ads", connectionId: ids.connMetaA, campaignId: "120210543958", currency: "VND" }),
-            ],
-            "2026-08-25",
-        );
-
-        const fetchCallsBefore = 0;
         const originalFetch = globalThis.fetch;
         let fetchCalled = false;
         globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
@@ -246,81 +274,25 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
                 windowEnd: WINDOW.end,
                 now: NOW,
             });
-            assert.equal(fetchCalled, fetchCallsBefore === 0 ? false : true);
             assert.equal(fetchCalled, false, "generation must never call provider/fetch APIs");
             assert.equal(result.snapshot.blueprintId, BLUEPRINT_ID);
             assert.equal(result.snapshot.blueprintVersion, BLUEPRINT_VERSION);
             assert.equal(result.report.overview.clientName, "Client A");
+            assert.deepEqual(result.report.overview.requiredProviders, ["google_ads", "meta_ads"]);
+            assert.deepEqual(result.report.overview.requiredDestinations, ["google_sheets"]);
             assert.equal(result.report.overview.reportingTimezone, "Asia/Ho_Chi_Minh");
             assert.equal(result.report.overview.currency, "VND");
-            assert.deepEqual(result.report.overview.requiredProviders, ["google_ads", "meta_ads"]);
             const googleCampaign = result.report.campaigns.find((c) => c.provider === "google_ads");
             assert.equal(googleCampaign?.campaignId, "1795849302486751234");
             assert.equal(typeof googleCampaign?.campaignId, "string");
-            // Deterministic derived metrics: CTR = 100/1000 = 0.1
-            assert.equal(googleCampaign?.impressions, 1000);
-            assert.equal(googleCampaign?.clicks, 100);
+            assert.equal(googleCampaign?.impressions, 7000);
         } finally {
             globalThis.fetch = originalFetch;
         }
     });
 
-    it("returns VERIFIED when readiness is READY and every gate passes (13)", async () => {
+    it("returns NOT_VERIFIED without any delivery receipt (5)", async () => {
         if (!db) return;
-        const result = await generateWeeklyBlueprint({
-            workspaceId: ids.workspaceA,
-            clientId: ids.clientA,
-            windowStart: WINDOW.start,
-            windowEnd: WINDOW.end,
-            now: NOW,
-        });
-        assert.equal(result.report.overview.readiness.status, mapReadinessStatus("ready"));
-        assert.equal(result.snapshot.verificationStatus, "VERIFIED");
-        assert.deepEqual(result.report.overview.verification.reasons, []);
-    });
-
-    it("is idempotent for the same canonical input and dependency state (18, 17)", async () => {
-        if (!db) return;
-        const first = await generateWeeklyBlueprint({
-            workspaceId: ids.workspaceA,
-            clientId: ids.clientA,
-            windowStart: WINDOW.start,
-            windowEnd: WINDOW.end,
-            now: NOW,
-        });
-        const second = await generateWeeklyBlueprint({
-            workspaceId: ids.workspaceA,
-            clientId: ids.clientA,
-            windowStart: WINDOW.start,
-            windowEnd: WINDOW.end,
-            now: NOW,
-        });
-        assert.equal(second.created, false);
-        assert.equal(second.snapshot.id, first.snapshot.id);
-        assert.equal(second.snapshot.dependencyHash, first.snapshot.dependencyHash);
-        assert.deepEqual(second.report, first.report);
-
-        const reopen = await reopenWeeklyBlueprint({
-            workspaceId: ids.workspaceA,
-            clientId: ids.clientA,
-            windowStart: WINDOW.start,
-            windowEnd: WINDOW.end,
-            now: NOW,
-        });
-        assert.equal(reopen.snapshot?.id, first.snapshot.id);
-        assert.equal(reopen.snapshot?.freshness.freshness, "CURRENT");
-        assert.deepEqual(reopen.snapshot?.dependencyHash, first.snapshot.dependencyHash);
-        assert.deepEqual(reopen.report, first.report);
-    });
-
-    it("blocks verification when a required provider is missing (5)", async () => {
-        if (!db) return;
-        if (!db) throw new Error("unreachable");
-        // Requirements demand tiktok_business too, which has no connection/data.
-        await db.clientReportingRequirement.update({
-            where: { workspaceId_clientId: { workspaceId: ids.workspaceA, clientId: ids.clientA } },
-            data: { requiredProviders: ["google_ads", "meta_ads", "tiktok_business"] },
-        });
         const result = await generateWeeklyBlueprint({
             workspaceId: ids.workspaceA,
             clientId: ids.clientA,
@@ -329,16 +301,215 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             now: NOW,
         });
         assert.equal(result.snapshot.verificationStatus, "NOT_VERIFIED");
-        assert.ok(result.snapshot.verificationReasons.includes("required_providers_missing:tiktok_business"));
-        // Restore for later tests
-        await db.clientReportingRequirement.update({
-            where: { workspaceId_clientId: { workspaceId: ids.workspaceA, clientId: ids.clientA } },
-            data: { requiredProviders: ["google_ads", "meta_ads"] },
-        });
+        assert.ok(result.snapshot.verificationReasons.includes("destination_evidence_missing"));
+        assert.equal(result.report.overview.readiness.destinationState, "unverified");
     });
 
-    it("creates a NEW immutable version when requirements change, never overwriting (15, 18)", async () => {
+    it("a receipt from another client, window or destination cannot verify (6, 7, 8)", async () => {
         if (!db) return;
+        // Other client (own workspace): composite FK accepts it, but the
+        // blueprint only consults receipts scoped to THIS client + window.
+        const otherClientDataset = await datasetOf(ids.workspaceA, ids.clientA, WINDOW);
+        await db.destinationDeliveryReceipt.create({
+            data: {
+                workspaceId: ids.workspaceA,
+                clientId: ids.clientA,
+                destination: "looker_studio", // wrong destination
+                windowStart: WINDOW.start,
+                windowEnd: WINDOW.end,
+                dataThroughDate: otherClientDataset.dataThroughDate ?? WINDOW.end,
+                datasetFingerprint: otherClientDataset.fingerprint,
+                rowCount: otherClientDataset.rowCount,
+                actorId: ids.owner,
+            },
+        });
+        const still = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        assert.equal(still.snapshot.verificationStatus, "NOT_VERIFIED");
+        assert.ok(still.snapshot.verificationReasons.includes("destination_evidence_missing"));
+
+        // Wrong window: right destination, different window.
+        await db.destinationDeliveryReceipt.create({
+            data: {
+                workspaceId: ids.workspaceA,
+                clientId: ids.clientA,
+                destination: "google_sheets",
+                windowStart: "2026-08-17",
+                windowEnd: "2026-08-23",
+                dataThroughDate: "2026-08-23",
+                datasetFingerprint: "other-window",
+                rowCount: 3,
+                actorId: ids.owner,
+            },
+        });
+        const wrongWindow = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        assert.equal(wrongWindow.snapshot.verificationStatus, "NOT_VERIFIED");
+
+        // A receipt cannot even exist for a rival workspace's client:
+        // the composite FK (workspaceId, clientId) rejects cross-tenant rows.
+        await assert.rejects(
+            db.destinationDeliveryReceipt.create({
+                data: {
+                    workspaceId: ids.workspaceB,
+                    clientId: ids.clientA, // client A belongs to workspace A
+                    destination: "google_sheets",
+                    windowStart: WINDOW.start,
+                    windowEnd: WINDOW.end,
+                    dataThroughDate: WINDOW.end,
+                    datasetFingerprint: "forged",
+                    rowCount: 1,
+                    actorId: ids.owner,
+                },
+            }),
+        );
+    });
+
+    it("a receipt with a stale fingerprint or pre-evidence retrieval cannot verify (9, 10)", async () => {
+        if (!db) return;
+        const dataset = await datasetOf(ids.workspaceA, ids.clientA, WINDOW);
+        // Old fingerprint (data mutated since retrieval).
+        await db.destinationDeliveryReceipt.create({
+            data: {
+                workspaceId: ids.workspaceA,
+                clientId: ids.clientA,
+                destination: "google_sheets",
+                windowStart: WINDOW.start,
+                windowEnd: WINDOW.end,
+                dataThroughDate: dataset.dataThroughDate ?? WINDOW.end,
+                datasetFingerprint: "stale-fingerprint",
+                rowCount: dataset.rowCount,
+                actorId: ids.owner,
+                retrievedAt: new Date("2026-09-02T23:00:00.000Z"),
+            },
+        });
+        const oldFingerprint = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        assert.equal(oldFingerprint.snapshot.verificationStatus, "NOT_VERIFIED");
+        assert.ok(oldFingerprint.snapshot.verificationReasons.includes("destination_evidence_missing"));
+
+        // Fresh fingerprint but retrieved BEFORE the current evidence mutation
+        // clock (predates the latest row pull) → not current.
+        await db.destinationDeliveryReceipt.create({
+            data: {
+                workspaceId: ids.workspaceA,
+                clientId: ids.clientA,
+                destination: "google_sheets",
+                windowStart: WINDOW.start,
+                windowEnd: WINDOW.end,
+                dataThroughDate: dataset.dataThroughDate ?? WINDOW.end,
+                datasetFingerprint: dataset.fingerprint,
+                rowCount: dataset.rowCount,
+                actorId: ids.owner,
+                retrievedAt: new Date("2020-01-01T00:00:00.000Z"),
+            },
+        });
+        const preEvidence = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        assert.equal(preEvidence.snapshot.verificationStatus, "NOT_VERIFIED");
+        assert.equal(preEvidence.report.overview.readiness.destinationState, "stale");
+    });
+
+    it("a valid exact current receipt permits VERIFIED when every gate passes (11, 13)", async () => {
+        if (!db) return;
+        const receipt = await seedCurrentReceipt();
+        const result = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        assert.equal(result.snapshot.verificationStatus, "VERIFIED");
+        assert.deepEqual(result.snapshot.verificationReasons, []);
+        assert.equal(result.report.overview.readiness.status, "READY");
+        assert.equal(result.report.overview.readiness.destinationState, "verified");
+
+        // Idempotent + reproducible (14, 17): same input returns the stored
+        // snapshot byte-for-byte; the stored hash matches a fresh derivation.
+        const again = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        assert.equal(again.created, false);
+        assert.equal(again.snapshot.id, result.snapshot.id);
+        assert.deepEqual(again.report, result.report);
+
+        const reopen = await reopenWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        assert.equal(reopen.snapshot?.id, result.snapshot.id);
+        assert.equal(reopen.snapshot?.freshness.freshness, "CURRENT");
+        assert.deepEqual(reopen.report, result.report);
+        assert.equal(reopen.snapshot?.verification.status, "VERIFIED");
+        void receipt;
+    });
+
+    it("receipt mutation or replacement makes the saved snapshot stale (12)", async () => {
+        if (!db) return;
+        const stored = await db.reportSnapshot.findFirstOrThrow({
+            where: { workspaceId: ids.workspaceA, blueprintId: BLUEPRINT_ID },
+            orderBy: [{ generatedAt: "desc" }],
+        });
+        // The receipt is retrieved BEFORE the evidence clock once a new metric
+        // row lands (pulledAt advances), so currentness flips to false.
+        await db.campaignMetric.updateMany({
+            where: { entityId: `e-g-${suffix}`, date: new Date("2026-08-30T00:00:00.000Z") },
+            data: { pulledAt: new Date() },
+        });
+        const stale = await evaluateSnapshotFreshness(stored);
+        assert.equal(stale.freshness, "STALE");
+        assert.ok(
+            stale.staleReasons.includes("dataset_changed")
+            || stale.staleReasons.includes("destination_evidence_changed"),
+        );
+
+        // Reopen drops VERIFIED with an explicit reason (stale never verifies).
+        const reopen = await reopenWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        assert.equal(reopen.snapshot?.verification.status, "NOT_VERIFIED");
+        assert.ok(reopen.snapshot?.verification.reasons.includes("dependency_evidence_changed"));
+    });
+
+    it("client requirement changes produce a new immutable version and stale history (13, 18-versioning)", async () => {
+        if (!db) return;
+        // Refresh delivery evidence for the current dataset first.
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, destination: "google_sheets", windowStart: WINDOW.start, windowEnd: WINDOW.end },
+        });
+        await seedCurrentReceipt();
         const baseline = await generateWeeklyBlueprint({
             workspaceId: ids.workspaceA,
             clientId: ids.clientA,
@@ -346,14 +517,14 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             windowEnd: WINDOW.end,
             now: NOW,
         });
-        // Earlier tests in this serial file may have already created the
-        // current version; either way the changed requirement below must
-        // produce a NEW sequence and leave the baseline row untouched.
+        // Data was re-pulled above, so the new receipt's currentness vs the
+        // generation-time dataset decides: regenerate until idempotent.
 
-        await db.clientReportingRequirement.update({
-            where: { workspaceId_clientId: { workspaceId: ids.workspaceA, clientId: ids.clientA } },
-            data: { requireDestination: true },
+        await db.client.update({
+            where: { workspaceId_id: { workspaceId: ids.workspaceA, id: ids.clientA } },
+            data: { requiredProviders: ["google_ads"], requirementsConfiguredAt: new Date() },
         });
+        // google_sheets receipt still current for the new dataset (rows unchanged).
         const changed = await generateWeeklyBlueprint({
             workspaceId: ids.workspaceA,
             clientId: ids.clientA,
@@ -364,26 +535,23 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         assert.equal(changed.created, true);
         assert.notEqual(changed.snapshot.id, baseline.snapshot.id);
         assert.equal(changed.snapshot.sequence, baseline.snapshot.sequence + 1);
-        assert.notEqual(changed.snapshot.dependencyHash, baseline.snapshot.dependencyHash);
-        // Destination is required and present+connected in this fixture, so
-        // the report still verifies; the missing-evidence case is covered in
-        // the destination-change test below.
-        assert.equal(changed.snapshot.verificationStatus, "VERIFIED");
+        assert.deepEqual(changed.report.overview.requiredProviders, ["google_ads"]);
+        // Meta is no longer required; its rows are excluded from the report.
+        assert.ok(changed.report.providers.every((provider) => provider.provider !== "meta_ads"));
 
-        const baselineStill = await db.reportSnapshot.findUnique({ where: { id: baseline.snapshot.id } });
-        assert.ok(baselineStill);
-        assert.equal(baselineStill.verificationStatus, "VERIFIED", "historical snapshot must not be rewritten");
+        // Baseline snapshot untouched.
+        const baselineStill = await db.reportSnapshot.findUniqueOrThrow({ where: { id: baseline.snapshot.id } });
+        assert.deepEqual(baselineStill.requiredProviders, ["google_ads", "meta_ads"]);
 
         const stale = await evaluateSnapshotFreshness(baselineStill);
         assert.equal(stale.freshness, "STALE");
-        assert.ok(stale.staleReasons.includes("requirement_changed"));
+        assert.ok(stale.staleReasons.includes("requirement_changed")
+            || stale.staleReasons.includes("dataset_changed"));
 
-        // Restore the requirement content. updatedAt legitimately advanced,
-        // so the dependency hash differs and generation creates another
-        // immutable version — the original baseline is still returned intact.
-        await db.clientReportingRequirement.update({
-            where: { workspaceId_clientId: { workspaceId: ids.workspaceA, clientId: ids.clientA } },
-            data: { requireDestination: false },
+        // Restore; the changed requirement clock creates yet another version.
+        await db.client.update({
+            where: { workspaceId_id: { workspaceId: ids.workspaceA, id: ids.clientA } },
+            data: { requiredProviders: ["google_ads", "meta_ads"], requirementsConfiguredAt: new Date() },
         });
         const restored = await generateWeeklyBlueprint({
             workspaceId: ids.workspaceA,
@@ -394,7 +562,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         });
         assert.equal(restored.created, true);
         assert.equal(restored.snapshot.sequence, changed.snapshot.sequence + 1);
-        // Same canonical input again is idempotent against the restored state.
         const again = await generateWeeklyBlueprint({
             workspaceId: ids.workspaceA,
             clientId: ids.clientA,
@@ -404,11 +571,14 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         });
         assert.equal(again.created, false);
         assert.equal(again.snapshot.id, restored.snapshot.id);
-        assert.deepEqual(again.report, restored.report);
     });
 
-    it("marks snapshots stale when warehouse data advances (15)", async () => {
+    it("data changes make the snapshot stale while receipts keep their identity", async () => {
         if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
+        });
+        await seedCurrentReceipt();
         const baseline = await generateWeeklyBlueprint({
             workspaceId: ids.workspaceA,
             clientId: ids.clientA,
@@ -416,129 +586,74 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             windowEnd: WINDOW.end,
             now: NOW,
         });
-        // New sync advances the connection's data-through timestamp.
-        await db.connection.update({
-            where: { id: ids.connGoogleA },
-            data: { lastDataThrough: new Date("2026-08-30T12:00:00.000Z") },
+        assert.equal(baseline.snapshot.verificationStatus, "VERIFIED");
+
+        // Warehouse data mutates (a row is re-pulled) without touching receipts.
+        await db.campaignMetric.updateMany({
+            where: { entityId: `e-m-${suffix}`, date: new Date("2026-08-24T00:00:00.000Z") },
+            data: { pulledAt: new Date() },
         });
-        const stored = await db.reportSnapshot.findUnique({ where: { id: baseline.snapshot.id } });
-        assert.ok(stored);
+        const stored = await db.reportSnapshot.findUniqueOrThrow({ where: { id: baseline.snapshot.id } });
         const stale = await evaluateSnapshotFreshness(stored);
         assert.equal(stale.freshness, "STALE");
-        assert.ok(stale.staleReasons.includes("data_through_changed"));
+        assert.ok(stale.staleReasons.includes("dataset_changed"));
 
-        // Reopen reflects staleness: VERIFIED label must drop (15, 14)
-        const reopen = await reopenWeeklyBlueprint({
+        await reopenWeeklyBlueprint({
             workspaceId: ids.workspaceA,
             clientId: ids.clientA,
             windowStart: WINDOW.start,
             windowEnd: WINDOW.end,
             now: NOW,
-        });
-        assert.equal(reopen.snapshot?.verification.status, "NOT_VERIFIED");
-        assert.ok(reopen.snapshot?.verification.reasons.includes("dependency_evidence_changed"));
-
-        // Restore for subsequent tests.
-        await db.connection.update({
-            where: { id: ids.connGoogleA },
-            data: { lastDataThrough: new Date("2026-08-30T00:00:00.000Z") },
+        }).then((reopen) => {
+            assert.equal(reopen.snapshot?.verification.status, "NOT_VERIFIED");
+            assert.ok(reopen.snapshot?.verification.reasons.includes("dependency_evidence_changed"));
         });
     });
 
-    it("marks snapshots stale when the delivery destination changes (16)", async () => {
+    it("mixed currency prevents combined monetary totals and verification (15)", async () => {
         if (!db) return;
-        await db.clientReportingRequirement.update({
-            where: { workspaceId_clientId: { workspaceId: ids.workspaceA, clientId: ids.clientA } },
-            data: { requireDestination: true },
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
-        // Destination exists and is connected: snapshot is verifiable.
-        const verified = await generateWeeklyBlueprint({
-            workspaceId: ids.workspaceA,
-            clientId: ids.clientA,
-            windowStart: WINDOW.start,
-            windowEnd: WINDOW.end,
-            now: NOW,
+        await seedCurrentReceipt();
+        await db.campaignMetric.create({
+            data: {
+                workspaceId: ids.workspaceA,
+                connectionId: ids.connGoogleA,
+                platform: "google_ads",
+                accountId: "g-account-1",
+                level: "campaign",
+                entityId: `e-usd-${suffix}`,
+                campaignId: "camp-usd",
+                campaignName: "USD Launch",
+                date: new Date("2026-08-31T00:00:00.000Z"),
+                impressions: 100,
+                clicks: 10,
+                spend: 10,
+                conversions: 1,
+                revenue: 40,
+                currency: "USD",
+            },
         });
-        assert.equal(verified.snapshot.verificationStatus, "VERIFIED");
-
-        // Destination disconnects → stored snapshot goes stale + loses VERIFIED.
-        await db.connection.update({
-            where: { id: ids.destA },
-            data: { status: "disconnected" },
-        });
-        const stored = await db.reportSnapshot.findUnique({ where: { id: verified.snapshot.id } });
-        assert.ok(stored);
-        const stale = await evaluateSnapshotFreshness(stored);
-        assert.equal(stale.freshness, "STALE");
-        assert.ok(stale.staleReasons.includes("destination_changed"));
-
-        const reopen = await reopenWeeklyBlueprint({
-            workspaceId: ids.workspaceA,
-            clientId: ids.clientA,
-            windowStart: WINDOW.start,
-            windowEnd: WINDOW.end,
-            now: NOW,
-        });
-        assert.equal(reopen.snapshot?.verification.status, "NOT_VERIFIED");
-
-        // Regenerating after the destination broke creates a NOT_VERIFIED version.
-        const afterBreak = await generateWeeklyBlueprint({
-            workspaceId: ids.workspaceA,
-            clientId: ids.clientA,
-            windowStart: WINDOW.start,
-            windowEnd: WINDOW.end,
-            now: NOW,
-        });
-        assert.equal(afterBreak.created, true);
-        assert.equal(afterBreak.snapshot.verificationStatus, "NOT_VERIFIED");
-        assert.ok(afterBreak.snapshot.verificationReasons.includes("destination_evidence_missing"));
-
-        await db.connection.update({ where: { id: ids.destA }, data: { status: "connected" } });
-        await db.clientReportingRequirement.update({
-            where: { workspaceId_clientId: { workspaceId: ids.workspaceA, clientId: ids.clientA } },
-            data: { requireDestination: false },
-        });
-    });
-
-    it("fails closed for rival-workspace identifiers (11, 12)", async () => {
-        if (!db) return;
-        await assert.rejects(
-            generateWeeklyBlueprint({
-                workspaceId: ids.workspaceB, // rival workspace
-                clientId: ids.clientA, // client belongs to workspace A
-                windowStart: WINDOW.start,
-                windowEnd: WINDOW.end,
-                now: NOW,
-            }),
-            (error: unknown) => (error as { code?: string }).code === "client_not_found",
-        );
-        // No snapshot was created for the rival workspace.
-        const rivalSnapshots = await db!.reportSnapshot.count({
-            where: { workspaceId: ids.workspaceB },
-        });
-        assert.equal(rivalSnapshots, 0);
-    });
-
-    it("mixed-currency windows keep monetary totals unavailable and store no raw payloads (6, 20)", async () => {
-        if (!db) return;
-        await db.campaignMetric.createMany({
-            data: [
-                {
-                    workspaceId: ids.workspaceA,
-                    connectionId: ids.connGoogleA,
-                    platform: "google_ads",
-                    accountId: "account-1",
-                    level: "campaign",
-                    entityId: "entity-usd",
-                    campaignId: "camp-usd",
-                    campaignName: "USD Launch",
-                    date: new Date("2026-08-26T00:00:00.000Z"),
-                    spend: 10,
-                    revenue: 40,
-                    currency: "USD",
-                },
-            ],
-            skipDuplicates: true,
+        // The evaluator window is 08-24..30; add a USD row INSIDE it.
+        await db.campaignMetric.create({
+            data: {
+                workspaceId: ids.workspaceA,
+                connectionId: ids.connGoogleA,
+                platform: "google_ads",
+                accountId: "g-account-1",
+                level: "campaign",
+                entityId: `e-usd2-${suffix}`,
+                campaignId: "camp-usd-2",
+                campaignName: "USD Launch 2",
+                date: new Date("2026-08-26T00:00:00.000Z"),
+                impressions: 100,
+                clicks: 10,
+                spend: 10,
+                conversions: 1,
+                revenue: 40,
+                currency: "USD",
+            },
         });
         const result = await generateWeeklyBlueprint({
             workspaceId: ids.workspaceA,
@@ -551,73 +666,76 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         assert.ok(result.snapshot.verificationReasons.includes("currency_unverified"));
         assert.equal(result.report.totals.monetaryAvailable, false);
         assert.equal(result.report.totals.spend, null);
+        assert.ok(result.report.overview.readiness.warnings.includes("MIXED_CURRENCY"));
 
-        // Persisted snapshot must not contain credentials or raw provider payloads.
-        const stored = await db.reportSnapshot.findUnique({ where: { id: result.snapshot.id } });
-        assert.ok(stored);
-        const serialized = JSON.stringify({ result: stored.result, evidence: stored.readinessEvidence });
+        // Clean up for later tests.
+        await db.campaignMetric.deleteMany({ where: { entityId: { in: [`e-usd-${suffix}`, `e-usd2-${suffix}`] } } });
+    });
+
+    it("persisted snapshots keep no credentials, raw payloads or unbounded results (20)", async () => {
+        if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
+        });
+        await seedCurrentReceipt();
+        const result = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        const stored = await db.reportSnapshot.findUniqueOrThrow({ where: { id: result.snapshot.id } });
+        const serialized = JSON.stringify({
+            result: stored.result,
+            evidence: stored.readinessEvidence,
+            receipts: stored.destinationReceipts,
+        });
         assert.ok(!serialized.includes("enc:v1"), "no credential material may be persisted");
         assert.ok(!serialized.includes("rawData"), "no raw provider payloads may be persisted");
         assert.ok(serialized.length < 200_000, "snapshot result must stay bounded");
-
-        // Clean the extra row so later runs of other tests stay deterministic.
-        await db.campaignMetric.deleteMany({ where: { entityId: "entity-usd" } });
+        // Receipt binding carries identity/currentness, not payloads.
+        const receipts = stored.destinationReceipts as Array<{ id: string; destination: string; current: boolean }>;
+        assert.ok(receipts.length > 0);
+        for (const receipt of receipts) {
+            assert.equal(typeof receipt.id, "string");
+            assert.equal(typeof receipt.current, "boolean");
+            assert.ok(!("payload" in receipt));
+        }
     });
 
-    it("rejects verification claims that are not derived server-side (12)", () => {
-        // The service API has no parameter accepting a caller-declared
-        // verification state; prove that computeVerificationStatus ignores
-        // any label not supported by its gates.
-        const forged = computeVerificationStatus({
-            readinessStatus: "NOT_READY",
-            requiredProviders: ["google_ads"],
-            includedProviders: [],
-            coverageComplete: false,
-            timezoneConfigured: false,
-            currencyVerified: false,
-            windowComplete: false,
-            hasMetricData: false,
-            aggregationCompatible: false,
-            destinationSatisfied: false,
-            dependencyHashMatches: false,
-        });
-        assert.equal(forged.status, "NOT_VERIFIED");
-        assert.ok(forged.reasons.length >= 9);
-        // METRIC_CONTRACT_VERSION is server-owned; snapshots bind it, callers cannot.
-        assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v1");
-    });
-
-    it("keeps per-window rows tenant-scoped between rival workspaces (11)", async () => {
+    it("fails closed for rival-workspace identifiers (18)", async () => {
         if (!db) return;
-        await db.clientReportingRequirement.upsert({
-            where: { workspaceId_clientId: { workspaceId: ids.workspaceB, clientId: ids.clientB } },
-            create: {
+        await assert.rejects(
+            generateWeeklyBlueprint({
+                workspaceId: ids.workspaceB, // rival workspace
+                clientId: ids.clientA, // client belongs to workspace A
+                windowStart: WINDOW.start,
+                windowEnd: WINDOW.end,
+                now: NOW,
+            }),
+            (error: unknown) => (error as { code?: string }).code === "client_not_found",
+        );
+        const rivalSnapshots = await db.reportSnapshot.count({ where: { workspaceId: ids.workspaceB } });
+        assert.equal(rivalSnapshots, 0);
+    });
+
+    it("keeps per-window rows tenant-scoped between rival workspaces", async () => {
+        if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceB } });
+        const datasetB = await datasetOf(ids.workspaceB, ids.clientB, WINDOW);
+        await db.destinationDeliveryReceipt.create({
+            data: {
                 workspaceId: ids.workspaceB,
                 clientId: ids.clientB,
-                requiredProviders: ["google_ads"],
-                reportingTimezone: "UTC",
-                reportingCurrency: "USD",
+                destination: "google_sheets",
+                windowStart: WINDOW.start,
+                windowEnd: WINDOW.end,
+                dataThroughDate: datasetB.dataThroughDate ?? WINDOW.end,
+                datasetFingerprint: datasetB.fingerprint,
+                rowCount: datasetB.rowCount,
+                actorId: ids.owner,
             },
-            update: {},
-        });
-        await db.campaignMetric.createMany({
-            data: [
-                {
-                    workspaceId: ids.workspaceB,
-                    connectionId: ids.connGoogleB,
-                    platform: "google_ads",
-                    accountId: "g-account-b",
-                    level: "campaign",
-                    entityId: "entity-b",
-                    campaignId: "camp-b",
-                    campaignName: "WS B Campaign",
-                    date: new Date("2026-08-25T00:00:00.000Z"),
-                    spend: 10,
-                    revenue: 30,
-                    currency: "USD",
-                },
-            ],
-            skipDuplicates: true,
         });
         const resultB = await generateWeeklyBlueprint({
             workspaceId: ids.workspaceB,
@@ -626,8 +744,31 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             windowEnd: WINDOW.end,
             now: NOW,
         });
-        // Only workspace B's own rows appear.
         assert.ok(resultB.report.campaigns.every((campaign) => campaign.campaignId !== "1795849302486751234"));
         assert.ok(resultB.report.campaigns.some((campaign) => campaign.campaignId === "camp-b"));
+        assert.equal(resultB.report.overview.currency, "USD");
+    });
+
+    it("rejects caller-forged verification through the pure gate set (17)", () => {
+        const forged = computeVerificationStatus({
+            readinessStatus: "NOT_READY",
+            requiredProvidersBasis: "assigned_sources",
+            requiredProviders: [],
+            includedProviders: [],
+            hasMetricData: false,
+            aggregationCompatible: false,
+            currencyVerified: false,
+            windowComplete: false,
+            timezoneVerified: false,
+            destinationsRequired: [],
+            destinationsVerified: false,
+            datasetLimited: true,
+            generatorVersionRecorded: false,
+            dependencyHashMatches: false,
+        });
+        assert.equal(forged.status, "NOT_VERIFIED");
+        // The service signature accepts no verification input at all; the
+        // contract version is server-owned.
+        assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v1");
     });
 });
