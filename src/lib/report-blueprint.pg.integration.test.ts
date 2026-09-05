@@ -749,6 +749,297 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         assert.equal(resultB.report.overview.currency, "USD");
     });
 
+    it("aggregates ONLY the campaign grain and fails closed on mixed grains (P1-3)", async () => {
+        if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
+        });
+        await seedCurrentReceipt();
+        // Ad-grain and account-grain rows inside the window for a covered account.
+        await db.campaignMetric.createMany({
+            data: [
+                {
+                    workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, platform: "google_ads",
+                    accountId: "g-account-1", level: "ad", entityId: `e-ad-${suffix}`,
+                    campaignId: "1795849302486751234", campaignName: "Always On",
+                    date: new Date("2026-08-25T00:00:00.000Z"),
+                    impressions: 5000, clicks: 500, spend: 25_000_000, conversions: 20, revenue: 125_000_000, currency: "VND",
+                },
+                {
+                    workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, platform: "google_ads",
+                    accountId: "g-account-1", level: "account", entityId: `e-acct-${suffix}`,
+                    campaignId: "", campaignName: "",
+                    date: new Date("2026-08-25T00:00:00.000Z"),
+                    impressions: 9000, clicks: 900, spend: 45_000_000, conversions: 36, revenue: 225_000_000, currency: "VND",
+                },
+            ],
+        });
+        const result = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        // Mixed grains fail verification closed.
+        assert.equal(result.snapshot.verificationStatus, "NOT_VERIFIED");
+        assert.ok(result.snapshot.verificationReasons.includes("aggregation_grain_ambiguous"));
+        // And the totals never sum other grains: google campaign-only = 7000,
+        // meta campaign-only = 14000, combined campaign-grain total = 21000
+        // (the ad/account rows would have pushed it to 35000).
+        const google = result.report.providers.find((provider) => provider.provider === "google_ads");
+        assert.equal(google?.metrics.impressions, 7000);
+        assert.equal(result.report.totals.impressions, 21000);
+
+        await db.campaignMetric.deleteMany({ where: { entityId: { in: [`e-ad-${suffix}`, `e-acct-${suffix}`] } } });
+    });
+
+    it("a correction to previous-week data makes the snapshot stale and regeneration versions (P1-2)", async () => {
+        if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
+        });
+        await seedCurrentReceipt();
+        const baseline = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        assert.equal(baseline.snapshot.verificationStatus, "VERIFIED");
+
+        // Correct data in the COMPARISON window only.
+        await db.campaignMetric.updateMany({
+            where: { entityId: `e-g-prev-${suffix}`, date: new Date("2026-08-18T00:00:00.000Z") },
+            data: { spend: 999, pulledAt: new Date() },
+        });
+        const stored = await db.reportSnapshot.findUniqueOrThrow({ where: { id: baseline.snapshot.id } });
+        const stale = await evaluateSnapshotFreshness(stored);
+        assert.equal(stale.freshness, "STALE");
+        assert.ok(stale.staleReasons.includes("dataset_changed"));
+
+        const regenerated = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        assert.equal(regenerated.created, true);
+        assert.equal(regenerated.snapshot.sequence, baseline.snapshot.sequence + 1);
+
+        // Baseline untouched.
+        const baselineStill = await db.reportSnapshot.findUniqueOrThrow({ where: { id: baseline.snapshot.id } });
+        const oldCampaign = (baselineStill.result as { campaigns: Array<{ campaignId: string; changes: Array<{ field: string; previous: number | null }> }> })
+            .campaigns.find((campaign) => campaign.campaignId === "1795849302486751234");
+        assert.ok(oldCampaign);
+        assert.equal(oldCampaign.changes.find((change) => change.field === "spend")?.previous, 8_000_000);
+    });
+
+    it("rejects direct cross-workspace snapshot insertion at the database level (P1-4)", async () => {
+        if (!db) return;
+        await assert.rejects(
+            db.reportSnapshot.create({
+                data: {
+                    workspaceId: ids.workspaceB,
+                    clientId: ids.clientA, // client A belongs to workspace A
+                    blueprintId: BLUEPRINT_ID,
+                    blueprintVersion: 1,
+                    generationKey: `gk-cross-${suffix}`,
+                    sequence: 1,
+                    reportingWindowStart: new Date("2026-08-24T00:00:00.000Z"),
+                    reportingWindowEnd: new Date("2026-08-30T00:00:00.000Z"),
+                    requiredProviders: ["google_ads"],
+                    requiredDestinations: ["google_sheets"],
+                    includedProviders: [],
+                    includedAccountIds: [],
+                    dataThroughByProvider: {},
+                    metricContractVersions: {},
+                    datasetFingerprint: "x",
+                    readinessStatus: "NOT_READY",
+                    verificationStatus: "NOT_VERIFIED",
+                    verificationReasons: [],
+                    readinessEvidence: {},
+                    destinationReceipts: [],
+                    schemaVersion: 2,
+                    dependencyHash: "x",
+                    result: {},
+                },
+            }),
+        );
+        const leaked = await db.reportSnapshot.count({ where: { generationKey: `gk-cross-${suffix}` } });
+        assert.equal(leaked, 0);
+    });
+
+    it("concurrent same-state generation is idempotent: one snapshot, no failures (P2-1)", async () => {
+        if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
+        });
+        await seedCurrentReceipt();
+        const params = {
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        };
+        const results = await Promise.all([
+            generateWeeklyBlueprint(params),
+            generateWeeklyBlueprint(params),
+            generateWeeklyBlueprint(params),
+            generateWeeklyBlueprint(params),
+            generateWeeklyBlueprint(params),
+        ]);
+        const uniqueIds = new Set(results.map((result) => result.snapshot.id));
+        assert.equal(uniqueIds.size, 1, "all concurrent same-state generations must return one snapshot");
+        const rows = await db.reportSnapshot.count({ where: { generationKey: results[0].snapshot.generationKey } });
+        assert.ok(rows >= 1);
+        const uniqueSequences = new Set(
+            (await db.reportSnapshot.findMany({ where: { generationKey: results[0].snapshot.generationKey } }))
+                .map((row) => row.sequence),
+        );
+        assert.equal(uniqueSequences.size, (await db.reportSnapshot.findMany({ where: { generationKey: results[0].snapshot.generationKey } })).length);
+    });
+
+    it("concurrent divergent generation allocates distinct sequences without failure (P2-1)", async () => {
+        if (!db) return;
+        // Own fixture row: the race must not depend on prior tests' state.
+        await db.campaignMetric.create({
+            data: {
+                workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, platform: "google_ads",
+                accountId: "g-account-1", level: "campaign", entityId: `e-race-${suffix}`,
+                campaignId: "race-campaign", campaignName: "Race",
+                date: new Date("2026-08-27T00:00:00.000Z"),
+                impressions: 100, clicks: 10, spend: 500_000, conversions: 1, revenue: 2_000_000, currency: "VND",
+            },
+        }).catch(() => undefined);
+        const mutate = () => db!.campaignMetric.updateMany({
+            where: { entityId: `e-race-${suffix}`, date: new Date("2026-08-27T00:00:00.000Z") },
+            data: { pulledAt: new Date() },
+        });
+        const params = {
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        };
+        // Fire two generations racing a dataset mutation. Whether the first
+        // read lands before or after the mutation, BOTH must succeed and the
+        // stored (generationKey, sequence) pairs must stay unique and
+        // contiguous. Bounded attempts until the race genuinely diverges, so
+        // the retry path is exercised — never skipped.
+        let diverged = false;
+        for (let attempt = 0; attempt < 12 && !diverged; attempt += 1) {
+            // The mutation lands a few milliseconds into the first
+            // generation — after its dataset read but while the whole
+            // generation is still in flight — so the second generation
+            // observes the newer dataset mid-race and the two dependency
+            // states diverge.
+            const first = generateWeeklyBlueprint(params);
+            const second = (async () => {
+                await new Promise((resolve) => setTimeout(resolve, 2 + attempt * 8));
+                await mutate();
+                return generateWeeklyBlueprint(params);
+            })();
+            const [a, b] = await Promise.all([first, second]);
+            const stored = await db.reportSnapshot.findMany({
+                where: { generationKey: a.snapshot.generationKey },
+            });
+            const sequences: number[] = stored.map((row: { sequence: number }) => row.sequence);
+            assert.equal(new Set(sequences).size, sequences.length, "no duplicate sequences");
+            assert.deepEqual([...sequences].sort((x, y) => x - y), Array.from({ length: sequences.length }, (_, i) => i + 1), "sequences contiguous from 1");
+            if (a.snapshot.dependencyHash !== b.snapshot.dependencyHash) {
+                diverged = true;
+                assert.equal(new Set([a.snapshot.sequence, b.snapshot.sequence]).size, 2);
+            }
+        }
+        assert.equal(diverged, true, "racing generations must observe divergent dependency states within bounded attempts");
+        await db.campaignMetric.deleteMany({ where: { entityId: `e-race-${suffix}` } });
+    });
+
+    it("derives included accounts from metric evidence, not connection labels (P2-3)", async () => {
+        if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
+        });
+        await seedCurrentReceipt();
+        const result = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        // Metric rows carry accountId "g-account-1"; the connection label is
+        // remoteAccountId — the report must show the metric evidence id.
+        const googleAccounts = result.report.overview.includedAccounts
+            .filter((account) => account.provider === "google_ads")
+            .map((account) => account.accountId);
+        assert.deepEqual(googleAccounts, ["g-account-1"]);
+        const stored = await db.reportSnapshot.findUniqueOrThrow({ where: { id: result.snapshot.id } });
+        assert.ok(stored.includedAccountIds.includes("g-account-1"));
+    });
+
+    it("keeps a renamed campaign as one campaign row across the window (P2-4)", async () => {
+        if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
+        });
+        await seedCurrentReceipt();
+        // Rename the campaign on the LATEST date only: the stable identity
+        // must keep one row and display the latest name.
+        await db.campaignMetric.updateMany({
+            where: { entityId: `e-g-${suffix}`, date: new Date("2026-08-30T00:00:00.000Z") },
+            data: { campaignName: "Always On (renamed)", pulledAt: new Date() },
+        });
+        await seedCurrentReceipt();
+        const result = await generateWeeklyBlueprint({
+            workspaceId: ids.workspaceA,
+            clientId: ids.clientA,
+            windowStart: WINDOW.start,
+            windowEnd: WINDOW.end,
+            now: NOW,
+        });
+        const google = result.report.campaigns.filter((campaign) => campaign.campaignId === "1795849302486751234");
+        assert.equal(google.length, 1, "a renamed campaign must not split into two rows");
+        assert.equal(google[0].campaignName, "Always On (renamed)");
+    });
+
+    it("rejects impossible calendar dates and half-specified windows (low-cost)", async () => {
+        if (!db) return;
+        await assert.rejects(
+            generateWeeklyBlueprint({
+                workspaceId: ids.workspaceA,
+                clientId: ids.clientA,
+                windowStart: "2026-02-31", // Date.parse rolls this to March
+                windowEnd: "2026-03-06",
+                now: NOW,
+            }),
+            (error: unknown) => error instanceof Error && /YYYY-MM-DD|7 days/.test(error.message),
+        );
+        await assert.rejects(
+            generateWeeklyBlueprint({
+                workspaceId: ids.workspaceA,
+                clientId: ids.clientA,
+                windowStart: WINDOW.start, // one boundary only
+                now: NOW,
+            }),
+            (error: unknown) => (error as { code?: string }).code === "window_boundary_incomplete",
+        );
+        await assert.rejects(
+            generateWeeklyBlueprint({
+                workspaceId: ids.workspaceA,
+                clientId: ids.clientA,
+                windowEnd: WINDOW.end, // the other boundary only
+                now: NOW,
+            }),
+            (error: unknown) => (error as { code?: string }).code === "window_boundary_incomplete",
+        );
+    });
+
     it("rejects caller-forged verification through the pure gate set (17)", () => {
         const forged = computeVerificationStatus({
             readinessStatus: "NOT_READY",
@@ -757,6 +1048,7 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             includedProviders: [],
             hasMetricData: false,
             aggregationCompatible: false,
+            aggregationGrainAmbiguous: false,
             currencyVerified: false,
             windowComplete: false,
             timezoneVerified: false,
@@ -769,6 +1061,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         assert.equal(forged.status, "NOT_VERIFIED");
         // The service signature accepts no verification input at all; the
         // contract version is server-owned.
-        assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v1");
+        assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v2");
     });
 });

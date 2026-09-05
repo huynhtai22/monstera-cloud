@@ -40,7 +40,14 @@ export const BLUEPRINT_SCHEMA_VERSION = 2;
  * Source of truth: the CampaignMetric table (UTC-day rows, string IDs,
  * per-row currency) written by the existing provider ingestion mappers.
  */
-export const METRIC_CONTRACT_VERSION = "weekly-blueprint-metrics-v1";
+export const METRIC_CONTRACT_VERSION = "weekly-blueprint-metrics-v2";
+/**
+ * The ONE authoritative aggregation grain. Totals, provider breakdowns and
+ * the campaign table aggregate ONLY `level = "campaign"` rows. Rows at
+ * account/adset/ad grain in the same window make the grain ambiguous and
+ * fail verification closed — they are never summed together with it.
+ */
+export const AUTHORITATIVE_AGGREGATION_GRAIN = "campaign";
 export const MAX_CAMPAIGN_ROWS = 100;
 
 export type BlueprintVerificationLabel = "VERIFIED" | "NOT_VERIFIED";
@@ -91,8 +98,11 @@ export function daysBetween(a: string, b: string): number {
 }
 
 export function isValidDateString(value: unknown): value is string {
-  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
-    && !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`));
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  // Reject impossible calendar dates (e.g. 2026-02-31): Date.parse silently
+  // rolls them forward, so require the canonical UTC round-trip.
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 /**
@@ -149,6 +159,7 @@ export type MetricRowInput = {
   campaignName: string;
   entityId: string;
   level: string;
+  date: Date;
   impressions: number;
   clicks: number;
   spend: number;
@@ -259,15 +270,31 @@ export function computeMetricsDeltas(current: BlueprintMetrics, previous: Bluepr
   ));
 }
 
-/** Canonical identity for a campaign across windows. IDs stay exact strings. */
+/**
+ * Canonical identity for a campaign across windows: platform + account +
+ * stable provider entity id (campaignId, falling back to entityId) +
+ * currency. The mutable campaign NAME is deliberately NOT part of the
+ * identity — a renamed campaign stays one row. IDs stay exact strings.
+ */
 function campaignKey(row: MetricRowInput): string {
   return [
     row.platform,
     row.accountId,
-    row.campaignId,
-    row.campaignName,
+    row.campaignId || row.entityId,
     normalizeCurrency(row.currency),
   ].join(":::");
+}
+
+/** Deterministic display name: the latest row's (by date, then entityId). */
+function stableCampaignName(rows: MetricRowInput[]): string {
+  const latest = rows.reduce((best, row) => {
+    const bestTs = best.date.getTime();
+    const rowTs = row.date.getTime();
+    if (rowTs > bestTs) return row;
+    if (rowTs === bestTs && row.entityId > best.entityId) return row;
+    return best;
+  });
+  return latest.campaignName || latest.campaignId || latest.entityId;
 }
 
 function compareStrings(a: string, b: string): number {
@@ -325,8 +352,10 @@ export function buildCampaignTable(
       provider: first.platform,
       providerLabel: getPlatformLabel(first.platform),
       // IDs are preserved verbatim as strings — never coerced to numbers.
-      campaignId: first.campaignId,
-      campaignName: first.campaignName || first.campaignId,
+      // Identity is (platform, account, campaignId||entityId, currency);
+      // the display name is the latest row's, so renames never split rows.
+      campaignId: first.campaignId || first.entityId,
+      campaignName: stableCampaignName(bucket),
       accountId: first.accountId,
       accountName: first.accountName,
       currency: metrics.currency,
@@ -369,6 +398,8 @@ export type VerificationInput = {
   includedProviders: string[];
   hasMetricData: boolean;
   aggregationCompatible: boolean;
+  /** True when non-campaign rows share the window — mixed grains fail closed. */
+  aggregationGrainAmbiguous: boolean;
   currencyVerified: boolean;
   windowComplete: boolean;
   timezoneVerified: boolean;
@@ -407,6 +438,7 @@ export function computeVerificationStatus(input: VerificationInput): Verificatio
   }
   if (!input.hasMetricData) reasons.push("no_metric_data");
   if (!input.aggregationCompatible) reasons.push("incompatible_metric_semantics");
+  if (input.aggregationGrainAmbiguous) reasons.push("aggregation_grain_ambiguous");
   if (!input.currencyVerified) reasons.push("currency_unverified");
   if (!input.windowComplete) reasons.push("window_incomplete");
   if (!input.timezoneVerified) reasons.push("reporting_timezone_unverified");
@@ -440,7 +472,12 @@ export type DependencyState = {
   evidenceAt: string;
   dataThroughDate: string | null;
   rowCount: number;
-  /** Latest receipt per required destination, with currentness, from the evaluator. */
+  /** The comparison (previous) window is bound with equal authority. */
+  comparisonDatasetFingerprint: string;
+  comparisonEvidenceAt: string;
+  comparisonDataThroughDate: string | null;
+  comparisonRowCount: number;
+  /** Latest receipt per required destination, currentness vs THIS dataset. */
   receipts: Array<{
     id: string;
     destination: string;
@@ -467,6 +504,12 @@ function diffDependencyComponents(stored: DependencyState, current: DependencySt
     || stored.evidenceAt !== current.evidenceAt
     || stored.dataThroughDate !== current.dataThroughDate
     || stored.rowCount !== current.rowCount) {
+    reasons.push("dataset_changed");
+  }
+  if (stored.comparisonDatasetFingerprint !== current.comparisonDatasetFingerprint
+    || stored.comparisonEvidenceAt !== current.comparisonEvidenceAt
+    || stored.comparisonDataThroughDate !== current.comparisonDataThroughDate
+    || stored.comparisonRowCount !== current.comparisonRowCount) {
     reasons.push("dataset_changed");
   }
   if (canonicalJson(stored.receipts) !== canonicalJson(current.receipts)) {
@@ -597,6 +640,7 @@ async function loadWindowRows(
       campaignName: true,
       entityId: true,
       level: true,
+      date: true,
       impressions: true,
       clicks: true,
       spend: true,
@@ -627,11 +671,17 @@ type GenerationContext = {
   window: ReportingWindow;
   comparisonWindow: ReportingWindow;
   connections: ConnectionSummary[];
+  /** Campaign-grain rows only — the authoritative aggregation grain. */
   currentRows: MetricRowInput[];
   previousRows: MetricRowInput[];
+  /** Rows at other grains in the window make aggregation ambiguous. */
+  grainAmbiguous: boolean;
   rowsLimited: boolean;
   evaluation: ReportReadinessEvaluation;
   dataset: Awaited<ReturnType<typeof reportingDataset>>;
+  comparisonDataset: Awaited<ReturnType<typeof reportingDataset>>;
+  /** Latest receipt per required destination, currentness vs THIS dataset. */
+  receipts: DependencyState["receipts"];
 };
 
 function buildDependencyState(ctx: GenerationContext): DependencyState {
@@ -641,7 +691,11 @@ function buildDependencyState(ctx: GenerationContext): DependencyState {
     evidenceAt: new Date(ctx.dataset.evidenceAt).toISOString(),
     dataThroughDate: ctx.dataset.dataThroughDate,
     rowCount: ctx.dataset.rowCount,
-    receipts: (ctx.evaluation.destination.receipts ?? []).map((receipt) => ({ ...receipt })),
+    comparisonDatasetFingerprint: ctx.comparisonDataset.fingerprint,
+    comparisonEvidenceAt: new Date(ctx.comparisonDataset.evidenceAt).toISOString(),
+    comparisonDataThroughDate: ctx.comparisonDataset.dataThroughDate,
+    comparisonRowCount: ctx.comparisonDataset.rowCount,
+    receipts: ctx.receipts.map((receipt) => ({ ...receipt })),
     contractVersions: {
       metrics: METRIC_CONTRACT_VERSION,
       dataset: "reporting-dataset-v1",
@@ -700,12 +754,17 @@ function buildProviderBreakdowns(ctx: GenerationContext): {
     const hasData = currentRows.length > 0;
     if (hasData) {
       includedProviders.push(provider);
-      const coveredConnectionIds = new Set(currentRows.map((row) => row.connectionId));
-      for (const connection of ctx.connections.filter((c) => c.provider === provider && coveredConnectionIds.has(c.id))) {
+      // Included accounts are derived from ACTUAL metric evidence: the
+      // distinct account ids present in the campaign-grain rows themselves.
+      const accountIds = [...new Set(currentRows.map((row) => row.accountId))].sort();
+      const connectionByAccount = new Map(
+        ctx.connections.filter((c) => c.provider === provider).map((c) => [c.remoteAccountId, c.id]),
+      );
+      for (const accountId of accountIds) {
         includedAccounts.push({
           provider,
-          accountId: connection.remoteAccountId,
-          connectionId: connection.id,
+          accountId,
+          connectionId: connectionByAccount.get(accountId) ?? "",
         });
       }
     }
@@ -771,7 +830,6 @@ function buildVerification(
   dependencyHashMatches: boolean,
 ): VerificationResult {
   const includedProviders = [...new Set(ctx.currentRows.map((row) => row.platform))];
-  const destination = ctx.evaluation.destination;
   return computeVerificationStatus({
     readinessStatus: ctx.evaluation.status,
     requiredProvidersBasis: ctx.evaluation.requiredProvidersBasis,
@@ -779,13 +837,14 @@ function buildVerification(
     includedProviders,
     hasMetricData: ctx.currentRows.length > 0,
     aggregationCompatible: aggregationCompatibleFor(ctx.currentRows, totals),
+    aggregationGrainAmbiguous: ctx.grainAmbiguous,
     currencyVerified: currencyVerifiedFor(totals, ctx.evaluation),
     windowComplete: windowIsComplete(ctx.window),
     timezoneVerified: ctx.evaluation.timezones.length === 1,
-    destinationsRequired: destination.required ?? [],
-    destinationsVerified: (destination.required ?? []).length > 0
-      && (destination.required ?? []).every((name) => (destination.receipts ?? []).some((receipt) => receipt.destination === name && receipt.current)),
-    datasetLimited: rowsLimited || ctx.dataset.limited || ctx.evaluation.evidence.limited,
+    destinationsRequired: ctx.clientRequirement.requiredDestinations,
+    destinationsVerified: ctx.clientRequirement.requiredDestinations.length > 0
+      && ctx.clientRequirement.requiredDestinations.every((name) => ctx.receipts.some((receipt) => receipt.destination === name && receipt.current)),
+    datasetLimited: rowsLimited || ctx.dataset.limited || ctx.comparisonDataset.limited || ctx.evaluation.evidence.limited,
     generatorVersionRecorded: Boolean(
       process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GIT_COMMIT_SHA,
     ),
@@ -892,6 +951,12 @@ export async function generateWeeklyBlueprint(params: {
     );
   }
 
+  if (Boolean(params.windowStart) !== Boolean(params.windowEnd)) {
+    throw new BlueprintInputError(
+      "Provide both windowStart and windowEnd, or neither (the last complete week is used).",
+      "window_boundary_incomplete",
+    );
+  }
   // The blueprint's opinionated default is the last complete Monday–Sunday
   // week (UTC calendar dates, shared with the evaluator's window vocabulary).
   // POST and reopen MUST resolve the same default or the UI diverges.
@@ -900,19 +965,20 @@ export async function generateWeeklyBlueprint(params: {
     : lastCompleteWeek(now);
   const comparisonWindow = comparisonWindowFor(window);
 
-  // Authoritative readiness: evidence-based evaluator + destination receipts,
-  // loaded in one consistent transaction by PR #152's server layer.
-  const readiness = await loadReportReadiness(workspaceId, window, { clientId });
-  const evaluation = readiness.evaluations[0];
-  if (!evaluation) {
-    throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
-  }
-
-  // Dataset fingerprint, connections and window rows in ONE consistent
-  // RepeatableRead snapshot, using PR #152's canonical reportingDataset.
-  const { dataset, connections, currentWindow, previousWindow } = await prisma.$transaction(async (tx) => {
-    const [dataset, connections, currentWindow, previousWindow] = await Promise.all([
+  // EVERYTHING the snapshot binds — client requirements, both dataset
+  // fingerprints, exact metric rows, and destination receipts with
+  // currentness evaluated against THESE fingerprints — is loaded through ONE
+  // RepeatableRead transaction. A receipt evaluated against dataset A can
+  // never verify dataset B, because currentness and the bound fingerprint
+  // come from the same read.
+  const { dataset, comparisonDataset, connections, currentWindow, previousWindow, receiptRows, txClient } = await prisma.$transaction(async (tx) => {
+    const [dataset, comparisonDataset, txClient, connections, currentWindow, previousWindow, receiptRows] = await Promise.all([
       reportingDataset(tx, workspaceId, clientId, window),
+      reportingDataset(tx, workspaceId, clientId, comparisonWindow),
+      tx.client.findFirst({
+        where: { id: clientId, workspaceId },
+        select: { requiredProviders: true, requiredDestinations: true, requirementsConfiguredAt: true },
+      }),
       tx.connection.findMany({
         where: {
           workspaceId,
@@ -931,9 +997,62 @@ export async function generateWeeklyBlueprint(params: {
       }),
       loadWindowRows(tx, workspaceId, clientId, client.requiredProviders, window),
       loadWindowRows(tx, workspaceId, clientId, client.requiredProviders, comparisonWindow),
+      Promise.all(client.requiredDestinations.map((destination) =>
+        tx.destinationDeliveryReceipt.findFirst({
+          where: { workspaceId, clientId, destination, windowStart: window.start, windowEnd: window.end },
+          orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
+        }))),
     ]);
-    return { dataset, connections, currentWindow, previousWindow };
-  }, { isolationLevel: "RepeatableRead", timeout: 20_000 });
+    return { dataset, comparisonDataset, connections, currentWindow, previousWindow, receiptRows, txClient };
+  }, { isolationLevel: "RepeatableRead", timeout: 30_000 });
+
+  // A requirement change between the header read and the transaction must
+  // fail closed rather than mix two configurations.
+  if (!txClient
+    || canonicalJson(txClient.requiredProviders) !== canonicalJson(client.requiredProviders)
+    || canonicalJson(txClient.requiredDestinations) !== canonicalJson(client.requiredDestinations)
+    || txClient.requirementsConfiguredAt?.toISOString() !== client.requirementsConfiguredAt.toISOString()) {
+    throw new BlueprintInputError(
+      "Reporting requirements changed while the report was being read. Retry generation.",
+      "evidence_inconsistent",
+    );
+  }
+
+  // Receipt currentness is evaluated against THIS transaction's dataset
+  // fingerprint (PR #152's exact rule) — never against another read's.
+  const receipts: DependencyState["receipts"] = receiptRows.flatMap((receipt) => receipt ? [{
+    id: receipt.id,
+    destination: receipt.destination,
+    retrievedAt: receipt.retrievedAt.toISOString(),
+    dataThroughDate: receipt.dataThroughDate,
+    current: !dataset.limited
+      && receipt.datasetFingerprint === dataset.fingerprint
+      && receipt.retrievedAt.getTime() >= dataset.evidenceAt,
+  }] : []);
+
+  // Authoritative readiness: evidence-based evaluator from PR #152's server
+  // layer. Its destination view must agree with the transaction's receipts —
+  // divergence means data moved between the two reads, and generation fails
+  // closed instead of mixing datasets.
+  const readiness = await loadReportReadiness(workspaceId, window, { clientId });
+  const evaluation = readiness.evaluations[0];
+  if (!evaluation) {
+    throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
+  }
+  const evaluationReceiptKey = (receipts: Array<{ id: string; destination: string; current: boolean }>) =>
+    canonicalJson([...receipts].sort((a, b) => a.id.localeCompare(b.id)).map((receipt) => ({ id: receipt.id, destination: receipt.destination, current: receipt.current })));
+  if (evaluationReceiptKey(evaluation.destination.receipts ?? []) !== evaluationReceiptKey(receipts)) {
+    throw new BlueprintInputError(
+      "Reporting evidence changed while the report was being read. Retry generation.",
+      "evidence_inconsistent",
+    );
+  }
+
+  // ONE aggregation grain: campaign-level rows only.
+  const currentCampaignRows = currentWindow.rows.filter((row) => row.level === AUTHORITATIVE_AGGREGATION_GRAIN);
+  const previousCampaignRows = previousWindow.rows.filter((row) => row.level === AUTHORITATIVE_AGGREGATION_GRAIN);
+  const grainAmbiguous = currentWindow.rows.some((row) => row.level !== AUTHORITATIVE_AGGREGATION_GRAIN)
+    || previousWindow.rows.some((row) => row.level !== AUTHORITATIVE_AGGREGATION_GRAIN);
 
   const ctx: GenerationContext = {
     workspaceId,
@@ -947,14 +1066,17 @@ export async function generateWeeklyBlueprint(params: {
     window,
     comparisonWindow,
     connections,
-    currentRows: currentWindow.rows,
-    previousRows: previousWindow.rows,
+    currentRows: currentCampaignRows,
+    previousRows: previousCampaignRows,
+    grainAmbiguous,
     rowsLimited: currentWindow.limited,
     evaluation,
     dataset,
+    comparisonDataset,
+    receipts,
   };
 
-  const totals = aggregateBlueprintMetrics(currentWindow.rows);
+  const totals = aggregateBlueprintMetrics(currentCampaignRows);
   const dependencyState = buildDependencyState(ctx);
   const dependencyHash = computeDependencyHash(dependencyState);
   const generationKey = computeGenerationKey(workspaceId, clientId, window, comparisonWindow);
@@ -981,27 +1103,21 @@ export async function generateWeeklyBlueprint(params: {
 
   const verification = buildVerification(ctx, totals, currentWindow.limited, true);
   const report = buildReport(ctx, verification);
-  const campaigns = buildCampaignTable(currentWindow.rows, previousWindow.rows);
+  const campaigns = buildCampaignTable(currentCampaignRows, previousCampaignRows);
   report.campaigns = campaigns.campaigns;
   report.campaignTruncated = campaigns.truncated;
   report.campaignTotal = campaigns.totalTracked;
 
   const dateRange = windowDateRange(window);
   const comparisonRange = windowDateRange(comparisonWindow);
-  const maxSequence = await prisma.reportSnapshot.findFirst({
-    where: { generationKey },
-    orderBy: [{ sequence: "desc" }],
-    select: { sequence: true },
-  });
-
-  const created = await prisma.reportSnapshot.create({
+  const createSnapshot = (sequence: number) => prisma.reportSnapshot.create({
     data: {
       workspaceId,
       clientId,
       blueprintId: BLUEPRINT_ID,
       blueprintVersion: BLUEPRINT_VERSION,
       generationKey,
-      sequence: (maxSequence?.sequence ?? 0) + 1,
+      sequence,
       reportingWindowStart: dateRange.gte,
       reportingWindowEnd: dateRange.lte,
       comparisonWindowStart: comparisonRange.gte,
@@ -1037,18 +1153,43 @@ export async function generateWeeklyBlueprint(params: {
       dependencyHash,
       result: report as unknown as Record<string, unknown>,
     },
-  }).catch(async (error: unknown) => {
-    // Concurrent generation raced on (generationKey, sequence): the winner's
-    // snapshot is the answer — never a second row for the same version.
-    if (isUniqueViolation(error)) {
+  });
+
+  // Concurrent generations for the same canonical input either agree (same
+  // dependency state → one snapshot, idempotent) or race on the sequence
+  // counter. A P2002 loser retries the allocation so every distinct
+  // dependency state gets its own immutable version and no generation fails
+  // spuriously.
+  let created: Awaited<ReturnType<typeof createSnapshot>> | null = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const maxSequence = await prisma.reportSnapshot.findFirst({
+      where: { generationKey },
+      orderBy: [{ sequence: "desc" }],
+      select: { sequence: true },
+    });
+    try {
+      created = await createSnapshot((maxSequence?.sequence ?? 0) + 1);
+      break;
+    } catch (error: unknown) {
+      if (!isUniqueViolation(error) || attempt === 4) throw error;
+      // Same-state winner takes precedence: identical input + deps is
+      // idempotent even when two generations raced.
       const winner = await prisma.reportSnapshot.findFirst({
         where: { generationKey, dependencyHash },
         orderBy: [{ sequence: "desc" }],
       });
-      if (winner) return winner;
+      if (winner) {
+        created = winner;
+        break;
+      }
     }
-    throw error;
-  });
+  }
+  if (!created) {
+    throw new BlueprintInputError(
+      "Snapshot could not be written under concurrent generation. Retry.",
+      "sequence_contention",
+    );
+  }
 
   return {
     snapshot: toSnapshotMeta(created),
@@ -1086,59 +1227,71 @@ export async function evaluateSnapshotFreshness(snapshot: {
     start: snapshot.reportingWindowStart.toISOString().slice(0, 10),
     end: snapshot.reportingWindowEnd.toISOString().slice(0, 10),
   };
+  const comparisonWindow = comparisonWindowFor(window);
 
-  const [client, dataset] = await Promise.all([
-    prisma.client.findFirst({
-      where: { id: snapshot.clientId, workspaceId: snapshot.workspaceId },
-      select: {
-        requiredProviders: true,
-        requiredDestinations: true,
-        requirementsConfiguredAt: true,
-      },
-    }),
-    reportingDataset(prisma, snapshot.workspaceId, snapshot.clientId, window),
-  ]);
-  // Latest receipt per required destination, with PR #152 currentness
-  // (exact window + destination + fingerprint + not older than evidence).
-  const receipts = await Promise.all(
-    (client?.requiredDestinations ?? []).map((destination) =>
-      prisma.destinationDeliveryReceipt.findFirst({
-        where: {
-          workspaceId: snapshot.workspaceId,
-          clientId: snapshot.clientId,
-          destination,
-          windowStart: window.start,
-          windowEnd: window.end,
+  // Requirements, both dataset fingerprints, and receipts are re-read through
+  // ONE RepeatableRead transaction so the recomputed dependency state can
+  // never mix reads from different moments.
+  const currentState = await prisma.$transaction(async (tx) => {
+    const [client, dataset, comparisonDataset] = await Promise.all([
+      tx.client.findFirst({
+        where: { id: snapshot.clientId, workspaceId: snapshot.workspaceId },
+        select: {
+          requiredProviders: true,
+          requiredDestinations: true,
+          requirementsConfiguredAt: true,
         },
-        orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
-      })),
-  );
-  const currentState: DependencyState = {
-    requirement: client
-      ? {
-        requiredProviders: [...client.requiredProviders].sort(),
-        requiredDestinations: [...client.requiredDestinations].sort(),
-        requirementsConfiguredAt: client.requirementsConfiguredAt?.toISOString() ?? null,
-      }
-      : null,
-    datasetFingerprint: dataset.fingerprint,
-    evidenceAt: new Date(dataset.evidenceAt).toISOString(),
-    dataThroughDate: dataset.dataThroughDate,
-    rowCount: dataset.rowCount,
-    receipts: receipts.flatMap((receipt) => receipt ? [{
-      id: receipt.id,
-      destination: receipt.destination,
-      retrievedAt: receipt.retrievedAt.toISOString(),
-      dataThroughDate: receipt.dataThroughDate,
-      current: !dataset.limited
-        && receipt.datasetFingerprint === dataset.fingerprint
-        && receipt.retrievedAt.getTime() >= dataset.evidenceAt,
-    }] : []),
-    contractVersions: {
-      metrics: METRIC_CONTRACT_VERSION,
-      dataset: "reporting-dataset-v1",
-    },
-  };
+      }),
+      reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, window),
+      reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, comparisonWindow),
+    ]);
+    // Latest receipt per required destination, with PR #152 currentness
+    // (exact window + destination + fingerprint + not older than evidence),
+    // evaluated against THIS transaction's dataset.
+    const receiptRows = await Promise.all(
+      (client?.requiredDestinations ?? []).map((destination) =>
+        tx.destinationDeliveryReceipt.findFirst({
+          where: {
+            workspaceId: snapshot.workspaceId,
+            clientId: snapshot.clientId,
+            destination,
+            windowStart: window.start,
+            windowEnd: window.end,
+          },
+          orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
+        })),
+    );
+    return {
+      requirement: client
+        ? {
+          requiredProviders: [...client.requiredProviders].sort(),
+          requiredDestinations: [...client.requiredDestinations].sort(),
+          requirementsConfiguredAt: client.requirementsConfiguredAt?.toISOString() ?? null,
+        }
+        : null,
+      datasetFingerprint: dataset.fingerprint,
+      evidenceAt: new Date(dataset.evidenceAt).toISOString(),
+      dataThroughDate: dataset.dataThroughDate,
+      rowCount: dataset.rowCount,
+      comparisonDatasetFingerprint: comparisonDataset.fingerprint,
+      comparisonEvidenceAt: new Date(comparisonDataset.evidenceAt).toISOString(),
+      comparisonDataThroughDate: comparisonDataset.dataThroughDate,
+      comparisonRowCount: comparisonDataset.rowCount,
+      receipts: receiptRows.flatMap((receipt) => receipt ? [{
+        id: receipt.id,
+        destination: receipt.destination,
+        retrievedAt: receipt.retrievedAt.toISOString(),
+        dataThroughDate: receipt.dataThroughDate,
+        current: !dataset.limited
+          && receipt.datasetFingerprint === dataset.fingerprint
+          && receipt.retrievedAt.getTime() >= dataset.evidenceAt,
+      }] : []),
+      contractVersions: {
+        metrics: METRIC_CONTRACT_VERSION,
+        dataset: "reporting-dataset-v1",
+      },
+    };
+  }, { isolationLevel: "RepeatableRead", timeout: 30_000 });
 
   const currentHash = computeDependencyHash(currentState);
   if (currentHash === snapshot.dependencyHash) {

@@ -25,7 +25,7 @@ export default defineConfig({
       PORT: port,
       DATABASE_URL: process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/monstera_e2e",
       NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET || "e2e-nextauth-secret-at-least-32-characters",
-      NEXTAUTH_URL: process.env.NEXTAUTH_URL || "http://127.0.0.1:3000",
+      NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
       ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       CRON_SECRET: process.env.CRON_SECRET || "e2e-cron-secret-at-least-32-characters",
       GOOGLE_ID_TOKEN_AUDIENCES: process.env.GOOGLE_ID_TOKEN_AUDIENCES || "e2e-client.apps.googleusercontent.com",

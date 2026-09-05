@@ -12,6 +12,7 @@ import {
     computeVerificationStatus,
     daysBetween,
     defaultBlueprintWindow,
+    isValidDateString,
     formatBlueprintMetric,
     lastCompleteWeek,
     METRIC_CONTRACT_VERSION,
@@ -34,6 +35,7 @@ function row(overrides: Partial<MetricRowInput> = {}): MetricRowInput {
         campaignName: "Campaign 1",
         entityId: "e-1",
         level: "campaign",
+        date: new Date("2026-08-25T00:00:00.000Z"),
         impressions: 1000,
         clicks: 100,
         spend: 50,
@@ -52,6 +54,7 @@ function verificationInput(overrides: Partial<VerificationInput> = {}): Verifica
         includedProviders: ["google_ads"],
         hasMetricData: true,
         aggregationCompatible: true,
+        aggregationGrainAmbiguous: false,
         currencyVerified: true,
         windowComplete: true,
         timezoneVerified: true,
@@ -75,6 +78,10 @@ function dependencyState(overrides: Partial<DependencyState> = {}): DependencySt
         evidenceAt: "2026-08-31T00:00:00.000Z",
         dataThroughDate: "2026-08-30",
         rowCount: 7,
+        comparisonDatasetFingerprint: "fp-0",
+        comparisonEvidenceAt: "2026-08-24T00:00:00.000Z",
+        comparisonDataThroughDate: "2026-08-23",
+        comparisonRowCount: 7,
         receipts: [{
             id: "r-1",
             destination: "google_sheets",
@@ -317,6 +324,10 @@ describe("report blueprint: dependency hashing / staleness", () => {
         const reordered = {
             contractVersions: base.contractVersions,
             receipts: base.receipts,
+            comparisonRowCount: base.comparisonRowCount,
+            comparisonDataThroughDate: base.comparisonDataThroughDate,
+            comparisonEvidenceAt: base.comparisonEvidenceAt,
+            comparisonDatasetFingerprint: base.comparisonDatasetFingerprint,
             rowCount: base.rowCount,
             dataThroughDate: base.dataThroughDate,
             evidenceAt: base.evidenceAt,
@@ -369,10 +380,36 @@ describe("report blueprint: dependency hashing / staleness", () => {
     });
 });
 
+describe("report blueprint: grain, identity and date boundaries", () => {
+    it("fails verification closed when aggregation grains are mixed", () => {
+        const result = computeVerificationStatus(verificationInput({ aggregationGrainAmbiguous: true }));
+        assert.equal(result.status, "NOT_VERIFIED");
+        assert.ok(result.reasons.includes("aggregation_grain_ambiguous"));
+    });
+
+    it("keeps a renamed campaign as ONE identity row (stable key, latest name)", () => {
+        const before = row({ date: new Date("2026-08-24T00:00:00.000Z"), campaignName: "Old Name" });
+        const after = row({ date: new Date("2026-08-25T00:00:00.000Z"), campaignName: "New Name" });
+        const table = buildCampaignTable([before, after], []);
+        assert.equal(table.campaigns.length, 1);
+        assert.equal(table.campaigns[0].campaignName, "New Name");
+        assert.equal(table.campaigns[0].campaignId, "c-1");
+        // Aggregation sums both rows exactly once (no double counting).
+        assert.equal(table.campaigns[0].impressions, 2000);
+    });
+
+    it("rejects impossible calendar dates (2026-02-31)", () => {
+        assert.throws(() => resolveExplicitWindow("2026-02-31", "2026-03-06"));
+        assert.throws(() => resolveExplicitWindow("2026-02-30", "2026-03-06"));
+        assert.equal(isValidDateString("2026-02-28"), true);
+        assert.equal(isValidDateString("2026-02-31"), false);
+    });
+});
+
 describe("report blueprint: constants and contracts", () => {
     it("binds the blueprint identity, version and metric contract", () => {
         assert.equal(BLUEPRINT_ID, "weekly-paid-media-performance");
         assert.equal(BLUEPRINT_VERSION, 1);
-        assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v1");
+        assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v2");
     });
 });

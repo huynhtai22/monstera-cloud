@@ -17,8 +17,10 @@ function blueprintErrorResponse(error: unknown) {
         : 400;
     return NextResponse.json({ error: error.message, code: error.code }, { status });
   }
+  // Never leak internal error details (driver messages, paths) to clients.
+  console.error("[blueprint] operation failed:", error);
   return NextResponse.json(
-    { error: error instanceof Error ? error.message : "Blueprint operation failed" },
+    { error: "Blueprint operation failed. Please retry." },
     { status: 500 },
   );
 }
@@ -41,6 +43,13 @@ export async function POST(req: Request) {
     const { workspaceId, clientId, windowStart, windowEnd } = body ?? {};
     if (!workspaceId || !clientId) {
       return NextResponse.json({ error: "workspaceId and clientId are required" }, { status: 400 });
+    }
+    // Reject half-specified windows instead of silently substituting the default.
+    if (Boolean(windowStart) !== Boolean(windowEnd)) {
+      return NextResponse.json(
+        { error: "Provide both windowStart and windowEnd, or neither." },
+        { status: 400 },
+      );
     }
     await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member" });
 
