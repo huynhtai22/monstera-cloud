@@ -100,6 +100,22 @@ describe("Report Readiness v1 deterministic decisions", () => {
     assert.ok(!JSON.stringify(result).includes("SECRET_TOKEN"));
     assert.ok(!JSON.stringify(result).includes("lastError"));
   });
+  it("canonical dependency evidence binds requirements and pipeline state without raw errors", () => {
+    const destination = {
+      state: "verified" as const,
+      configuredCount: 1,
+      required: ["google_sheets"],
+      connections: [{ id: "destination-1", provider: "google_sheets", status: "connected" }],
+      pipelines: [{ sourceConnectionId: "source", destinationConnectionId: "destination-1", status: "active", healthStatus: "healthy" }],
+    };
+    const first = evaluate({ ...source(), lastError: "SECRET provider payload" }, { requirementsConfiguredAt: "2026-09-01T00:00:00.000Z", destination });
+    const changedPipeline = evaluate(source(), { requirementsConfiguredAt: "2026-09-01T00:00:00.000Z", destination: { ...destination, pipelines: [{ ...destination.pipelines[0], healthStatus: "error" }] } });
+    const changedRequirement = evaluate(source(), { requirementsConfiguredAt: "2026-09-02T00:00:00.000Z", destination });
+    assert.notDeepEqual(first.dependencyEvidence, changedPipeline.dependencyEvidence);
+    assert.notDeepEqual(first.dependencyEvidence, changedRequirement.dependencyEvidence);
+    assert.equal(first.dependencyEvidence.requirementsConfiguredAt, "2026-09-01T00:00:00.000Z");
+    assert.ok(!JSON.stringify(first.dependencyEvidence).includes("SECRET"));
+  });
   it("defaults to seven completed dates and validates all bounded inputs", () => {
     assert.deepEqual(defaultReportingWindow(now), { start: "2026-08-28", end: "2026-09-03" });
     for (const extra of [

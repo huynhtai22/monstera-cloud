@@ -52,10 +52,24 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Full browser QA journeys (isolated e2e database)
         run: |
-          PGPASSWORD=postgres psql -h localhost -U postgres -c 'CREATE DATABASE monstera_e2e'
-          npx prisma migrate deploy
-          npm run test:e2e
+          # Desktop and mobile projects run SEQUENTIALLY, each against a fully
+          # reset, freshly migrated and reseeded isolated E2E database. The
+          # seed runs inside Playwright's globalSetup (established path) after
+          # migrations, per invocation. Concurrent projects shared and mutated
+          # the same seeded state, cascading 401 CredentialsSignin failures.
+          reset_e2e_db () {
+            PGPASSWORD=postgres psql -h localhost -U postgres -c 'DROP DATABASE IF EXISTS monstera_e2e' -c 'CREATE DATABASE monstera_e2e'
+            npx prisma migrate deploy
+          }
+          reset_e2e_db
+          npx playwright test --project=desktop-chromium
+          reset_e2e_db
+          npx playwright test --project=mobile-chromium
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
+          # The application records the actually tested commit in report
+          # snapshots (generator_commit_sha). Playwright's webServer inherits
+          # the step environment, so the real GitHub SHA reaches next start.
+          GIT_COMMIT_SHA: ${{ github.sha }}
       - run: npm audit --omit=dev --audit-level=high

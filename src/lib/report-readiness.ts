@@ -36,15 +36,47 @@ export type ProviderReadiness = {
     syncs: SyncEvidence[];
   };
 };
+export const READINESS_EVIDENCE_CONTRACT_VERSION = "report-readiness-evidence-v2";
+export type ReadinessDependencyEvidence = {
+  contractVersion: typeof READINESS_EVIDENCE_CONTRACT_VERSION;
+  window: ReportingWindow;
+  requiredProviders: string[];
+  requiredProvidersBasis: "assigned_sources" | "explicit";
+  requirementsConfiguredAt: string | null;
+  sources: Array<{
+    connectionId: string; provider: string; connectionStatus: string; hasError: boolean;
+    lastSyncAt: string | null; latestDataDate: string | null;
+    accounts: Array<{ accountId: string; status: string; lastSuccessAt: string | null }>;
+    days: Array<{ accountId: string; date: string; currency: string | null; rows: number }>;
+    syncs: SyncEvidence[];
+    contexts: ReportingContextEvidence[];
+  }>;
+  destination: ReportReadinessEvaluation["destination"];
+  limited: boolean;
+  outcome: {
+    status: ReportReadinessStatus;
+    providerStates: Array<{ connectionId: string; provider: string; status: ReportReadinessStatus; health: SourceHealthState; freshness: "fresh" | "stale" | "unknown" }>;
+    blockers: ReadinessIssue[];
+    warnings: ReadinessIssue[];
+    currencies: string[];
+    timezones: string[];
+  };
+};
 export type ReportReadinessEvaluation = {
   workspaceId: string; clientId: string; window: ReportingWindow; evaluatedAt: string;
   status: ReportReadinessStatus; requiredProviders: string[]; requiredProvidersBasis: "assigned_sources" | "explicit";
   providers: ProviderReadiness[]; latestSuccessfulSyncAt: string | null; latestDataDate: string | null;
   freshness: "fresh" | "stale" | "unknown";
   destination: { state: "verified" | "unavailable" | "unverified" | "stale"; configuredCount: number;
-    required?: string[]; receipts?: Array<{ id: string; destination: string; retrievedAt: string; dataThroughDate: string; current: boolean }> };
+    required?: string[];
+    receipts?: Array<{ id: string; destination: string; retrievedAt: string; dataThroughDate: string; current: boolean }>;
+    connections?: Array<{ id: string; provider: string; status: string }>;
+    pipelines?: Array<{ sourceConnectionId: string; destinationConnectionId: string; status: string; healthStatus: string }> };
   currencies: string[]; timezones: string[]; blockers: ReadinessIssue[]; warnings: ReadinessIssue[];
   evidence: { derived: true; limited: boolean; timezonePersisted: boolean };
+  /** Canonical sanitized inputs and outputs used by the evaluator. This is safe
+   * to hash/persist: it contains no credentials, provider payloads or errors. */
+  dependencyEvidence: ReadinessDependencyEvidence;
 };
 
 export const READINESS_MESSAGES: Record<ReadinessCode, string> = {
@@ -92,11 +124,63 @@ function latest(values: Array<string | null>): string | null {
   return values.filter((v): v is string => Boolean(v)).sort().at(-1) ?? null;
 }
 const unique = (values: string[]) => [...new Set(values)].sort();
+const issueOrder = (a: ReadinessIssue, b: ReadinessIssue) =>
+  a.code.localeCompare(b.code) || (a.provider ?? "").localeCompare(b.provider ?? "") || (a.connectionId ?? "").localeCompare(b.connectionId ?? "");
+const syncOrder = (a: SyncEvidence, b: SyncEvidence) =>
+  a.kind.localeCompare(b.kind) || a.target.localeCompare(b.target) || a.at.localeCompare(b.at) || a.id.localeCompare(b.id);
+
+function readinessDependencyEvidence(
+  input: Parameters<typeof evaluateReportReadiness>[0],
+  result: Omit<ReportReadinessEvaluation, "dependencyEvidence">,
+): ReadinessDependencyEvidence {
+  return {
+    contractVersion: READINESS_EVIDENCE_CONTRACT_VERSION,
+    window: { ...input.window },
+    requiredProviders: unique(input.requiredProviders),
+    requiredProvidersBasis: input.requiredProvidersBasis,
+    requirementsConfiguredAt: input.requirementsConfiguredAt ?? null,
+    sources: input.sources.map(source => ({
+      connectionId: source.connectionId,
+      provider: source.provider,
+      connectionStatus: source.connectionStatus,
+      hasError: Boolean(source.lastError),
+      lastSyncAt: source.lastSyncAt,
+      latestDataDate: source.latestDataDate,
+      accounts: [...source.accounts].sort((a, b) => a.accountId.localeCompare(b.accountId)),
+      days: [...source.days].sort((a, b) => a.accountId.localeCompare(b.accountId) || a.date.localeCompare(b.date) || (a.currency ?? "").localeCompare(b.currency ?? "")),
+      syncs: [...source.syncs].sort(syncOrder),
+      contexts: [...(source.contexts ?? [])].sort((a, b) => a.accountId.localeCompare(b.accountId)),
+    })).sort((a, b) => a.provider.localeCompare(b.provider) || a.connectionId.localeCompare(b.connectionId)),
+    destination: {
+      ...input.destination,
+      required: [...(input.destination.required ?? [])].sort(),
+      receipts: [...(input.destination.receipts ?? [])].sort((a, b) => a.destination.localeCompare(b.destination) || a.id.localeCompare(b.id)),
+      connections: [...(input.destination.connections ?? [])].sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id)),
+      pipelines: [...(input.destination.pipelines ?? [])].sort((a, b) => a.sourceConnectionId.localeCompare(b.sourceConnectionId) || a.destinationConnectionId.localeCompare(b.destinationConnectionId)),
+    },
+    limited: Boolean(input.limited),
+    outcome: {
+      status: result.status,
+      providerStates: result.providers.map(provider => ({
+        connectionId: provider.connectionId,
+        provider: provider.provider,
+        status: provider.status,
+        health: provider.health,
+        freshness: provider.freshness,
+      })).sort((a, b) => a.provider.localeCompare(b.provider) || a.connectionId.localeCompare(b.connectionId)),
+      blockers: [...result.blockers].sort(issueOrder),
+      warnings: [...result.warnings].sort(issueOrder),
+      currencies: [...result.currencies],
+      timezones: [...result.timezones],
+    },
+  };
+}
 
 /** Pure, deterministic rule set. Input is internal evidence, NEVER browser-supplied assertions. */
 export function evaluateReportReadiness(input: {
   workspaceId: string; clientId: string; window: ReportingWindow; now: Date;
   requiredProviders: string[]; requiredProvidersBasis: "assigned_sources" | "explicit";
+  requirementsConfiguredAt?: string | null;
   sources: SourceEvidence[]; destination: ReportReadinessEvaluation["destination"]; limited?: boolean;
 }): ReportReadinessEvaluation {
   const dates = reportingDates(input.window);
@@ -185,7 +269,7 @@ export function evaluateReportReadiness(input: {
   const currencies = unique(providers.flatMap(p => p.currencies));
   if (currencies.length > 1) warnings.push({ code: "MIXED_CURRENCY" });
   if (unique(providers.flatMap(p => p.timezone ? [p.timezone] : [])).length > 1) blockers.push({ code: "TIMEZONE_CONFLICT" });
-  return {
+  const result: Omit<ReportReadinessEvaluation, "dependencyEvidence"> = {
     workspaceId: input.workspaceId, clientId: input.clientId, window: input.window, evaluatedAt: input.now.toISOString(),
     status: decision(blockers,warnings), requiredProviders, requiredProvidersBasis: input.requiredProvidersBasis,
     providers, latestSuccessfulSyncAt: latest(providers.map(p => p.latestSuccessfulSyncAt)),
@@ -194,4 +278,5 @@ export function evaluateReportReadiness(input: {
     destination: input.destination, currencies, timezones: unique(providers.flatMap(p => p.timezone ? [p.timezone] : [])),
     blockers, warnings, evidence: { derived: true, limited: Boolean(input.limited), timezonePersisted: providers.length > 0 && providers.every(p => Boolean(p.timezone)) },
   };
+  return { ...result, dependencyEvidence: readinessDependencyEvidence(input, result) };
 }

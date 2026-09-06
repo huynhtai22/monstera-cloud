@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Port is overridable so suites can run on a non-3000 port; default unchanged.
+const port = process.env.PLAYWRIGHT_PORT ?? "3000";
+
 export default defineConfig({
   testDir: "./tests/e2e",
   globalSetup: "./tests/e2e/global-setup.ts",
@@ -8,21 +11,21 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:3000",
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || `http://127.0.0.1:${port}`,
     trace: "on-first-retry",
   },
   webServer: {
-    command: "npx next start -H 127.0.0.1 -p 3000",
-    url: "http://127.0.0.1:3000/api/version",
+    command: `npx next start -H 127.0.0.1 -p ${port}`,
+    url: `http://127.0.0.1:${port}/api/version`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
       ...process.env,
       HOSTNAME: "127.0.0.1",
-      PORT: "3000",
+      PORT: port,
       DATABASE_URL: process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/monstera_e2e",
       NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET || "e2e-nextauth-secret-at-least-32-characters",
-      NEXTAUTH_URL: process.env.NEXTAUTH_URL || "http://127.0.0.1:3000",
+      NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
       ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
       CRON_SECRET: process.env.CRON_SECRET || "e2e-cron-secret-at-least-32-characters",
       GOOGLE_ID_TOKEN_AUDIENCES: process.env.GOOGLE_ID_TOKEN_AUDIENCES || "e2e-client.apps.googleusercontent.com",
