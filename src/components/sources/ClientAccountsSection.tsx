@@ -18,6 +18,20 @@ import { logoPathForConnectionProvider } from "@/lib/integration-logos";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import type { DiscoveredAccount } from "@/lib/client-account-assignment";
 
+const PROVIDER_LABELS: Record<string, string> = {
+  google_ads: "Google Ads",
+  meta_ads: "Meta Ads",
+  tiktok_business: "TikTok Ads",
+  shopee: "Shopee",
+  lazada: "Lazada",
+  shopify: "Shopify",
+  amazon: "Amazon",
+};
+
+function providerLabel(provider: string): string {
+  return PROVIDER_LABELS[provider] ?? provider.replace(/_/g, " ");
+}
+
 const fetcher = async (url: string) => {
   const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
   const data = await res.json().catch(() => ({}));
@@ -409,6 +423,7 @@ export function ClientAccountsSection({
             <select
               value={selectedClientId}
               onChange={(e) => setSelectedClientId(e.target.value)}
+              aria-label="Filter accounts by client"
               className="bg-transparent font-medium text-ink focus:outline-none cursor-pointer"
             >
               <option value="all">All clients ({allAccounts.length})</option>
@@ -431,6 +446,7 @@ export function ClientAccountsSection({
               <select
                 value={providerFilter}
                 onChange={(e) => setProviderFilter(e.target.value)}
+                aria-label="Filter accounts by provider"
                 className="bg-transparent font-medium text-ink focus:outline-none cursor-pointer capitalize"
               >
                 <option value="all">All providers</option>
@@ -466,6 +482,7 @@ export function ClientAccountsSection({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search provider accounts"
             placeholder="Search account name or ID…"
             className="w-full rounded-lg border border-line bg-panel pl-8 pr-3 py-1.5 text-xs text-ink placeholder:text-ink-mute focus:border-white focus:outline-none"
           />
@@ -541,13 +558,16 @@ export function ClientAccountsSection({
                     {/* Account Info */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
-                        <IntegrationMark src={logo} size="sm" />
+                        <IntegrationMark src={logo} alt={`${providerLabel(acc.provider)} logo`} size="sm" />
                         <div className="min-w-0">
                           <p className="font-medium text-ink truncate max-w-xs sm:max-w-sm">
                             {acc.accountName}
                           </p>
-                          <p className="font-mono text-[11px] text-ink-mute">
-                            {acc.accountId}
+                          <p className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] text-ink-mute">
+                            <span className="rounded border border-line/70 bg-canvas px-1 py-0.5 font-sans text-[10px] font-medium text-ink-mute">
+                              {providerLabel(acc.provider)}
+                            </span>
+                            <span>{acc.accountId}</span>
                           </p>
                         </div>
                       </div>
@@ -585,7 +605,7 @@ export function ClientAccountsSection({
                           <div className="flex items-center gap-1 text-[11px] text-amber-300 bg-amber-950/30 border border-amber-900/40 rounded px-1.5 py-0.5 w-fit">
                             <AlertTriangle className="h-3 w-3 shrink-0 text-amber-400" />
                             <span>
-                              {acc.availableConnections.length} overlapping roots (MCC)
+                              Ambiguous: {acc.availableConnections.length} overlapping roots (MCC)
                             </span>
                           </div>
                         )}
@@ -623,6 +643,7 @@ export function ClientAccountsSection({
                           <button
                             type="button"
                             onClick={() => openAssignModal(acc)}
+                            aria-label={`Assign account ${acc.accountId}`}
                             className="inline-flex items-center gap-1 rounded border border-line bg-canvas px-2 py-1 text-xs font-medium text-ink hover:bg-white/[0.06] transition-colors"
                           >
                             Assign
@@ -633,6 +654,7 @@ export function ClientAccountsSection({
                               <button
                                 type="button"
                                 onClick={() => openSwitchSourceModal(acc)}
+                                aria-label={`Change authoritative source for account ${acc.accountId}`}
                                 title="Change authoritative root connection"
                                 className="inline-flex items-center gap-1 rounded border border-line bg-canvas px-2 py-1 text-xs font-medium text-ink-mute hover:text-ink hover:bg-white/[0.06] transition-colors"
                               >
@@ -643,6 +665,7 @@ export function ClientAccountsSection({
                             <button
                               type="button"
                               onClick={() => openAssignModal(acc)}
+                              aria-label={`Reassign account ${acc.accountId}`}
                               className="inline-flex items-center gap-1 rounded border border-line bg-canvas px-2 py-1 text-xs font-medium text-ink hover:bg-white/[0.06] transition-colors"
                             >
                               Reassign
@@ -650,6 +673,7 @@ export function ClientAccountsSection({
                             <button
                               type="button"
                               onClick={() => setUnassignTarget(acc)}
+                              aria-label={`Unassign account ${acc.accountId}`}
                               className="inline-flex items-center gap-1 rounded border border-line bg-canvas px-2 py-1 text-xs font-medium text-ink-mute hover:text-red-400 hover:bg-red-950/20 transition-colors"
                             >
                               Unassign
@@ -742,7 +766,11 @@ export function ClientAccountsSection({
                   disabled={submitting}
                   className="rounded-md bg-white hover:bg-neutral-200 px-4 py-1.5 font-semibold text-black disabled:opacity-50"
                 >
-                  {submitting ? "Saving…" : "Confirm Assignment"}
+                  {submitting
+                    ? "Saving…"
+                    : assignModalTarget.isAssigned
+                      ? "Confirm Reassignment"
+                      : "Confirm Assignment"}
                 </button>
               </div>
             </form>
