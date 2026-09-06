@@ -20,6 +20,7 @@
  */
 
 import { createHash } from "node:crypto";
+import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import {
   READINESS_MESSAGES,
@@ -832,13 +833,39 @@ async function loadWindowRows(
   window: ReportingWindow,
 ): Promise<{ rows: MetricRowInput[]; limited: boolean }> {
   const range = windowDateRange(window);
-  const rows = await tx.campaignMetric.findMany({
+
+  const assignments = await tx.clientProviderAccountAssignment.findMany({
     where: {
       workspaceId,
-      platform: { in: providers },
-      connection: { clientId, workspaceId },
-      date: { gte: range.gte, lte: range.lte },
+      clientId,
+      status: "active",
+      provider: { in: [...providers] },
     },
+    select: {
+      provider: true,
+      accountId: true,
+      connectionId: true,
+    },
+  });
+
+  const where: Prisma.CampaignMetricWhereInput = {
+    workspaceId,
+    date: { gte: range.gte, lte: range.lte },
+  };
+
+  if (assignments.length > 0) {
+    where.OR = assignments.map((a) => ({
+      connectionId: a.connectionId,
+      platform: a.provider,
+      accountId: a.accountId,
+    }));
+  } else {
+    where.platform = { in: [...providers] };
+    where.connection = { clientId, workspaceId };
+  }
+
+  const rows = await tx.campaignMetric.findMany({
+    where,
     select: {
       platform: true,
       connectionId: true,
@@ -1364,12 +1391,22 @@ export async function generateWeeklyBlueprint(params: {
         const dataset = await reportingDataset(tx, workspaceId, clientId, window, [...client.requiredProviders].sort());
         await publicationHooks.afterCurrentDataset?.({ generationKey });
         const comparisonDataset = await reportingDataset(tx, workspaceId, clientId, comparisonWindow, [...client.requiredProviders].sort());
+        const clientAssignments = await tx.clientProviderAccountAssignment.findMany({
+          where: {
+            workspaceId,
+            clientId,
+            status: "active",
+            provider: { in: client.requiredProviders },
+          },
+          select: { connectionId: true },
+        });
+        const authoritativeConnIds = [...new Set(clientAssignments.map((a) => a.connectionId))];
         const connections = await tx.connection.findMany({
             where: {
               workspaceId,
-              clientId,
               type: "source",
               provider: { in: client.requiredProviders },
+              ...(authoritativeConnIds.length > 0 ? { id: { in: authoritativeConnIds } } : { clientId }),
             },
             select: {
               id: true,

@@ -56,7 +56,33 @@ function adNameFromRawData(rawData: string | null): string | null {
 export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTransaction = prisma) {
   const take = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), HARD_LIMIT);
   const where: Prisma.CampaignMetricWhereInput = { workspaceId: input.workspaceId };
-  if (input.clientId) where.connection = { workspaceId: input.workspaceId, clientId: input.clientId, type: "source" };
+  let clientAuthoritativeConnectionIds: string[] | null = null;
+
+  if (input.clientId) {
+    const assignments = await db.clientProviderAccountAssignment.findMany({
+      where: {
+        workspaceId: input.workspaceId,
+        clientId: input.clientId,
+        status: "active",
+      },
+      select: {
+        provider: true,
+        accountId: true,
+        connectionId: true,
+      },
+    });
+
+    if (assignments.length > 0) {
+      clientAuthoritativeConnectionIds = [...new Set(assignments.map((a) => a.connectionId))];
+      where.OR = assignments.map((a) => ({
+        connectionId: a.connectionId,
+        platform: a.provider,
+        accountId: a.accountId,
+      }));
+    } else {
+      where.connection = { workspaceId: input.workspaceId, clientId: input.clientId, type: "source" };
+    }
+  }
 
   if (input.startDate || input.endDate) {
     where.date = {
@@ -93,7 +119,17 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
     }),
     input.includeTotalCount ? db.campaignMetric.count({ where: countWhere }) : Promise.resolve(undefined),
     db.campaignMetric.aggregate({ where: countWhere, _max: { pulledAt: true } }),
-    db.connection.aggregate({ where: { workspaceId: input.workspaceId }, _max: { lastSyncAt: true } }),
+    db.connection.aggregate({
+      where: {
+        workspaceId: input.workspaceId,
+        ...(clientAuthoritativeConnectionIds && clientAuthoritativeConnectionIds.length > 0
+          ? { id: { in: clientAuthoritativeConnectionIds } }
+          : input.clientId
+            ? { clientId: input.clientId, type: "source" }
+            : {}),
+      },
+      _max: { lastSyncAt: true },
+    }),
     db.syncJob.findFirst({
       where: { pipeline: { workspaceId: input.workspaceId } },
       orderBy: { createdAt: "desc" },

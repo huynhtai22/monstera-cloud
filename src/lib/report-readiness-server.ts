@@ -63,9 +63,27 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
     const selected = clients.slice(0, limit);
     if (!selected.length) return { evaluations: [], nextCursor: null };
     const clientIds = selected.map(c => c.id);
-    const sourceScopes = selected.map(client => client.requirementsConfiguredAt
-      ? { clientId: client.id, provider: { in: client.requiredProviders } }
-      : { clientId: client.id });
+
+    const activeAssignments = await tx.clientProviderAccountAssignment.findMany({
+      where: { workspaceId, clientId: { in: clientIds }, status: "active" },
+      select: { clientId: true, connectionId: true, provider: true, accountId: true },
+    });
+
+    const assignedConnIdsByClient = new Map<string, Set<string>>();
+    for (const a of activeAssignments) {
+      if (!assignedConnIdsByClient.has(a.clientId)) assignedConnIdsByClient.set(a.clientId, new Set());
+      assignedConnIdsByClient.get(a.clientId)!.add(a.connectionId);
+    }
+
+    const sourceScopes = selected.flatMap<Prisma.ConnectionWhereInput>(client => {
+      const assignedIds = Array.from(assignedConnIdsByClient.get(client.id) ?? []);
+      if (assignedIds.length > 0) {
+        return [{ id: { in: assignedIds }, ...(client.requirementsConfiguredAt ? { provider: { in: client.requiredProviders } } : {}) }];
+      }
+      return [client.requirementsConfiguredAt
+        ? { clientId: client.id, provider: { in: client.requiredProviders } }
+        : { clientId: client.id }];
+    });
     const destinationScopes = selected.map(client => client.requirementsConfiguredAt
       ? { clientId: client.id, provider: { in: client.requiredDestinations } }
       : { clientId: client.id });
@@ -79,7 +97,30 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
     await readinessHooks.afterSources?.();
     const ids = sources.slice(0, CAP).map(c => c.id);
     // Redundant relational workspace filters reject even corrupt cross-workspace FK assignments.
-    const metricWhere = { workspaceId, connectionId: { in: ids }, connection: { workspaceId, clientId: { in: clientIds } } };
+    const clientMetricClauses: Prisma.CampaignMetricWhereInput[] = selected.map(client => {
+      const clientAssignments = activeAssignments.filter(a => a.clientId === client.id);
+      if (clientAssignments.length > 0) {
+        return {
+          workspaceId,
+          connectionId: { in: ids },
+          OR: clientAssignments.map(a => ({
+            connectionId: a.connectionId,
+            platform: a.provider,
+            accountId: a.accountId,
+          })),
+        };
+      }
+      return {
+        workspaceId,
+        connectionId: { in: ids },
+        connection: { workspaceId, clientId: client.id },
+      };
+    });
+    const metricWhere: Prisma.CampaignMetricWhereInput = {
+      workspaceId,
+      connectionId: { in: ids },
+      OR: clientMetricClauses,
+    };
     const days = await tx.campaignMetric.groupBy({
         by: ["connectionId", "accountId", "date", "currency"],
         where: { ...metricWhere, date: { gte: new Date(`${window.start}T00:00:00Z`), lte: new Date(`${window.end}T23:59:59.999Z`) } },
@@ -169,10 +210,11 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
     }
     await readinessHooks.beforeEvaluate?.();
     const evaluations = await Promise.all(selected.map(async client => {
-      const assigned = sources.slice(0, CAP).filter(s => s.clientId === client.id);
+      const clientConnIds = assignedConnIdsByClient.get(client.id);
+      const assigned = sources.slice(0, CAP).filter(s => (clientConnIds && clientConnIds.has(s.id)) || s.clientId === client.id);
       const [snapshot, contexts, latestReceipts] = await Promise.all([
         reportingDataset(tx, workspaceId, client.id, window, client.requirementsConfiguredAt && client.requiredProviders.length > 0 ? client.requiredProviders : undefined),
-        tx.accountReportingContext.findMany({ where: { workspaceId, connectionId: { in: assigned.map(s => s.id) }, connection: { workspaceId, clientId: client.id } }, take: CAP + 1, orderBy: { id: "asc" } }),
+        tx.accountReportingContext.findMany({ where: { workspaceId, connectionId: { in: assigned.map(s => s.id) }, connection: { workspaceId } }, take: CAP + 1, orderBy: { id: "asc" } }),
         Promise.all(client.requiredDestinations.map(destination => tx.destinationDeliveryReceipt.findFirst({ where: { workspaceId, clientId: client.id, destination, windowStart: window.start, windowEnd: window.end }, orderBy: [{ retrievedAt: "desc" }, { id: "desc" }] }))),
       ]);
       const receipts = latestReceipts.flatMap(r => r ? [{ id: r.id, destination: r.destination, retrievedAt: r.retrievedAt.toISOString(), dataThroughDate: r.dataThroughDate, current: !snapshot.limited && r.datasetFingerprint === snapshot.fingerprint && r.retrievedAt.getTime() >= snapshot.evidenceAt }] : []);
