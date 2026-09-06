@@ -32,6 +32,7 @@ jobs:
       CRON_SECRET: ci-cron-secret-at-least-32-characters
       GOOGLE_ID_TOKEN_AUDIENCES: ci-google-client-id.apps.googleusercontent.com
       PILOT_MODE: "1"
+      CLIENT_ASSIGNMENT_TEST_DB: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -68,6 +69,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
+          CLIENT_ASSIGNMENT_TEST_DB: "1"
           # The application records the actually tested commit in report
           # snapshots (generator_commit_sha). Playwright's webServer inherits
           # the step environment, so the real GitHub SHA reaches next start.

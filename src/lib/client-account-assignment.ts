@@ -906,8 +906,7 @@ export async function cutoverUnambiguousAssignments(
 
     const legacyConnIds = new Set(legacyConnections.map((c) => c.id));
     const allDiscovered = await getWorkspaceDiscoveredAccounts(workspaceId, tx);
-    const createdAssignments = [];
-    const ambiguousAccounts: Array<{ provider: string; accountId: string; accountName: string; reason: string }> = [];
+    const candidates: Array<{ provider: string; accountId: string; connectionId: string }> = [];
     const now = new Date();
 
     for (const acc of allDiscovered) {
@@ -917,44 +916,32 @@ export async function cutoverUnambiguousAssignments(
       }
 
       if (acc.hasMultipleRootConnections || acc.availableConnections.length > 1) {
-        ambiguousAccounts.push({
-          provider: acc.provider,
-          accountId: acc.accountId,
-          accountName: acc.accountName,
-          reason: acc.hasMultipleRootConnections ? "multiple_root_connections" : "multiple_connections",
-        });
-        continue;
+        throw new RbacError("Cutover has an unresolved authoritative-source conflict", "CONFLICT", 409);
       }
 
       const conn = acc.availableConnections[0];
       if (!legacyConnIds.has(conn.id)) {
-        continue;
+        throw new RbacError("Cutover has an unresolved candidate connection", "CONFLICT", 409);
       }
+      const existing = await tx.clientProviderAccountAssignment.findUnique({
+        where: { workspaceId_provider_accountId: { workspaceId, provider: acc.provider, accountId: acc.accountId } },
+      });
+      if (existing && (existing.clientId !== clientId || existing.connectionId !== conn.id)) {
+        throw new RbacError("Cutover has an account ownership conflict", "CONFLICT", 409);
+      }
+      candidates.push({ provider: acc.provider, accountId: acc.accountId, connectionId: conn.id });
+    }
 
-      try {
-        const assignment = await tx.clientProviderAccountAssignment.upsert({
-          where: {
-            workspaceId_provider_accountId: {
-              workspaceId,
-              provider: acc.provider,
-              accountId: acc.accountId,
-            },
-          },
-          create: {
-            workspaceId,
-            clientId,
-            provider: acc.provider,
-            accountId: acc.accountId,
-            connectionId: conn.id,
-            assignedAt: now,
-            assignedBy: actorUserId ?? null,
-          },
-          update: {},
-        });
-        createdAssignments.push(assignment);
-      } catch {
-        // Safe conflict ignore
-      }
+    const createdAssignments = [];
+    for (const candidate of candidates) {
+      const existing = await tx.clientProviderAccountAssignment.findUnique({
+        where: { workspaceId_provider_accountId: { workspaceId, provider: candidate.provider, accountId: candidate.accountId } },
+      });
+      if (existing) { createdAssignments.push(existing); continue; }
+      createdAssignments.push(await tx.clientProviderAccountAssignment.create({ data: {
+        workspaceId, clientId, provider: candidate.provider, accountId: candidate.accountId,
+        connectionId: candidate.connectionId, assignedAt: now, assignedBy: actorUserId ?? null,
+      } }));
     }
 
     const configuredAt = client.accountAssignmentsConfiguredAt ?? now;
@@ -974,7 +961,7 @@ export async function cutoverUnambiguousAssignments(
         resourceId: clientId,
         metadata: {
           assignedCount: createdAssignments.length,
-          skippedAmbiguousCount: ambiguousAccounts.length,
+          skippedAmbiguousCount: 0,
           legacyConnectionCount: legacyConnections.length,
           alreadyConfigured: Boolean(client.accountAssignmentsConfiguredAt),
         },
@@ -984,8 +971,8 @@ export async function cutoverUnambiguousAssignments(
     return {
       assignedCount: createdAssignments.length,
       assignments: createdAssignments,
-      skippedAmbiguousCount: ambiguousAccounts.length,
-      ambiguousAccounts,
+      skippedAmbiguousCount: 0,
+      ambiguousAccounts: [],
       configuredAt: configuredAt.toISOString(),
       alreadyConfigured: Boolean(client.accountAssignmentsConfiguredAt),
     };

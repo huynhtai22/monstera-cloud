@@ -491,7 +491,7 @@ describe("PostgreSQL integration: client provider account assignments", () => {
     assert.equal(ds.rowCount, 0);
   });
 
-  it("safely cuts over only unambiguous accounts and records durable configured marker", async () => {
+  it("rejects an ambiguous cutover without activating explicit ownership", async () => {
     // Reset clientA2 to legacy mode
     await db.client.update({
       where: { workspaceId_id: { workspaceId: ids.workspaceA, id: ids.clientA2 } },
@@ -506,32 +506,18 @@ describe("PostgreSQL integration: client provider account assignments", () => {
     });
 
     // connA2 has 1112223333, but 1112223333 is also on connA1 (overlapping/ambiguous)
-    const cutoverResult = await cutoverUnambiguousAssignments(
-      ids.workspaceA,
-      ids.clientA2,
-      tx(),
-      ids.user
+    await assert.rejects(
+      () => cutoverUnambiguousAssignments(ids.workspaceA, ids.clientA2, tx(), ids.user),
+      (error: any) => error?.statusCode === 409,
     );
 
-    // 1112223333 was ambiguous so it must NOT be assigned
-    assert.equal(cutoverResult.assignedCount, 0);
-    assert.equal(cutoverResult.skippedAmbiguousCount, 1);
-    assert.equal(cutoverResult.ambiguousAccounts[0].accountId, "1112223333");
-
-    // Client is now marked configured
+    // Client remains legacy and receives neither partial assignments nor a success audit.
     const updatedClient = await db.client.findUniqueOrThrow({
       where: { workspaceId_id: { workspaceId: ids.workspaceA, id: ids.clientA2 } },
     });
-    assert.ok(updatedClient.accountAssignmentsConfiguredAt !== null);
-
-    // Second run is idempotent
-    const secondRun = await cutoverUnambiguousAssignments(
-      ids.workspaceA,
-      ids.clientA2,
-      tx(),
-      ids.user
-    );
-    assert.equal(secondRun.alreadyConfigured, true);
+    assert.equal(updatedClient.accountAssignmentsConfiguredAt, null);
+    assert.equal(await db.clientProviderAccountAssignment.count({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA2 } }), 0);
+    assert.equal(await db.auditEvent.count({ where: { workspaceId: ids.workspaceA, resourceId: ids.clientA2, action: "client_account.cutover_completed" } }), 0);
   });
 
   it("GET /api/clients is strictly read-only for viewers and performs zero mutations or cutover writes", async () => {
