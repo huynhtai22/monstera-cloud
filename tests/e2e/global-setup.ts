@@ -1,32 +1,22 @@
 import { execFileSync } from "node:child_process";
-import fs from "node:fs";
 import path from "node:path";
+import fs from "node:fs";
 
-function loadDotEnv(fileName: string) {
-  const filePath = path.join(__dirname, "../..", fileName);
-  if (!fs.existsSync(filePath)) return;
-  for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq <= 0) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (process.env[key] == null) process.env[key] = value;
-  }
+const activeEnvFiles = [".env", ".env.local", ".env.test", ".env.test.local"];
+export function assertIsolatedE2eEnvironment(env: NodeJS.ProcessEnv = process.env, root = path.join(__dirname, "../..")) {
+  if (env.MONSTERA_E2E_ISOLATED !== "1" || env.CLIENT_ASSIGNMENT_TEST_DB !== "1") throw new Error("E2E requires explicit isolation flags.");
+  if (env.NODE_ENV === "production" || env.VERCEL_ENV === "production") throw new Error("E2E refuses production environment markers.");
+  if (activeEnvFiles.some((file) => fs.existsSync(path.join(root, file)))) throw new Error("E2E refuses active local .env files.");
+  const url = new URL(env.DATABASE_URL ?? "");
+  if (!["127.0.0.1", "localhost"].includes(url.hostname) || url.pathname !== "/monstera_e2e") throw new Error("E2E requires loopback monstera_e2e.");
+  for (const key of ["VERCEL", "NEON_API_KEY", "META_ACCESS_TOKEN", "GOOGLE_CLIENT_SECRET", "TIKTOK_APP_SECRET", "SHOPEE_LIVE_PARTNER_KEY"]) if (env[key]) throw new Error(`E2E refuses ${key}.`);
 }
 
 export default async function globalSetup() {
-  loadDotEnv(".env");
-  loadDotEnv(".env.local");
+  const root = path.join(__dirname, "../..");
+  assertIsolatedE2eEnvironment(process.env, root);
   execFileSync("npx", ["tsx", "scripts/seed-two-tenant-rehearsal.ts"], {
-    cwd: path.join(__dirname, "../.."),
+    cwd: root,
     stdio: "inherit",
     env: process.env,
   });
