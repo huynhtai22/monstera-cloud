@@ -329,7 +329,7 @@ describe("client-account-assignment unit tests", () => {
 
       assert.equal(discovered.length, 1);
       const acc = discovered[0];
-      assert.equal(acc.accountId, "111-222-3333");
+      assert.equal(acc.accountId, "1112223333");
       assert.equal(acc.hasMultipleRootConnections, true);
       assert.equal(acc.availableConnections.length, 2);
       assert.equal(acc.isAssigned, true);

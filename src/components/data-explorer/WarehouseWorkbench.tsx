@@ -1,6 +1,7 @@
 "use client";
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { resolveDataThrough, resolveWarehouseEmptyState } from "@/lib/warehouse-truth";
 import Link from "next/link";
@@ -504,6 +505,9 @@ function ToggleChip({
 
 export function WarehouseWorkbench() {
   const { activeWorkspaceId } = useWorkspaceStore();
+  const searchParams = useSearchParams();
+  const initialClientId = searchParams?.get("clientId") || "";
+  const [selectedClientId, setSelectedClientId] = useState(initialClientId);
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -512,6 +516,33 @@ export function WarehouseWorkbench() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [isRefreshOpen, setIsRefreshOpen] = useState(false);
   const [isClientExportOpen, setIsClientExportOpen] = useState(false);
+
+  // Sync state if URL changes externally
+  useEffect(() => {
+    const cid = searchParams?.get("clientId") || "";
+    setSelectedClientId(cid);
+  }, [searchParams]);
+
+  const updateClientId = (newClientId: string) => {
+    setSelectedClientId(newClientId);
+    setSelectedPlatform("");
+    setAccountFilterIds([]);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (newClientId) {
+        url.searchParams.set("clientId", newClientId);
+      } else {
+        url.searchParams.delete("clientId");
+      }
+      window.history.replaceState(null, "", url.toString());
+    }
+  };
+
+  const clientsUrl = useMemo(() => {
+    if (!activeWorkspaceId) return null;
+    return `/api/clients?workspaceId=${activeWorkspaceId}`;
+  }, [activeWorkspaceId]);
+  const { data: clientsData } = useSWR<Array<{ id: string; name: string }>>(clientsUrl, fetcher);
 
   const [allMetrics, setAllMetrics] = useState<MetricRow[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -555,13 +586,15 @@ export function WarehouseWorkbench() {
 
   const platformsUrl = useMemo(() => {
     if (!activeWorkspaceId) return null;
-    return `/api/metrics/platforms?workspaceId=${activeWorkspaceId}`;
-  }, [activeWorkspaceId]);
+    const base = `/api/metrics/platforms?workspaceId=${activeWorkspaceId}`;
+    return selectedClientId ? `${base}&clientId=${encodeURIComponent(selectedClientId)}` : base;
+  }, [activeWorkspaceId, selectedClientId]);
 
   const accountsFilterUrl = useMemo(() => {
     if (!activeWorkspaceId) return null;
-    return `/api/metrics/accounts?workspaceId=${activeWorkspaceId}`;
-  }, [activeWorkspaceId]);
+    const base = `/api/metrics/accounts?workspaceId=${activeWorkspaceId}`;
+    return selectedClientId ? `${base}&clientId=${encodeURIComponent(selectedClientId)}` : base;
+  }, [activeWorkspaceId, selectedClientId]);
 
   const { data: platformsData } = useSWR(platformsUrl, fetcher);
   const catalogUrl = useMemo(
@@ -590,11 +623,12 @@ export function WarehouseWorkbench() {
       startDate,
       endDate,
     });
+    if (selectedClientId) params.set("clientId", selectedClientId);
     if (selectedPlatform) params.set("platform", selectedPlatform);
     if (accountFilterIds.length === 1) params.set("accountId", accountFilterIds[0]);
     else if (accountFilterIds.length > 1) params.set("accountIds", accountFilterIds.join(","));
     return `/api/metrics/query?${params.toString()}`;
-  }, [activeWorkspaceId, startDate, endDate, selectedPlatform, accountFilterIds, dateRangeError]);
+  }, [activeWorkspaceId, selectedClientId, startDate, endDate, selectedPlatform, accountFilterIds, dateRangeError]);
 
   const { data, error, isLoading, mutate } = useSWR(queryUrl, fetcher, {
     refreshInterval: 60000,
@@ -886,6 +920,11 @@ export function WarehouseWorkbench() {
     return `${pct.toFixed(2)}%`;
   };
 
+  const selectedClientName = useMemo(() => {
+    if (!selectedClientId || selectedClientId === "unassigned") return undefined;
+    return clientsData?.find((c) => c.id === selectedClientId)?.name;
+  }, [selectedClientId, clientsData]);
+
   const handleExport = (format: "csv" | "excel" = "csv") => {
     if (!processedRows.length) return;
     const cols = visibleColumnsOrdered.length ? visibleColumnsOrdered : WAREHOUSE_COLUMNS;
@@ -896,8 +935,11 @@ export function WarehouseWorkbench() {
       }
       return o;
     });
-    if (format === "excel") downloadExcel(rows, "warehouse-export");
-    else downloadCsv(rows, "warehouse-export");
+    const exportName = selectedClientName
+      ? `warehouse-export-${selectedClientName.toLowerCase().replace(/\s+/g, "-")}`
+      : "warehouse-export";
+    if (format === "excel") downloadExcel(rows, exportName);
+    else downloadCsv(rows, exportName);
   };
 
   const toggleRow = (id: string) => {
@@ -1063,13 +1105,14 @@ export function WarehouseWorkbench() {
             })}
           </div>
 
-          {(startDate || endDate || selectedPlatform || accountFilterIds.length > 0) && (
+          {(startDate || endDate || selectedClientId || selectedPlatform || accountFilterIds.length > 0) && (
             <button
               type="button"
               onClick={() => {
                 const def = getPresetRange("30d");
                 setStartDate(def.start);
                 setEndDate(def.end);
+                updateClientId("");
                 setSelectedPlatform("");
                 setAccountFilterIds([]);
               }}
@@ -1098,6 +1141,23 @@ export function WarehouseWorkbench() {
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
               className="h-8.5 w-36 text-xs"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-ink-mute">Client</label>
+            <Dropdown
+              value={selectedClientId}
+              onChange={updateClientId}
+              options={[
+                { value: "", label: "All clients" },
+                ...(clientsData || []).map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                })),
+                { value: "unassigned", label: "Unassigned accounts" },
+              ]}
+              placeholder="All clients"
+              className="w-[200px] min-w-[200px] max-w-full"
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -1618,6 +1678,7 @@ export function WarehouseWorkbench() {
       <ClientExportModal
         isOpen={isClientExportOpen}
         onClose={() => setIsClientExportOpen(false)}
+        clientName={selectedClientName}
         rows={processedRows}
         dateRange={{ start: startDate, end: endDate }}
         dataThrough={resolveDataThrough(summary?.dateRange?.latest ?? null)}

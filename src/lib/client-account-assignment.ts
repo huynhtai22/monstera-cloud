@@ -61,6 +61,157 @@ export interface DiscoveredAccount {
 }
 
 /**
+ * Canonicalizes provider account IDs to ensure consistent identity across
+ * discovery, assignment, warehouse queries, reports, and evidence.
+ *
+ * - google_ads: strips hyphens/non-digits if >=8 digits, e.g. "123-456-7890" -> "1234567890".
+ * - meta_ads: ensures "act_" prefix, e.g. "123456789" -> "act_123456789".
+ * - other providers: trimmed string preserving casing and digits.
+ */
+export function canonicalizeAccountId(
+  provider: string,
+  rawId: string | null | undefined,
+): string {
+  const str = (rawId || "").trim();
+  if (!str) return "";
+
+  if (provider === "google_ads") {
+    const cleanDigits = str.replace(/\D/g, "");
+    return cleanDigits.length >= 8 ? cleanDigits : str;
+  }
+
+  if (provider === "meta_ads") {
+    if (str.startsWith("act_")) {
+      const cleanDigits = str.slice(4).replace(/\D/g, "");
+      return cleanDigits.length > 0 ? `act_${cleanDigits}` : str;
+    }
+    const cleanDigits = str.replace(/\D/g, "");
+    return cleanDigits.length >= 6 ? `act_${cleanDigits}` : str;
+  }
+
+  return str;
+}
+
+/**
+ * Checks whether an account was discovered for a specific connection in a workspace.
+ */
+async function isAccountDiscoveredForConnection(
+  workspaceId: string,
+  connection: {
+    id: string;
+    provider: string;
+    credentials?: unknown;
+    remoteAccountId?: string | null;
+  },
+  canonicalAccountId: string,
+  db: ScopedTransaction,
+): Promise<boolean> {
+  const provider = connection.provider;
+
+  // 1. Check connection.remoteAccountId
+  if (connection.remoteAccountId) {
+    if (canonicalizeAccountId(provider, connection.remoteAccountId) === canonicalAccountId) {
+      return true;
+    }
+  }
+
+  // 2. Check extracted accounts from connection credentials
+  if (connection.credentials) {
+    try {
+      const extracted = extractAccountsFromConnection(provider, connection.credentials);
+      if (
+        extracted.some(
+          (acc) => canonicalizeAccountId(provider, acc.id) === canonicalAccountId,
+        )
+      ) {
+        return true;
+      }
+    } catch {
+      // Ignore credential parse errors
+    }
+  }
+
+  // 3. Check ProviderAccountHealth
+  if (db.providerAccountHealth?.findFirst) {
+    const health = await db.providerAccountHealth.findFirst({
+      where: {
+        workspaceId,
+        connectionId: connection.id,
+      },
+      select: { accountId: true },
+    });
+    if (health && canonicalizeAccountId(provider, health.accountId) === canonicalAccountId) {
+      return true;
+    }
+  }
+  if (db.providerAccountHealth?.findMany) {
+    const healthRows = await db.providerAccountHealth.findMany({
+      where: {
+        workspaceId,
+        connectionId: connection.id,
+      },
+      select: { accountId: true },
+      take: 100,
+    });
+    if (
+      healthRows.some(
+        (h) => canonicalizeAccountId(provider, h.accountId) === canonicalAccountId,
+      )
+    ) {
+      return true;
+    }
+  }
+
+  // 4. Check CampaignMetric
+  if (db.campaignMetric?.findFirst) {
+    const metric = await db.campaignMetric.findFirst({
+      where: {
+        workspaceId,
+        connectionId: connection.id,
+      },
+      select: { accountId: true },
+    });
+    if (metric && canonicalizeAccountId(provider, metric.accountId) === canonicalAccountId) {
+      return true;
+    }
+  }
+  if (db.campaignMetric?.findMany) {
+    const metrics = await db.campaignMetric.findMany({
+      where: {
+        workspaceId,
+        connectionId: connection.id,
+      },
+      distinct: ["accountId"],
+      select: { accountId: true },
+      take: 100,
+    });
+    if (
+      metrics.some(
+        (m) => canonicalizeAccountId(provider, m.accountId) === canonicalAccountId,
+      )
+    ) {
+      return true;
+    }
+  }
+
+  // 5. Check AccountReportingContext
+  if (db.accountReportingContext?.findFirst) {
+    const context = await db.accountReportingContext.findFirst({
+      where: {
+        workspaceId,
+        connectionId: connection.id,
+      },
+      select: { accountId: true },
+    });
+    if (context && canonicalizeAccountId(provider, context.accountId) === canonicalAccountId) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Assign a provider account to a client within a workspace.
  * Concurrency-safe: utilizes the @@unique([workspaceId, provider, accountId]) constraint.
  * Records audited events: client_account.assigned, client_account.reassigned, or client_account.authoritative_connection_switched.
@@ -72,10 +223,14 @@ export async function assignClientProviderAccount(
   const { workspaceId, clientId, provider, accountId, connectionId, actorUserId } = input;
 
   if (!workspaceId || !clientId || !provider || !accountId || !connectionId) {
-    throw new RbacError("workspaceId, clientId, provider, accountId, and connectionId are required", "INVALID_REQUEST", 400);
+    throw new RbacError(
+      "workspaceId, clientId, provider, accountId, and connectionId are required",
+      "INVALID_REQUEST",
+      400,
+    );
   }
 
-  const cleanAccountId = accountId.trim();
+  const cleanAccountId = canonicalizeAccountId(provider, accountId);
   if (!cleanAccountId) {
     throw new RbacError("accountId cannot be empty", "INVALID_REQUEST", 400);
   }
@@ -83,7 +238,7 @@ export async function assignClientProviderAccount(
   // 1. Verify client belongs to workspace
   const client = await db.client.findFirst({
     where: { id: clientId, workspaceId },
-    select: { id: true, name: true },
+    select: { id: true, name: true, accountAssignmentsConfiguredAt: true },
   });
   if (!client) {
     throw new RbacError("Client not found in workspace", "NOT_FOUND", 404);
@@ -92,7 +247,13 @@ export async function assignClientProviderAccount(
   // 2. Verify connection belongs to workspace and matches provider
   const connection = await db.connection.findFirst({
     where: { id: connectionId, workspaceId },
-    select: { id: true, name: true, provider: true },
+    select: {
+      id: true,
+      name: true,
+      provider: true,
+      credentials: true,
+      remoteAccountId: true,
+    },
   });
   if (!connection) {
     throw new RbacError("Connection not found in workspace", "NOT_FOUND", 404);
@@ -105,9 +266,32 @@ export async function assignClientProviderAccount(
     );
   }
 
+  // 3. P2-4: Validate account was discovered for this connection
+  const discovered = await isAccountDiscoveredForConnection(
+    workspaceId,
+    connection,
+    cleanAccountId,
+    db,
+  );
+  if (!discovered) {
+    throw new RbacError(
+      `Account '${cleanAccountId}' was not discovered on connection '${connection.name}' (${connection.id})`,
+      "INVALID_REQUEST",
+      400,
+    );
+  }
+
   const now = new Date();
 
-  // 3. Upsert assignment atomically
+  // 4. Mark client as explicit mode if not already marked
+  if (!client.accountAssignmentsConfiguredAt) {
+    await db.client.update({
+      where: { workspaceId_id: { workspaceId, id: clientId } },
+      data: { accountAssignmentsConfiguredAt: now },
+    });
+  }
+
+  // 5. Concurrency-safe upsert with P2002 handling
   const existing = await db.clientProviderAccountAssignment.findUnique({
     where: {
       workspaceId_provider_accountId: {
@@ -126,7 +310,6 @@ export async function assignClientProviderAccount(
         data: {
           clientId,
           connectionId,
-          status: "active",
           assignedAt: now,
           assignedBy: actorUserId ?? null,
         },
@@ -159,7 +342,6 @@ export async function assignClientProviderAccount(
         where: { id: existing.id },
         data: {
           connectionId,
-          status: "active",
           assignedAt: now,
           assignedBy: actorUserId ?? null,
         },
@@ -182,48 +364,86 @@ export async function assignClientProviderAccount(
         },
       });
 
-      return { assignment: updated, action: "authoritative_connection_switched" as const };
+      return {
+        assignment: updated,
+        action: "authoritative_connection_switched" as const,
+      };
     }
 
     // Identical assignment already exists
     return { assignment: existing, action: "unchanged" as const };
   }
 
-  // Create brand new assignment
-  const created = await db.clientProviderAccountAssignment.create({
-    data: {
-      workspaceId,
-      clientId,
-      provider,
-      accountId: cleanAccountId,
-      connectionId,
-      status: "active",
-      assignedAt: now,
-      assignedBy: actorUserId ?? null,
-    },
-  });
-
-  await db.auditEvent.create({
-    data: {
-      workspaceId,
-      actorUserId: actorUserId ?? null,
-      action: "client_account.assigned",
-      resource: "client_provider_account_assignment",
-      resourceId: created.id,
-      metadata: {
+  // Try creating new assignment, catching P2002 if concurrent creation occurred
+  try {
+    const created = await db.clientProviderAccountAssignment.create({
+      data: {
+        workspaceId,
+        clientId,
         provider,
         accountId: cleanAccountId,
-        clientId,
         connectionId,
+        assignedAt: now,
+        assignedBy: actorUserId ?? null,
       },
-    },
-  });
+    });
 
-  return { assignment: created, action: "assigned" as const };
+    await db.auditEvent.create({
+      data: {
+        workspaceId,
+        actorUserId: actorUserId ?? null,
+        action: "client_account.assigned",
+        resource: "client_provider_account_assignment",
+        resourceId: created.id,
+        metadata: {
+          provider,
+          accountId: cleanAccountId,
+          clientId,
+          connectionId,
+        },
+      },
+    });
+
+    return { assignment: created, action: "assigned" as const };
+  } catch (err: any) {
+    if (err?.code === "P2002" || String(err?.message).includes("Unique constraint")) {
+      const racer = await db.clientProviderAccountAssignment.findUnique({
+        where: {
+          workspaceId_provider_accountId: {
+            workspaceId,
+            provider,
+            accountId: cleanAccountId,
+          },
+        },
+      });
+      if (racer) {
+        if (racer.clientId === clientId && racer.connectionId === connectionId) {
+          return { assignment: racer, action: "unchanged" as const };
+        }
+        if (racer.clientId === clientId && racer.connectionId !== connectionId) {
+          const switched = await db.clientProviderAccountAssignment.update({
+            where: { id: racer.id },
+            data: { connectionId, assignedAt: now, assignedBy: actorUserId ?? null },
+          });
+          return {
+            assignment: switched,
+            action: "authoritative_connection_switched" as const,
+          };
+        }
+        throw new RbacError(
+          `Account '${cleanAccountId}' was already assigned to another client by a concurrent operation`,
+          "CONFLICT",
+          409,
+        );
+      }
+    }
+    throw err;
+  }
 }
 
 /**
- * Bulk assign multiple provider accounts to a single client.
+ * Bulk assign multiple provider accounts to a single client atomically.
+ * Wrapped in db.$transaction if available.
  */
 export async function bulkAssignClientProviderAccounts(
   input: BulkAssignClientAccountsInput,
@@ -232,34 +452,52 @@ export async function bulkAssignClientProviderAccounts(
   const { workspaceId, clientId, items, actorUserId } = input;
   if (!items || items.length === 0) return [];
 
-  const results = [];
+  // Deduplicate items by provider:canonicalAccountId
+  const uniqueItemsMap = new Map<string, (typeof items)[0]>();
   for (const item of items) {
-    const res = await assignClientProviderAccount(
-      {
-        workspaceId,
-        clientId,
-        provider: item.provider,
-        accountId: item.accountId,
-        connectionId: item.connectionId,
-        actorUserId,
-      },
-      db,
-    );
-    results.push(res);
+    const key = `${item.provider}:${canonicalizeAccountId(item.provider, item.accountId)}`;
+    if (!uniqueItemsMap.has(key)) {
+      uniqueItemsMap.set(key, item);
+    }
   }
-  return results;
+  const deduplicatedItems = Array.from(uniqueItemsMap.values());
+
+  const executeBulk = async (tx: ScopedTransaction) => {
+    const results = [];
+    for (const item of deduplicatedItems) {
+      const res = await assignClientProviderAccount(
+        {
+          workspaceId,
+          clientId,
+          provider: item.provider,
+          accountId: item.accountId,
+          connectionId: item.connectionId,
+          actorUserId,
+        },
+        tx,
+      );
+      results.push(res);
+    }
+    return results;
+  };
+
+  if (typeof (db as any).$transaction === "function") {
+    return (db as any).$transaction(executeBulk);
+  }
+  return executeBulk(db);
 }
 
 /**
  * Unassign a provider account from its client.
  * Deleting the active assignment record makes the account visibly Unassigned.
+ * Note: client.accountAssignmentsConfiguredAt remains set, preserving explicit empty scope!
  */
 export async function unassignClientProviderAccount(
   input: UnassignClientAccountInput,
   db: ScopedTransaction = prisma,
 ) {
   const { workspaceId, provider, accountId, actorUserId } = input;
-  const cleanAccountId = accountId.trim();
+  const cleanAccountId = canonicalizeAccountId(provider, accountId);
 
   const existing = await db.clientProviderAccountAssignment.findUnique({
     where: {
@@ -306,7 +544,7 @@ export async function switchAuthoritativeConnection(
   db: ScopedTransaction = prisma,
 ) {
   const { workspaceId, provider, accountId, newConnectionId, actorUserId } = input;
-  const cleanAccountId = accountId.trim();
+  const cleanAccountId = canonicalizeAccountId(provider, accountId);
 
   const existing = await db.clientProviderAccountAssignment.findUnique({
     where: {
@@ -324,7 +562,13 @@ export async function switchAuthoritativeConnection(
 
   const connection = await db.connection.findFirst({
     where: { id: newConnectionId, workspaceId },
-    select: { id: true, provider: true },
+    select: {
+      id: true,
+      name: true,
+      provider: true,
+      credentials: true,
+      remoteAccountId: true,
+    },
   });
 
   if (!connection) {
@@ -340,6 +584,20 @@ export async function switchAuthoritativeConnection(
 
   if (existing.connectionId === newConnectionId) {
     return { assignment: existing, changed: false };
+  }
+
+  const discovered = await isAccountDiscoveredForConnection(
+    workspaceId,
+    connection,
+    cleanAccountId,
+    db,
+  );
+  if (!discovered) {
+    throw new RbacError(
+      `Account '${cleanAccountId}' was not discovered on target connection '${connection.name}' (${connection.id})`,
+      "INVALID_REQUEST",
+      400,
+    );
   }
 
   const updated = await db.clientProviderAccountAssignment.update({
@@ -383,7 +641,6 @@ export async function getClientAssignedAccounts(
     where: {
       workspaceId,
       clientId,
-      status: "active",
     },
     include: {
       connection: {
@@ -448,7 +705,7 @@ export async function getWorkspaceDiscoveredAccounts(
       },
     }),
     db.clientProviderAccountAssignment.findMany({
-      where: { workspaceId, status: "active" },
+      where: { workspaceId },
       include: {
         client: {
           select: {
@@ -460,13 +717,12 @@ export async function getWorkspaceDiscoveredAccounts(
     }),
   ]);
 
-  // Map assignments by `${provider}:${accountId}`
-  const assignmentMap = new Map<string, typeof assignments[0]>();
+  const assignmentMap = new Map<string, (typeof assignments)[0]>();
   for (const a of assignments) {
-    assignmentMap.set(`${a.provider}:${a.accountId}`, a);
+    const canonicalId = canonicalizeAccountId(a.provider, a.accountId);
+    assignmentMap.set(`${a.provider}:${canonicalId}`, a);
   }
 
-  // Aggregate accounts keyed by `${provider}:${accountId}`
   type DiscoveredEntry = {
     provider: string;
     accountId: string;
@@ -476,7 +732,9 @@ export async function getWorkspaceDiscoveredAccounts(
 
   const accountMap = new Map<string, DiscoveredEntry>();
 
-  const getOrCreate = (provider: string, accountId: string, defaultName?: string) => {
+  const getOrCreate = (provider: string, rawAccountId: string, defaultName?: string) => {
+    const accountId = canonicalizeAccountId(provider, rawAccountId);
+    if (!accountId) return null;
     const key = `${provider}:${accountId}`;
     let entry = accountMap.get(key);
     if (!entry) {
@@ -493,74 +751,64 @@ export async function getWorkspaceDiscoveredAccounts(
     return entry;
   };
 
-  // 1. From connections
   for (const conn of connections) {
-    // 1a. Credentials accounts
     let extracted: any[] = [];
     try {
       extracted = extractAccountsFromConnection(conn.provider, conn.credentials);
       for (const acc of extracted) {
         if (!acc.id) continue;
         const entry = getOrCreate(conn.provider, acc.id, acc.name);
+        if (entry) {
+          entry.connections.set(conn.id, {
+            id: conn.id,
+            name: conn.name,
+            provider: conn.provider,
+            status: conn.status,
+          });
+        }
+      }
+    } catch {
+      // Safe
+    }
+
+    if (conn.remoteAccountId && conn.remoteAccountId.trim()) {
+      const isMultiRoot =
+        (conn.provider === "google_ads" || conn.provider === "meta_ads") && extracted.length > 0;
+      if (!isMultiRoot) {
+        const entry = getOrCreate(conn.provider, conn.remoteAccountId.trim(), conn.name);
+        if (entry) {
+          entry.connections.set(conn.id, {
+            id: conn.id,
+            name: conn.name,
+            provider: conn.provider,
+            status: conn.status,
+          });
+        }
+      }
+    }
+  }
+
+  for (const h of healthRows) {
+    if (!h.accountId) continue;
+    const entry = getOrCreate(h.provider, h.accountId, h.accountName || undefined);
+    if (entry) {
+      const conn = connections.find((c) => c.id === h.connectionId);
+      if (conn) {
         entry.connections.set(conn.id, {
           id: conn.id,
           name: conn.name,
           provider: conn.provider,
-          status: conn.status,
+          status: h.status || conn.status,
         });
       }
-    } catch {
-      // Credentials decrypt/parse errors handled safely
-    }
-
-    // 1b. RemoteAccountId (single account connectors where credentials did not yield child accounts)
-    if (extracted.length === 0 && conn.remoteAccountId && conn.remoteAccountId.trim()) {
-      const entry = getOrCreate(conn.provider, conn.remoteAccountId.trim(), conn.name);
-      entry.connections.set(conn.id, {
-        id: conn.id,
-        name: conn.name,
-        provider: conn.provider,
-        status: conn.status,
-      });
     }
   }
 
-  // 2. From ProviderAccountHealth
-  for (const h of healthRows) {
-    if (!h.accountId) continue;
-    const entry = getOrCreate(h.provider, h.accountId, h.accountName || undefined);
-    const conn = connections.find((c) => c.id === h.connectionId);
-    if (conn) {
-      entry.connections.set(conn.id, {
-        id: conn.id,
-        name: conn.name,
-        provider: conn.provider,
-        status: h.status || conn.status,
-      });
-    }
-  }
-
-  // 3. From CampaignMetric
   for (const m of metricRows) {
     if (!m.accountId) continue;
     const entry = getOrCreate(m.platform, m.accountId, m.accountName || undefined);
-    const conn = connections.find((c) => c.id === m.connectionId);
-    if (conn) {
-      entry.connections.set(conn.id, {
-        id: conn.id,
-        name: conn.name,
-        provider: conn.provider,
-        status: conn.status,
-      });
-    }
-  }
-
-  // 4. Ensure any already-assigned accounts are present in discovery even if un-synced
-  for (const a of assignments) {
-    const key = `${a.provider}:${a.accountId}`;
-    if (!accountMap.has(key)) {
-      const conn = connections.find((c) => c.id === a.connectionId);
-      const entry = getOrCreate(a.provider, a.accountId);
+    if (entry) {
+      const conn = connections.find((c) => c.id === m.connectionId);
       if (conn) {
         entry.connections.set(conn.id, {
           id: conn.id,
@@ -572,7 +820,23 @@ export async function getWorkspaceDiscoveredAccounts(
     }
   }
 
-  // Transform into final array
+  for (const a of assignments) {
+    const canonicalId = canonicalizeAccountId(a.provider, a.accountId);
+    const key = `${a.provider}:${canonicalId}`;
+    if (!accountMap.has(key)) {
+      const conn = connections.find((c) => c.id === a.connectionId);
+      const entry = getOrCreate(a.provider, a.accountId);
+      if (entry && conn) {
+        entry.connections.set(conn.id, {
+          id: conn.id,
+          name: conn.name,
+          provider: conn.provider,
+          status: conn.status,
+        });
+      }
+    }
+  }
+
   const result: DiscoveredAccount[] = [];
 
   for (const entry of accountMap.values()) {
@@ -603,7 +867,6 @@ export async function getWorkspaceDiscoveredAccounts(
     });
   }
 
-  // Stable ordering: unassigned first, then provider, then accountId
   result.sort((a, b) => {
     if (a.isAssigned !== b.isAssigned) return a.isAssigned ? 1 : -1;
     if (a.provider !== b.provider) return a.provider.localeCompare(b.provider);
@@ -614,9 +877,10 @@ export async function getWorkspaceDiscoveredAccounts(
 }
 
 /**
- * Safe cutover helper:
+ * Safe cutover helper (explicit operator mutation):
  * For workspaces where Connection.clientId was historically set, backfills
- * only provably unambiguous accounts into ClientProviderAccountAssignment.
+ * only provably unambiguous accounts into ClientProviderAccountAssignment,
+ * then marks the client as explicitly configured (accountAssignmentsConfiguredAt = now).
  * If an account appears under >1 connection in the workspace, it is skipped
  * (left visibly unassigned) to prevent competing sources of truth or double-counting.
  */
@@ -624,55 +888,111 @@ export async function cutoverUnambiguousAssignments(
   workspaceId: string,
   clientId: string,
   db: ScopedTransaction = prisma,
+  actorUserId?: string | null,
 ) {
-  const legacyConnections = await db.connection.findMany({
-    where: { workspaceId, clientId, type: "source" },
-    select: { id: true },
-  });
-
-  if (legacyConnections.length === 0) return [];
-  const legacyConnIds = new Set(legacyConnections.map((c) => c.id));
-
-  const allDiscovered = await getWorkspaceDiscoveredAccounts(workspaceId, db);
-  const createdAssignments = [];
-
-  for (const acc of allDiscovered) {
-    if (acc.hasMultipleRootConnections) {
-      continue;
-    }
-    if (acc.availableConnections.length !== 1) {
-      continue;
-    }
-    const conn = acc.availableConnections[0];
-    if (!legacyConnIds.has(conn.id)) {
-      continue;
+  const run = async (tx: ScopedTransaction) => {
+    const client = await tx.client.findFirst({
+      where: { id: clientId, workspaceId },
+      select: { id: true, accountAssignmentsConfiguredAt: true },
+    });
+    if (!client) {
+      throw new RbacError("Client not found in workspace", "NOT_FOUND", 404);
     }
 
-    try {
-      const assignment = await db.clientProviderAccountAssignment.upsert({
-        where: {
-          workspaceId_provider_accountId: {
-            workspaceId,
-            provider: acc.provider,
-            accountId: acc.accountId,
-          },
-        },
-        create: {
-          workspaceId,
-          clientId,
+    const legacyConnections = await tx.connection.findMany({
+      where: { workspaceId, clientId, type: "source" },
+      select: { id: true },
+    });
+
+    const legacyConnIds = new Set(legacyConnections.map((c) => c.id));
+    const allDiscovered = await getWorkspaceDiscoveredAccounts(workspaceId, tx);
+    const createdAssignments = [];
+    const ambiguousAccounts: Array<{ provider: string; accountId: string; accountName: string; reason: string }> = [];
+    const now = new Date();
+
+    for (const acc of allDiscovered) {
+      const isLegacyConnAccount = acc.availableConnections.some((c) => legacyConnIds.has(c.id));
+      if (!isLegacyConnAccount) {
+        continue;
+      }
+
+      if (acc.hasMultipleRootConnections || acc.availableConnections.length > 1) {
+        ambiguousAccounts.push({
           provider: acc.provider,
           accountId: acc.accountId,
-          connectionId: conn.id,
-          status: "active",
-          assignedAt: new Date(),
-        },
-        update: {},
-      });
-      createdAssignments.push(assignment);
-    } catch {
-      // Safe conflict ignore
-    }
-  }
+          accountName: acc.accountName,
+          reason: acc.hasMultipleRootConnections ? "multiple_root_connections" : "multiple_connections",
+        });
+        continue;
+      }
 
-  return createdAssignments;
+      const conn = acc.availableConnections[0];
+      if (!legacyConnIds.has(conn.id)) {
+        continue;
+      }
+
+      try {
+        const assignment = await tx.clientProviderAccountAssignment.upsert({
+          where: {
+            workspaceId_provider_accountId: {
+              workspaceId,
+              provider: acc.provider,
+              accountId: acc.accountId,
+            },
+          },
+          create: {
+            workspaceId,
+            clientId,
+            provider: acc.provider,
+            accountId: acc.accountId,
+            connectionId: conn.id,
+            assignedAt: now,
+            assignedBy: actorUserId ?? null,
+          },
+          update: {},
+        });
+        createdAssignments.push(assignment);
+      } catch {
+        // Safe conflict ignore
+      }
+    }
+
+    const configuredAt = client.accountAssignmentsConfiguredAt ?? now;
+    if (!client.accountAssignmentsConfiguredAt) {
+      await tx.client.update({
+        where: { workspaceId_id: { workspaceId, id: clientId } },
+        data: { accountAssignmentsConfiguredAt: configuredAt },
+      });
+    }
+
+    await tx.auditEvent.create({
+      data: {
+        workspaceId,
+        actorUserId: actorUserId ?? null,
+        action: "client_account.cutover_completed",
+        resource: "client",
+        resourceId: clientId,
+        metadata: {
+          assignedCount: createdAssignments.length,
+          skippedAmbiguousCount: ambiguousAccounts.length,
+          legacyConnectionCount: legacyConnections.length,
+          alreadyConfigured: Boolean(client.accountAssignmentsConfiguredAt),
+        },
+      },
+    });
+
+    return {
+      assignedCount: createdAssignments.length,
+      assignments: createdAssignments,
+      skippedAmbiguousCount: ambiguousAccounts.length,
+      ambiguousAccounts,
+      configuredAt: configuredAt.toISOString(),
+      alreadyConfigured: Boolean(client.accountAssignmentsConfiguredAt),
+    };
+  };
+
+  if ("$transaction" in db && typeof (db as any).$transaction === "function") {
+    return (db as any).$transaction(run);
+  }
+  return run(db);
 }

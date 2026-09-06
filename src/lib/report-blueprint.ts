@@ -669,6 +669,12 @@ export type DependencyState = {
     contractVersion: string;
   }>;
   /** Sanitized canonical evidence produced by the shared readiness evaluator. */
+  accountAssignments?: Array<{
+    provider: string;
+    accountId: string;
+    connectionId: string;
+  }>;
+  /** Sanitized canonical evidence produced by the shared readiness evaluator. */
   readinessEvidence: ReadinessDependencyEvidence;
   contractVersions: Record<string, string>;
 };
@@ -680,6 +686,7 @@ export const STALE_REASON_LABELS: Record<string, string> = {
   readiness_evidence_changed: "Source, account, sync, reporting context, pipeline or readiness evidence changed after generation",
   contract_changed: "Metric contract version changed after generation",
   account_scope_changed: "Connected account ownership evidence changed after generation",
+  account_assignment_changed: "Client provider account assignments changed after generation",
 };
 
 function diffDependencyComponents(stored: DependencyState, current: DependencyState): string[] {
@@ -706,6 +713,9 @@ function diffDependencyComponents(stored: DependencyState, current: DependencySt
     // Any introduced, removed or changed overlapping connection/account scope
     // makes the snapshot stale.
     reasons.push("account_scope_changed");
+  }
+  if (canonicalJson(stored.accountAssignments ?? []) !== canonicalJson(current.accountAssignments ?? [])) {
+    reasons.push("account_assignment_changed");
   }
   if (canonicalJson(stored.readinessEvidence) !== canonicalJson(current.readinessEvidence)) {
     reasons.push("readiness_evidence_changed");
@@ -834,11 +844,16 @@ async function loadWindowRows(
 ): Promise<{ rows: MetricRowInput[]; limited: boolean }> {
   const range = windowDateRange(window);
 
+  const client = await tx.client.findFirst({
+    where: { id: clientId, workspaceId },
+    select: { id: true, accountAssignmentsConfiguredAt: true },
+  });
+  const isExplicit = client?.accountAssignmentsConfiguredAt != null;
+
   const assignments = await tx.clientProviderAccountAssignment.findMany({
     where: {
       workspaceId,
       clientId,
-      status: "active",
       provider: { in: [...providers] },
     },
     select: {
@@ -859,6 +874,8 @@ async function loadWindowRows(
       platform: a.provider,
       accountId: a.accountId,
     }));
+  } else if (isExplicit) {
+    where.id = { in: [] };
   } else {
     where.platform = { in: [...providers] };
     where.connection = { clientId, workspaceId };
@@ -925,6 +942,7 @@ type GenerationContext = {
   comparisonDataset: Awaited<ReturnType<typeof reportingDataset>>;
   /** Latest receipt per required destination, currentness vs THIS dataset. */
   receipts: DependencyState["receipts"];
+  accountAssignments?: DependencyState["accountAssignments"];
 };
 
 function buildDependencyState(ctx: GenerationContext): DependencyState {
@@ -940,6 +958,7 @@ function buildDependencyState(ctx: GenerationContext): DependencyState {
     comparisonRowCount: ctx.comparisonDataset.rowCount,
     receipts: ctx.receipts.map((receipt) => ({ ...receipt })),
     accountScopeEvidence: ctx.accountScopeEvidence.map((entry) => ({ ...entry })),
+    accountAssignments: ctx.accountAssignments ? [...ctx.accountAssignments] : undefined,
     readinessEvidence: ctx.evaluation.dependencyEvidence,
     contractVersions: {
       metrics: METRIC_CONTRACT_VERSION,
@@ -1368,6 +1387,7 @@ export async function generateWeeklyBlueprint(params: {
             requiredProviders: true,
             requiredDestinations: true,
             requirementsConfiguredAt: true,
+            accountAssignmentsConfiguredAt: true,
           },
         });
         if (!client) {
@@ -1395,18 +1415,23 @@ export async function generateWeeklyBlueprint(params: {
           where: {
             workspaceId,
             clientId,
-            status: "active",
             provider: { in: client.requiredProviders },
           },
-          select: { connectionId: true },
+          select: { provider: true, accountId: true, connectionId: true },
+          orderBy: [{ provider: "asc" }, { accountId: "asc" }],
         });
+        const isExplicit = client.accountAssignmentsConfiguredAt != null;
         const authoritativeConnIds = [...new Set(clientAssignments.map((a) => a.connectionId))];
         const connections = await tx.connection.findMany({
             where: {
               workspaceId,
               type: "source",
               provider: { in: client.requiredProviders },
-              ...(authoritativeConnIds.length > 0 ? { id: { in: authoritativeConnIds } } : { clientId }),
+              ...(authoritativeConnIds.length > 0
+                ? { id: { in: authoritativeConnIds } }
+                : isExplicit
+                  ? { id: { in: [] } }
+                  : { clientId }),
             },
             select: {
               id: true,
@@ -1488,6 +1513,11 @@ export async function generateWeeklyBlueprint(params: {
           dataset,
           comparisonDataset,
           receipts,
+          accountAssignments: clientAssignments.map((a) => ({
+            provider: a.provider,
+            accountId: a.accountId,
+            connectionId: a.connectionId,
+          })),
         };
 
         const rawTotals = aggregateBlueprintMetrics(currentCampaignRows);
@@ -1673,10 +1703,19 @@ export async function evaluateSnapshotFreshness(snapshot: {
     const scope = client?.requirementsConfiguredAt && client.requiredProviders.length > 0
       ? client.requiredProviders
       : undefined;
-    const [readiness, dataset, comparisonDataset] = await Promise.all([
+    const [readiness, dataset, comparisonDataset, currentAssignments] = await Promise.all([
       loadReportReadiness(snapshot.workspaceId, window, { clientId: snapshot.clientId, tx }),
       reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, window, scope),
       reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, comparisonWindow, scope),
+      tx.clientProviderAccountAssignment.findMany({
+        where: {
+          workspaceId: snapshot.workspaceId,
+          clientId: snapshot.clientId,
+          ...(scope ? { provider: { in: scope } } : {}),
+        },
+        select: { provider: true, accountId: true, connectionId: true },
+        orderBy: [{ provider: "asc" }, { accountId: "asc" }],
+      }),
     ]);
     const evaluation = readiness.evaluations[0];
     if (!evaluation) throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
@@ -1737,6 +1776,11 @@ export async function evaluateSnapshotFreshness(snapshot: {
           && receipt.retrievedAt.getTime() >= dataset.evidenceAt,
       }] : []),
       accountScopeEvidence: accountScopeEvidence.evidence.map((entry) => ({ ...entry })),
+      accountAssignments: currentAssignments.map((a) => ({
+        provider: a.provider,
+        accountId: a.accountId,
+        connectionId: a.connectionId,
+      })),
       readinessEvidence: evaluation.dependencyEvidence,
       contractVersions: {
         metrics: METRIC_CONTRACT_VERSION,

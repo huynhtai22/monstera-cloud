@@ -56,7 +56,16 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
     const limit = options.clientId ? 1 : Math.min(options.limit ?? 50, 50);
     const clients = await tx.client.findMany({
       where: { workspaceId, ...(options.clientId ? { id: options.clientId } : options.after ? { id: { gt: options.after } } : {}) },
-      select: { id: true, name: true, requiredProviders: true, requiredDestinations: true, requirementsConfiguredAt: true }, orderBy: { id: "asc" }, take: limit + 1,
+      select: {
+        id: true,
+        name: true,
+        requiredProviders: true,
+        requiredDestinations: true,
+        requirementsConfiguredAt: true,
+        accountAssignmentsConfiguredAt: true,
+      },
+      orderBy: { id: "asc" },
+      take: limit + 1,
     });
     await readinessHooks.afterClients?.();
     if (options.clientId && !clients.length) throw new RbacError("Client not found", "NOT_FOUND", 404);
@@ -65,7 +74,7 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
     const clientIds = selected.map(c => c.id);
 
     const activeAssignments = await tx.clientProviderAccountAssignment.findMany({
-      where: { workspaceId, clientId: { in: clientIds }, status: "active" },
+      where: { workspaceId, clientId: { in: clientIds } },
       select: { clientId: true, connectionId: true, provider: true, accountId: true },
     });
 
@@ -76,7 +85,15 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
     }
 
     const sourceScopes = selected.flatMap<Prisma.ConnectionWhereInput>(client => {
+      const isExplicit = client.accountAssignmentsConfiguredAt !== null;
+      const clientAssignments = activeAssignments.filter(a => a.clientId === client.id);
       const assignedIds = Array.from(assignedConnIdsByClient.get(client.id) ?? []);
+      if (isExplicit) {
+        if (clientAssignments.length === 0) {
+          return [{ id: { in: [] } }];
+        }
+        return [{ id: { in: assignedIds }, ...(client.requirementsConfiguredAt ? { provider: { in: client.requiredProviders } } : {}) }];
+      }
       if (assignedIds.length > 0) {
         return [{ id: { in: assignedIds }, ...(client.requirementsConfiguredAt ? { provider: { in: client.requiredProviders } } : {}) }];
       }
@@ -98,7 +115,25 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
     const ids = sources.slice(0, CAP).map(c => c.id);
     // Redundant relational workspace filters reject even corrupt cross-workspace FK assignments.
     const clientMetricClauses: Prisma.CampaignMetricWhereInput[] = selected.map(client => {
+      const isExplicit = client.accountAssignmentsConfiguredAt !== null;
       const clientAssignments = activeAssignments.filter(a => a.clientId === client.id);
+      if (isExplicit) {
+        if (clientAssignments.length === 0) {
+          return {
+            workspaceId,
+            connectionId: { in: [] },
+          };
+        }
+        return {
+          workspaceId,
+          connectionId: { in: ids },
+          OR: clientAssignments.map(a => ({
+            connectionId: a.connectionId,
+            platform: a.provider,
+            accountId: a.accountId,
+          })),
+        };
+      }
       if (clientAssignments.length > 0) {
         return {
           workspaceId,
@@ -127,7 +162,7 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
         _count: { _all: true }, orderBy: [{ connectionId: "asc" }, { accountId: "asc" }, { date: "asc" }, { currency: "asc" }], take: CAP + 1,
       });
     await readinessHooks.afterMetricDays?.();
-    const dataDates = await tx.campaignMetric.groupBy({ by: ["connectionId"], where: metricWhere, _max: { date: true } });
+    const dataDates = await tx.campaignMetric.groupBy({ by: ["connectionId", "accountId"], where: metricWhere, _max: { date: true } });
     const accounts = await tx.providerAccountHealth.findMany({
         where: { workspaceId, connectionId: { in: ids }, connection: { workspaceId } }, take: CAP + 1, orderBy: { id: "asc" },
         select: { connectionId: true, accountId: true, status: true, lastSuccessAt: true },
@@ -210,8 +245,23 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
     }
     await readinessHooks.beforeEvaluate?.();
     const evaluations = await Promise.all(selected.map(async client => {
+      const isExplicit = client.accountAssignmentsConfiguredAt !== null;
+      const clientAssignments = activeAssignments.filter(a => a.clientId === client.id);
       const clientConnIds = assignedConnIdsByClient.get(client.id);
-      const assigned = sources.slice(0, CAP).filter(s => (clientConnIds && clientConnIds.has(s.id)) || s.clientId === client.id);
+
+      let assigned: typeof sources = [];
+      if (isExplicit) {
+        if (clientAssignments.length > 0 && clientConnIds) {
+          assigned = sources.slice(0, CAP).filter(s => clientConnIds.has(s.id));
+        }
+      } else {
+        if (clientAssignments.length > 0 && clientConnIds) {
+          assigned = sources.slice(0, CAP).filter(s => clientConnIds.has(s.id));
+        } else {
+          assigned = sources.slice(0, CAP).filter(s => s.clientId === client.id);
+        }
+      }
+
       const [snapshot, contexts, latestReceipts] = await Promise.all([
         reportingDataset(tx, workspaceId, client.id, window, client.requirementsConfiguredAt && client.requiredProviders.length > 0 ? client.requiredProviders : undefined),
         tx.accountReportingContext.findMany({ where: { workspaceId, connectionId: { in: assigned.map(s => s.id) }, connection: { workspaceId } }, take: CAP + 1, orderBy: { id: "asc" } }),
@@ -243,16 +293,56 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
             healthStatus: p.healthStatus,
           })),
         },
-        sources: assigned.map(s => ({
-          connectionId: s.id, provider: s.provider, connectionStatus: s.status, lastError: s.lastError,
-          lastSyncAt: iso(s.lastSyncAt), latestDataDate: dataDates.find(d => d.connectionId === s.id)?._max.date?.toISOString().slice(0, 10) ?? null,
-          accounts: accounts.filter(a => a.connectionId === s.id).map(a => ({ accountId: a.accountId, status: a.status, lastSuccessAt: iso(a.lastSuccessAt) })),
-          days: days.slice(0, CAP).filter(d => d.connectionId === s.id).map(d => ({ accountId: d.accountId, date: d.date.toISOString().slice(0,10), currency: d.currency, rows: d._count._all })),
-          syncs: syncByConnection.get(s.id) ?? [],
-          // Neither UTC storage nor a UI locale proves the provider reporting timezone.
-          timezone: null,
-          contexts: contexts.filter(c => c.connectionId === s.id).map(c => ({ accountId: c.accountId, providerTimezone: c.providerTimezone, providerCurrency: c.providerCurrency, providerObservedAt: iso(c.providerObservedAt), overrideTimezone: c.overrideTimezone, overrideCurrency: c.overrideCurrency, overrideAt: iso(c.overrideAt) })),
-        })),
+        sources: assigned.map(s => {
+          const clientAssignmentsForSource = clientAssignments.filter(a => a.connectionId === s.id && a.provider === s.provider);
+          const hasAssignedAccounts = clientAssignmentsForSource.length > 0;
+          const assignedAccountIds = new Set(clientAssignmentsForSource.map(a => a.accountId));
+
+          const filteredAccounts = accounts
+            .filter(a => a.connectionId === s.id && (hasAssignedAccounts ? assignedAccountIds.has(a.accountId) : (!isExplicit && s.clientId === client.id)))
+            .map(a => ({ accountId: a.accountId, status: a.status, lastSuccessAt: iso(a.lastSuccessAt) }));
+
+          const filteredDays = days
+            .slice(0, CAP)
+            .filter(d => d.connectionId === s.id && (hasAssignedAccounts ? assignedAccountIds.has(d.accountId) : (!isExplicit && s.clientId === client.id)))
+            .map(d => ({ accountId: d.accountId, date: d.date.toISOString().slice(0, 10), currency: d.currency, rows: d._count._all }));
+
+          const filteredContexts = contexts
+            .filter(c => c.connectionId === s.id && (hasAssignedAccounts ? assignedAccountIds.has(c.accountId) : (!isExplicit && s.clientId === client.id)))
+            .map(c => ({ accountId: c.accountId, providerTimezone: c.providerTimezone, providerCurrency: c.providerCurrency, providerObservedAt: iso(c.providerObservedAt), overrideTimezone: c.overrideTimezone, overrideCurrency: c.overrideCurrency, overrideAt: iso(c.overrideAt) }));
+
+          const sourceSyncs = (syncByConnection.get(s.id) ?? []).filter(sync => {
+            if (sync.kind === "import" && sync.target && sync.target !== "all") {
+              if (hasAssignedAccounts) {
+                return assignedAccountIds.has(sync.target);
+              }
+              return !isExplicit && s.clientId === client.id;
+            }
+            return true;
+          });
+
+          const clientDates = dataDates
+            .filter(d => d.connectionId === s.id && (hasAssignedAccounts ? assignedAccountIds.has(d.accountId) : (!isExplicit && s.clientId === client.id)))
+            .map(d => d._max.date?.toISOString().slice(0, 10))
+            .filter((d): d is string => Boolean(d))
+            .sort();
+          const latestDataDate = clientDates.at(-1) ?? null;
+
+          return {
+            connectionId: s.id,
+            provider: s.provider,
+            connectionStatus: s.status,
+            lastError: s.lastError,
+            lastSyncAt: iso(s.lastSyncAt),
+            latestDataDate,
+            accounts: filteredAccounts,
+            days: filteredDays,
+            syncs: sourceSyncs,
+            // Neither UTC storage nor a UI locale proves the provider reporting timezone.
+            timezone: null,
+            contexts: filteredContexts,
+          };
+        }),
       });
     }));
   return { evaluations, nextCursor: clients.length > limit ? selected.at(-1)!.id : null };

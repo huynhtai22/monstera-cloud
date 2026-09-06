@@ -133,45 +133,46 @@ model Workspace {
   userDashboards UserDashboard[]
 
   // Looker Studio integration jobs
-  lookerJobs            LookerJob[]
-  warehouseImportJobs   WarehouseImportJob[]
-  providerAccess        WorkspaceProviderAccess[]
-  invitations           WorkspaceInvitation[]
-  oauthAttempts         OAuthAttempt[]
-  auditEvents           AuditEvent[]
-  supportTickets        SupportTicket[]
-  aiPolicy              WorkspaceAiPolicy?
-  agentJobs             AgentJob[]
-  agentTraces           AgentTrace[]
-  evidencePacks         EvidencePackRecord[]
-  connectorRunArtifacts ConnectorRunArtifact[]
-  payloadDiscoveries    PayloadSchemaDiscovery[]
-  schemaProposals       SchemaPatchProposal[]
-  paymentOrders         PaymentOrder[]
-  providerAccountHealth ProviderAccountHealth[]
-  reportSnapshots       ReportSnapshot[]
+  lookerJobs               LookerJob[]
+  warehouseImportJobs      WarehouseImportJob[]
+  providerAccess           WorkspaceProviderAccess[]
+  invitations              WorkspaceInvitation[]
+  oauthAttempts            OAuthAttempt[]
+  auditEvents              AuditEvent[]
+  supportTickets           SupportTicket[]
+  aiPolicy                 WorkspaceAiPolicy?
+  agentJobs                AgentJob[]
+  agentTraces              AgentTrace[]
+  evidencePacks            EvidencePackRecord[]
+  connectorRunArtifacts    ConnectorRunArtifact[]
+  payloadDiscoveries       PayloadSchemaDiscovery[]
+  schemaProposals          SchemaPatchProposal[]
+  paymentOrders            PaymentOrder[]
+  providerAccountHealth    ProviderAccountHealth[]
+  reportSnapshots          ReportSnapshot[]
   clientAccountAssignments ClientProviderAccountAssignment[]
 
   @@index([subscriptionProvider, subscriptionEndsAt])
 }
 
 model Client {
-  id                       String                       @id @default(cuid())
-  workspaceId              String
-  name                     String
-  description              String?
-  logoUrl                  String?
-  createdAt                DateTime                     @default(now())
-  updatedAt                DateTime                     @updatedAt
-  workspace                Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  pipelines                Pipeline[]
-  connections              Connection[]
-  requiredProviders        String[]                     @default([])
-  requiredDestinations     String[]                     @default([])
-  requirementsConfiguredAt DateTime?
-  deliveryReceipts         DestinationDeliveryReceipt[]
-  reportSnapshots          ReportSnapshot[]
-  accountAssignments       ClientProviderAccountAssignment[]
+  id                             String                            @id @default(cuid())
+  workspaceId                    String
+  name                           String
+  description                    String?
+  logoUrl                        String?
+  createdAt                      DateTime                          @default(now())
+  updatedAt                      DateTime                          @updatedAt
+  workspace                      Workspace                         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pipelines                      Pipeline[]
+  connections                    Connection[]
+  requiredProviders              String[]                          @default([])
+  requiredDestinations           String[]                          @default([])
+  requirementsConfiguredAt       DateTime?
+  accountAssignmentsConfiguredAt DateTime?
+  deliveryReceipts               DestinationDeliveryReceipt[]
+  reportSnapshots                ReportSnapshot[]
+  accountAssignments             ClientProviderAccountAssignment[]
 
   @@unique([workspaceId, id])
   @@index([workspaceId])
@@ -236,26 +237,24 @@ model ReportSnapshot {
 /// Unique constraint on (workspaceId, provider, accountId) guarantees one active client owner
 /// and one authoritative connection, preventing duplicate counting across overlapping roots (e.g. MCCs).
 model ClientProviderAccountAssignment {
-  id           String     @id @default(cuid())
+  id           String   @id @default(cuid())
   workspaceId  String
   clientId     String
   provider     String
   accountId    String
   connectionId String
-  status       String     @default("active") // active | unassigned
-  assignedAt   DateTime   @default(now())
-  assignedBy   String?    // actor userId
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  assignedAt   DateTime @default(now())
+  assignedBy   String? // actor userId
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  workspace    Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  client       Client     @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
-  connection   Connection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Cascade)
+  workspace  Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client     Client     @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  connection Connection @relation(fields: [workspaceId, connectionId, provider], references: [workspaceId, id, provider], onDelete: Cascade)
 
   @@unique([workspaceId, provider, accountId], map: "ClientProviderAccountAssignment_ws_prov_acc_key")
   @@index([workspaceId, clientId], map: "ClientProviderAccountAssignment_ws_client_idx")
   @@index([workspaceId, connectionId], map: "ClientProviderAccountAssignment_ws_conn_idx")
-  @@index([workspaceId, provider, accountId, status], map: "ClientProviderAccountAssignment_ws_prov_acc_stat_idx")
 }
 
 /// Provider facts are retained independently of explicit, audited operator overrides.
@@ -399,10 +398,11 @@ model Connection {
   providerSyncRuns     ProviderSyncRun[]
   accountHealth        ProviderAccountHealth[]
 
-  reportingContexts AccountReportingContext[]
+  reportingContexts  AccountReportingContext[]
   accountAssignments ClientProviderAccountAssignment[]
 
   @@unique([workspaceId, id])
+  @@unique([workspaceId, id, provider])
   @@unique([workspaceId, provider, remoteAccountId])
 }
 

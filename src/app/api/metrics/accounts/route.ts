@@ -25,7 +25,91 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const clientId = new URL(req.url).searchParams.get("clientId");
+
   try {
+    if (clientId && clientId !== "unassigned") {
+      const client = await prisma.client.findFirst({
+        where: { id: clientId, workspaceId },
+        select: { id: true, accountAssignmentsConfiguredAt: true },
+      });
+      if (!client) {
+        return NextResponse.json({ error: "Client not found in workspace" }, { status: 404 });
+      }
+      const isExplicit = client.accountAssignmentsConfiguredAt !== null;
+      const assignments = await prisma.clientProviderAccountAssignment.findMany({
+        where: { workspaceId, clientId },
+        select: { provider: true, accountId: true, connectionId: true },
+      });
+      if (assignments.length > 0) {
+        const where = {
+          workspaceId,
+          OR: assignments.map((a) => ({
+            connectionId: a.connectionId,
+            platform: a.provider,
+            accountId: a.accountId,
+          })),
+        };
+        const grouped = await prisma.campaignMetric.groupBy({
+          by: ["accountId", "platform"],
+          where,
+          _max: { accountName: true },
+          orderBy: [{ accountId: "asc" }, { platform: "asc" }],
+        });
+        return NextResponse.json({
+          accounts: grouped.map((g) => ({
+            accountId: g.accountId,
+            platform: g.platform,
+            accountName: g._max.accountName ?? "",
+          })),
+        });
+      }
+      if (isExplicit) {
+        return NextResponse.json({ accounts: [] });
+      }
+      const grouped = await prisma.campaignMetric.groupBy({
+        by: ["accountId", "platform"],
+        where: { workspaceId, connection: { clientId } },
+        _max: { accountName: true },
+        orderBy: [{ accountId: "asc" }, { platform: "asc" }],
+      });
+      return NextResponse.json({
+        accounts: grouped.map((g) => ({
+          accountId: g.accountId,
+          platform: g.platform,
+          accountName: g._max.accountName ?? "",
+        })),
+      });
+    }
+
+    if (clientId === "unassigned") {
+      const allAssignments = await prisma.clientProviderAccountAssignment.findMany({
+        where: { workspaceId },
+        select: { connectionId: true, provider: true, accountId: true },
+      });
+      const where: any = { workspaceId, connection: { workspaceId, clientId: null } };
+      if (allAssignments.length > 0) {
+        where.NOT = allAssignments.map((a) => ({
+          connectionId: a.connectionId,
+          platform: a.provider,
+          accountId: a.accountId,
+        }));
+      }
+      const grouped = await prisma.campaignMetric.groupBy({
+        by: ["accountId", "platform"],
+        where,
+        _max: { accountName: true },
+        orderBy: [{ accountId: "asc" }, { platform: "asc" }],
+      });
+      return NextResponse.json({
+        accounts: grouped.map((g) => ({
+          accountId: g.accountId,
+          platform: g.platform,
+          accountName: g._max.accountName ?? "",
+        })),
+      });
+    }
+
     const grouped = await prisma.campaignMetric.groupBy({
       by: ["accountId", "platform"],
       where: { workspaceId },

@@ -37,7 +37,10 @@ export type WarehouseAggregateResult = {
 
 type MetricWhereClause = {
   workspaceId: string;
-  connection?: { workspaceId: string; clientId: string };
+  id?: { in: string[] };
+  connection?: { workspaceId: string; clientId?: string | null };
+  OR?: Array<{ connectionId: string; platform: string; accountId: string }>;
+  NOT?: Array<{ connectionId: string; platform: string; accountId: string }>;
   date?: { gte?: Date; lte?: Date };
   platform?: string | { in: string[] };
   accountId?: string | { in: string[] };
@@ -58,7 +61,41 @@ export async function queryMetricsAggregate(spec: WarehouseAggregateSpec): Promi
   const plan = spec.plan ?? "free";
   const limits = getPlanLimits(plan);
   const where: MetricWhereClause = { workspaceId: spec.workspaceId };
-  if (spec.clientId) where.connection = { workspaceId: spec.workspaceId, clientId: spec.clientId };
+  if (spec.clientId === "unassigned") {
+    const allAssignments = await prisma.clientProviderAccountAssignment.findMany({
+      where: { workspaceId: spec.workspaceId },
+      select: { connectionId: true, provider: true, accountId: true },
+    });
+    where.connection = { workspaceId: spec.workspaceId, clientId: null };
+    if (allAssignments.length > 0) {
+      where.NOT = allAssignments.map((a) => ({
+        connectionId: a.connectionId,
+        platform: a.provider,
+        accountId: a.accountId,
+      }));
+    }
+  } else if (spec.clientId) {
+    const client = await prisma.client.findFirst({
+      where: { id: spec.clientId, workspaceId: spec.workspaceId },
+      select: { id: true, accountAssignmentsConfiguredAt: true },
+    });
+    const isExplicit = client?.accountAssignmentsConfiguredAt != null;
+    const assignments = await prisma.clientProviderAccountAssignment.findMany({
+      where: { workspaceId: spec.workspaceId, clientId: spec.clientId },
+      select: { provider: true, accountId: true, connectionId: true },
+    });
+    if (assignments.length > 0) {
+      where.OR = assignments.map((a) => ({
+        connectionId: a.connectionId,
+        platform: a.provider,
+        accountId: a.accountId,
+      }));
+    } else if (isExplicit) {
+      where.id = { in: [] };
+    } else {
+      where.connection = { workspaceId: spec.workspaceId, clientId: spec.clientId };
+    }
+  }
 
   const startOfRange = new Date(spec.startDateStr);
   if (!spec.startDateStr.includes("T")) startOfRange.setUTCHours(0, 0, 0, 0);

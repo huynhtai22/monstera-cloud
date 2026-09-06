@@ -32,7 +32,59 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const clientId = searchParams.get("clientId");
+
   try {
+    if (clientId && clientId !== "unassigned") {
+      const client = await prisma.client.findFirst({
+        where: { id: clientId, workspaceId },
+        select: { id: true, accountAssignmentsConfiguredAt: true },
+      });
+      if (!client) {
+        return NextResponse.json({ error: "Client not found in workspace" }, { status: 404 });
+      }
+      const isExplicit = client.accountAssignmentsConfiguredAt !== null;
+      const assignments = await prisma.clientProviderAccountAssignment.findMany({
+        where: { workspaceId, clientId },
+        select: { provider: true },
+      });
+      if (assignments.length > 0) {
+        const distinct = [...new Set(assignments.map((a) => a.provider))].sort();
+        return NextResponse.json({ platforms: distinct });
+      }
+      if (isExplicit) {
+        return NextResponse.json({ platforms: [] });
+      }
+      const legacyPlatforms = await prisma.campaignMetric.findMany({
+        where: { workspaceId, connection: { clientId } },
+        distinct: ["platform"],
+        select: { platform: true },
+      });
+      return NextResponse.json({ platforms: legacyPlatforms.map((p) => p.platform) });
+    }
+
+    if (clientId === "unassigned") {
+      const allAssignments = await prisma.clientProviderAccountAssignment.findMany({
+        where: { workspaceId },
+        select: { connectionId: true, provider: true, accountId: true },
+      });
+      const where: any = { workspaceId, connection: { workspaceId, clientId: null } };
+      if (allAssignments.length > 0) {
+        where.NOT = allAssignments.map((a) => ({
+          connectionId: a.connectionId,
+          platform: a.provider,
+          accountId: a.accountId,
+        }));
+      }
+      const platforms = await prisma.campaignMetric.findMany({
+        where,
+        distinct: ["platform"],
+        select: { platform: true },
+        take: 50,
+      });
+      return NextResponse.json({ platforms: platforms.map((p) => p.platform) });
+    }
+
     // Get distinct platforms for this workspace
     const platforms = await prisma.campaignMetric.findMany({
       where: { workspaceId },

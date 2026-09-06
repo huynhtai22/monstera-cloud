@@ -41,7 +41,7 @@ export async function GET(req: Request) {
                 },
             },
             accountAssignments: {
-                where: { workspaceId, status: "active" },
+                where: { workspaceId },
                 select: {
                     id: true,
                     provider: true,
@@ -63,31 +63,11 @@ export async function GET(req: Request) {
             },
         };
 
-        let clients = await prisma.client.findMany({
+        const clients = await prisma.client.findMany({
             where: { workspaceId },
             orderBy: { createdAt: "desc" },
             include: clientInclude,
         });
-
-        // If any client has legacy connections but zero assignments, cutover unambiguous accounts
-        let needsRefetch = false;
-        for (const client of clients) {
-            if (client.accountAssignments.length === 0 && client.connections.length > 0) {
-                const { cutoverUnambiguousAssignments } = await import("@/lib/client-account-assignment");
-                const cutover = await cutoverUnambiguousAssignments(workspaceId, client.id, prisma);
-                if (cutover.length > 0) {
-                    needsRefetch = true;
-                }
-            }
-        }
-
-        if (needsRefetch) {
-            clients = await prisma.client.findMany({
-                where: { workspaceId },
-                orderBy: { createdAt: "desc" },
-                include: clientInclude,
-            });
-        }
 
         return NextResponse.json(clients);
     } catch (error: unknown) {

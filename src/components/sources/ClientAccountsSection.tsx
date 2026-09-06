@@ -28,6 +28,7 @@ const fetcher = async (url: string) => {
 interface ClientOption {
   id: string;
   name: string;
+  accountAssignmentsConfiguredAt?: string | null;
 }
 
 interface ClientAccountsSectionProps {
@@ -304,8 +305,100 @@ export function ClientAccountsSection({
     }
   };
 
+  const [isCuttingOver, setIsCuttingOver] = useState(false);
+
+  const handleCutover = async (targetClientId?: string) => {
+    setIsCuttingOver(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/client-accounts/cutover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(targetClientId ? { clientId: targetClientId } : {}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Cutover failed");
+      toast.success(
+        targetClientId
+          ? `Cutover complete. Assigned ${data.assignedCount} accounts.`
+          : `Cutover complete for ${data.totalClients} clients.`
+      );
+      if (data.skippedAmbiguousCount > 0) {
+        toast.warning(`${data.skippedAmbiguousCount} ambiguous accounts skipped (manual assignment required).`);
+      }
+      await Promise.all([
+        mutate(accountsKey),
+        mutate(clientsKey),
+        mutate((key) => typeof key === "string" && key.includes("/api/reports")),
+      ]);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to cut over accounts");
+    } finally {
+      setIsCuttingOver(false);
+    }
+  };
+
+  const currentClient = useMemo(
+    () => clientsList.find((c) => c.id === selectedClientId),
+    [clientsList, selectedClientId]
+  );
+  const legacyClientsCount = useMemo(
+    () => clientsList.filter((c) => !c.accountAssignmentsConfiguredAt).length,
+    [clientsList]
+  );
+
   return (
     <div className="space-y-4">
+      {/* Mode & Cutover Banner */}
+      {currentClient && (
+        <div className={cn(
+          "flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs",
+          currentClient.accountAssignmentsConfiguredAt
+            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+            : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+        )}>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">
+              {currentClient.accountAssignmentsConfiguredAt
+                ? "Explicit Assignment Mode (Authoritative)"
+                : "Legacy Compatibility Mode"}
+            </span>
+            <span className="text-[11px] opacity-80">
+              {currentClient.accountAssignmentsConfiguredAt
+                ? "Only explicitly assigned accounts are included in reports and warehouse."
+                : "Falling back to legacy Connection.clientId until explicit cutover."}
+            </span>
+          </div>
+          {!currentClient.accountAssignmentsConfiguredAt && (
+            <button
+              type="button"
+              onClick={() => handleCutover(currentClient.id)}
+              disabled={isCuttingOver}
+              className="rounded-md bg-amber-500/20 px-2.5 py-1 text-xs font-semibold text-amber-200 hover:bg-amber-500/30 disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              {isCuttingOver ? "Cutting over…" : "Run Cutover"}
+            </button>
+          )}
+        </div>
+      )}
+      {selectedClientId === "all" && legacyClientsCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">Legacy Clients Detected</span>
+            <span className="text-[11px] opacity-80">
+              {legacyClientsCount} client{legacyClientsCount > 1 ? "s are" : " is"} in legacy compatibility mode.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleCutover()}
+            disabled={isCuttingOver}
+            className="rounded-md bg-amber-500/20 px-2.5 py-1 text-xs font-semibold text-amber-200 hover:bg-amber-500/30 disabled:opacity-50 transition-colors cursor-pointer"
+          >
+            {isCuttingOver ? "Cutting over…" : "Cutover All Clients"}
+          </button>
+        </div>
+      )}
+
       {/* ─── FILTERS & CONTROLS ─── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-line pb-4">
         <div className="flex flex-wrap items-center gap-2">

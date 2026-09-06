@@ -19,7 +19,7 @@ import { reportingDataset, _setReportingDatasetTestHooks } from "./report-delive
 import { _setReadinessTestHooks } from "./report-readiness-server";
 import type { ScopedTransaction } from "./warehouse-query";
 import { TENANT_GUARDED_MODELS } from "./tenant-guard";
-import { assertCiDatabaseReachableWhenMissing } from "./pg-test-discipline";
+import { assertAllowedTestDatabase } from "./pg-test-discipline";
 import { extractCampaignMetricsFromDb } from "@/etl/extractors/campaignMetrics";
 
 /**
@@ -61,7 +61,7 @@ async function waitForCondition(
 
 
 describe("PostgreSQL integration: verified weekly report blueprint", () => {
-    let db: PrismaClient | null = null;
+    let db: PrismaClient;
     const suffix = `bp-${Date.now()}-${process.pid}`;
     const ids = {
         owner: `owner-${suffix}`,
@@ -80,20 +80,11 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     const WEEK_DAYS = ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30"];
 
     before(async () => {
-        if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) {
-            assertCiDatabaseReachableWhenMissing();
-            console.warn("Skipping PostgreSQL blueprint tests: no real DATABASE_URL configured");
-            return;
-        }
-        try {
-            db = new PrismaClient();
-            await db.$connect();
-            await db.$queryRaw`SELECT 1`;
-        } catch {
-            console.warn("Skipping PostgreSQL blueprint tests: database not reachable");
-            db = null;
-        }
-        if (!db) return;
+        const url = process.env.DATABASE_URL;
+        assertAllowedTestDatabase(url);
+        db = new PrismaClient({ datasources: { db: { url } } });
+        await db.$connect();
+        await db.$queryRaw`SELECT 1`;
 
         // The generator must record its build identity; tests emulate a deploy.
         process.env.GIT_COMMIT_SHA = `test-sha-${suffix}`;
@@ -320,7 +311,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("generates from Client requirements + warehouse rows with exact string IDs (1, 4, 16, 21)", async () => {
-        if (!db) return;
         const originalFetch = globalThis.fetch;
         let fetchCalled = false;
         globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
@@ -353,7 +343,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("returns NOT_VERIFIED without any delivery receipt (5)", async () => {
-        if (!db) return;
         const result = await generateWeeklyBlueprint({
             workspaceId: ids.workspaceA,
             clientId: ids.clientA,
@@ -367,7 +356,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("a receipt from another client, window or destination cannot verify (6, 7, 8)", async () => {
-        if (!db) return;
         // Other client (own workspace): composite FK accepts it, but the
         // blueprint only consults receipts scoped to THIS client + window.
         const otherClientDataset = await datasetOf(ids.workspaceA, ids.clientA, WINDOW);
@@ -437,7 +425,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("a receipt with a stale fingerprint or pre-evidence retrieval cannot verify (9, 10)", async () => {
-        if (!db) return;
         const dataset = await datasetOf(ids.workspaceA, ids.clientA, WINDOW);
         // Old fingerprint (data mutated since retrieval).
         await db.destinationDeliveryReceipt.create({
@@ -492,7 +479,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("a valid exact current receipt permits VERIFIED when every gate passes (11, 13)", async () => {
-        if (!db) return;
         const receipt = await seedCurrentReceipt();
         const result = await generateWeeklyBlueprint({
             workspaceId: ids.workspaceA,
@@ -534,7 +520,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("receipt mutation or replacement makes the saved snapshot stale (12)", async () => {
-        if (!db) return;
         const stored = await db.reportSnapshot.findFirstOrThrow({
             where: { workspaceId: ids.workspaceA, blueprintId: BLUEPRINT_ID },
             orderBy: [{ generatedAt: "desc" }],
@@ -565,7 +550,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("client requirement changes produce a new immutable version and stale history (13, 18-versioning)", async () => {
-        if (!db) return;
         // Refresh delivery evidence for the current dataset first.
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, destination: "google_sheets", windowStart: WINDOW.start, windowEnd: WINDOW.end },
@@ -635,7 +619,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("data changes make the snapshot stale while receipts keep their identity", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
@@ -672,7 +655,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("mixed currency prevents combined monetary totals and verification (15)", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
@@ -734,7 +716,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("persisted snapshots keep no credentials, raw payloads or unbounded results (20)", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
@@ -766,7 +747,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("fails closed for rival-workspace identifiers (18)", async () => {
-        if (!db) return;
         await assert.rejects(
             generateWeeklyBlueprint({
                 workspaceId: ids.workspaceB, // rival workspace
@@ -782,7 +762,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("keeps per-window rows tenant-scoped between rival workspaces", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceB } });
         const datasetB = await datasetOf(ids.workspaceB, ids.clientB, WINDOW);
         await db.destinationDeliveryReceipt.create({
@@ -811,7 +790,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("Meta ad rows roll up to campaign identity without double-counting (P1-3)", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
@@ -850,7 +828,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("Meta ETL exports only canonical ad facts when legacy campaign rows coexist", async () => {
-        if (!db) return;
         const legacyId = `legacy-meta-${suffix}`;
         await db.campaignMetric.create({
             data: {
@@ -871,7 +848,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("fails verification closed when a provider holds only unsupported grains (P1-3)", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
@@ -903,7 +879,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("a correction to previous-week data makes the snapshot stale and regeneration versions (P1-2)", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
@@ -946,7 +921,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("rejects direct cross-workspace snapshot insertion at the database level (P1-4)", async () => {
-        if (!db) return;
         await assert.rejects(
             db.reportSnapshot.create({
                 data: {
@@ -981,7 +955,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("concurrent same-state generation is idempotent: one snapshot, no failures (P2-1)", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
@@ -1012,7 +985,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("forced identical concurrency stores one row and every caller reads the winner (P2-1)", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
@@ -1069,7 +1041,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("forced divergent concurrency versions both states and returns the fresh winner", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
         await seedCurrentReceipt();
         const params = { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW };
@@ -1112,7 +1083,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("dataset change during candidate generation discards and republishes bound to the new state (P2-1, F1)", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
@@ -1186,7 +1156,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("post-commit source-health mutation never returns the known-stale VERIFIED candidate", async () => {
-        if (!db) return;
         await db.connection.update({ where: { id: ids.connGoogleA }, data: { status: "connected", lastError: null, lastSyncAt: new Date() } });
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
@@ -1226,7 +1195,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("uses one RR snapshot when source health changes between readiness statements", async () => {
-        if (!db) return;
         await db.connection.update({ where: { id: ids.connGoogleA }, data: { status: "connected", lastError: null, lastSyncAt: new Date() } });
         await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
         await seedCurrentReceipt();
@@ -1250,7 +1218,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("uses one RR snapshot when reporting context changes between fingerprint statements", async () => {
-        if (!db) return;
         await db.accountReportingContext.updateMany({ where: { workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, accountId: "g-account-1" }, data: { overrideTimezone: null, overrideCurrency: null, overrideAt: null } });
         await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
         await seedCurrentReceipt();
@@ -1277,7 +1244,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("retries when comparison data commits between current and comparison reads", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
         await seedCurrentReceipt();
         let mutated = false;
@@ -1303,7 +1269,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("retries when a receipt changes between dataset evaluation and receipt evaluation", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
         await seedCurrentReceipt();
         let mutated = false;
@@ -1325,7 +1290,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("excludes unrequired marketplace source, context and metrics from every scoped dependency", async () => {
-        if (!db) return;
         const shopeeConnectionId = `conn-unrequired-shopee-${suffix}`;
         await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
         await seedCurrentReceipt();
@@ -1350,7 +1314,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("enforces the UNIQUE (generationKey, dependencyHash) constraint in the database (P2-1)", async () => {
-        if (!db) return;
         const indexes = await db.$queryRaw<Array<{ indexdef: string }>>`
             SELECT indexdef FROM pg_indexes
             WHERE tablename = 'ReportSnapshot' AND indexdef LIKE '%generationKey_dependencyHash%'`;
@@ -1359,7 +1322,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("identifies the exact bigint advisory namespace for negative hashtext keys", async () => {
-        if (!db) return;
         const [candidate] = await db.$queryRaw<Array<{ key: string; hash: number }>>`
             SELECT ('negative-blueprint-key-' || n)::text AS key,
                    hashtext('negative-blueprint-key-' || n)::int AS hash
@@ -1378,7 +1340,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("R1→R2 interleave: generation must not return a verified R1 snapshot after R2 commits before publication (F1)", async () => {
-        if (!db) return;
         const clientD = `client-req-${suffix}`;
         const connDG = `conn-reqg-${suffix}`;
         const connDM = `conn-reqm-${suffix}`;
@@ -1485,7 +1446,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("keeps TikTok campaign-grain rows authoritative and verifiable (F2)", async () => {
-        if (!db) return;
         const clientT = `client-tt-${suffix}`;
         const connT = `conn-tt-${suffix}`;
         await db.client.create({
@@ -1545,7 +1505,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("never combines or verifies marketplace rows for a Shopee requirement (F2)", async () => {
-        if (!db) return;
         const clientS = `client-sh-${suffix}`;
         const connS = `conn-sh-${suffix}`;
         await db.client.create({
@@ -1623,7 +1582,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("rejects half-specified windows when reopening (low-cost)", async () => {
-        if (!db) return;
         await assert.rejects(
             reopenWeeklyBlueprint({
                 workspaceId: ids.workspaceA,
@@ -1645,7 +1603,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("derives Google manager-account evidence from rows: customer ID + real connection ID (P2-3)", async () => {
-        if (!db) return;
         // Manager-account scenario: the connection's remoteAccountId is the
         // MCC manager, while the persisted metric rows carry the CUSTOMER
         // account id — exactly how Google Ads manager linkage stores rows.
@@ -1705,7 +1662,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("derives included accounts from metric evidence, not connection labels (P2-3)", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
@@ -1728,7 +1684,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("keeps a renamed campaign as one campaign row across the window (P2-4)", async () => {
-        if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
             where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
         });
@@ -1753,7 +1708,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
     });
 
     it("rejects impossible calendar dates and half-specified windows (low-cost)", async () => {
-        if (!db) return;
         await assert.rejects(
             generateWeeklyBlueprint({
                 workspaceId: ids.workspaceA,
@@ -1812,7 +1766,7 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
 });
 
 describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
-    let db: PrismaClient | null = null;
+    let db: PrismaClient;
     const suffix = `mcc-${Date.now()}-${process.pid}`;
     const NOW = new Date("2026-09-02T10:00:00.000Z");
     const WINDOW = { start: "2026-08-24", end: "2026-08-30" };
@@ -1841,13 +1795,13 @@ describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
     /** Deterministic per-test reset: wipe ALL metric rows and receipts in the
      *  workspace, then seed exactly what the test declares. */
     async function resetWorkspaceData() {
-        if (!db) throw new Error("db unavailable");
         await db.campaignMetric.deleteMany({ where: { workspaceId: ids.workspace } });
         await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspace } });
+        await db.clientProviderAccountAssignment.deleteMany({ where: { workspaceId: ids.workspace } });
+        await db.client.update({ where: { id: ids.client }, data: { accountAssignmentsConfiguredAt: null } });
     }
 
     async function seedCurrentReceipt() {
-        if (!db) throw new Error("db unavailable");
         const dataset = await db.$transaction(async (tx) => {
             const client = await tx.client.findFirstOrThrow({ where: { id: ids.client } });
             return reportingDataset(tx as ScopedTransaction, ids.workspace, ids.client, WINDOW, client.requiredProviders);
@@ -1864,20 +1818,11 @@ describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
     }
 
     before(async () => {
-        if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) {
-            assertCiDatabaseReachableWhenMissing();
-            console.warn("Skipping overlapping-account tests: no real DATABASE_URL configured");
-            return;
-        }
-        try {
-            db = new PrismaClient();
-            await db.$connect();
-            await db.$queryRaw`SELECT 1`;
-        } catch {
-            console.warn("Skipping overlapping-account tests: database not reachable");
-            db = null;
-        }
-        if (!db) return;
+        const url = process.env.DATABASE_URL;
+        assertAllowedTestDatabase(url);
+        db = new PrismaClient({ datasources: { db: { url } } });
+        await db.$connect();
+        await db.$queryRaw`SELECT 1`;
         process.env.GIT_COMMIT_SHA = `mcc-sha-${suffix}`;
         await db.user.create({ data: { id: ids.owner, email: `${ids.owner}@example.test`, name: "Owner" } });
         await db.workspace.create({ data: { id: ids.workspace, name: "MCC WS", slug: suffix, ownerId: ids.owner, plan: "pilot", updatedAt: new Date() } });
@@ -1908,7 +1853,6 @@ describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
     });
 
     it("detects two MCC connections exposing the same child account; never sums; fails closed even with a current receipt (1-7, 15)", async () => {
-        if (!db) return;
         await resetWorkspaceData();
         await db.campaignMetric.createMany({ data: [
             ...childRows(ids.connA, `a-${suffix}`),
@@ -1948,7 +1892,6 @@ describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
     });
 
     it("detects ambiguity that exists only in the comparison window (8)", async () => {
-        if (!db) return;
         await resetWorkspaceData();
         // Reporting window: single connection. Comparison window: duplicated.
         const COMPARISON_DAYS = ["2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21", "2026-08-22", "2026-08-23"];
@@ -1993,7 +1936,6 @@ describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
     });
 
     it("two connections with DIFFERENT child accounts remain valid and verified (5, 9)", async () => {
-        if (!db) return;
         await resetWorkspaceData();
         // connC would carry coverage obligations without rows; remove it here.
         await db.connection.deleteMany({ where: { id: ids.connC } });
@@ -2031,7 +1973,6 @@ describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
     });
 
     it("an overlap for an UNREQUIRED provider does not change the scoped hash or freshness (11)", async () => {
-        if (!db) return;
         const before = await generateWeeklyBlueprint({
             workspaceId: ids.workspace, clientId: ids.client,
             windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
@@ -2057,7 +1998,6 @@ describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
     });
 
     it("introducing an overlap makes an existing snapshot stale; removing it permits a new verified version (12, 13)", async () => {
-        if (!db) return;
         // Builds on test 3/4's verified state: connA serves child-123 and
         // connB serves child-456 — no overlap.
         const baseline = await generateWeeklyBlueprint({
@@ -2105,7 +2045,6 @@ describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
     });
 
     it("rival-workspace rows cannot create ambiguity (16)", async () => {
-        if (!db) return;
         // Builds on test 5's verified end state.
         const rivalOwner = `rival-${suffix}`;
         const rivalWs = `rival-ws-${suffix}`;
@@ -2124,5 +2063,61 @@ describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
         await db.campaignMetric.deleteMany({ where: { connectionId: rivalConn.id } });
         await db.workspace.delete({ where: { id: rival.id } });
         await db.user.delete({ where: { id: rivalOwner } });
+    });
+
+    it("changing client provider account assignment makes an existing snapshot stale with account_assignment_changed", async () => {
+        await resetWorkspaceData();
+        // Mark client in explicit assignment mode and assign child-123 on connA
+        await db.client.update({
+            where: { id: ids.client },
+            data: { accountAssignmentsConfiguredAt: new Date() },
+        });
+        await db.clientProviderAccountAssignment.create({
+            data: {
+                workspaceId: ids.workspace,
+                clientId: ids.client,
+                connectionId: ids.connA,
+                provider: "google_ads",
+                accountId: "child-123",
+            },
+        });
+        await db.campaignMetric.createMany({ data: childRows(ids.connA, `assign-a-${suffix}`) });
+        await seedCurrentReceipt();
+
+        const baseline = await generateWeeklyBlueprint({
+            workspaceId: ids.workspace, clientId: ids.client,
+            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
+        });
+        assert.equal(baseline.snapshot.verificationStatus, "VERIFIED");
+
+        // Freshness before assignment mutation is CURRENT
+        const storedBaseline = await db.reportSnapshot.findUniqueOrThrow({ where: { id: baseline.snapshot.id } });
+        const fresh = await evaluateSnapshotFreshness(storedBaseline);
+        assert.equal(fresh.freshness, "CURRENT");
+
+        // Mutate account assignment: switch assignment to connB
+        await db.clientProviderAccountAssignment.update({
+            where: {
+                workspaceId_provider_accountId: {
+                    workspaceId: ids.workspace,
+                    provider: "google_ads",
+                    accountId: "child-123",
+                },
+            },
+            data: {
+                connectionId: ids.connB,
+            },
+        });
+
+        // Freshness after assignment mutation must be STALE with reason account_assignment_changed
+        const stale = await evaluateSnapshotFreshness(storedBaseline);
+        assert.equal(stale.freshness, "STALE");
+        assert.ok(
+            stale.staleReasons.includes("account_assignment_changed"),
+            `account assignment change must invalidate snapshot; reasons=${JSON.stringify(stale.staleReasons)}`
+        );
+
+        // Clean up
+        await resetWorkspaceData();
     });
 });

@@ -58,12 +58,31 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
   const where: Prisma.CampaignMetricWhereInput = { workspaceId: input.workspaceId };
   let clientAuthoritativeConnectionIds: string[] | null = null;
 
-  if (input.clientId) {
+  if (input.clientId === "unassigned") {
+    const allAssignments = await db.clientProviderAccountAssignment.findMany({
+      where: { workspaceId: input.workspaceId },
+      select: { connectionId: true, provider: true, accountId: true },
+    });
+    where.connection = { workspaceId: input.workspaceId, clientId: null };
+    if (allAssignments.length > 0) {
+      where.NOT = allAssignments.map((a) => ({
+        connectionId: a.connectionId,
+        platform: a.provider,
+        accountId: a.accountId,
+      }));
+    }
+  } else if (input.clientId) {
+    const client = await db.client.findFirst({
+      where: { id: input.clientId, workspaceId: input.workspaceId },
+      select: { id: true, accountAssignmentsConfiguredAt: true },
+    });
+
+    const isExplicit = client?.accountAssignmentsConfiguredAt != null;
+
     const assignments = await db.clientProviderAccountAssignment.findMany({
       where: {
         workspaceId: input.workspaceId,
         clientId: input.clientId,
-        status: "active",
       },
       select: {
         provider: true,
@@ -79,6 +98,9 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
         platform: a.provider,
         accountId: a.accountId,
       }));
+    } else if (isExplicit) {
+      where.id = { in: [] };
+      clientAuthoritativeConnectionIds = [];
     } else {
       where.connection = { workspaceId: input.workspaceId, clientId: input.clientId, type: "source" };
     }
@@ -122,7 +144,7 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
     db.connection.aggregate({
       where: {
         workspaceId: input.workspaceId,
-        ...(clientAuthoritativeConnectionIds && clientAuthoritativeConnectionIds.length > 0
+        ...(clientAuthoritativeConnectionIds !== null
           ? { id: { in: clientAuthoritativeConnectionIds } }
           : input.clientId
             ? { clientId: input.clientId, type: "source" }

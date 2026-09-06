@@ -25,16 +25,16 @@ export function _setReportingDatasetTestHooks(hooks: typeof reportingDatasetHook
  * to those platforms and is part of the fingerprint contract: fingerprint v2. Unscoped callers (no explicit
  * requirements) keep the v1 whole-dataset behavior. */
 export async function reportingDataset(tx: ScopedTransaction, workspaceId: string, clientId: string, window: ReportingWindow, providerScope?: string[]) {
-  const client = await tx.client.findFirst({ where: { workspaceId, id: clientId }, select: { id: true, requiredProviders: true, requiredDestinations: true, requirementsConfiguredAt: true } });
+  const client = await tx.client.findFirst({ where: { workspaceId, id: clientId }, select: { id: true, requiredProviders: true, requiredDestinations: true, requirementsConfiguredAt: true, accountAssignmentsConfiguredAt: true } });
   if (!client) throw new RbacError("Client not found", "NOT_FOUND", 404);
   await reportingDatasetHooks.afterClient?.();
   const scope = providerScope && providerScope.length > 0 ? [...new Set(providerScope)].sort() : null;
+  const isExplicit = client.accountAssignmentsConfiguredAt != null;
 
   const assignments = await tx.clientProviderAccountAssignment.findMany({
     where: {
       workspaceId,
       clientId,
-      status: "active",
       ...(scope ? { provider: { in: scope } } : {}),
     },
     select: {
@@ -64,16 +64,18 @@ export async function reportingDataset(tx: ScopedTransaction, workspaceId: strin
         orderBy: { id: "asc" },
         take: REPORT_DATASET_CAP + 1,
       })
-    : await tx.campaignMetric.findMany({
-        where: {
-          workspaceId,
-          connection: legacyConnection,
-          ...(scope ? { platform: { in: scope } } : {}),
-          date: { gte: new Date(`${window.start}T00:00:00Z`), lte: new Date(`${window.end}T23:59:59.999Z`) },
-        },
-        orderBy: { id: "asc" },
-        take: REPORT_DATASET_CAP + 1,
-      });
+    : isExplicit
+      ? []
+      : await tx.campaignMetric.findMany({
+          where: {
+            workspaceId,
+            connection: legacyConnection,
+            ...(scope ? { platform: { in: scope } } : {}),
+            date: { gte: new Date(`${window.start}T00:00:00Z`), lte: new Date(`${window.end}T23:59:59.999Z`) },
+          },
+          orderBy: { id: "asc" },
+          take: REPORT_DATASET_CAP + 1,
+        });
   await reportingDatasetHooks.afterRows?.();
 
   const contexts = assignments.length > 0
@@ -88,11 +90,13 @@ export async function reportingDataset(tx: ScopedTransaction, workspaceId: strin
         orderBy: { id: "asc" },
         take: REPORT_DATASET_CAP + 1,
       })
-    : await tx.accountReportingContext.findMany({
-        where: { workspaceId, connection: legacyConnection },
-        orderBy: { id: "asc" },
-        take: REPORT_DATASET_CAP + 1,
-      });
+    : isExplicit
+      ? []
+      : await tx.accountReportingContext.findMany({
+          where: { workspaceId, connection: legacyConnection },
+          orderBy: { id: "asc" },
+          take: REPORT_DATASET_CAP + 1,
+        });
   await reportingDatasetHooks.afterContexts?.();
 
   const connectionIds = [...new Set(assignments.map((a) => a.connectionId))];
@@ -105,20 +109,23 @@ export async function reportingDataset(tx: ScopedTransaction, workspaceId: strin
             take: REPORT_DATASET_CAP + 1,
           })
         : [])
-    : await tx.connection.findMany({
-        where: legacyConnection,
-        select: { id: true, provider: true },
-        orderBy: { id: "asc" },
-        take: REPORT_DATASET_CAP + 1,
-      });
+    : isExplicit
+      ? []
+      : await tx.connection.findMany({
+          where: legacyConnection,
+          select: { id: true, provider: true },
+          orderBy: { id: "asc" },
+          take: REPORT_DATASET_CAP + 1,
+        });
 
   const limited = [rows, contexts, sources, assignments].some(items => items.length > REPORT_DATASET_CAP);
-  const fingerprintPayload = assignments.length > 0
+  const fingerprintPayload = (isExplicit || assignments.length > 0)
     ? { version: 2, providerScope: scope, workspaceId, client, window, assignments, rows, contexts, sources }
     : { version: 2, providerScope: scope, workspaceId, client, window, rows, contexts, sources };
   const fingerprint = createHash("sha256").update(JSON.stringify(fingerprintPayload, (_, value) => typeof value === "bigint" ? value.toString() : value)).digest("hex");
   const evidenceAt = Math.max(
     client.requirementsConfiguredAt?.getTime() ?? 0,
+    client.accountAssignmentsConfiguredAt?.getTime() ?? 0,
     ...assignments.map(a => a.updatedAt.getTime()),
     ...rows.map(r => Math.max(r.pulledAt.getTime(), r.createdAt.getTime())),
     ...contexts.map(c => c.updatedAt.getTime()),

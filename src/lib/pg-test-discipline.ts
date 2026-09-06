@@ -24,3 +24,37 @@ export function assertCiDatabaseReachableWhenMissing(): void {
     );
   }
 }
+
+/**
+ * Validates that DATABASE_URL points to an allowed local disposable database
+ * and rejects production-like database identities. Throws if missing or invalid.
+ */
+export function assertAllowedTestDatabase(url: string | undefined): string {
+  if (!url || url.includes("mock")) {
+    throw new Error(
+      "DATABASE_URL must be provided for PostgreSQL integration tests. Tests cannot skip."
+    );
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`DATABASE_URL is invalid: ${url}`);
+  }
+  const host = parsed.hostname.toLowerCase();
+  const pathname = parsed.pathname.toLowerCase();
+  const isLocal = host === "localhost" || host === "127.0.0.1" || host === "postgres" || host === "0.0.0.0";
+  const isDisposableDb =
+    pathname.includes("test") ||
+    pathname.includes("ci") ||
+    pathname.includes("disposable") ||
+    pathname.includes("monstera_") ||
+    pathname.includes("local");
+
+  if (!isLocal || !isDisposableDb) {
+    throw new Error(
+      `DATABASE_URL (${host}${pathname}) is not an allowed disposable test database. Production-like database identities rejected.`
+    );
+  }
+  return url;
+}
