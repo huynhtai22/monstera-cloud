@@ -14,6 +14,7 @@ import {
     defaultBlueprintWindow,
     isValidDateString,
     formatBlueprintMetric,
+    unavailableBlueprintMetrics,
     lastCompleteWeek,
     METRIC_CONTRACT_VERSION,
     resolveExplicitWindow,
@@ -448,5 +449,126 @@ describe("report blueprint: constants and contracts", () => {
         assert.equal(BLUEPRINT_ID, "weekly-paid-media-performance");
         assert.equal(BLUEPRINT_VERSION, 1);
         assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v3");
+    });
+});
+
+describe("report blueprint: ambiguous scope suppression and unavailable display values", () => {
+    it("excludes reporting-ambiguous providers completely from campaign output", () => {
+        const googleRowA = row({
+            platform: "google_ads",
+            connectionId: "conn-1",
+            accountId: "child-123",
+            campaignId: "c-google",
+            spend: 50,
+            impressions: 1000,
+        });
+        const googleRowB = row({
+            platform: "google_ads",
+            connectionId: "conn-2",
+            accountId: "child-123",
+            campaignId: "c-google",
+            spend: 50,
+            impressions: 1000,
+        });
+        const metaRow = row({
+            platform: "meta_ads",
+            connectionId: "conn-3",
+            accountId: "act-456",
+            campaignId: "c-meta",
+            campaignName: "Meta Campaign",
+            spend: 80,
+            impressions: 2000,
+        });
+
+        const table = buildCampaignTable(
+            [googleRowA, googleRowB, metaRow],
+            [],
+            100,
+            { excludedProviders: ["google_ads"] },
+        );
+
+        // Google Ads is excluded: no doubled rows or doubled metrics leak through.
+        assert.equal(table.campaigns.length, 1);
+        assert.equal(table.campaigns[0].provider, "meta_ads");
+        assert.equal(table.campaigns[0].campaignId, "c-meta");
+        assert.equal(table.campaigns[0].impressions, 2000);
+        assert.equal(table.totalTracked, 1);
+    });
+
+    it("suppresses campaign and provider week-over-week changes when comparison window is ambiguous", () => {
+        const currentGoogle = row({
+            platform: "google_ads",
+            connectionId: "conn-1",
+            accountId: "child-123",
+            campaignId: "c-google",
+            spend: 70,
+            impressions: 7000,
+        });
+        // Comparison window holds duplicated rows from conn-1 and conn-2 for child-123
+        const prevGoogleA = row({
+            platform: "google_ads",
+            connectionId: "conn-1",
+            accountId: "child-123",
+            campaignId: "c-google",
+            spend: 70,
+            impressions: 7000,
+        });
+        const prevGoogleB = row({
+            platform: "google_ads",
+            connectionId: "conn-2",
+            accountId: "child-123",
+            campaignId: "c-google",
+            spend: 70,
+            impressions: 7000,
+        });
+
+        // When comparison is invalid for google_ads:
+        const table = buildCampaignTable(
+            [currentGoogle],
+            [prevGoogleA, prevGoogleB],
+            100,
+            { comparisonInvalidProviders: ["google_ads"] },
+        );
+
+        assert.equal(table.campaigns.length, 1);
+        assert.equal(table.campaigns[0].impressions, 7000);
+        assert.equal(table.campaigns[0].spend, 70);
+        // Changes MUST be empty — never computed against doubled comparison data (-50%)
+        assert.deepEqual(table.campaigns[0].changes, []);
+
+        // When comparison is clean (no comparisonInvalidProviders), deltas are computed
+        const cleanTable = buildCampaignTable(
+            [currentGoogle],
+            [prevGoogleA],
+            100,
+        );
+        assert.equal(cleanTable.campaigns[0].changes.length, 5);
+        const spendDelta = cleanTable.campaigns[0].changes.find((c) => c.field === "spend");
+        assert.equal(spendDelta?.deltaPercent, 0); // 70 vs 70 = 0%
+    });
+
+    it("real measured zero remains numeric zero; unavailable totals produce dash", () => {
+        // Real measured zeros must render as 0, not "—"
+        assert.equal(formatBlueprintMetric(0, null, "count"), "0");
+        assert.equal(formatBlueprintMetric(0, "USD", "money"), "$0.00");
+        assert.equal(formatBlueprintMetric(0, null, "percent"), "0.00%");
+        assert.equal(formatBlueprintMetric(0, null, "ratio"), "0.00x");
+
+        // Null / unavailable values must render as "—"
+        assert.equal(formatBlueprintMetric(null, null, "count"), "—");
+        assert.equal(formatBlueprintMetric(null, "USD", "money"), "—");
+        assert.equal(formatBlueprintMetric(null, null, "percent"), "—");
+        assert.equal(formatBlueprintMetric(null, null, "ratio"), "—");
+
+        // unavailableBlueprintMetrics produces null monetary / derived values
+        const unavailable = unavailableBlueprintMetrics();
+        assert.equal(unavailable.spend, null);
+        assert.equal(unavailable.conversionValue, null);
+        assert.equal(unavailable.ctr, null);
+        assert.equal(unavailable.cpc, null);
+        assert.equal(unavailable.cpa, null);
+        assert.equal(unavailable.roas, null);
+        assert.equal(unavailable.currency, null);
+        assert.equal(unavailable.monetaryAvailable, false);
     });
 });

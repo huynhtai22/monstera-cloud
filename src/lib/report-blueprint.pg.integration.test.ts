@@ -1932,6 +1932,10 @@ describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
         assert.equal(result.report.totals.scope, "unavailable");
         assert.equal(result.report.totals.impressions, 0);
         assert.equal(result.report.totals.spend, null);
+        // Campaign table excludes ambiguous reporting providers: no doubled rows leak through.
+        assert.equal(result.report.campaigns.length, 0);
+        assert.equal(result.report.campaignTotal, 0);
+        assert.equal(result.report.campaignTruncated, false);
         // Exact string account identifiers preserved in the bound evidence.
         const stored = await db.reportSnapshot.findUniqueOrThrow({ where: { id: result.snapshot.id } });
         const state = (stored.readinessEvidence as { dependencyState: DependencyState }).dependencyState;
@@ -1977,6 +1981,15 @@ describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
         assert.equal(google?.status, "included");
         assert.equal(google?.metrics?.impressions, 7000);
         assert.equal(result.report.totals.unavailable, false);
+        // Comparison deltas are suppressed because comparison evidence is ambiguous:
+        // no doubled historical baseline produces a misleading -50% delta.
+        assert.deepEqual(google?.changes, []);
+        assert.match(google?.explanation ?? "", /Comparison deltas are unavailable/);
+        // Campaign current-period metrics remain visible, but WoW changes are suppressed.
+        assert.equal(result.report.campaigns.length, 1);
+        assert.equal(result.report.campaigns[0].impressions, 7000);
+        assert.equal(result.report.campaigns[0].spend, 70);
+        assert.deepEqual(result.report.campaigns[0].changes, []);
     });
 
     it("two connections with DIFFERENT child accounts remain valid and verified (5, 9)", async () => {

@@ -48,7 +48,7 @@ type BlueprintMetrics = {
   cpc: number | null;
   cpa: number | null;
   roas: number | null;
-  scope?: "combined" | "by_provider_only";
+  scope?: "combined" | "by_provider_only" | "unavailable";
 };
 
 type PercentDelta = { field: string; current: number | null; previous: number | null; deltaPercent: number | null };
@@ -73,7 +73,7 @@ type BlueprintReport = {
       destinationState: "verified" | "unavailable" | "unverified" | "stale";
     };
   };
-  totals: BlueprintMetrics & { unavailable?: boolean };
+  totals: BlueprintMetrics & { scope?: "combined" | "by_provider_only" | "unavailable"; unavailable?: boolean };
   providers: Array<{
     provider: string;
     providerLabel: string;
@@ -459,32 +459,43 @@ export function WeeklyPerformanceBlueprint({
 
           {/* Cross-channel totals */}
           <div>
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-ink">
-                Cross-channel totals {displayedWindow ? <span className="font-normal text-ink-mute">· {displayedWindow.start} → {displayedWindow.end}</span> : null}
-              </h3>
-              {report.totals.unavailable ? (
-                <span className="rounded-full border border-amber-500/40 bg-amber-950/30 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-                  Totals unavailable: the same provider account is assigned through multiple source connections — no partial totals are shown
-                </span>
-              ) : report.totals.monetaryAvailable ? null : (
-                <span className="rounded-full border border-red-500/40 bg-red-950/30 px-2 py-0.5 text-[10px] font-semibold text-red-300">
-                  Monetary totals blocked: mixed or unknown currencies — shown per provider
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-              <MetricCard label="Spend" value={formatMetric(report.totals.spend, report.totals.currency, "money")} />
-              <MetricCard label="Impressions" value={formatMetric(report.totals.impressions, null, "count")} />
-              <MetricCard label="Clicks" value={formatMetric(report.totals.clicks, null, "count")} />
-              <MetricCard label="CTR" value={formatMetric(report.totals.ctr, null, "percent")} />
-              <MetricCard label="CPC" value={formatMetric(report.totals.cpc, report.totals.currency, "money")} />
-              <MetricCard label="Conversions" value={formatMetric(report.totals.conversions, null, "count")} />
-              <MetricCard label="Conversion value" value={formatMetric(report.totals.conversionValue, report.totals.currency, "money")} />
-              <MetricCard label="CPA" value={formatMetric(report.totals.cpa, report.totals.currency, "money")} />
-              <MetricCard label="ROAS" value={formatMetric(report.totals.roas, null, "ratio")} />
-              <MetricCard label="Currency" value={report.totals.currency ?? "—"} hint={report.totals.scope === "by_provider_only" ? "Per provider" : "Combined"} />
-            </div>
+            {(() => {
+              const totalsUnavailable = Boolean(report.totals.unavailable || report.totals.scope === "unavailable");
+              return (
+                <>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-ink">
+                      Cross-channel totals {displayedWindow ? <span className="font-normal text-ink-mute">· {displayedWindow.start} → {displayedWindow.end}</span> : null}
+                    </h3>
+                    {totalsUnavailable ? (
+                      <span className="rounded-full border border-amber-500/40 bg-amber-950/30 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                        Totals unavailable: the same provider account is assigned through multiple source connections — no partial totals are shown
+                      </span>
+                    ) : report.totals.monetaryAvailable ? null : (
+                      <span className="rounded-full border border-red-500/40 bg-red-950/30 px-2 py-0.5 text-[10px] font-semibold text-red-300">
+                        Monetary totals blocked: mixed or unknown currencies — shown per provider
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                    <MetricCard label="Spend" value={formatMetric(totalsUnavailable ? null : report.totals.spend, report.totals.currency, "money")} />
+                    <MetricCard label="Impressions" value={formatMetric(totalsUnavailable ? null : report.totals.impressions, null, "count")} />
+                    <MetricCard label="Clicks" value={formatMetric(totalsUnavailable ? null : report.totals.clicks, null, "count")} />
+                    <MetricCard label="CTR" value={formatMetric(totalsUnavailable ? null : report.totals.ctr, null, "percent")} />
+                    <MetricCard label="CPC" value={formatMetric(totalsUnavailable ? null : report.totals.cpc, report.totals.currency, "money")} />
+                    <MetricCard label="Conversions" value={formatMetric(totalsUnavailable ? null : report.totals.conversions, null, "count")} />
+                    <MetricCard label="Conversion value" value={formatMetric(totalsUnavailable ? null : report.totals.conversionValue, report.totals.currency, "money")} />
+                    <MetricCard label="CPA" value={formatMetric(totalsUnavailable ? null : report.totals.cpa, report.totals.currency, "money")} />
+                    <MetricCard label="ROAS" value={formatMetric(totalsUnavailable ? null : report.totals.roas, null, "ratio")} />
+                    <MetricCard
+                      label="Currency"
+                      value={totalsUnavailable ? "—" : (report.totals.currency ?? "—")}
+                      hint={totalsUnavailable ? "Unavailable" : report.totals.scope === "by_provider_only" ? "Per provider" : "Combined"}
+                    />
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {/* Provider breakdown */}

@@ -346,9 +346,19 @@ export function buildCampaignTable(
   currentRows: MetricRowInput[],
   previousRows: MetricRowInput[],
   limit: number = MAX_CAMPAIGN_ROWS,
+  options?: {
+    excludedProviders?: string[];
+    comparisonInvalidProviders?: string[];
+  },
 ): { campaigns: CampaignMetricsRow[]; totalTracked: number; truncated: boolean } {
+  const excluded = new Set(options?.excludedProviders ?? []);
+  const comparisonInvalid = new Set(options?.comparisonInvalidProviders ?? []);
+
+  const eligiblePreviousRows = previousRows.filter((row) => !excluded.has(row.platform));
+  const eligibleCurrentRows = currentRows.filter((row) => !excluded.has(row.platform));
+
   const previousGroups = new Map<string, MetricRowInput[]>();
-  for (const row of previousRows) {
+  for (const row of eligiblePreviousRows) {
     const key = campaignKey(row);
     const bucket = previousGroups.get(key);
     if (bucket) bucket.push(row);
@@ -356,7 +366,7 @@ export function buildCampaignTable(
   }
 
   const groups = new Map<string, MetricRowInput[]>();
-  for (const row of currentRows) {
+  for (const row of eligibleCurrentRows) {
     const key = campaignKey(row);
     const bucket = groups.get(key);
     if (bucket) bucket.push(row);
@@ -366,9 +376,10 @@ export function buildCampaignTable(
   const campaigns: CampaignMetricsRow[] = [];
   for (const bucket of groups.values()) {
     const metrics = aggregateBlueprintMetrics(bucket);
-    const previousRows = previousGroups.get(campaignKey(bucket[0]));
-    const previous = previousRows ? aggregateBlueprintMetrics(previousRows) : null;
     const first = bucket[0];
+    const comparisonEligible = !comparisonInvalid.has(first.platform);
+    const previousCampaignRows = comparisonEligible ? previousGroups.get(campaignKey(first)) : undefined;
+    const previous = previousCampaignRows ? aggregateBlueprintMetrics(previousCampaignRows) : null;
     campaigns.push({
       provider: first.platform,
       providerLabel: getPlatformLabel(first.platform),
@@ -387,7 +398,7 @@ export function buildCampaignTable(
       conversionValue: metrics.conversionValue,
       cpa: metrics.cpa,
       roas: metrics.roas,
-      changes: previous ? computeMetricsDeltas(metrics, previous) : [],
+      changes: previous && comparisonEligible ? computeMetricsDeltas(metrics, previous) : [],
     });
   }
 
@@ -457,10 +468,16 @@ export function buildAccountScopeEvidence(
   currentRows: MetricRowInput[],
   previousRows: MetricRowInput[],
   requiredProviders: string[],
-): { evidence: AccountScopeEvidence[]; ambiguousReasons: string[]; ambiguousProvidersReporting: string[] } {
+): {
+  evidence: AccountScopeEvidence[];
+  ambiguousReasons: string[];
+  ambiguousProvidersReporting: string[];
+  ambiguousProvidersComparison: string[];
+} {
   const evidence: AccountScopeEvidence[] = [];
   const ambiguousReasons = new Set<string>();
   const ambiguousProvidersReporting = new Set<string>();
+  const ambiguousProvidersComparison = new Set<string>();
   const windows: Array<{ name: AccountScopeWindow; rows: MetricRowInput[] }> = [
     { name: "comparison", rows: previousRows },
     { name: "reporting", rows: currentRows },
@@ -490,6 +507,7 @@ export function buildAccountScopeEvidence(
       if (ambiguous) {
         ambiguousReasons.add(`account_scope_ambiguous:${provider}:${group.accountId}`);
         if (window === "reporting") ambiguousProvidersReporting.add(provider);
+        if (window === "comparison") ambiguousProvidersComparison.add(provider);
       }
     }
   }
@@ -497,7 +515,12 @@ export function buildAccountScopeEvidence(
     compareStrings(a.window, b.window)
     || compareStrings(a.provider, b.provider)
     || compareStrings(a.accountId, b.accountId));
-  return { evidence, ambiguousReasons: [...ambiguousReasons].sort(), ambiguousProvidersReporting: [...ambiguousProvidersReporting] };
+  return {
+    evidence,
+    ambiguousReasons: [...ambiguousReasons].sort(),
+    ambiguousProvidersReporting: [...ambiguousProvidersReporting].sort(),
+    ambiguousProvidersComparison: [...ambiguousProvidersComparison].sort(),
+  };
 }
 
 /** Metrics object with every value unavailable — the established
@@ -761,6 +784,7 @@ function explanationFor(
   evaluation: ReportReadinessEvaluation,
   metrics: BlueprintMetrics | null,
   included: boolean,
+  comparisonAmbiguous = false,
 ): string {
   if (!(BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider)) {
     return "Out of scope. This provider is outside Verified Weekly Performance Blueprint v1 (Google Ads, Meta Ads, TikTok Ads). Its rows are never aggregated in this report; remove it from the client's required providers or use the broader reporting workflows.";
@@ -773,6 +797,9 @@ function explanationFor(
   }
   if (!metrics.monetaryAvailable) {
     return `Rows report mixed or unknown currencies (${metrics.currencies.join(", ")}); monetary totals are intentionally unavailable and no conversion is performed.`;
+  }
+  if (comparisonAmbiguous) {
+    return "Complete coverage for this window. Comparison deltas are unavailable because the previous window has ambiguous account sources.";
   }
   return "Complete coverage with verified reporting context for this window.";
 }
@@ -863,6 +890,8 @@ type GenerationContext = {
   accountScopeAmbiguous: string[];
   /** Required providers with an ambiguous scope in the REPORTING window. */
   ambiguousReportingProviders: string[];
+  /** Required providers with an ambiguous scope in the COMPARISON window. */
+  ambiguousComparisonProviders: string[];
   rowsLimited: boolean;
   evaluation: ReportReadinessEvaluation;
   dataset: Awaited<ReturnType<typeof reportingDataset>>;
@@ -987,6 +1016,7 @@ function buildProviderBreakdowns(ctx: GenerationContext): {
       ).values()].sort((a, b) => compareStrings(a.accountId, b.accountId) || compareStrings(a.connectionId, b.connectionId));
       includedAccounts.push(...pairs);
     }
+    const isComparisonValid = !ctx.ambiguousComparisonProviders.includes(provider);
     const dataThrough = ctx.evaluation.providers
       .find((entry) => entry.provider === provider)?.latestDataDate ?? null;
     const partial = {
@@ -996,10 +1026,15 @@ function buildProviderBreakdowns(ctx: GenerationContext): {
       status: hasData ? "included" as const : "no_data" as const,
       included: hasData,
       metrics,
-      changes: computeMetricsDeltas(metrics, aggregateBlueprintMetrics(previousRows)),
+      changes: hasData && isComparisonValid
+        ? computeMetricsDeltas(metrics, aggregateBlueprintMetrics(previousRows))
+        : [],
       dataThrough,
     };
-    providers.push({ ...partial, explanation: explanationFor(provider, ctx.evaluation, metrics, hasData) });
+    providers.push({
+      ...partial,
+      explanation: explanationFor(provider, ctx.evaluation, metrics, hasData, !isComparisonValid),
+    });
   }
 
   includedAccounts.sort((a, b) =>
@@ -1378,7 +1413,6 @@ export async function generateWeeklyBlueprint(params: {
         const currentUnsupported = new Set<string>();
         const previousUnsupported = new Set<string>();
         for (const provider of supportedProviders) {
-          const grain = (PROVIDER_SOURCE_GRAINS as Record<string, string>)[provider];
           if (currentWindow.rows.some((row) => row.platform === provider) && !currentAuthoritativeRows.some((row) => row.platform === provider)) currentUnsupported.add(provider);
           if (previousWindow.rows.some((row) => row.platform === provider) && !previousAuthoritativeRows.some((row) => row.platform === provider)) previousUnsupported.add(provider);
         }
@@ -1391,6 +1425,7 @@ export async function generateWeeklyBlueprint(params: {
           currentCampaignRows, previousCampaignRows, supportedProviders,
         );
         const ambiguousReportingProviders = scopeEvidence.ambiguousProvidersReporting;
+        const ambiguousComparisonProviders = scopeEvidence.ambiguousProvidersComparison;
 
         const ctx: GenerationContext = {
           workspaceId,
@@ -1410,6 +1445,7 @@ export async function generateWeeklyBlueprint(params: {
           accountScopeEvidence: scopeEvidence.evidence,
           accountScopeAmbiguous: scopeEvidence.ambiguousReasons,
           ambiguousReportingProviders,
+          ambiguousComparisonProviders,
           rowsLimited: currentWindow.limited,
           evaluation,
           dataset,
@@ -1441,7 +1477,15 @@ export async function generateWeeklyBlueprint(params: {
 
         const verification = buildVerification(ctx, totals, currentWindow.limited, true);
         const report = buildReport(ctx, verification);
-        const campaigns = buildCampaignTable(currentCampaignRows, previousCampaignRows);
+        const campaigns = buildCampaignTable(
+          currentCampaignRows,
+          previousCampaignRows,
+          MAX_CAMPAIGN_ROWS,
+          {
+            excludedProviders: ambiguousReportingProviders,
+            comparisonInvalidProviders: ambiguousComparisonProviders,
+          },
+        );
         report.campaigns = campaigns.campaigns;
         report.campaignTruncated = campaigns.truncated;
         report.campaignTotal = campaigns.totalTracked;

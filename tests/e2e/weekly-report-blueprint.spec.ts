@@ -484,6 +484,25 @@ test.describe("verified weekly report blueprint", () => {
     // The machine-readable reason lives inside the collapsed evidence panel.
     await page.getByText("Evidence & blockers").click();
     await expect(page.getByText(/account_scope_ambiguous:google_ads:dup-child-/).first()).toBeVisible();
+
+    // Unavailable count totals render as "—" rather than numeric zero
+    const impressionsCard = page.locator("div.rounded-lg", { has: page.getByText("Impressions", { exact: true }) }).locator("p.text-sm");
+    await expect(impressionsCard).not.toHaveText("0");
+    await expect(impressionsCard).toContainText("—");
+
+    const clicksCard = page.locator("div.rounded-lg", { has: page.getByText("Clicks", { exact: true }) }).locator("p.text-sm");
+    await expect(clicksCard).not.toHaveText("0");
+    await expect(clicksCard).toContainText("—");
+
+    const conversionsCard = page.locator("div.rounded-lg", { has: page.getByText("Conversions", { exact: true }) }).locator("p.text-sm");
+    await expect(conversionsCard).not.toHaveText("0");
+    await expect(conversionsCard).toContainText("—");
+
+    // Campaign table excludes reporting-ambiguous providers and does not render ambiguous/doubled rows
+    await expect(page.getByText("Showing 0 of 0 tracked campaigns")).toBeVisible();
+    await expect(page.getByText("No campaign-level rows exist for the required providers in this window.")).toBeVisible();
+    await expect(page.getByText("Dup Campaign")).not.toBeVisible();
+
     await noHorizontalOverflow(page);
 
     await prisma.campaignMetric.deleteMany({ where: { connectionId: { in: [dupConnA, dupConnB] } } });
