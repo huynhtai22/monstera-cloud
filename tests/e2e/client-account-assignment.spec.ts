@@ -25,6 +25,7 @@ const BOB = { email: "bob@beta-media.test", password: "Pilot_Beta_2026!" };
 
 type Fixture = {
   workspaceId: string;
+  ownerUserId: string;
   apiKeySecret: string;
   clients: {
     one: { id: string; name: string };
@@ -71,12 +72,13 @@ async function signIn(page: Page, credentials: { email: string; password: string
 }
 
 async function useFixtureWorkspace(page: Page) {
-  await page.addInitScript((workspaceId: string) => {
+  await page.addInitScript(({ workspaceId, userId }: { workspaceId: string; userId: string }) => {
     window.localStorage.setItem(
       "monstera-workspace-storage",
       JSON.stringify({ state: { activeWorkspaceId: workspaceId }, version: 0 }),
     );
-  }, fixture.workspaceId);
+    window.sessionStorage.setItem("monstera-last-auth-user-id", userId);
+  }, { workspaceId: fixture.workspaceId, userId: fixture.ownerUserId });
 }
 
 async function signInToFixture(page: Page) {
@@ -148,6 +150,7 @@ test.describe("client account assignment journeys", () => {
 
     fixture = {
       workspaceId: `ws-${suffix}`,
+      ownerUserId: alice.id,
       apiKeySecret: `mc_live_${suffix}`,
       clients: {
         one: { id: `client-one-${suffix}`, name: "Assignment Client One" },
@@ -292,7 +295,16 @@ test.describe("client account assignment journeys", () => {
 
   test.afterAll(async () => {
     try {
-      await db?.workspace.delete({ where: { id: fixture.workspaceId } });
+      await db?.$transaction(async (tx) => {
+        await tx.campaignMetric.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+        await tx.clientProviderAccountAssignment.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+        await tx.connection.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+        await tx.client.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+        await tx.apiKey.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+        await tx.workspaceMember.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+        await tx.workspaceProviderAccess.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+        await tx.workspace.delete({ where: { id: fixture.workspaceId } });
+      });
     } finally {
       await db?.$disconnect();
     }
