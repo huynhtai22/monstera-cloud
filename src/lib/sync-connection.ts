@@ -20,7 +20,7 @@ import { syncShopeeAdsWarehouseMetrics } from "@/lib/sync-shopee-ads-warehouse";
 import { syncShopeeCatalogWarehouse } from "@/lib/sync-shopee-catalog-warehouse";
 
 // Meta imports
-import { ingestMetaRows } from "@/lib/meta-ingest";
+import { ingestMetaRows, META_CANONICAL_METRIC_GRAIN } from "@/lib/meta-ingest";
 import { MetaOAuthRevokedError } from "@/lib/meta-ads";
 import { handleMetaRevocation } from "@/lib/ingestion/meta-campaign-metrics";
 import { metaAdsClient, metaReportClient, META_DEFAULT_FIELDS } from "@/lib/meta-ads";
@@ -94,8 +94,7 @@ export interface SyncOptions {
 }
 
 export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult> {
-  const { connectionId, provider, credentials, workspaceId } = opts;
-  const plan = opts.userPlan ?? "free";
+  const { connectionId, provider, workspaceId } = opts;
 
   logger.info(`[syncConnectionData] Starting sync for ${provider} connection ${connectionId} in workspace ${workspaceId}`);
 
@@ -459,7 +458,7 @@ async function syncMetaAds(opts: {
       const insightsQuery: any = {
         adAccountId: accountId.replace("act_", ""),
         fields: META_DEFAULT_FIELDS,
-        level: "ad",
+        level: META_CANONICAL_METRIC_GRAIN,
         timeIncrement: 1,
       };
 
@@ -483,7 +482,7 @@ async function syncMetaAds(opts: {
           accountId,
           accountName,
           currency,
-          level: "ad",
+          level: META_CANONICAL_METRIC_GRAIN,
           rows,
           syncJobId: jobId,
           lockScope: lock.scope,
@@ -511,7 +510,7 @@ async function syncMetaAds(opts: {
               workspaceId,
               connectionId,
               accountId: String(accountId),
-              level: "ad",
+              level: META_CANONICAL_METRIC_GRAIN,
               since: new Date(`${since}T00:00:00.000Z`),
               until: new Date(`${until}T23:59:59.999Z`),
               providerEntityIds: rows.map((row: any) => String(row.ad_id ?? row.id ?? "")).filter(Boolean),
@@ -525,9 +524,15 @@ async function syncMetaAds(opts: {
         // Earlier warehouse refreshes stored Meta results at campaign level.
         // Once a complete ad-level replacement is written, remove only those
         // legacy aggregates in the refreshed window so totals are not doubled.
-        if (result.failed === 0 && since && until) {
-          const startDate = new Date(`${since}T00:00:00.000Z`);
-          const endDate = new Date(`${until}T23:59:59.999Z`);
+        if (result.failed === 0) {
+          const returnedDays = rows
+            .map((row: any) => String(row.date_start ?? row.date_stop ?? "").slice(0, 10))
+            .filter((day: string) => /^\d{4}-\d{2}-\d{2}$/.test(day))
+            .sort();
+          const replacementSince = since ?? returnedDays[0];
+          const replacementUntil = until ?? returnedDays.at(-1);
+          const startDate = new Date(`${replacementSince}T00:00:00.000Z`);
+          const endDate = new Date(`${replacementUntil}T23:59:59.999Z`);
           if (!Number.isNaN(startDate.getTime()) && !Number.isNaN(endDate.getTime())) {
             await prisma.campaignMetric.deleteMany({
               where: {

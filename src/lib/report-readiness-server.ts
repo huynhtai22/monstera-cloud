@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import type { ScopedTransaction } from "./warehouse-query";
 import { RbacError } from "@/lib/rbac";
 import { evaluateReportReadiness, type ReportingWindow, type SyncEvidence } from "./report-readiness";
@@ -6,6 +7,20 @@ import { parseReadinessRequest } from "./report-readiness-request";
 import { reportingDataset } from "./report-delivery";
 
 const CAP = 5_000;
+const readinessHooks: {
+  afterClients?: () => Promise<void>;
+  afterSources?: () => Promise<void>;
+  afterMetricDays?: () => Promise<void>;
+  beforeEvaluate?: () => Promise<void>;
+} = {};
+
+/** @internal TEST-ONLY transaction interleaving seams. */
+export function _setReadinessTestHooks(hooks: typeof readinessHooks): void {
+  readinessHooks.afterClients = hooks.afterClients;
+  readinessHooks.afterSources = hooks.afterSources;
+  readinessHooks.afterMetricDays = hooks.afterMetricDays;
+  readinessHooks.beforeEvaluate = hooks.beforeEvaluate;
+}
 const record = (value: unknown): Record<string, unknown> | null => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 const iso = (value: Date | null) => value?.toISOString() ?? null;
@@ -43,51 +58,83 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
       where: { workspaceId, ...(options.clientId ? { id: options.clientId } : options.after ? { id: { gt: options.after } } : {}) },
       select: { id: true, name: true, requiredProviders: true, requiredDestinations: true, requirementsConfiguredAt: true }, orderBy: { id: "asc" }, take: limit + 1,
     });
+    await readinessHooks.afterClients?.();
     if (options.clientId && !clients.length) throw new RbacError("Client not found", "NOT_FOUND", 404);
     const selected = clients.slice(0, limit);
     if (!selected.length) return { evaluations: [], nextCursor: null };
     const clientIds = selected.map(c => c.id);
+    const sourceScopes = selected.map(client => client.requirementsConfiguredAt
+      ? { clientId: client.id, provider: { in: client.requiredProviders } }
+      : { clientId: client.id });
+    const destinationScopes = selected.map(client => client.requirementsConfiguredAt
+      ? { clientId: client.id, provider: { in: client.requiredDestinations } }
+      : { clientId: client.id });
+    const pipelineScopes = selected.map(client => client.requirementsConfiguredAt
+      ? { clientId: client.id, destinationConnection: { provider: { in: client.requiredDestinations } } }
+      : { clientId: client.id });
     const sources = await tx.connection.findMany({
-      where: { workspaceId, clientId: { in: clientIds }, type: "source" }, take: CAP + 1, orderBy: { id: "asc" },
+      where: { workspaceId, type: "source", OR: sourceScopes }, take: CAP + 1, orderBy: { id: "asc" },
       select: { id: true, clientId: true, provider: true, status: true, lastError: true, lastSyncAt: true },
     });
+    await readinessHooks.afterSources?.();
     const ids = sources.slice(0, CAP).map(c => c.id);
     // Redundant relational workspace filters reject even corrupt cross-workspace FK assignments.
     const metricWhere = { workspaceId, connectionId: { in: ids }, connection: { workspaceId, clientId: { in: clientIds } } };
-    const [days, dataDates, accounts, runs, jobs, destinations, pipelines] = await Promise.all([
-      tx.campaignMetric.groupBy({
+    const days = await tx.campaignMetric.groupBy({
         by: ["connectionId", "accountId", "date", "currency"],
         where: { ...metricWhere, date: { gte: new Date(`${window.start}T00:00:00Z`), lte: new Date(`${window.end}T23:59:59.999Z`) } },
         _count: { _all: true }, orderBy: [{ connectionId: "asc" }, { accountId: "asc" }, { date: "asc" }, { currency: "asc" }], take: CAP + 1,
-      }),
-      tx.campaignMetric.groupBy({ by: ["connectionId"], where: metricWhere, _max: { date: true } }),
-      tx.providerAccountHealth.findMany({
+      });
+    await readinessHooks.afterMetricDays?.();
+    const dataDates = await tx.campaignMetric.groupBy({ by: ["connectionId"], where: metricWhere, _max: { date: true } });
+    const accounts = await tx.providerAccountHealth.findMany({
         where: { workspaceId, connectionId: { in: ids }, connection: { workspaceId } }, take: CAP + 1, orderBy: { id: "asc" },
         select: { connectionId: true, accountId: true, status: true, lastSuccessAt: true },
-      }),
-      tx.providerSyncRun.findMany({
+      });
+    const runs = await tx.providerSyncRun.findMany({
         where: { workspaceId, connectionId: { in: ids }, connection: { workspaceId } },
         take: CAP + 1, orderBy: [{ startedAt: "desc" }, { id: "asc" }],
         select: { id: true, connectionId: true, endpoint: true, status: true, startedAt: true, completedAt: true },
-      }),
+      });
       // Outcomes are read only internally; DTOs never include result/error/provider payloads.
-      tx.warehouseImportJob.findMany({
-        where: { workspaceId, since: { lte: window.end }, until: { gte: window.start } },
-        take: CAP + 1, orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-        select: { id: true, status: true, items: true, results: true, createdAt: true, finishedAt: true, since: true, until: true },
-      }),
-      tx.connection.findMany({
-        where: { workspaceId, clientId: { in: clientIds }, type: "destination" }, take: CAP + 1, orderBy: { id: "asc" },
-        select: { id: true, clientId: true, status: true },
-      }),
-      tx.pipeline.findMany({
-        where: { workspaceId, clientId: { in: clientIds }, sourceConnection: { workspaceId }, destinationConnection: { workspaceId } },
+    // WarehouseImportJob has JSON children rather than a connection FK. Scope
+    // it in PostgreSQL before applying CAP so another client's large job fleet
+    // cannot hide, limit, or otherwise influence this client's sync evidence.
+    const jobs = ids.length === 0 ? [] : await tx.$queryRaw<Array<{
+      id: string; status: string; items: unknown; results: unknown; createdAt: Date;
+      finishedAt: Date | null; since: string; until: string;
+    }>>(Prisma.sql`
+      SELECT "id", "status", "items", "results", "createdAt", "finishedAt", "since", "until"
+      FROM "WarehouseImportJob"
+      WHERE "workspaceId" = ${workspaceId}
+        AND "since" <= ${window.end}
+        AND "until" >= ${window.start}
+        AND (
+          EXISTS (
+            SELECT 1 FROM jsonb_array_elements(
+              CASE WHEN jsonb_typeof("items") = 'array' THEN "items" ELSE '[]'::jsonb END
+            ) item WHERE item->>'connectionId' IN (${Prisma.join(ids)})
+          )
+          OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements(
+              CASE WHEN jsonb_typeof("results") = 'array' THEN "results" ELSE '[]'::jsonb END
+            ) result WHERE result->>'connectionId' IN (${Prisma.join(ids)})
+          )
+        )
+      ORDER BY "createdAt" DESC, "id" ASC
+      LIMIT ${CAP + 1}
+    `);
+    const destinations = await tx.connection.findMany({
+        where: { workspaceId, type: "destination", OR: destinationScopes }, take: CAP + 1, orderBy: { id: "asc" },
+        select: { id: true, clientId: true, provider: true, status: true },
+      });
+    const pipelines = await tx.pipeline.findMany({
+        where: { workspaceId, OR: pipelineScopes, sourceConnectionId: { in: ids }, sourceConnection: { workspaceId }, destinationConnection: { workspaceId } },
         take: CAP + 1, orderBy: { id: "asc" }, select: {
           clientId: true, status: true, healthStatus: true, sourceConnectionId: true,
-          destinationConnection: { select: { id: true, status: true } },
+          destinationConnection: { select: { id: true, provider: true, status: true } },
         },
-      }),
-    ]);
+      });
     const limited = [sources, days, accounts, runs, jobs, destinations, pipelines].some(rows => rows.length > CAP);
     const now = new Date();
     const syncByConnection = new Map<string, SyncEvidence[]>();
@@ -120,6 +167,7 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
         add(item.connectionId, { id: job.id, kind: "import", target: account, status, at: (job.finishedAt ?? job.createdAt).toISOString() });
       }
     }
+    await readinessHooks.beforeEvaluate?.();
     const evaluations = await Promise.all(selected.map(async client => {
       const assigned = sources.slice(0, CAP).filter(s => s.clientId === client.id);
       const [snapshot, contexts, latestReceipts] = await Promise.all([
@@ -133,12 +181,26 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
         ...destinations.filter(d => d.clientId === client.id),
         ...pipelines.filter(p => p.clientId === client.id).map(p => p.destinationConnection),
       ];
+      const uniqueDestinations = [...new Map(clientDestinations.map(destination => [destination.id, destination])).values()];
       const unavailable = clientDestinations.some(d => ["disconnected", "error"].includes(d.status))
         || pipelines.some(p => p.clientId === client.id && (p.healthStatus === "error" || p.status !== "active"));
       return evaluateReportReadiness({
         workspaceId, clientId: client.id, window, now, limited: limited || snapshot.limited || contexts.length > CAP,
         requiredProviders: client.requirementsConfiguredAt ? client.requiredProviders : assigned.map(s => s.provider), requiredProvidersBasis: client.requirementsConfiguredAt ? "explicit" : "assigned_sources",
-        destination: { state: unavailable ? "unavailable" : verified ? "verified" : receipts.some(r => !r.current) ? "stale" : "unverified", configuredCount: new Set(clientDestinations.map(d => d.id)).size, required: client.requiredDestinations, receipts },
+        requirementsConfiguredAt: iso(client.requirementsConfiguredAt),
+        destination: {
+          state: unavailable ? "unavailable" : verified ? "verified" : receipts.some(r => !r.current) ? "stale" : "unverified",
+          configuredCount: uniqueDestinations.length,
+          required: client.requiredDestinations,
+          receipts,
+          connections: uniqueDestinations.map(destination => ({ id: destination.id, provider: destination.provider, status: destination.status })),
+          pipelines: pipelines.filter(p => p.clientId === client.id).map(p => ({
+            sourceConnectionId: p.sourceConnectionId,
+            destinationConnectionId: p.destinationConnection.id,
+            status: p.status,
+            healthStatus: p.healthStatus,
+          })),
+        },
         sources: assigned.map(s => ({
           connectionId: s.id, provider: s.provider, connectionStatus: s.status, lastError: s.lastError,
           lastSyncAt: iso(s.lastSyncAt), latestDataDate: dataDates.find(d => d.connectionId === s.id)?._max.date?.toISOString().slice(0, 10) ?? null,

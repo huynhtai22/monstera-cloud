@@ -21,6 +21,8 @@ import type { MetaInsightsRow, MetaAction } from '@/lib/meta-ads';
 import { recordPayloadSchemaDiscovery } from '@/lib/payload-schema-discovery';
 
 const CHUNK_SIZE = 100;
+/** Canonical Meta CampaignMetric fact grain used by every active sync path. */
+export const META_CANONICAL_METRIC_GRAIN = "ad" as const;
 
 export interface IngestMetaRowsOpts {
   workspaceId: string;

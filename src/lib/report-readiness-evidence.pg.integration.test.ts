@@ -20,7 +20,7 @@ describe("Report readiness persisted evidence and authenticated receipts", { ski
   const sa = `source-a-${uid}`, sb = `source-b-${uid}`, owner = `owner-${uid}`, admin = `admin-${uid}`, member = `member-${uid}`, viewer = `viewer-${uid}`;
   const key = `mc_test_${uid}`, window = defaultReportingWindow();
   const originalFetch = globalThis.fetch; let safe = false; let validGoogle = true;
-  const originalAddon = process.env.GOOGLE_ADDON_CLIENT_ID; const originalLooker = process.env.LOOKER_OAUTH_CLIENT_ID;
+  const originalAudiences = process.env.GOOGLE_ID_TOKEN_AUDIENCES; const originalAddon = process.env.GOOGLE_ADDON_CLIENT_ID; const originalLooker = process.env.LOOKER_OAUTH_CLIENT_ID;
   function asUser(id: string | null) { setAuthSessionOverride(async () => id ? { user: { id }, expires: new Date(Date.now()+86400000).toISOString() } : null); }
   const req = (body?: object, overrides: Record<string,string> = {}) => new Request(`http://localhost/api/reports/readiness/configuration?${new URLSearchParams({ workspaceId: wa, clientId: ca, ...overrides })}`, body ? { method:"PATCH", headers:{"content-type":"application/json"}, body:JSON.stringify({workspaceId:wa,clientId:ca,...body}) } : undefined);
   const requirements = { providers:["meta_ads"],destinations:["google_sheets","looker_studio"] };
@@ -48,6 +48,7 @@ describe("Report readiness persisted evidence and authenticated receipts", { ski
     asUser(owner); validGoogle=true;
     process.env.GOOGLE_ADDON_CLIENT_ID="ci-google-client-id.apps.googleusercontent.com";
     process.env.LOOKER_OAUTH_CLIENT_ID="different-looker-client.apps.googleusercontent.com";
+    process.env.GOOGLE_ID_TOKEN_AUDIENCES="ci-google-client-id.apps.googleusercontent.com,different-looker-client.apps.googleusercontent.com";
     await db.destinationDeliveryReceipt.deleteMany({where:{workspaceId:wa}});
     await db.accountReportingContext.deleteMany({where:{workspaceId:wa}});
     await db.auditEvent.deleteMany({where:{workspaceId:wa}});
@@ -57,6 +58,7 @@ describe("Report readiness persisted evidence and authenticated receipts", { ski
   });
   after(async () => {
     setAuthSessionOverride(null); globalThis.fetch=originalFetch;
+    if(originalAudiences===undefined) delete process.env.GOOGLE_ID_TOKEN_AUDIENCES; else process.env.GOOGLE_ID_TOKEN_AUDIENCES=originalAudiences;
     if(originalAddon===undefined) delete process.env.GOOGLE_ADDON_CLIENT_ID; else process.env.GOOGLE_ADDON_CLIENT_ID=originalAddon;
     if(originalLooker===undefined) delete process.env.LOOKER_OAUTH_CLIENT_ID; else process.env.LOOKER_OAUTH_CLIENT_ID=originalLooker;
     if(safe) { await db.campaignMetric.deleteMany({where:{workspaceId:{in:[wa,wb]}}}); await db.connection.deleteMany({where:{workspaceId:{in:[wa,wb]}}}); await db.workspace.deleteMany({where:{id:{in:[wa,wb]}}}); await db.user.deleteMany({where:{id:{in:[owner,admin,member,viewer]}}}); }

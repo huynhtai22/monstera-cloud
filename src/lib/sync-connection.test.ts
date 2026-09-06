@@ -268,6 +268,7 @@ describe("provider HTTP failures preserve sync correctness", () => {
     await withFastRetries(() => withSyncHarness((async (input) => {
       const url = String(input);
       if (url.includes("/insights")) {
+        assert.match(url, /(?:\?|&)level=ad(?:&|$)/, "every active Meta sync requests the canonical ad grain");
         return new Response(JSON.stringify({ error: { message: "Error validating access token: session has been revoked", code: 190, type: "OAuthException" } }), { status: 400 });
       }
       return new Response(JSON.stringify({ data: [] }), { status: 200 });

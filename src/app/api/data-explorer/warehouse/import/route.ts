@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { syncMetaInsightsIntoWarehouse } from "@/lib/ingestion/meta-campaign-metrics";
 import { syncGoogleAdsIntoWarehouse, syncTikTokIntoWarehouse } from "@/lib/ingestion/ad-platform-warehouse";
+import { syncConnectionData } from "@/lib/sync-connection";
 import { logger } from "@/lib/logger";
 import { decrypt } from "@/lib/encryption";
 import { requireWorkspaceAccess } from "@/lib/rbac";
@@ -28,7 +28,8 @@ const WAREHOUSE_COLUMN_LIST = [
 /**
  * POST /api/data-explorer/warehouse/import
  * Body: { workspaceId, connectionId, since, until, adAccountId? }
- * Pulls Meta Insights into CampaignMetric (internal warehouse).
+ * Pulls provider metrics into CampaignMetric. Meta delegates to the same
+ * fenced ad-day sync primitive used by scheduled and pipeline execution.
  */
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -83,29 +84,36 @@ export async function POST(req: Request) {
     }
 
     const provider = conn.provider;
+    const credentials = JSON.parse(decrypt(conn.credentials));
 
     if (provider === "meta_ads") {
-      const result = await syncMetaInsightsIntoWarehouse({
+      const selectedCredentials = adAccountId
+        ? {
+          ...credentials,
+          selectedAdAccountIds: [adAccountId],
+          extraFields: { ...(credentials.extraFields ?? {}), selectedAdAccountIds: [adAccountId] },
+        }
+        : credentials;
+      const result = await syncConnectionData({
         workspaceId,
         connectionId,
+        provider,
+        credentials: selectedCredentials,
         since,
         until,
         userPlan: plan,
-        adAccountId: adAccountId || undefined,
       });
+      if (!result.success) throw new Error(result.error ?? "Meta import did not complete");
 
       return NextResponse.json({
         success: true,
         provider,
-        upserted: result.upserted,
-        accounts: result.accounts,
+        upserted: result.rowsIngested,
+        accounts: result.children.length,
         columns: [...WAREHOUSE_COLUMN_LIST],
-        message: `Imported ${result.upserted} campaign-day rows from ${result.accounts} ad account(s).`,
+        message: `Imported ${result.rowsIngested} ad-day rows from ${result.children.length} ad account(s).`,
       });
     }
-
-    // Other ad platforms: decrypt credentials here and use simple upserts.
-    const credentials = JSON.parse(decrypt(conn.credentials));
 
     if (provider === "google_ads") {
       const result = await syncGoogleAdsIntoWarehouse({

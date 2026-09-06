@@ -15,10 +15,12 @@ import {
     _setPublicationTestHooks,
     type DependencyState,
 } from "./report-blueprint";
-import { reportingDataset } from "./report-delivery";
+import { reportingDataset, _setReportingDatasetTestHooks } from "./report-delivery";
+import { _setReadinessTestHooks } from "./report-readiness-server";
 import type { ScopedTransaction } from "./warehouse-query";
 import { TENANT_GUARDED_MODELS } from "./tenant-guard";
 import { assertCiDatabaseReachableWhenMissing } from "./pg-test-discipline";
+import { extractCampaignMetricsFromDb } from "@/etl/extractors/campaignMetrics";
 
 /**
  * Real PostgreSQL tests for the Verified Weekly Performance Blueprint on the
@@ -27,45 +29,28 @@ import { assertCiDatabaseReachableWhenMissing } from "./pg-test-discipline";
  * evidence-based evaluator. NOT mocks: uniqueness, staleness, receipt scoping
  * and tenant isolation are proven against the database.
  */
-/**
- * Deterministic concurrency barriers. These poll DATABASE state (ungranted
- * advisory locks) until the forced interleaving is actually established —
- * they never depend on wall-clock timing, retries, or race windows.
- */
+/** Deterministic, condition-based barriers; no probabilistic race windows. */
 const POLL_INTERVAL_MS = 10;
 const POLL_MAX_TRIES = 2_000;
 
-async function countBlockedAdvisoryWaiters(dbForLocks: PrismaClient, generationKey: string): Promise<number> {
-    return (await blockedAdvisoryWaiters(dbForLocks, generationKey)).length;
-}
-
-/**
- * Waiters on the EXACT advisory-lock key the service uses, identified by:
- * the 64-bit key split (classid = high 32 bits, objid = low 32 bits),
- * objsubid = 1 (single-key advisory form), and the CURRENT database OID —
- * plus the blocking sessions' backend PIDs with their database names.
- * Unrelated advisory waiters (different keys, two-integer forms, other
- * databases) can never satisfy the barrier.
- */
-async function blockedAdvisoryWaiters(dbForLocks: PrismaClient, generationKey: string): Promise<Array<{ pid: number; datname: string | null }>> {
-    const rows = await dbForLocks.$queryRaw<Array<{ pid: number; datname: string | null }>>`
-        SELECT a.pid::int AS pid, current_database() AS datname
+async function grantedAdvisoryHolders(dbForLocks: PrismaClient, generationKey: string): Promise<Array<{ pid: number; datname: string }>> {
+    return dbForLocks.$queryRaw<Array<{ pid: number; datname: string }>>`
+        SELECT a.pid::int AS pid, a.datname::text AS datname
         FROM pg_locks l
+        JOIN pg_stat_activity a ON a.pid = l.pid
         CROSS JOIN (SELECT hashtext(${generationKey})::bigint AS v) k
         CROSS JOIN (SELECT oid AS dboid FROM pg_database WHERE datname = current_database()) d
-        LEFT JOIN pg_stat_activity a ON a.pid = l.pid
-        WHERE l.locktype = 'advisory' AND NOT l.granted
+        WHERE l.locktype = 'advisory' AND l.granted
           AND l.objsubid = 1
           AND l.classid = ((k.v >> 32) & 4294967295)
           AND l.objid = (k.v & 4294967295)
-          AND l.database = d.dboid`;
-    return rows;
+          AND l.database = d.dboid
+          AND a.datname = current_database()`;
 }
 
 async function waitForCondition(
     condition: () => boolean | Promise<boolean>,
     label: string,
-    dbForLocks?: PrismaClient,
 ): Promise<void> {
     for (let attempt = 0; attempt < POLL_MAX_TRIES; attempt += 1) {
         if (await condition()) return;
@@ -864,6 +849,27 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         await db.campaignMetric.deleteMany({ where: { entityId: `legacy-m-${suffix}` } });
     });
 
+    it("Meta ETL exports only canonical ad facts when legacy campaign rows coexist", async () => {
+        if (!db) return;
+        const legacyId = `legacy-meta-${suffix}`;
+        await db.campaignMetric.create({
+            data: {
+                workspaceId: ids.workspaceA, connectionId: ids.connMetaA, platform: "meta_ads",
+                accountId: "m-account-1", level: "campaign", entityId: legacyId,
+                campaignId: "120210543958", campaignName: "Legacy aggregate",
+                date: new Date("2026-08-24T00:00:00.000Z"), impressions: 99_000,
+                clicks: 9_000, spend: 99_000_000, conversions: 999, revenue: 999_000_000, currency: "VND",
+            },
+        });
+        try {
+            const extracted = await extractCampaignMetricsFromDb({ connectionId: ids.connMetaA, cursorRaw: null, provider: "meta_ads", level: "ad" });
+            assert.equal(extracted.rows.length, 14, "two canonical ad rows across seven days only");
+            assert.equal(extracted.rows.reduce((sum, row) => sum + Number(row[4]), 0), 14_000_000, "legacy campaign spend is never exported or double-counted");
+        } finally {
+            await db.campaignMetric.deleteMany({ where: { workspaceId: ids.workspaceA, connectionId: ids.connMetaA, entityId: legacyId } });
+        }
+    });
+
     it("fails verification closed when a provider holds only unsupported grains (P1-3)", async () => {
         if (!db) return;
         await db.destinationDeliveryReceipt.deleteMany({
@@ -1022,111 +1028,87 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             ids.workspaceA, ids.clientA, WINDOW, comparisonWindowFor(WINDOW),
         );
 
-        // Deterministic database barrier: a holder transaction takes the SAME
-        // transaction-scoped advisory lock the service uses, so both
-        // generations park at their create transaction. No timing involved —
-        // the test releases the barrier only after both are verifiably blocked.
-        const lockClient = new PrismaClient();
-        await lockClient.$connect();
-        let holderOpen = false;
-        const barrier: { release: (() => void) | null } = { release: null };
-        const holder = lockClient.$transaction(async (tx) => {
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${generationKey}))`;
-            holderOpen = true;
-            await new Promise<void>((resolve) => { barrier.release = resolve; });
-            return true;
-        }, { timeout: 120_000 });
-        await waitForCondition(() => holderOpen, "barrier holder open");
-
-        // Negative control: an unrelated advisory-lock waiter (different key)
-        // exists but can never satisfy this barrier.
-        const unrelatedKey = `unrelated-${suffix}`;
-        let unrelatedOpen = false;
-        const unrelatedBarrier: { release: (() => void) | null } = { release: null };
-        const unrelatedHolder = lockClient.$transaction(async (tx) => {
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${unrelatedKey}))`;
-            unrelatedOpen = true;
-            await new Promise<void>((resolve) => { unrelatedBarrier.release = resolve; });
-            return true;
-        }, { timeout: 60_000 });
-        await waitForCondition(() => unrelatedOpen, "unrelated holder open");
-        const unrelatedWaiter = lockClient.$transaction(async (tx) => {
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${unrelatedKey}))`;
-            return true;
-        }, { timeout: 60_000 });
-        // Negative control: a two-integer advisory lock whose BOTH integers
-        // equal the raw hashtext value — a naive filter without the exact
-        // key split would mistake it for our key. It must not count.
-        const twoIntKey = `two-int-${suffix}`;
-        let twoIntHolderOpen = false;
-        const twoIntBarrier: { release: (() => void) | null } = { release: null };
-        const twoIntHolder = lockClient.$transaction(async (tx) => {
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${twoIntKey}), hashtext(${twoIntKey}))`;
-            twoIntHolderOpen = true;
-            await new Promise<void>((resolve) => { twoIntBarrier.release = resolve; });
-            return true;
-        }, { timeout: 60_000 });
-        await waitForCondition(() => twoIntHolderOpen, "two-int holder open");
-        const twoIntWaiter = lockClient.$transaction(async (tx) => {
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${twoIntKey}), hashtext(${twoIntKey}))`;
-            return true;
-        }, { timeout: 60_000 });
-        // Negative control: a waiter on the NEGATED hashtext value as a plain
-        // bigint — a different 64-bit target than the service's key.
-        const negativeWaiter = lockClient.$transaction(async (tx) => {
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(-hashtext(${generationKey})::bigint)`;
-            return true;
-        }, { timeout: 60_000 });
-        const lockDb = db as PrismaClient;
+        // The first generator owns the lock and is parked inside its RR
+        // snapshot. The second must observe a failed try-lock before the first
+        // is released; no timing window or pg_locks polling is involved.
+        let firstParked = false;
+        let lockLoserObserved = false;
+        const releaseFirst: { run: (() => void) | null } = { run: null };
+        const firstBarrier = new Promise<void>((resolve) => { releaseFirst.run = resolve; });
+        let evidenceCalls = 0;
+        _setPublicationTestHooks({
+            afterEvidence: async (info) => {
+                if (info.generationKey !== generationKey || evidenceCalls++ > 0) return;
+                firstParked = true;
+                await firstBarrier;
+            },
+            onLockUnavailable: async (info) => {
+                if (info.generationKey !== generationKey) return;
+                lockLoserObserved = true;
+                releaseFirst.run?.();
+            },
+        });
         try {
-            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb, unrelatedKey)) >= 1, "unrelated waiter blocked", lockDb);
-            // The two-int waiter is verified blocked with its OWN lock shape
-            // (classid=objid=hashtext, objsubid=2) — our exact-key barrier
-            // (objsubid=1, split key) must not count it.
-            await waitForCondition(async () => {
-                const twoIntBlocked = await lockDb.$queryRaw<Array<{ n: bigint }>>`
-                    SELECT count(*)::bigint AS n
-                    FROM pg_locks l
-                    CROSS JOIN (SELECT hashtext(${twoIntKey})::int AS h) k
-                    WHERE l.locktype = 'advisory' AND NOT l.granted
-                      AND l.objsubid = 2
-                      AND l.classid = k.h
-                      AND l.objid = k.h`;
-                return Number(twoIntBlocked[0]?.n ?? 0) >= 1;
-            }, "two-int waiter blocked on its own lock shape", lockDb);
-            assert.equal(await countBlockedAdvisoryWaiters(lockDb, generationKey), 0, "negative controls: unrelated, two-int and negative-target waiters are not counted for this key");
-
             const first = generateWeeklyBlueprint(params);
+            await waitForCondition(() => firstParked, "first generation parked with serializer");
+            const holders = await grantedAdvisoryHolders(db, generationKey);
+            assert.equal(holders.length, 1, "exact bigint key/namespace has one expected generator backend");
+            assert.equal(holders[0].datname, await db.$queryRaw<Array<{ name: string }>>`SELECT current_database() AS name`.then(rows => rows[0].name));
+            assert.equal((await grantedAdvisoryHolders(db, `${generationKey}:unrelated`)).length, 0, "an unrelated lock key cannot satisfy the barrier");
             const second = generateWeeklyBlueprint(params);
-            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb, generationKey)) >= 2, "both generations blocked on the barrier", lockDb);
-            // The blocked sessions are generators in THIS database.
-            const currentDb = await lockDb.$queryRaw<Array<{ db: string }>>`SELECT current_database() AS db`;
-            for (const waiter of await blockedAdvisoryWaiters(lockDb, generationKey)) {
-                assert.equal(waiter.datname, currentDb[0]?.db);
-            }
-            unrelatedBarrier.release?.();
-            twoIntBarrier.release?.();
-            await unrelatedHolder;
-            await unrelatedWaiter.catch(() => undefined);
-            await twoIntHolder.catch(() => undefined);
-            await twoIntWaiter.catch(() => undefined);
-            await negativeWaiter.catch(() => undefined);
-            barrier.release?.();
-            await holder;
-
             const [a, b] = await Promise.all([first, second]);
+            assert.equal(lockLoserObserved, true, "the identical loser must fail the non-blocking lock before retrying");
             assert.equal(a.snapshot.id, b.snapshot.id, "identical concurrency must agree on one snapshot");
             assert.equal(a.created !== b.created, true, "exactly one caller reports created:true");
             const rows = await db.reportSnapshot.count({ where: { generationKey, dependencyHash: a.snapshot.dependencyHash } });
             assert.equal(rows, 1, "exactly one snapshot row stored for this dependency state");
         } finally {
-            barrier.release?.();
-            unrelatedBarrier.release?.();
+            releaseFirst.run?.();
+            _setPublicationTestHooks({});
         }
-        await holder;
-        await unrelatedHolder.catch(() => undefined);
-        await unrelatedWaiter.catch(() => undefined);
-        await lockClient.$disconnect();
+    });
+
+    it("forced divergent concurrency versions both states and returns the fresh winner", async () => {
+        if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
+        await seedCurrentReceipt();
+        const params = { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW };
+        const generationKey = computeGenerationKey(ids.workspaceA, ids.clientA, WINDOW, comparisonWindowFor(WINDOW));
+        let firstParked = false;
+        let loserObserved = false;
+        let evidenceCalls = 0;
+        const release: { run: (() => void) | null } = { run: null };
+        const barrier = new Promise<void>((resolve) => { release.run = resolve; });
+        _setPublicationTestHooks({
+            afterEvidence: async (info) => {
+                if (info.generationKey !== generationKey || evidenceCalls++ > 0) return;
+                firstParked = true;
+                await barrier;
+            },
+            onLockUnavailable: async (info) => {
+                if (info.generationKey !== generationKey) return;
+                loserObserved = true;
+                release.run?.();
+            },
+        });
+        try {
+            const first = generateWeeklyBlueprint(params);
+            await waitForCondition(() => firstParked, "divergent first generation parked");
+            await db.campaignMetric.updateMany({
+                where: { workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, entityId: `e-g-${suffix}`, date: new Date("2026-08-24T00:00:00.000Z") },
+                data: { pulledAt: new Date() },
+            });
+            const second = generateWeeklyBlueprint(params);
+            const [a, b] = await Promise.all([first, second]);
+            assert.equal(loserObserved, true);
+            assert.equal(a.snapshot.id, b.snapshot.id, "both callers converge on the fresh post-mutation state");
+            const rows = await db.reportSnapshot.findMany({ where: { generationKey }, orderBy: { sequence: "asc" } });
+            assert.ok(new Set(rows.map(row => row.dependencyHash)).size >= 2, "S1 and S2 are stored as separate immutable dependency versions");
+            assert.equal(rows.at(-1)?.id, a.snapshot.id);
+        } finally {
+            release.run?.();
+            _setPublicationTestHooks({});
+        }
     });
 
     it("dataset change during candidate generation discards and republishes bound to the new state (P2-1, F1)", async () => {
@@ -1175,10 +1157,9 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
                 await parkedPromise;
             },
         });
-        const lockDb = db as PrismaClient;
         try {
             const pending = generateWeeklyBlueprint(params);
-            await waitForCondition(() => sawParkedGeneration, "generation parked after evidence", lockDb);
+            await waitForCondition(() => sawParkedGeneration, "generation parked after evidence");
             // The dataset mutates only while the candidate is parked.
             await mutate();
             parkedRelease.release?.();
@@ -1204,6 +1185,170 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         await db.campaignMetric.deleteMany({ where: { entityId: `e-race3-${suffix}` } });
     });
 
+    it("post-commit source-health mutation never returns the known-stale VERIFIED candidate", async () => {
+        if (!db) return;
+        await db.connection.update({ where: { id: ids.connGoogleA }, data: { status: "connected", lastError: null, lastSyncAt: new Date() } });
+        await db.destinationDeliveryReceipt.deleteMany({
+            where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end },
+        });
+        await seedCurrentReceipt();
+        let mutated = false;
+        _setPublicationTestHooks({
+            afterCommitBeforeFreshness: async () => {
+                if (mutated) return;
+                mutated = true;
+                await db!.connection.update({
+                    where: { id: ids.connGoogleA },
+                    data: { status: "error", lastError: "test-only failure" },
+                });
+            },
+        });
+        try {
+            const result = await generateWeeklyBlueprint({
+                workspaceId: ids.workspaceA,
+                clientId: ids.clientA,
+                windowStart: WINDOW.start,
+                windowEnd: WINDOW.end,
+                now: NOW,
+            });
+            assert.equal(mutated, true);
+            assert.equal(result.snapshot.verificationStatus, "NOT_VERIFIED");
+            assert.ok(result.report.overview.readiness.blockers.includes("SYNC_FAILED"));
+            const candidates = await db.reportSnapshot.findMany({
+                where: { generationKey: result.snapshot.generationKey }, orderBy: { sequence: "asc" },
+            });
+            assert.ok(candidates.some(candidate => candidate.verificationStatus === "VERIFIED"), "immutable stale candidate remains stored");
+            assert.equal(candidates.at(-1)?.id, result.snapshot.id, "returned snapshot is the fresh post-mutation sequence");
+        } finally {
+            _setPublicationTestHooks({});
+            await db.connection.update({ where: { id: ids.connGoogleA }, data: { status: "connected", lastError: null, lastSyncAt: new Date() } });
+        }
+    });
+
+    it("uses one RR snapshot when source health changes between readiness statements", async () => {
+        if (!db) return;
+        await db.connection.update({ where: { id: ids.connGoogleA }, data: { status: "connected", lastError: null, lastSyncAt: new Date() } });
+        await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
+        await seedCurrentReceipt();
+        let mutated = false;
+        _setReadinessTestHooks({
+            afterMetricDays: async () => {
+                if (mutated) return;
+                mutated = true;
+                await db!.connection.update({ where: { id: ids.connGoogleA }, data: { status: "error", lastError: "statement-interleave" } });
+            },
+        });
+        try {
+            const result = await generateWeeklyBlueprint({ workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW });
+            assert.equal(mutated, true);
+            assert.equal(result.snapshot.verificationStatus, "NOT_VERIFIED");
+            assert.ok(result.report.overview.readiness.blockers.includes("SYNC_FAILED"));
+        } finally {
+            _setReadinessTestHooks({});
+            await db.connection.update({ where: { id: ids.connGoogleA }, data: { status: "connected", lastError: null, lastSyncAt: new Date() } });
+        }
+    });
+
+    it("uses one RR snapshot when reporting context changes between fingerprint statements", async () => {
+        if (!db) return;
+        await db.accountReportingContext.updateMany({ where: { workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, accountId: "g-account-1" }, data: { overrideTimezone: null, overrideCurrency: null, overrideAt: null } });
+        await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
+        await seedCurrentReceipt();
+        let mutated = false;
+        _setReportingDatasetTestHooks({
+            afterRows: async () => {
+                if (mutated) return;
+                mutated = true;
+                await db!.accountReportingContext.updateMany({
+                    where: { workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, accountId: "g-account-1" },
+                    data: { overrideTimezone: "UTC", overrideAt: new Date() },
+                });
+            },
+        });
+        try {
+            const result = await generateWeeklyBlueprint({ workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW });
+            assert.equal(mutated, true);
+            assert.equal(result.snapshot.verificationStatus, "NOT_VERIFIED");
+            assert.ok(result.report.overview.readiness.blockers.includes("TIMEZONE_CONFLICT"));
+        } finally {
+            _setReportingDatasetTestHooks({});
+            await db.accountReportingContext.updateMany({ where: { workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, accountId: "g-account-1" }, data: { overrideTimezone: null, overrideCurrency: null, overrideAt: null } });
+        }
+    });
+
+    it("retries when comparison data commits between current and comparison reads", async () => {
+        if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
+        await seedCurrentReceipt();
+        let mutated = false;
+        _setPublicationTestHooks({
+            afterCurrentWindow: async () => {
+                if (mutated) return;
+                mutated = true;
+                await db!.campaignMetric.updateMany({
+                    where: { workspaceId: ids.workspaceA, connectionId: ids.connGoogleA, entityId: `e-g-prev-${suffix}`, date: new Date("2026-08-18T00:00:00.000Z") },
+                    data: { pulledAt: new Date() },
+                });
+            },
+        });
+        try {
+            const result = await generateWeeklyBlueprint({ workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW });
+            assert.equal(mutated, true);
+            const rows = await db.reportSnapshot.findMany({ where: { generationKey: result.snapshot.generationKey }, orderBy: { sequence: "asc" } });
+            assert.ok(new Set(rows.map(row => row.dependencyHash)).size >= 2, "the stale comparison candidate and fresh retry are immutable distinct states");
+            assert.equal(rows.at(-1)?.id, result.snapshot.id);
+        } finally {
+            _setPublicationTestHooks({});
+        }
+    });
+
+    it("retries when a receipt changes between dataset evaluation and receipt evaluation", async () => {
+        if (!db) return;
+        await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
+        await seedCurrentReceipt();
+        let mutated = false;
+        _setPublicationTestHooks({
+            beforeReceipts: async () => {
+                if (mutated) return;
+                mutated = true;
+                await db!.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
+            },
+        });
+        try {
+            const result = await generateWeeklyBlueprint({ workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW });
+            assert.equal(mutated, true);
+            assert.equal(result.snapshot.verificationStatus, "NOT_VERIFIED");
+            assert.equal(result.readiness.destinationState, "unverified");
+        } finally {
+            _setPublicationTestHooks({});
+        }
+    });
+
+    it("excludes unrequired marketplace source, context and metrics from every scoped dependency", async () => {
+        if (!db) return;
+        const shopeeConnectionId = `conn-unrequired-shopee-${suffix}`;
+        await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end } });
+        await seedCurrentReceipt();
+        const baseline = await generateWeeklyBlueprint({ workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW });
+        const baselineDataset = await datasetOf(ids.workspaceA, ids.clientA, WINDOW);
+        try {
+            await db.connection.create({ data: { id: shopeeConnectionId, workspaceId: ids.workspaceA, clientId: ids.clientA, name: "Unrequired Shopee", type: "source", provider: "shopee", credentials: "enc:v1:test", remoteAccountId: `shop-${suffix}`, status: "error", lastError: "unrelated" } });
+            await db.accountReportingContext.create({ data: { workspaceId: ids.workspaceA, connectionId: shopeeConnectionId, accountId: `shop-${suffix}`, providerTimezone: "UTC", providerCurrency: "USD", providerObservedAt: NOW } });
+            await db.campaignMetric.create({ data: { workspaceId: ids.workspaceA, connectionId: shopeeConnectionId, platform: "shopee", accountId: `shop-${suffix}`, level: "campaign", entityId: `shop-row-${suffix}`, campaignId: `shop-campaign-${suffix}`, campaignName: "Out of scope", date: new Date("2026-08-27T00:00:00.000Z"), impressions: 99, clicks: 9, spend: 999, conversions: 3, revenue: 9999, currency: "USD" } });
+            const afterDataset = await datasetOf(ids.workspaceA, ids.clientA, WINDOW);
+            assert.equal(afterDataset.fingerprint, baselineDataset.fingerprint);
+            const freshness = await evaluateSnapshotFreshness((await db.reportSnapshot.findUniqueOrThrow({ where: { id: baseline.snapshot.id } })));
+            assert.equal(freshness.freshness, "CURRENT");
+            const repeated = await generateWeeklyBlueprint({ workspaceId: ids.workspaceA, clientId: ids.clientA, windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW });
+            assert.equal(repeated.snapshot.id, baseline.snapshot.id);
+            assert.equal(repeated.created, false);
+        } finally {
+            await db.campaignMetric.deleteMany({ where: { workspaceId: ids.workspaceA, connectionId: shopeeConnectionId } });
+            await db.accountReportingContext.deleteMany({ where: { workspaceId: ids.workspaceA, connectionId: shopeeConnectionId } });
+            await db.connection.deleteMany({ where: { id: shopeeConnectionId } });
+        }
+    });
+
     it("enforces the UNIQUE (generationKey, dependencyHash) constraint in the database (P2-1)", async () => {
         if (!db) return;
         const indexes = await db.$queryRaw<Array<{ indexdef: string }>>`
@@ -1211,6 +1356,25 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             WHERE tablename = 'ReportSnapshot' AND indexdef LIKE '%generationKey_dependencyHash%'`;
         assert.equal(indexes.length, 1);
         assert.match(indexes[0].indexdef, /UNIQUE INDEX/);
+    });
+
+    it("identifies the exact bigint advisory namespace for negative hashtext keys", async () => {
+        if (!db) return;
+        const [candidate] = await db.$queryRaw<Array<{ key: string; hash: number }>>`
+            SELECT ('negative-blueprint-key-' || n)::text AS key,
+                   hashtext('negative-blueprint-key-' || n)::int AS hash
+            FROM generate_series(1, 1000) n
+            WHERE hashtext('negative-blueprint-key-' || n) < 0
+            LIMIT 1`;
+        assert.ok(candidate && candidate.hash < 0);
+        await db.$transaction(async (tx) => {
+            const [lock] = await tx.$queryRaw<Array<{ locked: boolean }>>`
+                SELECT pg_try_advisory_xact_lock(hashtext(${candidate.key})) AS locked`;
+            assert.equal(lock.locked, true);
+            const holders = await grantedAdvisoryHolders(db!, candidate.key);
+            assert.equal(holders.length, 1);
+            assert.equal((await grantedAdvisoryHolders(db!, `${candidate.key}:different`)).length, 0);
+        }, { isolationLevel: "RepeatableRead" });
     });
 
     it("R1→R2 interleave: generation must not return a verified R1 snapshot after R2 commits before publication (F1)", async () => {
@@ -1272,25 +1436,24 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         const params = { workspaceId: ids.workspaceA, clientId: clientD, windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW };
         const generationKey = computeGenerationKey(ids.workspaceA, clientD, WINDOW, comparisonWindowFor(WINDOW));
 
-        // Deterministic barrier: the holder takes the SAME advisory lock the
-        // publication transaction takes as its FIRST statement, so generation
-        // A parks before ANY evidence read (no stale snapshot while queued).
-        const lockClient = new PrismaClient();
-        await lockClient.$connect();
-        let holderOpen = false;
-        const barrier: { release: (() => void) | null } = { release: null };
-        const holder = lockClient.$transaction(async (tx) => {
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${generationKey}))`;
-            holderOpen = true;
-            await new Promise<void>((resolve) => { barrier.release = resolve; });
-            return true;
-        }, { timeout: 120_000 });
-        await waitForCondition(() => holderOpen, "barrier holder open");
-
+        // Park the first attempt immediately after its successful try-lock.
+        // The concurrent requirement update commits after the RR snapshot was
+        // established; FOR UPDATE must serialize-fail and force a fresh retry.
+        let lockAcquired = false;
+        let firstHook = true;
+        const release: { run: (() => void) | null } = { run: null };
+        const barrier = new Promise<void>((resolve) => { release.run = resolve; });
+        _setPublicationTestHooks({
+            afterLockAcquired: async (info) => {
+                if (info.generationKey !== generationKey || !firstHook) return;
+                firstHook = false;
+                lockAcquired = true;
+                await barrier;
+            },
+        });
         const a = generateWeeklyBlueprint(params);
-        const lockDb = db as PrismaClient;
         try {
-            await waitForCondition(async () => (await countBlockedAdvisoryWaiters(lockDb, generationKey)) >= 1, "generation A blocked before evaluation", lockDb);
+            await waitForCondition(() => lockAcquired, "generation A acquired serializer before evidence");
             // R2 commits while A is parked — strictly before A's evaluation
             // AND publication. The requirement row is not locked by anyone yet.
             await db.client.update({
@@ -1298,7 +1461,8 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
                 data: { requiredProviders: ["google_ads"], requirementsConfiguredAt: new Date() },
             });
         } finally {
-            barrier.release?.();
+            release.run?.();
+            _setPublicationTestHooks({});
         }
         const ra = await a;
 
@@ -1318,7 +1482,6 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         await db.accountReportingContext.deleteMany({ where: { connectionId: { in: [connDG, connDM] } } });
         await db.connection.deleteMany({ where: { id: { in: [connDG, connDM] } } });
         await db.client.deleteMany({ where: { id: clientD } });
-        await lockClient.$disconnect();
     });
 
     it("keeps TikTok campaign-grain rows authoritative and verifiable (F2)", async () => {

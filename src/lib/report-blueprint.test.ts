@@ -90,7 +90,18 @@ function dependencyState(overrides: Partial<DependencyState> = {}): DependencySt
             dataThroughDate: "2026-08-30",
             current: true,
         }],
-        contractVersions: { metrics: METRIC_CONTRACT_VERSION, dataset: "reporting-dataset-v1" },
+        readinessEvidence: {
+            contractVersion: "report-readiness-evidence-v2",
+            window: { start: "2026-08-24", end: "2026-08-30" },
+            requiredProviders: ["google_ads"],
+            requiredProvidersBasis: "explicit",
+            requirementsConfiguredAt: "2026-08-20T00:00:00.000Z",
+            sources: [],
+            destination: { state: "verified", configuredCount: 1, required: ["google_sheets"], receipts: [] },
+            limited: false,
+            outcome: { status: "READY", providerStates: [], blockers: [], warnings: [], currencies: ["VND"], timezones: ["Asia/Ho_Chi_Minh"] },
+        },
+        contractVersions: { metrics: METRIC_CONTRACT_VERSION, dataset: "reporting-dataset-v2", readiness: "report-readiness-evidence-v2" },
         ...overrides,
     };
 }
@@ -334,6 +345,7 @@ describe("report blueprint: dependency hashing / staleness", () => {
             evidenceAt: base.evidenceAt,
             datasetFingerprint: base.datasetFingerprint,
             requirement: base.requirement,
+            readinessEvidence: base.readinessEvidence,
         };
         assert.equal(canonicalJson(base), canonicalJson(reordered));
         assert.equal(computeDependencyHash(base), computeDependencyHash(reordered));

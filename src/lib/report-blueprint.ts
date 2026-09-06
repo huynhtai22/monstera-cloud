@@ -23,16 +23,20 @@ import { createHash } from "node:crypto";
 import prisma from "@/lib/prisma";
 import {
   READINESS_MESSAGES,
+  READINESS_EVIDENCE_CONTRACT_VERSION,
   defaultReportingWindow,
   type ReportReadinessStatus,
   type ReportReadinessEvaluation,
+  type ReadinessDependencyEvidence,
 } from "@/lib/report-readiness";
 import { loadReportReadiness } from "@/lib/report-readiness-server";
-import { REPORT_DATASET_CAP, reportingDataset } from "@/lib/report-delivery";
+import { REPORT_DATASET_CAP, REPORTING_DATASET_CONTRACT_VERSION, reportingDataset } from "@/lib/report-delivery";
 import type { ScopedTransaction } from "@/lib/warehouse-query";
 import { getPlatformLabel } from "@/lib/client-export";
 import { RbacError } from "@/lib/rbac";
 import { withSystemScope } from "@/lib/tenant-guard";
+import { PROVIDER_SOURCE_GRAINS } from "@/lib/provider-metric-grain";
+export { PROVIDER_SOURCE_GRAINS } from "@/lib/provider-metric-grain";
 
 export const BLUEPRINT_ID = "weekly-paid-media-performance";
 export const BLUEPRINT_VERSION = 1;
@@ -65,11 +69,6 @@ export const BLUEPRINT_SUPPORTED_PROVIDERS = ["google_ads", "meta_ads", "tiktok_
  * Providers outside BLUEPRINT_SUPPORTED_PROVIDERS fail closed with
  * `unsupported_provider:<provider>` and are never aggregated.
  */
-export const PROVIDER_SOURCE_GRAINS: Record<string, string> = {
-  google_ads: "campaign",
-  meta_ads: "ad",
-  tiktok_business: "campaign",
-};
 export const MAX_CAMPAIGN_ROWS = 100;
 
 export type BlueprintVerificationLabel = "VERIFIED" | "NOT_VERIFIED";
@@ -515,6 +514,8 @@ export type DependencyState = {
     dataThroughDate: string;
     current: boolean;
   }>;
+  /** Sanitized canonical evidence produced by the shared readiness evaluator. */
+  readinessEvidence: ReadinessDependencyEvidence;
   contractVersions: Record<string, string>;
 };
 
@@ -522,6 +523,7 @@ export const STALE_REASON_LABELS: Record<string, string> = {
   requirement_changed: "Client reporting requirements changed after generation",
   dataset_changed: "Underlying warehouse data or reporting context changed after generation",
   destination_evidence_changed: "Delivery evidence changed, expired or was replaced after generation",
+  readiness_evidence_changed: "Source, account, sync, reporting context, pipeline or readiness evidence changed after generation",
   contract_changed: "Metric contract version changed after generation",
 };
 
@@ -544,6 +546,9 @@ function diffDependencyComponents(stored: DependencyState, current: DependencySt
   }
   if (canonicalJson(stored.receipts) !== canonicalJson(current.receipts)) {
     reasons.push("destination_evidence_changed");
+  }
+  if (canonicalJson(stored.readinessEvidence) !== canonicalJson(current.readinessEvidence)) {
+    reasons.push("readiness_evidence_changed");
   }
   if (canonicalJson(stored.contractVersions) !== canonicalJson(current.contractVersions)) {
     reasons.push("contract_changed");
@@ -736,9 +741,11 @@ function buildDependencyState(ctx: GenerationContext): DependencyState {
     comparisonDataThroughDate: ctx.comparisonDataset.dataThroughDate,
     comparisonRowCount: ctx.comparisonDataset.rowCount,
     receipts: ctx.receipts.map((receipt) => ({ ...receipt })),
+    readinessEvidence: ctx.evaluation.dependencyEvidence,
     contractVersions: {
       metrics: METRIC_CONTRACT_VERSION,
-      dataset: "reporting-dataset-v1",
+      dataset: REPORTING_DATASET_CONTRACT_VERSION,
+      readiness: READINESS_EVIDENCE_CONTRACT_VERSION,
     },
   };
 }
@@ -963,33 +970,60 @@ function toSnapshotMeta(snapshot: {
   };
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  return Boolean(error) && typeof error === "object" && (error as { code?: string }).code === "P2002";
-}
-
-/** Candidate discarded because a canonical dependency moved during publication. */
-class CandidateSupersededError extends Error {
+/** A fresh publication attempt did not acquire the generation serializer. */
+class PublicationLockUnavailableError extends Error {
   constructor() {
-    super("Publication candidate superseded by newer dependencies");
-    this.name = "CandidateSupersededError";
+    super("Publication serializer is busy");
+    this.name = "PublicationLockUnavailableError";
   }
 }
 
 /** Prisma wraps Postgres 40001 serialization failures as P2034. */
 function isSerializationFailure(error: unknown): boolean {
-  const code = (error as { code?: string })?.code;
-  return code === "P2034" || code === "40001";
+  const candidate = error as { code?: string; meta?: { code?: string; message?: string }; message?: string };
+  return candidate?.code === "P2034"
+    || candidate?.code === "40001"
+    || candidate?.meta?.code === "40001"
+    || /could not serialize access/i.test(candidate?.meta?.message ?? candidate?.message ?? "");
 }
 
 /**
  * @internal TEST-ONLY seam for deterministic publication interleaving.
  * Never called by routes; not exposed through any API or Zod input.
  */
-const publicationHooks: { afterEvidence?: (info: { generationKey: string }) => Promise<void> } = {};
+const publicationHooks: {
+  afterLockAcquired?: (info: { generationKey: string }) => Promise<void>;
+  onLockUnavailable?: (info: { generationKey: string }) => Promise<void>;
+  afterReadiness?: (info: { generationKey: string }) => Promise<void>;
+  afterCurrentDataset?: (info: { generationKey: string }) => Promise<void>;
+  afterCurrentWindow?: (info: { generationKey: string }) => Promise<void>;
+  beforeReceipts?: (info: { generationKey: string }) => Promise<void>;
+  afterEvidence?: (info: { generationKey: string }) => Promise<void>;
+  beforeInsert?: (info: { generationKey: string }) => Promise<void>;
+  afterCommitBeforeFreshness?: (info: { generationKey: string; snapshotId: string }) => Promise<void>;
+} = {};
 
 /** @internal TEST-ONLY. Install/remove deterministic publication hooks. */
-export function _setPublicationTestHooks(hooks: { afterEvidence?: (info: { generationKey: string }) => Promise<void> }): void {
+export function _setPublicationTestHooks(hooks: {
+  afterLockAcquired?: (info: { generationKey: string }) => Promise<void>;
+  onLockUnavailable?: (info: { generationKey: string }) => Promise<void>;
+  afterReadiness?: (info: { generationKey: string }) => Promise<void>;
+  afterCurrentDataset?: (info: { generationKey: string }) => Promise<void>;
+  afterCurrentWindow?: (info: { generationKey: string }) => Promise<void>;
+  beforeReceipts?: (info: { generationKey: string }) => Promise<void>;
+  afterEvidence?: (info: { generationKey: string }) => Promise<void>;
+  beforeInsert?: (info: { generationKey: string }) => Promise<void>;
+  afterCommitBeforeFreshness?: (info: { generationKey: string; snapshotId: string }) => Promise<void>;
+}): void {
+  publicationHooks.afterLockAcquired = hooks.afterLockAcquired;
+  publicationHooks.onLockUnavailable = hooks.onLockUnavailable;
+  publicationHooks.afterReadiness = hooks.afterReadiness;
+  publicationHooks.afterCurrentDataset = hooks.afterCurrentDataset;
+  publicationHooks.afterCurrentWindow = hooks.afterCurrentWindow;
+  publicationHooks.beforeReceipts = hooks.beforeReceipts;
   publicationHooks.afterEvidence = hooks.afterEvidence;
+  publicationHooks.beforeInsert = hooks.beforeInsert;
+  publicationHooks.afterCommitBeforeFreshness = hooks.afterCommitBeforeFreshness;
 }
 
 /** Create a snapshot row through an explicit transaction client. The tenant
@@ -999,6 +1033,8 @@ function prismaReportSnapshotCreate(
   data: Record<string, unknown>,
 ): Promise<{
   id: string;
+  workspaceId: string;
+  clientId: string;
   sequence: number;
   blueprintId: string;
   blueprintVersion: number;
@@ -1016,6 +1052,8 @@ function prismaReportSnapshotCreate(
   return withSystemScope(() => (tx as unknown as {
     reportSnapshot: { create: (args: { data: Record<string, unknown> }) => Promise<{
       id: string;
+      workspaceId: string;
+      clientId: string;
       sequence: number;
       blueprintId: string;
       blueprintVersion: number;
@@ -1075,33 +1113,22 @@ export async function generateWeeklyBlueprint(params: {
   const generationKey = computeGenerationKey(workspaceId, clientId, window, comparisonWindow);
 
   /**
-   * ATOMIC VERIFICATION-PUBLICATION POINT.
-   *
-   * One READ COMMITTED transaction performs, in order:
-   *   1. generation serialization (advisory lock) as the FIRST statement —
-   *      while it blocks, no snapshot is established, so the evidence read
-   *      that follows is always fresh (never a stale RepeatableRead view
-   *      captured while queued);
-   *   2. the client requirement row locked FOR UPDATE — requirement PATCHes
-   *      cannot commit between requirement evaluation and snapshot publication;
-   *   3. readiness, requirements, reporting context, both scoped dataset
-   *      fingerprints, exact metric rows and receipt currentness from this
-   *      authoritative transaction state;
-   *   4. idempotency lookup, sequence allocation and snapshot insertion in the
-   *      same transaction;
-   *   5. a final re-validation that recomputes the canonical dependency state
-   *      from fresh reads and DISCARDS the candidate (retry, bounded) when any
-   *      dependency moved between evaluation and publication. If the candidate
-   *      cannot be stabilized, the error is retryable — a stale VERIFIED result
-   *      is never returned.
-   * `generatedAt` comes from the successful publication state.
+   * Publication linearizes at the commit of one fresh RepeatableRead attempt.
+   * The non-blocking advisory lock is the first database operation: a loser
+   * aborts the transaction instead of waiting with an old snapshot. All report
+   * evidence and insertion then share the successful transaction snapshot.
+   * Writers do not share this lock, so a new-transaction freshness check after
+   * commit is required before VERIFIED is returned. This is an as-of-publication
+   * guarantee, not a claim that dependencies cannot change after the response.
    */
-  const MAX_PUBLICATION_ATTEMPTS = 3;
-  let lastContention: unknown = null;
+  const MAX_PUBLICATION_ATTEMPTS = 40;
   for (let attempt = 1; attempt <= MAX_PUBLICATION_ATTEMPTS; attempt += 1) {
     try {
       const result = await prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${generationKey}))`;
+        const [lock] = await tx.$queryRaw<Array<{ locked: boolean }>>`
+          SELECT pg_try_advisory_xact_lock(hashtext(${generationKey})) AS locked`;
+        if (!lock?.locked) throw new PublicationLockUnavailableError();
+        await publicationHooks.afterLockAcquired?.({ generationKey });
         // Lock the requirement row so requirement PATCHes wait for publication.
         await tx.$queryRaw`SELECT id FROM "Client" WHERE id = ${clientId} AND "workspaceId" = ${workspaceId} FOR UPDATE`;
         const client = await tx.client.findFirst({
@@ -1130,14 +1157,13 @@ export async function generateWeeklyBlueprint(params: {
         if (!evaluation) {
           throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
         }
+        await publicationHooks.afterReadiness?.({ generationKey });
 
         const providerScope = [...client.requiredProviders].sort();
-        const [dataset, comparisonDataset] = await Promise.all([
-          reportingDataset(tx, workspaceId, clientId, window, providerScope),
-          reportingDataset(tx, workspaceId, clientId, comparisonWindow, providerScope),
-        ]);
-        const [connections, currentWindow, previousWindow, receiptRows] = await Promise.all([
-          tx.connection.findMany({
+        const dataset = await reportingDataset(tx, workspaceId, clientId, window, providerScope);
+        await publicationHooks.afterCurrentDataset?.({ generationKey });
+        const comparisonDataset = await reportingDataset(tx, workspaceId, clientId, comparisonWindow, providerScope);
+        const connections = await tx.connection.findMany({
             where: {
               workspaceId,
               clientId,
@@ -1152,15 +1178,16 @@ export async function generateWeeklyBlueprint(params: {
               lastDataThrough: true,
             },
             orderBy: [{ id: "asc" }],
-          }),
-          loadWindowRows(tx, workspaceId, clientId, client.requiredProviders, window),
-          loadWindowRows(tx, workspaceId, clientId, client.requiredProviders, comparisonWindow),
-          Promise.all(client.requiredDestinations.map((destination) =>
+          });
+        const currentWindow = await loadWindowRows(tx, workspaceId, clientId, client.requiredProviders, window);
+        await publicationHooks.afterCurrentWindow?.({ generationKey });
+        const previousWindow = await loadWindowRows(tx, workspaceId, clientId, client.requiredProviders, comparisonWindow);
+        await publicationHooks.beforeReceipts?.({ generationKey });
+        const receiptRows = await Promise.all(client.requiredDestinations.map((destination) =>
             tx.destinationDeliveryReceipt.findFirst({
               where: { workspaceId, clientId, destination, windowStart: window.start, windowEnd: window.end },
               orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
-            }))),
-        ]);
+            })));
 
         // Receipt currentness is evaluated against THIS transaction's scoped
         // dataset fingerprint (PR #152's exact rule).
@@ -1176,9 +1203,6 @@ export async function generateWeeklyBlueprint(params: {
 
         // Per-provider authoritative grain resolution (blueprint scope only).
         const requiredProviders = [...client.requiredProviders].sort();
-        const unsupportedProviders = requiredProviders.filter(
-          (provider) => !(BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
-        );
         const supportedProviders = requiredProviders.filter(
           (provider) => (BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
         );
@@ -1186,7 +1210,7 @@ export async function generateWeeklyBlueprint(params: {
           const authoritative: MetricRowInput[] = [];
           const unsupportedOnly = new Set<string>();
           for (const provider of supportedProviders) {
-            const grain = PROVIDER_SOURCE_GRAINS[provider];
+            const grain = PROVIDER_SOURCE_GRAINS[provider as keyof typeof PROVIDER_SOURCE_GRAINS];
             const providerRows = rows.filter((row) => row.platform === provider);
             const authoritativeRows = providerRows.filter((row) => row.level === grain);
             if (authoritativeRows.length > 0) {
@@ -1227,44 +1251,7 @@ export async function generateWeeklyBlueprint(params: {
         const dependencyState = buildDependencyState(ctx);
         const dependencyHash = computeDependencyHash(dependencyState);
 
-        // Candidate re-validation: recompute the canonical dependency state
-        // from FRESH reads inside the same transaction. Any change that
-        // committed since evaluation (dataset, receipts) discards the
-        // candidate and forces a regeneration attempt.
         await publicationHooks.afterEvidence?.({ generationKey });
-        const [recheckDataset, recheckComparisonDataset, recheckReceiptRows] = await Promise.all([
-          reportingDataset(tx, workspaceId, clientId, window, providerScope),
-          reportingDataset(tx, workspaceId, clientId, comparisonWindow, providerScope),
-          Promise.all(client.requiredDestinations.map((destination) =>
-            tx.destinationDeliveryReceipt.findFirst({
-              where: { workspaceId, clientId, destination, windowStart: window.start, windowEnd: window.end },
-              orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
-            }))),
-        ]);
-        const recheckState: DependencyState = {
-          requirement: { ...ctx.clientRequirement },
-          datasetFingerprint: recheckDataset.fingerprint,
-          evidenceAt: new Date(recheckDataset.evidenceAt).toISOString(),
-          dataThroughDate: recheckDataset.dataThroughDate,
-          rowCount: recheckDataset.rowCount,
-          comparisonDatasetFingerprint: recheckComparisonDataset.fingerprint,
-          comparisonEvidenceAt: new Date(recheckComparisonDataset.evidenceAt).toISOString(),
-          comparisonDataThroughDate: recheckComparisonDataset.dataThroughDate,
-          comparisonRowCount: recheckComparisonDataset.rowCount,
-          receipts: recheckReceiptRows.flatMap((receipt) => receipt ? [{
-            id: receipt.id,
-            destination: receipt.destination,
-            retrievedAt: receipt.retrievedAt.toISOString(),
-            dataThroughDate: receipt.dataThroughDate,
-            current: !recheckDataset.limited
-              && receipt.datasetFingerprint === recheckDataset.fingerprint
-              && receipt.retrievedAt.getTime() >= recheckDataset.evidenceAt,
-          }] : []),
-          contractVersions: dependencyState.contractVersions,
-        };
-        if (canonicalJson(recheckState) !== canonicalJson(dependencyState)) {
-          throw new CandidateSupersededError();
-        }
 
         // Idempotency lookup, sequence allocation and insertion inside the
         // same publication transaction.
@@ -1292,6 +1279,7 @@ export async function generateWeeklyBlueprint(params: {
           orderBy: [{ sequence: "desc" }],
           select: { sequence: true },
         });
+        await publicationHooks.beforeInsert?.({ generationKey });
         const row = await prismaReportSnapshotCreate(tx, {
           workspaceId,
           clientId,
@@ -1336,7 +1324,13 @@ export async function generateWeeklyBlueprint(params: {
           generatedAt: publicationNow,
         });
         return { kind: "created" as const, row };
-      }, { timeout: 30_000 });
+      }, { isolationLevel: "RepeatableRead", timeout: 30_000 });
+
+      await publicationHooks.afterCommitBeforeFreshness?.({ generationKey, snapshotId: result.row.id });
+      const postCommitFreshness = await evaluateSnapshotFreshness(result.row);
+      if (!postCommitFreshness.dependencyHashMatches) {
+        continue;
+      }
 
       if (result.kind === "existing") {
         return {
@@ -1359,12 +1353,12 @@ export async function generateWeeklyBlueprint(params: {
         readiness: storedReport.overview.readiness,
       };
     } catch (error: unknown) {
-      if (error instanceof CandidateSupersededError) {
-        lastContention = error;
-        continue; // discard the candidate and regenerate with fresh reads
+      if (error instanceof PublicationLockUnavailableError) {
+        await publicationHooks.onLockUnavailable?.({ generationKey });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        continue; // the next attempt starts a completely new transaction
       }
       if (isSerializationFailure(error)) {
-        lastContention = error;
         continue; // a concurrent requirement/data write: fresh transaction retry
       }
       throw error;
@@ -1422,10 +1416,13 @@ export async function evaluateSnapshotFreshness(snapshot: {
     const scope = client?.requirementsConfiguredAt && client.requiredProviders.length > 0
       ? client.requiredProviders
       : undefined;
-    const [dataset, comparisonDataset] = await Promise.all([
+    const [readiness, dataset, comparisonDataset] = await Promise.all([
+      loadReportReadiness(snapshot.workspaceId, window, { clientId: snapshot.clientId, tx }),
       reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, window, scope),
       reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, comparisonWindow, scope),
     ]);
+    const evaluation = readiness.evaluations[0];
+    if (!evaluation) throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
     // Latest receipt per required destination, with PR #152 currentness
     // (exact window + destination + fingerprint + not older than evidence),
     // evaluated against THIS transaction's dataset.
@@ -1467,9 +1464,11 @@ export async function evaluateSnapshotFreshness(snapshot: {
           && receipt.datasetFingerprint === dataset.fingerprint
           && receipt.retrievedAt.getTime() >= dataset.evidenceAt,
       }] : []),
+      readinessEvidence: evaluation.dependencyEvidence,
       contractVersions: {
         metrics: METRIC_CONTRACT_VERSION,
-        dataset: "reporting-dataset-v1",
+        dataset: REPORTING_DATASET_CONTRACT_VERSION,
+        readiness: READINESS_EVIDENCE_CONTRACT_VERSION,
       },
     };
   }, { isolationLevel: "RepeatableRead", timeout: 30_000 });
