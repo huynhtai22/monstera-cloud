@@ -13,12 +13,16 @@ import { reportingDataset } from "./report-delivery";
 import { loadReportReadiness } from "./report-readiness-server";
 import { assertAllowedTestDatabase } from "./pg-test-discipline";
 import { GET as getClients } from "@/app/api/clients/route";
+import { GET as getExportRows } from "@/app/api/export/rows/route";
+import { queryMetricsAggregate } from "./warehouse-aggregate";
+import { hashApiKey } from "./api-key-security";
 import { setAuthSessionOverride } from "./auth-session";
 
 describe("PostgreSQL integration: client provider account assignments", () => {
   let db: PrismaClient;
   const tx = () => db as unknown as ScopedTransaction;
   const suffix = `caa-${Date.now()}-${process.pid}`;
+  const testApiKeySecret = `mc_live_test_${suffix}`;
 
   const ids = {
     user: `user-${suffix}`,
@@ -58,9 +62,19 @@ describe("PostgreSQL integration: client provider account assignments", () => {
 
     await db.workspace.createMany({
       data: [
-        { id: ids.workspaceA, ownerId: ids.user, name: "Workspace A", slug: `ws-a-${suffix}` },
-        { id: ids.workspaceB, ownerId: ids.user, name: "Workspace B", slug: `ws-b-${suffix}` },
+        { id: ids.workspaceA, ownerId: ids.user, name: "Workspace A", slug: `ws-a-${suffix}`, plan: "professional" },
+        { id: ids.workspaceB, ownerId: ids.user, name: "Workspace B", slug: `ws-b-${suffix}`, plan: "professional" },
       ],
+    });
+
+    await db.apiKey.create({
+      data: {
+        workspaceId: ids.workspaceA,
+        name: "Test Api Key",
+        keyHash: hashApiKey(testApiKeySecret),
+        keyPrefix: "mc_live_",
+        keyLastFour: suffix.slice(-4),
+      },
     });
 
     await db.workspaceMember.createMany({
@@ -574,5 +588,438 @@ describe("PostgreSQL integration: client provider account assignments", () => {
     } finally {
       setAuthSessionOverride(null);
     }
+  });
+
+  it("deterministic cross-product isolation: (conn-A, acc-1) and (conn-B, acc-2) strictly reject cross-matches across warehouse, aggregates, exports, readiness, and reports", async () => {
+    const connA = `conn-cp-a-${suffix}`;
+    const connB = `conn-cp-b-${suffix}`;
+    const clientCPA = `cl-cp-a-${suffix}`;
+    const clientCPB = `cl-cp-b-${suffix}`;
+    const acc1 = "1110001111";
+    const acc2 = "2220002222";
+
+    await db.client.createMany({
+      data: [
+        { id: clientCPA, workspaceId: ids.workspaceA, name: "Client CP-A", accountAssignmentsConfiguredAt: new Date() },
+        { id: clientCPB, workspaceId: ids.workspaceA, name: "Client CP-B", accountAssignmentsConfiguredAt: new Date() },
+      ],
+    });
+
+    await db.connection.createMany({
+      data: [
+        {
+          id: connA,
+          workspaceId: ids.workspaceA,
+          name: "Connection CP-A",
+          provider: "google_ads",
+          type: "source",
+          status: "connected",
+          remoteAccountId: `mcc-cp-a-${suffix}`,
+          credentials: JSON.stringify({ customerIds: [acc1, acc2] }),
+        },
+        {
+          id: connB,
+          workspaceId: ids.workspaceA,
+          name: "Connection CP-B",
+          provider: "google_ads",
+          type: "source",
+          status: "connected",
+          remoteAccountId: `mcc-cp-b-${suffix}`,
+          credentials: JSON.stringify({ customerIds: [acc1, acc2] }),
+        },
+      ],
+    });
+
+    // Assign (connA, google_ads, acc1) -> Client CP-A
+    // Assign (connB, google_ads, acc2) -> Client CP-B
+    await db.clientProviderAccountAssignment.createMany({
+      data: [
+        {
+          workspaceId: ids.workspaceA,
+          clientId: clientCPA,
+          provider: "google_ads",
+          accountId: acc1,
+          connectionId: connA,
+        },
+        {
+          workspaceId: ids.workspaceA,
+          clientId: clientCPB,
+          provider: "google_ads",
+          accountId: acc2,
+          connectionId: connB,
+        },
+      ],
+    });
+
+    // Seed metrics for ALL 4 combinations:
+    // (connA, acc1) -> 100
+    // (connA, acc2) -> 200 (should be rejected by Client CP-A and Client CP-B)
+    // (connB, acc1) -> 300 (should be rejected by Client CP-A and Client CP-B)
+    // (connB, acc2) -> 400
+    const testDate = new Date("2026-09-01T12:00:00Z");
+    await db.campaignMetric.createMany({
+      data: [
+        {
+          workspaceId: ids.workspaceA,
+          connectionId: connA,
+          platform: "google_ads",
+          accountId: acc1,
+          campaignId: "c-a1",
+          campaignName: "Camp A1",
+          date: testDate,
+          spend: 100,
+          impressions: 1000,
+          clicks: 50,
+          currency: "USD",
+        },
+        {
+          workspaceId: ids.workspaceA,
+          connectionId: connA,
+          platform: "google_ads",
+          accountId: acc2,
+          campaignId: "c-a2",
+          campaignName: "Camp A2",
+          date: testDate,
+          spend: 200,
+          impressions: 2000,
+          clicks: 100,
+          currency: "USD",
+        },
+        {
+          workspaceId: ids.workspaceA,
+          connectionId: connB,
+          platform: "google_ads",
+          accountId: acc1,
+          campaignId: "c-b1",
+          campaignName: "Camp B1",
+          date: testDate,
+          spend: 300,
+          impressions: 3000,
+          clicks: 150,
+          currency: "USD",
+        },
+        {
+          workspaceId: ids.workspaceA,
+          connectionId: connB,
+          platform: "google_ads",
+          accountId: acc2,
+          campaignId: "c-b2",
+          campaignName: "Camp B2",
+          date: testDate,
+          spend: 400,
+          impressions: 4000,
+          clicks: 200,
+          currency: "USD",
+        },
+      ],
+    });
+
+    // 1. Warehouse query isolation
+    const qA = await queryWarehouse({ workspaceId: ids.workspaceA, clientId: clientCPA }, tx());
+    assert.equal(qA.rows.length, 1);
+    assert.equal(qA.rows[0].connectionId, connA);
+    assert.equal(qA.rows[0].accountId, acc1);
+    assert.equal(qA.rows[0].spend, 100);
+
+    const qB = await queryWarehouse({ workspaceId: ids.workspaceA, clientId: clientCPB }, tx());
+    assert.equal(qB.rows.length, 1);
+    assert.equal(qB.rows[0].connectionId, connB);
+    assert.equal(qB.rows[0].accountId, acc2);
+    assert.equal(qB.rows[0].spend, 400);
+
+    // 2. Aggregate isolation
+    const aggA = await queryMetricsAggregate({
+      workspaceId: ids.workspaceA,
+      clientId: clientCPA,
+      startDateStr: "2026-09-01",
+      endDateStr: "2026-09-02",
+      metrics: ["spend"],
+    });
+    assert.equal(aggA.rows[0]["metric:spend"], 100);
+
+    const aggB = await queryMetricsAggregate({
+      workspaceId: ids.workspaceA,
+      clientId: clientCPB,
+      startDateStr: "2026-09-01",
+      endDateStr: "2026-09-02",
+      metrics: ["spend"],
+    });
+    assert.equal(aggB.rows[0]["metric:spend"], 400);
+
+    // 3. Export rows isolation
+    const exportReqA = new Request(
+      `http://localhost/api/export/rows?clientId=${clientCPA}`,
+      { headers: { Authorization: `Bearer ${testApiKeySecret}` } }
+    );
+    const exportResA = await getExportRows(exportReqA);
+    assert.equal(exportResA.status, 200);
+    const exportDataA = await exportResA.json();
+    assert.equal(exportDataA.success, true);
+    // Header + 1 row
+    assert.equal(exportDataA.rows.length, 2);
+    assert.equal(exportDataA.rows[1][1], "Camp A1");
+    assert.equal(exportDataA.rows[1][4], 100);
+
+    const exportReqB = new Request(
+      `http://localhost/api/export/rows?clientId=${clientCPB}`,
+      { headers: { Authorization: `Bearer ${testApiKeySecret}` } }
+    );
+    const exportResB = await getExportRows(exportReqB);
+    assert.equal(exportResB.status, 200);
+    const exportDataB = await exportResB.json();
+    assert.equal(exportDataB.rows.length, 2);
+    assert.equal(exportDataB.rows[1][1], "Camp B2");
+    assert.equal(exportDataB.rows[1][4], 400);
+
+    // 4. Report delivery dataset isolation
+    const window = { start: "2026-09-01", end: "2026-09-02" };
+    const dsA = await reportingDataset(tx(), ids.workspaceA, clientCPA, window, ["google_ads"]);
+    assert.equal(dsA.rowCount, 1);
+
+    const dsB = await reportingDataset(tx(), ids.workspaceA, clientCPB, window, ["google_ads"]);
+    assert.equal(dsB.rowCount, 1);
+
+    // 5. Readiness isolation
+    const readinessA = await loadReportReadiness(ids.workspaceA, window, { clientId: clientCPA, tx: tx() });
+    assert.equal(readinessA.evaluations[0].clientId, clientCPA);
+    assert.equal(readinessA.evaluations[0].providers[0].connectionId, connA);
+
+    const readinessB = await loadReportReadiness(ids.workspaceA, window, { clientId: clientCPB, tx: tx() });
+    assert.equal(readinessB.evaluations[0].clientId, clientCPB);
+    assert.equal(readinessB.evaluations[0].providers[0].connectionId, connB);
+  });
+
+  it("authority regression: legacy client ignores candidate rows, cutover switches to explicit mode, and final unassignment produces explicit empty scope", async () => {
+    const connLeg = `conn-leg-${suffix}`;
+    const clientLeg = `cl-leg-${suffix}`;
+    const accLeg1 = "3330003333";
+    const accLeg2 = "4440004444";
+
+    // Legacy client with accountAssignmentsConfiguredAt = null
+    await db.client.create({
+      data: {
+        id: clientLeg,
+        workspaceId: ids.workspaceA,
+        name: "Client Legacy",
+        accountAssignmentsConfiguredAt: null,
+      },
+    });
+
+    await db.connection.create({
+      data: {
+        id: connLeg,
+        workspaceId: ids.workspaceA,
+        name: "Connection Legacy",
+        provider: "google_ads",
+        type: "source",
+        status: "connected",
+        clientId: clientLeg,
+        remoteAccountId: `mcc-leg-${suffix}`,
+        credentials: JSON.stringify({ customerIds: [accLeg1, accLeg2] }),
+      },
+    });
+
+    const testDate = new Date("2026-09-02T12:00:00Z");
+    await db.campaignMetric.createMany({
+      data: [
+        {
+          workspaceId: ids.workspaceA,
+          connectionId: connLeg,
+          platform: "google_ads",
+          accountId: accLeg1,
+          campaignId: "c-leg-1",
+          campaignName: "Camp Leg 1",
+          date: testDate,
+          spend: 150,
+          currency: "USD",
+        },
+        {
+          workspaceId: ids.workspaceA,
+          connectionId: connLeg,
+          platform: "google_ads",
+          accountId: accLeg2,
+          campaignId: "c-leg-2",
+          campaignName: "Camp Leg 2",
+          date: testDate,
+          spend: 250,
+          currency: "USD",
+        },
+      ],
+    });
+
+    // Insert a candidate / rogue row in ClientProviderAccountAssignment (only accLeg1)
+    await db.clientProviderAccountAssignment.create({
+      data: {
+        workspaceId: ids.workspaceA,
+        clientId: clientLeg,
+        provider: "google_ads",
+        accountId: accLeg1,
+        connectionId: connLeg,
+      },
+    });
+
+    // 1. Before cutover (legacy mode): queries MUST ignore the assignment row and return BOTH accounts via Connection.clientId
+    const legQ = await queryWarehouse({ workspaceId: ids.workspaceA, clientId: clientLeg }, tx());
+    assert.equal(legQ.rows.length, 2, "Legacy client must query Connection.clientId, ignoring candidate assignment");
+
+    const legDataset = await reportingDataset(tx(), ids.workspaceA, clientLeg, { start: "2026-09-02", end: "2026-09-03" }, ["google_ads"]);
+    assert.equal(legDataset.rowCount, 2, "Legacy reportingDataset must return all connection rows");
+
+    // 2. Refresh / GET calls cannot change authority
+    setAuthSessionOverride(async () => ({
+      user: { id: ids.viewer, email: `${ids.viewer}@example.com` },
+      expires: "2099-01-01T00:00:00.000Z",
+    }));
+    try {
+      const getRes = await getClients(new Request(`http://localhost/api/clients?workspaceId=${ids.workspaceA}`));
+      assert.equal(getRes.status, 200);
+    } finally {
+      setAuthSessionOverride(null);
+    }
+    const clientCheck = await db.client.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId: ids.workspaceA, id: clientLeg } },
+    });
+    assert.equal(clientCheck.accountAssignmentsConfiguredAt, null, "GET cannot mutate cutover marker");
+
+    // 3. Perform explicit cutover
+    const cutover = await cutoverUnambiguousAssignments(ids.workspaceA, clientLeg, tx(), ids.user);
+    assert.ok(cutover.configuredAt);
+    const configuredClient = await db.client.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId: ids.workspaceA, id: clientLeg } },
+    });
+    assert.ok(configuredClient.accountAssignmentsConfiguredAt !== null);
+
+    // 4. Now in explicit mode: unassign all accounts
+    await unassignClientProviderAccount(
+      { workspaceId: ids.workspaceA, provider: "google_ads", accountId: accLeg1, actorUserId: ids.user },
+      tx()
+    );
+    await unassignClientProviderAccount(
+      { workspaceId: ids.workspaceA, provider: "google_ads", accountId: accLeg2, actorUserId: ids.user },
+      tx()
+    );
+
+    const remainingAssignments = await db.clientProviderAccountAssignment.count({
+      where: { workspaceId: ids.workspaceA, clientId: clientLeg },
+    });
+    assert.equal(remainingAssignments, 0);
+
+    // 5. Explicit client with 0 assignments MUST return 0 rows (NEVER restore legacy data!)
+    const emptyQ = await queryWarehouse({ workspaceId: ids.workspaceA, clientId: clientLeg }, tx());
+    assert.equal(emptyQ.rows.length, 0, "Explicit client with zero assignments must return zero warehouse rows");
+
+    const emptyDataset = await reportingDataset(tx(), ids.workspaceA, clientLeg, { start: "2026-09-02", end: "2026-09-03" }, ["google_ads"]);
+    assert.equal(emptyDataset.rowCount, 0, "Explicit client with zero assignments must return zero dataset rows");
+
+    const emptyExport = await getExportRows(
+      new Request(`http://localhost/api/export/rows?clientId=${clientLeg}`, {
+        headers: { Authorization: `Bearer ${testApiKeySecret}` },
+      })
+    );
+    const emptyExportData = await emptyExport.json();
+    assert.equal(emptyExportData.rows.length, 0, "Explicit client with zero assignments must export zero rows");
+  });
+
+  it("shared MCC export: two clients sharing one MCC connection export only their own assigned accounts; rival client rejected with 404", async () => {
+    const connMCC = `conn-mcc-shared-${suffix}`;
+    const client1 = `cl-mcc-1-${suffix}`;
+    const client2 = `cl-mcc-2-${suffix}`;
+    const accM1 = "5550005555";
+    const accM2 = "6660006666";
+
+    await db.client.createMany({
+      data: [
+        { id: client1, workspaceId: ids.workspaceA, name: "Client MCC 1", accountAssignmentsConfiguredAt: new Date() },
+        { id: client2, workspaceId: ids.workspaceA, name: "Client MCC 2", accountAssignmentsConfiguredAt: new Date() },
+      ],
+    });
+
+    await db.connection.create({
+      data: {
+        id: connMCC,
+        workspaceId: ids.workspaceA,
+        name: "Shared Agency MCC",
+        provider: "google_ads",
+        type: "source",
+        status: "connected",
+        remoteAccountId: `mcc-shared-${suffix}`,
+        credentials: JSON.stringify({ customerIds: [accM1, accM2] }),
+      },
+    });
+
+    await db.clientProviderAccountAssignment.createMany({
+      data: [
+        { workspaceId: ids.workspaceA, clientId: client1, provider: "google_ads", accountId: accM1, connectionId: connMCC },
+        { workspaceId: ids.workspaceA, clientId: client2, provider: "google_ads", accountId: accM2, connectionId: connMCC },
+      ],
+    });
+
+    const testDate = new Date("2026-09-03T12:00:00Z");
+    await db.campaignMetric.createMany({
+      data: [
+        {
+          workspaceId: ids.workspaceA,
+          connectionId: connMCC,
+          platform: "google_ads",
+          accountId: accM1,
+          campaignId: "c-m1",
+          campaignName: "Client 1 Campaign",
+          date: testDate,
+          spend: 555,
+          currency: "USD",
+        },
+        {
+          workspaceId: ids.workspaceA,
+          connectionId: connMCC,
+          platform: "google_ads",
+          accountId: accM2,
+          campaignId: "c-m2",
+          campaignName: "Client 2 Campaign",
+          date: testDate,
+          spend: 666,
+          currency: "USD",
+        },
+      ],
+    });
+
+    // Export for Client 1
+    const res1 = await getExportRows(
+      new Request(`http://localhost/api/export/rows?clientId=${client1}&sourceId=${connMCC}`, {
+        headers: { Authorization: `Bearer ${testApiKeySecret}` },
+      })
+    );
+    assert.equal(res1.status, 200);
+    const data1 = await res1.json();
+    assert.equal(data1.rows.length, 2); // Header + 1 row
+    assert.equal(data1.rows[1][1], "Client 1 Campaign");
+    assert.equal(data1.rows[1][4], 555);
+
+    // Export for Client 2
+    const res2 = await getExportRows(
+      new Request(`http://localhost/api/export/rows?clientId=${client2}&sourceId=${connMCC}`, {
+        headers: { Authorization: `Bearer ${testApiKeySecret}` },
+      })
+    );
+    assert.equal(res2.status, 200);
+    const data2 = await res2.json();
+    assert.equal(data2.rows.length, 2); // Header + 1 row
+    assert.equal(data2.rows[1][1], "Client 2 Campaign");
+    assert.equal(data2.rows[1][4], 666);
+
+    // Cross-workspace rival client ID rejection
+    const rivalRes = await getExportRows(
+      new Request(`http://localhost/api/export/rows?clientId=${ids.clientB}&sourceId=${connMCC}`, {
+        headers: { Authorization: `Bearer ${testApiKeySecret}` },
+      })
+    );
+    assert.equal(rivalRes.status, 404, "Rival workspace client ID must return 404");
+
+    // Non-existent client ID rejection
+    const nonExistentRes = await getExportRows(
+      new Request(`http://localhost/api/export/rows?clientId=non-existent-client-id&sourceId=${connMCC}`, {
+        headers: { Authorization: `Bearer ${testApiKeySecret}` },
+      })
+    );
+    assert.equal(nonExistentRes.status, 404, "Non-existent client ID must return 404");
   });
 });

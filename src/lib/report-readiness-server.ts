@@ -86,15 +86,12 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
 
     const sourceScopes = selected.flatMap<Prisma.ConnectionWhereInput>(client => {
       const isExplicit = client.accountAssignmentsConfiguredAt !== null;
-      const clientAssignments = activeAssignments.filter(a => a.clientId === client.id);
-      const assignedIds = Array.from(assignedConnIdsByClient.get(client.id) ?? []);
       if (isExplicit) {
-        if (clientAssignments.length === 0) {
+        const clientAssignments = activeAssignments.filter(a => a.clientId === client.id);
+        const assignedIds = Array.from(assignedConnIdsByClient.get(client.id) ?? []);
+        if (clientAssignments.length === 0 || assignedIds.length === 0) {
           return [{ id: { in: [] } }];
         }
-        return [{ id: { in: assignedIds }, ...(client.requirementsConfiguredAt ? { provider: { in: client.requiredProviders } } : {}) }];
-      }
-      if (assignedIds.length > 0) {
         return [{ id: { in: assignedIds }, ...(client.requirementsConfiguredAt ? { provider: { in: client.requiredProviders } } : {}) }];
       }
       return [client.requirementsConfiguredAt
@@ -116,25 +113,14 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
     // Redundant relational workspace filters reject even corrupt cross-workspace FK assignments.
     const clientMetricClauses: Prisma.CampaignMetricWhereInput[] = selected.map(client => {
       const isExplicit = client.accountAssignmentsConfiguredAt !== null;
-      const clientAssignments = activeAssignments.filter(a => a.clientId === client.id);
       if (isExplicit) {
+        const clientAssignments = activeAssignments.filter(a => a.clientId === client.id);
         if (clientAssignments.length === 0) {
           return {
             workspaceId,
             connectionId: { in: [] },
           };
         }
-        return {
-          workspaceId,
-          connectionId: { in: ids },
-          OR: clientAssignments.map(a => ({
-            connectionId: a.connectionId,
-            platform: a.provider,
-            accountId: a.accountId,
-          })),
-        };
-      }
-      if (clientAssignments.length > 0) {
         return {
           workspaceId,
           connectionId: { in: ids },
@@ -255,11 +241,7 @@ async function loadReportReadinessInTransaction(tx: ScopedTransaction, workspace
           assigned = sources.slice(0, CAP).filter(s => clientConnIds.has(s.id));
         }
       } else {
-        if (clientAssignments.length > 0 && clientConnIds) {
-          assigned = sources.slice(0, CAP).filter(s => clientConnIds.has(s.id));
-        } else {
-          assigned = sources.slice(0, CAP).filter(s => s.clientId === client.id);
-        }
+        assigned = sources.slice(0, CAP).filter(s => s.clientId === client.id);
       }
 
       const [snapshot, contexts, latestReceipts] = await Promise.all([

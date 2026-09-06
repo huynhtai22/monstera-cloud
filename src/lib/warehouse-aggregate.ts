@@ -80,18 +80,20 @@ export async function queryMetricsAggregate(spec: WarehouseAggregateSpec): Promi
       select: { id: true, accountAssignmentsConfiguredAt: true },
     });
     const isExplicit = client?.accountAssignmentsConfiguredAt != null;
-    const assignments = await prisma.clientProviderAccountAssignment.findMany({
-      where: { workspaceId: spec.workspaceId, clientId: spec.clientId },
-      select: { provider: true, accountId: true, connectionId: true },
-    });
-    if (assignments.length > 0) {
-      where.OR = assignments.map((a) => ({
-        connectionId: a.connectionId,
-        platform: a.provider,
-        accountId: a.accountId,
-      }));
-    } else if (isExplicit) {
-      where.id = { in: [] };
+    if (isExplicit) {
+      const assignments = await prisma.clientProviderAccountAssignment.findMany({
+        where: { workspaceId: spec.workspaceId, clientId: spec.clientId },
+        select: { provider: true, accountId: true, connectionId: true },
+      });
+      if (assignments.length > 0) {
+        where.OR = assignments.map((a) => ({
+          connectionId: a.connectionId,
+          platform: a.provider,
+          accountId: a.accountId,
+        }));
+      } else {
+        where.id = { in: [] };
+      }
     } else {
       where.connection = { workspaceId: spec.workspaceId, clientId: spec.clientId };
     }

@@ -850,32 +850,34 @@ async function loadWindowRows(
   });
   const isExplicit = client?.accountAssignmentsConfiguredAt != null;
 
-  const assignments = await tx.clientProviderAccountAssignment.findMany({
-    where: {
-      workspaceId,
-      clientId,
-      provider: { in: [...providers] },
-    },
-    select: {
-      provider: true,
-      accountId: true,
-      connectionId: true,
-    },
-  });
-
   const where: Prisma.CampaignMetricWhereInput = {
     workspaceId,
     date: { gte: range.gte, lte: range.lte },
   };
 
-  if (assignments.length > 0) {
-    where.OR = assignments.map((a) => ({
-      connectionId: a.connectionId,
-      platform: a.provider,
-      accountId: a.accountId,
-    }));
-  } else if (isExplicit) {
-    where.id = { in: [] };
+  if (isExplicit) {
+    const assignments = await tx.clientProviderAccountAssignment.findMany({
+      where: {
+        workspaceId,
+        clientId,
+        provider: { in: [...providers] },
+      },
+      select: {
+        provider: true,
+        accountId: true,
+        connectionId: true,
+      },
+    });
+
+    if (assignments.length > 0) {
+      where.OR = assignments.map((a) => ({
+        connectionId: a.connectionId,
+        platform: a.provider,
+        accountId: a.accountId,
+      }));
+    } else {
+      where.id = { in: [] };
+    }
   } else {
     where.platform = { in: [...providers] };
     where.connection = { clientId, workspaceId };
@@ -1411,27 +1413,27 @@ export async function generateWeeklyBlueprint(params: {
         const dataset = await reportingDataset(tx, workspaceId, clientId, window, [...client.requiredProviders].sort());
         await publicationHooks.afterCurrentDataset?.({ generationKey });
         const comparisonDataset = await reportingDataset(tx, workspaceId, clientId, comparisonWindow, [...client.requiredProviders].sort());
-        const clientAssignments = await tx.clientProviderAccountAssignment.findMany({
-          where: {
-            workspaceId,
-            clientId,
-            provider: { in: client.requiredProviders },
-          },
-          select: { provider: true, accountId: true, connectionId: true },
-          orderBy: [{ provider: "asc" }, { accountId: "asc" }],
-        });
         const isExplicit = client.accountAssignmentsConfiguredAt != null;
+        const clientAssignments = isExplicit
+          ? await tx.clientProviderAccountAssignment.findMany({
+              where: {
+                workspaceId,
+                clientId,
+                provider: { in: client.requiredProviders },
+              },
+              select: { provider: true, accountId: true, connectionId: true },
+              orderBy: [{ provider: "asc" }, { accountId: "asc" }],
+            })
+          : [];
         const authoritativeConnIds = [...new Set(clientAssignments.map((a) => a.connectionId))];
         const connections = await tx.connection.findMany({
             where: {
               workspaceId,
               type: "source",
               provider: { in: client.requiredProviders },
-              ...(authoritativeConnIds.length > 0
+              ...(isExplicit
                 ? { id: { in: authoritativeConnIds } }
-                : isExplicit
-                  ? { id: { in: [] } }
-                  : { clientId }),
+                : { clientId }),
             },
             select: {
               id: true,

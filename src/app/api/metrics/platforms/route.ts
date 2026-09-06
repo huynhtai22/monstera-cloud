@@ -44,17 +44,18 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "Client not found in workspace" }, { status: 404 });
       }
       const isExplicit = client.accountAssignmentsConfiguredAt !== null;
-      const assignments = await prisma.clientProviderAccountAssignment.findMany({
-        where: { workspaceId, clientId },
-        select: { provider: true },
-      });
-      if (assignments.length > 0) {
-        const distinct = [...new Set(assignments.map((a) => a.provider))].sort();
-        return NextResponse.json({ platforms: distinct });
-      }
       if (isExplicit) {
+        const assignments = await prisma.clientProviderAccountAssignment.findMany({
+          where: { workspaceId, clientId },
+          select: { provider: true },
+        });
+        if (assignments.length > 0) {
+          const distinct = [...new Set(assignments.map((a) => a.provider))].sort();
+          return NextResponse.json({ platforms: distinct });
+        }
         return NextResponse.json({ platforms: [] });
       }
+
       const legacyPlatforms = await prisma.campaignMetric.findMany({
         where: { workspaceId, connection: { clientId } },
         distinct: ["platform"],

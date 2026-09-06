@@ -37,36 +37,37 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "Client not found in workspace" }, { status: 404 });
       }
       const isExplicit = client.accountAssignmentsConfiguredAt !== null;
-      const assignments = await prisma.clientProviderAccountAssignment.findMany({
-        where: { workspaceId, clientId },
-        select: { provider: true, accountId: true, connectionId: true },
-      });
-      if (assignments.length > 0) {
-        const where = {
-          workspaceId,
-          OR: assignments.map((a) => ({
-            connectionId: a.connectionId,
-            platform: a.provider,
-            accountId: a.accountId,
-          })),
-        };
-        const grouped = await prisma.campaignMetric.groupBy({
-          by: ["accountId", "platform"],
-          where,
-          _max: { accountName: true },
-          orderBy: [{ accountId: "asc" }, { platform: "asc" }],
-        });
-        return NextResponse.json({
-          accounts: grouped.map((g) => ({
-            accountId: g.accountId,
-            platform: g.platform,
-            accountName: g._max.accountName ?? "",
-          })),
-        });
-      }
       if (isExplicit) {
+        const assignments = await prisma.clientProviderAccountAssignment.findMany({
+          where: { workspaceId, clientId },
+          select: { provider: true, accountId: true, connectionId: true },
+        });
+        if (assignments.length > 0) {
+          const where = {
+            workspaceId,
+            OR: assignments.map((a) => ({
+              connectionId: a.connectionId,
+              platform: a.provider,
+              accountId: a.accountId,
+            })),
+          };
+          const grouped = await prisma.campaignMetric.groupBy({
+            by: ["accountId", "platform"],
+            where,
+            _max: { accountName: true },
+            orderBy: [{ accountId: "asc" }, { platform: "asc" }],
+          });
+          return NextResponse.json({
+            accounts: grouped.map((g) => ({
+              accountId: g.accountId,
+              platform: g.platform,
+              accountName: g._max.accountName ?? "",
+            })),
+          });
+        }
         return NextResponse.json({ accounts: [] });
       }
+
       const grouped = await prisma.campaignMetric.groupBy({
         by: ["accountId", "platform"],
         where: { workspaceId, connection: { clientId } },

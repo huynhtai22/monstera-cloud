@@ -79,28 +79,30 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
 
     const isExplicit = client?.accountAssignmentsConfiguredAt != null;
 
-    const assignments = await db.clientProviderAccountAssignment.findMany({
-      where: {
-        workspaceId: input.workspaceId,
-        clientId: input.clientId,
-      },
-      select: {
-        provider: true,
-        accountId: true,
-        connectionId: true,
-      },
-    });
+    if (isExplicit) {
+      const assignments = await db.clientProviderAccountAssignment.findMany({
+        where: {
+          workspaceId: input.workspaceId,
+          clientId: input.clientId,
+        },
+        select: {
+          provider: true,
+          accountId: true,
+          connectionId: true,
+        },
+      });
 
-    if (assignments.length > 0) {
-      clientAuthoritativeConnectionIds = [...new Set(assignments.map((a) => a.connectionId))];
-      where.OR = assignments.map((a) => ({
-        connectionId: a.connectionId,
-        platform: a.provider,
-        accountId: a.accountId,
-      }));
-    } else if (isExplicit) {
-      where.id = { in: [] };
-      clientAuthoritativeConnectionIds = [];
+      if (assignments.length > 0) {
+        clientAuthoritativeConnectionIds = [...new Set(assignments.map((a) => a.connectionId))];
+        where.OR = assignments.map((a) => ({
+          connectionId: a.connectionId,
+          platform: a.provider,
+          accountId: a.accountId,
+        }));
+      } else {
+        where.id = { in: [] };
+        clientAuthoritativeConnectionIds = [];
+      }
     } else {
       where.connection = { workspaceId: input.workspaceId, clientId: input.clientId, type: "source" };
     }
