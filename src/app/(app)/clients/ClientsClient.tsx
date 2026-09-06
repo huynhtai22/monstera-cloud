@@ -713,7 +713,7 @@ export function ClientsClient() {
                     {/* Card Actions */}
                     <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-line/60 pt-3">
                       <Link
-                        href={`/sources?clientId=${encodeURIComponent(c.id)}`}
+                        href={`/sources?clientId=${encodeURIComponent(c.id)}&tab=accounts`}
                         className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.04] transition-colors"
                       >
                         <Database className="h-3.5 w-3.5" />
