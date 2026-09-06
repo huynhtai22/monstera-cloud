@@ -56,6 +56,7 @@ function verificationInput(overrides: Partial<VerificationInput> = {}): Verifica
         aggregationCompatible: true,
         grainUnsupportedProviders: [],
         unsupportedProviders: [],
+        accountScopeAmbiguous: [],
         currencyVerified: true,
         windowComplete: true,
         timezoneVerified: true,
@@ -79,6 +80,14 @@ function dependencyState(overrides: Partial<DependencyState> = {}): DependencySt
         evidenceAt: "2026-08-31T00:00:00.000Z",
         dataThroughDate: "2026-08-30",
         rowCount: 7,
+        accountScopeEvidence: [{
+            window: "reporting",
+            provider: "google_ads",
+            accountId: "acc-1",
+            connectionIds: ["conn-1"],
+            ambiguous: false,
+            contractVersion: METRIC_CONTRACT_VERSION,
+        }],
         comparisonDatasetFingerprint: "fp-0",
         comparisonEvidenceAt: "2026-08-24T00:00:00.000Z",
         comparisonDataThroughDate: "2026-08-23",
@@ -346,6 +355,7 @@ describe("report blueprint: dependency hashing / staleness", () => {
             datasetFingerprint: base.datasetFingerprint,
             requirement: base.requirement,
             readinessEvidence: base.readinessEvidence,
+            accountScopeEvidence: base.accountScopeEvidence,
         };
         assert.equal(canonicalJson(base), canonicalJson(reordered));
         assert.equal(computeDependencyHash(base), computeDependencyHash(reordered));
@@ -398,6 +408,14 @@ describe("report blueprint: grain, identity and date boundaries", () => {
         const result = computeVerificationStatus(verificationInput({ grainUnsupportedProviders: ["google_ads"] }));
         assert.equal(result.status, "NOT_VERIFIED");
         assert.ok(result.reasons.includes("aggregation_grain_unsupported:google_ads"));
+    });
+
+    it("fails verification closed for ambiguous account scopes", () => {
+        const result = computeVerificationStatus(verificationInput({
+            accountScopeAmbiguous: ["account_scope_ambiguous:google_ads:child-123"],
+        }));
+        assert.equal(result.status, "NOT_VERIFIED");
+        assert.ok(result.reasons.includes("account_scope_ambiguous:google_ads:child-123"));
     });
 
     it("fails verification closed for providers outside the blueprint scope", () => {

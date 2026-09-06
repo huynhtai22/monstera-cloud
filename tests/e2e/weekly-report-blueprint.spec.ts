@@ -425,6 +425,73 @@ test.describe("verified weekly report blueprint", () => {
     await noHorizontalOverflow(page);
   });
 
+  test("UI: duplicate MCC account sources show an ambiguity warning without overflow (19)", async ({ browser }) => {
+    test.setTimeout(120_000);
+    // Two Google MCC/root connections exposing the SAME child account.
+    const dupClientId = await prisma.client.create({
+      data: {
+        workspaceId,
+        name: `MCC Dup Client ${SUFFIX}`,
+        requiredProviders: ["google_ads"],
+        requiredDestinations: ["google_sheets"],
+        requirementsConfiguredAt: new Date(),
+      },
+      select: { id: true },
+    }).then((client) => client.id);
+    const dupConnA = await prisma.connection.create({
+      data: { workspaceId, clientId: dupClientId, name: `MCC A ${SUFFIX}`, type: "source", provider: "google_ads", credentials: "enc:v1:e2e", remoteAccountId: `mcc-a-${SUFFIX}`, status: "connected", lastSyncAt: new Date() },
+      select: { id: true },
+    }).then((connection) => connection.id);
+    const dupConnB = await prisma.connection.create({
+      data: { workspaceId, clientId: dupClientId, name: `MCC B ${SUFFIX}`, type: "source", provider: "google_ads", credentials: "enc:v1:e2e", remoteAccountId: `mcc-b-${SUFFIX}`, status: "connected", lastSyncAt: new Date() },
+      select: { id: true },
+    }).then((connection) => connection.id);
+    await prisma.accountReportingContext.createMany({
+      data: [dupConnA, dupConnB].map((connectionId) => ({
+        workspaceId, connectionId, accountId: `dup-child-${SUFFIX}`,
+        providerTimezone: "Asia/Ho_Chi_Minh", providerCurrency: "VND", providerObservedAt: new Date(),
+      })),
+    });
+    await prisma.campaignMetric.createMany({
+      data: WINDOW === WINDOW ? (["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30"].flatMap((day) => ([dupConnA, dupConnB].map((connectionId) => ({
+        workspaceId,
+        connectionId,
+        platform: "google_ads",
+        accountId: `dup-child-${SUFFIX}`,
+        level: "campaign",
+        entityId: `${connectionId}-${day}`,
+        campaignId: "dup-camp",
+        campaignName: "Dup Campaign",
+        date: new Date(`${day}T00:00:00.000Z`),
+        impressions: 1000,
+        clicks: 100,
+        spend: 10_000_000,
+        conversions: 2,
+        revenue: 40_000_000,
+        currency: "VND",
+      }))))) : [],
+    });
+
+    const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", aliceSession);
+    await page.goto(`/reports?clientId=${dupClientId}`);
+    await expect(page.getByRole("region", { name: "Verified Weekly Performance Blueprint" })).toBeVisible();
+    await page.getByRole("button", { name: /Generate report/ }).click();
+
+    // The duplicated account source is called out, never silently summed.
+    await expect(page.getByText("Ambiguous account sources", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/same provider account is assigned through multiple source connections/).first()).toBeVisible();
+    await expect(page.getByText("Totals unavailable")).toBeVisible();
+    // The machine-readable reason lives inside the collapsed evidence panel.
+    await page.getByText("Evidence & blockers").click();
+    await expect(page.getByText(/account_scope_ambiguous:google_ads:dup-child-/).first()).toBeVisible();
+    await noHorizontalOverflow(page);
+
+    await prisma.campaignMetric.deleteMany({ where: { connectionId: { in: [dupConnA, dupConnB] } } });
+    await prisma.accountReportingContext.deleteMany({ where: { connectionId: { in: [dupConnA, dupConnB] } } });
+    await prisma.connection.deleteMany({ where: { id: { in: [dupConnA, dupConnB] } } });
+    await prisma.client.deleteMany({ where: { id: dupClientId } });
+  });
+
   test("UI: mobile viewport renders without horizontal overflow (23)", async ({ browser }) => {
     test.setTimeout(120_000);
     const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", aliceSession);

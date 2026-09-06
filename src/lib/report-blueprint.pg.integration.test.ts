@@ -1794,6 +1794,7 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
             aggregationCompatible: false,
             grainUnsupportedProviders: [],
             unsupportedProviders: [],
+            accountScopeAmbiguous: [],
             currencyVerified: false,
             windowComplete: false,
             timezoneVerified: false,
@@ -1807,5 +1808,308 @@ describe("PostgreSQL integration: verified weekly report blueprint", () => {
         // The service signature accepts no verification input at all; the
         // contract version is server-owned.
         assert.equal(METRIC_CONTRACT_VERSION, "weekly-blueprint-metrics-v3");
+    });
+});
+
+describe("PostgreSQL integration: overlapping account evidence (P1)", () => {
+    let db: PrismaClient | null = null;
+    const suffix = `mcc-${Date.now()}-${process.pid}`;
+    const NOW = new Date("2026-09-02T10:00:00.000Z");
+    const WINDOW = { start: "2026-08-24", end: "2026-08-30" };
+    const DAYS = ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30"];
+    const ids = {
+        owner: `mcc-owner-${suffix}`,
+        workspace: `mcc-ws-${suffix}`,
+        client: `mcc-client-${suffix}`,
+        connA: `mcc-conn-a-${suffix}`,
+        connB: `mcc-conn-b-${suffix}`,
+        connC: `mcc-conn-c-${suffix}`,
+        dest: `mcc-dest-${suffix}`,
+    };
+
+    /** Child-account rows for one connection: 1000 impr/day, 7 days. */
+    function childRows(connectionId: string, entityIdPrefix: string, campaignId = "child-camp") {
+        return DAYS.map((day) => ({
+            workspaceId: ids.workspace, connectionId, platform: "google_ads",
+            accountId: "child-123", level: "campaign", entityId: `${entityIdPrefix}-${day}`,
+            campaignId, campaignName: "Child Camp",
+            date: new Date(`${day}T00:00:00.000Z`),
+            impressions: 1000, clicks: 100, spend: 10, conversions: 2, revenue: 40, currency: "USD",
+        }));
+    }
+
+    /** Deterministic per-test reset: wipe ALL metric rows and receipts in the
+     *  workspace, then seed exactly what the test declares. */
+    async function resetWorkspaceData() {
+        if (!db) throw new Error("db unavailable");
+        await db.campaignMetric.deleteMany({ where: { workspaceId: ids.workspace } });
+        await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ids.workspace } });
+    }
+
+    async function seedCurrentReceipt() {
+        if (!db) throw new Error("db unavailable");
+        const dataset = await db.$transaction(async (tx) => {
+            const client = await tx.client.findFirstOrThrow({ where: { id: ids.client } });
+            return reportingDataset(tx as ScopedTransaction, ids.workspace, ids.client, WINDOW, client.requiredProviders);
+        });
+        return db.destinationDeliveryReceipt.create({
+            data: {
+                workspaceId: ids.workspace, clientId: ids.client, destination: "google_sheets",
+                windowStart: WINDOW.start, windowEnd: WINDOW.end,
+                dataThroughDate: dataset.dataThroughDate ?? WINDOW.end,
+                datasetFingerprint: dataset.fingerprint, rowCount: dataset.rowCount,
+                actorId: ids.owner,
+            },
+        });
+    }
+
+    before(async () => {
+        if (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes("mock")) {
+            assertCiDatabaseReachableWhenMissing();
+            console.warn("Skipping overlapping-account tests: no real DATABASE_URL configured");
+            return;
+        }
+        try {
+            db = new PrismaClient();
+            await db.$connect();
+            await db.$queryRaw`SELECT 1`;
+        } catch {
+            console.warn("Skipping overlapping-account tests: database not reachable");
+            db = null;
+        }
+        if (!db) return;
+        process.env.GIT_COMMIT_SHA = `mcc-sha-${suffix}`;
+        await db.user.create({ data: { id: ids.owner, email: `${ids.owner}@example.test`, name: "Owner" } });
+        await db.workspace.create({ data: { id: ids.workspace, name: "MCC WS", slug: suffix, ownerId: ids.owner, plan: "pilot", updatedAt: new Date() } });
+        await db.client.create({ data: {
+            id: ids.client, workspaceId: ids.workspace, name: "MCC Client", updatedAt: new Date(),
+            requiredProviders: ["google_ads"], requiredDestinations: ["google_sheets"],
+            requirementsConfiguredAt: new Date("2026-08-20T00:00:00.000Z"),
+        }});
+        await db.connection.createMany({ data: [
+            { id: ids.connA, workspaceId: ids.workspace, clientId: ids.client, name: "MCC A", type: "source", provider: "google_ads", credentials: "enc:v1:x", remoteAccountId: "manager-A", status: "connected", lastSyncAt: new Date(), updatedAt: new Date() },
+            { id: ids.connB, workspaceId: ids.workspace, clientId: ids.client, name: "MCC B", type: "source", provider: "google_ads", credentials: "enc:v1:x", remoteAccountId: "manager-B", status: "connected", lastSyncAt: new Date(), updatedAt: new Date() },
+            { id: ids.connC, workspaceId: ids.workspace, clientId: ids.client, name: "MCC C", type: "source", provider: "google_ads", credentials: "enc:v1:x", remoteAccountId: "manager-C", status: "connected", lastSyncAt: new Date(), updatedAt: new Date() },
+            { id: ids.dest, workspaceId: ids.workspace, name: "Sheets", type: "destination", provider: "google_sheets", credentials: "enc:v1:x", remoteAccountId: "sheet", status: "connected" },
+        ]});
+        await db.accountReportingContext.createMany({ data: [
+            { workspaceId: ids.workspace, connectionId: ids.connA, accountId: "child-123", providerTimezone: "UTC", providerCurrency: "USD", providerObservedAt: NOW },
+            { workspaceId: ids.workspace, connectionId: ids.connB, accountId: "child-123", providerTimezone: "UTC", providerCurrency: "USD", providerObservedAt: NOW },
+            { workspaceId: ids.workspace, connectionId: ids.connC, accountId: "child-other", providerTimezone: "UTC", providerCurrency: "USD", providerObservedAt: NOW },
+        ]});
+    });
+
+    after(async () => {
+        delete process.env.GIT_COMMIT_SHA;
+        if (!db) return;
+        await db.workspace.deleteMany({ where: { id: ids.workspace } }).catch(() => undefined);
+        await db.user.deleteMany({ where: { id: ids.owner } }).catch(() => undefined);
+        await db.$disconnect();
+    });
+
+    it("detects two MCC connections exposing the same child account; never sums; fails closed even with a current receipt (1-7, 15)", async () => {
+        if (!db) return;
+        await resetWorkspaceData();
+        await db.campaignMetric.createMany({ data: [
+            ...childRows(ids.connA, `a-${suffix}`),
+            ...childRows(ids.connB, `b-${suffix}`),
+        ]});
+        await seedCurrentReceipt(); // perfectly current receipt for the duplicated dataset
+        const result = await generateWeeklyBlueprint({
+            workspaceId: ids.workspace, clientId: ids.client,
+            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
+        });
+        assert.equal(result.snapshot.verificationStatus, "NOT_VERIFIED", "a current receipt cannot override ambiguity");
+        const reason = result.snapshot.verificationReasons.find((r) => r.startsWith("account_scope_ambiguous:"));
+        assert.equal(reason, "account_scope_ambiguous:google_ads:child-123");
+        // Duplicated rows are NOT summed: the provider's metrics are unavailable.
+        const google = result.report.providers.find((provider) => provider.provider === "google_ads");
+        assert.equal(google?.status, "ambiguous");
+        assert.equal(google?.metrics, null);
+        assert.match(google?.explanation ?? "", /multiple source connections/);
+        // Combined totals are marked unavailable, never partial.
+        assert.equal(result.report.totals.unavailable, true);
+        assert.equal(result.report.totals.scope, "unavailable");
+        assert.equal(result.report.totals.impressions, 0);
+        assert.equal(result.report.totals.spend, null);
+        // Exact string account identifiers preserved in the bound evidence.
+        const stored = await db.reportSnapshot.findUniqueOrThrow({ where: { id: result.snapshot.id } });
+        const state = (stored.readinessEvidence as { dependencyState: DependencyState }).dependencyState;
+        const reportingEvidence = state.accountScopeEvidence.filter((entry) => entry.window === "reporting");
+        assert.equal(reportingEvidence.length, 1);
+        assert.equal(typeof reportingEvidence[0].accountId, "string");
+        assert.equal(reportingEvidence[0].accountId, "child-123");
+        assert.deepEqual(reportingEvidence[0].connectionIds, [ids.connA, ids.connB]);
+        assert.equal(reportingEvidence[0].ambiguous, true);
+    });
+
+    it("detects ambiguity that exists only in the comparison window (8)", async () => {
+        if (!db) return;
+        await resetWorkspaceData();
+        // Reporting window: single connection. Comparison window: duplicated.
+        const COMPARISON_DAYS = ["2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20", "2026-08-21", "2026-08-22", "2026-08-23"];
+        await db.campaignMetric.createMany({ data: [
+            ...childRows(ids.connA, `a-${suffix}`),
+            // BOTH connections expose child-123 in the comparison window;
+            // the reporting window holds only connA's rows (unambiguous).
+            ...COMPARISON_DAYS.flatMap((day) => ([
+                { workspaceId: ids.workspace, connectionId: ids.connA, platform: "google_ads",
+                  accountId: "child-123", level: "campaign", entityId: `prev-a-${suffix}-${day}`,
+                  campaignId: "child-camp", campaignName: "Child Camp",
+                  date: new Date(`${day}T00:00:00.000Z`),
+                  impressions: 1000, clicks: 100, spend: 10, conversions: 2, revenue: 40, currency: "USD" },
+                { workspaceId: ids.workspace, connectionId: ids.connB, platform: "google_ads",
+                  accountId: "child-123", level: "campaign", entityId: `prev-b-${suffix}-${day}`,
+                  campaignId: "child-camp", campaignName: "Child Camp",
+                  date: new Date(`${day}T00:00:00.000Z`),
+                  impressions: 1000, clicks: 100, spend: 10, conversions: 2, revenue: 40, currency: "USD" },
+            ])),
+        ]});
+        await seedCurrentReceipt();
+        const result = await generateWeeklyBlueprint({
+            workspaceId: ids.workspace, clientId: ids.client,
+            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
+        });
+        assert.equal(result.snapshot.verificationStatus, "NOT_VERIFIED");
+        assert.ok(result.snapshot.verificationReasons.includes("account_scope_ambiguous:google_ads:child-123"));
+        // Reporting-window metrics are intact (single connection, not doubled).
+        const google = result.report.providers.find((provider) => provider.provider === "google_ads");
+        assert.equal(google?.status, "included");
+        assert.equal(google?.metrics?.impressions, 7000);
+        assert.equal(result.report.totals.unavailable, false);
+    });
+
+    it("two connections with DIFFERENT child accounts remain valid and verified (5, 9)", async () => {
+        if (!db) return;
+        await resetWorkspaceData();
+        // connC would carry coverage obligations without rows; remove it here.
+        await db.connection.deleteMany({ where: { id: ids.connC } });
+        await db.campaignMetric.createMany({ data: [
+            ...DAYS.map((day) => ({
+                workspaceId: ids.workspace, connectionId: ids.connA, platform: "google_ads",
+                accountId: "child-123", level: "campaign", entityId: `va-${suffix}-${day}`,
+                campaignId: "child-camp", campaignName: "Child Camp",
+                date: new Date(`${day}T00:00:00.000Z`),
+                impressions: 1000, clicks: 100, spend: 10, conversions: 2, revenue: 40, currency: "USD",
+            })),
+            ...DAYS.map((day) => ({
+                workspaceId: ids.workspace, connectionId: ids.connB, platform: "google_ads",
+                accountId: "child-456", level: "campaign", entityId: `vb-${suffix}-${day}`,
+                campaignId: "child-camp-b", campaignName: "Child Camp B",
+                date: new Date(`${day}T00:00:00.000Z`),
+                impressions: 500, clicks: 50, spend: 5, conversions: 1, revenue: 20, currency: "USD",
+            })),
+        ]});
+        await db.accountReportingContext.createMany({ data: [
+            { workspaceId: ids.workspace, connectionId: ids.connB, accountId: "child-456", providerTimezone: "UTC", providerCurrency: "USD", providerObservedAt: NOW },
+        ]}).catch(() => undefined);
+        await seedCurrentReceipt();
+        const result = await generateWeeklyBlueprint({
+            workspaceId: ids.workspace, clientId: ids.client,
+            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
+        });
+        assert.equal(result.snapshot.verificationStatus, "VERIFIED");
+        assert.ok(result.snapshot.verificationReasons.every((reason) => !reason.startsWith("account_scope_ambiguous")));
+        const google = result.report.providers.find((provider) => provider.provider === "google_ads");
+        assert.equal(google?.metrics?.impressions, 10_500);
+        // Both connection ids appear as exact account evidence.
+        const accounts = result.report.overview.includedAccounts.map((account) => account.accountId).sort();
+        assert.deepEqual(accounts, ["child-123", "child-456"]);
+    });
+
+    it("an overlap for an UNREQUIRED provider does not change the scoped hash or freshness (11)", async () => {
+        if (!db) return;
+        const before = await generateWeeklyBlueprint({
+            workspaceId: ids.workspace, clientId: ids.client,
+            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
+        });
+        assert.equal(before.created, false, "state unchanged since the previous verified generation");
+        // Duplicate shopee rows across two shopee connections: outside the
+        // blueprint's provider scope AND the client's requirements.
+        const sh1 = `sh1-${suffix}`;
+        const sh2 = `sh2-${suffix}`;
+        await db.connection.createMany({ data: [
+            { id: sh1, workspaceId: ids.workspace, clientId: ids.client, name: "Sh1", type: "source", provider: "shopee", credentials: "enc:v1:x", remoteAccountId: "shop-A", status: "connected", lastSyncAt: new Date(), updatedAt: new Date() },
+            { id: sh2, workspaceId: ids.workspace, clientId: ids.client, name: "Sh2", type: "source", provider: "shopee", credentials: "enc:v1:x", remoteAccountId: "shop-B", status: "connected", lastSyncAt: new Date(), updatedAt: new Date() },
+        ]});
+        await db.campaignMetric.createMany({ data: DAYS.flatMap((day) => ([
+            { workspaceId: ids.workspace, connectionId: sh1, platform: "shopee", accountId: "shop-1", level: "campaign", entityId: `sh1-${day}`, campaignId: "sh-camp", campaignName: "Sh Camp", date: new Date(`${day}T00:00:00.000Z`), impressions: 1000, clicks: 0, spend: 5, conversions: 0, revenue: 0, currency: "USD" },
+            { workspaceId: ids.workspace, connectionId: sh2, platform: "shopee", accountId: "shop-1", level: "campaign", entityId: `sh2-${day}`, campaignId: "sh-camp", campaignName: "Sh Camp", date: new Date(`${day}T00:00:00.000Z`), impressions: 1000, clicks: 0, spend: 5, conversions: 0, revenue: 0, currency: "USD" },
+        ]))});
+        const stored = await db.reportSnapshot.findUniqueOrThrow({ where: { id: before.snapshot.id } });
+        const freshness = await evaluateSnapshotFreshness(stored);
+        assert.equal(freshness.freshness, "CURRENT", `unrequired-provider overlap must not affect the scoped snapshot; reasons=${JSON.stringify(freshness.staleReasons)}`);
+        await db.campaignMetric.deleteMany({ where: { connectionId: { in: [sh1, sh2] } } });
+        await db.connection.deleteMany({ where: { id: { in: [sh1, sh2] } } });
+    });
+
+    it("introducing an overlap makes an existing snapshot stale; removing it permits a new verified version (12, 13)", async () => {
+        if (!db) return;
+        // Builds on test 3/4's verified state: connA serves child-123 and
+        // connB serves child-456 — no overlap.
+        const baseline = await generateWeeklyBlueprint({
+            workspaceId: ids.workspace, clientId: ids.client,
+            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
+        });
+        assert.equal(baseline.snapshot.verificationStatus, "VERIFIED");
+
+        // Introduce the overlap: connection B starts exposing child-123 too.
+        await db.campaignMetric.createMany({ data: childRows(ids.connB, `b-${suffix}`) });
+        const stored = await db.reportSnapshot.findUniqueOrThrow({ where: { id: baseline.snapshot.id } });
+        const stale = await evaluateSnapshotFreshness(stored);
+        assert.equal(stale.freshness, "STALE", `reasons=${JSON.stringify(stale.staleReasons)}`);
+        assert.ok(
+            stale.staleReasons.includes("account_scope_changed") || stale.staleReasons.includes("dataset_changed"),
+            `introducing an overlap must invalidate the snapshot; reasons=${JSON.stringify(stale.staleReasons)}`,
+        );
+
+        // Removing the overlap changes evidence back; a new immutable version
+        // is created and verifies once receipts match again.
+        await db.campaignMetric.deleteMany({ where: { connectionId: ids.connB } });
+        // Connection B returns to serving its own child-456 account.
+        await db.campaignMetric.createMany({ data: DAYS.map((day) => ({
+            workspaceId: ids.workspace, connectionId: ids.connB, platform: "google_ads",
+            accountId: "child-456", level: "campaign", entityId: `vb2-${suffix}-${day}`,
+            campaignId: "child-camp-b", campaignName: "Child Camp B",
+            date: new Date(`${day}T00:00:00.000Z`),
+            impressions: 500, clicks: 50, spend: 5, conversions: 1, revenue: 20, currency: "USD",
+        })) });
+        await seedCurrentReceipt();
+        const regenerated = await generateWeeklyBlueprint({
+            workspaceId: ids.workspace, clientId: ids.client,
+            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
+        });
+        assert.equal(regenerated.created, true);
+        assert.equal(regenerated.snapshot.sequence, baseline.snapshot.sequence + 1);
+        assert.equal(regenerated.snapshot.verificationStatus, "VERIFIED", `regen reasons=${JSON.stringify(regenerated.snapshot.verificationReasons)}`);
+        // Same unambiguous input remains idempotent (14).
+        const again = await generateWeeklyBlueprint({
+            workspaceId: ids.workspace, clientId: ids.client,
+            windowStart: WINDOW.start, windowEnd: WINDOW.end, now: NOW,
+        });
+        assert.equal(again.created, false);
+        assert.equal(again.snapshot.id, regenerated.snapshot.id);
+    });
+
+    it("rival-workspace rows cannot create ambiguity (16)", async () => {
+        if (!db) return;
+        // Builds on test 5's verified end state.
+        const rivalOwner = `rival-${suffix}`;
+        const rivalWs = `rival-ws-${suffix}`;
+        await db.user.create({ data: { id: rivalOwner, email: `${rivalOwner}@test`, name: "Rival" } });
+        const rival = await db.workspace.create({ data: { id: rivalWs, name: "Rival", slug: rivalWs, ownerId: rivalOwner, plan: "pilot", updatedAt: new Date() } });
+        const rivalClient = await db.client.create({ data: { id: `rival-client-${suffix}`, workspaceId: rival.id, name: "Rival Client", updatedAt: new Date() } });
+        const rivalConn = await db.connection.create({ data: { id: `rival-conn-${suffix}`, workspaceId: rival.id, clientId: rivalClient.id, name: "Rival Conn", type: "source", provider: "google_ads", credentials: "enc:v1:x", remoteAccountId: "rival-manager", status: "connected", lastSyncAt: new Date(), updatedAt: new Date() } });
+        await db.campaignMetric.createMany({ data: childRows(rivalConn.id, `rival-${suffix}`) });
+        // The owned client's snapshot state is unchanged by rival rows.
+        const stored = await db.reportSnapshot.findFirstOrThrow({
+            where: { workspaceId: ids.workspace, clientId: ids.client },
+            orderBy: [{ sequence: "desc" }],
+        });
+        const freshness = await evaluateSnapshotFreshness(stored);
+        assert.equal(freshness.freshness, "CURRENT");
+        await db.campaignMetric.deleteMany({ where: { connectionId: rivalConn.id } });
+        await db.workspace.delete({ where: { id: rival.id } });
+        await db.user.delete({ where: { id: rivalOwner } });
     });
 });

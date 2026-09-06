@@ -73,11 +73,11 @@ type BlueprintReport = {
       destinationState: "verified" | "unavailable" | "unverified" | "stale";
     };
   };
-  totals: BlueprintMetrics;
+  totals: BlueprintMetrics & { unavailable?: boolean };
   providers: Array<{
     provider: string;
     providerLabel: string;
-    status: "included" | "no_data" | "unsupported";
+    status: "included" | "no_data" | "unsupported" | "ambiguous";
     included: boolean;
     metrics: BlueprintMetrics | null;
     changes: PercentDelta[];
@@ -463,7 +463,11 @@ export function WeeklyPerformanceBlueprint({
               <h3 className="text-sm font-semibold text-ink">
                 Cross-channel totals {displayedWindow ? <span className="font-normal text-ink-mute">· {displayedWindow.start} → {displayedWindow.end}</span> : null}
               </h3>
-              {report.totals.monetaryAvailable ? null : (
+              {report.totals.unavailable ? (
+                <span className="rounded-full border border-amber-500/40 bg-amber-950/30 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                  Totals unavailable: the same provider account is assigned through multiple source connections — no partial totals are shown
+                </span>
+              ) : report.totals.monetaryAvailable ? null : (
                 <span className="rounded-full border border-red-500/40 bg-red-950/30 px-2 py-0.5 text-[10px] font-semibold text-red-300">
                   Monetary totals blocked: mixed or unknown currencies — shown per provider
                 </span>
@@ -491,7 +495,11 @@ export function WeeklyPerformanceBlueprint({
                 <div key={provider.provider} className="rounded-lg border border-line bg-canvas p-3">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold text-ink">{provider.providerLabel}</p>
-                    {provider.status === "unsupported" ? (
+                    {provider.status === "ambiguous" ? (
+                      <span className="rounded-full border border-amber-500/40 bg-amber-950/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+                        Ambiguous account sources
+                      </span>
+                    ) : provider.status === "unsupported" ? (
                       <span className="rounded-full border border-line bg-canvas px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-mute">
                         Out of scope
                       </span>

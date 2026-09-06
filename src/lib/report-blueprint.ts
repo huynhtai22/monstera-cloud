@@ -407,6 +407,119 @@ export function buildCampaignTable(
 }
 
 // ---------------------------------------------------------------------------
+// Account-scope evidence (shared canonical logic — generation AND freshness)
+// ---------------------------------------------------------------------------
+
+export type AccountScopeWindow = "reporting" | "comparison";
+
+export type AccountScopeEvidence = {
+  window: AccountScopeWindow;
+  provider: string;
+  /** Exact account identifier — never coerced or normalized. */
+  accountId: string;
+  /** Sorted distinct source connections exposing this account scope. */
+  connectionIds: string[];
+  /** True when more than one connection claims the same account scope. */
+  ambiguous: boolean;
+  contractVersion: string;
+};
+
+/**
+ * The ONE authoritative-grain filter for blueprint aggregation: for each
+ * required supported provider, keep only rows at that provider's persisted
+ * ingestion grain. Used identically by generation, scope-evidence building
+ * and freshness recomputation — never two interpretations.
+ */
+export function authoritativeRowsForProviders(
+  rows: MetricRowInput[],
+  requiredProviders: string[],
+): MetricRowInput[] {
+  const authoritative: MetricRowInput[] = [];
+  for (const provider of requiredProviders) {
+    const grain = (PROVIDER_SOURCE_GRAINS as Record<string, string>)[provider];
+    if (!grain) continue;
+    for (const row of rows) {
+      if (row.platform === provider && row.level === grain) authoritative.push(row);
+    }
+  }
+  return authoritative;
+}
+
+/**
+ * Canonical (provider, accountId) ownership evidence for both windows, built
+ * ONLY from otherwise-eligible authoritative rows in exact client/workspace
+ * scope. Deterministic ordering: window, provider, accountId. Multiple
+ * distinct connectionIds for one account scope are ambiguous — the same
+ * child account surfaced through several MCC/root connections must never be
+ * summed; no connection "winner" is chosen.
+ */
+export function buildAccountScopeEvidence(
+  currentRows: MetricRowInput[],
+  previousRows: MetricRowInput[],
+  requiredProviders: string[],
+): { evidence: AccountScopeEvidence[]; ambiguousReasons: string[]; ambiguousProvidersReporting: string[] } {
+  const evidence: AccountScopeEvidence[] = [];
+  const ambiguousReasons = new Set<string>();
+  const ambiguousProvidersReporting = new Set<string>();
+  const windows: Array<{ name: AccountScopeWindow; rows: MetricRowInput[] }> = [
+    { name: "comparison", rows: previousRows },
+    { name: "reporting", rows: currentRows },
+  ];
+  for (const { name: window, rows } of windows) {
+    const groups = new Map<string, { accountId: string; connectionIds: Set<string> }>();
+    for (const row of rows) {
+      if (!requiredProviders.includes(row.platform)) continue;
+      if (!(BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(row.platform)) continue;
+      const key = `${row.platform}:::${row.accountId}`;
+      const group = groups.get(key);
+      if (group) group.connectionIds.add(row.connectionId);
+      else groups.set(key, { accountId: row.accountId, connectionIds: new Set([row.connectionId]) });
+    }
+    for (const [key, group] of groups) {
+      const provider = key.split(":::")[0];
+      const connectionIds = [...group.connectionIds].sort();
+      const ambiguous = connectionIds.length > 1;
+      evidence.push({
+        window,
+        provider,
+        accountId: group.accountId,
+        connectionIds,
+        ambiguous,
+        contractVersion: METRIC_CONTRACT_VERSION,
+      });
+      if (ambiguous) {
+        ambiguousReasons.add(`account_scope_ambiguous:${provider}:${group.accountId}`);
+        if (window === "reporting") ambiguousProvidersReporting.add(provider);
+      }
+    }
+  }
+  evidence.sort((a, b) =>
+    compareStrings(a.window, b.window)
+    || compareStrings(a.provider, b.provider)
+    || compareStrings(a.accountId, b.accountId));
+  return { evidence, ambiguousReasons: [...ambiguousReasons].sort(), ambiguousProvidersReporting: [...ambiguousProvidersReporting] };
+}
+
+/** Metrics object with every value unavailable — the established
+ *  unavailable-not-zero representation for ambiguous totals. */
+export function unavailableBlueprintMetrics(): BlueprintMetrics {
+  return {
+    currency: null,
+    monetaryAvailable: false,
+    currencies: [],
+    spend: null,
+    impressions: 0,
+    clicks: 0,
+    conversions: 0,
+    conversionValue: null,
+    ctr: null,
+    cpc: null,
+    cpa: null,
+    roas: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Verification semantics
 // ---------------------------------------------------------------------------
 
@@ -424,6 +537,10 @@ export type VerificationInput = {
   grainUnsupportedProviders: string[];
   /** Required providers outside the blueprint's supported scope. */
   unsupportedProviders: string[];
+  /** Canonical machine-readable reasons for ambiguous account scopes
+   *  (account_scope_ambiguous:<provider>:<accountId>). Ready receipts and
+   *  READY readiness can never override them. */
+  accountScopeAmbiguous: string[];
   currencyVerified: boolean;
   windowComplete: boolean;
   timezoneVerified: boolean;
@@ -467,6 +584,9 @@ export function computeVerificationStatus(input: VerificationInput): Verificatio
   }
   if (input.unsupportedProviders.length > 0) {
     reasons.push(`unsupported_provider:${input.unsupportedProviders.sort().join(",")}`);
+  }
+  for (const reason of input.accountScopeAmbiguous) {
+    reasons.push(reason);
   }
   if (!input.currencyVerified) reasons.push("currency_unverified");
   if (!input.windowComplete) reasons.push("window_incomplete");
@@ -514,6 +634,16 @@ export type DependencyState = {
     dataThroughDate: string;
     current: boolean;
   }>;
+  /** Canonical (provider, accountId) ownership evidence for both windows —
+   *  overlaps make snapshots stale and verification fail closed. */
+  accountScopeEvidence: Array<{
+    window: AccountScopeWindow;
+    provider: string;
+    accountId: string;
+    connectionIds: string[];
+    ambiguous: boolean;
+    contractVersion: string;
+  }>;
   /** Sanitized canonical evidence produced by the shared readiness evaluator. */
   readinessEvidence: ReadinessDependencyEvidence;
   contractVersions: Record<string, string>;
@@ -525,6 +655,7 @@ export const STALE_REASON_LABELS: Record<string, string> = {
   destination_evidence_changed: "Delivery evidence changed, expired or was replaced after generation",
   readiness_evidence_changed: "Source, account, sync, reporting context, pipeline or readiness evidence changed after generation",
   contract_changed: "Metric contract version changed after generation",
+  account_scope_changed: "Connected account ownership evidence changed after generation",
 };
 
 function diffDependencyComponents(stored: DependencyState, current: DependencyState): string[] {
@@ -547,6 +678,11 @@ function diffDependencyComponents(stored: DependencyState, current: DependencySt
   if (canonicalJson(stored.receipts) !== canonicalJson(current.receipts)) {
     reasons.push("destination_evidence_changed");
   }
+  if (canonicalJson(stored.accountScopeEvidence) !== canonicalJson(current.accountScopeEvidence)) {
+    // Any introduced, removed or changed overlapping connection/account scope
+    // makes the snapshot stale.
+    reasons.push("account_scope_changed");
+  }
   if (canonicalJson(stored.readinessEvidence) !== canonicalJson(current.readinessEvidence)) {
     reasons.push("readiness_evidence_changed");
   }
@@ -564,7 +700,7 @@ export function computeDependencyHash(state: DependencyState): string {
 // Report model
 // ---------------------------------------------------------------------------
 
-export type ProviderBreakdownStatus = "included" | "no_data" | "unsupported";
+export type ProviderBreakdownStatus = "included" | "no_data" | "unsupported" | "ambiguous";
 
 export type ProviderBreakdown = {
   provider: string;
@@ -604,7 +740,7 @@ export type BlueprintReport = {
       destinationState: ReportReadinessEvaluation["destination"]["state"];
     };
   };
-  totals: BlueprintMetrics & { scope: "combined" | "by_provider_only" };
+  totals: BlueprintMetrics & { scope: "combined" | "by_provider_only" | "unavailable"; unavailable: boolean };
   providers: ProviderBreakdown[];
   campaigns: CampaignMetricsRow[];
   campaignTruncated: boolean;
@@ -721,6 +857,12 @@ type GenerationContext = {
   previousRows: MetricRowInput[];
   /** Rows at other grains in the window make aggregation ambiguous. */
   grainUnsupportedProviders: string[];
+  /** Canonical (provider, accountId) ownership evidence for both windows. */
+  accountScopeEvidence: AccountScopeEvidence[];
+  /** Machine-readable account_scope_ambiguous reasons (both windows). */
+  accountScopeAmbiguous: string[];
+  /** Required providers with an ambiguous scope in the REPORTING window. */
+  ambiguousReportingProviders: string[];
   rowsLimited: boolean;
   evaluation: ReportReadinessEvaluation;
   dataset: Awaited<ReturnType<typeof reportingDataset>>;
@@ -741,6 +883,7 @@ function buildDependencyState(ctx: GenerationContext): DependencyState {
     comparisonDataThroughDate: ctx.comparisonDataset.dataThroughDate,
     comparisonRowCount: ctx.comparisonDataset.rowCount,
     receipts: ctx.receipts.map((receipt) => ({ ...receipt })),
+    accountScopeEvidence: ctx.accountScopeEvidence.map((entry) => ({ ...entry })),
     readinessEvidence: ctx.evaluation.dependencyEvidence,
     contractVersions: {
       metrics: METRIC_CONTRACT_VERSION,
@@ -795,6 +938,26 @@ function buildProviderBreakdowns(ctx: GenerationContext): {
   const includedAccounts: Array<{ provider: string; accountId: string; connectionId: string }> = [];
 
   for (const provider of ctx.clientRequirement.requiredProviders) {
+    // Ambiguous account scope: the same provider account is claimed by more
+    // than one source connection. Metrics are unavailable — never doubled,
+    // never zero — until ownership is resolved.
+    if (ctx.ambiguousReportingProviders.includes(provider)) {
+      const partial: Omit<ProviderBreakdown, "explanation"> = {
+        provider,
+        providerLabel: getPlatformLabel(provider),
+        required: true,
+        status: "ambiguous",
+        included: false,
+        metrics: null,
+        changes: [],
+        dataThrough: null,
+      };
+      providers.push({
+        ...partial,
+        explanation: "Ambiguous account sources: the same provider account is assigned through multiple source connections in this window. Metrics are unavailable until the duplicate account assignment is resolved — rows were not summed.",
+      });
+      continue;
+    }
     const isSupported = (BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider);
     if (!isSupported) {
       const partial: Omit<ProviderBreakdown, "explanation"> = {
@@ -849,6 +1012,7 @@ function buildReport(ctx: GenerationContext, verification: VerificationResult): 
   const totals = aggregateBlueprintMetrics(ctx.currentRows);
   const { providers, includedProviders, includedAccounts } = buildProviderBreakdowns(ctx);
   const timezones = ctx.evaluation.timezones;
+  const totalsUnavailable = ctx.ambiguousReportingProviders.length > 0;
 
   return {
     overview: {
@@ -872,7 +1036,9 @@ function buildReport(ctx: GenerationContext, verification: VerificationResult): 
         destinationState: ctx.evaluation.destination.state,
       },
     },
-    totals: { ...totals, scope: totals.monetaryAvailable ? "combined" : "by_provider_only" },
+    totals: totalsUnavailable
+      ? { ...unavailableBlueprintMetrics(), scope: "unavailable" as const, unavailable: true }
+      : { ...totals, scope: totals.monetaryAvailable ? "combined" as const : "by_provider_only" as const, unavailable: false },
     providers,
     campaigns: [],
     campaignTruncated: false,
@@ -898,6 +1064,7 @@ function buildVerification(
     unsupportedProviders: ctx.clientRequirement.requiredProviders.filter(
       (provider) => !(BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
     ),
+    accountScopeAmbiguous: ctx.accountScopeAmbiguous,
     currencyVerified: currencyVerifiedFor(totals, ctx.evaluation),
     windowComplete: windowIsComplete(ctx.window),
     timezoneVerified: ctx.evaluation.timezones.length === 1,
@@ -1159,10 +1326,9 @@ export async function generateWeeklyBlueprint(params: {
         }
         await publicationHooks.afterReadiness?.({ generationKey });
 
-        const providerScope = [...client.requiredProviders].sort();
-        const dataset = await reportingDataset(tx, workspaceId, clientId, window, providerScope);
+        const dataset = await reportingDataset(tx, workspaceId, clientId, window, [...client.requiredProviders].sort());
         await publicationHooks.afterCurrentDataset?.({ generationKey });
-        const comparisonDataset = await reportingDataset(tx, workspaceId, clientId, comparisonWindow, providerScope);
+        const comparisonDataset = await reportingDataset(tx, workspaceId, clientId, comparisonWindow, [...client.requiredProviders].sort());
         const connections = await tx.connection.findMany({
             where: {
               workspaceId,
@@ -1201,29 +1367,30 @@ export async function generateWeeklyBlueprint(params: {
             && receipt.retrievedAt.getTime() >= dataset.evidenceAt,
         }] : []);
 
-        // Per-provider authoritative grain resolution (blueprint scope only).
+        // Per-provider authoritative grain resolution (blueprint scope only),
+        // via the ONE shared grain filter used by freshness as well.
         const requiredProviders = [...client.requiredProviders].sort();
         const supportedProviders = requiredProviders.filter(
           (provider) => (BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
         );
-        const splitByGrain = (rows: MetricRowInput[]) => {
-          const authoritative: MetricRowInput[] = [];
-          const unsupportedOnly = new Set<string>();
-          for (const provider of supportedProviders) {
-            const grain = PROVIDER_SOURCE_GRAINS[provider as keyof typeof PROVIDER_SOURCE_GRAINS];
-            const providerRows = rows.filter((row) => row.platform === provider);
-            const authoritativeRows = providerRows.filter((row) => row.level === grain);
-            if (authoritativeRows.length > 0) {
-              authoritative.push(...authoritativeRows);
-            } else if (providerRows.length > 0) {
-              unsupportedOnly.add(provider);
-            }
-          }
-          return { authoritative, unsupportedOnly };
-        };
-        const { authoritative: currentCampaignRows, unsupportedOnly: currentUnsupported } = splitByGrain(currentWindow.rows);
-        const { authoritative: previousCampaignRows, unsupportedOnly: previousUnsupported } = splitByGrain(previousWindow.rows);
+        const currentAuthoritativeRows = authoritativeRowsForProviders(currentWindow.rows, supportedProviders);
+        const previousAuthoritativeRows = authoritativeRowsForProviders(previousWindow.rows, supportedProviders);
+        const currentUnsupported = new Set<string>();
+        const previousUnsupported = new Set<string>();
+        for (const provider of supportedProviders) {
+          const grain = (PROVIDER_SOURCE_GRAINS as Record<string, string>)[provider];
+          if (currentWindow.rows.some((row) => row.platform === provider) && !currentAuthoritativeRows.some((row) => row.platform === provider)) currentUnsupported.add(provider);
+          if (previousWindow.rows.some((row) => row.platform === provider) && !previousAuthoritativeRows.some((row) => row.platform === provider)) previousUnsupported.add(provider);
+        }
+        const currentCampaignRows = currentAuthoritativeRows;
+        const previousCampaignRows = previousAuthoritativeRows;
         const grainUnsupportedProviders = [...new Set([...currentUnsupported, ...previousUnsupported])];
+
+        // Canonical (provider, accountId) ownership evidence for BOTH windows.
+        const scopeEvidence = buildAccountScopeEvidence(
+          currentCampaignRows, previousCampaignRows, supportedProviders,
+        );
+        const ambiguousReportingProviders = scopeEvidence.ambiguousProvidersReporting;
 
         const ctx: GenerationContext = {
           workspaceId,
@@ -1240,6 +1407,9 @@ export async function generateWeeklyBlueprint(params: {
           currentRows: currentCampaignRows,
           previousRows: previousCampaignRows,
           grainUnsupportedProviders,
+          accountScopeEvidence: scopeEvidence.evidence,
+          accountScopeAmbiguous: scopeEvidence.ambiguousReasons,
+          ambiguousReportingProviders,
           rowsLimited: currentWindow.limited,
           evaluation,
           dataset,
@@ -1247,7 +1417,13 @@ export async function generateWeeklyBlueprint(params: {
           receipts,
         };
 
-        const totals = aggregateBlueprintMetrics(currentCampaignRows);
+        const rawTotals = aggregateBlueprintMetrics(currentCampaignRows);
+        // Ambiguous account scopes in the reporting window make the combined
+        // totals incomplete after exclusion — unavailable, never partial.
+        const totalsUnavailable = ambiguousReportingProviders.length > 0;
+        const totals = totalsUnavailable
+          ? { ...unavailableBlueprintMetrics(), scope: "unavailable" as const }
+          : { ...rawTotals, scope: rawTotals.monetaryAvailable ? "combined" as const : "by_provider_only" as const };
         const dependencyState = buildDependencyState(ctx);
         const dependencyHash = computeDependencyHash(dependencyState);
 
@@ -1423,6 +1599,21 @@ export async function evaluateSnapshotFreshness(snapshot: {
     ]);
     const evaluation = readiness.evaluations[0];
     if (!evaluation) throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
+    // Same canonical account-scope logic as generation: authoritative rows for
+    // the client's explicitly required providers, both windows, recomputed in
+    // this transaction.
+    const supportedProviders = (client?.requiredProviders ?? []).filter(
+      (provider) => (BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
+    );
+    const [currentWindowRows, previousWindowRows] = await Promise.all([
+      loadWindowRows(tx, snapshot.workspaceId, snapshot.clientId, client?.requiredProviders ?? [], window),
+      loadWindowRows(tx, snapshot.workspaceId, snapshot.clientId, client?.requiredProviders ?? [], comparisonWindow),
+    ]);
+    const accountScopeEvidence = buildAccountScopeEvidence(
+      authoritativeRowsForProviders(currentWindowRows.rows, supportedProviders),
+      authoritativeRowsForProviders(previousWindowRows.rows, supportedProviders),
+      supportedProviders,
+    );
     // Latest receipt per required destination, with PR #152 currentness
     // (exact window + destination + fingerprint + not older than evidence),
     // evaluated against THIS transaction's dataset.
@@ -1464,6 +1655,7 @@ export async function evaluateSnapshotFreshness(snapshot: {
           && receipt.datasetFingerprint === dataset.fingerprint
           && receipt.retrievedAt.getTime() >= dataset.evidenceAt,
       }] : []),
+      accountScopeEvidence: accountScopeEvidence.evidence.map((entry) => ({ ...entry })),
       readinessEvidence: evaluation.dependencyEvidence,
       contractVersions: {
         metrics: METRIC_CONTRACT_VERSION,
