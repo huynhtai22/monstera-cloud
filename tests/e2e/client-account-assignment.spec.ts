@@ -329,11 +329,10 @@ test.describe("client account assignment journeys", () => {
       expect(clientOptions).toContain(client.name);
     }
 
-    const row = accountRow(page, fixture.accounts.single);
-    await expect(row).toContainText("Google Ads");
-    await expect(row).toContainText(fixture.accounts.single);
-    await expect(row).toContainText(fixture.connections.main.name);
-    await expect(row).toContainText("Unassigned");
+    // A client-scoped view intentionally contains only that client's explicit
+    // assignments; discovering an unassigned workspace account must not make it
+    // appear under the deep-linked client.
+    await expect(page.getByText("No provider accounts found")).toBeVisible();
     await expectNoDocumentOverflow(page);
   });
 
