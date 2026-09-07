@@ -412,8 +412,8 @@ test.describe("verified weekly report blueprint", () => {
     // Reopen the explicit window prepared by the API journey above. The
     // component otherwise defaults to the current complete week, which has no
     // fixture rows or saved snapshot in this test.
-    await page.getByLabel("From").fill(WINDOW.start);
-    await page.getByLabel("To").fill(WINDOW.end);
+    await page.getByLabel("From", { exact: true }).fill(WINDOW.start);
+    await page.getByLabel("To", { exact: true }).fill(WINDOW.end);
 
     // Context is shown BEFORE generation: timezone + currency + requirements.
     await expect(page.getByText("Asia/Ho_Chi_Minh").first()).toBeVisible();
