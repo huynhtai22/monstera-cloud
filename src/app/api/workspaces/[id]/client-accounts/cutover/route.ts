@@ -4,8 +4,8 @@ import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import {
-  cutoverUnambiguousAssignments,
   cutoverUnambiguousAssignmentsInTransaction,
+  runSerializableAssignmentTransaction,
 } from "@/lib/client-account-assignment";
 
 export async function POST(
@@ -35,11 +35,13 @@ export async function POST(
     const { clientId } = body;
 
     if (clientId) {
-      const result = await cutoverUnambiguousAssignments(
-        workspaceId,
-        clientId,
-        prisma,
-        session.user.id,
+      const result = await runSerializableAssignmentTransaction(prisma, (tx) =>
+        cutoverUnambiguousAssignmentsInTransaction(
+          workspaceId,
+          clientId,
+          tx,
+          session.user.id,
+        ),
       );
       return NextResponse.json(result, { status: 200 });
     }
@@ -47,7 +49,7 @@ export async function POST(
     // Every legacy client is loaded, validated, and cut over in the same
     // serializable transaction. A conflict on a later client rolls back the
     // earlier markers, assignments, and audit events as well.
-    const { legacyClients, results } = await prisma.$transaction(async (tx) => {
+    const { legacyClients, results } = await runSerializableAssignmentTransaction(prisma, async (tx) => {
       const legacyClients = await tx.client.findMany({
         where: { workspaceId, accountAssignmentsConfiguredAt: null },
         select: { id: true, name: true },
@@ -69,7 +71,7 @@ export async function POST(
         });
       }
       return { legacyClients, results };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    });
 
     return NextResponse.json({
       workspaceId,

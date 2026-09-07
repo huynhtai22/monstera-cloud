@@ -8,6 +8,7 @@ import {
   assertMailSimulationAllowed,
   assertNoProductionMarkers,
   assertSeedDatabaseDiscipline,
+  shouldSuppressIntegrationsForIsolatedE2e,
   validateE2eCommitSha,
   validateLoopbackAppUrls,
   validateLoopbackDatabaseUrl,
@@ -25,6 +26,39 @@ const validE2eEnv: NodeJS.ProcessEnv = {
 
 test("assertMailSimulationAllowed permits exact approved local E2E configuration", () => {
   assert.doesNotThrow(() => assertMailSimulationAllowed(validE2eEnv));
+});
+
+test("integration suppression is enabled only by a complete isolated E2E runtime configuration", () => {
+  assert.equal(shouldSuppressIntegrationsForIsolatedE2e(validE2eEnv), true);
+  assert.equal(shouldSuppressIntegrationsForIsolatedE2e({ ...validE2eEnv, NODE_ENV: "production" }), true);
+  assert.equal(shouldSuppressIntegrationsForIsolatedE2e({ NODE_ENV: "production" }), false);
+});
+
+test("integration suppression fails closed for an incomplete or deployment-like isolation request", () => {
+  assert.throws(
+    () => shouldSuppressIntegrationsForIsolatedE2e({ ...validE2eEnv, CLIENT_ASSIGNMENT_TEST_DB: undefined }),
+    /requires explicit isolation flags/
+  );
+  assert.throws(
+    () => shouldSuppressIntegrationsForIsolatedE2e({ ...validE2eEnv, VERCEL_ENV: "production" }),
+    /VERCEL_ENV=production/
+  );
+  assert.throws(
+    () => shouldSuppressIntegrationsForIsolatedE2e({ ...validE2eEnv, DATABASE_URL: "postgresql:\/\/x:x@remote.example\/monstera_e2e" }),
+    /requires loopback database host/
+  );
+  assert.throws(
+    () => shouldSuppressIntegrationsForIsolatedE2e({ ...validE2eEnv, NEXTAUTH_URL: "https:\/\/preview.example" }),
+    /requires loopback application URL/
+  );
+  assert.throws(
+    () => shouldSuppressIntegrationsForIsolatedE2e({ ...validE2eEnv, GIT_COMMIT_SHA: "short" }),
+    /requires a full 40-character hexadecimal Git commit SHA/
+  );
+  assert.throws(
+    () => shouldSuppressIntegrationsForIsolatedE2e({ ...validE2eEnv, GIT_COMMIT_SHA: undefined, VERCEL_GIT_COMMIT_SHA: undefined }),
+    /requires an explicitly supplied real Git commit SHA/
+  );
 });
 
 test("assertMailSimulationAllowed allows NODE_ENV=production when isolation markers pass (next start compatibility)", () => {

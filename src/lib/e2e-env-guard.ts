@@ -20,6 +20,37 @@ export const ACTIVE_ENV_FILES = [
 export type EnvMap = NodeJS.ProcessEnv | Record<string, string | undefined>;
 
 /**
+ * Validates the runtime portion of the isolated-E2E contract. It is deliberately
+ * filesystem-free so server components can use it during a production-mode
+ * `next build` / `next start`; the global setup adds its worktree .env check.
+ */
+export function assertIsolatedE2eRuntimeEnvironment(env: EnvMap = process.env): void {
+  if (env.MONSTERA_E2E_ISOLATED !== "1" || env.CLIENT_ASSIGNMENT_TEST_DB !== "1") {
+    throw new Error("E2E requires explicit isolation flags (MONSTERA_E2E_ISOLATED=1 and CLIENT_ASSIGNMENT_TEST_DB=1).");
+  }
+
+  assertNoProductionMarkers(env);
+  validateLoopbackDatabaseUrl(env.DATABASE_URL, env);
+  validateLoopbackAppUrls(env, true);
+  validateE2eCommitSha(env);
+}
+
+/**
+ * Returns whether browser integrations may be suppressed for an isolated E2E
+ * execution. A missing flag means normal application behavior. Any supplied
+ * flag is an opt-in request and must satisfy the full runtime isolation
+ * contract; it must never silently change production integration behavior.
+ */
+export function shouldSuppressIntegrationsForIsolatedE2e(env: EnvMap = process.env): boolean {
+  if (env.MONSTERA_E2E_ISOLATED === undefined || env.MONSTERA_E2E_ISOLATED === "") {
+    return false;
+  }
+
+  assertIsolatedE2eRuntimeEnvironment(env);
+  return true;
+}
+
+/**
  * Validates that DATABASE_URL points to an allowed disposable loopback database.
  * Rejects remote databases, Neon hosts, and any database name other than monstera_e2e.
  */
@@ -181,11 +212,7 @@ export function assertIsolatedE2eEnvironment(
   env: EnvMap = process.env,
   root = path.join(__dirname, "../..")
 ): void {
-  if (env.MONSTERA_E2E_ISOLATED !== "1" || env.CLIENT_ASSIGNMENT_TEST_DB !== "1") {
-    throw new Error("E2E requires explicit isolation flags (MONSTERA_E2E_ISOLATED=1 and CLIENT_ASSIGNMENT_TEST_DB=1).");
-  }
-
-  assertNoProductionMarkers(env);
+  assertIsolatedE2eRuntimeEnvironment(env);
 
   // Security guard: Next.js automatically loads `.env` and `.env.local` from the server
   // working directory regardless of Playwright webServer.env allowlists. To prevent
@@ -197,9 +224,6 @@ export function assertIsolatedE2eEnvironment(
     }
   }
 
-  validateLoopbackDatabaseUrl(env.DATABASE_URL, env);
-  validateLoopbackAppUrls(env, false);
-  validateE2eCommitSha(env);
 }
 
 /**

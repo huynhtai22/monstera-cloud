@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { extractAccountsFromConnection } from "@/lib/oauth-framework/account-extractor";
 import { RbacError } from "@/lib/rbac";
 import type { ScopedTransaction } from "@/lib/warehouse-query";
@@ -58,6 +59,53 @@ export interface DiscoveredAccount {
     status: string;
     isAuthoritative: boolean;
   }>;
+}
+
+const SERIALIZABLE_TRANSACTION_MAX_ATTEMPTS = 2;
+
+function isSerializationConflict(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error
+    && (error as { code?: unknown }).code === "P2034";
+}
+
+/**
+ * Runs an assignment mutation as one serializable unit. Retrying invokes the
+ * callback again so every read and write is recreated from a fresh snapshot.
+ */
+export async function runSerializableAssignmentTransaction<T>(
+  db: ScopedTransaction,
+  operation: (tx: ScopedTransaction) => Promise<T>,
+): Promise<T> {
+  if (!("$transaction" in db) || typeof (db as any).$transaction !== "function") {
+    return operation(db);
+  }
+
+  for (let attempt = 0; attempt < SERIALIZABLE_TRANSACTION_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await (db as any).$transaction(
+        (tx: ScopedTransaction) => operation(tx),
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      if (!isSerializationConflict(error)) throw error;
+      if (attempt + 1 === SERIALIZABLE_TRANSACTION_MAX_ATTEMPTS) {
+        throw new RbacError("Concurrent assignment conflict; retry the operation.", "CONFLICT", 409);
+      }
+    }
+  }
+
+  throw new RbacError("Concurrent assignment conflict; retry the operation.", "CONFLICT", 409);
+}
+
+type CutoverTestHooks = {
+  afterOwnershipValidation?: () => void | Promise<void>;
+};
+
+let cutoverTestHooks: CutoverTestHooks | undefined;
+
+/** Test-only deterministic synchronization point; never configured by routes. */
+export function _setCutoverTestHooks(hooks: CutoverTestHooks | undefined): void {
+  cutoverTestHooks = hooks;
 }
 
 /**
@@ -219,6 +267,15 @@ async function isAccountDiscoveredForConnection(
 export async function assignClientProviderAccount(
   input: AssignClientAccountInput,
   db: ScopedTransaction = prisma,
+) {
+  return runSerializableAssignmentTransaction(db, (tx) =>
+    assignClientProviderAccountInTransaction(input, tx),
+  );
+}
+
+async function assignClientProviderAccountInTransaction(
+  input: AssignClientAccountInput,
+  db: ScopedTransaction,
 ) {
   const { workspaceId, clientId, provider, accountId, connectionId, actorUserId } = input;
 
@@ -510,10 +567,7 @@ export async function bulkAssignClientProviderAccounts(
     return results;
   };
 
-  if (typeof (db as any).$transaction === "function") {
-    return (db as any).$transaction(executeBulk);
-  }
-  return executeBulk(db);
+  return runSerializableAssignmentTransaction(db, executeBulk);
 }
 
 /**
@@ -965,12 +1019,20 @@ export async function cutoverUnambiguousAssignmentsInTransaction(
     candidates.push({ provider: acc.provider, accountId: acc.accountId, connectionId: conn.id });
   }
 
+  await cutoverTestHooks?.afterOwnershipValidation?.();
+
   const createdAssignments = [];
   for (const candidate of candidates) {
     const existing = await tx.clientProviderAccountAssignment.findUnique({
       where: { workspaceId_provider_accountId: { workspaceId, provider: candidate.provider, accountId: candidate.accountId } },
     });
-    if (existing) { createdAssignments.push(existing); continue; }
+    if (existing) {
+      if (existing.clientId !== clientId || existing.connectionId !== candidate.connectionId) {
+        throw new RbacError("Cutover has an account ownership conflict", "CONFLICT", 409);
+      }
+      createdAssignments.push(existing);
+      continue;
+    }
     createdAssignments.push(await tx.clientProviderAccountAssignment.create({ data: {
       workspaceId, clientId, provider: candidate.provider, accountId: candidate.accountId,
       connectionId: candidate.connectionId, assignedAt: now, assignedBy: actorUserId ?? null,
@@ -1017,10 +1079,7 @@ export async function cutoverUnambiguousAssignments(
   db: ScopedTransaction = prisma,
   actorUserId?: string | null,
 ) {
-  if ("$transaction" in db && typeof (db as any).$transaction === "function") {
-    return (db as any).$transaction((tx: ScopedTransaction) =>
-      cutoverUnambiguousAssignmentsInTransaction(workspaceId, clientId, tx, actorUserId),
-    );
-  }
-  return cutoverUnambiguousAssignmentsInTransaction(workspaceId, clientId, db, actorUserId);
+  return runSerializableAssignmentTransaction(db, (tx) =>
+    cutoverUnambiguousAssignmentsInTransaction(workspaceId, clientId, tx, actorUserId),
+  );
 }

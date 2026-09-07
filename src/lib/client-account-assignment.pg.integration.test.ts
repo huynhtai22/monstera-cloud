@@ -6,6 +6,7 @@ import {
   unassignClientProviderAccount,
   cutoverUnambiguousAssignments,
   cutoverUnambiguousAssignmentsInTransaction,
+  _setCutoverTestHooks,
   canonicalizeAccountId,
   bulkAssignClientProviderAccounts,
 } from "./client-account-assignment";
@@ -520,6 +521,118 @@ describe("PostgreSQL integration: client provider account assignments", () => {
       },
     });
     assert.ok([ids.clientA, ids.clientA2].includes(finalOwner.clientId));
+  });
+
+  it("serializes cutover with reassignment and never accepts a stale owner", async () => {
+    const legacyClientId = `cl-cutover-race-legacy-${suffix}`;
+    const rivalClientId = `cl-cutover-race-rival-${suffix}`;
+    const connectionId = `conn-cutover-race-${suffix}`;
+    const accountId = "8990008999";
+    await db.client.createMany({ data: [
+      { id: legacyClientId, workspaceId: ids.workspaceA, name: "Race legacy client" },
+      { id: rivalClientId, workspaceId: ids.workspaceA, name: "Race rival client" },
+    ] });
+    await db.connection.create({ data: {
+      id: connectionId, workspaceId: ids.workspaceA, clientId: legacyClientId,
+      name: "Race root", provider: "google_ads", type: "source", status: "connected",
+      remoteAccountId: `root-cutover-race-${suffix}`,
+      credentials: JSON.stringify({ customerIds: [accountId] }),
+    } });
+    await db.clientProviderAccountAssignment.create({ data: {
+      workspaceId: ids.workspaceA, clientId: legacyClientId, provider: "google_ads", accountId, connectionId,
+    } });
+
+    let releaseValidation!: () => void;
+    const release = new Promise<void>((resolve) => { releaseValidation = resolve; });
+    let signalValidated!: () => void;
+    const validated = new Promise<void>((resolve) => { signalValidated = resolve; });
+    let hookRuns = 0;
+    _setCutoverTestHooks({
+      afterOwnershipValidation: async () => {
+        if (hookRuns++ === 0) {
+          signalValidated();
+          await release;
+        }
+      },
+    });
+
+    let cutover: Promise<Awaited<ReturnType<typeof cutoverUnambiguousAssignments>>>;
+    try {
+      cutover = cutoverUnambiguousAssignments(ids.workspaceA, legacyClientId, tx(), ids.user);
+      await validated;
+      const reassignment = await assignClientProviderAccount({
+        workspaceId: ids.workspaceA, clientId: rivalClientId, provider: "google_ads", accountId, connectionId, actorUserId: ids.user,
+      }, tx());
+      assert.equal(reassignment.assignment.clientId, rivalClientId);
+      releaseValidation();
+
+      const outcome = await Promise.allSettled([cutover]);
+      const current = await db.clientProviderAccountAssignment.findUniqueOrThrow({
+        where: { workspaceId_provider_accountId: { workspaceId: ids.workspaceA, provider: "google_ads", accountId } },
+      });
+      assert.equal(current.clientId, rivalClientId);
+
+      const legacyClient = await db.client.findUniqueOrThrow({
+        where: { workspaceId_id: { workspaceId: ids.workspaceA, id: legacyClientId } },
+      });
+      const cutoverAudits = await db.auditEvent.count({
+        where: { workspaceId: ids.workspaceA, resourceId: legacyClientId, action: "client_account.cutover_completed" },
+      });
+
+      if (outcome[0].status === "fulfilled") {
+        // Serializable order is cutover then reassignment: the recorded cutover
+        // was valid at its serialization point and the later reassignment wins.
+        assert.ok(legacyClient.accountAssignmentsConfiguredAt !== null);
+        assert.equal(cutoverAudits, 1);
+      } else {
+        // Serializable retry observed the rival owner and rejected without
+        // leaving a marker, assignment, or success audit behind.
+        assert.equal((outcome[0].reason as any)?.statusCode, 409);
+        assert.equal(legacyClient.accountAssignmentsConfiguredAt, null);
+        assert.equal(cutoverAudits, 0);
+        assert.equal(await db.clientProviderAccountAssignment.count({
+          where: { workspaceId: ids.workspaceA, clientId: legacyClientId },
+        }), 0);
+      }
+    } finally {
+      releaseValidation?.();
+      _setCutoverTestHooks(undefined);
+    }
+  });
+
+  it("rejects cutover when reassignment wins before ownership validation", async () => {
+    const legacyClientId = `cl-cutover-winner-legacy-${suffix}`;
+    const rivalClientId = `cl-cutover-winner-rival-${suffix}`;
+    const connectionId = `conn-cutover-winner-${suffix}`;
+    const accountId = "9000009000";
+    await db.client.createMany({ data: [
+      { id: legacyClientId, workspaceId: ids.workspaceA, name: "Winner legacy client" },
+      { id: rivalClientId, workspaceId: ids.workspaceA, name: "Winner rival client" },
+    ] });
+    await db.connection.create({ data: {
+      id: connectionId, workspaceId: ids.workspaceA, clientId: legacyClientId,
+      name: "Winner root", provider: "google_ads", type: "source", status: "connected",
+      remoteAccountId: `root-cutover-winner-${suffix}`,
+      credentials: JSON.stringify({ customerIds: [accountId] }),
+    } });
+    await db.clientProviderAccountAssignment.create({ data: {
+      workspaceId: ids.workspaceA, clientId: legacyClientId, provider: "google_ads", accountId, connectionId,
+    } });
+
+    await assignClientProviderAccount({
+      workspaceId: ids.workspaceA, clientId: rivalClientId, provider: "google_ads", accountId, connectionId, actorUserId: ids.user,
+    }, tx());
+    await assert.rejects(
+      () => cutoverUnambiguousAssignments(ids.workspaceA, legacyClientId, tx(), ids.user),
+      (error: any) => error?.statusCode === 409,
+    );
+    const legacyClient = await db.client.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId: ids.workspaceA, id: legacyClientId } },
+    });
+    assert.equal(legacyClient.accountAssignmentsConfiguredAt, null);
+    assert.equal(await db.auditEvent.count({
+      where: { workspaceId: ids.workspaceA, resourceId: legacyClientId, action: "client_account.cutover_completed" },
+    }), 0);
   });
 
   it("shared MCC client isolation: Client A (USD) and Client B (EUR unhealthy) remain isolated", async () => {

@@ -6,6 +6,7 @@ import { PRODUCT_SITE_URL } from "@/lib/site-url";
 import { Providers } from "@/components/SWRProvider";
 import { LiveChatWidget } from "@/components/LiveChatWidget";
 import { MetaPixelAnalytics } from "@/components/MetaPixelAnalytics";
+import { shouldSuppressIntegrationsForIsolatedE2e } from "@/lib/e2e-env-guard";
 
 const GTM_ID = "GTM-KMLZHNVV";
 
@@ -19,7 +20,9 @@ const FBQ_INIT_OPTIONS =
     META_TEST_EVENT_CODE && META_TEST_EVENT_CODE.length > 0
         ? `, ${JSON.stringify({ test_event_code: META_TEST_EVENT_CODE })}`
         : "";
-const isIsolatedE2e = process.env.MONSTERA_E2E_ISOLATED === "1";
+// A supplied isolation flag is fail-closed: integrations are suppressed only
+// after the shared dual-flag, loopback, non-deployment, and commit-SHA checks.
+const isIsolatedE2e = shouldSuppressIntegrationsForIsolatedE2e(process.env);
 
 
 export const metadata: Metadata = {
