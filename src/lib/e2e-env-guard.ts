@@ -136,6 +136,42 @@ export function assertMailSimulationAllowed(env: EnvMap = process.env): void {
   validateLoopbackAppUrls(env, true);
 }
 
+export const FULL_GIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
+
+/**
+ * Validates that an explicitly supplied Git commit SHA is present in the environment
+ * via VERCEL_GIT_COMMIT_SHA or GIT_COMMIT_SHA, following the application's established
+ * precedence (VERCEL_GIT_COMMIT_SHA takes precedence over GIT_COMMIT_SHA).
+ *
+ * Rejects missing values, placeholder strings, short SHAs, and non-hexadecimal strings.
+ * Returns the normalized 40-character lowercase hexadecimal SHA.
+ */
+export function validateE2eCommitSha(env: EnvMap = process.env): string {
+  const vercelSha = env.VERCEL_GIT_COMMIT_SHA?.trim();
+  const gitSha = env.GIT_COMMIT_SHA?.trim();
+
+  // Established precedence: VERCEL_GIT_COMMIT_SHA ?? GIT_COMMIT_SHA
+  const candidate = (vercelSha && vercelSha !== "")
+    ? vercelSha
+    : (gitSha && gitSha !== "")
+      ? gitSha
+      : undefined;
+
+  if (!candidate) {
+    throw new Error(
+      "E2E requires an explicitly supplied real Git commit SHA (set VERCEL_GIT_COMMIT_SHA or GIT_COMMIT_SHA)."
+    );
+  }
+
+  if (candidate.length !== 40 || !FULL_GIT_SHA_PATTERN.test(candidate)) {
+    throw new Error(
+      `E2E requires a full 40-character hexadecimal Git commit SHA, got: ${candidate}`
+    );
+  }
+
+  return candidate.toLowerCase();
+}
+
 /**
  * Guard for global E2E test setup.
  * Rejects active .env files in worktree on security grounds because Next.js
@@ -163,6 +199,7 @@ export function assertIsolatedE2eEnvironment(
 
   validateLoopbackDatabaseUrl(env.DATABASE_URL, env);
   validateLoopbackAppUrls(env, false);
+  validateE2eCommitSha(env);
 }
 
 /**

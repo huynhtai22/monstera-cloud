@@ -1,7 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
+import { validateE2eCommitSha } from "./src/lib/e2e-env-guard";
 
 // Port is overridable so suites can run on a non-3000 port; default unchanged.
 const port = process.env.PLAYWRIGHT_PORT ?? "3000";
+const commitSha = validateE2eCommitSha(process.env);
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -31,7 +33,7 @@ export default defineConfig({
       GOOGLE_ID_TOKEN_AUDIENCES: "e2e-client.apps.googleusercontent.com",
       MONSTERA_E2E_ISOLATED: process.env.MONSTERA_E2E_ISOLATED ?? "",
       CLIENT_ASSIGNMENT_TEST_DB: process.env.CLIENT_ASSIGNMENT_TEST_DB ?? "",
-      GIT_COMMIT_SHA: process.env.GIT_COMMIT_SHA ?? "e2e-isolated-git-commit-sha",
+      GIT_COMMIT_SHA: commitSha,
       PILOT_MODE: "1",
       ENABLE_GOVERNED_ANALYST: "1",
     },

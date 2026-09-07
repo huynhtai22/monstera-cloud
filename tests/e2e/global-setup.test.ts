@@ -9,6 +9,7 @@ const safe: NodeJS.ProcessEnv = {
   MONSTERA_E2E_ISOLATED: "1",
   CLIENT_ASSIGNMENT_TEST_DB: "1",
   DATABASE_URL: "postgresql://test:test@127.0.0.1:5432/monstera_e2e",
+  GIT_COMMIT_SHA: "154ca55b2afe27345d170fccfc4e773df3939310",
   NODE_ENV: "test",
 };
 
@@ -61,4 +62,7 @@ test("isolated E2E environment rejects unsafe configuration", () => {
   assert.throws(() => assertIsolatedE2eEnvironment({ ...safe, VERCEL_ENV: "production" }, "/definitely-empty"));
   assert.throws(() => assertIsolatedE2eEnvironment({ ...safe, VERCEL_ENV: "preview" }, "/definitely-empty"));
   assert.throws(() => assertIsolatedE2eEnvironment({ ...safe, NEXTAUTH_URL: "https://monsteracloud.com" }, "/definitely-empty"));
+  assert.throws(() => assertIsolatedE2eEnvironment({ ...safe, GIT_COMMIT_SHA: undefined }, "/definitely-empty"));
+  assert.throws(() => assertIsolatedE2eEnvironment({ ...safe, GIT_COMMIT_SHA: "154ca55" }, "/definitely-empty"));
+  assert.throws(() => assertIsolatedE2eEnvironment({ ...safe, GIT_COMMIT_SHA: "e2e-isolated-git-commit-sha" }, "/definitely-empty"));
 });

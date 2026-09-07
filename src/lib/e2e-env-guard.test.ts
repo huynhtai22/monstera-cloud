@@ -1,17 +1,24 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import {
+  assertIsolatedE2eEnvironment,
   assertMailSimulationAllowed,
   assertNoProductionMarkers,
   assertSeedDatabaseDiscipline,
+  validateE2eCommitSha,
   validateLoopbackAppUrls,
   validateLoopbackDatabaseUrl,
 } from "./e2e-env-guard";
+import { computeVerificationStatus } from "./report-blueprint";
 
 const validE2eEnv: NodeJS.ProcessEnv = {
   MONSTERA_E2E_ISOLATED: "1",
   CLIENT_ASSIGNMENT_TEST_DB: "1",
   DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/monstera_e2e",
+  GIT_COMMIT_SHA: "154ca55b2afe27345d170fccfc4e773df3939310",
   NEXTAUTH_URL: "http://127.0.0.1:3000",
   NODE_ENV: "test",
 };
@@ -229,4 +236,182 @@ test("assertSeedDatabaseDiscipline fails closed when either isolation flag is mi
     () => assertSeedDatabaseDiscipline({ ...validE2eEnv, MONSTERA_E2E_ISOLATED: "0" }),
     /requires explicit dual isolation opt-in/
   );
+});
+
+test("validateE2eCommitSha fails closed when both VERCEL_GIT_COMMIT_SHA and GIT_COMMIT_SHA are missing", () => {
+  assert.throws(
+    () => validateE2eCommitSha({}),
+    /E2E requires an explicitly supplied real Git commit SHA/
+  );
+  assert.throws(
+    () => validateE2eCommitSha({ GIT_COMMIT_SHA: "", VERCEL_GIT_COMMIT_SHA: "" }),
+    /E2E requires an explicitly supplied real Git commit SHA/
+  );
+  assert.throws(
+    () => validateE2eCommitSha({ GIT_COMMIT_SHA: "   ", VERCEL_GIT_COMMIT_SHA: "   " }),
+    /E2E requires an explicitly supplied real Git commit SHA/
+  );
+});
+
+test("assertIsolatedE2eEnvironment validates required Git commit SHA", () => {
+  assert.throws(
+    () => assertIsolatedE2eEnvironment({ ...validE2eEnv, GIT_COMMIT_SHA: undefined }, "/definitely-empty"),
+    /E2E requires an explicitly supplied real Git commit SHA/
+  );
+  assert.throws(
+    () => assertIsolatedE2eEnvironment({ ...validE2eEnv, GIT_COMMIT_SHA: "short" }, "/definitely-empty"),
+    /E2E requires a full 40-character hexadecimal Git commit SHA/
+  );
+  assert.doesNotThrow(
+    () => assertIsolatedE2eEnvironment(validE2eEnv, "/definitely-empty")
+  );
+});
+
+test("validateE2eCommitSha fails closed for placeholder text", () => {
+  assert.throws(
+    () => validateE2eCommitSha({ GIT_COMMIT_SHA: "e2e-isolated-git-commit-sha" }),
+    /E2E requires a full 40-character hexadecimal Git commit SHA/
+  );
+});
+
+test("validateE2eCommitSha fails closed for short SHA", () => {
+  assert.throws(
+    () => validateE2eCommitSha({ GIT_COMMIT_SHA: "154ca55" }),
+    /E2E requires a full 40-character hexadecimal Git commit SHA/
+  );
+});
+
+test("validateE2eCommitSha fails closed for non-hexadecimal 40-character text", () => {
+  assert.throws(
+    () => validateE2eCommitSha({ GIT_COMMIT_SHA: "154ca55b2afe27345d170fccfc4e773df393931z" }),
+    /E2E requires a full 40-character hexadecimal Git commit SHA/
+  );
+  assert.throws(
+    () => validateE2eCommitSha({ GIT_COMMIT_SHA: "g".repeat(40) }),
+    /E2E requires a full 40-character hexadecimal Git commit SHA/
+  );
+});
+
+test("validateE2eCommitSha passes for valid 40-character GIT_COMMIT_SHA", () => {
+  const sha = "154ca55b2afe27345d170fccfc4e773df3939310";
+  assert.equal(validateE2eCommitSha({ GIT_COMMIT_SHA: sha }), sha);
+  // Normalizes uppercase to lowercase
+  assert.equal(validateE2eCommitSha({ GIT_COMMIT_SHA: sha.toUpperCase() }), sha);
+});
+
+test("validateE2eCommitSha passes for valid VERCEL_GIT_COMMIT_SHA according to established precedence", () => {
+  const vercelSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const gitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  // VERCEL_GIT_COMMIT_SHA takes precedence over GIT_COMMIT_SHA
+  assert.equal(
+    validateE2eCommitSha({ VERCEL_GIT_COMMIT_SHA: vercelSha, GIT_COMMIT_SHA: gitSha }),
+    vercelSha
+  );
+  // When VERCEL_GIT_COMMIT_SHA is alone
+  assert.equal(validateE2eCommitSha({ VERCEL_GIT_COMMIT_SHA: vercelSha }), vercelSha);
+  // When VERCEL_GIT_COMMIT_SHA is empty, falls back to GIT_COMMIT_SHA
+  assert.equal(
+    validateE2eCommitSha({ VERCEL_GIT_COMMIT_SHA: "", GIT_COMMIT_SHA: gitSha }),
+    gitSha
+  );
+});
+
+test("validateE2eCommitSha fails if VERCEL_GIT_COMMIT_SHA is set to invalid value rather than falling back", () => {
+  const gitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  assert.throws(
+    () => validateE2eCommitSha({ VERCEL_GIT_COMMIT_SHA: "short", GIT_COMMIT_SHA: gitSha }),
+    /E2E requires a full 40-character hexadecimal Git commit SHA, got: short/
+  );
+});
+
+test("playwright.config.ts fails closed before web-server startup when SHA is missing", () => {
+  const root = path.join(__dirname, "../..");
+  assert.throws(
+    () => {
+      execFileSync("npx", ["tsx", "-e", 'import("./playwright.config")'], {
+        cwd: root,
+        stdio: "pipe",
+        env: {
+          ...process.env,
+          GIT_COMMIT_SHA: undefined,
+          VERCEL_GIT_COMMIT_SHA: undefined,
+        },
+      });
+    },
+    (err: any) => {
+      const output = (err.stderr?.toString() || "") + (err.stdout?.toString() || "");
+      return output.includes("E2E requires an explicitly supplied real Git commit SHA");
+    }
+  );
+});
+
+test("playwright.config.ts passes exact validated SHA into webServer.env", () => {
+  const root = path.join(__dirname, "../..");
+  const testSha = "154ca55b2afe27345d170fccfc4e773df3939310";
+  const result = execFileSync("npx", ["tsx", "-e", `
+    import config from "./playwright.config";
+    console.log(JSON.stringify({
+      passedSha: (config.webServer as any)?.env?.GIT_COMMIT_SHA
+    }));
+  `], {
+    cwd: root,
+    stdio: "pipe",
+    env: {
+      ...process.env,
+      GIT_COMMIT_SHA: testSha,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    },
+  });
+  const parsed = JSON.parse(result.toString().trim().split("\n").at(-1) || "{}");
+  assert.equal(parsed.passedSha, testSha);
+});
+
+test("source code audit: no fallback string 'e2e-isolated-git-commit-sha' exists in source", () => {
+  const root = path.join(__dirname, "../..");
+  const filesToCheck = [
+    path.join(root, "playwright.config.ts"),
+    path.join(root, "src/lib/e2e-env-guard.ts"),
+    path.join(root, "src/lib/report-blueprint.ts"),
+  ];
+  for (const filePath of filesToCheck) {
+    const content = fs.readFileSync(filePath, "utf-8");
+    assert.equal(
+      content.includes("e2e-isolated-git-commit-sha"),
+      false,
+      `File ${filePath} contains forbidden fallback string`
+    );
+  }
+});
+
+test("blueprint returns generator_version_unrecorded when application genuinely has no commit SHA", () => {
+  const envWithoutSha: NodeJS.ProcessEnv = {
+    ...process.env,
+    GIT_COMMIT_SHA: undefined,
+    VERCEL_GIT_COMMIT_SHA: undefined,
+  };
+  const recorded = Boolean(envWithoutSha.VERCEL_GIT_COMMIT_SHA ?? envWithoutSha.GIT_COMMIT_SHA);
+  assert.equal(recorded, false);
+
+  const verificationResult = computeVerificationStatus({
+    readinessStatus: "READY",
+    requiredProvidersBasis: "explicit",
+    requiredProviders: ["google_ads"],
+    includedProviders: ["google_ads"],
+    hasMetricData: true,
+    aggregationCompatible: true,
+    grainUnsupportedProviders: [],
+    unsupportedProviders: [],
+    accountScopeAmbiguous: [],
+    currencyVerified: true,
+    windowComplete: true,
+    timezoneVerified: true,
+    destinationsRequired: ["google_sheets"],
+    destinationsVerified: true,
+    datasetLimited: false,
+    generatorVersionRecorded: recorded,
+    dependencyHashMatches: true,
+  });
+
+  assert.equal(verificationResult.status, "NOT_VERIFIED");
+  assert.ok(verificationResult.reasons.includes("generator_version_unrecorded"));
 });
