@@ -72,3 +72,20 @@ test("sendOtpEmail: preserves normal non-E2E behavior when MONSTERA_E2E_ISOLATED
     process.env = { ...originalEnv };
   }
 });
+
+test("sendOtpEmail: values such as '0' or 'false' never activate simulation and never suppress real email", async () => {
+  process.env.RESEND_API_KEY = "re_dummy_invalid_key";
+
+  for (const disabledValue of ["0", "false", "no", "off"]) {
+    process.env.MONSTERA_E2E_ISOLATED = disabledValue;
+    try {
+      const result = await sendOtpEmail("alice@example.com", "123456");
+      // Simulation is NOT activated, so simulated is never true
+      assert.notEqual((result as any).data?.simulated, true);
+      // Real Resend delivery was invoked and failed with dummy key
+      assert.equal(result.success, false);
+    } finally {
+      process.env = { ...originalEnv };
+    }
+  }
+});

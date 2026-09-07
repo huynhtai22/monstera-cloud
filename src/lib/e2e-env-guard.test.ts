@@ -215,3 +215,18 @@ test("assertSeedDatabaseDiscipline validates approved database URL", () => {
   const result = assertSeedDatabaseDiscipline(validE2eEnv);
   assert.equal(result, validE2eEnv.DATABASE_URL);
 });
+
+test("assertSeedDatabaseDiscipline fails closed when either isolation flag is missing or disabled", () => {
+  assert.throws(
+    () => assertSeedDatabaseDiscipline({ ...validE2eEnv, CLIENT_ASSIGNMENT_TEST_DB: undefined }),
+    /requires explicit dual isolation opt-in/
+  );
+  assert.throws(
+    () => assertSeedDatabaseDiscipline({ ...validE2eEnv, MONSTERA_E2E_ISOLATED: undefined }),
+    /requires explicit dual isolation opt-in/
+  );
+  assert.throws(
+    () => assertSeedDatabaseDiscipline({ ...validE2eEnv, MONSTERA_E2E_ISOLATED: "0" }),
+    /requires explicit dual isolation opt-in/
+  );
+});

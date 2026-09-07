@@ -174,8 +174,10 @@ export function assertSeedDatabaseDiscipline(env: EnvMap = process.env): string 
   if (!url || url.trim() === "" || url.includes("mock")) {
     throw new Error("Seed rehearsal requires a valid DATABASE_URL.");
   }
-  if (env.MONSTERA_E2E_ISOLATED !== "1" && env.CLIENT_ASSIGNMENT_TEST_DB !== "1") {
-    throw new Error("Seed rehearsal requires explicit opt-in flag (MONSTERA_E2E_ISOLATED=1 or CLIENT_ASSIGNMENT_TEST_DB=1).");
+  if (env.MONSTERA_E2E_ISOLATED !== "1" || env.CLIENT_ASSIGNMENT_TEST_DB !== "1") {
+    throw new Error(
+      "Seed rehearsal requires explicit dual isolation opt-in (MONSTERA_E2E_ISOLATED=1 and CLIENT_ASSIGNMENT_TEST_DB=1)."
+    );
   }
 
   assertNoProductionMarkers(env);

@@ -15,7 +15,7 @@ function getResendClient(): Resend {
 }
 
 export const sendOtpEmail = async (email: string, otp: string) => {
-  if (process.env.MONSTERA_E2E_ISOLATED) {
+  if (process.env.MONSTERA_E2E_ISOLATED === "1") {
     assertMailSimulationAllowed(process.env);
     logger.info("[MAIL] E2E isolation verified; simulating OTP delivery");
     return { success: true, data: { simulated: true } };

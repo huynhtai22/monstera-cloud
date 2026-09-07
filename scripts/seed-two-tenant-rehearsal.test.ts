@@ -16,20 +16,26 @@ test("assertSeedDatabaseDiscipline accepts valid approved disposable loopback UR
   assert.equal(result, validSeedEnv.DATABASE_URL);
 });
 
-test("assertSeedDatabaseDiscipline accepts when only MONSTERA_E2E_ISOLATED is set", () => {
-  const result = assertSeedDatabaseDiscipline({
-    ...validSeedEnv,
-    CLIENT_ASSIGNMENT_TEST_DB: undefined,
-  });
-  assert.equal(result, validSeedEnv.DATABASE_URL);
+test("assertSeedDatabaseDiscipline fails closed when only MONSTERA_E2E_ISOLATED is set", () => {
+  assert.throws(
+    () =>
+      assertSeedDatabaseDiscipline({
+        ...validSeedEnv,
+        CLIENT_ASSIGNMENT_TEST_DB: undefined,
+      }),
+    /requires explicit dual isolation opt-in/
+  );
 });
 
-test("assertSeedDatabaseDiscipline accepts when only CLIENT_ASSIGNMENT_TEST_DB is set", () => {
-  const result = assertSeedDatabaseDiscipline({
-    ...validSeedEnv,
-    MONSTERA_E2E_ISOLATED: undefined,
-  });
-  assert.equal(result, validSeedEnv.DATABASE_URL);
+test("assertSeedDatabaseDiscipline fails closed when only CLIENT_ASSIGNMENT_TEST_DB is set", () => {
+  assert.throws(
+    () =>
+      assertSeedDatabaseDiscipline({
+        ...validSeedEnv,
+        MONSTERA_E2E_ISOLATED: undefined,
+      }),
+    /requires explicit dual isolation opt-in/
+  );
 });
 
 test("assertSeedDatabaseDiscipline fails closed when DATABASE_URL is missing", () => {
@@ -121,13 +127,29 @@ test("assertSeedDatabaseDiscipline fails closed when production markers are acti
   }
 });
 
-test("assertSeedDatabaseDiscipline fails closed when opt-in flags are missing", () => {
+test("assertSeedDatabaseDiscipline fails closed when opt-in flags are missing or disabled", () => {
   assert.throws(
     () =>
       assertSeedDatabaseDiscipline({
         DATABASE_URL: validSeedEnv.DATABASE_URL,
       }),
-    /requires explicit opt-in flag/
+    /requires explicit dual isolation opt-in/
+  );
+  assert.throws(
+    () =>
+      assertSeedDatabaseDiscipline({
+        ...validSeedEnv,
+        MONSTERA_E2E_ISOLATED: "0",
+      }),
+    /requires explicit dual isolation opt-in/
+  );
+  assert.throws(
+    () =>
+      assertSeedDatabaseDiscipline({
+        ...validSeedEnv,
+        CLIENT_ASSIGNMENT_TEST_DB: "0",
+      }),
+    /requires explicit dual isolation opt-in/
   );
 });
 
