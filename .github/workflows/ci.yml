@@ -69,6 +69,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
+          MONSTERA_E2E_ISOLATED: "1"
           CLIENT_ASSIGNMENT_TEST_DB: "1"
           # The application records the actually tested commit in report
           # snapshots (generator_commit_sha). Playwright's webServer inherits
