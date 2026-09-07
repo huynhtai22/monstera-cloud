@@ -481,6 +481,8 @@ test.describe("verified weekly report blueprint", () => {
     const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", aliceSession);
     await page.goto(`/reports?clientId=${dupClientId}`);
     await expect(page.getByRole("region", { name: "Verified Weekly Performance Blueprint" })).toBeVisible();
+    await page.getByLabel("From", { exact: true }).fill(WINDOW.start);
+    await page.getByLabel("To", { exact: true }).fill(WINDOW.end);
     await page.getByRole("button", { name: /Generate report/ }).click();
 
     // The duplicated account source is called out, never silently summed.
