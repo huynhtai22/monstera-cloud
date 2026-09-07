@@ -385,7 +385,8 @@ test("playwright.config.ts passes exact validated SHA into webServer.env", () =>
   const result = execFileSync("npx", ["tsx", "-e", `
     import config from "./playwright.config";
     console.log(JSON.stringify({
-      passedSha: (config.webServer as any)?.env?.GIT_COMMIT_SHA
+      passedSha: (config.webServer as any)?.env?.GIT_COMMIT_SHA,
+      releaseSha: (config.webServer as any)?.env?.RELEASE_COMMIT_SHA
     }));
   `], {
     cwd: root,
@@ -398,6 +399,7 @@ test("playwright.config.ts passes exact validated SHA into webServer.env", () =>
   });
   const parsed = JSON.parse(result.toString().trim().split("\n").at(-1) || "{}");
   assert.equal(parsed.passedSha, testSha);
+  assert.equal(parsed.releaseSha, testSha);
 });
 
 test("source code audit: no fallback string 'e2e-isolated-git-commit-sha' exists in source", () => {
