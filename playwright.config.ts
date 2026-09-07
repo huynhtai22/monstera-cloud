@@ -34,10 +34,6 @@ export default defineConfig({
       MONSTERA_E2E_ISOLATED: process.env.MONSTERA_E2E_ISOLATED ?? "",
       CLIENT_ASSIGNMENT_TEST_DB: process.env.CLIENT_ASSIGNMENT_TEST_DB ?? "",
       GIT_COMMIT_SHA: commitSha,
-      // The local server's version endpoint deliberately accepts only a
-      // release-stamped SHA. This is the already-validated E2E candidate SHA,
-      // so browser verification can prove the served build identity.
-      RELEASE_COMMIT_SHA: commitSha,
       PILOT_MODE: "1",
       ENABLE_GOVERNED_ANALYST: "1",
     },

@@ -97,15 +97,17 @@ export async function runSerializableAssignmentTransaction<T>(
   throw new RbacError("Concurrent assignment conflict; retry the operation.", "CONFLICT", 409);
 }
 
-type CutoverTestHooks = {
+type AssignmentMutationTestHooks = {
   afterOwnershipValidation?: () => void | Promise<void>;
+  afterUnassignOwnershipRead?: () => void | Promise<void>;
+  afterSwitchOwnershipRead?: () => void | Promise<void>;
 };
 
-let cutoverTestHooks: CutoverTestHooks | undefined;
+let assignmentMutationTestHooks: AssignmentMutationTestHooks | undefined;
 
 /** Test-only deterministic synchronization point; never configured by routes. */
-export function _setCutoverTestHooks(hooks: CutoverTestHooks | undefined): void {
-  cutoverTestHooks = hooks;
+export function _setCutoverTestHooks(hooks: AssignmentMutationTestHooks | undefined): void {
+  assignmentMutationTestHooks = hooks;
 }
 
 /**
@@ -579,6 +581,47 @@ export async function unassignClientProviderAccount(
   input: UnassignClientAccountInput,
   db: ScopedTransaction = prisma,
 ) {
+  let expectedOwnership: AssignmentOwnership | undefined;
+  return runSerializableAssignmentTransaction(db, (tx) =>
+    unassignClientProviderAccountInTransaction(input, tx, expectedOwnership, (ownership) => {
+      expectedOwnership ??= ownership;
+    }),
+  );
+}
+
+type AssignmentOwnership = {
+  id: string;
+  clientId: string;
+  connectionId: string;
+};
+
+function ownershipSnapshot(assignment: AssignmentOwnership): AssignmentOwnership {
+  return {
+    id: assignment.id,
+    clientId: assignment.clientId,
+    connectionId: assignment.connectionId,
+  };
+}
+
+function ownershipMatches(
+  expected: AssignmentOwnership,
+  actual: AssignmentOwnership,
+): boolean {
+  return expected.id === actual.id
+    && expected.clientId === actual.clientId
+    && expected.connectionId === actual.connectionId;
+}
+
+function throwOwnershipConflict(): never {
+  throw new RbacError("Concurrent assignment conflict; retry the operation.", "CONFLICT", 409);
+}
+
+export async function unassignClientProviderAccountInTransaction(
+  input: UnassignClientAccountInput,
+  db: ScopedTransaction,
+  expectedOwnership?: AssignmentOwnership,
+  recordExpectedOwnership?: (ownership: AssignmentOwnership) => void,
+) {
   const { workspaceId, provider, accountId, actorUserId } = input;
   const cleanAccountId = canonicalizeAccountId(provider, accountId);
 
@@ -593,12 +636,28 @@ export async function unassignClientProviderAccount(
   });
 
   if (!existing) {
+    if (expectedOwnership) throwOwnershipConflict();
     return { unassigned: false, previousAssignment: null };
   }
 
-  await db.clientProviderAccountAssignment.delete({
-    where: { id: existing.id },
+  const ownership = ownershipSnapshot(existing);
+  if (expectedOwnership && !ownershipMatches(expectedOwnership, ownership)) {
+    throwOwnershipConflict();
+  }
+  recordExpectedOwnership?.(ownership);
+  await assignmentMutationTestHooks?.afterUnassignOwnershipRead?.();
+
+  const deleted = await db.clientProviderAccountAssignment.deleteMany({
+    where: {
+      id: ownership.id,
+      workspaceId,
+      provider,
+      accountId: cleanAccountId,
+      clientId: ownership.clientId,
+      connectionId: ownership.connectionId,
+    },
   });
+  if (deleted.count !== 1) throwOwnershipConflict();
 
   await db.auditEvent.create({
     data: {
@@ -626,6 +685,20 @@ export async function switchAuthoritativeConnection(
   input: SwitchConnectionInput,
   db: ScopedTransaction = prisma,
 ) {
+  let expectedOwnership: AssignmentOwnership | undefined;
+  return runSerializableAssignmentTransaction(db, (tx) =>
+    switchAuthoritativeConnectionInTransaction(input, tx, expectedOwnership, (ownership) => {
+      expectedOwnership ??= ownership;
+    }),
+  );
+}
+
+export async function switchAuthoritativeConnectionInTransaction(
+  input: SwitchConnectionInput,
+  db: ScopedTransaction,
+  expectedOwnership?: AssignmentOwnership,
+  recordExpectedOwnership?: (ownership: AssignmentOwnership) => void,
+) {
   const { workspaceId, provider, accountId, newConnectionId, actorUserId } = input;
   const cleanAccountId = canonicalizeAccountId(provider, accountId);
 
@@ -640,8 +713,16 @@ export async function switchAuthoritativeConnection(
   });
 
   if (!existing) {
+    if (expectedOwnership) throwOwnershipConflict();
     throw new RbacError("Assignment not found to switch connection", "NOT_FOUND", 404);
   }
+
+  const ownership = ownershipSnapshot(existing);
+  if (expectedOwnership && !ownershipMatches(expectedOwnership, ownership)) {
+    throwOwnershipConflict();
+  }
+  recordExpectedOwnership?.(ownership);
+  await assignmentMutationTestHooks?.afterSwitchOwnershipRead?.();
 
   const connection = await db.connection.findFirst({
     where: { id: newConnectionId, workspaceId },
@@ -683,13 +764,25 @@ export async function switchAuthoritativeConnection(
     );
   }
 
-  const updated = await db.clientProviderAccountAssignment.update({
-    where: { id: existing.id },
+  const updateResult = await db.clientProviderAccountAssignment.updateMany({
+    where: {
+      id: ownership.id,
+      workspaceId,
+      provider,
+      accountId: cleanAccountId,
+      clientId: ownership.clientId,
+      connectionId: ownership.connectionId,
+    },
     data: {
       connectionId: newConnectionId,
       assignedAt: new Date(),
       assignedBy: actorUserId ?? null,
     },
+  });
+  if (updateResult.count !== 1) throwOwnershipConflict();
+
+  const committed = await db.clientProviderAccountAssignment.findUniqueOrThrow({
+    where: { id: ownership.id },
   });
 
   await db.auditEvent.create({
@@ -698,18 +791,18 @@ export async function switchAuthoritativeConnection(
       actorUserId: actorUserId ?? null,
       action: "client_account.authoritative_connection_switched",
       resource: "client_provider_account_assignment",
-      resourceId: updated.id,
+      resourceId: committed.id,
       metadata: {
         provider,
         accountId: cleanAccountId,
-        clientId: existing.clientId,
-        previousConnectionId: existing.connectionId,
+        clientId: ownership.clientId,
+        previousConnectionId: ownership.connectionId,
         newConnectionId,
       },
     },
   });
 
-  return { assignment: updated, changed: true };
+  return { assignment: committed, changed: true };
 }
 
 /**
@@ -1019,7 +1112,7 @@ export async function cutoverUnambiguousAssignmentsInTransaction(
     candidates.push({ provider: acc.provider, accountId: acc.accountId, connectionId: conn.id });
   }
 
-  await cutoverTestHooks?.afterOwnershipValidation?.();
+  await assignmentMutationTestHooks?.afterOwnershipValidation?.();
 
   const createdAssignments = [];
   for (const candidate of candidates) {

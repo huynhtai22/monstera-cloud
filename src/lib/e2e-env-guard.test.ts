@@ -399,7 +399,16 @@ test("playwright.config.ts passes exact validated SHA into webServer.env", () =>
   });
   const parsed = JSON.parse(result.toString().trim().split("\n").at(-1) || "{}");
   assert.equal(parsed.passedSha, testSha);
-  assert.equal(parsed.releaseSha, testSha);
+  assert.equal(parsed.releaseSha, undefined, "the browser must verify the build stamp, not inject one at runtime");
+});
+
+test("CI stamps the production build with the checked-out GitHub SHA", () => {
+  const root = path.join(__dirname, "../..");
+  const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
+  assert.match(
+    workflow,
+    /- name: Production build\n\s+env:\n\s+RELEASE_COMMIT_SHA: \$\{\{ github\.sha \}\}\n\s+run: npm run build/,
+  );
 });
 
 test("source code audit: no fallback string 'e2e-isolated-git-commit-sha' exists in source", () => {

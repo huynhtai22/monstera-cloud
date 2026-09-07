@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import {
   assignClientProviderAccount,
   unassignClientProviderAccount,
+  switchAuthoritativeConnection,
   cutoverUnambiguousAssignments,
   cutoverUnambiguousAssignmentsInTransaction,
   _setCutoverTestHooks,
@@ -596,6 +597,125 @@ describe("PostgreSQL integration: client provider account assignments", () => {
       }
     } finally {
       releaseValidation?.();
+      _setCutoverTestHooks(undefined);
+    }
+  });
+
+  it("serializable unassign refuses to delete an account that was reassigned after its ownership read", async () => {
+    const accountId = "9010009001";
+    const connectionId = `conn-unassign-race-${suffix}`;
+    await db.connection.create({ data: {
+      id: connectionId, workspaceId: ids.workspaceA, name: "Unassign race root",
+      provider: "google_ads", type: "source", status: "connected",
+      remoteAccountId: `root-unassign-race-${suffix}`,
+      credentials: JSON.stringify({ customerIds: [accountId] }),
+    } });
+    const assignment = await db.clientProviderAccountAssignment.create({ data: {
+      workspaceId: ids.workspaceA, clientId: ids.clientA, provider: "google_ads", accountId, connectionId,
+    } });
+
+    let releaseRead!: () => void;
+    const release = new Promise<void>((resolve) => { releaseRead = resolve; });
+    let signalRead!: () => void;
+    const read = new Promise<void>((resolve) => { signalRead = resolve; });
+    let hookRuns = 0;
+    _setCutoverTestHooks({
+      afterUnassignOwnershipRead: async () => {
+        if (hookRuns++ === 0) {
+          signalRead();
+          await release;
+        }
+      },
+    });
+
+    try {
+      const unassign = unassignClientProviderAccount(
+        { workspaceId: ids.workspaceA, provider: "google_ads", accountId, actorUserId: ids.user },
+        tx(),
+      );
+      await read;
+      const reassigned = await assignClientProviderAccount({
+        workspaceId: ids.workspaceA, clientId: ids.clientA2, provider: "google_ads", accountId, connectionId, actorUserId: ids.user,
+      }, tx());
+      assert.equal(reassigned.action, "reassigned");
+      releaseRead();
+
+      const outcome = await Promise.allSettled([unassign]);
+      assert.equal(outcome[0].status, "rejected");
+      assert.equal((outcome[0] as PromiseRejectedResult).reason?.statusCode, 409);
+      const finalAssignment = await db.clientProviderAccountAssignment.findUniqueOrThrow({ where: { id: assignment.id } });
+      assert.deepEqual(
+        { clientId: finalAssignment.clientId, connectionId: finalAssignment.connectionId },
+        { clientId: ids.clientA2, connectionId },
+      );
+      assert.equal(await db.auditEvent.count({ where: { workspaceId: ids.workspaceA, resourceId: assignment.id, action: "client_account.unassigned" } }), 0);
+      assert.equal(await db.auditEvent.count({ where: { workspaceId: ids.workspaceA, resourceId: assignment.id, action: "client_account.reassigned" } }), 1);
+    } finally {
+      releaseRead?.();
+      _setCutoverTestHooks(undefined);
+    }
+  });
+
+  it("serializable source switch refuses to change an account reassigned after its ownership read", async () => {
+    const accountId = "9020009002";
+    const originalConnectionId = `conn-switch-race-original-${suffix}`;
+    const targetConnectionId = `conn-switch-race-target-${suffix}`;
+    await db.connection.createMany({ data: [
+      {
+        id: originalConnectionId, workspaceId: ids.workspaceA, name: "Switch race original root",
+        provider: "google_ads", type: "source", status: "connected",
+        remoteAccountId: `root-switch-race-original-${suffix}`,
+        credentials: JSON.stringify({ customerIds: [accountId] }),
+      },
+      {
+        id: targetConnectionId, workspaceId: ids.workspaceA, name: "Switch race target root",
+        provider: "google_ads", type: "source", status: "connected",
+        remoteAccountId: `root-switch-race-target-${suffix}`,
+        credentials: JSON.stringify({ customerIds: [accountId] }),
+      },
+    ] });
+    const assignment = await db.clientProviderAccountAssignment.create({ data: {
+      workspaceId: ids.workspaceA, clientId: ids.clientA, provider: "google_ads", accountId, connectionId: originalConnectionId,
+    } });
+
+    let releaseRead!: () => void;
+    const release = new Promise<void>((resolve) => { releaseRead = resolve; });
+    let signalRead!: () => void;
+    const read = new Promise<void>((resolve) => { signalRead = resolve; });
+    let hookRuns = 0;
+    _setCutoverTestHooks({
+      afterSwitchOwnershipRead: async () => {
+        if (hookRuns++ === 0) {
+          signalRead();
+          await release;
+        }
+      },
+    });
+
+    try {
+      const switchSource = switchAuthoritativeConnection(
+        { workspaceId: ids.workspaceA, provider: "google_ads", accountId, newConnectionId: targetConnectionId, actorUserId: ids.user },
+        tx(),
+      );
+      await read;
+      const reassigned = await assignClientProviderAccount({
+        workspaceId: ids.workspaceA, clientId: ids.clientA2, provider: "google_ads", accountId, connectionId: originalConnectionId, actorUserId: ids.user,
+      }, tx());
+      assert.equal(reassigned.action, "reassigned");
+      releaseRead();
+
+      const outcome = await Promise.allSettled([switchSource]);
+      assert.equal(outcome[0].status, "rejected");
+      assert.equal((outcome[0] as PromiseRejectedResult).reason?.statusCode, 409);
+      const finalAssignment = await db.clientProviderAccountAssignment.findUniqueOrThrow({ where: { id: assignment.id } });
+      assert.deepEqual(
+        { clientId: finalAssignment.clientId, connectionId: finalAssignment.connectionId },
+        { clientId: ids.clientA2, connectionId: originalConnectionId },
+      );
+      assert.equal(await db.auditEvent.count({ where: { workspaceId: ids.workspaceA, resourceId: assignment.id, action: "client_account.authoritative_connection_switched" } }), 0);
+      assert.equal(await db.auditEvent.count({ where: { workspaceId: ids.workspaceA, resourceId: assignment.id, action: "client_account.reassigned" } }), 1);
+    } finally {
+      releaseRead?.();
       _setCutoverTestHooks(undefined);
     }
   });

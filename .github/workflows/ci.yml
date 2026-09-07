@@ -48,7 +48,10 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint:ci
       - run: npm test
-      - run: npm run build
+      - name: Production build
+        env:
+          RELEASE_COMMIT_SHA: ${{ github.sha }}
+        run: npm run build
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
       - name: Full browser QA journeys (isolated e2e database)
