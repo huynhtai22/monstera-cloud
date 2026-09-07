@@ -24,14 +24,17 @@ export type EnvMap = NodeJS.ProcessEnv | Record<string, string | undefined>;
  * filesystem-free so server components can use it during a production-mode
  * `next build` / `next start`; the global setup adds its worktree .env check.
  */
-export function assertIsolatedE2eRuntimeEnvironment(env: EnvMap = process.env): void {
+export function assertIsolatedE2eRuntimeEnvironment(
+  env: EnvMap = process.env,
+  requireAppUrl = true,
+): void {
   if (env.MONSTERA_E2E_ISOLATED !== "1" || env.CLIENT_ASSIGNMENT_TEST_DB !== "1") {
     throw new Error("E2E requires explicit isolation flags (MONSTERA_E2E_ISOLATED=1 and CLIENT_ASSIGNMENT_TEST_DB=1).");
   }
 
   assertNoProductionMarkers(env);
   validateLoopbackDatabaseUrl(env.DATABASE_URL, env);
-  validateLoopbackAppUrls(env, true);
+  validateLoopbackAppUrls(env, requireAppUrl);
   validateE2eCommitSha(env);
 }
 
@@ -46,7 +49,7 @@ export function shouldSuppressIntegrationsForIsolatedE2e(env: EnvMap = process.e
     return false;
   }
 
-  assertIsolatedE2eRuntimeEnvironment(env);
+  assertIsolatedE2eRuntimeEnvironment(env, false);
   return true;
 }
 
