@@ -33,7 +33,11 @@ import { acquireMetaSyncLock } from "@/lib/meta-sync-lock";
 const DB_URL =
   process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("mock")
     ? process.env.DATABASE_URL
-    : "postgresql://postgres:postgres@127.0.0.1:55436/monstera_test";
+    : "postgresql://postgres:postgres@127.0.0.1:55436/monstera_ci";
+
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = DB_URL;
+}
 
 describe("PostgreSQL Integration: Real Scheduler, Leases, Crashes & Idempotency", () => {
   let prisma: PrismaClient;

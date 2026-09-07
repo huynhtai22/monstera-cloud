@@ -9,7 +9,7 @@ import { captureTelemetryForTest, setTelemetrySink } from "@/lib/observability/c
 import prisma from "@/lib/prisma";
 
 if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:55436/monstera_test";
+  process.env.DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:55436/monstera_ci";
 }
 
 describe("pickDataThroughDate", () => {
