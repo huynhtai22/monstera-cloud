@@ -78,7 +78,7 @@ async function signIn(page: Page, credentials: { email: string; password: string
   expect(response.ok()).toBeTruthy();
 }
 
-async function useFixtureWorkspace(page: Page) {
+async function configureFixtureWorkspace(page: Page) {
   await page.addInitScript(({ workspaceId, userId }: { workspaceId: string; userId: string }) => {
     window.localStorage.setItem(
       "monstera-workspace-storage",
@@ -90,7 +90,7 @@ async function useFixtureWorkspace(page: Page) {
 
 async function fixturePage(browser: Parameters<typeof freshAuthenticatedSession>[0]) {
   const session = await freshAuthenticatedSession(browser, aliceSession, (page) => signIn(page, ALICE));
-  await useFixtureWorkspace(session.page);
+  await configureFixtureWorkspace(session.page);
   return session;
 }
 
@@ -103,10 +103,10 @@ async function rolePage(
 }
 
 const test = base.extend<{ authenticatedFixturePage: Page }>({
-  authenticatedFixturePage: async ({ browser }, use) => {
+  authenticatedFixturePage: async ({ browser }, provide) => {
     const session = await fixturePage(browser);
     try {
-      await use(session.page);
+      await provide(session.page);
     } finally {
       await session.context.close();
     }
