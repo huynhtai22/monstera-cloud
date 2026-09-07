@@ -8,6 +8,11 @@ const resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
 
 
 export const sendOtpEmail = async (email: string, otp: string) => {
+  if (process.env.MONSTERA_E2E_ISOLATED === "1") {
+    logger.info("[MAIL] E2E isolation enabled; simulating OTP delivery");
+    return { success: true, data: { simulated: true } };
+  }
+
   try {
     const { data, error } = await resend.emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
