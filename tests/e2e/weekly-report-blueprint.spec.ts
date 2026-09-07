@@ -1,6 +1,10 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { reportingDataset } from "../../src/lib/report-delivery";
+import {
+  createAuthenticatedSessionCache,
+  sharedAuthenticatedSession,
+} from "./authenticated-session";
 
 /**
  * Verified Weekly Performance Blueprint v1 — browser + API acceptance on the
@@ -35,26 +39,12 @@ async function login(page: Page, email: string, password: string) {
   expect(session.user?.email).toBe(email);
 }
 
-type Session = { context: Awaited<ReturnType<Browser["newContext"]>>; page: Page };
+const aliceSession = createAuthenticatedSessionCache();
+const bobSession = createAuthenticatedSessionCache();
 
-async function sharedSession(
-  browser: Browser,
-  email: string,
-  password: string,
-  cache: { context?: Session["context"]; page?: Page },
-): Promise<Session> {
-  if (!cache.context || !cache.page) {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    await login(page, email, password);
-    cache.context = context;
-    cache.page = page;
-  }
-  return { context: cache.context, page: cache.page };
+async function sharedSession(browser: Parameters<typeof sharedAuthenticatedSession>[0], email: string, password: string, cache: typeof aliceSession) {
+  return sharedAuthenticatedSession(browser, cache, (page) => login(page, email, password));
 }
-
-const aliceSession: { context?: Session["context"]; page?: Page } = {};
-const bobSession: { context?: Session["context"]; page?: Page } = {};
 
 async function noHorizontalOverflow(page: Page) {
   await expect

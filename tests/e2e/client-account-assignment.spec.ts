@@ -1,7 +1,11 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test as base, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { hashApiKey } from "../../src/lib/api-key-security";
 import { assertAllowedTestDatabase } from "../../src/lib/pg-test-discipline";
+import {
+  createAuthenticatedSessionCache,
+  freshAuthenticatedSession,
+} from "./authenticated-session";
 
 /**
  * Persisted assignment coverage matrix
@@ -52,6 +56,9 @@ type Fixture = {
 
 let db: PrismaClient;
 let fixture: Fixture;
+const aliceSession = createAuthenticatedSessionCache();
+const charlieSession = createAuthenticatedSessionCache();
+const bobSession = createAuthenticatedSessionCache();
 
 function accountRow(page: Page, accountId: string) {
   return page.locator("tbody tr").filter({ hasText: accountId }).first();
@@ -81,10 +88,30 @@ async function useFixtureWorkspace(page: Page) {
   }, { workspaceId: fixture.workspaceId, userId: fixture.ownerUserId });
 }
 
-async function signInToFixture(page: Page) {
-  await signIn(page, ALICE);
-  await useFixtureWorkspace(page);
+async function fixturePage(browser: Parameters<typeof freshAuthenticatedSession>[0]) {
+  const session = await freshAuthenticatedSession(browser, aliceSession, (page) => signIn(page, ALICE));
+  await useFixtureWorkspace(session.page);
+  return session;
 }
+
+async function rolePage(
+  browser: Parameters<typeof freshAuthenticatedSession>[0],
+  credentials: typeof CHARLIE,
+  sessionCache: typeof charlieSession,
+) {
+  return freshAuthenticatedSession(browser, sessionCache, (page) => signIn(page, credentials));
+}
+
+const test = base.extend<{ authenticatedFixturePage: Page }>({
+  authenticatedFixturePage: async ({ browser }, use) => {
+    const session = await fixturePage(browser);
+    try {
+      await use(session.page);
+    } finally {
+      await session.context.close();
+    }
+  },
+});
 
 async function getAccounts(page: Page, clientId?: string) {
   const search = clientId ? `?clientId=${encodeURIComponent(clientId)}` : "";
@@ -295,6 +322,15 @@ test.describe("client account assignment journeys", () => {
 
   test.afterAll(async () => {
     try {
+      // This is a regression guard around the real credential endpoint, not a
+      // limiter bypass: every assignment role signs in once per Playwright
+      // project invocation and each journey gets a clean derived context.
+      expect({
+        alice: aliceSession.loginCount,
+        viewer: charlieSession.loginCount,
+        rival: bobSession.loginCount,
+      }).toEqual({ alice: 1, viewer: 1, rival: 1 });
+
       await db?.$transaction(async (tx) => {
         await tx.campaignMetric.deleteMany({ where: { workspaceId: fixture.workspaceId } });
         await tx.clientProviderAccountAssignment.deleteMany({ where: { workspaceId: fixture.workspaceId } });
@@ -310,8 +346,7 @@ test.describe("client account assignment journeys", () => {
     }
   });
 
-  test("Manage sources deep-link selects the accounts tab and preserves five-client identity", async ({ page }) => {
-    await signInToFixture(page);
+  test("Manage sources deep-link selects the accounts tab and preserves five-client identity", async ({ authenticatedFixturePage: page }) => {
     await page.goto("/clients", { waitUntil: "domcontentloaded" });
 
     const manage = page.locator(`a[href="/sources?clientId=${fixture.clients.one.id}&tab=accounts"]`);
@@ -336,8 +371,7 @@ test.describe("client account assignment journeys", () => {
     await expectNoDocumentOverflow(page);
   });
 
-  test("single assignment is visibly distinct and persists across refresh and a new API request", async ({ page }) => {
-    await signInToFixture(page);
+  test("single assignment is visibly distinct and persists across refresh and a new API request", async ({ authenticatedFixturePage: page }) => {
     await page.goto("/sources?tab=accounts", { waitUntil: "domcontentloaded" });
 
     await assignAccountFromUi(page, fixture.accounts.single, fixture.clients.one.id);
@@ -362,8 +396,7 @@ test.describe("client account assignment journeys", () => {
     await expectNoDocumentOverflow(page);
   });
 
-  test("bulk assignment scopes warehouse and export output to exact assigned tuples", async ({ page }) => {
-    await signInToFixture(page);
+  test("bulk assignment scopes warehouse and export output to exact assigned tuples", async ({ authenticatedFixturePage: page }) => {
     await page.goto("/sources?tab=accounts", { waitUntil: "domcontentloaded" });
 
     await page.getByLabel(`Select account ${fixture.accounts.bulkOne}`).check();
@@ -499,8 +532,7 @@ test.describe("client account assignment journeys", () => {
     await expectNoDocumentOverflow(page);
   });
 
-  test("ambiguous roots require a manual source choice, reassign only on confirmation, and final unassign remains empty", async ({ page }) => {
-    await signInToFixture(page);
+  test("ambiguous roots require a manual source choice, reassign only on confirmation, and final unassign remains empty", async ({ authenticatedFixturePage: page }) => {
     await page.goto("/sources?tab=accounts", { waitUntil: "domcontentloaded" });
 
     const sharedRow = accountRow(page, fixture.accounts.shared);
@@ -601,8 +633,7 @@ test.describe("client account assignment journeys", () => {
     await expectNoDocumentOverflow(page);
   });
 
-  test("failed cutover is atomic, five client filters remain isolated, and unauthorized callers cannot mutate", async ({ page, browser }) => {
-    await signInToFixture(page);
+  test("failed cutover is atomic, five client filters remain isolated, and unauthorized callers cannot mutate", async ({ authenticatedFixturePage: page, browser }) => {
     await page.goto("/sources?tab=accounts", { waitUntil: "domcontentloaded" });
 
     const conflictRow = accountRow(page, fixture.accounts.conflict);
@@ -686,9 +717,8 @@ test.describe("client account assignment journeys", () => {
       }
     }
 
-    const viewer = await browser.newContext();
-    const viewerPage = await viewer.newPage();
-    await signIn(viewerPage, CHARLIE);
+    const viewer = await rolePage(browser, CHARLIE, charlieSession);
+    const viewerPage = viewer.page;
     const viewerMutation = await viewerPage.request.post(`/api/workspaces/${fixture.workspaceId}/client-accounts`, {
       data: {
         clientId: fixture.clients.one.id,
@@ -703,9 +733,8 @@ test.describe("client account assignment journeys", () => {
     });
     expect(viewerCutover.status()).toBe(403);
 
-    const rival = await browser.newContext();
-    const rivalPage = await rival.newPage();
-    await signIn(rivalPage, BOB);
+    const rival = await rolePage(browser, BOB, bobSession);
+    const rivalPage = rival.page;
     expect((await rivalPage.request.get(`/api/workspaces/${fixture.workspaceId}/client-accounts`)).status()).toBe(403);
     expect((await rivalPage.request.post(`/api/workspaces/${fixture.workspaceId}/client-accounts`, {
       data: {
@@ -727,6 +756,6 @@ test.describe("client account assignment journeys", () => {
       }),
     ]);
     await expectNoDocumentOverflow(page);
-    await Promise.all([viewer.close(), rival.close()]);
+    await Promise.all([viewer.context.close(), rival.context.close()]);
   });
 });
