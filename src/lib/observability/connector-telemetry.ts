@@ -55,8 +55,8 @@ export interface ConnectorTelemetryEvent {
   eventCategory: ConnectorEventCategory;
   provider: ConnectorProvider;
   operation: string;
-  workspaceId: string;
   contextStatus: TelemetryContextStatus;
+  workspaceId?: string;
   connectionId?: string;
   opaqueAccountId?: string;
   jobId?: string;
@@ -119,106 +119,387 @@ export function toOpaqueAccountId(rawId?: string | null): string | undefined {
   return `acct_${crypto.createHash("sha256").update(trimmed).digest("hex").slice(0, 12)}`;
 }
 
+const VALID_EVENT_CATEGORIES = new Set<ConnectorEventCategory>([
+  "provider_request",
+  "job_lifecycle",
+  "lease_event",
+  "freshness_event",
+]);
+
+const VALID_PROVIDERS = new Set<ConnectorProvider>([
+  "meta_ads",
+  "google_ads",
+  "tiktok_business",
+  "shopee",
+  "lazada",
+  "warehouse_queue",
+]);
+
+const VALID_OUTCOMES = new Set<TelemetryOutcome>([
+  "success",
+  "partial",
+  "retryable_failure",
+  "permanent_failure",
+  "throttled",
+  "lease_lost",
+  "skipped",
+]);
+
+const VALID_ERROR_CATEGORIES = new Set<TelemetryErrorCategory>([
+  "auth_revoked",
+  "rate_limited",
+  "provider_unavailable",
+  "quota_exhausted",
+  "timeout",
+  "network_error",
+  "schema_drift",
+  "lease_lost",
+  "internal_error",
+]);
+
+const VALID_LEASE_OUTCOMES = new Set<LeaseOutcome>([
+  "acquired",
+  "refused_active",
+  "refused_contention",
+  "renewed",
+  "stolen",
+  "released",
+  "lost",
+]);
+
+const VALID_FRESHNESS_OUTCOMES = new Set<FreshnessOutcome>([
+  "advanced",
+  "unchanged",
+  "degraded",
+]);
+
+export const RESERVED_UNSPECIFIED_SENTINELS = new Set<string>([
+  "ws_unspecified",
+  "unknown_workspace",
+  "ws_opaque_unspecified",
+  "ws_opaque_e3b0c442",
+]);
+
+const IDENTIFIER_REGEX = /^[a-zA-Z0-9_.-]{1,128}$/;
+const OPERATION_REGEX = /^[a-zA-Z0-9_.-]{1,64}$/;
+const OPAQUE_ACCOUNT_REGEX = /^acct_[0-9a-f]{12}$/;
+
 /**
- * Strictly sanitizes telemetry event fields:
- * - Rejects empty/blank tenant identities, marking unscoped events explicitly as 'unbound'
- * - Clamps percentage values to [0, 100]
- * - Strips unauthorized/unknown keys
- * - Never includes tokens, headers, body payloads or PII
+ * Strictly sanitizes and validates telemetry event fields from unknown input:
+ * - Constructs a new object from an explicit allowlist; never spreads arbitrary caller objects
+ * - Derives contextStatus internally; never trusts caller-supplied contextStatus
+ * - Validates enums, finite numbers, ranges and string shapes
+ * - Rejects prototype pollution, tokens, secrets, bodies, and invalid types
+ * - Drops invalid events safely (returns null) without throwing
  */
-export function sanitizeTelemetryEvent(
-  raw: Partial<ConnectorTelemetryEvent>
-): ConnectorTelemetryEvent {
+export function sanitizeTelemetryEvent(input: unknown): ConnectorTelemetryEvent | null {
+  try {
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      return null;
+    }
+    const raw = input as Record<string, unknown>;
+
+    // Reject prototype pollution or objects with non-standard prototype
+    const proto = Object.getPrototypeOf(raw);
+    if (proto !== Object.prototype && proto !== null) {
+      return null;
+    }
+
+  // Operation validation
+  let operation = "unknown_op";
+  if (raw.operation !== undefined) {
+    if (typeof raw.operation !== "string") {
+      return null;
+    }
+    const trimmedOp = raw.operation.trim();
+    if (!OPERATION_REGEX.test(trimmedOp)) {
+      return null;
+    }
+    operation = trimmedOp;
+  }
+
+  // Schema version & event name (exact values only)
+  if (raw.schemaVersion !== undefined && raw.schemaVersion !== "1.0.0") {
+    return null;
+  }
+  if (raw.eventName !== undefined && raw.eventName !== "connector_telemetry") {
+    return null;
+  }
+
+  // Event category
+  let eventCategory: ConnectorEventCategory = "provider_request";
+  if (raw.eventCategory !== undefined) {
+    if (typeof raw.eventCategory !== "string" || !VALID_EVENT_CATEGORIES.has(raw.eventCategory as ConnectorEventCategory)) {
+      return null;
+    }
+    eventCategory = raw.eventCategory as ConnectorEventCategory;
+  }
+
+  // Provider
   const currentCtx = getConnectorContext();
-  const rawWs = typeof raw.workspaceId === "string" ? raw.workspaceId.trim() : "";
-  const ctxWs = typeof currentCtx?.workspaceId === "string" ? currentCtx.workspaceId.trim() : "";
-  const resolvedWorkspaceId = rawWs || ctxWs;
+  let provider: ConnectorProvider | undefined = undefined;
+  if (typeof raw.provider === "string" && VALID_PROVIDERS.has(raw.provider as ConnectorProvider)) {
+    provider = raw.provider as ConnectorProvider;
+  } else if (raw.provider === undefined && currentCtx?.provider && VALID_PROVIDERS.has(currentCtx.provider)) {
+    provider = currentCtx.provider;
+  } else if (raw.provider === undefined) {
+    provider = "warehouse_queue";
+  } else {
+    return null;
+  }
 
-  const isTenantScoped = Boolean(resolvedWorkspaceId);
-  const workspaceId = isTenantScoped ? resolvedWorkspaceId : "ws_unspecified";
-  const contextStatus: TelemetryContextStatus = raw.contextStatus ?? (isTenantScoped ? "tenant_scoped" : "unbound");
+  // Context derivation & workspace identity
+  const ctxWs = currentCtx?.workspaceId && typeof currentCtx.workspaceId === "string"
+    ? currentCtx.workspaceId.trim()
+    : undefined;
 
-  const sanitized: ConnectorTelemetryEvent = {
+  let workspaceId: string | undefined = undefined;
+  let contextStatus: TelemetryContextStatus = "unbound";
+
+  if (Object.prototype.hasOwnProperty.call(raw, "workspaceId")) {
+    const rawWs = raw.workspaceId;
+    if (typeof rawWs !== "string") {
+      // Explicit non-string workspace -> reject event
+      return null;
+    }
+    const trimmedWs = rawWs.trim();
+    if (trimmedWs === "" || !IDENTIFIER_REGEX.test(trimmedWs) || RESERVED_UNSPECIFIED_SENTINELS.has(trimmedWs)) {
+      // Explicitly blank, invalid or reserved sentinel -> reject event; do NOT fall back to context
+      return null;
+    }
+    if (ctxWs && trimmedWs !== ctxWs) {
+      // Explicit workspace conflicts with enclosing context -> fail closed for that event
+      return null;
+    }
+    workspaceId = trimmedWs;
+    contextStatus = "tenant_scoped";
+  } else {
+    // Workspace field omitted from input: may inherit valid enclosing context
+    if (ctxWs && IDENTIFIER_REGEX.test(ctxWs) && !RESERVED_UNSPECIFIED_SENTINELS.has(ctxWs)) {
+      workspaceId = ctxWs;
+      contextStatus = "tenant_scoped";
+    } else {
+      // No explicit or contextual workspace -> cleanly unbound, workspaceId omitted
+      contextStatus = "unbound";
+      workspaceId = undefined;
+    }
+  }
+
+  // Outcome
+  let outcome: TelemetryOutcome = "success";
+  if (raw.outcome !== undefined) {
+    if (typeof raw.outcome !== "string" || !VALID_OUTCOMES.has(raw.outcome as TelemetryOutcome)) {
+      return null;
+    }
+    outcome = raw.outcome as TelemetryOutcome;
+  }
+
+  // Attempt & maxAttempts
+  let attempt = 1;
+  if (raw.attempt !== undefined) {
+    if (typeof raw.attempt !== "number" || !Number.isInteger(raw.attempt) || raw.attempt < 1 || raw.attempt > 100) {
+      return null;
+    }
+    attempt = raw.attempt;
+  }
+
+  let maxAttempts: number | undefined = undefined;
+  if (raw.maxAttempts !== undefined) {
+    if (typeof raw.maxAttempts !== "number" || !Number.isInteger(raw.maxAttempts) || raw.maxAttempts < attempt || raw.maxAttempts > 100) {
+      return null;
+    }
+    maxAttempts = raw.maxAttempts;
+  }
+
+  // Duration
+  let durationMs = 0;
+  if (raw.durationMs !== undefined) {
+    if (typeof raw.durationMs !== "number" || !Number.isFinite(raw.durationMs) || raw.durationMs < 0 || raw.durationMs > 86_400_000) {
+      return null;
+    }
+    durationMs = Math.round(raw.durationMs);
+  }
+
+  // Timestamp
+  let timestamp: string;
+  if (raw.timestamp !== undefined) {
+    if (typeof raw.timestamp !== "string") return null;
+    const parsed = Date.parse(raw.timestamp);
+    if (!Number.isFinite(parsed)) return null;
+    const year = new Date(parsed).getUTCFullYear();
+    if (year < 2020 || year > 2035) return null;
+    timestamp = new Date(parsed).toISOString();
+  } else {
+    timestamp = new Date().toISOString();
+  }
+
+  // Optional connectionId & jobId
+  let connectionId: string | undefined = undefined;
+  const rawConnId = raw.connectionId ?? currentCtx?.connectionId;
+  if (rawConnId !== undefined) {
+    if (typeof rawConnId !== "string") return null;
+    const trimmed = rawConnId.trim();
+    if (!IDENTIFIER_REGEX.test(trimmed)) return null;
+    connectionId = trimmed;
+  }
+
+  let jobId: string | undefined = undefined;
+  const rawJobId = raw.jobId ?? currentCtx?.jobId;
+  if (rawJobId !== undefined) {
+    if (typeof rawJobId !== "string") return null;
+    const trimmed = rawJobId.trim();
+    if (!IDENTIFIER_REGEX.test(trimmed)) return null;
+    jobId = trimmed;
+  }
+
+  // Optional opaqueAccountId
+  let opaqueAccountId: string | undefined = undefined;
+  const rawOpaque = raw.opaqueAccountId ?? currentCtx?.opaqueAccountId;
+  if (rawOpaque !== undefined) {
+    if (typeof rawOpaque !== "string") return null;
+    const trimmed = rawOpaque.trim();
+    if (!OPAQUE_ACCOUNT_REGEX.test(trimmed)) return null;
+    opaqueAccountId = trimmed;
+  }
+
+  // Optional errorCategory
+  let errorCategory: TelemetryErrorCategory | undefined = undefined;
+  if (raw.errorCategory !== undefined) {
+    if (typeof raw.errorCategory !== "string" || !VALID_ERROR_CATEGORIES.has(raw.errorCategory as TelemetryErrorCategory)) {
+      return null;
+    }
+    errorCategory = raw.errorCategory as TelemetryErrorCategory;
+  }
+
+  // Optional httpStatus
+  let httpStatus: number | undefined = undefined;
+  if (raw.httpStatus !== undefined) {
+    if (typeof raw.httpStatus !== "number" || !Number.isInteger(raw.httpStatus) || raw.httpStatus < 100 || raw.httpStatus > 599) {
+      return null;
+    }
+    httpStatus = raw.httpStatus;
+  }
+
+  // Optional delays and wait times
+  let retryDelayMs: number | undefined = undefined;
+  if (raw.retryDelayMs !== undefined) {
+    if (typeof raw.retryDelayMs !== "number" || !Number.isFinite(raw.retryDelayMs) || raw.retryDelayMs < 0 || raw.retryDelayMs > 86_400_000) {
+      return null;
+    }
+    retryDelayMs = Math.round(raw.retryDelayMs);
+  }
+
+  let queueWaitMs: number | undefined = undefined;
+  if (raw.queueWaitMs !== undefined) {
+    if (typeof raw.queueWaitMs !== "number" || !Number.isFinite(raw.queueWaitMs) || raw.queueWaitMs < 0 || raw.queueWaitMs > 86_400_000) {
+      return null;
+    }
+    queueWaitMs = Math.round(raw.queueWaitMs);
+  }
+
+  // Optional item counts
+  let itemCount: number | undefined = undefined;
+  if (raw.itemCount !== undefined) {
+    if (typeof raw.itemCount !== "number" || !Number.isInteger(raw.itemCount) || raw.itemCount < 0 || raw.itemCount > 1_000_000) {
+      return null;
+    }
+    itemCount = raw.itemCount;
+  }
+
+  let completedItemCount: number | undefined = undefined;
+  if (raw.completedItemCount !== undefined) {
+    if (typeof raw.completedItemCount !== "number" || !Number.isInteger(raw.completedItemCount) || raw.completedItemCount < 0 || raw.completedItemCount > 1_000_000) {
+      return null;
+    }
+    completedItemCount = raw.completedItemCount;
+  }
+
+  // Optional window days
+  let dataWindowDays: number | undefined = undefined;
+  const rawWindow = raw.dataWindowDays !== undefined ? raw.dataWindowDays : currentCtx?.dataWindowDays;
+  if (rawWindow !== undefined) {
+    if (typeof rawWindow !== "number" || !Number.isInteger(rawWindow) || rawWindow < 0 || rawWindow > 3650) {
+      return null;
+    }
+    dataWindowDays = rawWindow;
+  }
+
+  // Optional throttle utilization percentage
+  let throttleUtilizationPct: number | undefined = undefined;
+  if (raw.throttleUtilizationPct !== undefined) {
+    if (typeof raw.throttleUtilizationPct !== "number" || !Number.isFinite(raw.throttleUtilizationPct)) {
+      return null;
+    }
+    throttleUtilizationPct = Math.max(0, Math.min(100, Math.round(raw.throttleUtilizationPct)));
+  }
+
+  // Optional booleans
+  let retryAfterSupplied: boolean | undefined = undefined;
+  if (raw.retryAfterSupplied !== undefined) {
+    if (typeof raw.retryAfterSupplied !== "boolean") return null;
+    retryAfterSupplied = raw.retryAfterSupplied;
+  }
+
+  let retryAfterHonored: boolean | undefined = undefined;
+  if (raw.retryAfterHonored !== undefined) {
+    if (typeof raw.retryAfterHonored !== "boolean") return null;
+    retryAfterHonored = raw.retryAfterHonored;
+  }
+
+  // Optional lease outcome
+  let leaseOutcome: LeaseOutcome | undefined = undefined;
+  if (raw.leaseOutcome !== undefined) {
+    if (typeof raw.leaseOutcome !== "string" || !VALID_LEASE_OUTCOMES.has(raw.leaseOutcome as LeaseOutcome)) {
+      return null;
+    }
+    leaseOutcome = raw.leaseOutcome as LeaseOutcome;
+  }
+
+  // Optional freshness outcome
+  let freshnessOutcome: FreshnessOutcome | undefined = undefined;
+  if (raw.freshnessOutcome !== undefined) {
+    if (typeof raw.freshnessOutcome !== "string" || !VALID_FRESHNESS_OUTCOMES.has(raw.freshnessOutcome as FreshnessOutcome)) {
+      return null;
+    }
+    freshnessOutcome = raw.freshnessOutcome as FreshnessOutcome;
+  }
+
+  // Build clean object with zero extra keys
+  const event: ConnectorTelemetryEvent = {
     schemaVersion: "1.0.0",
     eventName: "connector_telemetry",
-    eventCategory: raw.eventCategory ?? "provider_request",
-    provider: (raw.provider || currentCtx?.provider || "warehouse_queue") as ConnectorProvider,
-    operation: String(raw.operation || "unknown_op").slice(0, 64),
-    workspaceId,
+    eventCategory,
+    provider,
+    operation,
     contextStatus,
-    timestamp: raw.timestamp || new Date().toISOString(),
-    attempt: Number.isFinite(raw.attempt) ? Math.max(1, Math.floor(raw.attempt!)) : 1,
-    outcome: raw.outcome ?? "success",
-    durationMs: Number.isFinite(raw.durationMs) ? Math.max(0, Math.round(raw.durationMs!)) : 0,
+    attempt,
+    outcome,
+    durationMs,
+    timestamp,
   };
 
-  if (raw.connectionId || currentCtx?.connectionId) {
-    sanitized.connectionId = String(raw.connectionId || currentCtx?.connectionId);
-  }
+  if (workspaceId !== undefined) event.workspaceId = workspaceId;
+  if (connectionId !== undefined) event.connectionId = connectionId;
+  if (opaqueAccountId !== undefined) event.opaqueAccountId = opaqueAccountId;
+  if (jobId !== undefined) event.jobId = jobId;
+  if (maxAttempts !== undefined) event.maxAttempts = maxAttempts;
+  if (errorCategory !== undefined) event.errorCategory = errorCategory;
+  if (httpStatus !== undefined) event.httpStatus = httpStatus;
+  if (retryDelayMs !== undefined) event.retryDelayMs = retryDelayMs;
+  if (queueWaitMs !== undefined) event.queueWaitMs = queueWaitMs;
+  if (itemCount !== undefined) event.itemCount = itemCount;
+  if (completedItemCount !== undefined) event.completedItemCount = completedItemCount;
+  if (dataWindowDays !== undefined) event.dataWindowDays = dataWindowDays;
+  if (throttleUtilizationPct !== undefined) event.throttleUtilizationPct = throttleUtilizationPct;
+  if (retryAfterSupplied !== undefined) event.retryAfterSupplied = retryAfterSupplied;
+  if (retryAfterHonored !== undefined) event.retryAfterHonored = retryAfterHonored;
+  if (leaseOutcome !== undefined) event.leaseOutcome = leaseOutcome;
+  if (freshnessOutcome !== undefined) event.freshnessOutcome = freshnessOutcome;
 
-  const opaqueAcct = raw.opaqueAccountId || (currentCtx?.opaqueAccountId ? currentCtx.opaqueAccountId : undefined);
-  if (opaqueAcct) {
-    sanitized.opaqueAccountId = opaqueAcct;
+  return event;
+  } catch {
+    return null;
   }
-
-  if (raw.jobId || currentCtx?.jobId) {
-    sanitized.jobId = String(raw.jobId || currentCtx?.jobId);
-  }
-
-  if (Number.isFinite(raw.maxAttempts)) {
-    sanitized.maxAttempts = Math.max(1, Math.floor(raw.maxAttempts!));
-  }
-
-  if (raw.errorCategory) {
-    sanitized.errorCategory = raw.errorCategory;
-  }
-
-  if (Number.isFinite(raw.httpStatus)) {
-    sanitized.httpStatus = Math.floor(raw.httpStatus!);
-  }
-
-  if (Number.isFinite(raw.retryDelayMs)) {
-    sanitized.retryDelayMs = Math.max(0, Math.round(raw.retryDelayMs!));
-  }
-
-  if (Number.isFinite(raw.queueWaitMs)) {
-    sanitized.queueWaitMs = Math.max(0, Math.round(raw.queueWaitMs!));
-  }
-
-  if (Number.isFinite(raw.itemCount)) {
-    sanitized.itemCount = Math.max(0, Math.floor(raw.itemCount!));
-  }
-
-  if (Number.isFinite(raw.completedItemCount)) {
-    sanitized.completedItemCount = Math.max(0, Math.floor(raw.completedItemCount!));
-  }
-
-  const windowDays = Number.isFinite(raw.dataWindowDays) ? raw.dataWindowDays : currentCtx?.dataWindowDays;
-  if (Number.isFinite(windowDays)) {
-    sanitized.dataWindowDays = Math.max(0, Math.floor(windowDays!));
-  }
-
-  if (Number.isFinite(raw.throttleUtilizationPct)) {
-    sanitized.throttleUtilizationPct = Math.max(0, Math.min(100, Math.round(raw.throttleUtilizationPct!)));
-  }
-
-  if (typeof raw.retryAfterSupplied === "boolean") {
-    sanitized.retryAfterSupplied = raw.retryAfterSupplied;
-  }
-
-  if (typeof raw.retryAfterHonored === "boolean") {
-    sanitized.retryAfterHonored = raw.retryAfterHonored;
-  }
-
-  if (raw.leaseOutcome) {
-    sanitized.leaseOutcome = raw.leaseOutcome;
-  }
-
-  if (raw.freshnessOutcome) {
-    sanitized.freshnessOutcome = raw.freshnessOutcome;
-  }
-
-  return sanitized;
 }
 
 export type TelemetrySink = (event: ConnectorTelemetryEvent) => void;
@@ -243,11 +524,14 @@ function defaultSink(event: ConnectorTelemetryEvent): void {
 
 /**
  * Emits a structured telemetry event safely.
- * Any errors thrown by the sink or sanitizer are caught and suppressed so business operations never fail.
+ * Any errors thrown by the sink or parser are caught and suppressed so business operations never fail.
  */
-export function emitConnectorTelemetry(event: Partial<ConnectorTelemetryEvent>): void {
+export function emitConnectorTelemetry(event: unknown): void {
   try {
     const sanitized = sanitizeTelemetryEvent(event);
+    if (!sanitized) {
+      return; // Safely dropped invalid/malformed telemetry; never throws or crashes caller
+    }
     if (globalSink) {
       globalSink(sanitized);
     } else {

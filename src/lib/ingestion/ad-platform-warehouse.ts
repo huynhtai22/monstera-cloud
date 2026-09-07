@@ -12,6 +12,7 @@ import {
   normalizeTikTokAdvertiserIds,
   TIKTOK_ADVERTISER_RECONNECT_MESSAGE,
 } from "@/lib/tiktok-advertiser-id";
+import { runWithConnectorContext, toOpaqueAccountId } from "@/lib/observability/connector-telemetry";
 
 function gaqlBetween(since: string, until: string) {
   // GAQL requires single quotes around date literals.
@@ -60,53 +61,61 @@ export async function syncGoogleAdsIntoWarehouse(params: {
 
   for (const cid of customerIds) {
     try {
-      // Query with explicit date range for Explorer imports.
-      const gaql = `
-        SELECT
-          campaign.name,
-          campaign.status,
-          metrics.impressions,
-          metrics.clicks,
-          metrics.cost_micros,
-          metrics.conversions,
-          metrics.conversion_value,
-          metrics.ctr,
-          metrics.average_cpc,
-          segments.date
-        FROM campaign
-        WHERE ${gaqlBetween(since, until)}
-          AND campaign.status != 'REMOVED'
-      `;
-
-      const rows = await googleAdsReportClient.searchStream(accessToken, cid, gaql, credentials.mccId);
-
-      const transformedRows = rows.map((r: any) => ({
-        campaign_id: r.campaign_id || r.campaign_name,
-        campaign_name: r.campaign_name,
-        ad_group_id: r.ad_group_id,
-        ad_group_name: r.ad_group_name,
-        date: r.date,
-        impressions: r.impressions,
-        clicks: r.clicks,
-        cost: r.cost,
-        cpc: r.average_cpc,
-        ctr: r.ctr,
-        conversions: r.conversions,
-        conversion_value: r.conversion_value,
-        currency: r.currency,
-        raw: r,
-      }));
-
-      const result = await ingestGoogleAdsRows(transformedRows, {
+      await runWithConnectorContext({
         workspaceId,
         connectionId,
-        accountId: cid,
-        accountName: `Customer ${cid}`,
-        syncJobId: jobId,
-      });
+        provider: "google_ads",
+        opaqueAccountId: toOpaqueAccountId(cid),
+        jobId,
+      }, async () => {
+        // Query with explicit date range for Explorer imports.
+        const gaql = `
+          SELECT
+            campaign.name,
+            campaign.status,
+            metrics.impressions,
+            metrics.clicks,
+            metrics.cost_micros,
+            metrics.conversions,
+            metrics.conversion_value,
+            metrics.ctr,
+            metrics.average_cpc,
+            segments.date
+          FROM campaign
+          WHERE ${gaqlBetween(since, until)}
+            AND campaign.status != 'REMOVED'
+        `;
 
-      upserted += result.upserted;
-      failed += result.failed;
+        const rows = await googleAdsReportClient.searchStream(accessToken, cid, gaql, credentials.mccId);
+
+        const transformedRows = rows.map((r: any) => ({
+          campaign_id: r.campaign_id || r.campaign_name,
+          campaign_name: r.campaign_name,
+          ad_group_id: r.ad_group_id,
+          ad_group_name: r.ad_group_name,
+          date: r.date,
+          impressions: r.impressions,
+          clicks: r.clicks,
+          cost: r.cost,
+          cpc: r.average_cpc,
+          ctr: r.ctr,
+          conversions: r.conversions,
+          conversion_value: r.conversion_value,
+          currency: r.currency,
+          raw: r,
+        }));
+
+        const result = await ingestGoogleAdsRows(transformedRows, {
+          workspaceId,
+          connectionId,
+          accountId: cid,
+          accountName: `Customer ${cid}`,
+          syncJobId: jobId,
+        });
+
+        upserted += result.upserted;
+        failed += result.failed;
+      });
     } catch (e) {
       logger.error(`[Explorer Google Ads Import] failed for customer ${cid}:`, e);
       failed++;
@@ -162,67 +171,75 @@ export async function syncTikTokIntoWarehouse(params: {
 
   for (const aid of advertiserIds) {
     try {
-      const taskId = await tiktokReportClient.createTask(
-        accessToken,
-        {
-          advertiser_id: aid,
-          report_type: "BASIC",
-          data_level: "AUCTION_CAMPAIGN",
-          dimensions: [...TIKTOK_CAMPAIGN_REPORT_DIMENSIONS],
-          metrics: [...TIKTOK_CAMPAIGN_REPORT_METRICS],
-          start_date: since,
-          end_date: until,
-          page_size: 1000,
-        },
-        credentials.sandbox === true,
-      );
+      await runWithConnectorContext({
+        workspaceId,
+        connectionId,
+        provider: "tiktok_business",
+        opaqueAccountId: toOpaqueAccountId(aid),
+        jobId,
+      }, async () => {
+        const taskId = await tiktokReportClient.createTask(
+          accessToken,
+          {
+            advertiser_id: aid,
+            report_type: "BASIC",
+            data_level: "AUCTION_CAMPAIGN",
+            dimensions: [...TIKTOK_CAMPAIGN_REPORT_DIMENSIONS],
+            metrics: [...TIKTOK_CAMPAIGN_REPORT_METRICS],
+            start_date: since,
+            end_date: until,
+            page_size: 1000,
+          },
+          credentials.sandbox === true,
+        );
 
-      let status = await tiktokReportClient.checkTask(
-        accessToken,
-        aid,
-        taskId,
-        credentials.sandbox === true,
-      );
-      let attempts = 0;
-      while (
-        status.status !== "SUCCESS" &&
-        status.status !== "COMPLETED" &&
-        status.status !== "FAILED" &&
-        status.status !== "CANCELED" &&
-        attempts < 20
-      ) {
-        await new Promise((r) => setTimeout(r, 3000));
-        status = await tiktokReportClient.checkTask(
+        let status = await tiktokReportClient.checkTask(
           accessToken,
           aid,
           taskId,
           credentials.sandbox === true,
         );
-        attempts++;
-      }
+        let attempts = 0;
+        while (
+          status.status !== "SUCCESS" &&
+          status.status !== "COMPLETED" &&
+          status.status !== "FAILED" &&
+          status.status !== "CANCELED" &&
+          attempts < 20
+        ) {
+          await new Promise((r) => setTimeout(r, 3000));
+          status = await tiktokReportClient.checkTask(
+            accessToken,
+            aid,
+            taskId,
+            credentials.sandbox === true,
+          );
+          attempts++;
+        }
 
-      if (status.status !== "SUCCESS" && status.status !== "COMPLETED") {
-        throw new Error(`TikTok report not ready (status=${status.status})`);
-      }
+        if (status.status !== "SUCCESS" && status.status !== "COMPLETED") {
+          throw new Error(`TikTok report not ready (status=${status.status})`);
+        }
 
-      const downloadUrl = await tiktokReportClient.getDownloadUrl(
-        accessToken,
-        aid,
-        taskId,
-        credentials.sandbox === true,
-      );
-      const rows = await tiktokReportClient.downloadRows(downloadUrl);
+        const downloadUrl = await tiktokReportClient.getDownloadUrl(
+          accessToken,
+          aid,
+          taskId,
+          credentials.sandbox === true,
+        );
+        const rows = await tiktokReportClient.downloadRows(downloadUrl);
 
-      const result = await ingestTiktokRows(rows, {
-        workspaceId,
-        connectionId,
-        accountId: aid,
-        accountName: `Advertiser ${aid}`,
-        syncJobId: jobId,
+        const result = await ingestTiktokRows(rows, {
+          workspaceId,
+          connectionId,
+          accountId: aid,
+          accountName: `Advertiser ${aid}`,
+          syncJobId: jobId,
+        });
+
+        upserted += result.upserted;
+        failed += result.failed;
       });
-
-      upserted += result.upserted;
-      failed += result.failed;
     } catch (e) {
       logger.error(`[Explorer TikTok Import] failed for advertiser ${aid}:`, e);
       failed++;

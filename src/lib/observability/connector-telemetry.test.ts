@@ -146,6 +146,7 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
       provider: "meta_ads",
       throttleUtilizationPct: -15,
     });
+    assert.ok(rawNegative);
     assert.equal(rawNegative.throttleUtilizationPct, 0);
 
     const rawOver100 = sanitizeTelemetryEvent({
@@ -153,6 +154,7 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
       provider: "meta_ads",
       throttleUtilizationPct: 185,
     });
+    assert.ok(rawOver100);
     assert.equal(rawOver100.throttleUtilizationPct, 100);
 
     const rawFraction = sanitizeTelemetryEvent({
@@ -160,6 +162,7 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
       provider: "meta_ads",
       throttleUtilizationPct: 84.7,
     });
+    assert.ok(rawFraction);
     assert.equal(rawFraction.throttleUtilizationPct, 85);
   });
 
@@ -268,6 +271,7 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
     };
 
     const sanitized = sanitizeTelemetryEvent(rawEvent as any);
+    assert.ok(sanitized);
 
     assert.equal(sanitized.itemCount, 50);
     assert.equal(sanitized.completedItemCount, 48);
@@ -331,41 +335,52 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
     }
   });
 
-  it("11. Empty, whitespace, or missing workspace ID defaults to unbound without crashing or inventing tenants", () => {
+  it("11. Empty, whitespace, or invalid workspace ID is rejected; omitted workspace defaults to unbound with omitted workspaceId", () => {
+    // Explicitly empty -> rejected
     const emptyEvent = sanitizeTelemetryEvent({
       workspaceId: "",
       provider: "meta_ads",
       operation: "empty_test",
     });
-    assert.equal(emptyEvent.workspaceId, "ws_unspecified");
-    assert.equal(emptyEvent.contextStatus, "unbound");
+    assert.equal(emptyEvent, null, "Explicitly empty workspaceId must be rejected");
 
+    // Explicitly whitespace -> rejected
     const whitespaceEvent = sanitizeTelemetryEvent({
       workspaceId: "   \t\n  ",
       provider: "meta_ads",
       operation: "whitespace_test",
     });
-    assert.equal(whitespaceEvent.workspaceId, "ws_unspecified");
-    assert.equal(whitespaceEvent.contextStatus, "unbound");
+    assert.equal(whitespaceEvent, null, "Explicitly whitespace workspaceId must be rejected");
 
+    // Reserved sentinel -> rejected
+    const sentinelEvent = sanitizeTelemetryEvent({
+      workspaceId: "ws_unspecified",
+      provider: "meta_ads",
+      operation: "sentinel_test",
+    });
+    assert.equal(sentinelEvent, null, "Reserved sentinel workspaceId must be rejected");
+
+    // Omitted workspace outside ALS -> unbound, workspaceId omitted
     const undefinedEvent = sanitizeTelemetryEvent({
-      workspaceId: undefined as any,
       provider: "google_ads",
       operation: "undefined_test",
     });
-    assert.equal(undefinedEvent.workspaceId, "ws_unspecified");
+    assert.ok(undefinedEvent !== null);
+    assert.equal(undefinedEvent.workspaceId, undefined);
     assert.equal(undefinedEvent.contextStatus, "unbound");
 
+    // Valid workspace -> tenant_scoped, workspaceId trimmed
     const validEvent = sanitizeTelemetryEvent({
       workspaceId: "  ws_real_tenant  ",
       provider: "tiktok_business",
       operation: "valid_test",
     });
+    assert.ok(validEvent !== null);
     assert.equal(validEvent.workspaceId, "ws_real_tenant");
     assert.equal(validEvent.contextStatus, "tenant_scoped");
   });
 
-  it("12. Work emitted outside any AsyncLocalStorage context is cleanly marked unbound", () => {
+  it("12. Work emitted outside any AsyncLocalStorage context is cleanly marked unbound with no workspaceId", () => {
     const capture = captureTelemetryForTest();
     try {
       emitConnectorTelemetry({
@@ -375,7 +390,7 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
       });
 
       assert.equal(capture.events.length, 1);
-      assert.equal(capture.events[0].workspaceId, "ws_unspecified");
+      assert.equal(capture.events[0].workspaceId, undefined);
       assert.equal(capture.events[0].contextStatus, "unbound");
     } finally {
       capture.restore();

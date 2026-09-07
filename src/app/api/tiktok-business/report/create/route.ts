@@ -7,6 +7,7 @@ import { getPlanLimits } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { logger } from "@/lib/logger";
+import { runWithConnectorContext, toOpaqueAccountId } from '@/lib/observability/connector-telemetry';
 
 /**
  * POST /api/tiktok-business/report/create
@@ -97,24 +98,29 @@ export async function POST(req: Request) {
     const accessToken = await getValidTikTokToken(conn);
     const creds = JSON.parse(safeDecrypt(conn.credentials)) as { sandbox?: boolean };
 
-    let responsePayload: any;
-
-    // Sandbox: use synchronous report endpoint (async tasks not supported)
-    if (creds.sandbox === true) {
-      const rows = await tiktokReportClient.getSyncReport(accessToken, {
-        ...taskParams,
-        advertiser_id,
-      });
-      responsePayload = { mode: 'sync', rows };
-    } else {
-      // Production: create async task
-      const taskId = await tiktokReportClient.createTask(
-        accessToken,
-        { ...taskParams, advertiser_id },
-        false,
-      );
-      responsePayload = { mode: 'async', task_id: taskId };
-    }
+    const responsePayload = await runWithConnectorContext({
+      workspaceId: conn.workspaceId,
+      connectionId: conn.id,
+      provider: 'tiktok_business',
+      opaqueAccountId: toOpaqueAccountId(advertiser_id),
+    }, async () => {
+      // Sandbox: use synchronous report endpoint (async tasks not supported)
+      if (creds.sandbox === true) {
+        const rows = await tiktokReportClient.getSyncReport(accessToken, {
+          ...taskParams,
+          advertiser_id,
+        });
+        return { mode: 'sync', rows };
+      } else {
+        // Production: create async task
+        const taskId = await tiktokReportClient.createTask(
+          accessToken,
+          { ...taskParams, advertiser_id },
+          false,
+        );
+        return { mode: 'async', task_id: taskId };
+      }
+    });
 
     // Store result in cache
     reportCache.set(cacheKey, {

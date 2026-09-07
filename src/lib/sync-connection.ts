@@ -184,25 +184,30 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
         });
       } else if (provider === "shopee") {
         const r = defaultRollingRange(plan);
-        const [catalog, orders, ads] = await Promise.all([
-          syncShopeeCatalogWarehouse({ connectionId, workspaceId }),
-          syncShopeeWarehouseMetrics({
-            connectionId,
-            workspaceId,
-            userPlan: plan,
-            lease,
-            since: opts.since ?? r.since,
-            until: opts.until ?? r.until,
-          }),
-          syncShopeeAdsWarehouseMetrics({
-            connectionId,
-            workspaceId,
-            userPlan: plan,
-            lease,
-            since: opts.since ?? r.since,
-            until: opts.until ?? r.until,
-          }),
-        ]);
+        const range = {
+          since: opts.since ?? r.since,
+          until: opts.until ?? r.until,
+        };
+        const catalog = await syncShopeeCatalogWarehouse({ connectionId, workspaceId });
+        const orders = await syncShopeeWarehouseMetrics({
+          connectionId,
+          workspaceId,
+          userPlan: plan,
+          lease,
+          ...range,
+        });
+        const ads = await syncShopeeAdsWarehouseMetrics({
+          connectionId,
+          workspaceId,
+          userPlan: plan,
+          lease,
+          ...range,
+        });
+        if (!ads.success) {
+          logger.warn(
+            `[syncConnectionData] Shopee Ads warehouse failed (orders still ok): ${ads.error ?? ""}`
+          );
+        }
         const children: SyncChildResult[] = [
           { id: "campaign_catalog", kind: "connection", ok: catalog.campaignsSuccess, rowsIngested: catalog.campaignsWritten, error: catalog.campaignsError, retryable: !catalog.campaignsSuccess && isRetryableSyncError(catalog.campaignsError) },
           { id: "product_catalog", kind: "connection", ok: catalog.productsSuccess, rowsIngested: catalog.productsWritten, error: catalog.productsError, retryable: !catalog.productsSuccess && isRetryableSyncError(catalog.productsError) },

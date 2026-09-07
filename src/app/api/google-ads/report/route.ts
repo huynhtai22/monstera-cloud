@@ -7,6 +7,7 @@ import { clampGoogleAdsDatePeriodForPlan, getPlanLimits } from '@/lib/plan-confi
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { logger } from "@/lib/logger";
+import { runWithConnectorContext, toOpaqueAccountId } from '@/lib/observability/connector-telemetry';
 
 /**
  * POST /api/google-ads/report
@@ -76,17 +77,21 @@ export async function POST(req: Request) {
     const accessToken = await getValidOAuthToken(conn);
     const creds = JSON.parse(safeDecrypt(conn.credentials)) as { mccId?: string };
 
-    let rows: unknown[];
-    switch (reportType) {
-      case 'adgroup':
-        rows = await googleAdsReportClient.getAdGroupPerformance(accessToken, customerId, datePeriod, creds.mccId);
-        break;
-      case 'shopping':
-        rows = await googleAdsReportClient.getShoppingPerformance(accessToken, customerId, datePeriod, creds.mccId);
-        break;
-      default:
-        rows = await googleAdsReportClient.getCampaignPerformance(accessToken, customerId, datePeriod, creds.mccId);
-    }
+    const rows = await runWithConnectorContext({
+      workspaceId: conn.workspaceId,
+      connectionId: conn.id,
+      provider: 'google_ads',
+      opaqueAccountId: toOpaqueAccountId(customerId),
+    }, async () => {
+      switch (reportType) {
+        case 'adgroup':
+          return await googleAdsReportClient.getAdGroupPerformance(accessToken, customerId, datePeriod, creds.mccId);
+        case 'shopping':
+          return await googleAdsReportClient.getShoppingPerformance(accessToken, customerId, datePeriod, creds.mccId);
+        default:
+          return await googleAdsReportClient.getCampaignPerformance(accessToken, customerId, datePeriod, creds.mccId);
+      }
+    });
 
     const responsePayload: Record<string, unknown> = { rows, reportType, datePeriod, rowCount: rows.length };
 

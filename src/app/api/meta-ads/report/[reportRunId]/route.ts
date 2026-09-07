@@ -5,6 +5,7 @@ import { metaReportClient } from '@/lib/meta-ads';
 import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import prisma from '@/lib/prisma';
 import { logger } from "@/lib/logger";
+import { runWithConnectorContext } from '@/lib/observability/connector-telemetry';
 
 /**
  * GET /api/meta-ads/report/[reportRunId]?connectionId=&adAccountId=
@@ -43,20 +44,26 @@ export async function GET(
 
   try {
     const accessToken = await getValidOAuthToken(conn);
-    const status = await metaReportClient.checkAsyncReport(accessToken, reportRunId);
+    return await runWithConnectorContext({
+      workspaceId: conn.workspaceId,
+      connectionId: conn.id,
+      provider: 'meta_ads',
+    }, async () => {
+      const status = await metaReportClient.checkAsyncReport(accessToken, reportRunId);
 
-    if (status.async_status === 'Job Completed') {
-      const rows = await metaReportClient.fetchAsyncResults(accessToken, reportRunId);
-      return NextResponse.json({ status: 'COMPLETED', percent: 100, rows });
-    }
+      if (status.async_status === 'Job Completed') {
+        const rows = await metaReportClient.fetchAsyncResults(accessToken, reportRunId);
+        return NextResponse.json({ status: 'COMPLETED', percent: 100, rows });
+      }
 
-    if (status.async_status === 'Job Failed' || status.async_status === 'Job Skipped') {
-      return NextResponse.json({ status: 'FAILED', percent: status.async_percent_completion });
-    }
+      if (status.async_status === 'Job Failed' || status.async_status === 'Job Skipped') {
+        return NextResponse.json({ status: 'FAILED', percent: status.async_percent_completion });
+      }
 
-    return NextResponse.json({
-      status: 'RUNNING',
-      percent: status.async_percent_completion,
+      return NextResponse.json({
+        status: 'RUNNING',
+        percent: status.async_percent_completion,
+      });
     });
   } catch (err: any) {
     logger.error('[META_ADS_REPORT_POLL]', err);

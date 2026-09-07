@@ -9,6 +9,7 @@ import {
 } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 import { logger } from "@/lib/logger";
+import { runWithConnectorContext, toOpaqueAccountId } from '@/lib/observability/connector-telemetry';
 
 /**
  * POST /api/meta-ads/report
@@ -116,17 +117,22 @@ export async function POST(req: Request) {
 
     const accessToken = await getValidOAuthToken(conn);
 
-    let responsePayload: Record<string, unknown>;
-
-    if (body.async) {
-      // Large dataset — create async report job
-      const reportRunId = await metaReportClient.createAsyncReport(accessToken, params);
-      responsePayload = { mode: 'async', report_run_id: reportRunId };
-    } else {
-      // Synchronous — good for up to ~14-day ranges
-      const rows = await metaReportClient.getInsights(accessToken, params);
-      responsePayload = { mode: 'sync', rows };
-    }
+    const responsePayload = await runWithConnectorContext({
+      workspaceId: conn.workspaceId,
+      connectionId: conn.id,
+      provider: 'meta_ads',
+      opaqueAccountId: toOpaqueAccountId(adAccountId),
+    }, async () => {
+      if (body.async) {
+        // Large dataset — create async report job
+        const reportRunId = await metaReportClient.createAsyncReport(accessToken, params);
+        return { mode: 'async', report_run_id: reportRunId };
+      } else {
+        // Synchronous — good for up to ~14-day ranges
+        const rows = await metaReportClient.getInsights(accessToken, params);
+        return { mode: 'sync', rows };
+      }
+    });
 
     // Cache result
     reportCache.set(cacheKey, { result: responsePayload as Record<string, unknown>, cachedAt: Date.now() });

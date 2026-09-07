@@ -202,8 +202,8 @@ export function summarizeConnectorEvidence(
   }>();
 
   for (const ev of events) {
-    const isTenantScoped = ev.contextStatus !== "unbound" && Boolean(ev.workspaceId) && ev.workspaceId !== "ws_unspecified" && ev.workspaceId.trim() !== "";
-    const wsKey = isTenantScoped ? hashWorkspace(ev.workspaceId) : null;
+    const isTenantScoped = ev.contextStatus === "tenant_scoped" && Boolean(ev.workspaceId);
+    const wsKey = isTenantScoped && ev.workspaceId ? hashWorkspace(ev.workspaceId) : null;
     let wsEntry: {
       totalJobs: number;
       totalItems: number;
