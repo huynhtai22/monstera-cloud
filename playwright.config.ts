@@ -31,6 +31,7 @@ export default defineConfig({
       GOOGLE_ID_TOKEN_AUDIENCES: "e2e-client.apps.googleusercontent.com",
       MONSTERA_E2E_ISOLATED: process.env.MONSTERA_E2E_ISOLATED ?? "",
       CLIENT_ASSIGNMENT_TEST_DB: process.env.CLIENT_ASSIGNMENT_TEST_DB ?? "",
+      GIT_COMMIT_SHA: process.env.GIT_COMMIT_SHA ?? "e2e-isolated-git-commit-sha",
       PILOT_MODE: "1",
       ENABLE_GOVERNED_ANALYST: "1",
     },
