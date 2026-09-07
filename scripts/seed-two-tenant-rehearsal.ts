@@ -14,16 +14,28 @@
  *   npx tsx scripts/seed-two-tenant-rehearsal.ts
  */
 
+import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { assertSeedDatabaseDiscipline, type EnvMap } from "../src/lib/e2e-env-guard";
 
-const prisma = new PrismaClient();
+export { assertSeedDatabaseDiscipline };
 
 const PASSWORD_A = "Pilot_Alpha_2026!";
 const PASSWORD_B = "Pilot_Beta_2026!";
 
-async function main() {
-  console.log("🌱 Seeding Two-Tenant Acceptance Rehearsal Environment...\n");
+export async function seedTwoTenantRehearsal(env: EnvMap = process.env): Promise<void> {
+  const databaseUrl = assertSeedDatabaseDiscipline(env);
+  const prisma = new PrismaClient({
+    datasources: {
+      db: {
+        url: databaseUrl,
+      },
+    },
+  });
+
+  try {
+    console.log("🌱 Seeding Two-Tenant Acceptance Rehearsal Environment...\n");
 
   const [hashedPasswordA, hashedPasswordB] = await Promise.all([
     bcrypt.hash(PASSWORD_A, 12),
@@ -244,14 +256,22 @@ async function main() {
   console.log("   • Workspace: Beta Media (slug: beta-media)");
   console.log("   • Owner:     bob@beta-media.test    / Password: " + PASSWORD_B);
   console.log("   • Connection ID: " + betaGoogle.id);
-  console.log("\nTwo-tenant acceptance rehearsal data ready!");
+    console.log("\nTwo-tenant acceptance rehearsal data ready!");
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
-main()
-  .catch((e) => {
-    console.error("❌ Error seeding rehearsal data:", e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+export const main = seedTwoTenantRehearsal;
+
+const isDirectExecution =
+  Boolean(process.argv[1]) &&
+  path.resolve(process.argv[1]) === path.resolve(__filename);
+
+if (isDirectExecution) {
+  seedTwoTenantRehearsal(process.env)
+    .catch((e) => {
+      console.error("❌ Error seeding rehearsal data:", e);
+      process.exit(1);
+    });
+}

@@ -42,6 +42,20 @@ describe("Google Gate A evaluation", () => {
     assert.equal(result.artifactHashes.length, 4);
   });
 
+  it("canonicalizes evidence-hash order while preserving duplicate occurrences", () => {
+    const artifacts = artifactSet();
+    const ordered = evaluateGoogleGateA(input({ artifacts }));
+    const replayOrder = evaluateGoogleGateA(input({ artifacts: [...artifacts].reverse() }));
+    assert.deepEqual(replayOrder.artifactHashes, ordered.artifactHashes);
+
+    const withDuplicate = evaluateGoogleGateA(input({ artifacts: [...artifacts, artifacts[0]] }));
+    assert.equal(withDuplicate.artifactHashes.length, artifacts.length + 1);
+    assert.equal(
+      withDuplicate.artifactHashes.filter((hash) => hash === artifacts[0].payloadHash).length,
+      2,
+    );
+  });
+
   it("fails when a required artifact kind is missing", () => {
     const artifacts = artifactSet().filter((a) => a.kind !== "warehouse");
     const result = evaluateGoogleGateA(input({ artifacts }));

@@ -1,6 +1,10 @@
-import { expect, test, type Browser, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { reportingDataset } from "../../src/lib/report-delivery";
+import {
+  createAuthenticatedSessionCache,
+  sharedAuthenticatedSession,
+} from "./authenticated-session";
 
 /**
  * Verified Weekly Performance Blueprint v1 — browser + API acceptance on the
@@ -35,26 +39,12 @@ async function login(page: Page, email: string, password: string) {
   expect(session.user?.email).toBe(email);
 }
 
-type Session = { context: Awaited<ReturnType<Browser["newContext"]>>; page: Page };
+const aliceSession = createAuthenticatedSessionCache();
+const bobSession = createAuthenticatedSessionCache();
 
-async function sharedSession(
-  browser: Browser,
-  email: string,
-  password: string,
-  cache: { context?: Session["context"]; page?: Page },
-): Promise<Session> {
-  if (!cache.context || !cache.page) {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    await login(page, email, password);
-    cache.context = context;
-    cache.page = page;
-  }
-  return { context: cache.context, page: cache.page };
+async function sharedSession(browser: Parameters<typeof sharedAuthenticatedSession>[0], email: string, password: string, cache: typeof aliceSession) {
+  return sharedAuthenticatedSession(browser, cache, (page) => login(page, email, password));
 }
-
-const aliceSession: { context?: Session["context"]; page?: Page } = {};
-const bobSession: { context?: Session["context"]; page?: Page } = {};
 
 async function noHorizontalOverflow(page: Page) {
   await expect
@@ -409,6 +399,12 @@ test.describe("verified weekly report blueprint", () => {
     await expect(page.getByRole("region", { name: "Verified Weekly Performance Blueprint" })).toBeVisible();
     await expect(page.getByText("Weekly Paid Media Performance").first()).toBeVisible();
 
+    // Reopen the explicit window prepared by the API journey above. The
+    // component otherwise defaults to the current complete week, which has no
+    // fixture rows or saved snapshot in this test.
+    await page.getByLabel("From", { exact: true }).fill(WINDOW.start);
+    await page.getByLabel("To", { exact: true }).fill(WINDOW.end);
+
     // Context is shown BEFORE generation: timezone + currency + requirements.
     await expect(page.getByText("Asia/Ho_Chi_Minh").first()).toBeVisible();
     await expect(page.getByText("Google Ads, Meta Ads").first()).toBeVisible();
@@ -475,6 +471,8 @@ test.describe("verified weekly report blueprint", () => {
     const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", aliceSession);
     await page.goto(`/reports?clientId=${dupClientId}`);
     await expect(page.getByRole("region", { name: "Verified Weekly Performance Blueprint" })).toBeVisible();
+    await page.getByLabel("From", { exact: true }).fill(WINDOW.start);
+    await page.getByLabel("To", { exact: true }).fill(WINDOW.end);
     await page.getByRole("button", { name: /Generate report/ }).click();
 
     // The duplicated account source is called out, never silently summed.

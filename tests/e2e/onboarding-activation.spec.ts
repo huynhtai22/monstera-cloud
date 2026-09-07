@@ -22,7 +22,7 @@ test.describe("Onboarding & activation journey", () => {
   });
 
   test("register provisions user + Start (free) workspace and issues an OTP", async ({ page }) => {
-    await page.goto("/register");
+    await page.goto("/register", { waitUntil: "domcontentloaded" });
     await page.locator("#name").fill("Onboarding Walker");
     await page.locator('input[type="email"]').fill(email);
     await page.locator("#password").fill(password);
@@ -53,7 +53,7 @@ test.describe("Onboarding & activation journey", () => {
 
     // Fresh context: pass email via the supported query param (the page
     // immediately moves it into sessionStorage and strips the URL).
-    await page.goto(`/verify?email=${encodeURIComponent(email)}`);
+    await page.goto(`/verify?email=${encodeURIComponent(email)}`, { waitUntil: "domcontentloaded" });
     for (let i = 0; i < 6; i++) {
       await page.locator(`#otp-${i}`).fill(otp[i]);
     }
@@ -65,7 +65,7 @@ test.describe("Onboarding & activation journey", () => {
   });
 
   test("login lands on the provisioned console dashboard", async ({ page }) => {
-    await page.goto("/login");
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
     await page.locator('input[type="email"]').fill(email);
     await page.locator('input[type="password"]').fill(password);
     await page.getByRole("button", { name: "Continue with Email" }).click();
@@ -80,7 +80,7 @@ test.describe("Onboarding & activation journey", () => {
   });
 
   test("sync activity states its pipeline-only scope and retries without starting a sync", async ({ page }) => {
-    await page.goto("/login");
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
     await page.locator('input[type="email"]').fill(email);
     await page.locator('input[type="password"]').fill(password);
     await page.getByRole("button", { name: "Continue with Email" }).click();
@@ -97,7 +97,7 @@ test.describe("Onboarding & activation journey", () => {
       });
     });
 
-    await page.goto("/reports");
+    await page.goto("/reports", { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: "Executive Performance" })).toBeVisible();
     await page.getByRole("button", { name: "Sync Activity & Logs" }).click();
     await expect(page.getByRole("heading", { name: "Sync activity" })).toBeVisible();
@@ -109,7 +109,7 @@ test.describe("Onboarding & activation journey", () => {
   });
 
   test("Start plan blocks API-key Looker; Sheets remains the free destination", async ({ page }) => {
-    await page.goto("/login");
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
     await page.locator('input[type="email"]').fill(email);
     await page.locator('input[type="password"]').fill(password);
     await page.getByRole("button", { name: "Continue with Email" }).click();

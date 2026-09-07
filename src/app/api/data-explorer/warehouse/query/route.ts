@@ -13,23 +13,31 @@ export async function GET(request: Request) {
   const query = new URL(request.url).searchParams;
   const workspaceId = query.get("workspaceId") ?? "";
   const connectionId = query.get("connectionId") ?? "";
+  const clientId = query.get("clientId") ?? "";
   const startDate = query.get("startDate") ?? "";
   const endDate = query.get("endDate") ?? "";
   const startRow = Number.parseInt(query.get("startRow") ?? "0", 10);
   const endRow = Number.parseInt(query.get("endRow") ?? "100", 10);
-  if (!workspaceId || !connectionId || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
-    return NextResponse.json({ error: "workspaceId, connectionId and valid dates are required" }, { status: 400 });
+  if (!workspaceId || (!connectionId && !clientId) || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    return NextResponse.json({ error: "workspaceId, connectionId or clientId, and valid dates are required" }, { status: 400 });
   }
   if (!Number.isFinite(startRow) || !Number.isFinite(endRow) || startRow < 0 || endRow <= startRow || endRow - startRow > 500) {
     return NextResponse.json({ error: "Invalid startRow/endRow (max 500 rows)" }, { status: 400 });
   }
   await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer", operation: "query_warehouse" });
-  const connection = await prisma.connection.findFirst({ where: { id: connectionId, workspaceId }, select: { id: true } });
-  if (!connection) return NextResponse.json({ error: "Connection not found in workspace" }, { status: 404 });
+  if (connectionId) {
+    const connection = await prisma.connection.findFirst({ where: { id: connectionId, workspaceId }, select: { id: true } });
+    if (!connection) return NextResponse.json({ error: "Connection not found in workspace" }, { status: 404 });
+  }
+  if (clientId && clientId !== "unassigned") {
+    const client = await prisma.client.findFirst({ where: { id: clientId, workspaceId }, select: { id: true } });
+    if (!client) return NextResponse.json({ error: "Client not found in workspace" }, { status: 404 });
+  }
 
   const result = await queryWarehouse({
     workspaceId,
-    connectionId,
+    connectionId: connectionId || undefined,
+    clientId: clientId || undefined,
     startDate: new Date(`${startDate}T00:00:00.000Z`),
     endDate: new Date(`${endDate}T23:59:59.999Z`),
     offset: startRow,

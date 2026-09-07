@@ -37,6 +37,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const workspaceId = searchParams.get("workspaceId");
+  const clientId = searchParams.get("clientId");
   const startDateStr = searchParams.get("startDate"); // YYYY-MM-DD
   const endDateStr = searchParams.get("endDate"); // YYYY-MM-DD
   const platform = searchParams.get("platform");
@@ -65,6 +66,17 @@ export async function GET(req: Request) {
     if (rbac) return rbac;
     throw err;
   }
+
+  if (clientId && clientId !== "unassigned") {
+    const client = await prisma.client.findFirst({
+      where: { id: clientId, workspaceId },
+      select: { id: true },
+    });
+    if (!client) {
+      return NextResponse.json({ error: "Client not found in workspace" }, { status: 404 });
+    }
+  }
+
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
     select: { plan: true },
@@ -97,6 +109,7 @@ export async function GET(req: Request) {
   // Generate deterministic cache key
   const cacheKey = generateCacheKey("metrics:query", {
     workspaceId,
+    clientId,
     startDateStr,
     endDateStr,
     platform,
@@ -164,6 +177,7 @@ export async function GET(req: Request) {
       try {
         const responseData = await queryMetricsAggregate({
           workspaceId,
+          clientId: clientId || undefined,
           startDateStr,
           endDateStr,
           platform,
@@ -190,6 +204,7 @@ export async function GET(req: Request) {
     const [warehouseResult, dateRangeAgg, platforms] = await Promise.all([
       queryWarehouse({
         workspaceId,
+        clientId: clientId || undefined,
         startDate: startDate ?? undefined,
         endDate: endDate ?? undefined,
         platforms: platformList,

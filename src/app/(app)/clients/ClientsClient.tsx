@@ -10,6 +10,7 @@ import {
   Plus,
   X,
   Briefcase,
+  Database,
   LineChart,
   DatabaseZap,
   Calendar,
@@ -376,11 +377,11 @@ export function ClientsClient() {
 
         <div className="rounded-xl border border-line bg-panel/60 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wider text-ink-mute">
-            {viewMode === "clients" ? "Assigned Sources" : "Managed Sources"}
+            {viewMode === "clients" ? "Assigned Accounts" : "Managed Sources"}
           </p>
           <p className="mt-1 text-2xl font-bold tracking-tight text-ink">
             {viewMode === "clients"
-              ? clientsList.reduce((s, c) => s + (c.connections?.length ?? 0), 0)
+              ? clientsList.reduce((s, c) => s + (c.accountAssignments?.length ?? c._count?.accountAssignments ?? c.connections?.length ?? 0), 0)
               : workspacesSummary.totalSources}
           </p>
         </div>
@@ -571,11 +572,16 @@ export function ClientsClient() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1.5">
                           <h3 className="truncate text-sm font-semibold text-ink">{c.name}</h3>
-                          {c.isDemo ? (
-                            <span className="rounded bg-violet-950/80 border border-violet-800/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-200">
-                              Demo
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="rounded bg-white/[0.06] border border-line px-1.5 py-0.5 text-[10px] font-mono text-ink-mute" title="Assigned provider accounts">
+                              {health.assignedAccountsCount} {health.assignedAccountsCount === 1 ? "account" : "accounts"}
                             </span>
-                          ) : null}
+                            {c.isDemo ? (
+                              <span className="rounded bg-violet-950/80 border border-violet-800/40 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-200">
+                                Demo
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                         <p className="mt-0.5 truncate text-xs text-ink-mute">
                           {c.description || "No description provided"}
@@ -601,6 +607,16 @@ export function ClientsClient() {
                           Last sync: <strong className="text-ink font-normal">{lastSync.text}</strong>
                         </span>
                       </div>
+
+                      {/* Missing Required Provider Warning */}
+                      {health.missingRequiredProviders.length > 0 ? (
+                        <div className="flex items-center gap-1.5 rounded-md border border-amber-900/40 bg-amber-950/20 px-2.5 py-1.5 text-[11px] text-amber-300">
+                          <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                          <span>
+                            Missing required: <strong className="font-semibold text-amber-200">{health.missingRequiredProviders.map((p) => p.replace(/_/g, " ")).join(", ")}</strong>
+                          </span>
+                        </div>
+                      ) : null}
 
                       {/* Provider Icons */}
                       {health.connectedProviders.length > 0 ? (
@@ -697,6 +713,13 @@ export function ClientsClient() {
                     {/* Card Actions */}
                     <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-line/60 pt-3">
                       <Link
+                        href={`/sources?clientId=${encodeURIComponent(c.id)}&tab=accounts`}
+                        className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.04] transition-colors"
+                      >
+                        <Database className="h-3.5 w-3.5" />
+                        Manage sources
+                      </Link>
+                      <Link
                         href={`/reports?clientId=${encodeURIComponent(c.id)}`}
                         className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.04] transition-colors"
                       >
@@ -704,7 +727,7 @@ export function ClientsClient() {
                         Reports
                       </Link>
                       <Link
-                        href={`/explorer`}
+                        href={`/explorer?clientId=${encodeURIComponent(c.id)}`}
                         className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.04] transition-colors"
                       >
                         <DatabaseZap className="h-3.5 w-3.5" />

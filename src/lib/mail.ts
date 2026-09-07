@@ -1,15 +1,28 @@
 import { Resend } from 'resend';
 import { logger } from "@/lib/logger";
+import { assertMailSimulationAllowed } from "@/lib/e2e-env-guard";
 
 // Vercel build phase evaluates this file statically. If RESEND_API_KEY is missing during
 // the build phase, the Resend constructor throws a fatal error and breaks the build.
-// Providing a fallback string "re_dummy" prevents this build crash.
-const resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
-
+// Lazy instantiation prevents build crashes and ensures no provider client is created
+// before isolation checks pass.
+let _resend: Resend | null = null;
+function getResendClient(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
+  }
+  return _resend;
+}
 
 export const sendOtpEmail = async (email: string, otp: string) => {
+  if (process.env.MONSTERA_E2E_ISOLATED === "1") {
+    assertMailSimulationAllowed(process.env);
+    logger.info("[MAIL] E2E isolation verified; simulating OTP delivery");
+    return { success: true, data: { simulated: true } };
+  }
+
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [email],
       subject: 'Verify your email - Monstera Cloud',
@@ -46,7 +59,7 @@ export const sendOtpEmail = async (email: string, otp: string) => {
 
 export const sendPasswordResetEmail = async (email: string, resetUrl: string) => {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [email],
       subject: 'Reset your password – Monstera Cloud',
@@ -87,7 +100,7 @@ export const sendPasswordResetEmail = async (email: string, resetUrl: string) =>
 export const sendSyncFailureEmail = async (to: string, pipelineName: string, errorMsg: string) => {
   try {
     const safeError = (errorMsg || "").slice(0, 2000);
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [to],
       subject: `Sync failed: ${pipelineName}`,
@@ -124,7 +137,7 @@ ${safeError}
 
 export const sendDataFreshnessAlertEmail = async (to: string, workspaceName: string, hoursStale: number) => {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [to],
       subject: `Data is stale: ${workspaceName}`,
@@ -156,7 +169,7 @@ export const sendDataFreshnessAlertEmail = async (to: string, workspaceName: str
 
 export const sendPaymentPastDueEmail = async (to: string, name: string) => {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [to],
       subject: 'Action required: Your Monstera Cloud payment is past due',
@@ -225,7 +238,7 @@ export const sendClientWeeklyReport = async (
         ? `<span style="display:inline-block; background-color:#fef2f2; color:#991b1b; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600;">${summary.errors} error${summary.errors === 1 ? "" : "s"}</span>`
         : `<span style="display:inline-block; background-color:#ecfdf5; color:#047857; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600;">All green</span>`;
 
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [to],
       subject: `Weekly recap: ${safeName} – ${summary.weekLabel}`,
@@ -278,7 +291,7 @@ export const sendClientWeeklyReport = async (
 
 export const sendPerformanceAlertEmail = async (to: string, workspaceName: string, netRoas: number, spend: number, dateLabel: string) => {
   try {
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [to],
       subject: `Performance alert: Net ROAS ${netRoas.toFixed(2)} (${workspaceName})`,
@@ -334,7 +347,7 @@ export const sendClientBriefEmail = async (
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\n/g, '<br/>');
 
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResendClient().emails.send({
       from: 'Monstera Cloud <no-reply@monsteracloud.com>',
       to: [to],
       subject: `Marketing Brief: ${clientName} – Monstera Cloud`,

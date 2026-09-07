@@ -58,8 +58,20 @@ export interface ClientWithConnections {
   createdAt: string;
   updatedAt: string;
   isDemo?: boolean;
-  _count?: { pipelines?: number; connections?: number };
+  requiredProviders?: string[];
+  requiredDestinations?: string[];
+  requirementsConfiguredAt?: string | null;
+  accountAssignmentsConfiguredAt?: string | null;
+  _count?: { pipelines?: number; connections?: number; accountAssignments?: number };
   connections?: PortfolioConnection[];
+  accountAssignments?: Array<{
+    id: string;
+    provider: string;
+    accountId: string;
+    connectionId: string;
+    assignedAt?: string | Date;
+    connection?: PortfolioConnection;
+  }>;
 }
 
 export interface ClientHealthSummary {
@@ -69,25 +81,84 @@ export interface ClientHealthSummary {
   failingCount: number;
   latestSyncAt: string | null;
   connectedProviders: string[];
+  assignedAccountsCount: number;
+  missingRequiredProviders: string[];
 }
 
 /**
- * Derive unified health for an individual client from its assigned connections.
+ * Derive unified health for an individual client from its assigned connections or account assignments.
  */
 export function deriveClientHealth(client: {
   connections?: PortfolioConnection[];
+  accountAssignmentsConfiguredAt?: string | null;
+  accountAssignments?: Array<{
+    id: string;
+    provider: string;
+    accountId: string;
+    connectionId: string;
+    connection?: PortfolioConnection;
+  }>;
+  requiredProviders?: string[];
+  _count?: { accountAssignments?: number; connections?: number };
 }): ClientHealthSummary {
-  const connections = client.connections ?? [];
-  const connectedProviders = Array.from(new Set(connections.map((c) => c.provider)));
+  const isExplicit = client.accountAssignmentsConfiguredAt != null;
+  const assignmentsLoaded = client.accountAssignments !== undefined;
+  const assignedAccountsCount = client.accountAssignments !== undefined
+    ? client.accountAssignments.length
+    : (client._count?.accountAssignments ?? 0);
 
-  if (connections.length === 0) {
+  // The configured marker, not an assignment count, selects authority. An
+  // explicitly configured empty client must never regain legacy connection
+  // scope, including while assignment data is temporarily unavailable.
+  const assignmentProviders = client.accountAssignments?.map((a) => a.provider) ?? [];
+  const connectionProviders = client.connections?.map((c) => c.provider) ?? [];
+  const connectedProviders = Array.from(new Set(
+    isExplicit ? assignmentProviders : connectionProviders,
+  ));
+
+  // Missing required providers check
+  const required = client.requiredProviders ?? [];
+  const missingRequiredProviders = required.filter((rp) => !connectedProviders.includes(rp));
+
+  // Determine connections to evaluate for health
+  let connections: PortfolioConnection[] = [];
+  if (isExplicit && assignmentsLoaded) {
+    const fromAssignments = (client.accountAssignments ?? []).map((a) => a.connection).filter(Boolean) as PortfolioConnection[];
+    const seen = new Set<string>();
+    for (const conn of fromAssignments) {
+      if (!seen.has(conn.id)) {
+        seen.add(conn.id);
+        connections.push(conn);
+      }
+    }
+  }
+  if (!isExplicit) {
+    connections = client.connections ?? [];
+  }
+
+  if (isExplicit && !assignmentsLoaded) {
     return {
       status: "pending",
-      label: "No sources",
+      label: "Assignment data unavailable",
       badgeClass: "border-line bg-panel text-ink-mute",
       failingCount: 0,
       latestSyncAt: null,
       connectedProviders,
+      assignedAccountsCount,
+      missingRequiredProviders,
+    };
+  }
+
+  if (connections.length === 0 && assignedAccountsCount === 0) {
+    return {
+      status: "pending",
+      label: missingRequiredProviders.length > 0 ? "Missing required sources" : "No sources",
+      badgeClass: missingRequiredProviders.length > 0 ? "border-amber-900/40 bg-amber-950/20 text-amber-300" : "border-line bg-panel text-ink-mute",
+      failingCount: 0,
+      latestSyncAt: null,
+      connectedProviders,
+      assignedAccountsCount,
+      missingRequiredProviders,
     };
   }
 
@@ -115,6 +186,21 @@ export function deriveClientHealth(client: {
       failingCount: failing.length,
       latestSyncAt: latestSync ? latestSync.toISOString() : null,
       connectedProviders,
+      assignedAccountsCount,
+      missingRequiredProviders,
+    };
+  }
+
+  if (missingRequiredProviders.length > 0) {
+    return {
+      status: "needs_attention",
+      label: `Missing ${missingRequiredProviders.length} required provider${missingRequiredProviders.length === 1 ? "" : "s"}`,
+      badgeClass: "border-amber-900/40 bg-amber-950/20 text-amber-300",
+      failingCount: 0,
+      latestSyncAt: latestSync ? latestSync.toISOString() : null,
+      connectedProviders,
+      assignedAccountsCount,
+      missingRequiredProviders,
     };
   }
 
@@ -126,6 +212,8 @@ export function deriveClientHealth(client: {
       failingCount: 0,
       latestSyncAt: latestSync.toISOString(),
       connectedProviders,
+      assignedAccountsCount,
+      missingRequiredProviders,
     };
   }
 
@@ -136,6 +224,8 @@ export function deriveClientHealth(client: {
     failingCount: 0,
     latestSyncAt: null,
     connectedProviders,
+    assignedAccountsCount,
+    missingRequiredProviders,
   };
 }
 

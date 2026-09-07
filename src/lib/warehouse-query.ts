@@ -23,6 +23,66 @@ export interface WarehouseQueryInput {
   includeTotalCount?: boolean;
 }
 
+/**
+ * Returns the provider/account tuples that must not appear in the workspace's
+ * unassigned view. Explicit assignments own a tuple across every root. Legacy
+ * client links keep their metric tuples owned until that client is cut over.
+ *
+ * This intentionally does not gate rows on Connection.clientId: explicit
+ * unassignment retains that legacy pointer, while its removed tuple must become
+ * discoverable again. Conversely, an alternate MCC copy of an owned tuple must
+ * not appear as a second assignable account.
+ */
+export async function getUnassignedTupleExclusions(
+  workspaceId: string,
+  db: ScopedTransaction = prisma,
+): Promise<Array<{ platform: string; accountId: string }>> {
+  const [assignments, legacyConnections] = await Promise.all([
+    db.clientProviderAccountAssignment.findMany({
+      where: { workspaceId },
+      select: { provider: true, accountId: true },
+    }),
+    db.connection.findMany({
+      where: {
+        workspaceId,
+        type: "source",
+        clientId: { not: null },
+        client: { accountAssignmentsConfiguredAt: null },
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  const legacyConnectionIds = legacyConnections.map((connection) => connection.id);
+  const legacyMetricTuples = legacyConnectionIds.length === 0
+    ? []
+    : await db.campaignMetric.findMany({
+      where: { workspaceId, connectionId: { in: legacyConnectionIds } },
+      distinct: ["platform", "accountId"],
+      select: { platform: true, accountId: true },
+    });
+
+  const uniqueTuples = new Map<string, { platform: string; accountId: string }>();
+  for (const assignment of assignments) {
+    uniqueTuples.set(`${assignment.provider}:${assignment.accountId}`, {
+      platform: assignment.provider,
+      accountId: assignment.accountId,
+    });
+  }
+  for (const tuple of legacyMetricTuples) {
+    uniqueTuples.set(`${tuple.platform}:${tuple.accountId}`, tuple);
+  }
+  return [...uniqueTuples.values()];
+}
+
+export function unassignedTupleFilter(
+  exclusions: Array<{ platform: string; accountId: string }>,
+): Pick<Prisma.CampaignMetricWhereInput, "NOT"> {
+  return exclusions.length === 0
+    ? {}
+    : { NOT: exclusions.map((tuple) => ({ platform: tuple.platform, accountId: tuple.accountId })) };
+}
+
 function decodeCursor(cursor: string): { date: Date; id: string } | null {
   try {
     const decoded = decodeURIComponent(cursor);
@@ -56,7 +116,48 @@ function adNameFromRawData(rawData: string | null): string | null {
 export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTransaction = prisma) {
   const take = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), HARD_LIMIT);
   const where: Prisma.CampaignMetricWhereInput = { workspaceId: input.workspaceId };
-  if (input.clientId) where.connection = { workspaceId: input.workspaceId, clientId: input.clientId, type: "source" };
+  let clientAuthoritativeConnectionIds: string[] | null = null;
+
+  if (input.clientId === "unassigned") {
+    Object.assign(where, unassignedTupleFilter(
+      await getUnassignedTupleExclusions(input.workspaceId, db),
+    ));
+  } else if (input.clientId) {
+    const client = await db.client.findFirst({
+      where: { id: input.clientId, workspaceId: input.workspaceId },
+      select: { id: true, accountAssignmentsConfiguredAt: true },
+    });
+
+    const isExplicit = client?.accountAssignmentsConfiguredAt != null;
+
+    if (isExplicit) {
+      const assignments = await db.clientProviderAccountAssignment.findMany({
+        where: {
+          workspaceId: input.workspaceId,
+          clientId: input.clientId,
+        },
+        select: {
+          provider: true,
+          accountId: true,
+          connectionId: true,
+        },
+      });
+
+      if (assignments.length > 0) {
+        clientAuthoritativeConnectionIds = [...new Set(assignments.map((a) => a.connectionId))];
+        where.OR = assignments.map((a) => ({
+          connectionId: a.connectionId,
+          platform: a.provider,
+          accountId: a.accountId,
+        }));
+      } else {
+        where.id = { in: [] };
+        clientAuthoritativeConnectionIds = [];
+      }
+    } else {
+      where.connection = { workspaceId: input.workspaceId, clientId: input.clientId, type: "source" };
+    }
+  }
 
   if (input.startDate || input.endDate) {
     where.date = {
@@ -93,7 +194,17 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
     }),
     input.includeTotalCount ? db.campaignMetric.count({ where: countWhere }) : Promise.resolve(undefined),
     db.campaignMetric.aggregate({ where: countWhere, _max: { pulledAt: true } }),
-    db.connection.aggregate({ where: { workspaceId: input.workspaceId }, _max: { lastSyncAt: true } }),
+    db.connection.aggregate({
+      where: {
+        workspaceId: input.workspaceId,
+        ...(clientAuthoritativeConnectionIds !== null
+          ? { id: { in: clientAuthoritativeConnectionIds } }
+          : input.clientId
+            ? { clientId: input.clientId, type: "source" }
+            : {}),
+      },
+      _max: { lastSyncAt: true },
+    }),
     db.syncJob.findFirst({
       where: { pipeline: { workspaceId: input.workspaceId } },
       orderBy: { createdAt: "desc" },

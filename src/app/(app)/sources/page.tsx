@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Database, Search, Plus, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, X, Clock } from "lucide-react";
+import { Database, Search, Plus, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, X, Clock, Users } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
 import { FixConnectionModal } from "@/components/FixConnectionModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -24,6 +24,7 @@ import { ConnectedSourceList } from "@/components/sources/ConnectedSourceList";
 import { SourceOutcomeBanner, type SourceOutcomeNotice } from "@/components/sources/SourceOutcomeBanner";
 import { countSourceHealthStatuses } from "@/lib/source-health";
 import { displayConnectionName, shopeeShopIdFrom, sourceManagerBadge } from "@/lib/source-list-display";
+import { ClientAccountsSection } from "@/components/sources/ClientAccountsSection";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
@@ -75,6 +76,7 @@ export default function SourcesPage() {
     const [disconnectTarget, setDisconnectTarget] = useState<{ id: string; name: string } | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeFilter, setActiveFilter] = useState('connected');
+    const [initialClientId, setInitialClientId] = useState<string | null>(null);
     const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
     const addSourceMenuRef = useRef<HTMLDivElement>(null);
     const [sourceOutcome, setSourceOutcome] = useState<SourceOutcomeNotice | null>(null);
@@ -457,12 +459,26 @@ export default function SourcesPage() {
     }, []);
 
     useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search);
+        const cId = params.get("clientId");
+        const tab = params.get("tab");
+        if (cId) {
+            setInitialClientId(cId);
+            setActiveFilter("accounts");
+        } else if (tab === "accounts") {
+            setActiveFilter("accounts");
+        }
+    }, []);
+
+    useEffect(() => {
         if (isLoading || !Array.isArray(workspaces) || !activeWorkspaceId) return;
         if (firstRunFilterAppliedRef.current) return;
         if (connectedSourceCount !== 0) return;
+        if (activeFilter === 'accounts') return;
         setActiveFilter('available');
         firstRunFilterAppliedRef.current = true;
-    }, [isLoading, workspaces, activeWorkspaceId, connectedSourceCount]);
+    }, [isLoading, workspaces, activeWorkspaceId, connectedSourceCount, activeFilter]);
 
     /** Certified connectors plus any uncertified ones explicitly enabled for this workspace. */
     const catalogIntegrations = useMemo(() => {
@@ -1035,6 +1051,20 @@ export default function SourcesPage() {
                     </button>
                     <button
                         role="tab"
+                        aria-selected={activeFilter === 'accounts'}
+                        onClick={() => setActiveFilter('accounts')}
+                        className={cn(
+                            "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
+                            activeFilter === 'accounts'
+                                ? "bg-white/[0.08] text-white border border-white/15 shadow-xs"
+                                : "text-ink-mute hover:text-ink hover:bg-white/[0.03]"
+                        )}
+                    >
+                        <Users className="h-3.5 w-3.5" />
+                        <span>Client accounts</span>
+                    </button>
+                    <button
+                        role="tab"
                         aria-selected={activeFilter === 'available'}
                         onClick={() => setActiveFilter('available')}
                         className={cn(
@@ -1059,29 +1089,31 @@ export default function SourcesPage() {
                         </span>
                     )}
                 </div>
-                <div className="flex items-center gap-3">
-                    <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-mute" aria-hidden="true" />
-                        <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search integrations…"
-                            aria-label="Search integrations"
-                            className="h-9 w-52 sm:w-60 rounded-lg border border-line bg-panel py-1.5 pl-9 pr-3 text-xs text-ink placeholder:text-ink-mute focus:border-white/30 focus:outline-none transition-colors"
-                        />
+                {activeFilter !== 'accounts' && (
+                    <div className="flex items-center gap-3">
+                        <div className="relative">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-mute" aria-hidden="true" />
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search integrations…"
+                                aria-label="Search integrations"
+                                className="h-9 w-52 sm:w-60 rounded-lg border border-line bg-panel py-1.5 pl-9 pr-3 text-xs text-ink placeholder:text-ink-mute focus:border-white/30 focus:outline-none transition-colors"
+                            />
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
-            {/* Grid — split into "Your sources" strip + "Available" catalog */}
+            {/* Grid — split into "Your sources" strip + "Available" catalog + "Client accounts" */}
             {isLoading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" role="tabpanel">
                     {Array.from({ length: 6 }).map((_, i) => (
                         <IntegrationCardSkeleton key={i} />
                     ))}
                 </div>
-            ) : connectedRows.length === 0 && availableCards.length === 0 ? (
+            ) : activeFilter !== 'accounts' && connectedRows.length === 0 && availableCards.length === 0 ? (
                 <div className="flex w-full flex-col items-center justify-center rounded-lg border border-dashed border-line bg-panel py-20 text-center" role="tabpanel" aria-live="polite">
                     <Database className="w-10 h-10 text-ink-mute mb-4" />
                     <h3 className="text-sm font-semibold text-ink mb-1">No integrations found</h3>
@@ -1101,6 +1133,14 @@ export default function SourcesPage() {
                 </div>
             ) : (
                 <div role="tabpanel" aria-live="polite" className="space-y-8">
+                    {activeFilter === 'accounts' && activeWorkspaceId && (
+                        <section id="client-accounts-section" aria-label="Client accounts">
+                            <ClientAccountsSection
+                                workspaceId={activeWorkspaceId}
+                                initialClientId={initialClientId}
+                            />
+                        </section>
+                    )}
                     {activeFilter === 'connected' && connectedRows.length > 0 && (
                         <section id="connected-sources" aria-labelledby="sources-connected-heading" className="scroll-mt-6">
                             <h2 id="sources-connected-heading" className="sr-only">Connected</h2>

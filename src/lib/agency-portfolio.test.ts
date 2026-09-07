@@ -30,6 +30,61 @@ describe("agency-portfolio helpers", () => {
       assert.deepEqual(h.connectedProviders.sort(), ["google_ads", "meta_ads"]);
     });
 
+    it("flags client as needs_attention if required provider is missing", () => {
+      const h = deriveClientHealth({
+        connections: [
+          { id: "c1", name: "Meta Ads", provider: "meta_ads", status: "connected", lastSyncAt: "2026-08-31T10:00:00.000Z" },
+        ],
+        requiredProviders: ["meta_ads", "google_ads"],
+      });
+      assert.equal(h.status, "needs_attention");
+      assert.equal(h.label, "Missing 1 required provider");
+      assert.deepEqual(h.missingRequiredProviders, ["google_ads"]);
+    });
+
+    it("derives providers and health from accountAssignments", () => {
+      const h = deriveClientHealth({
+        accountAssignmentsConfiguredAt: "2026-09-01T00:00:00.000Z",
+        accountAssignments: [
+          {
+            id: "a1",
+            provider: "google_ads",
+            accountId: "123-456-7890",
+            connectionId: "c1",
+            connection: { id: "c1", name: "MCC", provider: "google_ads", status: "connected", lastSyncAt: "2026-08-31T10:00:00.000Z" },
+          },
+        ],
+      });
+      assert.equal(h.status, "healthy");
+      assert.equal(h.assignedAccountsCount, 1);
+      assert.deepEqual(h.connectedProviders, ["google_ads"]);
+    });
+
+    it("keeps an explicit empty client pending even when retained legacy connections are healthy", () => {
+      const h = deriveClientHealth({
+        accountAssignmentsConfiguredAt: "2026-09-01T00:00:00.000Z",
+        accountAssignments: [],
+        connections: [
+          { id: "legacy", name: "Retained legacy source", provider: "google_ads", status: "connected", lastSyncAt: "2026-08-31T12:00:00.000Z" },
+        ],
+      });
+      assert.equal(h.status, "pending");
+      assert.equal(h.label, "No sources");
+      assert.deepEqual(h.connectedProviders, []);
+    });
+
+    it("does not fall back to legacy connections when explicit assignment data is omitted", () => {
+      const h = deriveClientHealth({
+        accountAssignmentsConfiguredAt: "2026-09-01T00:00:00.000Z",
+        connections: [
+          { id: "legacy", name: "Retained legacy source", provider: "google_ads", status: "connected", lastSyncAt: "2026-08-31T12:00:00.000Z" },
+        ],
+      });
+      assert.equal(h.status, "pending");
+      assert.equal(h.label, "Assignment data unavailable");
+      assert.deepEqual(h.connectedProviders, []);
+    });
+
     it("returns healthy when all connections have synced without error", () => {
       const h = deriveClientHealth({
         connections: [

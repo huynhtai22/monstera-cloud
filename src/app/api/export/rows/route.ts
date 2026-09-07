@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { resolveApiKey } from "@/lib/api-key-security";
@@ -13,6 +14,7 @@ import { assertCsvExportAllowed, toPlanLimitResponse } from "@/lib/plan-entitlem
  * 
  * Query Params:
  *   sourceId (optional): Connection ID to pull from
+ *   clientId (optional): Client ID to scope warehouse metrics
  * 
  * Purpose: Used by Google Sheets Add-on to pull flattened warehouse data arrays.
  */
@@ -47,15 +49,52 @@ export async function GET(request: Request) {
             throw error;
         }
 
-        // 2. Find a Source Connection to pull from (Assuming Shopee for now)
+        // 2. Find a Source Connection to pull from (with optional clientId scoping)
         const { searchParams } = new URL(request.url);
         const sourceId = searchParams.get("sourceId");
+        const clientId = searchParams.get("clientId");
 
-        // Build query that ALWAYS enforces workspace ownership
+        let client = null;
+        let isExplicit = false;
+        let clientAssignments: Array<{ connectionId: string; provider: string; accountId: string }> = [];
+
+        if (clientId) {
+            client = await prisma.client.findFirst({
+                where: { id: clientId, workspaceId },
+                select: { id: true, accountAssignmentsConfiguredAt: true },
+            });
+            if (!client) {
+                return NextResponse.json({ error: "Client not found or access denied." }, { status: 404 });
+            }
+            isExplicit = client.accountAssignmentsConfiguredAt !== null;
+            if (isExplicit) {
+                clientAssignments = await prisma.clientProviderAccountAssignment.findMany({
+                    where: {
+                        workspaceId,
+                        clientId: client.id,
+                        ...(sourceId ? { connectionId: sourceId } : {}),
+                    },
+                    select: { connectionId: true, provider: true, accountId: true },
+                });
+                if (clientAssignments.length === 0) {
+                    return NextResponse.json({ success: true, rows: [] }, { status: 200 });
+                }
+            }
+        }
+
+        // Build connection query that ALWAYS enforces workspace ownership
         const connectionQuery: any = { workspaceId, type: "source" };
         if (sourceId) {
-            // Don't replace workspaceId — add id constraint alongside it
             connectionQuery.id = sourceId;
+        }
+
+        if (clientId) {
+            if (isExplicit) {
+                const assignedConnIds = [...new Set(clientAssignments.map((a) => a.connectionId))];
+                connectionQuery.id = sourceId ? sourceId : { in: assignedConnIds };
+            } else {
+                connectionQuery.clientId = client!.id;
+            }
         }
 
         const sourceConnection = await prisma.connection.findFirst({
@@ -69,6 +108,9 @@ export async function GET(request: Request) {
         }
 
         if (!sourceConnection) {
+            if (clientId) {
+                return NextResponse.json({ success: true, rows: [] }, { status: 200 });
+            }
             return NextResponse.json({ error: "No active source connections found in this workspace." }, { status: 404 });
         }
 
@@ -76,6 +118,9 @@ export async function GET(request: Request) {
         let rows: Array<Array<string | number>>;
 
         if (provider === "shopee") {
+            if (clientId && !isExplicit && sourceConnection.clientId !== client!.id) {
+                return NextResponse.json({ success: true, rows: [] }, { status: 200 });
+            }
             const orders = await prisma.retailOrder.findMany({
                 where: { workspaceId, connectionId: sourceConnection.id },
                 orderBy: { createdAt: "desc" },
@@ -85,8 +130,36 @@ export async function GET(request: Request) {
             rows = warehouseRetailOrdersCsvRows(orders);
 
         } else if (provider === "meta_ads" || provider === "google_ads" || provider === "tiktok_business") {
+            let metricWhere: Prisma.CampaignMetricWhereInput;
+            if (clientId && isExplicit) {
+                const matchingAssignments = clientAssignments.filter((a) => a.connectionId === sourceConnection.id);
+                if (matchingAssignments.length === 0) {
+                    return NextResponse.json({ success: true, rows: [] }, { status: 200 });
+                }
+                metricWhere = {
+                    workspaceId,
+                    connectionId: sourceConnection.id,
+                    OR: matchingAssignments.map((a) => ({
+                        connectionId: a.connectionId,
+                        platform: a.provider,
+                        accountId: a.accountId,
+                    })),
+                };
+            } else if (clientId && !isExplicit) {
+                metricWhere = {
+                    workspaceId,
+                    connectionId: sourceConnection.id,
+                    connection: { clientId: client!.id },
+                };
+            } else {
+                metricWhere = {
+                    workspaceId,
+                    connectionId: sourceConnection.id,
+                };
+            }
+
             const metrics = await prisma.campaignMetric.findMany({
-                where: { workspaceId, connectionId: sourceConnection.id },
+                where: metricWhere,
                 orderBy: { date: "desc" },
                 take: 10000,
                 select: { date: true, campaignName: true, impressions: true, clicks: true, spend: true, cpc: true, ctr: true, conversions: true, revenue: true, roas: true, currency: true },

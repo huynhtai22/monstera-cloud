@@ -25,25 +25,63 @@ export async function GET(req: Request) {
         // Verify membership
         await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer" });
 
+        const clientInclude = {
+            _count: {
+                select: { pipelines: true, connections: true, accountAssignments: true }
+            },
+            connections: {
+                where: { workspaceId, type: "source" },
+                select: {
+                    id: true,
+                    name: true,
+                    provider: true,
+                    status: true,
+                    lastSyncAt: true,
+                    lastError: true,
+                },
+            },
+            accountAssignments: {
+                where: { workspaceId },
+                select: {
+                    id: true,
+                    provider: true,
+                    accountId: true,
+                    connectionId: true,
+                    assignedAt: true,
+                    connection: {
+                        select: {
+                            id: true,
+                            name: true,
+                            provider: true,
+                            status: true,
+                            lastSyncAt: true,
+                            lastError: true,
+                        },
+                    },
+                },
+                orderBy: [{ provider: "asc" as const }, { accountId: "asc" as const }],
+            },
+        };
+
         const clients = await prisma.client.findMany({
             where: { workspaceId },
             orderBy: { createdAt: "desc" },
-            include: {
-                _count: {
-                    select: { pipelines: true, connections: true }
-                },
-                connections: {
-                    where: { workspaceId, type: "source" },
-                    select: {
-                        id: true,
-                        name: true,
-                        provider: true,
-                        status: true,
-                        lastSyncAt: true,
-                        lastError: true,
-                    },
-                },
-            }
+            select: {
+                id: true,
+                name: true,
+                description: true,
+                logoUrl: true,
+                workspaceId: true,
+                createdAt: true,
+                updatedAt: true,
+                requiredProviders: true,
+                requiredDestinations: true,
+                requirementsConfiguredAt: true,
+                accountAssignmentsConfiguredAt: true,
+                _count: clientInclude._count,
+                connections: clientInclude.connections,
+                accountAssignments: clientInclude.accountAssignments,
+            },
         });
 
         return NextResponse.json(clients);

@@ -1,7 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
+import { validateE2eCommitSha } from "./src/lib/e2e-env-guard";
 
 // Port is overridable so suites can run on a non-3000 port; default unchanged.
 const port = process.env.PLAYWRIGHT_PORT ?? "3000";
+const commitSha = validateE2eCommitSha(process.env);
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -20,15 +22,18 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
-      ...process.env,
       HOSTNAME: "127.0.0.1",
       PORT: port,
-      DATABASE_URL: process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/monstera_e2e",
-      NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET || "e2e-nextauth-secret-at-least-32-characters",
-      NEXTAUTH_URL: process.env.NEXTAUTH_URL || `http://127.0.0.1:${port}`,
-      ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-      CRON_SECRET: process.env.CRON_SECRET || "e2e-cron-secret-at-least-32-characters",
-      GOOGLE_ID_TOKEN_AUDIENCES: process.env.GOOGLE_ID_TOKEN_AUDIENCES || "e2e-client.apps.googleusercontent.com",
+      DATABASE_URL: process.env.DATABASE_URL ?? "",
+      DIRECT_URL: process.env.DIRECT_URL ?? "",
+      NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET ?? "e2e-nextauth-secret-at-least-32-characters",
+      NEXTAUTH_URL: `http://127.0.0.1:${port}`,
+      ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ?? "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      CRON_SECRET: process.env.CRON_SECRET ?? "e2e-cron-secret-at-least-32-characters",
+      GOOGLE_ID_TOKEN_AUDIENCES: "e2e-client.apps.googleusercontent.com",
+      MONSTERA_E2E_ISOLATED: process.env.MONSTERA_E2E_ISOLATED ?? "",
+      CLIENT_ASSIGNMENT_TEST_DB: process.env.CLIENT_ASSIGNMENT_TEST_DB ?? "",
+      GIT_COMMIT_SHA: commitSha,
       PILOT_MODE: "1",
       ENABLE_GOVERNED_ANALYST: "1",
     },
