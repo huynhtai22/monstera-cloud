@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import type { SyncOutcome } from "@/lib/sync-outcome";
+import { emitConnectorTelemetry } from "@/lib/observability/connector-telemetry";
 
 /** Prefer the stored per-connection date; fall back to a live MAX(date) for pre-column rows. */
 export function pickDataThroughDate(
@@ -34,6 +35,17 @@ export async function refreshConnectionLastDataThrough(
     where: { id: connectionId, workspaceId, status: { not: "disconnected" } },
     data: { lastDataThrough: latest },
   });
+
+  emitConnectorTelemetry({
+    eventCategory: "freshness_event",
+    operation: "data_through_refresh",
+    workspaceId,
+    connectionId,
+    freshnessOutcome: "advanced",
+    outcome: "success",
+    durationMs: 0,
+  });
+
   return latest;
 }
 

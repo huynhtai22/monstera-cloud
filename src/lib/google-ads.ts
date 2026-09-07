@@ -15,6 +15,7 @@ const GOOGLE_ADS_API_VERSION = 'v23';
 const GOOGLE_ADS_BASE = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`;
 const GOOGLE_OAUTH_BASE = 'https://accounts.google.com/o/oauth2';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+import { emitConnectorTelemetry } from '@/lib/observability/connector-telemetry';
 
 export class GoogleAdsProviderError extends Error {
   constructor(message: string, readonly retryable: boolean, readonly status?: number, readonly code?: string) {
@@ -55,21 +56,62 @@ function scrubDevToken(text: string): string {
 async function fetchGoogleAds(url: string, init: RequestInit): Promise<Response> {
   const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const startMs = Date.now();
     try {
       const response = await fetch(url, init);
-      if (response.ok) return response;
+      const durationMs = Date.now() - startMs;
+      if (response.ok) {
+        emitConnectorTelemetry({
+          eventCategory: "provider_request",
+          provider: "google_ads",
+          operation: "search_stream",
+          attempt: attempt + 1,
+          maxAttempts,
+          outcome: "success",
+          httpStatus: response.status,
+          durationMs,
+        });
+        return response;
+      }
       const detail = scrubDevToken((await response.clone().text()).slice(0, 1000));
       const retryable = isGoogleAdsRetryableFailure(response.status, detail);
+      const isQuota = response.status === 429 || /resource[_ ]exhausted|rate[_ ]exceeded|quota/i.test(detail);
+      const isDevTokenBlocked = detail.includes(GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED);
+
+      emitConnectorTelemetry({
+        eventCategory: "provider_request",
+        provider: "google_ads",
+        operation: "search_stream",
+        attempt: attempt + 1,
+        maxAttempts,
+        outcome: isQuota ? "throttled" : retryable ? "retryable_failure" : "permanent_failure",
+        errorCategory: isQuota ? "quota_exhausted" : isDevTokenBlocked ? "auth_revoked" : retryable ? "provider_unavailable" : "internal_error",
+        httpStatus: response.status,
+        durationMs,
+        retryDelayMs: retryable ? 500 * 2 ** attempt : undefined,
+      });
+
       if (!retryable || attempt === maxAttempts - 1) {
-        const code = detail.includes(GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED)
+        const code = isDevTokenBlocked
           ? GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED
           : undefined;
         throw new GoogleAdsProviderError(`Google Ads request failed ${response.status}: ${detail}`, retryable, response.status, code);
       }
     } catch (error) {
+      const durationMs = Date.now() - startMs;
       if (error instanceof GoogleAdsProviderError && !error.retryable) throw error;
       if (attempt === maxAttempts - 1) {
         if (error instanceof GoogleAdsProviderError) throw error;
+        emitConnectorTelemetry({
+          eventCategory: "provider_request",
+          provider: "google_ads",
+          operation: "search_stream",
+          attempt: attempt + 1,
+          maxAttempts,
+          outcome: "retryable_failure",
+          errorCategory: "network_error",
+          durationMs,
+        });
         throw new GoogleAdsProviderError(error instanceof Error ? error.message : "Google Ads request failed", true);
       }
     }

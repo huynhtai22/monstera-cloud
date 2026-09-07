@@ -13,6 +13,7 @@
  */
 
 import { logger } from '@/lib/logger';
+import { emitConnectorTelemetry, toOpaqueAccountId } from '@/lib/observability/connector-telemetry';
 
 const META_API_VERSION = 'v23.0';
 const META_GRAPH_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
@@ -251,7 +252,9 @@ async function metaFetch(
   maxRetries = 4,
 ): Promise<{ res: Response; throttle: MetaThrottleState | null }> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const startMs = Date.now();
     const res = await fetch(url.toString(), options);
+    const durationMs = Date.now() - startMs;
     const throttle = parseThrottleHeader(res);
 
     // Proactive throttle: if usage > 85%, wait before returning
@@ -263,7 +266,20 @@ async function metaFetch(
 
     // 429 or Meta error code 17/32/613 → back off and retry
     if (res.status === 429) {
+      emitConnectorTelemetry({
+        eventCategory: "provider_request",
+        provider: "meta_ads",
+        operation: "insights_fetch",
+        attempt: attempt + 1,
+        maxAttempts: maxRetries,
+        outcome: "throttled",
+        errorCategory: "rate_limited",
+        httpStatus: 429,
+        durationMs,
+        throttleUtilizationPct: throttle?.pct,
+      });
       if (attempt < maxRetries - 1) { await backoff(attempt); continue; }
+      return { res, throttle };
     }
 
     // Peek at body only if it's a potential rate-limit JSON error (keep body readable)
@@ -272,12 +288,39 @@ async function metaFetch(
       try {
         const errJson = await clone.json() as { error?: { code?: number; message?: string } };
         const code = errJson?.error?.code;
-        if ((code === 17 || code === 32 || code === 613 || code === 80004) && attempt < maxRetries - 1) {
-          await backoff(attempt);
-          continue;
+        if (code === 17 || code === 32 || code === 613 || code === 80004) {
+          emitConnectorTelemetry({
+            eventCategory: "provider_request",
+            provider: "meta_ads",
+            operation: "insights_fetch",
+            attempt: attempt + 1,
+            maxAttempts: maxRetries,
+            outcome: "throttled",
+            errorCategory: "rate_limited",
+            httpStatus: res.status,
+            durationMs,
+            throttleUtilizationPct: throttle?.pct,
+          });
+          if (attempt < maxRetries - 1) {
+            await backoff(attempt);
+            continue;
+          }
+          return { res, throttle };
         }
       } catch { /* non-JSON error body, fall through */ }
     }
+
+    emitConnectorTelemetry({
+      eventCategory: "provider_request",
+      provider: "meta_ads",
+      operation: "insights_fetch",
+      attempt: attempt + 1,
+      maxAttempts: maxRetries,
+      outcome: res.ok ? "success" : "retryable_failure",
+      httpStatus: res.status,
+      durationMs,
+      throttleUtilizationPct: throttle?.pct,
+    });
 
     return { res, throttle };
   }
@@ -325,6 +368,7 @@ export class MetaReportClient {
     let afterCursor: string | null = null;
 
     const cleanAdAccountId = String(params.adAccountId).replace(/^act_/, "");
+    const opaqueAccountId = toOpaqueAccountId(params.adAccountId);
     const validFields = filterFieldsForLevel(params.fields, params.level);
     do {
       const url = new URL(`${META_GRAPH_BASE}/act_${cleanAdAccountId}/insights`);
@@ -352,6 +396,17 @@ export class MetaReportClient {
 
       if (json.error) {
         if (json.error.code === 190) {
+          emitConnectorTelemetry({
+            eventCategory: "provider_request",
+            provider: "meta_ads",
+            operation: "get_insights",
+            opaqueAccountId,
+            attempt: 1,
+            outcome: "permanent_failure",
+            errorCategory: "auth_revoked",
+            httpStatus: 401,
+            durationMs: 0,
+          });
           throw new MetaOAuthRevokedError(json.error.message, json.error.code);
         }
         throw new Error(`Meta Insights error ${json.error.code}: ${json.error.message}`);

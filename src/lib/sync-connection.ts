@@ -6,6 +6,7 @@
 import prisma from "@/lib/prisma";
 import { recordProviderReportingContext } from "@/lib/reporting-context-server";
 import { logger } from "@/lib/logger";
+import { runWithConnectorContext, emitConnectorTelemetry, type ConnectorProvider } from "@/lib/observability/connector-telemetry";
 import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import { encrypt } from "@/lib/encryption";
 import {
@@ -136,106 +137,112 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
     until: opts.until ?? null,
   });
 
-  try {
-    if (provider === "meta_ads") {
-      return await syncMetaAds({
-        connectionId,
-        credentials,
-        workspaceId,
-        since: opts.since,
-        until: opts.until,
-        userPlan: plan,
-        lease,
-      });
-    } else if (provider === "google_ads") {
-      assertGoogleRuntimeModeAllowed();
-      return await syncGoogleAds({
-        connectionId,
-        credentials,
-        workspaceId,
-        since: opts.since,
-        until: opts.until,
-        userPlan: plan,
-        lease,
-        shadow: opts.shadow ?? defaultGoogleShadowOptions(connectionId),
-      });
-    } else if (provider === "tiktok_business") {
-      return await syncTikTok({
-        connectionId,
-        credentials,
-        workspaceId,
-        since: opts.since,
-        until: opts.until,
-        userPlan: plan,
-        providerState: opts.providerState,
-        lease,
-      });
-    } else if (provider === "shopee") {
-      const r = defaultRollingRange(plan);
-      const range = {
-        since: opts.since ?? r.since,
-        until: opts.until ?? r.until,
-      };
-      const catalog = await syncShopeeCatalogWarehouse({ connectionId, workspaceId });
-      const orders = await syncShopeeWarehouseMetrics({
-        connectionId,
-        workspaceId,
-        userPlan: plan,
-        lease,
-        ...range,
-      });
-      const ads = await syncShopeeAdsWarehouseMetrics({
-        connectionId,
-        workspaceId,
-        userPlan: plan,
-        lease,
-        ...range,
-      });
-      if (!ads.success) {
-        logger.warn(
-          `[syncConnectionData] Shopee Ads warehouse failed (orders still ok): ${ads.error ?? ""}`
-        );
-      }
+  const dataWindowDays = opts.since && opts.until
+    ? Math.max(1, Math.round((new Date(opts.until).getTime() - new Date(opts.since).getTime()) / (1000 * 86400)))
+    : undefined;
 
-      const children: SyncChildResult[] = [
-        { id: "campaign_catalog", kind: "connection", ok: catalog.campaignsSuccess, rowsIngested: catalog.campaignsWritten, error: catalog.campaignsError, retryable: !catalog.campaignsSuccess && isRetryableSyncError(catalog.campaignsError) },
-        { id: "product_catalog", kind: "connection", ok: catalog.productsSuccess, rowsIngested: catalog.productsWritten, error: catalog.productsError, retryable: !catalog.productsSuccess && isRetryableSyncError(catalog.productsError) },
-        { id: "orders", kind: "connection", ok: orders.success, rowsIngested: orders.rowsIngested, error: orders.error, retryable: !orders.success && isRetryableSyncError(orders.error) },
-        { id: "ads_performance", kind: "connection", ok: ads.success, rowsIngested: ads.rowsIngested, error: ads.error, retryable: !ads.success && isRetryableSyncError(ads.error) },
-      ];
-      const summary = summarizeSyncOutcome(children);
-      await persistConnectionSyncOutcome(connectionId, summary, lease);
-      return { ...summary, children };
-    } else if (provider === "lazada") {
-      const r = defaultRollingRange(plan);
-      const result = await syncLazadaWarehouseMetrics({
-        connectionId,
-        workspaceId,
-        userPlan: plan,
-        lease,
-        since: opts.since ?? r.since,
-        until: opts.until ?? r.until,
-      });
-      const children: SyncChildResult[] = [{ id: "orders", kind: "connection", ok: result.success, rowsIngested: result.rowsIngested, error: result.error, retryable: !result.success && isRetryableSyncError(result.error) }];
-      const summary = summarizeSyncOutcome(children);
-      await persistConnectionSyncOutcome(connectionId, summary, lease);
-      return { ...summary, children };
-    } else {
-      logger.error(`[syncConnectionData] Unsupported provider: ${provider}`);
-      const result = makeFailedSyncResult(`Unsupported provider: ${provider}`, false);
-      await persistConnectionSyncOutcome(connectionId, result, lease);
+  return await runWithConnectorContext({
+    workspaceId,
+    connectionId,
+    provider: provider as ConnectorProvider,
+    jobId: lease.leaseId,
+    dataWindowDays,
+  }, async () => {
+    try {
+      if (provider === "meta_ads") {
+        return await syncMetaAds({
+          connectionId,
+          credentials,
+          workspaceId,
+          since: opts.since,
+          until: opts.until,
+          userPlan: plan,
+          lease,
+        });
+      } else if (provider === "google_ads") {
+        assertGoogleRuntimeModeAllowed();
+        return await syncGoogleAds({
+          connectionId,
+          credentials,
+          workspaceId,
+          since: opts.since,
+          until: opts.until,
+          userPlan: plan,
+          lease,
+          shadow: opts.shadow ?? defaultGoogleShadowOptions(connectionId),
+        });
+      } else if (provider === "tiktok_business") {
+        return await syncTikTok({
+          connectionId,
+          credentials,
+          workspaceId,
+          userPlan: plan,
+          lease,
+          since: opts.since,
+          until: opts.until,
+          providerState: opts.providerState,
+        });
+      } else if (provider === "shopee") {
+        const r = defaultRollingRange(plan);
+        const [catalog, orders, ads] = await Promise.all([
+          syncShopeeCatalogWarehouse({ connectionId, workspaceId }),
+          syncShopeeWarehouseMetrics({
+            connectionId,
+            workspaceId,
+            userPlan: plan,
+            lease,
+            since: opts.since ?? r.since,
+            until: opts.until ?? r.until,
+          }),
+          syncShopeeAdsWarehouseMetrics({
+            connectionId,
+            workspaceId,
+            userPlan: plan,
+            lease,
+            since: opts.since ?? r.since,
+            until: opts.until ?? r.until,
+          }),
+        ]);
+        const children: SyncChildResult[] = [
+          { id: "campaign_catalog", kind: "connection", ok: catalog.campaignsSuccess, rowsIngested: catalog.campaignsWritten, error: catalog.campaignsError, retryable: !catalog.campaignsSuccess && isRetryableSyncError(catalog.campaignsError) },
+          { id: "product_catalog", kind: "connection", ok: catalog.productsSuccess, rowsIngested: catalog.productsWritten, error: catalog.productsError, retryable: !catalog.productsSuccess && isRetryableSyncError(catalog.productsError) },
+          { id: "orders", kind: "connection", ok: orders.success, rowsIngested: orders.rowsIngested, error: orders.error, retryable: !orders.success && isRetryableSyncError(orders.error) },
+          { id: "ads_performance", kind: "connection", ok: ads.success, rowsIngested: ads.rowsIngested, error: ads.error, retryable: !ads.success && isRetryableSyncError(ads.error) },
+        ];
+        const summary = summarizeSyncOutcome(children);
+        await persistConnectionSyncOutcome(connectionId, summary, lease);
+        return { ...summary, children };
+      } else if (provider === "lazada") {
+        const r = defaultRollingRange(plan);
+        const result = await syncLazadaWarehouseMetrics({
+          connectionId,
+          workspaceId,
+          userPlan: plan,
+          lease,
+          since: opts.since ?? r.since,
+          until: opts.until ?? r.until,
+        });
+        const children: SyncChildResult[] = [{ id: "orders", kind: "connection", ok: result.success, rowsIngested: result.rowsIngested, error: result.error, retryable: !result.success && isRetryableSyncError(result.error) }];
+        const summary = summarizeSyncOutcome(children);
+        await persistConnectionSyncOutcome(connectionId, summary, lease);
+        return { ...summary, children };
+      } else {
+        logger.error(`[syncConnectionData] Unsupported provider: ${provider}`);
+        const result = makeFailedSyncResult(`Unsupported provider: ${provider}`, false);
+        await persistConnectionSyncOutcome(connectionId, result, lease);
+        return result;
+      }
+    } catch (error: any) {
+      logger.error(`[syncConnectionData] Sync failed for ${provider}:`, error);
+      const result = makeFailedSyncResult(error instanceof Error ? error.message : "Sync failed");
+      try {
+        await persistConnectionSyncOutcome(connectionId, result, lease);
+      } catch (persistError) {
+        logger.error("[syncConnectionData] Failed to persist failed sync outcome", persistError);
+      }
       return result;
     }
-  } catch (error: any) {
-    logger.error(`[syncConnectionData] Sync failed for ${provider}:`, error);
-    const result = makeFailedSyncResult(error instanceof Error ? error.message : "Sync failed");
-    try {
-      await persistConnectionSyncOutcome(connectionId, result, lease);
-    } catch (persistError) {
-      logger.error("[syncConnectionData] Failed to persist failed sync outcome", persistError);
-    }
-    return result;
-  }
+  });
 }
 
 /**
@@ -270,11 +277,24 @@ export async function persistConnectionSyncOutcome(
       ? { lastSyncAt: new Date(), lastError, status: "connected" }
       : { lastError },
   });
+
+  const conn = await prisma.connection.findUnique({
+    where: { id: connectionId },
+    select: { workspaceId: true, provider: true },
+  });
+
+  emitConnectorTelemetry({
+    eventCategory: "freshness_event",
+    provider: (conn?.provider || "warehouse_queue") as ConnectorProvider,
+    operation: "sync_outcome_freshness",
+    workspaceId: conn?.workspaceId,
+    connectionId,
+    freshnessOutcome: outcome.outcome === "success" ? "advanced" : "unchanged",
+    outcome: outcome.outcome === "success" ? "success" : outcome.outcome === "partial" ? "partial" : "permanent_failure",
+    durationMs: 0,
+  });
+
   if (shouldRefreshLastDataThrough(outcome.outcome)) {
-    const conn = await prisma.connection.findUnique({
-      where: { id: connectionId },
-      select: { workspaceId: true },
-    });
     if (conn) {
       await refreshConnectionLastDataThrough(conn.workspaceId, connectionId);
     }
