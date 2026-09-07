@@ -411,10 +411,10 @@ describe("PostgreSQL integration: client provider account assignments", () => {
       startDateStr: "2026-09-04",
       endDateStr: "2026-09-04",
       accountIds: scopedAccountIds,
-      dimensions: ["date", "accountId"],
+      dimensions: ["date", "account_id"],
       metrics: ["spend"],
     });
-    assert.deepEqual(new Set(aggregate.rows.map((row) => row.accountId)), new Set([explicitlyUnassignedAccount, freeAccount]));
+    assert.deepEqual(new Set(aggregate.rows.map((row) => row.account_id)), new Set([explicitlyUnassignedAccount, freeAccount]));
   });
 
   it("rolls back every workspace cutover write when a later client conflicts, while valid clients commit together", async () => {
