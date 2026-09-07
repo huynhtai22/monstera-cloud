@@ -313,11 +313,11 @@ describe("PostgreSQL integration: client provider account assignments", () => {
     await db.connection.createMany({
       data: [
         {
-          id: firstRoot, workspaceId: ids.workspaceA, name: "First root", provider: "google_ads", type: "source", status: "connected",
+          id: firstRoot, workspaceId: ids.workspaceA, name: "First root", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `root-bulk-1-${suffix}`,
           credentials: JSON.stringify({ customerIds: [accountId] }),
         },
         {
-          id: secondRoot, workspaceId: ids.workspaceA, name: "Second root", provider: "google_ads", type: "source", status: "connected",
+          id: secondRoot, workspaceId: ids.workspaceA, name: "Second root", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `root-bulk-2-${suffix}`,
           credentials: JSON.stringify({ customerIds: [accountId] }),
         },
       ],
@@ -364,10 +364,10 @@ describe("PostgreSQL integration: client provider account assignments", () => {
       { id: ownerClientId, workspaceId: ids.workspaceA, name: "Tuple owner client", accountAssignmentsConfiguredAt: new Date() },
     ] });
     await db.connection.createMany({ data: [
-      { id: legacyConnectionId, workspaceId: ids.workspaceA, clientId: legacyClientId, name: "Legacy source", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [legacyAccount] }) },
-      { id: explicitConnectionId, workspaceId: ids.workspaceA, clientId: explicitClientId, name: "Explicit source", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [explicitlyUnassignedAccount] }) },
-      { id: ownerConnectionId, workspaceId: ids.workspaceA, name: "Tuple owner root", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [ownedSharedAccount] }) },
-      { id: alternateConnectionId, workspaceId: ids.workspaceA, name: "Alternate root", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [ownedSharedAccount, freeAccount] }) },
+      { id: legacyConnectionId, workspaceId: ids.workspaceA, clientId: legacyClientId, name: "Legacy source", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `root-unassigned-legacy-${suffix}`, credentials: JSON.stringify({ customerIds: [legacyAccount] }) },
+      { id: explicitConnectionId, workspaceId: ids.workspaceA, clientId: explicitClientId, name: "Explicit source", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `root-unassigned-explicit-${suffix}`, credentials: JSON.stringify({ customerIds: [explicitlyUnassignedAccount] }) },
+      { id: ownerConnectionId, workspaceId: ids.workspaceA, name: "Tuple owner root", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `root-unassigned-owner-${suffix}`, credentials: JSON.stringify({ customerIds: [ownedSharedAccount] }) },
+      { id: alternateConnectionId, workspaceId: ids.workspaceA, name: "Alternate root", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `root-unassigned-alternate-${suffix}`, credentials: JSON.stringify({ customerIds: [ownedSharedAccount, freeAccount] }) },
     ] });
     await db.campaignMetric.createMany({ data: [
       { workspaceId: ids.workspaceA, connectionId: legacyConnectionId, platform: "google_ads", accountId: legacyAccount, campaignId: `legacy-${suffix}`, date, spend: 1, currency: "USD" },
@@ -432,9 +432,9 @@ describe("PostgreSQL integration: client provider account assignments", () => {
       { id: existingOwnerId, workspaceId: ids.workspaceA, name: "Existing owner", accountAssignmentsConfiguredAt: new Date() },
     ] });
     await db.connection.createMany({ data: [
-      { id: firstConnectionId, workspaceId: ids.workspaceA, clientId: firstClientId, name: "First cutover root", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [firstAccount] }) },
-      { id: conflictingConnectionId, workspaceId: ids.workspaceA, clientId: conflictingClientId, name: "Conflicting cutover root", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [conflictingAccount] }) },
-      { id: ownerConnectionId, workspaceId: ids.workspaceA, name: "Existing owner root", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [conflictingAccount] }) },
+      { id: firstConnectionId, workspaceId: ids.workspaceA, clientId: firstClientId, name: "First cutover root", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `root-cutover-first-${suffix}`, credentials: JSON.stringify({ customerIds: [firstAccount] }) },
+      { id: conflictingConnectionId, workspaceId: ids.workspaceA, clientId: conflictingClientId, name: "Conflicting cutover root", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `root-cutover-conflicting-${suffix}`, credentials: JSON.stringify({ customerIds: [conflictingAccount] }) },
+      { id: ownerConnectionId, workspaceId: ids.workspaceA, name: "Existing owner root", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `root-cutover-owner-${suffix}`, credentials: JSON.stringify({ customerIds: [conflictingAccount] }) },
     ] });
     await db.clientProviderAccountAssignment.create({ data: {
       workspaceId: ids.workspaceA, clientId: existingOwnerId, provider: "google_ads", accountId: conflictingAccount, connectionId: ownerConnectionId,
@@ -465,8 +465,8 @@ describe("PostgreSQL integration: client provider account assignments", () => {
       { id: validSecondId, workspaceId: ids.workspaceA, name: "Valid cutover two" },
     ] });
     await db.connection.createMany({ data: [
-      { id: validFirstConnectionId, workspaceId: ids.workspaceA, clientId: validFirstId, name: "Valid cutover root one", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: ["8770008777"] }) },
-      { id: validSecondConnectionId, workspaceId: ids.workspaceA, clientId: validSecondId, name: "Valid cutover root two", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: ["8880008888"] }) },
+      { id: validFirstConnectionId, workspaceId: ids.workspaceA, clientId: validFirstId, name: "Valid cutover root one", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `root-cutover-valid-1-${suffix}`, credentials: JSON.stringify({ customerIds: ["8770008777"] }) },
+      { id: validSecondConnectionId, workspaceId: ids.workspaceA, clientId: validSecondId, name: "Valid cutover root two", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `root-cutover-valid-2-${suffix}`, credentials: JSON.stringify({ customerIds: ["8880008888"] }) },
     ] });
     await db.$transaction(async (transaction) => {
       const scopedTransaction = transaction as unknown as ScopedTransaction;
