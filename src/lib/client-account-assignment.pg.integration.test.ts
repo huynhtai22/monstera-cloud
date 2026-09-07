@@ -411,7 +411,7 @@ describe("PostgreSQL integration: client provider account assignments", () => {
       startDateStr: "2026-09-04",
       endDateStr: "2026-09-04",
       accountIds: scopedAccountIds,
-      dimensions: ["accountId"],
+      dimensions: ["date", "accountId"],
       metrics: ["spend"],
     });
     assert.deepEqual(new Set(aggregate.rows.map((row) => row.accountId)), new Set([explicitlyUnassignedAccount, freeAccount]));
