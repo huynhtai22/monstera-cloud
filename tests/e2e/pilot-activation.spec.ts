@@ -7,7 +7,7 @@ test.describe("pilot activation console journey", () => {
     const location = response.headers()["location"] || "";
     expect(location).toContain("/console");
 
-    await page.goto("/register?offer=agency-pro-pilot");
+    await page.goto("/register?offer=agency-pro-pilot", { waitUntil: "domcontentloaded" });
     await expect(page.getByText("7-day Agency Pro pilot")).toBeVisible();
     await page.goto("/register");
     await expect(page.getByText("Create your account")).toBeVisible();
