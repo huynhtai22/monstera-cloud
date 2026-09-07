@@ -49,7 +49,7 @@ export function shouldSuppressIntegrationsForIsolatedE2e(env: EnvMap = process.e
     return false;
   }
 
-  assertIsolatedE2eRuntimeEnvironment(env, false);
+  assertIsolatedE2eRuntimeEnvironment(env);
   return true;
 }
 
@@ -215,7 +215,7 @@ export function assertIsolatedE2eEnvironment(
   env: EnvMap = process.env,
   root = path.join(__dirname, "../..")
 ): void {
-  assertIsolatedE2eRuntimeEnvironment(env);
+  assertIsolatedE2eRuntimeEnvironment(env, false);
 
   // Security guard: Next.js automatically loads `.env` and `.env.local` from the server
   // working directory regardless of Playwright webServer.env allowlists. To prevent
