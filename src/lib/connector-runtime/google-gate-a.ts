@@ -33,6 +33,16 @@ export interface GoogleGateAInput {
   };
 }
 
+/**
+ * Artifacts are a bounded evidence collection, not an ordered execution log.
+ * Persisted replays may arrive in database order, so publish a canonical
+ * multiset representation: stable across retrieval order while retaining every
+ * occurrence for integrity/audit evidence.
+ */
+function canonicalArtifactHashes(artifacts: RuntimeArtifact[]): string[] {
+  return artifacts.map((artifact) => artifact.payloadHash).sort();
+}
+
 export function evaluateGoogleGateA(input: GoogleGateAInput): GateAEvaluation {
   const reasons: string[] = [];
   const fail = (reason: string) => reasons.push(reason);
@@ -81,7 +91,7 @@ export function evaluateGoogleGateA(input: GoogleGateAInput): GateAEvaluation {
   return {
     verdict: "PASS",
     reasons: [],
-    artifactHashes: input.artifacts.map((artifact) => artifact.payloadHash),
+    artifactHashes: canonicalArtifactHashes(input.artifacts),
     evaluatedAt: new Date().toISOString(),
   };
 
@@ -92,7 +102,7 @@ export function evaluateGoogleGateA(input: GoogleGateAInput): GateAEvaluation {
     return {
       verdict: "FAIL",
       reasons: failedReasons,
-      artifactHashes: failedInput.artifacts.map((artifact) => artifact.payloadHash),
+      artifactHashes: canonicalArtifactHashes(failedInput.artifacts),
       evaluatedAt: new Date().toISOString(),
     };
   }
