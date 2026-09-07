@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { summarizeConnectorEvidence } from "./connector-evidence-summary";
+import { summarizeConnectorEvidence, hashWorkspace } from "./connector-evidence-summary";
 import type { ConnectorTelemetryEvent } from "./connector-telemetry";
 
 describe("Connector Evidence Summary Aggregator", () => {
@@ -14,6 +14,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "meta_ads",
         operation: "insights_fetch",
         workspaceId: "ws_alpha",
+        contextStatus: "tenant_scoped",
         connectionId: "conn_meta_1",
         attempt: 1,
         outcome: "success",
@@ -27,6 +28,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "meta_ads",
         operation: "insights_fetch",
         workspaceId: "ws_alpha",
+        contextStatus: "tenant_scoped",
         connectionId: "conn_meta_1",
         attempt: 1,
         outcome: "throttled",
@@ -42,6 +44,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "meta_ads",
         operation: "insights_fetch",
         workspaceId: "ws_alpha",
+        contextStatus: "tenant_scoped",
         connectionId: "conn_meta_1",
         attempt: 2,
         outcome: "throttled",
@@ -57,6 +60,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "meta_ads",
         operation: "insights_fetch",
         workspaceId: "ws_alpha",
+        contextStatus: "tenant_scoped",
         connectionId: "conn_meta_1",
         attempt: 3,
         outcome: "success",
@@ -72,6 +76,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "google_ads",
         operation: "search_stream",
         workspaceId: "ws_beta",
+        contextStatus: "tenant_scoped",
         connectionId: "conn_google_1",
         attempt: 1,
         outcome: "permanent_failure",
@@ -87,6 +92,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "google_ads",
         operation: "search_stream",
         workspaceId: "ws_beta",
+        contextStatus: "tenant_scoped",
         connectionId: "conn_google_1",
         attempt: 1,
         outcome: "success",
@@ -102,6 +108,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "warehouse_queue",
         operation: "job_claimed",
         workspaceId: "ws_alpha",
+        contextStatus: "tenant_scoped",
         jobId: "job_1",
         itemCount: 5,
         queueWaitMs: 1200,
@@ -117,6 +124,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "warehouse_queue",
         operation: "job_completed",
         workspaceId: "ws_alpha",
+        contextStatus: "tenant_scoped",
         jobId: "job_1",
         itemCount: 5,
         completedItemCount: 5,
@@ -132,6 +140,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "warehouse_queue",
         operation: "job_claimed",
         workspaceId: "ws_heavy",
+        contextStatus: "tenant_scoped",
         jobId: "job_heavy",
         itemCount: 45,
         queueWaitMs: 4500,
@@ -147,6 +156,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "warehouse_queue",
         operation: "job_completed",
         workspaceId: "ws_heavy",
+        contextStatus: "tenant_scoped",
         jobId: "job_heavy",
         itemCount: 45,
         completedItemCount: 40,
@@ -164,6 +174,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "meta_ads",
         operation: "connection_lease_acquire",
         workspaceId: "ws_alpha",
+        contextStatus: "tenant_scoped",
         connectionId: "conn_meta_1",
         attempt: 1,
         outcome: "success",
@@ -178,6 +189,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "meta_ads",
         operation: "connection_lease_acquire",
         workspaceId: "ws_alpha",
+        contextStatus: "tenant_scoped",
         connectionId: "conn_meta_1",
         attempt: 1,
         outcome: "throttled",
@@ -194,6 +206,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "meta_ads",
         operation: "data_through_refresh",
         workspaceId: "ws_alpha",
+        contextStatus: "tenant_scoped",
         connectionId: "conn_meta_1",
         attempt: 1,
         freshnessOutcome: "advanced",
@@ -208,6 +221,7 @@ describe("Connector Evidence Summary Aggregator", () => {
         provider: "google_ads",
         operation: "sync_outcome_freshness",
         workspaceId: "ws_beta",
+        contextStatus: "tenant_scoped",
         connectionId: "conn_google_1",
         attempt: 1,
         freshnessOutcome: "unchanged",
@@ -267,6 +281,79 @@ describe("Connector Evidence Summary Aggregator", () => {
       assert.ok(!ws.opaqueWorkspaceId.includes("ws_alpha"));
       assert.ok(!ws.opaqueWorkspaceId.includes("ws_beta"));
       assert.ok(!ws.opaqueWorkspaceId.includes("ws_heavy"));
+      assert.notEqual(ws.opaqueWorkspaceId, "ws_opaque_e3b0c442");
     }
+  });
+
+  it("guards against empty workspace hashing and never produces ws_opaque_e3b0c442", () => {
+    assert.equal(hashWorkspace(""), "ws_opaque_unspecified");
+    assert.equal(hashWorkspace("   \t  "), "ws_opaque_unspecified");
+    assert.equal(hashWorkspace(null as any), "ws_opaque_unspecified");
+    assert.equal(hashWorkspace(undefined as any), "ws_opaque_unspecified");
+    assert.equal(hashWorkspace("ws_unspecified"), "ws_opaque_unspecified");
+    assert.equal(hashWorkspace("unknown_workspace"), "ws_opaque_unspecified");
+
+    // Valid workspace produces valid pseudonymous operational identifier
+    const hashed = hashWorkspace("ws_real_client_1");
+    assert.ok(hashed.startsWith("ws_opaque_"));
+    assert.notEqual(hashed, "ws_opaque_e3b0c442");
+    assert.notEqual(hashed, "ws_opaque_unspecified");
+  });
+
+  it("unbound and missing context events do not contaminate per-workspace fairness calculations", () => {
+    const events: ConnectorTelemetryEvent[] = [
+      {
+        schemaVersion: "1.0.0",
+        eventName: "connector_telemetry",
+        eventCategory: "provider_request",
+        provider: "meta_ads",
+        operation: "unbound_fetch",
+        workspaceId: "ws_unspecified",
+        contextStatus: "unbound",
+        attempt: 1,
+        outcome: "throttled",
+        durationMs: 100,
+        timestamp: "2026-09-07T12:00:00Z",
+      },
+      {
+        schemaVersion: "1.0.0",
+        eventName: "connector_telemetry",
+        eventCategory: "job_lifecycle",
+        provider: "warehouse_queue",
+        operation: "job_completed",
+        workspaceId: "",
+        contextStatus: "unbound",
+        attempt: 1,
+        itemCount: 10,
+        outcome: "success",
+        durationMs: 500,
+        timestamp: "2026-09-07T12:00:01Z",
+      },
+      {
+        schemaVersion: "1.0.0",
+        eventName: "connector_telemetry",
+        eventCategory: "provider_request",
+        provider: "meta_ads",
+        operation: "scoped_fetch",
+        workspaceId: "ws_real_tenant_alpha",
+        contextStatus: "tenant_scoped",
+        attempt: 1,
+        outcome: "success",
+        durationMs: 200,
+        timestamp: "2026-09-07T12:00:02Z",
+      },
+    ];
+
+    const summary = summarizeConnectorEvidence(events);
+
+    // Global totals include all events
+    assert.equal(summary.totalEvents, 3);
+    assert.equal(summary.totalCallsByProvider.meta_ads, 2);
+
+    // Workspace fairness includes ONLY the real tenant workspace
+    assert.equal(summary.workspaceFairness.length, 1);
+    assert.equal(summary.workspaceFairness[0].opaqueWorkspaceId, hashWorkspace("ws_real_tenant_alpha"));
+    assert.notEqual(summary.workspaceFairness[0].opaqueWorkspaceId, "ws_opaque_e3b0c442");
+    assert.notEqual(summary.workspaceFairness[0].opaqueWorkspaceId, "ws_opaque_unspecified");
   });
 });

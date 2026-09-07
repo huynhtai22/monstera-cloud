@@ -7,7 +7,6 @@ import {
   sanitizeTelemetryEvent,
   toOpaqueAccountId,
   runWithConnectorContext,
-  type ConnectorTelemetryEvent,
 } from "./connector-telemetry";
 import { installNetworkDenialGuard, restoreNetworkGuard } from "@/lib/connector-resilience/network-denial-guard";
 import { ProviderSimulator } from "@/lib/connector-resilience/provider-simulator";
@@ -327,6 +326,129 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
 
       assert.equal(eventB?.workspaceId, "ws_tenant_B");
       assert.equal(eventB?.connectionId, "conn_B");
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it("11. Empty, whitespace, or missing workspace ID defaults to unbound without crashing or inventing tenants", () => {
+    const emptyEvent = sanitizeTelemetryEvent({
+      workspaceId: "",
+      provider: "meta_ads",
+      operation: "empty_test",
+    });
+    assert.equal(emptyEvent.workspaceId, "ws_unspecified");
+    assert.equal(emptyEvent.contextStatus, "unbound");
+
+    const whitespaceEvent = sanitizeTelemetryEvent({
+      workspaceId: "   \t\n  ",
+      provider: "meta_ads",
+      operation: "whitespace_test",
+    });
+    assert.equal(whitespaceEvent.workspaceId, "ws_unspecified");
+    assert.equal(whitespaceEvent.contextStatus, "unbound");
+
+    const undefinedEvent = sanitizeTelemetryEvent({
+      workspaceId: undefined as any,
+      provider: "google_ads",
+      operation: "undefined_test",
+    });
+    assert.equal(undefinedEvent.workspaceId, "ws_unspecified");
+    assert.equal(undefinedEvent.contextStatus, "unbound");
+
+    const validEvent = sanitizeTelemetryEvent({
+      workspaceId: "  ws_real_tenant  ",
+      provider: "tiktok_business",
+      operation: "valid_test",
+    });
+    assert.equal(validEvent.workspaceId, "ws_real_tenant");
+    assert.equal(validEvent.contextStatus, "tenant_scoped");
+  });
+
+  it("12. Work emitted outside any AsyncLocalStorage context is cleanly marked unbound", () => {
+    const capture = captureTelemetryForTest();
+    try {
+      emitConnectorTelemetry({
+        provider: "warehouse_queue",
+        operation: "background_cleanup",
+        outcome: "success",
+      });
+
+      assert.equal(capture.events.length, 1);
+      assert.equal(capture.events[0].workspaceId, "ws_unspecified");
+      assert.equal(capture.events[0].contextStatus, "unbound");
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it("13. Concurrent AsyncLocalStorage executions maintain strict tenant isolation without race conditions", async () => {
+    const capture = captureTelemetryForTest();
+    try {
+      const taskA = runWithConnectorContext(
+        { workspaceId: "ws_concurrent_A", connectionId: "conn_A" },
+        async () => {
+          await new Promise((resolve) => setTimeout(resolve, 15));
+          emitConnectorTelemetry({
+            provider: "meta_ads",
+            operation: "async_op_A",
+          });
+        }
+      );
+
+      const taskB = runWithConnectorContext(
+        { workspaceId: "ws_concurrent_B", connectionId: "conn_B" },
+        async () => {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          emitConnectorTelemetry({
+            provider: "google_ads",
+            operation: "async_op_B",
+          });
+        }
+      );
+
+      await Promise.all([taskA, taskB]);
+
+      const eventA = capture.events.find((e) => e.operation === "async_op_A");
+      const eventB = capture.events.find((e) => e.operation === "async_op_B");
+
+      assert.equal(eventA?.workspaceId, "ws_concurrent_A");
+      assert.equal(eventA?.contextStatus, "tenant_scoped");
+      assert.equal(eventB?.workspaceId, "ws_concurrent_B");
+      assert.equal(eventB?.contextStatus, "tenant_scoped");
+    } finally {
+      capture.restore();
+    }
+  });
+
+  it("14. Provider retry callbacks retain the active workspace context across delays", async () => {
+    simulator.setFaults({
+      meta: {
+        rateLimitAccountIds: new Set(["act_retry_ctx"]),
+      },
+    });
+
+    const capture = captureTelemetryForTest();
+    try {
+      await runWithConnectorContext(
+        { workspaceId: "ws_retry_ctx_tenant", connectionId: "conn_retry_ctx" },
+        async () => {
+          await assert.rejects(async () => {
+            await metaReportClient.getInsights("valid-token", {
+              adAccountId: "act_retry_ctx",
+              fields: ["impressions"],
+              level: "campaign",
+            });
+          });
+        }
+      );
+
+      const retryEvents = capture.events.filter((e) => e.provider === "meta_ads");
+      assert.ok(retryEvents.length > 1, "Expected multiple attempts");
+      for (const ev of retryEvents) {
+        assert.equal(ev.workspaceId, "ws_retry_ctx_tenant");
+        assert.equal(ev.contextStatus, "tenant_scoped");
+      }
     } finally {
       capture.restore();
     }

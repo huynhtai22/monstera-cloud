@@ -98,13 +98,32 @@ function calculatePercentiles(values: number[]): PercentileSummary {
   };
 }
 
-function hashWorkspace(wsId: string): string {
-  if (wsId.startsWith("ws_opaque_")) return wsId;
-  return `ws_opaque_${crypto.createHash("sha256").update(wsId).digest("hex").slice(0, 8)}`;
+/**
+ * Creates a pseudonymous operational identifier for a workspace.
+ * Guards against empty/unspecified workspace identities to prevent
+ * hash collisions on empty strings (e.g. sha256("") => e3b0c442).
+ *
+ * Note: Unsalted SHA-256 prefixes are pseudonymous surrogate keys,
+ * not cryptographically irreversible commitments.
+ */
+export function hashWorkspace(wsId?: string | null): string {
+  if (!wsId || typeof wsId !== "string") {
+    return "ws_opaque_unspecified";
+  }
+  const trimmed = wsId.trim();
+  if (!trimmed || trimmed === "ws_unspecified" || trimmed === "unknown_workspace") {
+    return "ws_opaque_unspecified";
+  }
+  if (trimmed.startsWith("ws_opaque_")) return trimmed;
+  return `ws_opaque_${crypto.createHash("sha256").update(trimmed).digest("hex").slice(0, 8)}`;
 }
 
 /**
  * Aggregates raw connector telemetry events into actionable operational metrics.
+ *
+ * Note: Summary thresholds (e.g. retry amplification, throttle rates, queue wait times)
+ * are provisional operating hypotheses for pilot observability, not validated production SLOs
+ * or capacity limits.
  */
 export function summarizeConnectorEvidence(
   events: ConnectorTelemetryEvent[]
@@ -183,17 +202,28 @@ export function summarizeConnectorEvidence(
   }>();
 
   for (const ev of events) {
-    const wsKey = hashWorkspace(ev.workspaceId);
-    if (!workspaceMap.has(wsKey)) {
-      workspaceMap.set(wsKey, {
-        totalJobs: 0,
-        totalItems: 0,
-        durations: [],
-        throttled: 0,
-        failed: 0,
-      });
+    const isTenantScoped = ev.contextStatus !== "unbound" && Boolean(ev.workspaceId) && ev.workspaceId !== "ws_unspecified" && ev.workspaceId.trim() !== "";
+    const wsKey = isTenantScoped ? hashWorkspace(ev.workspaceId) : null;
+    let wsEntry: {
+      totalJobs: number;
+      totalItems: number;
+      durations: number[];
+      throttled: number;
+      failed: number;
+    } | null = null;
+
+    if (wsKey && wsKey !== "ws_opaque_unspecified") {
+      if (!workspaceMap.has(wsKey)) {
+        workspaceMap.set(wsKey, {
+          totalJobs: 0,
+          totalItems: 0,
+          durations: [],
+          throttled: 0,
+          failed: 0,
+        });
+      }
+      wsEntry = workspaceMap.get(wsKey)!;
     }
-    const wsEntry = workspaceMap.get(wsKey)!;
 
     // Provider requests
     if (ev.eventCategory === "provider_request") {
@@ -213,7 +243,7 @@ export function summarizeConnectorEvidence(
         ev.errorCategory === "quota_exhausted"
       ) {
         throttledCallsByProvider[ev.provider] = (throttledCallsByProvider[ev.provider] || 0) + 1;
-        wsEntry.throttled++;
+        if (wsEntry) wsEntry.throttled++;
       }
 
       if (ev.outcome === "permanent_failure" || ev.errorCategory === "auth_revoked") {
@@ -228,22 +258,22 @@ export function summarizeConnectorEvidence(
       }
       if (typeof ev.durationMs === "number" && ev.durationMs > 0) {
         processingDurations.push(ev.durationMs);
-        wsEntry.durations.push(ev.durationMs);
+        if (wsEntry) wsEntry.durations.push(ev.durationMs);
       }
 
       if (ev.operation === "job_completed" || ev.operation === "job_failed" || ev.operation === "job_terminal") {
         jobOutcomes.totalJobs++;
-        wsEntry.totalJobs++;
+        if (wsEntry) wsEntry.totalJobs++;
         if (ev.outcome === "success") jobOutcomes.completedSuccess++;
         else if (ev.outcome === "partial") jobOutcomes.completedPartial++;
         else if (ev.outcome === "permanent_failure" || ev.outcome === "retryable_failure") {
           jobOutcomes.failed++;
-          wsEntry.failed++;
+          if (wsEntry) wsEntry.failed++;
         }
 
         if (typeof ev.itemCount === "number") {
           itemCounts.push(ev.itemCount);
-          wsEntry.totalItems += ev.itemCount;
+          if (wsEntry) wsEntry.totalItems += ev.itemCount;
 
           if (ev.itemCount === 1) buckets.singleItem++;
           else if (ev.itemCount <= 5) buckets.small++;

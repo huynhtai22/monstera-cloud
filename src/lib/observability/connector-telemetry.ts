@@ -47,6 +47,8 @@ export type LeaseOutcome =
 
 export type FreshnessOutcome = "advanced" | "unchanged" | "degraded";
 
+export type TelemetryContextStatus = "tenant_scoped" | "unbound";
+
 export interface ConnectorTelemetryEvent {
   schemaVersion: "1.0.0";
   eventName: "connector_telemetry";
@@ -54,6 +56,7 @@ export interface ConnectorTelemetryEvent {
   provider: ConnectorProvider;
   operation: string;
   workspaceId: string;
+  contextStatus: TelemetryContextStatus;
   connectionId?: string;
   opaqueAccountId?: string;
   jobId?: string;
@@ -106,7 +109,8 @@ export function getConnectorContext(): ConnectorTelemetryContext | undefined {
 }
 
 /**
- * Creates an opaque, irreversible identifier for accounts to protect privacy.
+ * Creates a pseudonymous operational identifier for accounts to protect privacy in logs and metrics.
+ * Note: Unsalted SHA-256 prefixes are pseudonymous surrogate keys, not cryptographically irreversible commitments.
  */
 export function toOpaqueAccountId(rawId?: string | null): string | undefined {
   if (!rawId) return undefined;
@@ -117,6 +121,7 @@ export function toOpaqueAccountId(rawId?: string | null): string | undefined {
 
 /**
  * Strictly sanitizes telemetry event fields:
+ * - Rejects empty/blank tenant identities, marking unscoped events explicitly as 'unbound'
  * - Clamps percentage values to [0, 100]
  * - Strips unauthorized/unknown keys
  * - Never includes tokens, headers, body payloads or PII
@@ -125,7 +130,13 @@ export function sanitizeTelemetryEvent(
   raw: Partial<ConnectorTelemetryEvent>
 ): ConnectorTelemetryEvent {
   const currentCtx = getConnectorContext();
-  const workspaceId = String(raw.workspaceId || currentCtx?.workspaceId || "unknown_workspace");
+  const rawWs = typeof raw.workspaceId === "string" ? raw.workspaceId.trim() : "";
+  const ctxWs = typeof currentCtx?.workspaceId === "string" ? currentCtx.workspaceId.trim() : "";
+  const resolvedWorkspaceId = rawWs || ctxWs;
+
+  const isTenantScoped = Boolean(resolvedWorkspaceId);
+  const workspaceId = isTenantScoped ? resolvedWorkspaceId : "ws_unspecified";
+  const contextStatus: TelemetryContextStatus = raw.contextStatus ?? (isTenantScoped ? "tenant_scoped" : "unbound");
 
   const sanitized: ConnectorTelemetryEvent = {
     schemaVersion: "1.0.0",
@@ -134,6 +145,7 @@ export function sanitizeTelemetryEvent(
     provider: (raw.provider || currentCtx?.provider || "warehouse_queue") as ConnectorProvider,
     operation: String(raw.operation || "unknown_op").slice(0, 64),
     workspaceId,
+    contextStatus,
     timestamp: raw.timestamp || new Date().toISOString(),
     attempt: Number.isFinite(raw.attempt) ? Math.max(1, Math.floor(raw.attempt!)) : 1,
     outcome: raw.outcome ?? "success",
@@ -242,7 +254,7 @@ export function emitConnectorTelemetry(event: Partial<ConnectorTelemetryEvent>):
       defaultSink(sanitized);
     }
   } catch {
-    // Fail-closed for safety: telemetry failure MUST NEVER crash provider sync
+    // Best-effort / fail-open with respect to telemetry: telemetry failure MUST NEVER crash provider sync
   }
 }
 
