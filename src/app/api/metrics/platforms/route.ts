@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { getUnassignedTupleExclusions, unassignedTupleFilter } from "@/lib/warehouse-query";
 
 /**
  * GET /api/metrics/platforms?workspaceId=...
@@ -65,18 +66,10 @@ export async function GET(req: Request) {
     }
 
     if (clientId === "unassigned") {
-      const allAssignments = await prisma.clientProviderAccountAssignment.findMany({
-        where: { workspaceId },
-        select: { connectionId: true, provider: true, accountId: true },
-      });
-      const where: any = { workspaceId, connection: { workspaceId, clientId: null } };
-      if (allAssignments.length > 0) {
-        where.NOT = allAssignments.map((a) => ({
-          connectionId: a.connectionId,
-          platform: a.provider,
-          accountId: a.accountId,
-        }));
-      }
+      const where = {
+        workspaceId,
+        ...unassignedTupleFilter(await getUnassignedTupleExclusions(workspaceId)),
+      };
       const platforms = await prisma.campaignMetric.findMany({
         where,
         distinct: ["platform"],

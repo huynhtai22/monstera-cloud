@@ -66,7 +66,22 @@ export async function GET(req: Request) {
         const clients = await prisma.client.findMany({
             where: { workspaceId },
             orderBy: { createdAt: "desc" },
-            include: clientInclude,
+            select: {
+                id: true,
+                name: true,
+                description: true,
+                logoUrl: true,
+                workspaceId: true,
+                createdAt: true,
+                updatedAt: true,
+                requiredProviders: true,
+                requiredDestinations: true,
+                requirementsConfiguredAt: true,
+                accountAssignmentsConfiguredAt: true,
+                _count: clientInclude._count,
+                connections: clientInclude.connections,
+                accountAssignments: clientInclude.accountAssignments,
+            },
         });
 
         return NextResponse.json(clients);

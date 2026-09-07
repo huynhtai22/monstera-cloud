@@ -23,6 +23,66 @@ export interface WarehouseQueryInput {
   includeTotalCount?: boolean;
 }
 
+/**
+ * Returns the provider/account tuples that must not appear in the workspace's
+ * unassigned view. Explicit assignments own a tuple across every root. Legacy
+ * client links keep their metric tuples owned until that client is cut over.
+ *
+ * This intentionally does not gate rows on Connection.clientId: explicit
+ * unassignment retains that legacy pointer, while its removed tuple must become
+ * discoverable again. Conversely, an alternate MCC copy of an owned tuple must
+ * not appear as a second assignable account.
+ */
+export async function getUnassignedTupleExclusions(
+  workspaceId: string,
+  db: ScopedTransaction = prisma,
+): Promise<Array<{ platform: string; accountId: string }>> {
+  const [assignments, legacyConnections] = await Promise.all([
+    db.clientProviderAccountAssignment.findMany({
+      where: { workspaceId },
+      select: { provider: true, accountId: true },
+    }),
+    db.connection.findMany({
+      where: {
+        workspaceId,
+        type: "source",
+        clientId: { not: null },
+        client: { accountAssignmentsConfiguredAt: null },
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  const legacyConnectionIds = legacyConnections.map((connection) => connection.id);
+  const legacyMetricTuples = legacyConnectionIds.length === 0
+    ? []
+    : await db.campaignMetric.findMany({
+      where: { workspaceId, connectionId: { in: legacyConnectionIds } },
+      distinct: ["platform", "accountId"],
+      select: { platform: true, accountId: true },
+    });
+
+  const uniqueTuples = new Map<string, { platform: string; accountId: string }>();
+  for (const assignment of assignments) {
+    uniqueTuples.set(`${assignment.provider}:${assignment.accountId}`, {
+      platform: assignment.provider,
+      accountId: assignment.accountId,
+    });
+  }
+  for (const tuple of legacyMetricTuples) {
+    uniqueTuples.set(`${tuple.platform}:${tuple.accountId}`, tuple);
+  }
+  return [...uniqueTuples.values()];
+}
+
+export function unassignedTupleFilter(
+  exclusions: Array<{ platform: string; accountId: string }>,
+): Pick<Prisma.CampaignMetricWhereInput, "NOT"> {
+  return exclusions.length === 0
+    ? {}
+    : { NOT: exclusions.map((tuple) => ({ platform: tuple.platform, accountId: tuple.accountId })) };
+}
+
 function decodeCursor(cursor: string): { date: Date; id: string } | null {
   try {
     const decoded = decodeURIComponent(cursor);
@@ -59,18 +119,9 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
   let clientAuthoritativeConnectionIds: string[] | null = null;
 
   if (input.clientId === "unassigned") {
-    const allAssignments = await db.clientProviderAccountAssignment.findMany({
-      where: { workspaceId: input.workspaceId },
-      select: { connectionId: true, provider: true, accountId: true },
-    });
-    where.connection = { workspaceId: input.workspaceId, clientId: null };
-    if (allAssignments.length > 0) {
-      where.NOT = allAssignments.map((a) => ({
-        connectionId: a.connectionId,
-        platform: a.provider,
-        accountId: a.accountId,
-      }));
-    }
+    Object.assign(where, unassignedTupleFilter(
+      await getUnassignedTupleExclusions(input.workspaceId, db),
+    ));
   } else if (input.clientId) {
     const client = await db.client.findFirst({
       where: { id: input.clientId, workspaceId: input.workspaceId },

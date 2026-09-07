@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
-import { cutoverUnambiguousAssignments } from "@/lib/client-account-assignment";
+import {
+  cutoverUnambiguousAssignments,
+  cutoverUnambiguousAssignmentsInTransaction,
+} from "@/lib/client-account-assignment";
 
 export async function POST(
   req: Request,
@@ -40,27 +44,32 @@ export async function POST(
       return NextResponse.json(result, { status: 200 });
     }
 
-    // Workspace-wide cutover for all legacy clients
-    const legacyClients = await prisma.client.findMany({
-      where: { workspaceId, accountAssignmentsConfiguredAt: null },
-      select: { id: true, name: true },
-      orderBy: { id: "asc" },
-    });
-
-    const results = [];
-    for (const client of legacyClients) {
-      const result = await cutoverUnambiguousAssignments(
-        workspaceId,
-        client.id,
-        prisma,
-        session.user.id,
-      );
-      results.push({
-        clientId: client.id,
-        clientName: client.name,
-        ...result,
+    // Every legacy client is loaded, validated, and cut over in the same
+    // serializable transaction. A conflict on a later client rolls back the
+    // earlier markers, assignments, and audit events as well.
+    const { legacyClients, results } = await prisma.$transaction(async (tx) => {
+      const legacyClients = await tx.client.findMany({
+        where: { workspaceId, accountAssignmentsConfiguredAt: null },
+        select: { id: true, name: true },
+        orderBy: { id: "asc" },
       });
-    }
+
+      const results = [];
+      for (const client of legacyClients) {
+        const result = await cutoverUnambiguousAssignmentsInTransaction(
+          workspaceId,
+          client.id,
+          tx,
+          session.user.id,
+        );
+        results.push({
+          clientId: client.id,
+          clientName: client.name,
+          ...result,
+        });
+      }
+      return { legacyClients, results };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
     return NextResponse.json({
       workspaceId,
@@ -70,6 +79,12 @@ export async function POST(
   } catch (error: unknown) {
     const rbac = toRbacResponse(error);
     if (rbac) return rbac;
+    if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2002" || error.code === "P2034")) {
+      return NextResponse.json(
+        { error: "Concurrent cutover conflict; retry the operation." },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to execute cutover" },
       { status: 500 },

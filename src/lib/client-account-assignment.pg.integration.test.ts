@@ -5,6 +5,7 @@ import {
   assignClientProviderAccount,
   unassignClientProviderAccount,
   cutoverUnambiguousAssignments,
+  cutoverUnambiguousAssignmentsInTransaction,
   canonicalizeAccountId,
   bulkAssignClientProviderAccounts,
 } from "./client-account-assignment";
@@ -301,6 +302,179 @@ describe("PostgreSQL integration: client provider account assignments", () => {
       },
     });
     assert.equal(committed, null, "Item 1 must not commit if bulk assignment fails");
+  });
+
+  it("rejects ambiguous roots from bulk assignment while preserving explicit manual source selection", async () => {
+    const clientId = `cl-bulk-${suffix}`;
+    const accountId = "7770007777";
+    const firstRoot = `conn-bulk-1-${suffix}`;
+    const secondRoot = `conn-bulk-2-${suffix}`;
+    await db.client.create({ data: { id: clientId, workspaceId: ids.workspaceA, name: "Bulk client" } });
+    await db.connection.createMany({
+      data: [
+        {
+          id: firstRoot, workspaceId: ids.workspaceA, name: "First root", provider: "google_ads", type: "source", status: "connected",
+          credentials: JSON.stringify({ customerIds: [accountId] }),
+        },
+        {
+          id: secondRoot, workspaceId: ids.workspaceA, name: "Second root", provider: "google_ads", type: "source", status: "connected",
+          credentials: JSON.stringify({ customerIds: [accountId] }),
+        },
+      ],
+    });
+
+    for (const connectionId of [firstRoot, secondRoot]) {
+      await assert.rejects(
+        () => bulkAssignClientProviderAccounts({
+          workspaceId: ids.workspaceA,
+          clientId,
+          items: [{ provider: "google_ads", accountId, connectionId }],
+          actorUserId: ids.user,
+        }, tx()),
+        (error: any) => error?.statusCode === 409 && String(error.message).includes("unambiguous source"),
+      );
+    }
+    assert.equal(await db.clientProviderAccountAssignment.count({
+      where: { workspaceId: ids.workspaceA, provider: "google_ads", accountId },
+    }), 0, "bulk order cannot choose either overlapping root");
+
+    const manual = await assignClientProviderAccount({
+      workspaceId: ids.workspaceA, clientId, provider: "google_ads", accountId, connectionId: secondRoot, actorUserId: ids.user,
+    }, tx());
+    assert.equal(manual.assignment.connectionId, secondRoot);
+  });
+
+  it("keeps legacy tuples assigned, exposes final explicit unassignments, and excludes alternate owned roots from unassigned queries", async () => {
+    const legacyClientId = `cl-unassigned-legacy-${suffix}`;
+    const explicitClientId = `cl-unassigned-explicit-${suffix}`;
+    const ownerClientId = `cl-unassigned-owner-${suffix}`;
+    const legacyConnectionId = `conn-unassigned-legacy-${suffix}`;
+    const explicitConnectionId = `conn-unassigned-explicit-${suffix}`;
+    const ownerConnectionId = `conn-unassigned-owner-${suffix}`;
+    const alternateConnectionId = `conn-unassigned-alternate-${suffix}`;
+    const legacyAccount = "8110008111";
+    const explicitlyUnassignedAccount = "8220008222";
+    const ownedSharedAccount = "8330008333";
+    const freeAccount = "8440008444";
+    const date = new Date("2026-09-04T12:00:00.000Z");
+
+    await db.client.createMany({ data: [
+      { id: legacyClientId, workspaceId: ids.workspaceA, name: "Legacy unassigned client" },
+      { id: explicitClientId, workspaceId: ids.workspaceA, name: "Explicit unassigned client" },
+      { id: ownerClientId, workspaceId: ids.workspaceA, name: "Tuple owner client", accountAssignmentsConfiguredAt: new Date() },
+    ] });
+    await db.connection.createMany({ data: [
+      { id: legacyConnectionId, workspaceId: ids.workspaceA, clientId: legacyClientId, name: "Legacy source", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [legacyAccount] }) },
+      { id: explicitConnectionId, workspaceId: ids.workspaceA, clientId: explicitClientId, name: "Explicit source", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [explicitlyUnassignedAccount] }) },
+      { id: ownerConnectionId, workspaceId: ids.workspaceA, name: "Tuple owner root", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [ownedSharedAccount] }) },
+      { id: alternateConnectionId, workspaceId: ids.workspaceA, name: "Alternate root", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [ownedSharedAccount, freeAccount] }) },
+    ] });
+    await db.campaignMetric.createMany({ data: [
+      { workspaceId: ids.workspaceA, connectionId: legacyConnectionId, platform: "google_ads", accountId: legacyAccount, campaignId: `legacy-${suffix}`, date, spend: 1, currency: "USD" },
+      { workspaceId: ids.workspaceA, connectionId: explicitConnectionId, platform: "google_ads", accountId: explicitlyUnassignedAccount, campaignId: `explicit-${suffix}`, date, spend: 2, currency: "USD" },
+      { workspaceId: ids.workspaceA, connectionId: ownerConnectionId, platform: "google_ads", accountId: ownedSharedAccount, campaignId: `owner-${suffix}`, date, spend: 3, currency: "USD" },
+      { workspaceId: ids.workspaceA, connectionId: alternateConnectionId, platform: "google_ads", accountId: ownedSharedAccount, campaignId: `alternate-owned-${suffix}`, date, spend: 4, currency: "USD" },
+      { workspaceId: ids.workspaceA, connectionId: alternateConnectionId, platform: "google_ads", accountId: freeAccount, campaignId: `free-${suffix}`, date, spend: 5, currency: "USD" },
+    ] });
+
+    await assignClientProviderAccount({
+      workspaceId: ids.workspaceA, clientId: explicitClientId, provider: "google_ads", accountId: explicitlyUnassignedAccount, connectionId: explicitConnectionId, actorUserId: ids.user,
+    }, tx());
+    await unassignClientProviderAccount({
+      workspaceId: ids.workspaceA, provider: "google_ads", accountId: explicitlyUnassignedAccount, actorUserId: ids.user,
+    }, tx());
+    await db.clientProviderAccountAssignment.create({ data: {
+      workspaceId: ids.workspaceA, clientId: ownerClientId, provider: "google_ads", accountId: ownedSharedAccount, connectionId: ownerConnectionId,
+    } });
+
+    const scopedAccountIds = [legacyAccount, explicitlyUnassignedAccount, ownedSharedAccount, freeAccount];
+    const legacyRows = await queryWarehouse({ workspaceId: ids.workspaceA, clientId: legacyClientId, accountIds: scopedAccountIds }, tx());
+    assert.deepEqual(legacyRows.rows.map((row) => row.accountId), [legacyAccount]);
+    const explicitRows = await queryWarehouse({ workspaceId: ids.workspaceA, clientId: explicitClientId, accountIds: scopedAccountIds }, tx());
+    assert.equal(explicitRows.rows.length, 0, "final explicit unassignment does not revive legacy connection scope");
+
+    const unassignedPage = await queryWarehouse({
+      workspaceId: ids.workspaceA, clientId: "unassigned", accountIds: scopedAccountIds, limit: 1, includeTotalCount: true,
+    }, tx());
+    assert.equal(unassignedPage.totalCount, 2);
+    assert.equal(unassignedPage.pagination.hasMore, true);
+    const unassignedNext = await queryWarehouse({
+      workspaceId: ids.workspaceA, clientId: "unassigned", accountIds: scopedAccountIds, limit: 2, cursor: unassignedPage.pagination.nextCursor, includeTotalCount: true,
+    }, tx());
+    const visibleAccountIds = new Set([...unassignedPage.rows, ...unassignedNext.rows].map((row) => row.accountId));
+    assert.deepEqual(visibleAccountIds, new Set([explicitlyUnassignedAccount, freeAccount]));
+    assert.equal(unassignedNext.totalCount, 2, "cursor pagination uses the same tuple ownership scope as the count");
+
+    const aggregate = await queryMetricsAggregate({
+      workspaceId: ids.workspaceA,
+      clientId: "unassigned",
+      startDateStr: "2026-09-04",
+      endDateStr: "2026-09-04",
+      accountIds: scopedAccountIds,
+      dimensions: ["accountId"],
+      metrics: ["spend"],
+    });
+    assert.deepEqual(new Set(aggregate.rows.map((row) => row.accountId)), new Set([explicitlyUnassignedAccount, freeAccount]));
+  });
+
+  it("rolls back every workspace cutover write when a later client conflicts, while valid clients commit together", async () => {
+    const firstClientId = `cl-cutover-first-${suffix}`;
+    const conflictingClientId = `cl-cutover-conflict-${suffix}`;
+    const existingOwnerId = `cl-cutover-owner-${suffix}`;
+    const firstConnectionId = `conn-cutover-first-${suffix}`;
+    const conflictingConnectionId = `conn-cutover-conflict-${suffix}`;
+    const ownerConnectionId = `conn-cutover-owner-${suffix}`;
+    const firstAccount = "8550008555";
+    const conflictingAccount = "8660008666";
+    await db.client.createMany({ data: [
+      { id: firstClientId, workspaceId: ids.workspaceA, name: "First cutover client" },
+      { id: conflictingClientId, workspaceId: ids.workspaceA, name: "Conflicting cutover client" },
+      { id: existingOwnerId, workspaceId: ids.workspaceA, name: "Existing owner", accountAssignmentsConfiguredAt: new Date() },
+    ] });
+    await db.connection.createMany({ data: [
+      { id: firstConnectionId, workspaceId: ids.workspaceA, clientId: firstClientId, name: "First cutover root", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [firstAccount] }) },
+      { id: conflictingConnectionId, workspaceId: ids.workspaceA, clientId: conflictingClientId, name: "Conflicting cutover root", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [conflictingAccount] }) },
+      { id: ownerConnectionId, workspaceId: ids.workspaceA, name: "Existing owner root", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: [conflictingAccount] }) },
+    ] });
+    await db.clientProviderAccountAssignment.create({ data: {
+      workspaceId: ids.workspaceA, clientId: existingOwnerId, provider: "google_ads", accountId: conflictingAccount, connectionId: ownerConnectionId,
+    } });
+
+    await assert.rejects(
+      () => db.$transaction(async (transaction) => {
+        const scopedTransaction = transaction as unknown as ScopedTransaction;
+        await cutoverUnambiguousAssignmentsInTransaction(ids.workspaceA, firstClientId, scopedTransaction, ids.user);
+        await cutoverUnambiguousAssignmentsInTransaction(ids.workspaceA, conflictingClientId, scopedTransaction, ids.user);
+      }, { isolationLevel: "Serializable" }),
+      (error: any) => error?.statusCode === 409,
+    );
+    const rolledBack = await db.client.findMany({
+      where: { id: { in: [firstClientId, conflictingClientId] } },
+      select: { id: true, accountAssignmentsConfiguredAt: true },
+    });
+    assert.ok(rolledBack.every((client) => client.accountAssignmentsConfiguredAt === null));
+    assert.equal(await db.clientProviderAccountAssignment.count({ where: { workspaceId: ids.workspaceA, clientId: firstClientId } }), 0);
+    assert.equal(await db.auditEvent.count({ where: { workspaceId: ids.workspaceA, resourceId: { in: [firstClientId, conflictingClientId] }, action: "client_account.cutover_completed" } }), 0);
+
+    const validFirstId = `cl-cutover-valid-1-${suffix}`;
+    const validSecondId = `cl-cutover-valid-2-${suffix}`;
+    const validFirstConnectionId = `conn-cutover-valid-1-${suffix}`;
+    const validSecondConnectionId = `conn-cutover-valid-2-${suffix}`;
+    await db.client.createMany({ data: [
+      { id: validFirstId, workspaceId: ids.workspaceA, name: "Valid cutover one" },
+      { id: validSecondId, workspaceId: ids.workspaceA, name: "Valid cutover two" },
+    ] });
+    await db.connection.createMany({ data: [
+      { id: validFirstConnectionId, workspaceId: ids.workspaceA, clientId: validFirstId, name: "Valid cutover root one", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: ["8770008777"] }) },
+      { id: validSecondConnectionId, workspaceId: ids.workspaceA, clientId: validSecondId, name: "Valid cutover root two", provider: "google_ads", type: "source", status: "connected", credentials: JSON.stringify({ customerIds: ["8880008888"] }) },
+    ] });
+    await db.$transaction(async (transaction) => {
+      const scopedTransaction = transaction as unknown as ScopedTransaction;
+      await cutoverUnambiguousAssignmentsInTransaction(ids.workspaceA, validFirstId, scopedTransaction, ids.user);
+      await cutoverUnambiguousAssignmentsInTransaction(ids.workspaceA, validSecondId, scopedTransaction, ids.user);
+    }, { isolationLevel: "Serializable" });
+    assert.equal(await db.clientProviderAccountAssignment.count({ where: { workspaceId: ids.workspaceA, clientId: { in: [validFirstId, validSecondId] } } }), 2);
+    assert.equal(await db.auditEvent.count({ where: { workspaceId: ids.workspaceA, resourceId: { in: [validFirstId, validSecondId] }, action: "client_account.cutover_completed" } }), 2);
   });
 
   it("concurrent assignment: identical is idempotent, rival client gets 409 conflict", async () => {

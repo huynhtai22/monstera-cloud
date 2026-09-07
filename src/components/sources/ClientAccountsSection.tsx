@@ -128,18 +128,32 @@ export function ClientAccountsSection({
     });
   }, [allAccounts, selectedClientId, providerFilter, searchQuery]);
 
+  // Bulk actions may only use a single discovered root. Multi-root accounts
+  // remain available through the per-account flow, which requires an explicit
+  // authoritative-source choice from the operator.
+  const bulkEligibleAccounts = useMemo(
+    () => filteredAccounts.filter((account) =>
+      !account.hasMultipleRootConnections && account.availableConnections.length === 1,
+    ),
+    [filteredAccounts],
+  );
+  const selectedBulkEligibleAccounts = useMemo(
+    () => bulkEligibleAccounts.filter((account) => selectedKeys.has(`${account.provider}:${account.accountId}`)),
+    [bulkEligibleAccounts, selectedKeys],
+  );
+
   // Checkbox helpers
   const allVisibleSelected = useMemo(() => {
-    if (filteredAccounts.length === 0) return false;
-    return filteredAccounts.every((a) => selectedKeys.has(`${a.provider}:${a.accountId}`));
-  }, [filteredAccounts, selectedKeys]);
+    if (bulkEligibleAccounts.length === 0) return false;
+    return bulkEligibleAccounts.every((a) => selectedKeys.has(`${a.provider}:${a.accountId}`));
+  }, [bulkEligibleAccounts, selectedKeys]);
 
   const toggleSelectAll = () => {
     if (allVisibleSelected) {
       setSelectedKeys(new Set());
     } else {
       const next = new Set<string>();
-      for (const a of filteredAccounts) {
+      for (const a of bulkEligibleAccounts) {
         next.add(`${a.provider}:${a.accountId}`);
       }
       setSelectedKeys(next);
@@ -209,17 +223,29 @@ export function ClientAccountsSection({
     if (!modalClientId || selectedKeys.size === 0) return;
 
     const itemsToAssign: Array<{ provider: string; accountId: string; connectionId: string }> = [];
+    const noLongerEligible: string[] = [];
 
     for (const key of selectedKeys) {
       const [prov, accId] = key.split(":");
       const acc = allAccounts.find((a) => a.provider === prov && a.accountId === accId);
-      if (acc && acc.availableConnections.length > 0) {
+      if (
+        acc
+        && !acc.hasMultipleRootConnections
+        && acc.availableConnections.length === 1
+      ) {
         itemsToAssign.push({
           provider: acc.provider,
           accountId: acc.accountId,
-          connectionId: acc.authoritativeConnectionId || acc.availableConnections[0].id,
+          connectionId: acc.availableConnections[0].id,
         });
+      } else {
+        noLongerEligible.push(key);
       }
+    }
+
+    if (noLongerEligible.length > 0) {
+      toast.error("A selected account now has multiple or no discovered roots. Choose its source manually and try again.");
+      return;
     }
 
     if (itemsToAssign.length === 0) {
@@ -415,7 +441,7 @@ export function ClientAccountsSection({
 
       {/* ─── FILTERS & CONTROLS ─── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-line pb-4">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
           {/* Client Filter Dropdown */}
           <div className="flex items-center gap-1.5 rounded-lg border border-line bg-panel px-3 py-1.5 text-xs">
             <Building2 className="h-3.5 w-3.5 text-ink-mute" />
@@ -470,7 +496,7 @@ export function ClientAccountsSection({
               className="inline-flex items-center gap-1.5 rounded-md bg-white hover:bg-neutral-200 px-3 py-1.5 text-xs font-semibold text-black shadow-xs transition-colors"
             >
               <Users className="h-3.5 w-3.5" />
-              Assign {selectedKeys.size} selected…
+              Assign {selectedBulkEligibleAccounts.length} selected…
             </button>
           )}
         </div>
@@ -488,6 +514,12 @@ export function ClientAccountsSection({
           />
         </div>
       </div>
+
+      {filteredAccounts.length > 0 && bulkEligibleAccounts.length !== filteredAccounts.length && (
+        <p className="text-[11px] text-ink-mute">
+          {bulkEligibleAccounts.length} of {filteredAccounts.length} visible accounts are eligible for bulk assignment. Accounts with overlapping roots require manual source selection.
+        </p>
+      )}
 
       {/* ─── TABLE ─── */}
       {accountsLoading ? (
@@ -518,7 +550,8 @@ export function ClientAccountsSection({
                     type="checkbox"
                     checked={allVisibleSelected}
                     onChange={toggleSelectAll}
-                    aria-label="Select all visible accounts"
+                    aria-label={`Select all ${bulkEligibleAccounts.length} bulk-eligible visible accounts`}
+                    disabled={bulkEligibleAccounts.length === 0}
                     className="rounded border-line bg-canvas accent-white cursor-pointer"
                   />
                 </th>
@@ -533,6 +566,7 @@ export function ClientAccountsSection({
               {filteredAccounts.map((acc) => {
                 const key = `${acc.provider}:${acc.accountId}`;
                 const isSelected = selectedKeys.has(key);
+                const isBulkEligible = !acc.hasMultipleRootConnections && acc.availableConnections.length === 1;
                 const logo = logoPathForConnectionProvider(acc.provider);
                 const authConn = acc.availableConnections.find((c) => c.isAuthoritative) || acc.availableConnections[0];
 
@@ -551,7 +585,9 @@ export function ClientAccountsSection({
                         checked={isSelected}
                         onChange={() => toggleSelectOne(key)}
                         aria-label={`Select account ${acc.accountId}`}
-                        className="rounded border-line bg-canvas accent-white cursor-pointer"
+                        disabled={!isBulkEligible}
+                        title={isBulkEligible ? undefined : "Bulk assignment requires one discovered root. Use Assign to choose the authoritative source."}
+                        className="rounded border-line bg-canvas accent-white cursor-pointer disabled:cursor-not-allowed disabled:opacity-45"
                       />
                     </td>
 
@@ -605,7 +641,7 @@ export function ClientAccountsSection({
                           <div className="flex items-center gap-1 text-[11px] text-amber-300 bg-amber-950/30 border border-amber-900/40 rounded px-1.5 py-0.5 w-fit">
                             <AlertTriangle className="h-3 w-3 shrink-0 text-amber-400" />
                             <span>
-                              Ambiguous: {acc.availableConnections.length} overlapping roots (MCC)
+                              Ambiguous: {acc.availableConnections.length} overlapping roots (MCC); select a source manually
                             </span>
                           </div>
                         )}

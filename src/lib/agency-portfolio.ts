@@ -61,6 +61,7 @@ export interface ClientWithConnections {
   requiredProviders?: string[];
   requiredDestinations?: string[];
   requirementsConfiguredAt?: string | null;
+  accountAssignmentsConfiguredAt?: string | null;
   _count?: { pipelines?: number; connections?: number; accountAssignments?: number };
   connections?: PortfolioConnection[];
   accountAssignments?: Array<{
@@ -89,6 +90,7 @@ export interface ClientHealthSummary {
  */
 export function deriveClientHealth(client: {
   connections?: PortfolioConnection[];
+  accountAssignmentsConfiguredAt?: string | null;
   accountAssignments?: Array<{
     id: string;
     provider: string;
@@ -99,14 +101,20 @@ export function deriveClientHealth(client: {
   requiredProviders?: string[];
   _count?: { accountAssignments?: number; connections?: number };
 }): ClientHealthSummary {
+  const isExplicit = client.accountAssignmentsConfiguredAt != null;
+  const assignmentsLoaded = client.accountAssignments !== undefined;
   const assignedAccountsCount = client.accountAssignments !== undefined
     ? client.accountAssignments.length
     : (client._count?.accountAssignments ?? 0);
 
-  // Derive providers from active account assignments, or fallback to connections
+  // The configured marker, not an assignment count, selects authority. An
+  // explicitly configured empty client must never regain legacy connection
+  // scope, including while assignment data is temporarily unavailable.
   const assignmentProviders = client.accountAssignments?.map((a) => a.provider) ?? [];
   const connectionProviders = client.connections?.map((c) => c.provider) ?? [];
-  const connectedProviders = Array.from(new Set([...assignmentProviders, ...connectionProviders]));
+  const connectedProviders = Array.from(new Set(
+    isExplicit ? assignmentProviders : connectionProviders,
+  ));
 
   // Missing required providers check
   const required = client.requiredProviders ?? [];
@@ -114,8 +122,8 @@ export function deriveClientHealth(client: {
 
   // Determine connections to evaluate for health
   let connections: PortfolioConnection[] = [];
-  if (client.accountAssignments && client.accountAssignments.length > 0) {
-    const fromAssignments = client.accountAssignments.map((a) => a.connection).filter(Boolean) as PortfolioConnection[];
+  if (isExplicit && assignmentsLoaded) {
+    const fromAssignments = (client.accountAssignments ?? []).map((a) => a.connection).filter(Boolean) as PortfolioConnection[];
     const seen = new Set<string>();
     for (const conn of fromAssignments) {
       if (!seen.has(conn.id)) {
@@ -124,8 +132,21 @@ export function deriveClientHealth(client: {
       }
     }
   }
-  if (connections.length === 0) {
+  if (!isExplicit) {
     connections = client.connections ?? [];
+  }
+
+  if (isExplicit && !assignmentsLoaded) {
+    return {
+      status: "pending",
+      label: "Assignment data unavailable",
+      badgeClass: "border-line bg-panel text-ink-mute",
+      failingCount: 0,
+      latestSyncAt: null,
+      connectedProviders,
+      assignedAccountsCount,
+      missingRequiredProviders,
+    };
   }
 
   if (connections.length === 0 && assignedAccountsCount === 0) {

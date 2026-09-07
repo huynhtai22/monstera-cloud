@@ -463,6 +463,35 @@ export async function bulkAssignClientProviderAccounts(
   const deduplicatedItems = Array.from(uniqueItemsMap.values());
 
   const executeBulk = async (tx: ScopedTransaction) => {
+    // Bulk assignment is deliberately limited to accounts with one discovered
+    // root. A multi-root account remains assignable through the single-account
+    // flow, where the operator must choose its authoritative connection.
+    const discoveredAccounts = await getWorkspaceDiscoveredAccounts(workspaceId, tx);
+    const discoveredByTuple = new Map(
+      discoveredAccounts.map((account) => [`${account.provider}:${account.accountId}`, account]),
+    );
+    for (const item of deduplicatedItems) {
+      const accountId = canonicalizeAccountId(item.provider, item.accountId);
+      const account = discoveredByTuple.get(`${item.provider}:${accountId}`);
+      if (!account) {
+        throw new RbacError("Bulk assignment account was not discovered in this workspace", "INVALID_REQUEST", 400);
+      }
+      if (account.hasMultipleRootConnections || account.availableConnections.length !== 1) {
+        throw new RbacError(
+          "Bulk assignment requires one unambiguous source; choose an authoritative root manually",
+          "CONFLICT",
+          409,
+        );
+      }
+      if (account.availableConnections[0]?.id !== item.connectionId) {
+        throw new RbacError(
+          "Bulk assignment connection is not the eligible source for this provider account",
+          "INVALID_REQUEST",
+          400,
+        );
+      }
+    }
+
     const results = [];
     for (const item of deduplicatedItems) {
       const res = await assignClientProviderAccount(
@@ -884,102 +913,114 @@ export async function getWorkspaceDiscoveredAccounts(
  * If an account appears under >1 connection in the workspace, it is skipped
  * (left visibly unassigned) to prevent competing sources of truth or double-counting.
  */
+/**
+ * Transaction-scoped cutover primitive. Callers that coordinate more than one
+ * client must pass their existing transaction so all markers, assignments, and
+ * audit events share one commit boundary.
+ */
+export async function cutoverUnambiguousAssignmentsInTransaction(
+  workspaceId: string,
+  clientId: string,
+  tx: ScopedTransaction,
+  actorUserId?: string | null,
+) {
+  const client = await tx.client.findFirst({
+    where: { id: clientId, workspaceId },
+    select: { id: true, accountAssignmentsConfiguredAt: true },
+  });
+  if (!client) {
+    throw new RbacError("Client not found in workspace", "NOT_FOUND", 404);
+  }
+
+  const legacyConnections = await tx.connection.findMany({
+    where: { workspaceId, clientId, type: "source" },
+    select: { id: true },
+  });
+
+  const legacyConnIds = new Set(legacyConnections.map((c) => c.id));
+  const allDiscovered = await getWorkspaceDiscoveredAccounts(workspaceId, tx);
+  const candidates: Array<{ provider: string; accountId: string; connectionId: string }> = [];
+  const now = new Date();
+
+  for (const acc of allDiscovered) {
+    const isLegacyConnAccount = acc.availableConnections.some((c) => legacyConnIds.has(c.id));
+    if (!isLegacyConnAccount) {
+      continue;
+    }
+
+    if (acc.hasMultipleRootConnections || acc.availableConnections.length > 1) {
+      throw new RbacError("Cutover has an unresolved authoritative-source conflict", "CONFLICT", 409);
+    }
+
+    const conn = acc.availableConnections[0];
+    if (!legacyConnIds.has(conn.id)) {
+      throw new RbacError("Cutover has an unresolved candidate connection", "CONFLICT", 409);
+    }
+    const existing = await tx.clientProviderAccountAssignment.findUnique({
+      where: { workspaceId_provider_accountId: { workspaceId, provider: acc.provider, accountId: acc.accountId } },
+    });
+    if (existing && (existing.clientId !== clientId || existing.connectionId !== conn.id)) {
+      throw new RbacError("Cutover has an account ownership conflict", "CONFLICT", 409);
+    }
+    candidates.push({ provider: acc.provider, accountId: acc.accountId, connectionId: conn.id });
+  }
+
+  const createdAssignments = [];
+  for (const candidate of candidates) {
+    const existing = await tx.clientProviderAccountAssignment.findUnique({
+      where: { workspaceId_provider_accountId: { workspaceId, provider: candidate.provider, accountId: candidate.accountId } },
+    });
+    if (existing) { createdAssignments.push(existing); continue; }
+    createdAssignments.push(await tx.clientProviderAccountAssignment.create({ data: {
+      workspaceId, clientId, provider: candidate.provider, accountId: candidate.accountId,
+      connectionId: candidate.connectionId, assignedAt: now, assignedBy: actorUserId ?? null,
+    } }));
+  }
+
+  const configuredAt = client.accountAssignmentsConfiguredAt ?? now;
+  if (!client.accountAssignmentsConfiguredAt) {
+    await tx.client.update({
+      where: { workspaceId_id: { workspaceId, id: clientId } },
+      data: { accountAssignmentsConfiguredAt: configuredAt },
+    });
+  }
+
+  await tx.auditEvent.create({
+    data: {
+      workspaceId,
+      actorUserId: actorUserId ?? null,
+      action: "client_account.cutover_completed",
+      resource: "client",
+      resourceId: clientId,
+      metadata: {
+        assignedCount: createdAssignments.length,
+        skippedAmbiguousCount: 0,
+        legacyConnectionCount: legacyConnections.length,
+        alreadyConfigured: Boolean(client.accountAssignmentsConfiguredAt),
+      },
+    },
+  });
+
+  return {
+    assignedCount: createdAssignments.length,
+    assignments: createdAssignments,
+    skippedAmbiguousCount: 0,
+    ambiguousAccounts: [],
+    configuredAt: configuredAt.toISOString(),
+    alreadyConfigured: Boolean(client.accountAssignmentsConfiguredAt),
+  };
+}
+
 export async function cutoverUnambiguousAssignments(
   workspaceId: string,
   clientId: string,
   db: ScopedTransaction = prisma,
   actorUserId?: string | null,
 ) {
-  const run = async (tx: ScopedTransaction) => {
-    const client = await tx.client.findFirst({
-      where: { id: clientId, workspaceId },
-      select: { id: true, accountAssignmentsConfiguredAt: true },
-    });
-    if (!client) {
-      throw new RbacError("Client not found in workspace", "NOT_FOUND", 404);
-    }
-
-    const legacyConnections = await tx.connection.findMany({
-      where: { workspaceId, clientId, type: "source" },
-      select: { id: true },
-    });
-
-    const legacyConnIds = new Set(legacyConnections.map((c) => c.id));
-    const allDiscovered = await getWorkspaceDiscoveredAccounts(workspaceId, tx);
-    const candidates: Array<{ provider: string; accountId: string; connectionId: string }> = [];
-    const now = new Date();
-
-    for (const acc of allDiscovered) {
-      const isLegacyConnAccount = acc.availableConnections.some((c) => legacyConnIds.has(c.id));
-      if (!isLegacyConnAccount) {
-        continue;
-      }
-
-      if (acc.hasMultipleRootConnections || acc.availableConnections.length > 1) {
-        throw new RbacError("Cutover has an unresolved authoritative-source conflict", "CONFLICT", 409);
-      }
-
-      const conn = acc.availableConnections[0];
-      if (!legacyConnIds.has(conn.id)) {
-        throw new RbacError("Cutover has an unresolved candidate connection", "CONFLICT", 409);
-      }
-      const existing = await tx.clientProviderAccountAssignment.findUnique({
-        where: { workspaceId_provider_accountId: { workspaceId, provider: acc.provider, accountId: acc.accountId } },
-      });
-      if (existing && (existing.clientId !== clientId || existing.connectionId !== conn.id)) {
-        throw new RbacError("Cutover has an account ownership conflict", "CONFLICT", 409);
-      }
-      candidates.push({ provider: acc.provider, accountId: acc.accountId, connectionId: conn.id });
-    }
-
-    const createdAssignments = [];
-    for (const candidate of candidates) {
-      const existing = await tx.clientProviderAccountAssignment.findUnique({
-        where: { workspaceId_provider_accountId: { workspaceId, provider: candidate.provider, accountId: candidate.accountId } },
-      });
-      if (existing) { createdAssignments.push(existing); continue; }
-      createdAssignments.push(await tx.clientProviderAccountAssignment.create({ data: {
-        workspaceId, clientId, provider: candidate.provider, accountId: candidate.accountId,
-        connectionId: candidate.connectionId, assignedAt: now, assignedBy: actorUserId ?? null,
-      } }));
-    }
-
-    const configuredAt = client.accountAssignmentsConfiguredAt ?? now;
-    if (!client.accountAssignmentsConfiguredAt) {
-      await tx.client.update({
-        where: { workspaceId_id: { workspaceId, id: clientId } },
-        data: { accountAssignmentsConfiguredAt: configuredAt },
-      });
-    }
-
-    await tx.auditEvent.create({
-      data: {
-        workspaceId,
-        actorUserId: actorUserId ?? null,
-        action: "client_account.cutover_completed",
-        resource: "client",
-        resourceId: clientId,
-        metadata: {
-          assignedCount: createdAssignments.length,
-          skippedAmbiguousCount: 0,
-          legacyConnectionCount: legacyConnections.length,
-          alreadyConfigured: Boolean(client.accountAssignmentsConfiguredAt),
-        },
-      },
-    });
-
-    return {
-      assignedCount: createdAssignments.length,
-      assignments: createdAssignments,
-      skippedAmbiguousCount: 0,
-      ambiguousAccounts: [],
-      configuredAt: configuredAt.toISOString(),
-      alreadyConfigured: Boolean(client.accountAssignmentsConfiguredAt),
-    };
-  };
-
   if ("$transaction" in db && typeof (db as any).$transaction === "function") {
-    return (db as any).$transaction(run);
+    return (db as any).$transaction((tx: ScopedTransaction) =>
+      cutoverUnambiguousAssignmentsInTransaction(workspaceId, clientId, tx, actorUserId),
+    );
   }
-  return run(db);
+  return cutoverUnambiguousAssignmentsInTransaction(workspaceId, clientId, db, actorUserId);
 }
