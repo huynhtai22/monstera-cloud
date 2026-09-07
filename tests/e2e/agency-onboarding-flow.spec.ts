@@ -15,14 +15,14 @@ test.describe("Agency-First User Flow & Usability", () => {
 
     // 4. Verify user arrives on /register
     await expect(page).toHaveURL(/\/register/);
-    await expect(page.getByText("Create your account")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
   });
 
   test("Registration form input validation", async ({ page }) => {
     await page.goto("/register", { waitUntil: "domcontentloaded" });
 
     // Form heading check
-    await expect(page.getByText("Create your account")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Create your account" })).toBeVisible();
 
     // Verify input fields exist and are visible (name/email/password; no confirm field)
     const nameInput = page.locator('input#name');
