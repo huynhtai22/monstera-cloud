@@ -312,7 +312,7 @@ test.describe("client account assignment journeys", () => {
 
   test("Manage sources deep-link selects the accounts tab and preserves five-client identity", async ({ page }) => {
     await signInToFixture(page);
-    await page.goto("/clients");
+    await page.goto("/clients", { waitUntil: "domcontentloaded" });
 
     const manage = page.locator(`a[href="/sources?clientId=${fixture.clients.one.id}&tab=accounts"]`);
     await expect(manage).toBeVisible();
@@ -338,7 +338,7 @@ test.describe("client account assignment journeys", () => {
 
   test("single assignment is visibly distinct and persists across refresh and a new API request", async ({ page }) => {
     await signInToFixture(page);
-    await page.goto("/sources?tab=accounts");
+    await page.goto("/sources?tab=accounts", { waitUntil: "domcontentloaded" });
 
     await assignAccountFromUi(page, fixture.accounts.single, fixture.clients.one.id);
     const row = accountRow(page, fixture.accounts.single);
@@ -364,7 +364,7 @@ test.describe("client account assignment journeys", () => {
 
   test("bulk assignment scopes warehouse and export output to exact assigned tuples", async ({ page }) => {
     await signInToFixture(page);
-    await page.goto("/sources?tab=accounts");
+    await page.goto("/sources?tab=accounts", { waitUntil: "domcontentloaded" });
 
     await page.getByLabel(`Select account ${fixture.accounts.bulkOne}`).check();
     await page.getByLabel(`Select account ${fixture.accounts.bulkTwo}`).check();
@@ -501,7 +501,7 @@ test.describe("client account assignment journeys", () => {
 
   test("ambiguous roots require a manual source choice, reassign only on confirmation, and final unassign remains empty", async ({ page }) => {
     await signInToFixture(page);
-    await page.goto("/sources?tab=accounts");
+    await page.goto("/sources?tab=accounts", { waitUntil: "domcontentloaded" });
 
     const sharedRow = accountRow(page, fixture.accounts.shared);
     await expect(sharedRow).toContainText("Ambiguous: 2 overlapping roots (MCC)");
@@ -584,7 +584,7 @@ test.describe("client account assignment journeys", () => {
     await unassignDialog.getByRole("button", { name: "Unassign" }).click();
     await unassignResponse;
 
-    await page.goto(`/sources?clientId=${fixture.clients.five.id}&tab=accounts`);
+    await page.goto(`/sources?clientId=${fixture.clients.five.id}&tab=accounts`, { waitUntil: "domcontentloaded" });
     await expect(page.getByLabel("Filter accounts by client")).toHaveValue(fixture.clients.five.id);
     await expect(page.getByText("No provider accounts found")).toBeVisible();
 
@@ -603,7 +603,7 @@ test.describe("client account assignment journeys", () => {
 
   test("failed cutover is atomic, five client filters remain isolated, and unauthorized callers cannot mutate", async ({ page, browser }) => {
     await signInToFixture(page);
-    await page.goto("/sources?tab=accounts");
+    await page.goto("/sources?tab=accounts", { waitUntil: "domcontentloaded" });
 
     const conflictRow = accountRow(page, fixture.accounts.conflict);
     await expect(conflictRow).toContainText("Ambiguous: 2 overlapping roots (MCC)");

@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test.describe("Agency-First User Flow & Usability", () => {
   test("Homepage to Register CTA navigation", async ({ page }) => {
     // 1. Visit Homepage
-    await page.goto("/");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
 
     // 2. Verify Hero Headline (dark-first redesign, MarketingHomePage copy)
     await expect(page.locator("h1")).toContainText(/More clients|Thêm khách hàng|Your ad data/);
@@ -19,7 +19,7 @@ test.describe("Agency-First User Flow & Usability", () => {
   });
 
   test("Registration form input validation", async ({ page }) => {
-    await page.goto("/register");
+    await page.goto("/register", { waitUntil: "domcontentloaded" });
 
     // Form heading check
     await expect(page.getByText("Create your account")).toBeVisible();
@@ -37,7 +37,7 @@ test.describe("Agency-First User Flow & Usability", () => {
 
   test("Complete agency login and console navigation flow", async ({ page }) => {
     // 1. Visit Login Page
-    await page.goto("/login");
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
     await expect(page.getByText("Log in to Monstera Cloud")).toBeVisible();
 
     // 2. Verify login form fields exist (email + password + submit)
