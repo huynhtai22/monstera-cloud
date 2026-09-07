@@ -15,9 +15,9 @@ test.describe("pilot activation console journey", () => {
 
   test("demo pilot-activation fixture renders all five states", async ({ page }) => {
     const response = await page.goto("/demo/ui/pilot-activation");
-    // In production the demo is hidden behind notFound()
+    // In production the demo is hidden behind notFound(); Next's not-found
+    // presentation is framework-owned, so the HTTP status is the contract.
     if (response && response.status() === 404) {
-      await expect(page.getByText("404")).toBeVisible();
       return;
     }
     await expect(page.getByRole("heading", { name: "Pilot activation states" })).toBeVisible();

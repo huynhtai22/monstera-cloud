@@ -19,6 +19,7 @@ const FBQ_INIT_OPTIONS =
     META_TEST_EVENT_CODE && META_TEST_EVENT_CODE.length > 0
         ? `, ${JSON.stringify({ test_event_code: META_TEST_EVENT_CODE })}`
         : "";
+const isIsolatedE2e = process.env.MONSTERA_E2E_ISOLATED === "1";
 
 
 export const metadata: Metadata = {
@@ -84,6 +85,7 @@ export default function RootLayout({
                 />
             </head>
             <body className="antialiased">
+                {!isIsolatedE2e && <>
                 {/* Google Tag Manager (noscript fallback for users with JS disabled) */}
                 <noscript>
                     <iframe
@@ -131,11 +133,12 @@ fbq('init', '${META_PIXEL_ID}'${FBQ_INIT_OPTIONS});
 fbq('track', 'PageView');`,
                     }}
                 />
+                </>}
 
                 <Providers>
                     {children}
-                    <MetaPixelAnalytics />
-                    <LiveChatWidget />
+                    {!isIsolatedE2e && <MetaPixelAnalytics />}
+                    {!isIsolatedE2e && <LiveChatWidget />}
                 </Providers>
             </body>
         </html>

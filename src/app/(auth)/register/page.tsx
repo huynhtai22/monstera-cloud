@@ -18,6 +18,7 @@ export default function RegisterPage() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [inviteToken, setInviteToken] = useState("");
   const [isPilotOffer, setIsPilotOffer] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -25,6 +26,7 @@ export default function RegisterPage() {
     setInviteToken(token);
     setIsPilotOffer(searchParams.get("offer") === "agency-pro-pilot");
     if (token) sessionStorage.setItem("monstera_pending_invitation", token);
+    setIsHydrated(true);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -108,7 +110,7 @@ export default function RegisterPage() {
           <div className="w-full space-y-3 mb-6">
             <button
               onClick={signInWithGoogle}
-              disabled={isLoading || isGoogleLoading}
+              disabled={!isHydrated || isLoading || isGoogleLoading}
               className="w-full flex items-center justify-center gap-3 bg-[#0d0d0d] hover:bg-[#161616] border border-[#222] hover:border-[#333] text-white font-medium py-2.5 px-4 rounded-lg text-sm transition-all shadow-sm active:scale-[0.99] disabled:opacity-50"
             >
               {isGoogleLoading ? (
@@ -160,6 +162,7 @@ export default function RegisterPage() {
               type="text"
               placeholder="Alex Smith"
               required
+              disabled={!isHydrated}
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-[#0a0a0a] border border-[#222] focus:border-white focus:outline-none focus:ring-1 focus:ring-white rounded-lg text-sm text-white placeholder:text-neutral-600 px-3.5 py-2.5 transition-colors"
@@ -177,6 +180,7 @@ export default function RegisterPage() {
               placeholder="alex@agency.com"
               autoComplete="email"
               required
+              disabled={!isHydrated}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-[#0a0a0a] border border-[#222] focus:border-white focus:outline-none focus:ring-1 focus:ring-white rounded-lg text-sm text-white placeholder:text-neutral-600 px-3.5 py-2.5 transition-colors"
@@ -194,6 +198,7 @@ export default function RegisterPage() {
               placeholder="••••••••••••"
               autoComplete="new-password"
               required
+              disabled={!isHydrated}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full bg-[#0a0a0a] border border-[#222] focus:border-white focus:outline-none focus:ring-1 focus:ring-white rounded-lg text-sm text-white placeholder:text-neutral-600 px-3.5 py-2.5 transition-colors"
@@ -206,7 +211,7 @@ export default function RegisterPage() {
           <div className="pt-2">
             <button
               type="submit"
-              disabled={isLoading || isGoogleLoading}
+              disabled={!isHydrated || isLoading || isGoogleLoading}
               className="w-full flex items-center justify-center py-2.5 px-4 rounded-lg text-sm font-semibold text-black bg-white hover:bg-neutral-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-black focus:ring-white disabled:opacity-50 transition-all shadow-sm active:scale-[0.99]"
             >
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin text-black" /> : "Create Account"}
