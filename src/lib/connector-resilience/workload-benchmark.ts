@@ -1,9 +1,12 @@
 /**
  * Monstera Cloud Connector Capacity & Resilience Workload Benchmark
  *
+ * CLASSIFICATION: Local provider-client parsing and orchestration microbenchmark;
+ * excludes provider latency, PostgreSQL writes, Redis, serverless startup and multi-process coordination.
+ *
  * Runs deterministic synthetic workloads against the simulated multi-provider engine.
- * Records job wait durations, E2E runtimes, provider call counts, retries, peak concurrency,
- * and fairness metrics.
+ * Records local job wait durations, E2E runtimes, provider call counts, retries, peak concurrency,
+ * and fairness metrics in memory.
  */
 
 import { ProviderSimulator, FaultConfig } from "./provider-simulator";

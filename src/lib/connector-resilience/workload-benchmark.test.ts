@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { runWorkloadBenchmark } from "./workload-benchmark";
 
-describe("Workload Model: Measured Baseline Capacity & Concurrency", () => {
+describe("Workload Model: Local Client Parsing & Orchestration Microbenchmark (excludes DB/network)", () => {
   it("Small Baseline: 5 agencies, 2 connections, 2 accounts (20 accounts total)", async () => {
     const res = await runWorkloadBenchmark("Small Baseline (5 agencies)", {
       agencies: 5,
