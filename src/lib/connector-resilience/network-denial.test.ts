@@ -227,4 +227,80 @@ describe("Network Denial Guard: Multi-Transport Boundary Controls", () => {
       }
     );
   });
+
+  it("Native fetch redirects cannot reach a denied sink through absolute, protocol-relative, or multi-hop locations", async () => {
+    let sinkHits = 0;
+    let loopRequests = 0;
+    const sink = http.createServer((_request, response) => {
+      sinkHits++;
+      response.end("denied sink");
+    });
+    const source = http.createServer((request, response) => {
+      if (request.url === "/absolute") {
+        response.writeHead(302, { Location: `http://0.0.0.0:${sinkPort}/sink` });
+      } else if (request.url === "/protocol-relative") {
+        response.writeHead(302, { Location: `//0.0.0.0:${sinkPort}/sink` });
+      } else if (request.url === "/multi-hop") {
+        response.writeHead(302, { Location: "/second-hop" });
+      } else if (request.url === "/second-hop") {
+        response.writeHead(302, { Location: `http://0.0.0.0:${sinkPort}/sink` });
+      } else if (request.url === "/loop") {
+        loopRequests++;
+        response.writeHead(302, { Location: "/loop" });
+      } else {
+        response.statusCode = 404;
+      }
+      response.end();
+    });
+
+    const listen = (server: http.Server, host: string) => new Promise<number>((resolve) => {
+      server.listen(0, host, () => resolve((server.address() as { port: number }).port));
+    });
+    const close = (server: http.Server) => new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+
+    const sinkPort = await listen(sink, "0.0.0.0");
+    const sourcePort = await listen(source, "127.0.0.1");
+    const assertRedirectBlocked = async (path: string) => {
+      await assert.rejects(
+        () => fetch(`http://127.0.0.1:${sourcePort}${path}`),
+        (error: unknown) => {
+          assert.ok(error instanceof TypeError);
+          const cause = (error as Error & { cause?: unknown }).cause;
+          assert.ok(cause instanceof NetworkAccessViolationError);
+          assert.equal(cause.transport, "net.connect");
+          assert.match(cause.destination, /0\.0\.0\.0/);
+          return true;
+        },
+      );
+      assert.equal(sinkHits, 0, "the denied sink must never receive a connection");
+    };
+
+    try {
+      await assertRedirectBlocked("/absolute");
+      await assertRedirectBlocked("/protocol-relative");
+      await assertRedirectBlocked("/multi-hop");
+      await assert.rejects(() => fetch(`http://127.0.0.1:${sourcePort}/loop`), TypeError);
+      assert.ok(loopRequests > 1 && loopRequests <= 21, "native fetch must terminate its redirect loop");
+      assert.equal(sinkHits, 0);
+    } finally {
+      await close(source);
+      await close(sink);
+    }
+  });
+
+  it("Guard teardown restores patched transports", () => {
+    forceRestoreNetworkGuard();
+    const originalFetch = globalThis.fetch;
+    const originalNetConnect = net.connect;
+
+    installNetworkDenialGuard();
+    assert.notEqual(globalThis.fetch, originalFetch);
+    assert.notEqual(net.connect, originalNetConnect);
+
+    forceRestoreNetworkGuard();
+    assert.equal(globalThis.fetch, originalFetch);
+    assert.equal(net.connect, originalNetConnect);
+  });
 });

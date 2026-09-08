@@ -25,7 +25,14 @@ describe("Workload Model: Local Client Parsing & Orchestration Microbenchmark (e
 
     assert.equal(res.agencyCount, 5);
     assert.equal(res.accountCount, 20);
-    assert.equal(res.duplicateRowsDetected, 0);
+    assert.equal(res.attemptedOperations, 20);
+    assert.equal(res.successfulOperations, 20);
+    assert.equal(res.failedOperations, 0);
+    assert.equal(res.evidenceStatus, "valid");
+    assert.deepEqual(res.duplicateRowEvidence, {
+      supported: false,
+      reason: "benchmark_does_not_observe_persisted_row_identity",
+    });
     assert.ok(res.totalDurationMs < 5000, `Duration was ${res.totalDurationMs}ms`);
   });
 
@@ -40,7 +47,7 @@ describe("Workload Model: Local Client Parsing & Orchestration Microbenchmark (e
 
     assert.equal(res.agencyCount, 20);
     assert.equal(res.accountCount, 180);
-    assert.equal(res.duplicateRowsDetected, 0);
+    assert.equal(res.evidenceStatus, "valid");
     assert.ok(res.peakSimultaneousProviderRequests <= 5);
   });
 
@@ -55,7 +62,7 @@ describe("Workload Model: Local Client Parsing & Orchestration Microbenchmark (e
 
     assert.equal(res.agencyCount, 50);
     assert.equal(res.accountCount, 600);
-    assert.equal(res.duplicateRowsDetected, 0);
+    assert.equal(res.evidenceStatus, "valid");
     assert.ok(res.peakSimultaneousProviderRequests <= 10);
   });
 
@@ -73,5 +80,59 @@ describe("Workload Model: Local Client Parsing & Orchestration Microbenchmark (e
     assert.equal(res.accountCount, 58);
     // Verified: Noisy tenant causes head-of-line delay for subsequent small tenants in FIFO queue
     assert.ok(typeof res.smallTenantDelayMs === "number");
+  });
+
+  it("Invalidates benchmark evidence when one simulated provider operation fails", async () => {
+    const res = await runWorkloadBenchmark("One failed worker", {
+      agencies: 1,
+      connectionsPerAgency: 1,
+      accountsPerConnection: 1,
+      workerConcurrency: 1,
+      daysWindow: 30,
+      faults: { meta: { outage503Remaining: 1 } },
+    });
+
+    assert.equal(res.attemptedOperations, 1);
+    assert.equal(res.successfulOperations, 0);
+    assert.equal(res.failedOperations, 1);
+    assert.deepEqual(res.workerFailures, [{ category: "provider_operation_failed" }]);
+    assert.equal(res.evidenceStatus, "invalid");
+    assert.equal(res.totalEstimatedRows, null);
+    assert.equal(res.totalDurationMs, null);
+    assert.equal(res.peakSimultaneousProviderRequests, null);
+    assert.equal(res.smallTenantDelayMs, null);
+  });
+
+  it("Counts simultaneous worker failures instead of hiding them", async () => {
+    const res = await runWorkloadBenchmark("Four failed workers", {
+      agencies: 1,
+      connectionsPerAgency: 1,
+      accountsPerConnection: 4,
+      workerConcurrency: 4,
+      daysWindow: 30,
+      faults: { meta: { outage503Remaining: 10 } },
+    });
+
+    assert.equal(res.attemptedOperations, 4);
+    assert.equal(res.successfulOperations, 0);
+    assert.equal(res.failedOperations, 4);
+    assert.equal(res.workerFailures.length, 4);
+    assert.equal(res.evidenceStatus, "invalid");
+  });
+
+  it("Does not let successful workers hide a failed worker", async () => {
+    const res = await runWorkloadBenchmark("Mixed worker outcome", {
+      agencies: 1,
+      connectionsPerAgency: 1,
+      accountsPerConnection: 2,
+      workerConcurrency: 1,
+      daysWindow: 30,
+      faults: { meta: { outage503Remaining: 1 } },
+    });
+
+    assert.equal(res.attemptedOperations, 2);
+    assert.equal(res.successfulOperations, 1);
+    assert.equal(res.failedOperations, 1);
+    assert.equal(res.evidenceStatus, "invalid");
   });
 });

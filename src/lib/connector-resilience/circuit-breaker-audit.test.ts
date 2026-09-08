@@ -77,26 +77,50 @@ describe("Circuit Breaker Audit: Verified Properties and Failure Modes", () => {
     const cb = new CircuitBreaker("google_ads", { failureThreshold: 5 });
     (cb as any).redis = mockRedis;
 
-    // Simulate 10 concurrent worker failures reading the same initial state
+    // Deterministically hold all five reads at the initial value before any
+    // write. This documents today's Phase 1 coordination gap; Phase 2B must
+    // replace it with atomic storage rather than changing this expected result.
     const originalGet = mockRedis.get.bind(mockRedis);
-    let capturedFailures: (string | null)[] = [];
+    const capturedFailures: (string | null)[] = [];
+    let completedWorkers = 0;
+    let releaseReads!: () => void;
+    let signalAllReads!: () => void;
+    const allReadsObserved = new Promise<void>((resolve) => { signalAllReads = resolve; });
+    const permitWrites = new Promise<void>((resolve) => { releaseReads = resolve; });
+    const originalSet = mockRedis.set.bind(mockRedis);
+    let writesBeforeRelease = 0;
 
-    // All concurrent workers read "null" before any worker writes
+    // All concurrent workers must read "null" before any worker writes.
     mockRedis.get = async (key: string) => {
       const val = await originalGet(key);
-      capturedFailures.push(val);
+      if (key === "cb:failures:google_ads") {
+        capturedFailures.push(val);
+        if (capturedFailures.length === 5) signalAllReads();
+        await permitWrites;
+      }
       return val;
     };
+    mockRedis.set = async (key, value, opts) => {
+      if (key === "cb:failures:google_ads" && capturedFailures.length === 5) writesBeforeRelease++;
+      return originalSet(key, value, opts);
+    };
 
-    // If 5 workers execute getFailures concurrently before set() completes:
-    // The counter will be overwritten with 1 instead of 5
-    await Promise.all(
-      Array.from({ length: 5 }).map(() => cb.recordFailure(new Error("Simulated concurrent failure")))
-    );
+    const workers = Array.from({ length: 5 }, async () => {
+      completedWorkers++;
+      await cb.recordFailure(new Error("Simulated concurrent failure"));
+    });
 
-    // In a race without Redis INCR / Lua atomic script, counts are subject to lost updates
+    await allReadsObserved;
+    assert.equal(completedWorkers, 5, "all workers must execute");
+    assert.deepEqual(capturedFailures, [null, null, null, null, null]);
+    assert.equal(writesBeforeRelease, 0, "no write may occur before every read is observed");
+    releaseReads();
+    await Promise.all(workers);
+
+    // An atomic INCR/Lua implementation would produce 5. The current read-then-
+    // write implementation deterministically loses four updates and leaves 1.
     const finalFailures = parseInt(mockRedis.store.get("cb:failures:google_ads") || "0", 10);
-    assert.ok(finalFailures <= 5);
+    assert.equal(finalFailures, 1);
   });
 
   it("AUDIT FINDING 3: Error classification is absent — permanent auth errors trip breaker equally with transient 503s", async () => {
