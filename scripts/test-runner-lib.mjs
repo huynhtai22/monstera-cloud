@@ -87,6 +87,20 @@ function parseArguments(argv, available, cwd) {
   return { flags, files };
 }
 
+function withoutPostgresConcurrency(flags) {
+  const filtered = [];
+  for (let index = 0; index < flags.length; index++) {
+    const flag = flags[index];
+    if (flag === "--test-concurrency") {
+      index++; // parseArguments already verified that this option has a value.
+      continue;
+    }
+    if (flag.startsWith("--test-concurrency=")) continue;
+    filtered.push(flag);
+  }
+  return filtered;
+}
+
 /** Creates deterministic tsx invocations without spawning a process. */
 export function createTestPlan(argv, discoveredTests, cwd = process.cwd()) {
   const available = new Set(discoveredTests.map((file) => resolve(file)));
@@ -103,7 +117,12 @@ export function createTestPlan(argv, discoveredTests, cwd = process.cwd()) {
   const postgres = selected.filter((file) => file.endsWith(".pg.integration.test.ts"));
   const plan = [];
   if (nonPostgres.length) plan.push({ name: "non-postgres", args: ["--test", ...flags, ...nonPostgres] });
-  if (postgres.length) plan.push({ name: "postgres", args: ["--test", "--test-concurrency=4", ...flags, ...postgres] });
+  if (postgres.length) {
+    plan.push({
+      name: "postgres",
+      args: ["--test", "--test-concurrency=4", ...withoutPostgresConcurrency(flags), ...postgres],
+    });
+  }
   return plan;
 }
 

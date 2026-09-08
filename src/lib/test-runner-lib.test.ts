@@ -34,6 +34,23 @@ describe("test runner planning and child-status semantics", () => {
     ]);
   });
 
+  it("keeps caller concurrency for non-PostgreSQL tests but enforces exactly four for PostgreSQL", () => {
+    for (const override of [["--test-concurrency=99"], ["--test-concurrency", "99"]]) {
+      assert.deepEqual(createTestPlan([...override, postgres], tests), [
+        { name: "postgres", args: ["--test", "--test-concurrency=4", postgres] },
+      ]);
+      assert.deepEqual(createTestPlan([...override, nonPostgres, postgres], tests), [
+        { name: "non-postgres", args: ["--test", ...override, nonPostgres] },
+        { name: "postgres", args: ["--test", "--test-concurrency=4", postgres] },
+      ]);
+    }
+
+    const fullPlan = createTestPlan(["--test-concurrency", "9"], tests);
+    assert.deepEqual(fullPlan[0].args, ["--test", "--test-concurrency", "9", nonPostgres]);
+    assert.deepEqual(fullPlan[1].args, ["--test", "--test-concurrency=4", postgres]);
+    assert.equal(fullPlan[1].args.filter((arg) => arg.startsWith("--test-concurrency")).length, 1);
+  });
+
   it("forwards separate and equals-form pattern values that look like test files", () => {
     assert.deepEqual(createTestPlan(["--test-name-pattern", "currency.test.ts"], tests), [
       { name: "non-postgres", args: ["--test", "--test-name-pattern", "currency.test.ts", nonPostgres] },

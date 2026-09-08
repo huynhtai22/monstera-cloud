@@ -67,6 +67,7 @@ export interface ConnectorEvidenceSummary {
     totalFreshnessEvents: number;
     advanced: number;
     unchanged: number;
+    degraded: number;
     advancementRatePct: number;
   };
   workspaceFairness: WorkspaceFairnessMetrics[];
@@ -186,6 +187,7 @@ export function summarizeConnectorEvidence(
     totalFreshnessEvents: 0,
     advanced: 0,
     unchanged: 0,
+    degraded: 0,
   };
 
   const workspaceMap = new Map<string, {
@@ -292,6 +294,7 @@ export function summarizeConnectorEvidence(
     if (ev.eventCategory === "freshness_event" || ev.freshnessOutcome) {
       freshness.totalFreshnessEvents++;
       if (ev.freshnessOutcome === "advanced") freshness.advanced++;
+      else if (ev.freshnessOutcome === "degraded") freshness.degraded++;
       else freshness.unchanged++;
     }
   }
@@ -366,6 +369,7 @@ export function summarizeConnectorEvidence(
       totalFreshnessEvents: totalFreshness,
       advanced: freshness.advanced,
       unchanged: freshness.unchanged,
+      degraded: freshness.degraded,
       advancementRatePct,
     },
     workspaceFairness,

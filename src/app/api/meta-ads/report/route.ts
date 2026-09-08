@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth-session';
 import { metaReportClient, MetaInsightsParams, META_DEFAULT_FIELDS } from '@/lib/meta-ads';
 import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import {
@@ -49,7 +48,7 @@ function buildCacheKey(connectionId: string, adAccountId: string, params: MetaIn
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -115,14 +114,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ ...cached.result, cached: true, cache_expires_in_seconds: remainingSec });
     }
 
-    const accessToken = await getValidOAuthToken(conn);
-
     const responsePayload = await runWithConnectorContext({
       workspaceId: conn.workspaceId,
       connectionId: conn.id,
       provider: 'meta_ads',
       accountId: adAccountId,
     }, async () => {
+      const accessToken = await getValidOAuthToken(conn);
       if (body.async) {
         // Large dataset — create async report job
         const reportRunId = await metaReportClient.createAsyncReport(accessToken, params);

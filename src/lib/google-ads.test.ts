@@ -9,7 +9,9 @@ import {
   normalizeGoogleAdsRow,
   googleAdsOAuthClient,
   googleAdsReportClient,
+  setGoogleAdsRetrySleeperForTest,
 } from "./google-ads";
+import { captureTelemetryForTest } from "./observability/connector-telemetry";
 
 /**
  * Unit coverage for the Google Ads connector (no network): normalization,
@@ -51,6 +53,7 @@ describe("google ads connector", () => {
     delete process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
     delete process.env.GOOGLE_ADS_CLIENT_ID;
     delete process.env.GOOGLE_ADS_CLIENT_SECRET;
+    setGoogleAdsRetrySleeperForTest(null);
   });
 
   // ── Normalization ──────────────────────────────────────────────────────────
@@ -226,6 +229,103 @@ describe("google ads connector", () => {
       );
       assert.ok(calls >= 2 && calls <= 4, `expected bounded retries, got ${calls}`);
     } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("emits every transport attempt before retrying and retains a later success", async () => {
+    const original = globalThis.fetch;
+    const delays: number[] = [];
+    const outcomes: Array<Response | Error> = [new Error("synthetic network one"), new Response(JSON.stringify({ resourceNames: [] }))];
+    globalThis.fetch = (async () => {
+      const outcome = outcomes.shift()!;
+      if (outcome instanceof Error) throw outcome;
+      return outcome;
+    }) as typeof fetch;
+    setGoogleAdsRetrySleeperForTest(async (delay) => { delays.push(delay); });
+    const capture = captureTelemetryForTest();
+    try {
+      await googleAdsOAuthClient.listAccessibleCustomers("synthetic-access-token");
+      const events = capture.events.filter((event) => event.provider === "google_ads" && event.operation === "search_stream");
+      assert.equal(events.length, 2);
+      assert.deepEqual(events.map((event) => event.attempt), [1, 2]);
+      assert.equal(events[0].errorCategory, "network_error");
+      assert.equal(events[0].outcome, "retryable_failure");
+      assert.ok((events[0].retryDelayMs ?? 0) >= 500);
+      assert.equal(events[1].outcome, "success");
+      assert.equal(events[1].retryDelayMs, undefined);
+      assert.equal(delays.length, 1);
+    } finally {
+      capture.restore();
+      globalThis.fetch = original;
+    }
+  });
+
+  it("retains multiple transport failures before a later success", async () => {
+    const original = globalThis.fetch;
+    const delays: number[] = [];
+    const outcomes: Array<Response | Error> = [
+      new Error("synthetic network one"),
+      new Error("synthetic network two"),
+      new Response(JSON.stringify({ resourceNames: [] })),
+    ];
+    globalThis.fetch = (async () => {
+      const outcome = outcomes.shift()!;
+      if (outcome instanceof Error) throw outcome;
+      return outcome;
+    }) as typeof fetch;
+    setGoogleAdsRetrySleeperForTest(async (delay) => { delays.push(delay); });
+    const capture = captureTelemetryForTest();
+    try {
+      await googleAdsOAuthClient.listAccessibleCustomers("synthetic-access-token");
+      const events = capture.events.filter((event) => event.provider === "google_ads" && event.operation === "search_stream");
+      assert.equal(events.length, 3);
+      assert.deepEqual(events.map((event) => event.attempt), [1, 2, 3]);
+      assert.deepEqual(events.map((event) => event.outcome), ["retryable_failure", "retryable_failure", "success"]);
+      assert.equal(delays.length, 2);
+    } finally {
+      capture.restore();
+      globalThis.fetch = original;
+    }
+  });
+
+  it("records each rejected transport attempt exactly once, including the terminal failure", async () => {
+    const original = globalThis.fetch;
+    const delays: number[] = [];
+    globalThis.fetch = (async () => { throw new Error("synthetic network failure"); }) as typeof fetch;
+    setGoogleAdsRetrySleeperForTest(async (delay) => { delays.push(delay); });
+    const capture = captureTelemetryForTest();
+    try {
+      await assert.rejects(
+        () => googleAdsOAuthClient.listAccessibleCustomers("synthetic-access-token"),
+        (error: unknown) => error instanceof GoogleAdsProviderError && error.retryable,
+      );
+      const events = capture.events.filter((event) => event.provider === "google_ads" && event.operation === "search_stream");
+      assert.equal(events.length, 3);
+      assert.deepEqual(events.map((event) => event.attempt), [1, 2, 3]);
+      assert.ok(events.slice(0, 2).every((event) => (event.retryDelayMs ?? 0) > 0));
+      assert.equal(events[2].retryDelayMs, undefined);
+      assert.deepEqual(delays.length, 2);
+    } finally {
+      capture.restore();
+      globalThis.fetch = original;
+    }
+  });
+
+  it("does not lose a transport-failure event when the retry sleeper rejects", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => { throw new Error("synthetic network failure"); }) as typeof fetch;
+    setGoogleAdsRetrySleeperForTest(async () => { throw new Error("synthetic sleeper failure"); });
+    const capture = captureTelemetryForTest();
+    try {
+      await assert.rejects(() => googleAdsOAuthClient.listAccessibleCustomers("synthetic-access-token"), /synthetic sleeper failure/);
+      const events = capture.events.filter((event) => event.provider === "google_ads" && event.operation === "search_stream");
+      assert.equal(events.length, 1);
+      assert.equal(events[0].attempt, 1);
+      assert.equal(events[0].errorCategory, "network_error");
+      assert.ok((events[0].retryDelayMs ?? 0) > 0);
+    } finally {
+      capture.restore();
       globalThis.fetch = original;
     }
   });

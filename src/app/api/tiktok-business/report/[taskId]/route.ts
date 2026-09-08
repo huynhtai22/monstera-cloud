@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth-session';
 import { tiktokReportClient } from '@/lib/tiktok-business';
 import { getValidTikTokToken } from '@/lib/tiktok-refresh';
 import prisma from '@/lib/prisma';
@@ -16,7 +15,7 @@ export async function GET(
   req: Request,
   context: { params: Promise<{ taskId: string }> }
 ) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -44,16 +43,15 @@ export async function GET(
       return NextResponse.json({ error: 'TikTok Business connection not found' }, { status: 404 });
     }
 
-    // Auto-refresh access token if it is close to expiry
-    const accessToken = await getValidTikTokToken(conn);
-    const creds = JSON.parse(safeDecrypt(conn.credentials)) as { sandbox?: boolean };
-
     return await runWithConnectorContext({
       workspaceId: conn.workspaceId,
       connectionId: conn.id,
       provider: 'tiktok_business',
       accountId: advertiserId,
     }, async () => {
+      // Auto-refresh access token only after entering the authorized tenant context.
+      const accessToken = await getValidTikTokToken(conn);
+      const creds = JSON.parse(safeDecrypt(conn.credentials)) as { sandbox?: boolean };
       const taskInfo = await tiktokReportClient.checkTask(
         accessToken,
         advertiserId,

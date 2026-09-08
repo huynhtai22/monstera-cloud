@@ -53,6 +53,15 @@ function scrubDevToken(text: string): string {
   return t ? text.split(t).join("[REDACTED_DEVELOPER_TOKEN]") : text;
 }
 
+type RetrySleeper = (delayMs: number) => Promise<void>;
+const defaultRetrySleeper: RetrySleeper = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs));
+let retrySleeper: RetrySleeper = defaultRetrySleeper;
+
+/** Test-only seam; production retains the normal jittered timer. */
+export function setGoogleAdsRetrySleeperForTest(sleeper: RetrySleeper | null): void {
+  retrySleeper = sleeper ?? defaultRetrySleeper;
+}
+
 async function fetchGoogleAds(url: string, init: RequestInit): Promise<Response> {
   const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -88,7 +97,7 @@ async function fetchGoogleAds(url: string, init: RequestInit): Promise<Response>
         errorCategory: isQuota ? "quota_exhausted" : isDevTokenBlocked ? "auth_revoked" : retryable ? "provider_unavailable" : "internal_error",
         httpStatus: response.status,
         durationMs,
-        retryDelayMs: retryable ? 500 * 2 ** attempt : undefined,
+        retryDelayMs: retryable && attempt < maxAttempts - 1 ? 500 * 2 ** attempt : undefined,
       });
 
       if (!retryable || attempt === maxAttempts - 1) {
@@ -100,8 +109,13 @@ async function fetchGoogleAds(url: string, init: RequestInit): Promise<Response>
     } catch (error) {
       const durationMs = Date.now() - startMs;
       if (error instanceof GoogleAdsProviderError && !error.retryable) throw error;
-      if (attempt === maxAttempts - 1) {
-        if (error instanceof GoogleAdsProviderError) throw error;
+      const isTransportFailure = !(error instanceof GoogleAdsProviderError);
+      const willRetry = attempt < maxAttempts - 1;
+      const retryDelayMs = willRetry ? 500 * 2 ** attempt + Math.floor(Math.random() * 200) : undefined;
+      // Response failures already emitted before throwing their retryable provider
+      // error. A rejected transport request reaches this catch directly, so emit
+      // its one event before a sleeper can fail.
+      if (isTransportFailure) {
         emitConnectorTelemetry({
           eventCategory: "provider_request",
           provider: "google_ads",
@@ -111,11 +125,19 @@ async function fetchGoogleAds(url: string, init: RequestInit): Promise<Response>
           outcome: "retryable_failure",
           errorCategory: "network_error",
           durationMs,
+          retryDelayMs,
         });
+      }
+      if (attempt === maxAttempts - 1) {
+        if (error instanceof GoogleAdsProviderError) throw error;
         throw new GoogleAdsProviderError(error instanceof Error ? error.message : "Google Ads request failed", true);
       }
+      if (isTransportFailure) {
+        await retrySleeper(retryDelayMs!);
+        continue;
+      }
     }
-    await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt + Math.floor(Math.random() * 200)));
+    await retrySleeper(500 * 2 ** attempt + Math.floor(Math.random() * 200));
   }
   throw new GoogleAdsProviderError("Google Ads request failed", true);
 }

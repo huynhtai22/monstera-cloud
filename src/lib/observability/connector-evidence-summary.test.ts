@@ -3,6 +3,26 @@ import { describe, it } from "node:test";
 import { summarizeConnectorEvidence, hashWorkspace } from "./connector-evidence-summary";
 import { toOpaqueConnectionId, toOpaqueJobId, type ConnectorTelemetryEvent } from "./connector-telemetry";
 
+function freshnessEvent(
+  freshnessOutcome: "advanced" | "unchanged" | "degraded",
+  contextStatus: "tenant_scoped" | "unbound" = "tenant_scoped",
+): ConnectorTelemetryEvent {
+  return {
+    schemaVersion: "1.0.0",
+    eventName: "connector_telemetry",
+    eventCategory: "freshness_event",
+    provider: "meta_ads",
+    operation: "data_through_refresh",
+    ...(contextStatus === "tenant_scoped" ? { opaqueWorkspaceId: hashWorkspace("ws_freshness") } : {}),
+    contextStatus,
+    attempt: 1,
+    freshnessOutcome,
+    outcome: "success",
+    durationMs: 0,
+    timestamp: "2026-09-09T12:00:00Z",
+  };
+}
+
 describe("Connector Evidence Summary Aggregator", () => {
   it("computes comprehensive evidence metrics across providers, queues, leases and workspaces", () => {
     const events: ConnectorTelemetryEvent[] = [
@@ -298,6 +318,38 @@ describe("Connector Evidence Summary Aggregator", () => {
     assert.ok(hashed.startsWith("ws_opaque_"));
     assert.notEqual(hashed, "ws_opaque_e3b0c442");
     assert.notEqual(hashed, "ws_opaque_unspecified");
+  });
+
+  it("reports degraded freshness as a distinct result without changing advanced or unchanged", () => {
+    const summary = summarizeConnectorEvidence([
+      freshnessEvent("advanced"),
+      freshnessEvent("unchanged"),
+      freshnessEvent("degraded"),
+    ]);
+
+    assert.deepEqual(summary.freshnessAdvancement, {
+      totalFreshnessEvents: 3,
+      advanced: 1,
+      unchanged: 1,
+      degraded: 1,
+      advancementRatePct: 33.3,
+    });
+  });
+
+  it("keeps unbound degraded events global and preserves an explicit empty summary", () => {
+    const unbound = summarizeConnectorEvidence([freshnessEvent("degraded", "unbound")]);
+    assert.equal(unbound.freshnessAdvancement.degraded, 1);
+    assert.equal(unbound.freshnessAdvancement.unchanged, 0);
+    assert.deepEqual(unbound.workspaceFairness, []);
+
+    const empty = summarizeConnectorEvidence([]);
+    assert.deepEqual(empty.freshnessAdvancement, {
+      totalFreshnessEvents: 0,
+      advanced: 0,
+      unchanged: 0,
+      degraded: 0,
+      advancementRatePct: 0,
+    });
   });
 
   it("unbound and missing context events do not contaminate per-workspace fairness calculations", () => {

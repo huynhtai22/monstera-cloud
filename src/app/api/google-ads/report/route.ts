@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth-session';
 import { googleAdsReportClient } from '@/lib/google-ads';
 import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import { clampGoogleAdsDatePeriodForPlan, getPlanLimits } from '@/lib/plan-config';
@@ -29,7 +28,7 @@ function buildCacheKey(connectionId: string, customerId: string, reportType: str
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -74,15 +73,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ...cached.result, cached: true, cache_expires_in_seconds: remainingSec });
     }
 
-    const accessToken = await getValidOAuthToken(conn);
-    const creds = JSON.parse(safeDecrypt(conn.credentials)) as { mccId?: string };
-
     const rows = await runWithConnectorContext({
       workspaceId: conn.workspaceId,
       connectionId: conn.id,
       provider: 'google_ads',
       accountId: customerId,
     }, async () => {
+      const accessToken = await getValidOAuthToken(conn);
+      const creds = JSON.parse(safeDecrypt(conn.credentials)) as { mccId?: string };
       switch (reportType) {
         case 'adgroup':
           return await googleAdsReportClient.getAdGroupPerformance(accessToken, customerId, datePeriod, creds.mccId);
