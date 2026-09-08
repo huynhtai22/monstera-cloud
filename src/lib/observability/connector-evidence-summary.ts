@@ -25,10 +25,31 @@ export interface WorkspaceFairnessMetrics {
   failedJobs: number;
 }
 
+export type ProviderRequestMetrics =
+  | {
+      supported: true;
+      totalCalls: number;
+      throttledCalls: number;
+      throttleRatePct: number;
+    }
+  | {
+      supported: false;
+      reason: "provider_request_instrumentation_unavailable";
+      totalCalls: null;
+      throttledCalls: null;
+      throttleRatePct: null;
+    };
+
+export const INSTRUMENTED_REQUEST_PROVIDERS = new Set<ConnectorProvider>([
+  "meta_ads",
+  "google_ads",
+  "tiktok_business",
+]);
+
 export interface ConnectorEvidenceSummary {
   totalEvents: number;
-  totalCallsByProvider: Record<ConnectorProvider, number>;
-  throttleRateByProvider: Record<ConnectorProvider, { totalCalls: number; throttledCalls: number; throttleRatePct: number }>;
+  totalCallsByProvider: Record<ConnectorProvider, number | null>;
+  throttleRateByProvider: Record<ConnectorProvider, ProviderRequestMetrics>;
   retryAmplification: {
     totalRequests: number;
     initialRequests: number;
@@ -133,7 +154,7 @@ export function summarizeConnectorEvidence(
     "warehouse_queue",
   ];
 
-  const totalCallsByProvider: Record<ConnectorProvider, number> = {
+  const rawCallsByProvider: Record<ConnectorProvider, number> = {
     meta_ads: 0,
     google_ads: 0,
     tiktok_business: 0,
@@ -142,7 +163,7 @@ export function summarizeConnectorEvidence(
     warehouse_queue: 0,
   };
 
-  const throttledCallsByProvider: Record<ConnectorProvider, number> = {
+  const rawThrottledByProvider: Record<ConnectorProvider, number> = {
     meta_ads: 0,
     google_ads: 0,
     tiktok_business: 0,
@@ -191,9 +212,9 @@ export function summarizeConnectorEvidence(
   };
 
   const workspaceMap = new Map<string, {
+    durations: number[];
     totalJobs: number;
     totalItems: number;
-    durations: number[];
     throttled: number;
     failed: number;
   }>();
@@ -224,7 +245,7 @@ export function summarizeConnectorEvidence(
 
     // Provider requests
     if (ev.eventCategory === "provider_request") {
-      totalCallsByProvider[ev.provider] = (totalCallsByProvider[ev.provider] || 0) + 1;
+      rawCallsByProvider[ev.provider] = (rawCallsByProvider[ev.provider] || 0) + 1;
       totalRequests++;
 
       if (ev.attempt === 1) {
@@ -239,11 +260,11 @@ export function summarizeConnectorEvidence(
         ev.errorCategory === "rate_limited" ||
         ev.errorCategory === "quota_exhausted"
       ) {
-        throttledCallsByProvider[ev.provider] = (throttledCallsByProvider[ev.provider] || 0) + 1;
+        rawThrottledByProvider[ev.provider] = (rawThrottledByProvider[ev.provider] || 0) + 1;
         if (wsEntry) wsEntry.throttled++;
       }
 
-      if (ev.outcome === "permanent_failure" || ev.errorCategory === "auth_revoked") {
+      if (ev.errorCategory === "auth_revoked") {
         permanentAuthFailures++;
       }
     }
@@ -299,15 +320,29 @@ export function summarizeConnectorEvidence(
     }
   }
 
-  const throttleRateByProvider = {} as Record<ConnectorProvider, { totalCalls: number; throttledCalls: number; throttleRatePct: number }>;
+  const totalCallsByProvider = {} as Record<ConnectorProvider, number | null>;
+  const throttleRateByProvider = {} as Record<ConnectorProvider, ProviderRequestMetrics>;
   for (const p of providers) {
-    const total = totalCallsByProvider[p] || 0;
-    const throttled = throttledCallsByProvider[p] || 0;
-    throttleRateByProvider[p] = {
-      totalCalls: total,
-      throttledCalls: throttled,
-      throttleRatePct: total > 0 ? Math.round((throttled / total) * 1000) / 10 : 0,
-    };
+    if (INSTRUMENTED_REQUEST_PROVIDERS.has(p)) {
+      const total = rawCallsByProvider[p] || 0;
+      const throttled = rawThrottledByProvider[p] || 0;
+      totalCallsByProvider[p] = total;
+      throttleRateByProvider[p] = {
+        supported: true,
+        totalCalls: total,
+        throttledCalls: throttled,
+        throttleRatePct: total > 0 ? Math.round((throttled / total) * 1000) / 10 : 0,
+      };
+    } else {
+      totalCallsByProvider[p] = null;
+      throttleRateByProvider[p] = {
+        supported: false,
+        reason: "provider_request_instrumentation_unavailable",
+        totalCalls: null,
+        throttledCalls: null,
+        throttleRatePct: null,
+      };
+    }
   }
 
   const workspaceFairness: WorkspaceFairnessMetrics[] = Array.from(workspaceMap.entries()).map(

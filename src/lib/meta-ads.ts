@@ -175,11 +175,19 @@ function parseThrottleHeader(res: Response): MetaThrottleState | null {
   }
 }
 
+type RetrySleeper = (ms: number) => Promise<void>;
+let metaRetrySleeper: RetrySleeper = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Test-only seam; production retains the normal timer. */
+export function setMetaRetrySleeperForTest(sleeper: RetrySleeper | null): void {
+  metaRetrySleeper = sleeper ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+}
+
 /** Jittered exponential backoff: base * 2^attempt + random(0..jitter) ms */
 async function backoff(attempt: number, baseMs = 1000, jitterMs = 500): Promise<void> {
   const delay = Math.min(baseMs * Math.pow(2, attempt) + Math.random() * jitterMs, 60_000);
   logger.warn(`[META_RATE_LIMIT] Backing off ${Math.round(delay)}ms (attempt ${attempt + 1})`);
-  await new Promise((r) => setTimeout(r, delay));
+  await metaRetrySleeper(delay);
 }
 
 /**
@@ -202,7 +210,7 @@ async function metaFetch(
     if (throttle && throttle.pct >= 85) {
       const pauseMs = throttle.estimatedTimeToRegainAccess ?? 15_000;
       logger.warn(`[META_RATE_LIMIT] Usage at ${throttle.pct}%, pausing ${pauseMs}ms before continuing`);
-      await new Promise((r) => setTimeout(r, pauseMs));
+      await metaRetrySleeper(pauseMs);
     }
 
     // 429 or Meta error code 17/32/613 → back off and retry
@@ -223,7 +231,7 @@ async function metaFetch(
       return { res, throttle };
     }
 
-    // Peek at body only if it's a potential rate-limit JSON error (keep body readable)
+    // Peek at body only if it's a potential rate-limit or auth JSON error (keep body readable)
     if (!res.ok) {
       const clone = res.clone();
       try {
@@ -246,6 +254,21 @@ async function metaFetch(
             await backoff(attempt);
             continue;
           }
+          return { res, throttle };
+        }
+        if (code === 190) {
+          emitConnectorTelemetry({
+            eventCategory: "provider_request",
+            provider: "meta_ads",
+            operation: "insights_fetch",
+            attempt: attempt + 1,
+            maxAttempts: maxRetries,
+            outcome: "permanent_failure",
+            errorCategory: "auth_revoked",
+            httpStatus: res.status,
+            durationMs,
+            throttleUtilizationPct: throttle?.pct,
+          });
           return { res, throttle };
         }
       } catch { /* non-JSON error body, fall through */ }
@@ -336,17 +359,6 @@ export class MetaReportClient {
 
       if (json.error) {
         if (json.error.code === 190) {
-          emitConnectorTelemetry({
-            eventCategory: "provider_request",
-            provider: "meta_ads",
-            operation: "get_insights",
-            accountId: params.adAccountId,
-            attempt: 1,
-            outcome: "permanent_failure",
-            errorCategory: "auth_revoked",
-            httpStatus: 401,
-            durationMs: 0,
-          });
           throw new MetaOAuthRevokedError(json.error.message, json.error.code);
         }
         throw new Error(`Meta Insights error ${json.error.code}: ${json.error.message}`);
@@ -388,7 +400,10 @@ export class MetaReportClient {
 
     const { res } = await metaFetch(url, { method: 'POST', body });
     const json = await res.json() as { report_run_id?: string; error?: { message: string; code: number } };
-    if (json.error) throw new Error(`Meta async report error ${json.error.code}: ${json.error.message}`);
+    if (json.error) {
+      if (json.error.code === 190) throw new MetaOAuthRevokedError(json.error.message, json.error.code);
+      throw new Error(`Meta async report error ${json.error.code}: ${json.error.message}`);
+    }
     if (!json.report_run_id) throw new Error('Meta async report did not return a report_run_id');
 
     return json.report_run_id;
@@ -403,7 +418,10 @@ export class MetaReportClient {
 
     const { res } = await metaFetch(url);
     const json = await res.json() as MetaAsyncReportStatus & { error?: { message: string; code: number } };
-    if ((json as any).error) throw new Error(`Meta async status error ${(json as any).error.code}: ${(json as any).error.message}`);
+    if ((json as any).error) {
+      if ((json as any).error.code === 190) throw new MetaOAuthRevokedError((json as any).error.message, (json as any).error.code);
+      throw new Error(`Meta async status error ${(json as any).error.code}: ${(json as any).error.message}`);
+    }
 
     return json;
   }
@@ -429,7 +447,10 @@ export class MetaReportClient {
         error?: { message: string; code: number };
       };
 
-      if (json.error) throw new Error(`Meta fetch results error ${json.error.code}: ${json.error.message}`);
+      if (json.error) {
+        if (json.error.code === 190) throw new MetaOAuthRevokedError(json.error.message, json.error.code);
+        throw new Error(`Meta fetch results error ${json.error.code}: ${json.error.message}`);
+      }
 
       allRows.push(...(json.data ?? []));
       afterCursor = json.paging?.next ? (json.paging.cursors?.after ?? null) : null;

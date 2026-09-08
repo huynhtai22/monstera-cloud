@@ -134,11 +134,13 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
         }
       );
 
-      const authEvents = capture.events.filter((e) => e.errorCategory === "auth_revoked");
-      assert.ok(authEvents.length >= 1, "Expected auth_revoked error category");
-      assert.equal(authEvents[0].outcome, "permanent_failure");
-      assert.equal(authEvents[0].errorCategory, "auth_revoked");
-      assert.notEqual(authEvents[0].outcome, "throttled");
+      assert.equal(capture.events.length, 1, "Expected exactly one telemetry event for revoked Meta token");
+      const authEvent = capture.events[0];
+      assert.equal(authEvent.outcome, "permanent_failure");
+      assert.equal(authEvent.errorCategory, "auth_revoked");
+      assert.equal(authEvent.httpStatus, 400);
+      assert.ok(authEvent.durationMs >= 0);
+      assert.notEqual(authEvent.outcome, "throttled");
     } finally {
       capture.restore();
     }

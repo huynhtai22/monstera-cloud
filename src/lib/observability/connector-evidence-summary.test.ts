@@ -408,4 +408,183 @@ describe("Connector Evidence Summary Aggregator", () => {
     assert.notEqual(summary.workspaceFairness[0].opaqueWorkspaceId, "ws_opaque_e3b0c442");
     assert.notEqual(summary.workspaceFairness[0].opaqueWorkspaceId, "ws_opaque_unspecified");
   });
+
+  it("counts permanent auth failures truthfully based only on auth_revoked errorCategory", () => {
+    const testCases: Array<{
+      description: string;
+      eventCategory: "provider_request" | "job_lifecycle";
+      outcome: "permanent_failure" | "retryable_failure" | "success" | "throttled";
+      errorCategory?: "auth_revoked" | "internal_error" | "network_error" | "rate_limited" | "quota_exhausted";
+      expectedPermanentAuthFailures: number;
+    }> = [
+      {
+        description: "provider_request permanent_failure + auth_revoked is counted",
+        eventCategory: "provider_request",
+        outcome: "permanent_failure",
+        errorCategory: "auth_revoked",
+        expectedPermanentAuthFailures: 1,
+      },
+      {
+        description: "provider_request permanent_failure + internal_error is NOT counted",
+        eventCategory: "provider_request",
+        outcome: "permanent_failure",
+        errorCategory: "internal_error",
+        expectedPermanentAuthFailures: 0,
+      },
+      {
+        description: "provider_request permanent_failure + network_error is NOT counted",
+        eventCategory: "provider_request",
+        outcome: "permanent_failure",
+        errorCategory: "network_error",
+        expectedPermanentAuthFailures: 0,
+      },
+      {
+        description: "provider_request retryable_failure + auth_revoked is counted",
+        eventCategory: "provider_request",
+        outcome: "retryable_failure",
+        errorCategory: "auth_revoked",
+        expectedPermanentAuthFailures: 1,
+      },
+      {
+        description: "provider_request retryable_failure + internal_error is NOT counted",
+        eventCategory: "provider_request",
+        outcome: "retryable_failure",
+        errorCategory: "internal_error",
+        expectedPermanentAuthFailures: 0,
+      },
+      {
+        description: "provider_request success is NOT counted",
+        eventCategory: "provider_request",
+        outcome: "success",
+        expectedPermanentAuthFailures: 0,
+      },
+      {
+        description: "provider_request throttled + rate_limited is NOT counted",
+        eventCategory: "provider_request",
+        outcome: "throttled",
+        errorCategory: "rate_limited",
+        expectedPermanentAuthFailures: 0,
+      },
+      {
+        description: "job_lifecycle permanent_failure without auth_revoked is NOT counted",
+        eventCategory: "job_lifecycle",
+        outcome: "permanent_failure",
+        errorCategory: "internal_error",
+        expectedPermanentAuthFailures: 0,
+      },
+    ];
+
+    for (const tc of testCases) {
+      const event: ConnectorTelemetryEvent = {
+        schemaVersion: "1.0.0",
+        eventName: "connector_telemetry",
+        eventCategory: tc.eventCategory,
+        provider: "meta_ads",
+        operation: tc.eventCategory === "provider_request" ? "insights_fetch" : "job_completed",
+        contextStatus: "tenant_scoped",
+        opaqueWorkspaceId: hashWorkspace("ws_test"),
+        attempt: 1,
+        outcome: tc.outcome,
+        ...(tc.errorCategory ? { errorCategory: tc.errorCategory } : {}),
+        durationMs: 50,
+        timestamp: "2026-09-08T12:00:00Z",
+      };
+
+      const summary = summarizeConnectorEvidence([event]);
+      assert.equal(
+        summary.permanentAuthFailures,
+        tc.expectedPermanentAuthFailures,
+        `Failed for case: ${tc.description}`
+      );
+    }
+  });
+
+  it("truthfully reports supported and unsupported provider request metrics contract", () => {
+    // 1. Empty events: instrumented providers report supported: true with 0, uninstrumented report supported: false with nulls
+    const emptySummary = summarizeConnectorEvidence([]);
+
+    // Instrumented providers
+    for (const p of ["meta_ads", "google_ads", "tiktok_business"] as const) {
+      assert.equal(emptySummary.totalCallsByProvider[p], 0);
+      assert.deepEqual(emptySummary.throttleRateByProvider[p], {
+        supported: true,
+        totalCalls: 0,
+        throttledCalls: 0,
+        throttleRatePct: 0,
+      });
+    }
+
+    // Uninstrumented providers
+    for (const p of ["shopee", "lazada", "warehouse_queue"] as const) {
+      assert.equal(emptySummary.totalCallsByProvider[p], null);
+      assert.deepEqual(emptySummary.throttleRateByProvider[p], {
+        supported: false,
+        reason: "provider_request_instrumentation_unavailable",
+        totalCalls: null,
+        throttledCalls: null,
+        throttleRatePct: null,
+      });
+    }
+
+    // 2. Active events for an instrumented provider
+    const activeEvents: ConnectorTelemetryEvent[] = [
+      {
+        schemaVersion: "1.0.0",
+        eventName: "connector_telemetry",
+        eventCategory: "provider_request",
+        provider: "meta_ads",
+        operation: "insights_fetch",
+        contextStatus: "tenant_scoped",
+        opaqueWorkspaceId: hashWorkspace("ws_test"),
+        attempt: 1,
+        outcome: "success",
+        durationMs: 100,
+        timestamp: "2026-09-08T12:00:00Z",
+      },
+      {
+        schemaVersion: "1.0.0",
+        eventName: "connector_telemetry",
+        eventCategory: "provider_request",
+        provider: "meta_ads",
+        operation: "insights_fetch",
+        contextStatus: "tenant_scoped",
+        opaqueWorkspaceId: hashWorkspace("ws_test"),
+        attempt: 1,
+        outcome: "throttled",
+        errorCategory: "rate_limited",
+        httpStatus: 429,
+        durationMs: 200,
+        timestamp: "2026-09-08T12:00:01Z",
+      },
+    ];
+
+    const activeSummary = summarizeConnectorEvidence(activeEvents);
+    assert.equal(activeSummary.totalCallsByProvider.meta_ads, 2);
+    assert.deepEqual(activeSummary.throttleRateByProvider.meta_ads, {
+      supported: true,
+      totalCalls: 2,
+      throttledCalls: 1,
+      throttleRatePct: 50.0,
+    });
+
+    // Uninstrumented providers still report supported: false with nulls
+    assert.equal(activeSummary.totalCallsByProvider.shopee, null);
+    assert.deepEqual(activeSummary.throttleRateByProvider.shopee, {
+      supported: false,
+      reason: "provider_request_instrumentation_unavailable",
+      totalCalls: null,
+      throttledCalls: null,
+      throttleRatePct: null,
+    });
+
+    // 3. Stable JSON serialization
+    const serialized = JSON.stringify(activeSummary);
+    const parsed = JSON.parse(serialized);
+    assert.equal(parsed.totalCallsByProvider.shopee, null);
+    assert.equal(parsed.throttleRateByProvider.shopee.supported, false);
+    assert.equal(parsed.throttleRateByProvider.shopee.reason, "provider_request_instrumentation_unavailable");
+    assert.equal(parsed.throttleRateByProvider.shopee.totalCalls, null);
+    assert.equal(parsed.throttleRateByProvider.meta_ads.supported, true);
+    assert.equal(parsed.throttleRateByProvider.meta_ads.totalCalls, 2);
+  });
 });

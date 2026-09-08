@@ -126,6 +126,57 @@ export async function syncConnectionData(opts: SyncOptions): Promise<SyncResult>
   }
 }
 
+/**
+ * Calculates inclusive calendar days between two dates using UTC calendar days.
+ * Returns undefined if either date is missing, invalid, or inverted (until < since).
+ *
+ * Requirements:
+ * - Same date -> 1 day
+ * - "2026-09-01" through "2026-09-07" -> 7 days
+ * - Multi-month and month/year boundaries remain correct
+ * - Invariant across local timezones and daylight-saving transitions
+ * - Invalid or inverted dates return undefined without throwing
+ */
+export function calculateInclusiveDataWindowDays(
+  since?: string | null,
+  until?: string | null
+): number | undefined {
+  if (!since || !until) return undefined;
+
+  const parseUtcDate = (dStr: string): Date | null => {
+    const trimmed = dStr.trim();
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+    if (dateMatch) {
+      const year = parseInt(dateMatch[1], 10);
+      const month = parseInt(dateMatch[2], 10) - 1;
+      const day = parseInt(dateMatch[3], 10);
+      const d = new Date(Date.UTC(year, month, day));
+      if (
+        d.getUTCFullYear() === year &&
+        d.getUTCMonth() === month &&
+        d.getUTCDate() === day
+      ) {
+        return d;
+      }
+      return null;
+    }
+    const d = new Date(trimmed);
+    if (Number.isNaN(d.getTime())) return null;
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  };
+
+  const sinceDate = parseUtcDate(since);
+  const untilDate = parseUtcDate(until);
+  if (!sinceDate || !untilDate) return undefined;
+
+  const diffMs = untilDate.getTime() - sinceDate.getTime();
+  if (diffMs < 0) {
+    return undefined;
+  }
+
+  return Math.round(diffMs / 86_400_000) + 1;
+}
+
 async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease): Promise<SyncResult> {
   const { connectionId, provider, credentials, workspaceId } = opts;
   const plan = opts.userPlan ?? "free";
@@ -137,9 +188,7 @@ async function syncConnectionDataInner(opts: SyncOptions, lease: ConnectionLease
     until: opts.until ?? null,
   });
 
-  const dataWindowDays = opts.since && opts.until
-    ? Math.max(1, Math.round((new Date(opts.until).getTime() - new Date(opts.since).getTime()) / (1000 * 86400)))
-    : undefined;
+  const dataWindowDays = calculateInclusiveDataWindowDays(opts.since, opts.until);
 
   return await runWithConnectorContext({
     workspaceId,

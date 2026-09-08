@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import prisma from "@/lib/prisma";
-import { syncConnectionData } from "./sync-connection";
+import { syncConnectionData, calculateInclusiveDataWindowDays } from "./sync-connection";
 
 const TEST_ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
@@ -364,5 +364,48 @@ describe("google runtime authority fail-closed", () => {
       if (previousMode === undefined) delete process.env.GOOGLE_CONNECTOR_RUNTIME_MODE;
       else process.env.GOOGLE_CONNECTOR_RUNTIME_MODE = previousMode;
     }
+  });
+});
+
+describe("calculateInclusiveDataWindowDays", () => {
+  it("computes exact calendar day coverage for inclusive windows", () => {
+    // Same day is 1 day
+    assert.equal(calculateInclusiveDataWindowDays("2026-09-01", "2026-09-01"), 1);
+
+    // 7-day range
+    assert.equal(calculateInclusiveDataWindowDays("2026-09-01", "2026-09-07"), 7);
+
+    // Month boundary (non-leap year February)
+    assert.equal(calculateInclusiveDataWindowDays("2026-02-28", "2026-03-01"), 2);
+
+    // Leap year boundary (February 2024 has 29 days)
+    assert.equal(calculateInclusiveDataWindowDays("2024-02-28", "2024-03-01"), 3);
+
+    // Year boundary
+    assert.equal(calculateInclusiveDataWindowDays("2025-12-31", "2026-01-01"), 2);
+
+    // Multi-month window
+    assert.equal(calculateInclusiveDataWindowDays("2026-01-01", "2026-01-31"), 31);
+    assert.equal(calculateInclusiveDataWindowDays("2026-01-01", "2026-02-01"), 32);
+
+    // ISO timestamp strings with times
+    assert.equal(
+      calculateInclusiveDataWindowDays("2026-09-01T00:00:00.000Z", "2026-09-07T23:59:59.999Z"),
+      7
+    );
+
+    // Inverted range returns undefined
+    assert.equal(calculateInclusiveDataWindowDays("2026-09-07", "2026-09-01"), undefined);
+
+    // Invalid dates return undefined without throwing
+    assert.equal(calculateInclusiveDataWindowDays("not-a-date", "2026-09-07"), undefined);
+    assert.equal(calculateInclusiveDataWindowDays("2026-09-01", "not-a-date"), undefined);
+    assert.equal(calculateInclusiveDataWindowDays("2026-02-30", "2026-03-01"), undefined);
+
+    // Missing or nullish inputs return undefined
+    assert.equal(calculateInclusiveDataWindowDays(undefined, "2026-09-01"), undefined);
+    assert.equal(calculateInclusiveDataWindowDays("2026-09-01", undefined), undefined);
+    assert.equal(calculateInclusiveDataWindowDays(null, null), undefined);
+    assert.equal(calculateInclusiveDataWindowDays("", ""), undefined);
   });
 });
