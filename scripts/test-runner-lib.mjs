@@ -11,7 +11,51 @@ export async function findTests(directory) {
   return files.flat();
 }
 
-function parseArguments(argv) {
+// Node 22.23.2 and tsx options that consume the following argv element. Keep
+// this explicit: a value can legitimately look like a test filename.
+const VALUE_OPTIONS = new Set([
+  "-C",
+  "-r",
+  "--conditions",
+  "--env-file",
+  "--env-file-if-exists",
+  "--experimental-loader",
+  "--experimental-test-isolation",
+  "--import",
+  "--loader",
+  "--require",
+  "--test-concurrency",
+  "--test-coverage-branches",
+  "--test-coverage-exclude",
+  "--test-coverage-functions",
+  "--test-coverage-include",
+  "--test-coverage-lines",
+  "--test-name-pattern",
+  "--test-reporter",
+  "--test-reporter-destination",
+  "--test-shard",
+  "--test-skip-pattern",
+  "--test-timeout",
+  "--tsconfig",
+]);
+
+const BOOLEAN_OPTIONS = new Set([
+  "-h",
+  "-v",
+  "--enable-source-maps",
+  "--experimental-test-coverage",
+  "--experimental-test-module-mocks",
+  "--help",
+  "--no-cache",
+  "--test",
+  "--test-force-exit",
+  "--test-only",
+  "--test-update-snapshots",
+  "--version",
+  "--watch",
+]);
+
+function parseArguments(argv, available, cwd) {
   const flags = [];
   const files = [];
   let positionalOnly = false;
@@ -23,38 +67,37 @@ function parseArguments(argv) {
     }
     if (!positionalOnly && value.startsWith("-")) {
       flags.push(value);
-      const next = argv[index + 1];
-      // Node options that take a separate value are not exhaustively stable
-      // across releases. Preserve any following non-option, non-test value so
-      // it cannot be mistaken for an explicit file selector.
-      if (!value.includes("=") && next && !next.startsWith("-") && !next.endsWith(".test.ts")) {
-        const flagValue = argv[++index];
-        flags.push(flagValue);
+      if (VALUE_OPTIONS.has(value)) {
+        if (index + 1 >= argv.length) throw new Error(`Option ${value} requires a value`);
+        flags.push(argv[++index]);
+      } else if (!value.includes("=") && !BOOLEAN_OPTIONS.has(value) && index + 1 < argv.length && !argv[index + 1].startsWith("-")) {
+        throw new Error(`Unknown option ${value} has an ambiguous separate value; use ${value}=...`);
       }
       continue;
     }
-    if (!value.endsWith(".test.ts")) {
+    const file = resolve(cwd, value);
+    if (available.has(file)) {
+      files.push(file);
+    } else if (value.endsWith(".test.ts")) {
+      throw new Error(`Test file is outside the established src test set: ${file}`);
+    } else {
       throw new Error(`Unsupported test selector: ${value}`);
     }
-    files.push(value);
   }
   return { flags, files };
 }
 
 /** Creates deterministic tsx invocations without spawning a process. */
 export function createTestPlan(argv, discoveredTests, cwd = process.cwd()) {
-  const { flags, files } = parseArguments(argv);
+  const available = new Set(discoveredTests.map((file) => resolve(file)));
+  const { flags, files } = parseArguments(argv, available, cwd);
   if (flags.includes("--help") || flags.includes("-h")) {
     return [{ name: "help", args: flags }];
   }
 
-  const available = new Set(discoveredTests.map((file) => resolve(file)));
   const selected = files.length
-    ? [...new Set(files.map((file) => resolve(cwd, file)))].sort()
+    ? [...new Set(files)].sort()
     : [...available].sort();
-  for (const file of selected) {
-    if (!available.has(file)) throw new Error(`Test file is outside the established src test set: ${file}`);
-  }
 
   const nonPostgres = selected.filter((file) => !file.endsWith(".pg.integration.test.ts"));
   const postgres = selected.filter((file) => file.endsWith(".pg.integration.test.ts"));

@@ -34,7 +34,48 @@ describe("test runner planning and child-status semantics", () => {
     ]);
   });
 
-  it("forwards flags and their values without treating values as test paths", () => {
+  it("forwards separate and equals-form pattern values that look like test files", () => {
+    assert.deepEqual(createTestPlan(["--test-name-pattern", "currency.test.ts"], tests), [
+      { name: "non-postgres", args: ["--test", "--test-name-pattern", "currency.test.ts", nonPostgres] },
+      { name: "postgres", args: ["--test", "--test-concurrency=4", "--test-name-pattern", "currency.test.ts", postgres] },
+    ]);
+    assert.deepEqual(createTestPlan(["--test-name-pattern=currency.test.ts"], tests), [
+      { name: "non-postgres", args: ["--test", "--test-name-pattern=currency.test.ts", nonPostgres] },
+      { name: "postgres", args: ["--test", "--test-concurrency=4", "--test-name-pattern=currency.test.ts", postgres] },
+    ]);
+  });
+
+  it("never reinterprets a discovered test path used as a flag value", () => {
+    assert.deepEqual(createTestPlan(["--test-name-pattern", nonPostgres, postgres], tests), [
+      { name: "postgres", args: ["--test", "--test-concurrency=4", "--test-name-pattern", nonPostgres, postgres] },
+    ]);
+  });
+
+  it("forwards valued and boolean flags in their input order while selecting only explicit files", () => {
+    assert.deepEqual(createTestPlan([
+      "--test-only",
+      "--test-reporter",
+      "spec",
+      "--test-name-pattern",
+      "currency.test.ts",
+      nonPostgres,
+    ], tests), [
+      {
+        name: "non-postgres",
+        args: ["--test", "--test-only", "--test-reporter", "spec", "--test-name-pattern", "currency.test.ts", nonPostgres],
+      },
+    ]);
+  });
+
+  it("rejects missing known option values and ambiguous unknown separate-value options", () => {
+    assert.throws(() => createTestPlan(["--test-name-pattern"], tests), /requires a value/);
+    assert.throws(() => createTestPlan(["--unknown-option", "value"], tests), /ambiguous separate value/);
+    assert.deepEqual(createTestPlan(["--unknown-option=value", nonPostgres], tests), [
+      { name: "non-postgres", args: ["--test", "--unknown-option=value", nonPostgres] },
+    ]);
+  });
+
+  it("forwards ordinary flags and their values", () => {
     assert.deepEqual(createTestPlan(["--test-name-pattern", "freshness", nonPostgres], tests), [
       { name: "non-postgres", args: ["--test", "--test-name-pattern", "freshness", nonPostgres] },
     ]);
@@ -48,7 +89,7 @@ describe("test runner planning and child-status semantics", () => {
   });
 
   it("rejects explicit files outside the established source test set", () => {
-    assert.throws(() => createTestPlan(["src/elsewhere.test.ts"], tests), /outside the established src test set/);
+    assert.throws(() => createTestPlan(["outside/example.test.ts"], tests), /outside the established src test set/);
   });
 
   it("keeps a path containing spaces as one argv element", () => {
