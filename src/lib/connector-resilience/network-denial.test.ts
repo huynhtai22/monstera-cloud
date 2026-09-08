@@ -27,7 +27,32 @@ import {
   forceRestoreNetworkGuard,
   NetworkAccessViolationError,
   isAllowedLoopbackHost,
+  restoreNetworkGuard,
 } from "./network-denial-guard";
+
+function captureTransportReferences() {
+  return {
+    fetch: globalThis.fetch,
+    httpRequest: http.request,
+    httpGet: http.get,
+    httpsRequest: https.request,
+    httpsGet: https.get,
+    netConnect: net.connect,
+    netCreateConnection: net.createConnection,
+    tlsConnect: tls.connect,
+  };
+}
+
+function assertTransportReferences(actual: ReturnType<typeof captureTransportReferences>, expected: ReturnType<typeof captureTransportReferences>) {
+  assert.equal(actual.fetch, expected.fetch);
+  assert.equal(actual.httpRequest, expected.httpRequest);
+  assert.equal(actual.httpGet, expected.httpGet);
+  assert.equal(actual.httpsRequest, expected.httpsRequest);
+  assert.equal(actual.httpsGet, expected.httpsGet);
+  assert.equal(actual.netConnect, expected.netConnect);
+  assert.equal(actual.netCreateConnection, expected.netCreateConnection);
+  assert.equal(actual.tlsConnect, expected.tlsConnect);
+}
 
 describe("Network Denial Guard: Multi-Transport Boundary Controls", () => {
   beforeEach(() => {
@@ -290,17 +315,45 @@ describe("Network Denial Guard: Multi-Transport Boundary Controls", () => {
     }
   });
 
-  it("Guard teardown restores patched transports", () => {
+  it("Guard teardown restores every patched transport after normal, denied, callback-error, redirect, and nested use", async () => {
     forceRestoreNetworkGuard();
-    const originalFetch = globalThis.fetch;
-    const originalNetConnect = net.connect;
+    const originals = captureTransportReferences();
 
+    // Normal disposal.
     installNetworkDenialGuard();
-    assert.notEqual(globalThis.fetch, originalFetch);
-    assert.notEqual(net.connect, originalNetConnect);
+    assert.notEqual(globalThis.fetch, originals.fetch);
+    restoreNetworkGuard();
+    assertTransportReferences(captureTransportReferences(), originals);
 
-    forceRestoreNetworkGuard();
-    assert.equal(globalThis.fetch, originalFetch);
-    assert.equal(net.connect, originalNetConnect);
+    // A denied request does not prevent restoration.
+    installNetworkDenialGuard();
+    await assert.rejects(() => fetch("https://example.invalid/denied"), NetworkAccessViolationError);
+    restoreNetworkGuard();
+    assertTransportReferences(captureTransportReferences(), originals);
+
+    // A handler exception does not prevent restoration.
+    const callbackError = new Error("synthetic guard callback failure");
+    installNetworkDenialGuard(async () => { throw callbackError; });
+    await assert.rejects(() => fetch("http://127.0.0.1/handler-error"), (error: unknown) => error === callbackError);
+    restoreNetworkGuard();
+    assertTransportReferences(captureTransportReferences(), originals);
+
+    // Redirect denial leaves the same transport references after teardown.
+    installNetworkDenialGuard(async () => new Response(null, {
+      status: 302,
+      headers: { Location: "https://example.invalid/redirect" },
+    }));
+    await assert.rejects(() => fetch("http://127.0.0.1/redirect"), NetworkAccessViolationError);
+    restoreNetworkGuard();
+    assertTransportReferences(captureTransportReferences(), originals);
+
+    // Reference counting retains patches until the final matching restore.
+    installNetworkDenialGuard();
+    installNetworkDenialGuard();
+    const nestedPatched = captureTransportReferences();
+    restoreNetworkGuard();
+    assertTransportReferences(captureTransportReferences(), nestedPatched);
+    restoreNetworkGuard();
+    assertTransportReferences(captureTransportReferences(), originals);
   });
 });

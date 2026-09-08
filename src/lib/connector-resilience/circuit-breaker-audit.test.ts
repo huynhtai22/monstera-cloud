@@ -36,6 +36,47 @@ class MockRedisClient {
   }
 }
 
+function createAbortableReadBarrier(workerCount: number) {
+  let arrivals = 0;
+  let abortReason: unknown;
+  let resolveAllReads!: () => void;
+  let rejectAllReads!: (reason: unknown) => void;
+  let releaseWrites!: () => void;
+  let rejectWrites!: (reason: unknown) => void;
+  const allReads = new Promise<void>((resolve, reject) => {
+    resolveAllReads = resolve;
+    rejectAllReads = reject;
+  });
+  const writeGate = new Promise<void>((resolve, reject) => {
+    releaseWrites = resolve;
+    rejectWrites = reject;
+  });
+  // A worker can abort before the test attaches its explicit assertion.
+  void allReads.catch(() => undefined);
+  void writeGate.catch(() => undefined);
+
+  return {
+    allReads,
+    get arrivals() { return arrivals; },
+    get abortReason() { return abortReason; },
+    async arriveAndWaitForWrite(): Promise<void> {
+      if (abortReason !== undefined) throw abortReason;
+      arrivals++;
+      if (arrivals === workerCount) resolveAllReads();
+      await writeGate;
+    },
+    release(): void {
+      if (abortReason === undefined) releaseWrites();
+    },
+    abort(reason: unknown): void {
+      if (abortReason !== undefined) return;
+      abortReason = reason;
+      rejectAllReads(reason);
+      rejectWrites(reason);
+    },
+  };
+}
+
 describe("Circuit Breaker Audit: Verified Properties and Failure Modes", () => {
   let mockRedis: MockRedisClient;
 
@@ -83,20 +124,22 @@ describe("Circuit Breaker Audit: Verified Properties and Failure Modes", () => {
     const originalGet = mockRedis.get.bind(mockRedis);
     const capturedFailures: (string | null)[] = [];
     let completedWorkers = 0;
-    let releaseReads!: () => void;
-    let signalAllReads!: () => void;
-    const allReadsObserved = new Promise<void>((resolve) => { signalAllReads = resolve; });
-    const permitWrites = new Promise<void>((resolve) => { releaseReads = resolve; });
+    const barrier = createAbortableReadBarrier(5);
     const originalSet = mockRedis.set.bind(mockRedis);
     let writesBeforeRelease = 0;
 
     // All concurrent workers must read "null" before any worker writes.
     mockRedis.get = async (key: string) => {
-      const val = await originalGet(key);
+      let val: string | null;
+      try {
+        val = await originalGet(key);
+      } catch (error) {
+        barrier.abort(error);
+        throw error;
+      }
       if (key === "cb:failures:google_ads") {
         capturedFailures.push(val);
-        if (capturedFailures.length === 5) signalAllReads();
-        await permitWrites;
+        await barrier.arriveAndWaitForWrite();
       }
       return val;
     };
@@ -110,17 +153,50 @@ describe("Circuit Breaker Audit: Verified Properties and Failure Modes", () => {
       await cb.recordFailure(new Error("Simulated concurrent failure"));
     });
 
-    await allReadsObserved;
+    await barrier.allReads;
     assert.equal(completedWorkers, 5, "all workers must execute");
     assert.deepEqual(capturedFailures, [null, null, null, null, null]);
     assert.equal(writesBeforeRelease, 0, "no write may occur before every read is observed");
-    releaseReads();
+    barrier.release();
     await Promise.all(workers);
 
     // An atomic INCR/Lua implementation would produce 5. The current read-then-
     // write implementation deterministically loses four updates and leaves 1.
     const finalFailures = parseInt(mockRedis.store.get("cb:failures:google_ads") || "0", 10);
     assert.equal(finalFailures, 1);
+  });
+
+  it("Barrier abort before every read rejects all waiters and preserves the original failure", async () => {
+    const barrier = createAbortableReadBarrier(5);
+    const originalFailure = new Error("worker failed before read arrival");
+    const workers = Array.from({ length: 5 }, async (_, index) => {
+      if (index === 0) {
+        barrier.abort(originalFailure);
+        throw originalFailure;
+      }
+      await barrier.arriveAndWaitForWrite();
+    });
+
+    const settledWorkers = Promise.allSettled(workers);
+    await assert.rejects(barrier.allReads, (error: unknown) => error === originalFailure);
+    const settled = await settledWorkers;
+    assert.equal(barrier.abortReason, originalFailure);
+    assert.equal(settled.length, 5);
+    assert.ok(settled.every((result) => result.status === "rejected" && result.reason === originalFailure));
+  });
+
+  it("Barrier abort after every read releases every pre-write waiter without a timeout", async () => {
+    const barrier = createAbortableReadBarrier(5);
+    const workers = Array.from({ length: 5 }, () => barrier.arriveAndWaitForWrite());
+    await barrier.allReads;
+    assert.equal(barrier.arrivals, 5);
+
+    const originalFailure = new Error("worker failed before write");
+    const settledWorkers = Promise.allSettled(workers);
+    barrier.abort(originalFailure);
+    const settled = await settledWorkers;
+    assert.equal(barrier.abortReason, originalFailure);
+    assert.ok(settled.every((result) => result.status === "rejected" && result.reason === originalFailure));
   });
 
   it("AUDIT FINDING 3: Error classification is absent — permanent auth errors trip breaker equally with transient 503s", async () => {

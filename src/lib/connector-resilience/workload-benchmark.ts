@@ -28,6 +28,8 @@ export interface WorkloadScenarioResult {
   workerFailures: Array<{ category: "provider_operation_failed" }>;
   /** Capacity and fairness conclusions are valid only when every operation completed. */
   evidenceStatus: "valid" | "invalid";
+  /** Present whenever capacity evidence is unavailable. */
+  evidenceInvalidReason?: "worker_operation_failed" | "incomplete_operation_accounting" | "no_attempted_operations";
   totalEstimatedRows: number | null;
   workerConcurrency: number;
   totalDurationMs: number | null;
@@ -51,6 +53,62 @@ export interface WorkloadScenarioResult {
   };
 }
 
+export type WorkloadEvidenceAssessment = {
+  evidenceStatus: "valid" | "invalid";
+  evidenceInvalidReason?: WorkloadScenarioResult["evidenceInvalidReason"];
+};
+
+function assertSafeInteger(value: unknown, field: string, minimum: number): asserts value is number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < minimum) {
+    throw new Error(`Invalid workload configuration: ${field} must be a ${minimum === 0 ? "non-negative" : "positive"} safe integer`);
+  }
+}
+
+function validateWorkloadConfig(config: unknown): asserts config is {
+  agencies: number;
+  connectionsPerAgency: number;
+  accountsPerConnection: number;
+  workerConcurrency: number;
+  daysWindow: number;
+  noisyTenant?: { accounts: number; days: number };
+  faults?: FaultConfig;
+} {
+  if (!config || typeof config !== "object") {
+    throw new Error("Invalid workload configuration: config must be an object");
+  }
+  const candidate = config as Record<string, unknown>;
+  assertSafeInteger(candidate.agencies, "agencies", 0);
+  assertSafeInteger(candidate.connectionsPerAgency, "connectionsPerAgency", 1);
+  assertSafeInteger(candidate.accountsPerConnection, "accountsPerConnection", 1);
+  assertSafeInteger(candidate.workerConcurrency, "workerConcurrency", 1);
+  assertSafeInteger(candidate.daysWindow, "daysWindow", 1);
+  if (candidate.noisyTenant !== undefined) {
+    if (!candidate.noisyTenant || typeof candidate.noisyTenant !== "object") {
+      throw new Error("Invalid workload configuration: noisyTenant must be an object");
+    }
+    const noisyTenant = candidate.noisyTenant as Record<string, unknown>;
+    assertSafeInteger(noisyTenant.accounts, "noisyTenant.accounts", 1);
+    assertSafeInteger(noisyTenant.days, "noisyTenant.days", 1);
+  }
+}
+
+export function assessWorkloadEvidence(
+  attemptedOperations: number,
+  successfulOperations: number,
+  failedOperations: number,
+): WorkloadEvidenceAssessment {
+  if (attemptedOperations === 0) {
+    return { evidenceStatus: "invalid", evidenceInvalidReason: "no_attempted_operations" };
+  }
+  if (successfulOperations + failedOperations !== attemptedOperations) {
+    return { evidenceStatus: "invalid", evidenceInvalidReason: "incomplete_operation_accounting" };
+  }
+  if (failedOperations > 0 || successfulOperations !== attemptedOperations) {
+    return { evidenceStatus: "invalid", evidenceInvalidReason: "worker_operation_failed" };
+  }
+  return { evidenceStatus: "valid" };
+}
+
 export async function runWorkloadBenchmark(
   name: string,
   config: {
@@ -63,6 +121,7 @@ export async function runWorkloadBenchmark(
     faults?: FaultConfig;
   }
 ): Promise<WorkloadScenarioResult> {
+  validateWorkloadConfig(config);
   setupSyntheticTestEnv();
   const simulator = new ProviderSimulator(config.faults);
   installNetworkDenialGuard((url, init) => simulator.handleRequest(url, init));
@@ -188,7 +247,8 @@ export async function runWorkloadBenchmark(
 
   const observedDurationMs = Date.now() - startTime;
   const failedOperations = workerFailures.length;
-  const evidenceStatus = failedOperations === 0 ? "valid" : "invalid";
+  const evidence = assessWorkloadEvidence(totalAccounts, successfulOperations, failedOperations);
+  const evidenceStatus = evidence.evidenceStatus;
 
   let smallTenantDelayMs: number | null | undefined = evidenceStatus === "invalid" ? null : undefined;
   if (evidenceStatus === "valid" && config.noisyTenant) {
@@ -210,10 +270,11 @@ export async function runWorkloadBenchmark(
     failedOperations,
     workerFailures,
     evidenceStatus,
+    evidenceInvalidReason: evidence.evidenceInvalidReason,
     totalEstimatedRows: evidenceStatus === "valid" ? totalRows : null,
     workerConcurrency: config.workerConcurrency,
     totalDurationMs: evidenceStatus === "valid" ? observedDurationMs : null,
-    avgDurationPerAccountMs: evidenceStatus === "valid" && totalAccounts > 0 ? Math.round(observedDurationMs / totalAccounts) : 0,
+    avgDurationPerAccountMs: evidenceStatus === "valid" ? Math.round(observedDurationMs / totalAccounts) : null,
     providerCalls: {
       meta: simulator.metrics.metaRequests,
       google: simulator.metrics.googleRequests,

@@ -9,20 +9,41 @@
 
 import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
-import { installNetworkDenialGuard, restoreNetworkGuard } from "./network-denial-guard";
+import {
+  installNetworkDenialGuard,
+  NetworkAccessViolationError,
+  restoreNetworkGuard,
+} from "./network-denial-guard";
 import { ProviderSimulator } from "./provider-simulator";
 import { setupSyntheticTestEnv } from "./test-env";
-import { metaReportClient } from "@/lib/meta-ads";
+import { MetaOAuthRevokedError, metaReportClient } from "@/lib/meta-ads";
 import { summarizeSyncOutcome, type SyncChildResult } from "@/lib/sync-outcome";
 import { shouldRefreshLastDataThrough } from "@/lib/connection-data-through";
 
 describe("Scenario B: Provider Outage & Honest Freshness", () => {
   let simulator: ProviderSimulator;
+  let expectedOutage: SyntheticMetaOutageError | null;
+  let afterSimulatorResponse: ((response: Response | null) => Response | null | Promise<Response | null>) | null;
+
+  class SyntheticMetaOutageError extends Error {
+    readonly provider = "meta_ads";
+    readonly status = 503;
+    readonly category = "synthetic_provider_outage";
+  }
 
   beforeEach(() => {
     setupSyntheticTestEnv();
     simulator = new ProviderSimulator();
-    installNetworkDenialGuard((url, init) => simulator.handleRequest(url, init));
+    expectedOutage = null;
+    afterSimulatorResponse = null;
+    installNetworkDenialGuard(async (url, init) => {
+      const response = await simulator.handleRequest(url, init);
+      const transformed = afterSimulatorResponse ? await afterSimulatorResponse(response) : response;
+      if (transformed?.status === 503 && expectedOutage) {
+        throw expectedOutage;
+      }
+      return transformed;
+    });
   });
 
   afterEach(() => {
@@ -38,9 +59,10 @@ describe("Scenario B: Provider Outage & Honest Freshness", () => {
         timeRange: { since: "2026-01-01", until: "2026-01-30" },
       });
       return { id: accountId, kind: "ad_account", ok: true, rowsIngested: rows.length };
-    } catch {
-      // The child is derived from the real simulated request failure. Keep the
-      // summary input sanitized rather than duplicating provider error payloads.
+    } catch (error) {
+      // Only the exact, configured simulator outage may be normalized. Every
+      // other provider, parsing, auth, or guard failure remains observable.
+      if (error !== expectedOutage) throw error;
       return {
         id: accountId,
         kind: "ad_account",
@@ -55,6 +77,7 @@ describe("Scenario B: Provider Outage & Honest Freshness", () => {
     simulator.setFaults({
       meta: { outage503Remaining: 10 },
     });
+    expectedOutage = new SyntheticMetaOutageError("configured Meta 503 outage");
 
     const children = [await fetchMetaChild("act_outage")];
 
@@ -67,6 +90,8 @@ describe("Scenario B: Provider Outage & Honest Freshness", () => {
     assert.equal(simulator.metrics.metaRequests, 1);
     assert.equal(simulator.metrics.serverErrors, 1);
     assert.equal(children[0]?.retryable, true);
+    assert.equal(expectedOutage.provider, "meta_ads");
+    assert.equal(expectedOutage.status, 503);
   });
 
   it("Freshness boundary: failed sync must NEVER refresh dataThrough or advance lastSyncAt", () => {
@@ -80,6 +105,7 @@ describe("Scenario B: Provider Outage & Honest Freshness", () => {
 
   it("Partial outage recovery: a succeeding account remains isolated from an actual failed account", async () => {
     simulator.setFaults({ meta: { outage503Remaining: 1 } });
+    expectedOutage = new SyntheticMetaOutageError("configured Meta 503 outage");
 
     // The first simulated request consumes the outage; the unrelated account
     // then executes the same provider path successfully.
@@ -101,5 +127,28 @@ describe("Scenario B: Provider Outage & Honest Freshness", () => {
     // so lastDataThrough is only advanced when the entire requested scope succeeds
     assert.equal(shouldRefreshLastDataThrough("partial"), false);
     assert.equal(shouldRefreshLastDataThrough("success"), true);
+  });
+
+  it("propagates an unexpected synthetic authentication error instead of relabeling it as a 503", async () => {
+    simulator.setFaults({ meta: { revokedAccountIds: new Set(["auth_failure"]) } });
+
+    await assert.rejects(
+      () => fetchMetaChild("act_auth_failure"),
+      (error: unknown) => error instanceof MetaOAuthRevokedError,
+    );
+    assert.equal(simulator.metrics.metaRequests, 1);
+    assert.equal(simulator.metrics.authErrors, 1);
+  });
+
+  it("propagates unexpected parsing and guard errors after the simulator was invoked", async () => {
+    const parsingError = new SyntaxError("synthetic parsing failure");
+    afterSimulatorResponse = () => { throw parsingError; };
+    await assert.rejects(() => fetchMetaChild("act_parse_failure"), (error: unknown) => error === parsingError);
+    assert.equal(simulator.metrics.metaRequests, 1);
+
+    const guardError = new NetworkAccessViolationError("synthetic denied destination", "net.connect");
+    afterSimulatorResponse = () => { throw guardError; };
+    await assert.rejects(() => fetchMetaChild("act_guard_failure"), (error: unknown) => error === guardError);
+    assert.equal(simulator.metrics.metaRequests, 2);
   });
 });
