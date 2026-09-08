@@ -20,11 +20,20 @@ export interface WorkloadScenarioResult {
   scenarioName: string;
   agencyCount: number;
   connectionCount: number;
+  /** Synthetic workload shape: every scheduled provider operation. */
   accountCount: number;
-  totalEstimatedRows: number;
+  attemptedOperations: number;
+  successfulOperations: number;
+  failedOperations: number;
+  workerFailures: Array<{ category: "provider_operation_failed" }>;
+  /** Capacity and fairness conclusions are valid only when every operation completed. */
+  evidenceStatus: "valid" | "invalid";
+  /** Present whenever capacity evidence is unavailable. */
+  evidenceInvalidReason?: "worker_operation_failed" | "incomplete_operation_accounting" | "no_attempted_operations";
+  totalEstimatedRows: number | null;
   workerConcurrency: number;
-  totalDurationMs: number;
-  avgDurationPerAccountMs: number;
+  totalDurationMs: number | null;
+  avgDurationPerAccountMs: number | null;
   providerCalls: {
     meta: number;
     google: number;
@@ -32,9 +41,72 @@ export interface WorkloadScenarioResult {
     total: number;
   };
   retryAndThrottleCount: number;
-  peakSimultaneousProviderRequests: number;
-  smallTenantDelayMs?: number;
-  duplicateRowsDetected: number;
+  peakSimultaneousProviderRequests: number | null;
+  smallTenantDelayMs?: number | null;
+  /**
+   * This client/parsing benchmark never observes persisted warehouse rows or
+   * their canonical ingestion identities. It cannot make a duplicate-row claim.
+   */
+  duplicateRowEvidence: {
+    supported: false;
+    reason: "benchmark_does_not_observe_persisted_row_identity";
+  };
+}
+
+export type WorkloadEvidenceAssessment = {
+  evidenceStatus: "valid" | "invalid";
+  evidenceInvalidReason?: WorkloadScenarioResult["evidenceInvalidReason"];
+};
+
+function assertSafeInteger(value: unknown, field: string, minimum: number): asserts value is number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < minimum) {
+    throw new Error(`Invalid workload configuration: ${field} must be a ${minimum === 0 ? "non-negative" : "positive"} safe integer`);
+  }
+}
+
+function validateWorkloadConfig(config: unknown): asserts config is {
+  agencies: number;
+  connectionsPerAgency: number;
+  accountsPerConnection: number;
+  workerConcurrency: number;
+  daysWindow: number;
+  noisyTenant?: { accounts: number; days: number };
+  faults?: FaultConfig;
+} {
+  if (!config || typeof config !== "object") {
+    throw new Error("Invalid workload configuration: config must be an object");
+  }
+  const candidate = config as Record<string, unknown>;
+  assertSafeInteger(candidate.agencies, "agencies", 0);
+  assertSafeInteger(candidate.connectionsPerAgency, "connectionsPerAgency", 1);
+  assertSafeInteger(candidate.accountsPerConnection, "accountsPerConnection", 1);
+  assertSafeInteger(candidate.workerConcurrency, "workerConcurrency", 1);
+  assertSafeInteger(candidate.daysWindow, "daysWindow", 1);
+  if (candidate.noisyTenant !== undefined) {
+    if (!candidate.noisyTenant || typeof candidate.noisyTenant !== "object") {
+      throw new Error("Invalid workload configuration: noisyTenant must be an object");
+    }
+    const noisyTenant = candidate.noisyTenant as Record<string, unknown>;
+    assertSafeInteger(noisyTenant.accounts, "noisyTenant.accounts", 1);
+    assertSafeInteger(noisyTenant.days, "noisyTenant.days", 1);
+  }
+}
+
+export function assessWorkloadEvidence(
+  attemptedOperations: number,
+  successfulOperations: number,
+  failedOperations: number,
+): WorkloadEvidenceAssessment {
+  if (attemptedOperations === 0) {
+    return { evidenceStatus: "invalid", evidenceInvalidReason: "no_attempted_operations" };
+  }
+  if (successfulOperations + failedOperations !== attemptedOperations) {
+    return { evidenceStatus: "invalid", evidenceInvalidReason: "incomplete_operation_accounting" };
+  }
+  if (failedOperations > 0 || successfulOperations !== attemptedOperations) {
+    return { evidenceStatus: "invalid", evidenceInvalidReason: "worker_operation_failed" };
+  }
+  return { evidenceStatus: "valid" };
 }
 
 export async function runWorkloadBenchmark(
@@ -49,6 +121,7 @@ export async function runWorkloadBenchmark(
     faults?: FaultConfig;
   }
 ): Promise<WorkloadScenarioResult> {
+  validateWorkloadConfig(config);
   setupSyntheticTestEnv();
   const simulator = new ProviderSimulator(config.faults);
   installNetworkDenialGuard((url, init) => simulator.handleRequest(url, init));
@@ -114,6 +187,8 @@ export async function runWorkloadBenchmark(
   let taskIndex = 0;
   const taskStartTimes = new Map<string, number>();
   const taskEndTimes = new Map<string, number>();
+  const workerFailures: Array<{ category: "provider_operation_failed" }> = [];
+  let successfulOperations = 0;
 
   async function worker() {
     while (taskIndex < tasks.length) {
@@ -151,8 +226,12 @@ export async function runWorkloadBenchmark(
           const downloadUrl = await tiktokReportClient.getDownloadUrl("simulated-token", current.accountId, taskId);
           await tiktokReportClient.downloadRows(downloadUrl);
         }
+        successfulOperations++;
       } catch {
-        // Handled in fault tests
+        // The benchmark deliberately retains no raw provider error, token, URL,
+        // payload, or tenant identifier. A completed workload with any failure
+        // is invalid evidence rather than a successful capacity result.
+        workerFailures.push({ category: "provider_operation_failed" });
       } finally {
         taskEndTimes.set(key, Date.now());
       }
@@ -160,13 +239,19 @@ export async function runWorkloadBenchmark(
   }
 
   const workers = Array.from({ length: config.workerConcurrency }, () => worker());
-  await Promise.all(workers);
+  try {
+    await Promise.all(workers);
+  } finally {
+    restoreNetworkGuard();
+  }
 
-  const totalDurationMs = Date.now() - startTime;
-  restoreNetworkGuard();
+  const observedDurationMs = Date.now() - startTime;
+  const failedOperations = workerFailures.length;
+  const evidence = assessWorkloadEvidence(totalAccounts, successfulOperations, failedOperations);
+  const evidenceStatus = evidence.evidenceStatus;
 
-  let smallTenantDelayMs: number | undefined;
-  if (config.noisyTenant) {
+  let smallTenantDelayMs: number | null | undefined = evidenceStatus === "invalid" ? null : undefined;
+  if (evidenceStatus === "valid" && config.noisyTenant) {
     const smallTasks = tasks.filter((t) => !t.isHeavy);
     if (smallTasks.length > 0) {
       const firstSmallKey = `${smallTasks[0].agencyId}:${smallTasks[0].accountId}`;
@@ -180,10 +265,16 @@ export async function runWorkloadBenchmark(
     agencyCount: config.agencies + (config.noisyTenant ? 1 : 0),
     connectionCount: Math.ceil(tasks.length / config.accountsPerConnection),
     accountCount: totalAccounts,
-    totalEstimatedRows: totalRows,
+    attemptedOperations: totalAccounts,
+    successfulOperations,
+    failedOperations,
+    workerFailures,
+    evidenceStatus,
+    evidenceInvalidReason: evidence.evidenceInvalidReason,
+    totalEstimatedRows: evidenceStatus === "valid" ? totalRows : null,
     workerConcurrency: config.workerConcurrency,
-    totalDurationMs,
-    avgDurationPerAccountMs: totalAccounts > 0 ? Math.round(totalDurationMs / totalAccounts) : 0,
+    totalDurationMs: evidenceStatus === "valid" ? observedDurationMs : null,
+    avgDurationPerAccountMs: evidenceStatus === "valid" ? Math.round(observedDurationMs / totalAccounts) : null,
     providerCalls: {
       meta: simulator.metrics.metaRequests,
       google: simulator.metrics.googleRequests,
@@ -191,8 +282,11 @@ export async function runWorkloadBenchmark(
       total: simulator.metrics.totalRequests,
     },
     retryAndThrottleCount: simulator.metrics.rateLimitHits + simulator.metrics.serverErrors,
-    peakSimultaneousProviderRequests: simulator.metrics.peakConcurrency,
+    peakSimultaneousProviderRequests: evidenceStatus === "valid" ? simulator.metrics.peakConcurrency : null,
     smallTenantDelayMs,
-    duplicateRowsDetected: 0,
+    duplicateRowEvidence: {
+      supported: false,
+      reason: "benchmark_does_not_observe_persisted_row_identity",
+    },
   };
 }

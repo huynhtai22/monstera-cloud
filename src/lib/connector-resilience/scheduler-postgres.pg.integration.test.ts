@@ -29,19 +29,12 @@ import {
 } from "@/lib/connection-sync-lease";
 import { ingestMetaRows } from "@/lib/meta-ingest";
 import { acquireMetaSyncLock } from "@/lib/meta-sync-lock";
+import { assertConnectorResilienceTestDatabase } from "@/lib/pg-test-discipline";
 
-const DB_URL =
-  process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("mock")
-    ? process.env.DATABASE_URL
-    : "postgresql://postgres:postgres@127.0.0.1:55436/monstera_ci";
-
-if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = DB_URL;
-}
+const DB_URL = assertConnectorResilienceTestDatabase();
 
 describe("PostgreSQL Integration: Real Scheduler, Leases, Crashes & Idempotency", () => {
   let prisma: PrismaClient;
-  let isDbConnected = false;
 
   const wsHeavy = "ws_sched_heavy";
   const wsSmall1 = "ws_sched_small_1";
@@ -50,13 +43,11 @@ describe("PostgreSQL Integration: Real Scheduler, Leases, Crashes & Idempotency"
   const testConn = "conn_sched_test_1";
 
   before(async () => {
-    try {
-      prisma = new PrismaClient({
+    prisma = new PrismaClient({
         datasources: { db: { url: DB_URL } },
       });
       await prisma.$connect();
       await prisma.$queryRaw`SELECT 1`;
-      isDbConnected = true;
 
       // Ensure test user and workspaces exist
       await prisma.user.upsert({
@@ -87,14 +78,9 @@ describe("PostgreSQL Integration: Real Scheduler, Leases, Crashes & Idempotency"
           remoteAccountId: "act_1001",
         },
       });
-    } catch (err) {
-      console.warn("PostgreSQL not reachable at", DB_URL, err);
-      isDbConnected = false;
-    }
   });
 
   beforeEach(async () => {
-    if (isDbConnected) {
       await prisma.warehouseImportJob.deleteMany({
         where: { workspaceId: { in: [wsHeavy, wsSmall1, wsSmall2] } },
       });
@@ -104,11 +90,9 @@ describe("PostgreSQL Integration: Real Scheduler, Leases, Crashes & Idempotency"
       await prisma.campaignMetric.deleteMany({
         where: { workspaceId: { in: [wsHeavy, wsSmall1, wsSmall2] } },
       });
-    }
   });
 
   after(async () => {
-    if (isDbConnected) {
       await prisma.warehouseImportJob.deleteMany({
         where: { workspaceId: { in: [wsHeavy, wsSmall1, wsSmall2] } },
       });
@@ -119,14 +103,9 @@ describe("PostgreSQL Integration: Real Scheduler, Leases, Crashes & Idempotency"
         where: { workspaceId: { in: [wsHeavy, wsSmall1, wsSmall2] } },
       });
       await prisma.$disconnect();
-    }
   });
 
-  it("SCHEDULER FINDING 1 (Job Granularity): One claimed job contains all 50 items and is processed in a single lease", async (t) => {
-    if (!isDbConnected) {
-      t.skip("PostgreSQL not reachable");
-      return;
-    }
+  it("SCHEDULER FINDING 1 (Job Granularity): One claimed job contains all 50 items and is processed in a single lease", async () => {
 
     // Heavy tenant creates 1 job with 50 account items
     const heavyItems: BatchImportItem[] = Array.from({ length: 50 }, (_, i) => ({
@@ -158,11 +137,7 @@ describe("PostgreSQL Integration: Real Scheduler, Leases, Crashes & Idempotency"
     // it DOES NOT interleave items inside this single multi-item job!
   });
 
-  it("SCHEDULER FINDING 2 (Claim Ordering & Eligibility): When both jobs are due, Priority DESC takes precedence; future scheduled jobs are not claimed until due", async (t) => {
-    if (!isDbConnected) {
-      t.skip("PostgreSQL not reachable");
-      return;
-    }
+  it("SCHEDULER FINDING 2 (Claim Ordering & Eligibility): When both jobs are due, Priority DESC takes precedence; future scheduled jobs are not claimed until due", async () => {
 
     const past1 = new Date(Date.now() - 10000);
     const past2 = new Date(Date.now() - 5000);
@@ -228,11 +203,7 @@ describe("PostgreSQL Integration: Real Scheduler, Leases, Crashes & Idempotency"
     assert.equal(thirdClaim.claimed, false);
   });
 
-  it("CRASH RECOVERY: Orphaned job with expired lease is reclaimed; stale worker update throws LeaseLostError", async (t) => {
-    if (!isDbConnected) {
-      t.skip("PostgreSQL not reachable");
-      return;
-    }
+  it("CRASH RECOVERY: Orphaned job with expired lease is reclaimed; stale worker update throws LeaseLostError", async () => {
 
     const job = await createImportJob({
       workspaceId: wsSmall1,
@@ -290,11 +261,7 @@ describe("PostgreSQL Integration: Real Scheduler, Leases, Crashes & Idempotency"
     assert.equal(completed.completedItems, 1);
   });
 
-  it("CONNECTION LEASE & FENCING: Concurrent sync attempts serialize; stolen lease throws on outcome persistence", async (t) => {
-    if (!isDbConnected) {
-      t.skip("PostgreSQL not reachable");
-      return;
-    }
+  it("CONNECTION LEASE & FENCING: Concurrent sync attempts serialize; stolen lease throws on outcome persistence", async () => {
 
     // Worker A acquires lease for connection
     const attemptA = await acquireConnectionSyncLease({
@@ -349,11 +316,7 @@ describe("PostgreSQL Integration: Real Scheduler, Leases, Crashes & Idempotency"
     await releaseConnectionSyncLease(leaseB2, true);
   });
 
-  it("METRIC IDEMPOTENCY: Repeated ingestion of identical warehouse rows produces zero duplicates", async (t) => {
-    if (!isDbConnected) {
-      t.skip("PostgreSQL not reachable");
-      return;
-    }
+  it("METRIC IDEMPOTENCY: Repeated ingestion of identical warehouse rows produces zero duplicates", async () => {
 
     const lock = await acquireMetaSyncLock({
       workspaceId: wsSmall1,
