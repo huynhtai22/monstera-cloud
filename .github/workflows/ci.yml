@@ -33,7 +33,6 @@ jobs:
       GOOGLE_ID_TOKEN_AUDIENCES: ci-google-client-id.apps.googleusercontent.com
       PILOT_MODE: "1"
       CLIENT_ASSIGNMENT_TEST_DB: "1"
-      CONNECTOR_RESILIENCE_TEST_DB: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,7 +47,10 @@ jobs:
           npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
       - run: npm run typecheck
       - run: npm run lint:ci
-      - run: npm test
+      - name: Run Node tests
+        env:
+          CONNECTOR_RESILIENCE_TEST_DB: "1"
+        run: npm test
       - name: Production build
         env:
           RELEASE_COMMIT_SHA: ${{ github.sha }}
