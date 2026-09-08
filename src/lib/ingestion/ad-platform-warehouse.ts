@@ -12,7 +12,7 @@ import {
   normalizeTikTokAdvertiserIds,
   TIKTOK_ADVERTISER_RECONNECT_MESSAGE,
 } from "@/lib/tiktok-advertiser-id";
-import { runWithConnectorContext, toOpaqueAccountId } from "@/lib/observability/connector-telemetry";
+import { runWithConnectorContext } from "@/lib/observability/connector-telemetry";
 
 function gaqlBetween(since: string, until: string) {
   // GAQL requires single quotes around date literals.
@@ -65,7 +65,7 @@ export async function syncGoogleAdsIntoWarehouse(params: {
         workspaceId,
         connectionId,
         provider: "google_ads",
-        opaqueAccountId: toOpaqueAccountId(cid),
+        accountId: cid,
         jobId,
       }, async () => {
         // Query with explicit date range for Explorer imports.
@@ -175,7 +175,7 @@ export async function syncTikTokIntoWarehouse(params: {
         workspaceId,
         connectionId,
         provider: "tiktok_business",
-        opaqueAccountId: toOpaqueAccountId(aid),
+        accountId: aid,
         jobId,
       }, async () => {
         const taskId = await tiktokReportClient.createTask(

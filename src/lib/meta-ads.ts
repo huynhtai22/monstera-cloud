@@ -13,7 +13,7 @@
  */
 
 import { logger } from '@/lib/logger';
-import { emitConnectorTelemetry, toOpaqueAccountId } from '@/lib/observability/connector-telemetry';
+import { emitConnectorTelemetry } from '@/lib/observability/connector-telemetry';
 
 const META_API_VERSION = 'v23.0';
 const META_GRAPH_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
@@ -309,7 +309,6 @@ export class MetaReportClient {
     let afterCursor: string | null = null;
 
     const cleanAdAccountId = String(params.adAccountId).replace(/^act_/, "");
-    const opaqueAccountId = toOpaqueAccountId(params.adAccountId);
     const validFields = filterFieldsForLevel(params.fields, params.level);
     do {
       const url = new URL(`${META_GRAPH_BASE}/act_${cleanAdAccountId}/insights`);
@@ -341,7 +340,7 @@ export class MetaReportClient {
             eventCategory: "provider_request",
             provider: "meta_ads",
             operation: "get_insights",
-            opaqueAccountId,
+            accountId: params.adAccountId,
             attempt: 1,
             outcome: "permanent_failure",
             errorCategory: "auth_revoked",

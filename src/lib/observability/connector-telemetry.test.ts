@@ -333,6 +333,37 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
     assert.ok(defaultSerialized.includes("opaqueWorkspaceId"));
   });
 
+  it("9c. Account values, including opaque-looking strings, are transformed only at the sink boundary", () => {
+    const accountIds = ["acct_deadbeefcafe", "acct_opaque_deadbeefcafe", "provider-account-12345"];
+    const expected = accountIds.map((accountId) => toOpaqueAccountId(accountId));
+    assert.equal(expected[0], toOpaqueAccountId(accountIds[0]), "Equal account IDs retain stable correlation");
+    assert.notEqual(expected[0], expected[1], "Distinct account IDs do not collapse");
+
+    const customEvents: string[] = [];
+    setTelemetrySink((event) => { customEvents.push(JSON.stringify(event)); });
+    for (const accountId of accountIds) {
+      emitConnectorTelemetry({ provider: "meta_ads", operation: "account_boundary", accountId, opaqueAccountId: accountId, nested: { accountId } });
+    }
+    const customSerialized = customEvents.join("\n");
+    for (const accountId of accountIds) assert.equal(customSerialized.includes(accountId), false);
+    for (const opaque of expected) assert.ok(customSerialized.includes(opaque!));
+    setTelemetrySink(null);
+
+    const originalWarn = logger.warn;
+    const defaultEvents: string[] = [];
+    (logger as any).warn = (...args: unknown[]) => { defaultEvents.push(JSON.stringify(args)); };
+    try {
+      for (const accountId of accountIds) {
+        emitConnectorTelemetry({ provider: "meta_ads", operation: "default_account_boundary", accountId, opaqueAccountId: accountId, nested: { accountId } });
+      }
+    } finally {
+      (logger as any).warn = originalWarn;
+    }
+    const defaultSerialized = defaultEvents.join("\n");
+    for (const accountId of accountIds) assert.equal(defaultSerialized.includes(accountId), false);
+    for (const opaque of expected) assert.ok(defaultSerialized.includes(opaque!));
+  });
+
   it("10. Rival-workspace activity cannot be attached to another workspace's event", async () => {
     const capture = captureTelemetryForTest();
     try {

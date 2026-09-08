@@ -31,6 +31,7 @@ export const FORBIDDEN_SERVER_MODULE_PREFIXES = [
   "@/lib/meta-sync-lock",
   "@/lib/warehouse-import-job",
   "@/lib/encryption",
+  "@/lib/oauth-framework/token-refresh",
   "@/lib/google-ads",
   "@/lib/tiktok-business",
   "@/lib/shopee",
@@ -172,6 +173,37 @@ export interface BoundaryViolation {
   forbiddenSpecifier: string;
 }
 
+function hasUseClientDirective(sourceText: string, fileName: string): boolean {
+  const sourceFile = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  return sourceFile.statements.some((statement) =>
+    ts.isExpressionStatement(statement) && ts.isStringLiteral(statement.expression) && statement.expression.text === "use client"
+  );
+}
+
+/** Finds actual client entry modules across src while excluding non-source trees. */
+export function discoverClientRoots(sourceRoot: string): string[] {
+  const roots: string[] = [];
+  const excludedDirectories = new Set(["node_modules", "fixtures", "generated", ".next"]);
+  function scan(dir: string): void {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!excludedDirectories.has(entry.name)) scan(fullPath);
+      } else if (
+        entry.isFile() &&
+        /\.tsx?$/.test(entry.name) &&
+        !/\.(?:test|spec)\.tsx?$/.test(entry.name) &&
+        !entry.name.endsWith(".d.ts") &&
+        hasUseClientDirective(fs.readFileSync(fullPath, "utf8"), fullPath)
+      ) {
+        roots.push(fullPath);
+      }
+    }
+  }
+  scan(sourceRoot);
+  return roots;
+}
+
 /**
  * Performs a transitive local dependency-graph traversal starting from an entry module.
  * Recursively resolves imports, exports, dynamic imports, and require calls.
@@ -272,38 +304,26 @@ describe("Client/Server Dependency Boundary Enforcement (AST-Verified Transitive
     );
   });
 
-  it("4. Transitive traversal of all 'use client' components in src/app has zero forbidden dependencies", () => {
-    const appDir = path.join(repoRoot, "src/app");
-
-    function scanDir(dir: string, fileList: string[] = []): string[] {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          scanDir(fullPath, fileList);
-        } else if (entry.isFile() && (entry.name.endsWith(".tsx") || entry.name.endsWith(".jsx") || entry.name.endsWith(".ts"))) {
-          fileList.push(fullPath);
-        }
-      }
-      return fileList;
-    }
-
-    const appFiles = scanDir(appDir);
+  it("4. Transitive traversal of all discovered 'use client' roots in src has zero forbidden dependencies", () => {
+    const clientRoots = discoverClientRoots(path.join(repoRoot, "src"));
     const allViolations: BoundaryViolation[] = [];
 
-    for (const file of appFiles) {
-      const content = fs.readFileSync(file, "utf8");
-      if (content.includes('"use client"') || content.includes("'use client'")) {
-        const violations = traverseTransitiveClientBoundary(file, repoRoot);
-        allViolations.push(...violations);
-      }
+    for (const file of clientRoots) {
+      allViolations.push(...traverseTransitiveClientBoundary(file, repoRoot));
     }
 
     assert.strictEqual(
       allViolations.length,
       0,
-      `Transitive client boundary violations detected in src/app:\n${allViolations.map(v => `${path.relative(repoRoot, v.entryFile)}: ${v.chain.map(p => path.relative(repoRoot, p)).join(" -> ")}`).join("\n")}`
+      `Transitive client boundary violations detected in src:\n${allViolations.map(v => `${path.relative(repoRoot, v.entryFile)}: ${v.chain.map(p => path.relative(repoRoot, p)).join(" -> ")}`).join("\n")}`
     );
+  });
+
+  it("4b. Discovery includes client roots in components and hooks, including the resolved-workspace hook", () => {
+    const roots = discoverClientRoots(path.join(repoRoot, "src")).map((file) => path.relative(repoRoot, file));
+    assert.ok(roots.some((file) => file.startsWith("src/components/")), "Expected a src/components client root");
+    assert.ok(roots.some((file) => file.startsWith("src/hooks/")), "Expected a src/hooks client root");
+    assert.ok(roots.includes("src/hooks/use-resolved-workspace-id.ts"), "Expected use-resolved-workspace-id.ts to be checked");
   });
 
   describe("5. Required Transitive Graph Fixture Tests", () => {
@@ -522,6 +542,23 @@ describe("Client/Server Dependency Boundary Enforcement (AST-Verified Transitive
       );
 
       assert.strictEqual(violations.length, 0, "Valid graph must pass with 0 violations");
+    });
+
+    it("Fixture H: Indirect token-refresh dependency is detected with its complete path", () => {
+      const virtualFiles: Record<string, string> = {
+        "/app/client.tsx": `"use client"; import { helper } from "./helper"; export const Client = helper;`,
+        "/app/helper.ts": `import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh"; export const helper = getValidOAuthToken;`,
+      };
+      const violations = traverseTransitiveClientBoundary(
+        "/app/client.tsx", repoRoot,
+        (specifier) => specifier === "./helper" ? "/app/helper.ts" : null,
+        (file) => virtualFiles[file] || ""
+      );
+      assert.strictEqual(violations.length, 1);
+      assert.strictEqual(violations[0].forbiddenSpecifier, "@/lib/oauth-framework/token-refresh");
+      assert.deepStrictEqual(violations[0].chain, [
+        "/app/client.tsx", "/app/helper.ts", "@/lib/oauth-framework/token-refresh",
+      ]);
     });
   });
 });

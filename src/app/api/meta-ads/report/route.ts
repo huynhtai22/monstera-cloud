@@ -9,7 +9,7 @@ import {
 } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 import { logger } from "@/lib/logger";
-import { runWithConnectorContext, toOpaqueAccountId } from '@/lib/observability/connector-telemetry';
+import { runWithConnectorContext } from '@/lib/observability/connector-telemetry';
 
 /**
  * POST /api/meta-ads/report
@@ -121,7 +121,7 @@ export async function POST(req: Request) {
       workspaceId: conn.workspaceId,
       connectionId: conn.id,
       provider: 'meta_ads',
-      opaqueAccountId: toOpaqueAccountId(adAccountId),
+      accountId: adAccountId,
     }, async () => {
       if (body.async) {
         // Large dataset — create async report job

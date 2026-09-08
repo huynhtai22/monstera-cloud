@@ -7,7 +7,7 @@ import { clampGoogleAdsDatePeriodForPlan, getPlanLimits } from '@/lib/plan-confi
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { logger } from "@/lib/logger";
-import { runWithConnectorContext, toOpaqueAccountId } from '@/lib/observability/connector-telemetry';
+import { runWithConnectorContext } from '@/lib/observability/connector-telemetry';
 
 /**
  * POST /api/google-ads/report
@@ -81,7 +81,7 @@ export async function POST(req: Request) {
       workspaceId: conn.workspaceId,
       connectionId: conn.id,
       provider: 'google_ads',
-      opaqueAccountId: toOpaqueAccountId(customerId),
+      accountId: customerId,
     }, async () => {
       switch (reportType) {
         case 'adgroup':

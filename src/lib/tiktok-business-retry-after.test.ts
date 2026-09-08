@@ -25,21 +25,11 @@ describe("TikTok Retry-After Evidence & Deterministic Sleeper", () => {
   });
 
   describe("retryAfterMs parser", () => {
-    it("parses valid integer and floating seconds", () => {
+    it("parses only non-negative integer delta-seconds", () => {
       assert.equal(retryAfterMs("5"), 5000);
       assert.equal(retryAfterMs("0"), 0);
-      assert.equal(retryAfterMs("2.5"), 2500);
-    });
-
-    it("parses valid future HTTP-date strings", () => {
-      const future = new Date(Date.now() + 10_000).toUTCString();
-      const ms = retryAfterMs(future);
-      assert.ok(ms !== null && ms >= 7000 && ms <= 12000);
-    });
-
-    it("clamps past HTTP-date strings to 0ms", () => {
-      const past = new Date(Date.now() - 5000).toUTCString();
-      assert.equal(retryAfterMs(past), 0);
+      assert.equal(retryAfterMs("2.5"), null);
+      assert.equal(retryAfterMs(new Date(Date.now() + 10_000).toUTCString()), null);
     });
 
     it("returns null for invalid, empty, or negative values", () => {
@@ -87,7 +77,7 @@ describe("TikTok Retry-After Evidence & Deterministic Sleeper", () => {
       }
     });
 
-    it("2. Valid HTTP-date header: reports retryAfterSupplied=true and retryAfterHonored=true", async () => {
+    it("2. HTTP-date header is invalid and uses the existing fallback delay", async () => {
       const capture = captureTelemetryForTest();
       try {
         const futureDate = new Date(Date.now() + 6000).toUTCString();
@@ -108,13 +98,13 @@ describe("TikTok Retry-After Evidence & Deterministic Sleeper", () => {
         assert.equal(res.status, "SUCCESS");
         assert.equal(callCount, 2);
         assert.equal(delays.length, 1);
-        assert.ok(delays[0] >= 3000 && delays[0] <= 8000);
+        assert.ok(delays[0] >= 500 && delays[0] <= 700);
 
         const events = capture.events.filter((e) => e.provider === "tiktok_business");
         assert.equal(events.length, 2);
         assert.equal(events[0].attempt, 1);
         assert.equal(events[0].retryAfterSupplied, true);
-        assert.equal(events[0].retryAfterHonored, true);
+        assert.equal(events[0].retryAfterHonored, false);
         assert.equal(events[1].attempt, 2);
         assert.equal(events[1].outcome, "success");
       } finally {
@@ -263,10 +253,51 @@ describe("TikTok Retry-After Evidence & Deterministic Sleeper", () => {
         capture.restore();
       }
     });
+
+    it("7. Decimal, negative, malformed, and missing values use fallback and are never honored", async () => {
+      for (const retryAfter of ["2.5", "-1", "invalid", null]) {
+        const capture = captureTelemetryForTest();
+        try {
+          let calls = 0;
+          globalThis.fetch = (async () => {
+            calls++;
+            return calls === 1
+              ? new Response(JSON.stringify({ code: 40001, message: "Rate limit" }), { status: 429, headers: retryAfter === null ? {} : { "retry-after": retryAfter } })
+              : new Response(JSON.stringify({ code: 0, data: { status: "SUCCESS" } }), { status: 200 });
+          }) as typeof fetch;
+          await new TikTokReportClient().checkTask("token", "adv-1", "task-1");
+          const event = capture.events.find((entry) => entry.operation === "api_json");
+          assert.equal(event?.retryAfterHonored, false);
+          assert.ok(delays.at(-1)! >= 500 && delays.at(-1)! <= 700);
+        } finally {
+          capture.restore();
+        }
+      }
+    });
+
+    it("8. Rejecting sleeper emits false once, preserves the error, and does not retry", async () => {
+      const capture = captureTelemetryForTest();
+      const sleeperError = new Error("synthetic sleeper failure");
+      setTikTokRetrySleeperForTest(async () => { throw sleeperError; });
+      try {
+        let calls = 0;
+        globalThis.fetch = (async () => {
+          calls++;
+          return new Response(JSON.stringify({ code: 40001, message: "Rate limit" }), { status: 429, headers: { "retry-after": "1" } });
+        }) as typeof fetch;
+        await assert.rejects(() => new TikTokReportClient().checkTask("token", "adv-1", "task-1"), sleeperError);
+        assert.equal(calls, 1);
+        const events = capture.events.filter((entry) => entry.operation === "api_json");
+        assert.equal(events.length, 1);
+        assert.equal(events[0].retryAfterHonored, false);
+      } finally {
+        capture.restore();
+      }
+    });
   });
 
   describe("Retry-After compliance telemetry in fetchTikTokResponse (downloadRows)", () => {
-    it("7. Valid seconds header on asset download: honored before successful retry", async () => {
+    it("9. Valid seconds header on asset download: honored only after successful sleep", async () => {
       const capture = captureTelemetryForTest();
       try {
         let callCount = 0;
@@ -295,6 +326,26 @@ describe("TikTok Retry-After Evidence & Deterministic Sleeper", () => {
         assert.equal(events[0].retryAfterHonored, true);
         assert.equal(events[1].attempt, 2);
         assert.equal(events[1].outcome, "success");
+      } finally {
+        capture.restore();
+      }
+    });
+
+    it("10. Rejecting sleeper on an asset download emits false once and preserves the error", async () => {
+      const capture = captureTelemetryForTest();
+      const sleeperError = new Error("synthetic download sleeper failure");
+      setTikTokRetrySleeperForTest(async () => { throw sleeperError; });
+      try {
+        let calls = 0;
+        globalThis.fetch = (async () => {
+          calls++;
+          return new Response(JSON.stringify({ code: 429, message: "asset throttled" }), { status: 429, headers: { "retry-after": "2" } });
+        }) as typeof fetch;
+        await assert.rejects(() => new TikTokReportClient().downloadRows("https://download.tiktok.com/asset-1"), sleeperError);
+        assert.equal(calls, 1);
+        const events = capture.events.filter((entry) => entry.operation === "report_download");
+        assert.equal(events.length, 1);
+        assert.equal(events[0].retryAfterHonored, false);
       } finally {
         capture.restore();
       }

@@ -83,7 +83,8 @@ export interface ConnectorTelemetryEvent {
 export interface ConnectorTelemetryContext {
   workspaceId: string;
   connectionId?: string;
-  opaqueAccountId?: string;
+  /** Internal identifier only. It is pseudonymized at the sink boundary. */
+  accountId?: string;
   jobId?: string;
   provider?: ConnectorProvider;
   dataWindowDays?: number;
@@ -204,7 +205,6 @@ export const RESERVED_UNSPECIFIED_SENTINELS = new Set<string>([
 
 const IDENTIFIER_REGEX = /^[a-zA-Z0-9_.-]{1,128}$/;
 const OPERATION_REGEX = /^[a-zA-Z0-9_.-]{1,64}$/;
-const OPAQUE_ACCOUNT_REGEX = /^(?:acct_opaque_|acct_)[0-9a-f]{12}$/;
 
 /**
  * Strictly sanitizes and validates telemetry event fields from unknown input:
@@ -374,14 +374,15 @@ export function sanitizeTelemetryEvent(input: unknown): ConnectorTelemetryEvent 
     jobId = trimmed;
   }
 
-  // Optional opaqueAccountId
-  let opaqueAccountId: string | undefined = undefined;
-  const rawOpaque = raw.opaqueAccountId ?? currentCtx?.opaqueAccountId;
-  if (rawOpaque !== undefined) {
-    if (typeof rawOpaque !== "string") return null;
-    const trimmed = rawOpaque.trim();
-    if (!OPAQUE_ACCOUNT_REGEX.test(trimmed)) return null;
-    opaqueAccountId = trimmed;
+  // Account IDs remain internal input only. Never trust an opaque-looking value
+  // supplied by a caller: every account correlation value is transformed here.
+  let accountId: string | undefined = undefined;
+  const rawAccountId = raw.accountId ?? currentCtx?.accountId;
+  if (rawAccountId !== undefined) {
+    if (typeof rawAccountId !== "string") return null;
+    const trimmed = rawAccountId.trim();
+    if (!IDENTIFIER_REGEX.test(trimmed)) return null;
+    accountId = trimmed;
   }
 
   // Optional errorCategory
@@ -502,7 +503,7 @@ export function sanitizeTelemetryEvent(input: unknown): ConnectorTelemetryEvent 
 
   if (workspaceId !== undefined) event.opaqueWorkspaceId = toOpaqueWorkspaceId(workspaceId);
   if (connectionId !== undefined) event.opaqueConnectionId = toOpaqueConnectionId(connectionId);
-  if (opaqueAccountId !== undefined) event.opaqueAccountId = opaqueAccountId;
+  if (accountId !== undefined) event.opaqueAccountId = toOpaqueAccountId(accountId);
   if (jobId !== undefined) event.opaqueJobId = toOpaqueJobId(jobId);
   if (maxAttempts !== undefined) event.maxAttempts = maxAttempts;
   if (errorCategory !== undefined) event.errorCategory = errorCategory;

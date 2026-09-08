@@ -7,7 +7,7 @@ import { getPlanLimits } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { logger } from "@/lib/logger";
-import { runWithConnectorContext, toOpaqueAccountId } from '@/lib/observability/connector-telemetry';
+import { runWithConnectorContext } from '@/lib/observability/connector-telemetry';
 
 /**
  * POST /api/tiktok-business/report/create
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
       workspaceId: conn.workspaceId,
       connectionId: conn.id,
       provider: 'tiktok_business',
-      opaqueAccountId: toOpaqueAccountId(advertiser_id),
+      accountId: advertiser_id,
     }, async () => {
       // Sandbox: use synchronous report endpoint (async tasks not supported)
       if (creds.sandbox === true) {

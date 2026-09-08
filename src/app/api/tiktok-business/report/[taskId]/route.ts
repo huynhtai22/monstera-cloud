@@ -6,7 +6,7 @@ import { getValidTikTokToken } from '@/lib/tiktok-refresh';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { logger } from "@/lib/logger";
-import { runWithConnectorContext, toOpaqueAccountId } from '@/lib/observability/connector-telemetry';
+import { runWithConnectorContext } from '@/lib/observability/connector-telemetry';
 
 /**
  * GET /api/tiktok-business/report/[taskId]?connectionId=...&advertiser_id=...
@@ -52,7 +52,7 @@ export async function GET(
       workspaceId: conn.workspaceId,
       connectionId: conn.id,
       provider: 'tiktok_business',
-      opaqueAccountId: toOpaqueAccountId(advertiserId),
+      accountId: advertiserId,
     }, async () => {
       const taskInfo = await tiktokReportClient.checkTask(
         accessToken,

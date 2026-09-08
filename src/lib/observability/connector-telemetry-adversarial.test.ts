@@ -28,20 +28,29 @@ describe("Adversarial Runtime Telemetry Sanitization & Parsing", () => {
     assert.equal(result, null, "Object in provider field must be rejected");
   });
 
-  it("2. Rejects object or array in accountId and identifier fields", () => {
+  it("2. Rejects object or array in trusted accountId and identifier fields while stripping untrusted opaque-shaped fields", () => {
     const badAccountObj = {
       provider: "meta_ads",
       operation: "sync_metrics",
-      opaqueAccountId: { id: "act_12345" },
+      accountId: { id: "act_12345" },
     };
     assert.equal(sanitizeTelemetryEvent(badAccountObj), null);
 
     const badAccountArray = {
       provider: "meta_ads",
       operation: "sync_metrics",
-      opaqueAccountId: ["act_12345"],
+      accountId: ["act_12345"],
     };
     assert.equal(sanitizeTelemetryEvent(badAccountArray), null);
+
+    const untrustedOpaque = sanitizeTelemetryEvent({
+      provider: "meta_ads",
+      operation: "sync_metrics",
+      opaqueAccountId: "acct_deadbeefcafe",
+      nested: { opaqueAccountId: "acct_opaque_deadbeefcafe" },
+    });
+    assert.ok(untrustedOpaque);
+    assert.equal(untrustedOpaque.opaqueAccountId, undefined);
 
     const badConnArray = {
       provider: "meta_ads",

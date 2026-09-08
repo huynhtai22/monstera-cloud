@@ -224,17 +224,11 @@ export function isTikTokRetryableFailure(status: number, code: unknown, message:
 export function retryAfterMs(value: string | null): number | null {
   if (!value) return null;
   const trimmed = value.trim();
-  if (!trimmed) return null;
+  if (!/^\d+$/.test(trimmed)) return null;
   const seconds = Number(trimmed);
-  if (Number.isFinite(seconds)) {
-    return seconds >= 0 ? seconds * 1000 : null;
-  }
-  const dateMs = Date.parse(trimmed);
-  if (Number.isFinite(dateMs)) {
-    const diff = dateMs - Date.now();
-    return Math.max(0, diff);
-  }
-  return null;
+  return Number.isSafeInteger(seconds) && Number.isSafeInteger(seconds * 1000)
+    ? seconds * 1000
+    : null;
 }
 
 type RetrySleeper = (delayMs: number) => Promise<void>;
@@ -310,8 +304,7 @@ async function fetchTikTokResponse(url: string, init: RequestInit = {}): Promise
 
     const parsedRetryAfterMs = retryAfterMs(retryAfterRaw);
     const willRetry = retryable && attempt < maxAttempts - 1;
-    const retryAfterHonored = willRetry && parsedRetryAfterMs !== null;
-    emitConnectorTelemetry({
+    const emitResponseTelemetry = (retryAfterHonored: boolean) => emitConnectorTelemetry({
       eventCategory: "provider_request",
       provider: "tiktok_business",
       operation: "report_download",
@@ -326,11 +319,18 @@ async function fetchTikTokResponse(url: string, init: RequestInit = {}): Promise
     });
 
     if (!willRetry) {
+      emitResponseTelemetry(false);
       throw new TikTokProviderError(`TikTok API error ${body.code ?? response.status}: ${message}`, retryable, response.status);
     }
 
     const delay = parsedRetryAfterMs ?? (500 * 2 ** attempt + Math.floor(Math.random() * 200));
-    await retrySleeper(delay);
+    try {
+      await retrySleeper(delay);
+    } catch (error) {
+      emitResponseTelemetry(false);
+      throw error;
+    }
+    emitResponseTelemetry(parsedRetryAfterMs !== null);
   }
   throw new TikTokProviderError("TikTok request failed", true);
 }
@@ -398,8 +398,7 @@ async function fetchTikTokJson(url: string, init: RequestInit): Promise<Record<s
 
     const parsedRetryAfterMs = retryAfterMs(retryAfterRaw);
     const willRetry = retryable && attempt < maxAttempts - 1;
-    const retryAfterHonored = willRetry && parsedRetryAfterMs !== null;
-    emitConnectorTelemetry({
+    const emitResponseTelemetry = (retryAfterHonored: boolean) => emitConnectorTelemetry({
       eventCategory: "provider_request",
       provider: "tiktok_business",
       operation: "api_json",
@@ -414,11 +413,18 @@ async function fetchTikTokJson(url: string, init: RequestInit): Promise<Record<s
     });
 
     if (!willRetry) {
+      emitResponseTelemetry(false);
       throw new TikTokProviderError(`TikTok API error ${json.code ?? response.status}: ${message}`, retryable, response.status);
     }
 
     const delay = parsedRetryAfterMs ?? (500 * 2 ** attempt + Math.floor(Math.random() * 200));
-    await retrySleeper(delay);
+    try {
+      await retrySleeper(delay);
+    } catch (error) {
+      emitResponseTelemetry(false);
+      throw error;
+    }
+    emitResponseTelemetry(parsedRetryAfterMs !== null);
   }
   throw new TikTokProviderError("TikTok request failed", true);
 }
