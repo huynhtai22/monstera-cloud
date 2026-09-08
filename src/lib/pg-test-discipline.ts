@@ -58,34 +58,75 @@ export function assertAllowedTestDatabase(url: string | undefined, env: NodeJS.P
   return url;
 }
 
+const CONNECTOR_RESILIENCE_PRODUCTION_MARKERS = [
+  "VERCEL_ENV",
+  "NODE_ENV",
+  "ENVIRONMENT",
+  "APP_ENV",
+  "RAILWAY_ENVIRONMENT_NAME",
+] as const;
+
+function normalizedMarkerValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value.trim().toLowerCase() : undefined;
+}
+
+function normalizedConnectorResilienceHost(hostname: string): string {
+  const host = hostname.toLowerCase();
+  // WHATWG URL preserves brackets around IPv6 hostnames. Accept only the one
+  // valid loopback representation rather than applying substring matching.
+  return host === "[::1]" ? "::1" : host;
+}
+
+function assertConnectorResilienceDatabaseUrl(
+  value: unknown,
+  label: "DATABASE_URL" | "DIRECT_URL",
+  env: NodeJS.ProcessEnv,
+): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`Connector resilience PostgreSQL tests require ${label}.`);
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`Connector resilience PostgreSQL tests received an invalid ${label}.`);
+  }
+
+  let database: string;
+  try {
+    database = decodeURIComponent(parsed.pathname).replace(/^\//, "");
+  } catch {
+    throw new Error(`Connector resilience PostgreSQL tests received an invalid ${label}.`);
+  }
+
+  const host = normalizedConnectorResilienceHost(parsed.hostname);
+  const loopback = host === "localhost" || host === "127.0.0.1" || host === "::1";
+  const ciService = env.CI === "true" && host === "postgres";
+  if ((!loopback && !ciService) || database !== "monstera_ci") {
+    throw new Error(`Connector resilience PostgreSQL tests require an approved loopback monstera_ci ${label}.`);
+  }
+
+  return value;
+}
+
 /** Strict, feature-scoped discipline for destructive resilience scheduler tests. */
 export function assertConnectorResilienceTestDatabase(env: NodeJS.ProcessEnv = process.env): string {
   if (env.CONNECTOR_RESILIENCE_TEST_DB !== "1") {
     throw new Error("Connector resilience PostgreSQL tests require CONNECTOR_RESILIENCE_TEST_DB=1.");
   }
-  const production = [env.VERCEL_ENV, env.NODE_ENV, env.ENVIRONMENT, env.APP_ENV, env.RAILWAY_ENVIRONMENT_NAME]
-    .some((value) => value?.toLowerCase() === "production");
+
+  const production = CONNECTOR_RESILIENCE_PRODUCTION_MARKERS.some(
+    (marker) => normalizedMarkerValue(env[marker]) === "production",
+  );
   if (production) throw new Error("Connector resilience PostgreSQL tests refuse production environment markers.");
 
-  const url = env.DATABASE_URL;
-  if (!url) throw new Error("Connector resilience PostgreSQL tests require DATABASE_URL.");
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { throw new Error("Connector resilience PostgreSQL tests received an invalid DATABASE_URL."); }
-  const host = parsed.hostname.toLowerCase();
-  const database = decodeURIComponent(parsed.pathname).replace(/^\//, "");
-  const loopback = host === "localhost" || host === "127.0.0.1" || host === "::1";
-  const ciService = env.CI === "true" && host === "postgres";
-  if ((!loopback && !ciService) || database !== "monstera_ci") {
-    throw new Error("Connector resilience PostgreSQL tests require an approved loopback monstera_ci database.");
-  }
-  if (env.DIRECT_URL && env.DIRECT_URL !== url) {
-    let direct: URL;
-    try { direct = new URL(env.DIRECT_URL); } catch { throw new Error("Connector resilience PostgreSQL tests received an invalid DIRECT_URL."); }
-    const directHost = direct.hostname.toLowerCase();
-    const directDatabase = decodeURIComponent(direct.pathname).replace(/^\//, "");
-    if (!((directHost === "localhost" || directHost === "127.0.0.1" || directHost === "::1") || (env.CI === "true" && directHost === "postgres")) || directDatabase !== "monstera_ci") {
-      throw new Error("Connector resilience PostgreSQL tests require an approved loopback monstera_ci DIRECT_URL.");
-    }
+  const url = assertConnectorResilienceDatabaseUrl(env.DATABASE_URL, "DATABASE_URL", env);
+  // The scheduler supplies DATABASE_URL directly to PrismaClient. DIRECT_URL is
+  // not its effective datasource here, but is validated before construction so
+  // an unsafe configured direct connection can never be silently tolerated.
+  if (env.DIRECT_URL !== undefined && env.DIRECT_URL !== "") {
+    assertConnectorResilienceDatabaseUrl(env.DIRECT_URL, "DIRECT_URL", env);
   }
   return url;
 }
