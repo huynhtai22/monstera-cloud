@@ -7,6 +7,7 @@ import {
   getConnectorContext,
   captureTelemetryForTest,
   setTelemetrySink,
+  toOpaqueWorkspaceId,
 } from "./connector-telemetry";
 
 describe("Adversarial Runtime Telemetry Sanitization & Parsing", () => {
@@ -220,15 +221,15 @@ describe("Deterministic AsyncLocalStorage Tenant Context Derivation & Isolation"
 
       assert.equal(capture.events.length, 3);
       assert.equal(capture.events[0].operation, "outer_op_1");
-      assert.equal(capture.events[0].workspaceId, "ws_outer_tenant");
+      assert.equal(capture.events[0].opaqueWorkspaceId, toOpaqueWorkspaceId("ws_outer_tenant"));
       assert.equal(capture.events[0].contextStatus, "tenant_scoped");
 
       assert.equal(capture.events[1].operation, "inner_op");
-      assert.equal(capture.events[1].workspaceId, "ws_inner_tenant");
+      assert.equal(capture.events[1].opaqueWorkspaceId, toOpaqueWorkspaceId("ws_inner_tenant"));
       assert.equal(capture.events[1].contextStatus, "tenant_scoped");
 
       assert.equal(capture.events[2].operation, "outer_op_2");
-      assert.equal(capture.events[2].workspaceId, "ws_outer_tenant");
+      assert.equal(capture.events[2].opaqueWorkspaceId, toOpaqueWorkspaceId("ws_outer_tenant"));
       assert.equal(capture.events[2].contextStatus, "tenant_scoped");
     } finally {
       capture.restore();
@@ -266,7 +267,7 @@ describe("Deterministic AsyncLocalStorage Tenant Context Derivation & Isolation"
       // Only the valid event should be emitted; the 2 invalid ones must be dropped
       assert.equal(capture.events.length, 1);
       assert.equal(capture.events[0].operation, "omitted_workspace");
-      assert.equal(capture.events[0].workspaceId, "ws_enclosing_tenant");
+      assert.equal(capture.events[0].opaqueWorkspaceId, toOpaqueWorkspaceId("ws_enclosing_tenant"));
       assert.equal(capture.events[0].contextStatus, "tenant_scoped");
     } finally {
       capture.restore();
@@ -298,7 +299,7 @@ describe("Deterministic AsyncLocalStorage Tenant Context Derivation & Isolation"
       // Rival conflicting event is dropped
       assert.equal(capture.events.length, 1);
       assert.equal(capture.events[0].operation, "authorized_op");
-      assert.equal(capture.events[0].workspaceId, "ws_authorized_tenant");
+      assert.equal(capture.events[0].opaqueWorkspaceId, toOpaqueWorkspaceId("ws_authorized_tenant"));
     } finally {
       capture.restore();
     }
@@ -329,7 +330,7 @@ describe("Deterministic AsyncLocalStorage Tenant Context Derivation & Isolation"
       });
 
       assert.equal(capture.events.length, 1);
-      assert.equal(capture.events[0].workspaceId, undefined);
+      assert.equal(capture.events[0].opaqueWorkspaceId, undefined);
       assert.equal(capture.events[0].contextStatus, "unbound");
     } finally {
       capture.restore();
@@ -345,7 +346,7 @@ describe("Deterministic AsyncLocalStorage Tenant Context Derivation & Isolation"
     });
 
     assert.ok(forgedTenantScoped !== null);
-    assert.equal(forgedTenantScoped.workspaceId, undefined);
+    assert.equal(forgedTenantScoped.opaqueWorkspaceId, undefined);
     assert.equal(forgedTenantScoped.contextStatus, "unbound", "Must be derived as unbound");
   });
 });

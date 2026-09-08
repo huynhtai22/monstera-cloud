@@ -6,6 +6,9 @@ import {
   captureTelemetryForTest,
   sanitizeTelemetryEvent,
   toOpaqueAccountId,
+  toOpaqueConnectionId,
+  toOpaqueJobId,
+  toOpaqueWorkspaceId,
   runWithConnectorContext,
 } from "./connector-telemetry";
 import { installNetworkDenialGuard, restoreNetworkGuard } from "@/lib/connector-resilience/network-denial-guard";
@@ -14,6 +17,7 @@ import { setupSyntheticTestEnv } from "@/lib/connector-resilience/test-env";
 import { metaReportClient, MetaOAuthRevokedError } from "@/lib/meta-ads";
 import { googleAdsReportClient } from "@/lib/google-ads";
 import { tiktokReportClient } from "@/lib/tiktok-business";
+import { logger } from "@/lib/logger";
 
 describe("Connector Telemetry Contract & Provider Instrumentation", () => {
   let simulator: ProviderSimulator;
@@ -53,8 +57,8 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
       assert.equal(ev.schemaVersion, "1.0.0");
       assert.equal(ev.eventName, "connector_telemetry");
       assert.equal(ev.provider, "meta_ads");
-      assert.equal(ev.workspaceId, "ws_tenant_1");
-      assert.equal(ev.connectionId, "conn_meta_1");
+      assert.equal(ev.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_tenant_1"));
+      assert.equal(ev.opaqueConnectionId, toOpaqueConnectionId("conn_meta_1"));
       assert.equal(ev.outcome, "success");
       assert.equal(ev.attempt, 1);
       assert.equal(typeof ev.durationMs, "number");
@@ -98,7 +102,7 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
       for (const ev of attempts) {
         assert.equal(ev.outcome, "throttled");
         assert.equal(ev.errorCategory, "rate_limited");
-        assert.equal(ev.workspaceId, "ws_tenant_retry");
+        assert.equal(ev.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_tenant_retry"));
       }
     } finally {
       capture.restore();
@@ -276,7 +280,8 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
     assert.equal(sanitized.itemCount, 50);
     assert.equal(sanitized.completedItemCount, 48);
     assert.equal(sanitized.durationMs, 4520);
-    assert.equal(sanitized.workspaceId, "ws_heavy_tenant");
+    assert.equal(sanitized.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_heavy_tenant"));
+    assert.equal(sanitized.opaqueJobId, toOpaqueJobId("wjob_123456"));
 
     // Ensure forbidden fields are strictly absent
     assert.equal((sanitized as any).token, undefined);
@@ -295,6 +300,37 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
     assert.equal(opaque1, opaque2, "Hashing must be deterministic");
     assert.notEqual(opaque1, opaqueOther, "Different accounts must have distinct hashes");
     assert.ok(!opaque1?.includes("9988776655"), "Must not leak raw account number");
+  });
+
+  it("9b. Every custom and default sink receives only sink-safe identifiers", () => {
+    const raw = {
+      workspaceId: "workspace-private-001",
+      connectionId: "connection-private-002",
+      jobId: "job-private-003",
+      accountId: "account-private-004",
+      clientId: "client-private-005",
+      token: "token-private-006",
+      error: { authorization: "Bearer private-007", providerResponse: { id: "response-private-008" } },
+    };
+    const forbidden = Object.values(raw).flatMap((value) => typeof value === "string" ? [value] : JSON.stringify(value));
+
+    let customSerialized = "";
+    setTelemetrySink((event) => { customSerialized = JSON.stringify(event); });
+    emitConnectorTelemetry({ provider: "meta_ads", operation: "sink_safety", ...raw });
+    for (const value of forbidden) assert.equal(customSerialized.includes(value), false);
+    assert.ok(customSerialized.includes("opaqueWorkspaceId"));
+    setTelemetrySink(null);
+
+    const originalWarn = logger.warn;
+    let defaultSerialized = "";
+    (logger as any).warn = (...args: unknown[]) => { defaultSerialized = JSON.stringify(args); };
+    try {
+      emitConnectorTelemetry({ provider: "meta_ads", operation: "default_sink_safety", ...raw });
+    } finally {
+      (logger as any).warn = originalWarn;
+    }
+    for (const value of forbidden) assert.equal(defaultSerialized.includes(value), false);
+    assert.ok(defaultSerialized.includes("opaqueWorkspaceId"));
   });
 
   it("10. Rival-workspace activity cannot be attached to another workspace's event", async () => {
@@ -325,11 +361,11 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
       const eventA = capture.events.find((e) => e.operation === "test_op_A");
       const eventB = capture.events.find((e) => e.operation === "test_op_B");
 
-      assert.equal(eventA?.workspaceId, "ws_tenant_A");
-      assert.equal(eventA?.connectionId, "conn_A");
+      assert.equal(eventA?.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_tenant_A"));
+      assert.equal(eventA?.opaqueConnectionId, toOpaqueConnectionId("conn_A"));
 
-      assert.equal(eventB?.workspaceId, "ws_tenant_B");
-      assert.equal(eventB?.connectionId, "conn_B");
+      assert.equal(eventB?.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_tenant_B"));
+      assert.equal(eventB?.opaqueConnectionId, toOpaqueConnectionId("conn_B"));
     } finally {
       capture.restore();
     }
@@ -366,7 +402,7 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
       operation: "undefined_test",
     });
     assert.ok(undefinedEvent !== null);
-    assert.equal(undefinedEvent.workspaceId, undefined);
+    assert.equal(undefinedEvent.opaqueWorkspaceId, undefined);
     assert.equal(undefinedEvent.contextStatus, "unbound");
 
     // Valid workspace -> tenant_scoped, workspaceId trimmed
@@ -376,7 +412,7 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
       operation: "valid_test",
     });
     assert.ok(validEvent !== null);
-    assert.equal(validEvent.workspaceId, "ws_real_tenant");
+    assert.equal(validEvent.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_real_tenant"));
     assert.equal(validEvent.contextStatus, "tenant_scoped");
   });
 
@@ -390,7 +426,7 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
       });
 
       assert.equal(capture.events.length, 1);
-      assert.equal(capture.events[0].workspaceId, undefined);
+      assert.equal(capture.events[0].opaqueWorkspaceId, undefined);
       assert.equal(capture.events[0].contextStatus, "unbound");
     } finally {
       capture.restore();
@@ -427,9 +463,9 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
       const eventA = capture.events.find((e) => e.operation === "async_op_A");
       const eventB = capture.events.find((e) => e.operation === "async_op_B");
 
-      assert.equal(eventA?.workspaceId, "ws_concurrent_A");
+      assert.equal(eventA?.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_concurrent_A"));
       assert.equal(eventA?.contextStatus, "tenant_scoped");
-      assert.equal(eventB?.workspaceId, "ws_concurrent_B");
+      assert.equal(eventB?.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_concurrent_B"));
       assert.equal(eventB?.contextStatus, "tenant_scoped");
     } finally {
       capture.restore();
@@ -461,7 +497,7 @@ describe("Connector Telemetry Contract & Provider Instrumentation", () => {
       const retryEvents = capture.events.filter((e) => e.provider === "meta_ads");
       assert.ok(retryEvents.length > 1, "Expected multiple attempts");
       for (const ev of retryEvents) {
-        assert.equal(ev.workspaceId, "ws_retry_ctx_tenant");
+        assert.equal(ev.opaqueWorkspaceId, toOpaqueWorkspaceId("ws_retry_ctx_tenant"));
         assert.equal(ev.contextStatus, "tenant_scoped");
       }
     } finally {

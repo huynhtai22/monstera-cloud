@@ -1,18 +1,18 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth-session';
 import { metaAdsClient } from '@/lib/meta-ads';
 import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { logger } from "@/lib/logger";
+import { runWithConnectorContext } from "@/lib/observability/connector-telemetry";
 
 /**
  * GET /api/meta-ads/accounts?connectionId=
  * Returns the ad accounts available for this connection.
  */
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -44,8 +44,13 @@ export async function GET(req: Request) {
       return NextResponse.json({ accounts: creds.adAccounts });
     }
 
-    const accessToken = await getValidOAuthToken(conn);
-    const accounts = await metaAdsClient.getAdAccounts(accessToken);
+    const accounts = await runWithConnectorContext(
+      { workspaceId: conn.workspaceId, connectionId: conn.id, provider: "meta_ads" },
+      async () => {
+        const accessToken = await getValidOAuthToken(conn);
+        return metaAdsClient.getAdAccounts(accessToken);
+      }
+    );
     return NextResponse.json({ accounts });
   } catch (err: any) {
     logger.error('[META_ADS_ACCOUNTS]', err);

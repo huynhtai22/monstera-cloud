@@ -1,8 +1,8 @@
-import crypto from "node:crypto";
 import type {
   ConnectorTelemetryEvent,
   ConnectorProvider,
 } from "./connector-telemetry";
+import { toOpaqueWorkspaceId } from "./connector-telemetry";
 
 export interface PercentileSummary {
   p50: number;
@@ -99,12 +99,8 @@ function calculatePercentiles(values: number[]): PercentileSummary {
 }
 
 /**
- * Creates a pseudonymous operational identifier for a workspace.
- * Guards against empty/unspecified workspace identities to prevent
- * hash collisions on empty strings (e.g. sha256("") => e3b0c442).
- *
- * Note: Unsalted SHA-256 prefixes are pseudonymous surrogate keys,
- * not cryptographically irreversible commitments.
+ * Legacy-compatible guard for evidence callers. Sink-safe events already carry
+ * opaque workspace identifiers and aggregation must never receive raw IDs.
  */
 export function hashWorkspace(wsId?: string | null): string {
   if (!wsId || typeof wsId !== "string") {
@@ -114,12 +110,11 @@ export function hashWorkspace(wsId?: string | null): string {
   if (!trimmed || trimmed === "ws_unspecified" || trimmed === "unknown_workspace") {
     return "ws_opaque_unspecified";
   }
-  if (trimmed.startsWith("ws_opaque_")) return trimmed;
-  return `ws_opaque_${crypto.createHash("sha256").update(trimmed).digest("hex").slice(0, 8)}`;
+  return trimmed.startsWith("ws_opaque_") ? trimmed : toOpaqueWorkspaceId(trimmed) ?? "ws_opaque_unspecified";
 }
 
 /**
- * Aggregates raw connector telemetry events into actionable operational metrics.
+ * Aggregates sink-safe connector telemetry events into actionable operational metrics.
  *
  * Note: Summary thresholds (e.g. retry amplification, throttle rates, queue wait times)
  * are provisional operating hypotheses for pilot observability, not validated production SLOs
@@ -202,8 +197,8 @@ export function summarizeConnectorEvidence(
   }>();
 
   for (const ev of events) {
-    const isTenantScoped = ev.contextStatus === "tenant_scoped" && Boolean(ev.workspaceId);
-    const wsKey = isTenantScoped && ev.workspaceId ? hashWorkspace(ev.workspaceId) : null;
+    const isTenantScoped = ev.contextStatus === "tenant_scoped" && Boolean(ev.opaqueWorkspaceId);
+    const wsKey = isTenantScoped && ev.opaqueWorkspaceId ? hashWorkspace(ev.opaqueWorkspaceId) : null;
     let wsEntry: {
       totalJobs: number;
       totalItems: number;

@@ -56,10 +56,11 @@ export interface ConnectorTelemetryEvent {
   provider: ConnectorProvider;
   operation: string;
   contextStatus: TelemetryContextStatus;
-  workspaceId?: string;
-  connectionId?: string;
+  /** Sink-safe pseudonymous identifiers. Never raw tenant identifiers. */
+  opaqueWorkspaceId?: string;
+  opaqueConnectionId?: string;
   opaqueAccountId?: string;
-  jobId?: string;
+  opaqueJobId?: string;
   attempt: number;
   maxAttempts?: number;
   outcome: TelemetryOutcome;
@@ -113,10 +114,31 @@ export function getConnectorContext(): ConnectorTelemetryContext | undefined {
  * Note: Unsalted SHA-256 prefixes are pseudonymous surrogate keys, not cryptographically irreversible commitments.
  */
 export function toOpaqueAccountId(rawId?: string | null): string | undefined {
-  if (!rawId) return undefined;
-  const trimmed = String(rawId).trim();
+  return toOpaqueIdentifier("acct", rawId);
+}
+
+/**
+ * Stable pseudonymous operational identifiers for telemetry sinks. These are
+ * deliberately unsalted correlation keys, not anonymous or irreversible
+ * commitments; raw identifiers must remain inside the executing process.
+ */
+export function toOpaqueWorkspaceId(rawId?: string | null): string | undefined {
+  return toOpaqueIdentifier("ws", rawId);
+}
+
+export function toOpaqueConnectionId(rawId?: string | null): string | undefined {
+  return toOpaqueIdentifier("conn", rawId);
+}
+
+export function toOpaqueJobId(rawId?: string | null): string | undefined {
+  return toOpaqueIdentifier("job", rawId);
+}
+
+function toOpaqueIdentifier(prefix: string, rawId?: string | null): string | undefined {
+  if (!rawId || typeof rawId !== "string") return undefined;
+  const trimmed = rawId.trim();
   if (!trimmed) return undefined;
-  return `acct_${crypto.createHash("sha256").update(trimmed).digest("hex").slice(0, 12)}`;
+  return `${prefix}_opaque_${crypto.createHash("sha256").update(trimmed).digest("hex").slice(0, 12)}`;
 }
 
 const VALID_EVENT_CATEGORIES = new Set<ConnectorEventCategory>([
@@ -182,7 +204,7 @@ export const RESERVED_UNSPECIFIED_SENTINELS = new Set<string>([
 
 const IDENTIFIER_REGEX = /^[a-zA-Z0-9_.-]{1,128}$/;
 const OPERATION_REGEX = /^[a-zA-Z0-9_.-]{1,64}$/;
-const OPAQUE_ACCOUNT_REGEX = /^acct_[0-9a-f]{12}$/;
+const OPAQUE_ACCOUNT_REGEX = /^(?:acct_opaque_|acct_)[0-9a-f]{12}$/;
 
 /**
  * Strictly sanitizes and validates telemetry event fields from unknown input:
@@ -478,10 +500,10 @@ export function sanitizeTelemetryEvent(input: unknown): ConnectorTelemetryEvent 
     timestamp,
   };
 
-  if (workspaceId !== undefined) event.workspaceId = workspaceId;
-  if (connectionId !== undefined) event.connectionId = connectionId;
+  if (workspaceId !== undefined) event.opaqueWorkspaceId = toOpaqueWorkspaceId(workspaceId);
+  if (connectionId !== undefined) event.opaqueConnectionId = toOpaqueConnectionId(connectionId);
   if (opaqueAccountId !== undefined) event.opaqueAccountId = opaqueAccountId;
-  if (jobId !== undefined) event.jobId = jobId;
+  if (jobId !== undefined) event.opaqueJobId = toOpaqueJobId(jobId);
   if (maxAttempts !== undefined) event.maxAttempts = maxAttempts;
   if (errorCategory !== undefined) event.errorCategory = errorCategory;
   if (httpStatus !== undefined) event.httpStatus = httpStatus;

@@ -10,7 +10,7 @@ interface ModuleImport {
   kind: "import" | "export" | "dynamic_import" | "require";
 }
 
-const NODE_BUILTINS = new Set([
+export const NODE_BUILTINS = new Set([
   "async_hooks", "child_process", "cluster", "crypto", "dgram", "dns",
   "fs", "fs/promises", "http", "http2", "https", "net", "os", "path",
   "perf_hooks", "process", "punycode", "querystring", "readline", "repl",
@@ -19,17 +19,26 @@ const NODE_BUILTINS = new Set([
   "worker_threads", "zlib"
 ]);
 
-const FORBIDDEN_SERVER_MODULE_PREFIXES = [
+export const FORBIDDEN_SERVER_MODULE_PREFIXES = [
   "server-only",
   "@prisma/client",
+  "@/lib/prisma",
   "@/lib/observability/connector-telemetry",
+  "@/lib/observability/connector-evidence-summary",
   "@/lib/sync-connection",
   "@/lib/connection-data-through",
+  "@/lib/connection-sync-lease",
+  "@/lib/meta-sync-lock",
+  "@/lib/warehouse-import-job",
+  "@/lib/encryption",
   "@/lib/google-ads",
   "@/lib/tiktok-business",
+  "@/lib/shopee",
+  "@/lib/lazada",
+  "@/lib/ingestion/ad-platform-warehouse",
 ];
 
-function isForbiddenSpecifier(specifier: string): boolean {
+export function isForbiddenSpecifier(specifier: string): boolean {
   if (specifier.startsWith("node:")) return true;
   if (NODE_BUILTINS.has(specifier)) return true;
   if (FORBIDDEN_SERVER_MODULE_PREFIXES.some(prefix => specifier === prefix || specifier.startsWith(prefix + "/"))) {
@@ -81,7 +90,7 @@ export function extractAstImports(sourceText: string, fileName = "test.ts"): Mod
       }
     }
 
-    // 3. Dynamic import: import('...') or require('...')
+    // 3. Dynamic import or require: import('...') or require('...')
     if (ts.isCallExpression(node)) {
       if (node.expression.kind === ts.SyntaxKind.ImportKeyword) {
         const arg = node.arguments[0];
@@ -112,14 +121,111 @@ export function extractAstImports(sourceText: string, fileName = "test.ts"): Mod
 }
 
 /**
- * Validates that a source string does not contain forbidden server imports.
+ * Validates that a source string does not contain direct forbidden server imports.
  */
 export function findForbiddenImports(sourceText: string, fileName = "test.ts"): ModuleImport[] {
   const imports = extractAstImports(sourceText, fileName);
   return imports.filter(imp => !imp.isTypeOnly && isForbiddenSpecifier(imp.specifier));
 }
 
-describe("Client/Server Dependency Boundary Enforcement (AST-Verified)", () => {
+/**
+ * Resolves local module specifiers relative to current file or src/ alias.
+ */
+export function resolveModuleSpecifier(specifier: string, fromFile: string, repoRoot: string): string | null {
+  let basePath: string;
+  if (specifier.startsWith("./") || specifier.startsWith("../")) {
+    basePath = path.resolve(path.dirname(fromFile), specifier);
+  } else if (specifier.startsWith("@/")) {
+    basePath = path.resolve(repoRoot, "src", specifier.slice(2));
+  } else {
+    return null; // External package or builtin
+  }
+
+  // Exact file match
+  if (fs.existsSync(basePath) && fs.statSync(basePath).isFile()) {
+    return basePath;
+  }
+
+  const extensions = [".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mjs", ".cjs", ".json"];
+  for (const ext of extensions) {
+    const candidate = `${basePath}${ext}`;
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+
+  if (fs.existsSync(basePath) && fs.statSync(basePath).isDirectory()) {
+    for (const ext of extensions) {
+      const candidate = path.join(basePath, `index${ext}`);
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+export interface BoundaryViolation {
+  entryFile: string;
+  chain: string[];
+  forbiddenSpecifier: string;
+}
+
+/**
+ * Performs a transitive local dependency-graph traversal starting from an entry module.
+ * Recursively resolves imports, exports, dynamic imports, and require calls.
+ * Uses a visited Set to prevent infinite recursion on cyclic dependency graphs.
+ */
+export function traverseTransitiveClientBoundary(
+  entryFile: string,
+  repoRoot: string,
+  customResolver?: (specifier: string, fromFile: string) => string | null,
+  customFileReader?: (filePath: string) => string,
+): BoundaryViolation[] {
+  const visited = new Set<string>();
+  const violations: BoundaryViolation[] = [];
+
+  function walk(currentFile: string, stack: string[]) {
+    if (visited.has(currentFile)) return;
+    visited.add(currentFile);
+
+    let content = "";
+    try {
+      content = customFileReader ? customFileReader(currentFile) : fs.readFileSync(currentFile, "utf8");
+    } catch {
+      return;
+    }
+
+    const imports = extractAstImports(content, currentFile);
+    for (const imp of imports) {
+      if (imp.isTypeOnly) continue;
+
+      if (isForbiddenSpecifier(imp.specifier)) {
+        violations.push({
+          entryFile,
+          chain: [...stack, imp.specifier],
+          forbiddenSpecifier: imp.specifier,
+        });
+        continue;
+      }
+
+      const resolved = customResolver
+        ? customResolver(imp.specifier, currentFile)
+        : resolveModuleSpecifier(imp.specifier, currentFile, repoRoot);
+
+      if (resolved) {
+        if (resolved.includes("node_modules")) continue;
+        walk(resolved, [...stack, resolved]);
+      }
+    }
+  }
+
+  walk(entryFile, [entryFile]);
+  return violations;
+}
+
+describe("Client/Server Dependency Boundary Enforcement (AST-Verified Transitive)", () => {
   const repoRoot = path.resolve(__dirname, "../../..");
   const metaContractPath = path.join(repoRoot, "src/lib/meta-ads-contract.ts");
   const metaPagePath = path.join(repoRoot, "src/app/(app)/meta-ads/page.tsx");
@@ -133,7 +239,6 @@ describe("Client/Server Dependency Boundary Enforcement (AST-Verified)", () => {
       `meta-ads-contract.ts must have zero forbidden imports, found: ${JSON.stringify(forbidden)}`
     );
 
-    // Also assert it has zero imports altogether (it is a pure contract)
     const allImports = extractAstImports(content, metaContractPath);
     assert.strictEqual(
       allImports.length,
@@ -148,7 +253,7 @@ describe("Client/Server Dependency Boundary Enforcement (AST-Verified)", () => {
     assert.strictEqual(
       forbidden.length,
       0,
-      `meta-ads/page.tsx must not contain forbidden server imports, found: ${JSON.stringify(forbidden)}`
+      `meta-ads/page.tsx must not contain direct forbidden server imports, found: ${JSON.stringify(forbidden)}`
     );
 
     const allImports = extractAstImports(content, metaPagePath);
@@ -158,7 +263,16 @@ describe("Client/Server Dependency Boundary Enforcement (AST-Verified)", () => {
     assert.ok(contractImport, "meta-ads page must import contract definitions from @/lib/meta-ads-contract");
   });
 
-  it("3. No client-side component ('use client') imports server connector modules or telemetry directly", () => {
+  it("3. Transitive traversal of Meta Ads client page has zero forbidden dependencies across its full graph", () => {
+    const violations = traverseTransitiveClientBoundary(metaPagePath, repoRoot);
+    assert.strictEqual(
+      violations.length,
+      0,
+      `Transitive boundary violation in meta-ads/page.tsx:\n${violations.map(v => v.chain.join(" -> ")).join("\n")}`
+    );
+  });
+
+  it("4. Transitive traversal of all 'use client' components in src/app has zero forbidden dependencies", () => {
     const appDir = path.join(repoRoot, "src/app");
 
     function scanDir(dir: string, fileList: string[] = []): string[] {
@@ -167,95 +281,247 @@ describe("Client/Server Dependency Boundary Enforcement (AST-Verified)", () => {
         const fullPath = path.join(dir, entry.name);
         if (entry.isDirectory()) {
           scanDir(fullPath, fileList);
-        } else if (entry.isFile() && (entry.name.endsWith(".tsx") || entry.name.endsWith(".jsx"))) {
+        } else if (entry.isFile() && (entry.name.endsWith(".tsx") || entry.name.endsWith(".jsx") || entry.name.endsWith(".ts"))) {
           fileList.push(fullPath);
         }
       }
       return fileList;
     }
 
-    const clientFiles = scanDir(appDir);
-    const violations: { file: string; forbidden: ModuleImport[] }[] = [];
+    const appFiles = scanDir(appDir);
+    const allViolations: BoundaryViolation[] = [];
 
-    for (const file of clientFiles) {
+    for (const file of appFiles) {
       const content = fs.readFileSync(file, "utf8");
       if (content.includes('"use client"') || content.includes("'use client'")) {
-        const forbidden = findForbiddenImports(content, file);
-        if (forbidden.length > 0) {
-          violations.push({
-            file: path.relative(repoRoot, file),
-            forbidden,
-          });
-        }
+        const violations = traverseTransitiveClientBoundary(file, repoRoot);
+        allViolations.push(...violations);
       }
     }
 
     assert.strictEqual(
-      violations.length,
+      allViolations.length,
       0,
-      `Discovered forbidden server imports in client components:\n${JSON.stringify(violations, null, 2)}`
+      `Transitive client boundary violations detected in src/app:\n${allViolations.map(v => `${path.relative(repoRoot, v.entryFile)}: ${v.chain.map(p => path.relative(repoRoot, p)).join(" -> ")}`).join("\n")}`
     );
   });
 
-  describe("4. Negative Fixture Tests: AST verification catches intentional violations", () => {
-    it("flags forbidden static value import of server connector", () => {
-      const fixture = `
-        "use client";
-        import { runWithConnectorContext } from "@/lib/observability/connector-telemetry";
-        export default function Component() { return null; }
-      `;
-      const forbidden = findForbiddenImports(fixture, "bad-client.tsx");
-      assert.strictEqual(forbidden.length, 1);
-      assert.strictEqual(forbidden[0].specifier, "@/lib/observability/connector-telemetry");
-      assert.strictEqual(forbidden[0].isTypeOnly, false);
-      assert.strictEqual(forbidden[0].kind, "import");
+  describe("5. Required Transitive Graph Fixture Tests", () => {
+    it("Fixture A: Direct forbidden import is detected with exact path", () => {
+      const virtualFiles: Record<string, string> = {
+        "/app/bad-client.tsx": `
+          "use client";
+          import { runWithConnectorContext } from "@/lib/observability/connector-telemetry";
+          export default function Bad() { return null; }
+        `,
+      };
+
+      const violations = traverseTransitiveClientBoundary(
+        "/app/bad-client.tsx",
+        repoRoot,
+        (spec) => virtualFiles[spec] ? spec : null,
+        (p) => virtualFiles[p] || ""
+      );
+
+      assert.strictEqual(violations.length, 1);
+      assert.strictEqual(violations[0].forbiddenSpecifier, "@/lib/observability/connector-telemetry");
+      assert.deepStrictEqual(violations[0].chain, [
+        "/app/bad-client.tsx",
+        "@/lib/observability/connector-telemetry",
+      ]);
     });
 
-    it("flags forbidden static value import of node:async_hooks and node:crypto", () => {
-      const fixture = `
-        import { AsyncLocalStorage } from "node:async_hooks";
-        import crypto from "node:crypto";
-      `;
-      const forbidden = findForbiddenImports(fixture, "node-leak.ts");
-      assert.strictEqual(forbidden.length, 2);
-      assert.strictEqual(forbidden[0].specifier, "node:async_hooks");
-      assert.strictEqual(forbidden[1].specifier, "node:crypto");
+    it("Fixture B: Forbidden dependency through intermediate module is detected", () => {
+      const virtualFiles: Record<string, string> = {
+        "/app/client.tsx": `
+          "use client";
+          import { helper } from "./intermediate";
+          export default function Page() { return helper(); }
+        `,
+        "/app/intermediate.ts": `
+          import { syncConnection } from "@/lib/sync-connection";
+          export function helper() { return syncConnection; }
+        `,
+      };
+
+      const violations = traverseTransitiveClientBoundary(
+        "/app/client.tsx",
+        repoRoot,
+        (spec) => {
+          if (spec === "./intermediate") return "/app/intermediate.ts";
+          return null;
+        },
+        (p) => virtualFiles[p] || ""
+      );
+
+      assert.strictEqual(violations.length, 1);
+      assert.strictEqual(violations[0].forbiddenSpecifier, "@/lib/sync-connection");
+      assert.deepStrictEqual(violations[0].chain, [
+        "/app/client.tsx",
+        "/app/intermediate.ts",
+        "@/lib/sync-connection",
+      ]);
     });
 
-    it("flags dynamic import of server module", () => {
-      const fixture = `
-        async function load() {
-          const mod = await import("@/lib/meta-ads");
-          return mod;
-        }
-      `;
-      const forbidden = findForbiddenImports(fixture, "dynamic-leak.ts");
-      assert.strictEqual(forbidden.length, 1);
-      assert.strictEqual(forbidden[0].specifier, "@/lib/meta-ads");
-      assert.strictEqual(forbidden[0].kind, "dynamic_import");
+    it("Fixture C: Alias traversal (@/...) is resolved transitively and flagged on violation", () => {
+      const virtualFiles: Record<string, string> = {
+        "/src/app/page.tsx": `
+          "use client";
+          import { widget } from "@/components/my-widget";
+        `,
+        "/src/components/my-widget.ts": `
+          import { encrypt } from "@/lib/encryption";
+          export const widget = encrypt;
+        `,
+      };
+
+      const violations = traverseTransitiveClientBoundary(
+        "/src/app/page.tsx",
+        "/",
+        (spec) => {
+          if (spec === "@/components/my-widget") return "/src/components/my-widget.ts";
+          return null;
+        },
+        (p) => virtualFiles[p] || ""
+      );
+
+      assert.strictEqual(violations.length, 1);
+      assert.strictEqual(violations[0].forbiddenSpecifier, "@/lib/encryption");
+      assert.deepStrictEqual(violations[0].chain, [
+        "/src/app/page.tsx",
+        "/src/components/my-widget.ts",
+        "@/lib/encryption",
+      ]);
     });
 
-    it("flags re-export of server module", () => {
-      const fixture = `
-        export * from "@/lib/google-ads";
-      `;
-      const forbidden = findForbiddenImports(fixture, "reexport-leak.ts");
-      assert.strictEqual(forbidden.length, 1);
-      assert.strictEqual(forbidden[0].specifier, "@/lib/google-ads");
-      assert.strictEqual(forbidden[0].kind, "export");
+    it("Fixture D: Barrel / re-export traversal is resolved transitively", () => {
+      const virtualFiles: Record<string, string> = {
+        "/app/client.tsx": `
+          "use client";
+          export * from "./barrel";
+        `,
+        "/app/barrel.ts": `
+          export * from "./leaf";
+        `,
+        "/app/leaf.ts": `
+          import "server-only";
+          export const val = 42;
+        `,
+      };
+
+      const violations = traverseTransitiveClientBoundary(
+        "/app/client.tsx",
+        repoRoot,
+        (spec) => {
+          if (spec === "./barrel") return "/app/barrel.ts";
+          if (spec === "./leaf") return "/app/leaf.ts";
+          return null;
+        },
+        (p) => virtualFiles[p] || ""
+      );
+
+      assert.strictEqual(violations.length, 1);
+      assert.strictEqual(violations[0].forbiddenSpecifier, "server-only");
+      assert.deepStrictEqual(violations[0].chain, [
+        "/app/client.tsx",
+        "/app/barrel.ts",
+        "/app/leaf.ts",
+        "server-only",
+      ]);
     });
 
-    it("allows type-only import of server or contract types without flagging violation", () => {
-      const fixture = `
-        import type { MetaInsightsRow } from "@/lib/meta-ads-contract";
-        export type LocalType = MetaInsightsRow;
-      `;
-      const forbidden = findForbiddenImports(fixture, "safe-types.ts");
-      assert.strictEqual(forbidden.length, 0, "Type-only imports must not trigger forbidden violations");
+    it("Fixture E: Literal dynamic import is detected in transitive graph", () => {
+      const virtualFiles: Record<string, string> = {
+        "/app/client.tsx": `
+          "use client";
+          import { lazyLoad } from "./loader";
+        `,
+        "/app/loader.ts": `
+          export async function lazyLoad() {
+            return await import("@/lib/google-ads");
+          }
+        `,
+      };
 
-      const all = extractAstImports(fixture, "safe-types.ts");
-      assert.strictEqual(all.length, 1);
-      assert.strictEqual(all[0].isTypeOnly, true);
+      const violations = traverseTransitiveClientBoundary(
+        "/app/client.tsx",
+        repoRoot,
+        (spec) => spec === "./loader" ? "/app/loader.ts" : null,
+        (p) => virtualFiles[p] || ""
+      );
+
+      assert.strictEqual(violations.length, 1);
+      assert.strictEqual(violations[0].forbiddenSpecifier, "@/lib/google-ads");
+      assert.deepStrictEqual(violations[0].chain, [
+        "/app/client.tsx",
+        "/app/loader.ts",
+        "@/lib/google-ads",
+      ]);
+    });
+
+    it("Fixture F: Cyclic dependency graph terminates cleanly and detects nested violation", () => {
+      // Safe cycle: A -> B -> A with no violations
+      const safeCycle: Record<string, string> = {
+        "/app/A.ts": `import { b } from "./B"; export const a = 1;`,
+        "/app/B.ts": `import { a } from "./A"; export const b = 2;`,
+      };
+      const safeViolations = traverseTransitiveClientBoundary(
+        "/app/A.ts",
+        repoRoot,
+        (spec) => spec === "./B" ? "/app/B.ts" : spec === "./A" ? "/app/A.ts" : null,
+        (p) => safeCycle[p] || ""
+      );
+      assert.strictEqual(safeViolations.length, 0, "Safe cycle must terminate with 0 violations");
+
+      // Poisoned cycle: A -> B -> A, but B also imports node:crypto
+      const poisonedCycle: Record<string, string> = {
+        "/app/A.ts": `import { b } from "./B"; export const a = 1;`,
+        "/app/B.ts": `import { a } from "./A"; import crypto from "node:crypto"; export const b = 2;`,
+      };
+      const poisonedViolations = traverseTransitiveClientBoundary(
+        "/app/A.ts",
+        repoRoot,
+        (spec) => spec === "./B" ? "/app/B.ts" : spec === "./A" ? "/app/A.ts" : null,
+        (p) => poisonedCycle[p] || ""
+      );
+      assert.strictEqual(poisonedViolations.length, 1);
+      assert.strictEqual(poisonedViolations[0].forbiddenSpecifier, "node:crypto");
+      assert.deepStrictEqual(poisonedViolations[0].chain, [
+        "/app/A.ts",
+        "/app/B.ts",
+        "node:crypto",
+      ]);
+    });
+
+    it("Fixture G: Valid client-safe dependency graph passes with zero violations", () => {
+      const validGraph: Record<string, string> = {
+        "/app/client.tsx": `
+          "use client";
+          import { formatText } from "./formatter";
+          import { UIWidget } from "./widget";
+          export default function App() { return UIWidget(formatText("hello")); }
+        `,
+        "/app/formatter.ts": `
+          export function formatText(s: string) { return s.trim(); }
+        `,
+        "/app/widget.ts": `
+          import type { ServerType } from "@/lib/meta-ads-contract";
+          export function UIWidget(text: string) { return { text }; }
+        `,
+      };
+
+      const violations = traverseTransitiveClientBoundary(
+        "/app/client.tsx",
+        repoRoot,
+        (spec) => {
+          if (spec === "./formatter") return "/app/formatter.ts";
+          if (spec === "./widget") return "/app/widget.ts";
+          return null;
+        },
+        (p) => validGraph[p] || ""
+      );
+
+      assert.strictEqual(violations.length, 0, "Valid graph must pass with 0 violations");
     });
   });
 });

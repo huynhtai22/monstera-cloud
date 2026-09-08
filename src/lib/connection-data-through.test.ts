@@ -5,7 +5,7 @@ import {
   shouldRefreshLastDataThrough,
   refreshConnectionLastDataThrough,
 } from "./connection-data-through";
-import { captureTelemetryForTest, setTelemetrySink } from "@/lib/observability/connector-telemetry";
+import { captureTelemetryForTest, setTelemetrySink, toOpaqueConnectionId, toOpaqueWorkspaceId } from "@/lib/observability/connector-telemetry";
 import prisma from "@/lib/prisma";
 
 if (!process.env.DATABASE_URL) {
@@ -145,8 +145,8 @@ describe("PostgreSQL Truthful Freshness Telemetry & Concurrency", () => {
       const ev = capture.events.find((e) => e.operation === "data_through_refresh");
       assert.ok(ev);
       assert.equal(ev.freshnessOutcome, "advanced");
-      assert.equal(ev.workspaceId, wsA);
-      assert.equal(ev.connectionId, connA);
+      assert.equal(ev.opaqueWorkspaceId, toOpaqueWorkspaceId(wsA));
+      assert.equal(ev.opaqueConnectionId, toOpaqueConnectionId(connA));
     } finally {
       capture.restore();
     }
@@ -297,6 +297,37 @@ describe("PostgreSQL Truthful Freshness Telemetry & Concurrency", () => {
     }
   });
 
+  it("5b. Connected connection with zero metrics returns null and emits 'unchanged' without advancing", async () => {
+    const connEmpty = `conn_empty_${Date.now()}`;
+    await prisma.connection.create({
+      data: {
+        id: connEmpty,
+        name: "Empty Connection",
+        type: "source",
+        workspaceId: wsA,
+        provider: "meta_ads",
+        status: "connected",
+        credentials: "{}",
+      },
+    });
+
+    const capture = captureTelemetryForTest();
+    try {
+      const result = await refreshConnectionLastDataThrough(wsA, connEmpty);
+      assert.equal(result, null);
+
+      const conn = await prisma.connection.findUnique({ where: { id: connEmpty } });
+      assert.equal(conn?.lastDataThrough, null);
+
+      const ev = capture.events.find((e) => e.operation === "data_through_refresh");
+      assert.ok(ev);
+      assert.equal(ev.freshnessOutcome, "unchanged");
+      assert.equal(ev.outcome, "skipped");
+    } finally {
+      capture.restore();
+    }
+  });
+
   it("6. Rival-workspace connection access fails closed and emits 'unchanged'", async () => {
     const capture = captureTelemetryForTest();
     try {
@@ -306,7 +337,7 @@ describe("PostgreSQL Truthful Freshness Telemetry & Concurrency", () => {
 
       const ev = capture.events.find((e) => e.operation === "data_through_refresh");
       assert.ok(ev);
-      assert.equal(ev.workspaceId, wsB);
+      assert.equal(ev.opaqueWorkspaceId, toOpaqueWorkspaceId(wsB));
       assert.equal(ev.freshnessOutcome, "unchanged");
       assert.equal(ev.outcome, "skipped");
 

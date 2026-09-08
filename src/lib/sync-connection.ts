@@ -6,7 +6,7 @@
 import prisma from "@/lib/prisma";
 import { recordProviderReportingContext } from "@/lib/reporting-context-server";
 import { logger } from "@/lib/logger";
-import { runWithConnectorContext, emitConnectorTelemetry, type ConnectorProvider } from "@/lib/observability/connector-telemetry";
+import { runWithConnectorContext, type ConnectorProvider } from "@/lib/observability/connector-telemetry";
 import { getValidOAuthToken } from "@/lib/oauth-framework/token-refresh";
 import { encrypt } from "@/lib/encryption";
 import {
@@ -286,17 +286,6 @@ export async function persistConnectionSyncOutcome(
   const conn = await prisma.connection.findUnique({
     where: { id: connectionId },
     select: { workspaceId: true, provider: true },
-  });
-
-  emitConnectorTelemetry({
-    eventCategory: "freshness_event",
-    provider: (conn?.provider || "warehouse_queue") as ConnectorProvider,
-    operation: "sync_outcome_freshness",
-    workspaceId: conn?.workspaceId,
-    connectionId,
-    freshnessOutcome: outcome.outcome === "success" ? "advanced" : "unchanged",
-    outcome: outcome.outcome === "success" ? "success" : outcome.outcome === "partial" ? "partial" : "permanent_failure",
-    durationMs: 0,
   });
 
   if (shouldRefreshLastDataThrough(outcome.outcome)) {
