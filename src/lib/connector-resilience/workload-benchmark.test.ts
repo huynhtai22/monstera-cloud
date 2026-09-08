@@ -33,6 +33,7 @@ describe("Workload Model: Local Client Parsing & Orchestration Microbenchmark (e
       supported: false,
       reason: "benchmark_does_not_observe_persisted_row_identity",
     });
+    assert.ok(res.totalDurationMs !== null);
     assert.ok(res.totalDurationMs < 5000, `Duration was ${res.totalDurationMs}ms`);
   });
 
@@ -48,6 +49,7 @@ describe("Workload Model: Local Client Parsing & Orchestration Microbenchmark (e
     assert.equal(res.agencyCount, 20);
     assert.equal(res.accountCount, 180);
     assert.equal(res.evidenceStatus, "valid");
+    assert.ok(res.peakSimultaneousProviderRequests !== null);
     assert.ok(res.peakSimultaneousProviderRequests <= 5);
   });
 
@@ -63,6 +65,7 @@ describe("Workload Model: Local Client Parsing & Orchestration Microbenchmark (e
     assert.equal(res.agencyCount, 50);
     assert.equal(res.accountCount, 600);
     assert.equal(res.evidenceStatus, "valid");
+    assert.ok(res.peakSimultaneousProviderRequests !== null);
     assert.ok(res.peakSimultaneousProviderRequests <= 10);
   });
 
