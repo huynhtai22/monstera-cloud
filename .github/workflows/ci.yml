@@ -33,6 +33,7 @@ jobs:
       GOOGLE_ID_TOKEN_AUDIENCES: ci-google-client-id.apps.googleusercontent.com
       PILOT_MODE: "1"
       CLIENT_ASSIGNMENT_TEST_DB: "1"
+      CONNECTOR_RESILIENCE_TEST_DB: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

@@ -57,3 +57,35 @@ export function assertAllowedTestDatabase(url: string | undefined, env: NodeJS.P
   }
   return url;
 }
+
+/** Strict, feature-scoped discipline for destructive resilience scheduler tests. */
+export function assertConnectorResilienceTestDatabase(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.CONNECTOR_RESILIENCE_TEST_DB !== "1") {
+    throw new Error("Connector resilience PostgreSQL tests require CONNECTOR_RESILIENCE_TEST_DB=1.");
+  }
+  const production = [env.VERCEL_ENV, env.NODE_ENV, env.ENVIRONMENT, env.APP_ENV, env.RAILWAY_ENVIRONMENT_NAME]
+    .some((value) => value?.toLowerCase() === "production");
+  if (production) throw new Error("Connector resilience PostgreSQL tests refuse production environment markers.");
+
+  const url = env.DATABASE_URL;
+  if (!url) throw new Error("Connector resilience PostgreSQL tests require DATABASE_URL.");
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { throw new Error("Connector resilience PostgreSQL tests received an invalid DATABASE_URL."); }
+  const host = parsed.hostname.toLowerCase();
+  const database = decodeURIComponent(parsed.pathname).replace(/^\//, "");
+  const loopback = host === "localhost" || host === "127.0.0.1" || host === "::1";
+  const ciService = env.CI === "true" && host === "postgres";
+  if ((!loopback && !ciService) || database !== "monstera_ci") {
+    throw new Error("Connector resilience PostgreSQL tests require an approved loopback monstera_ci database.");
+  }
+  if (env.DIRECT_URL && env.DIRECT_URL !== url) {
+    let direct: URL;
+    try { direct = new URL(env.DIRECT_URL); } catch { throw new Error("Connector resilience PostgreSQL tests received an invalid DIRECT_URL."); }
+    const directHost = direct.hostname.toLowerCase();
+    const directDatabase = decodeURIComponent(direct.pathname).replace(/^\//, "");
+    if (!((directHost === "localhost" || directHost === "127.0.0.1" || directHost === "::1") || (env.CI === "true" && directHost === "postgres")) || directDatabase !== "monstera_ci") {
+      throw new Error("Connector resilience PostgreSQL tests require an approved loopback monstera_ci DIRECT_URL.");
+    }
+  }
+  return url;
+}
