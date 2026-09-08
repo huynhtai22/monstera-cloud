@@ -12,7 +12,7 @@
     "lint": "eslint src",
     "lint:ci": "eslint src --max-warnings 105",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test \"src/**/*.test.ts\" \"src/**/**/*.test.ts\" \"src/**/**/**/*.test.ts\"",
+    "test": "node scripts/run-test-suite.mjs",
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test tests/e2e/public-pilot.spec.ts",
     "db:migrate:deploy": "prisma migrate deploy",
