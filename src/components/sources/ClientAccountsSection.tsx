@@ -48,16 +48,26 @@ interface ClientOption {
 interface ClientAccountsSectionProps {
   workspaceId: string;
   initialClientId?: string | null;
+  onClientChange?: (clientId: string) => void;
 }
 
 export function ClientAccountsSection({
   workspaceId,
   initialClientId,
+  onClientChange,
 }: ClientAccountsSectionProps) {
   const { mutate } = useSWRConfig();
 
   // Filters
   const [selectedClientId, setSelectedClientId] = useState<string>(initialClientId || "all");
+
+  React.useEffect(() => {
+    if (initialClientId && initialClientId !== "unassigned") {
+      setSelectedClientId(initialClientId);
+    } else if (!initialClientId || initialClientId === "all") {
+      setSelectedClientId("all");
+    }
+  }, [initialClientId]);
   const [providerFilter, setProviderFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
@@ -448,7 +458,13 @@ export function ClientAccountsSection({
             <span className="text-ink-mute">Client:</span>
             <select
               value={selectedClientId}
-              onChange={(e) => setSelectedClientId(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                setSelectedClientId(value);
+                if (value !== "unassigned") {
+                  onClientChange?.(value);
+                }
+              }}
               aria-label="Filter accounts by client"
               className="bg-transparent font-medium text-ink focus:outline-none cursor-pointer"
             >

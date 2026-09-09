@@ -2,7 +2,9 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ALL_CLIENTS_TOKEN } from "@/lib/client-context";
+import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
 import { toast } from "sonner";
 import { Database, Search, Plus, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, X, Clock, Users } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
@@ -71,6 +73,9 @@ const SOURCE_BLURB_BY_PROVIDER: Record<string, string> = {
 
 export default function SourcesPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const { switchClient } = useClientContextNavigation();
+    const urlClientId = searchParams.get("clientId");
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
     const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
     const [disconnectTarget, setDisconnectTarget] = useState<{ id: string; name: string } | null>(null);
@@ -285,7 +290,7 @@ export default function SourcesPage() {
             managerBadge: integration.managerBadge,
             accountEmail: integration.accountEmail,
         });
-    }, []);
+    }, [setFixConnectionTarget]);
 
     const handleConnect = useCallback((integration: any) => {
         trackEvent("integration_card_clicked", {
@@ -298,7 +303,7 @@ export default function SourcesPage() {
         });
         setSelectedIntegration(integration);
         setIsSourceModalOpen(true);
-    }, []);
+    }, [setSelectedIntegration, setIsSourceModalOpen]);
 
     // Fetch Data
     const { data: workspaces, error, isLoading: workspacesLoading } = useSWR("/api/workspaces", fetcher, {
@@ -307,8 +312,15 @@ export default function SourcesPage() {
         errorRetryCount: 3,
         dedupingInterval: 4000,
     });
+    const connectionsUrl = activeWorkspaceId
+        ? (() => {
+            const params = new URLSearchParams({ type: "source" });
+            if (urlClientId && urlClientId !== ALL_CLIENTS_TOKEN) params.set("clientId", urlClientId);
+            return `/api/workspaces/${activeWorkspaceId}/connections?${params.toString()}`;
+        })()
+        : null;
     const { data: sourceConnections = [], error: connectionsError, isLoading: connectionsLoading } = useSWR(
-        activeWorkspaceId ? `/api/workspaces/${activeWorkspaceId}/connections?type=source` : null,
+        connectionsUrl,
         fetcher,
         {
             errorRetryInterval: 3000,
@@ -459,17 +471,13 @@ export default function SourcesPage() {
     }, []);
 
     useEffect(() => {
-        if (typeof window === "undefined") return;
-        const params = new URLSearchParams(window.location.search);
-        const cId = params.get("clientId");
-        const tab = params.get("tab");
-        if (cId) {
-            setInitialClientId(cId);
-            setActiveFilter("accounts");
-        } else if (tab === "accounts") {
+        const tab = searchParams.get("tab");
+        const cId = urlClientId && urlClientId !== ALL_CLIENTS_TOKEN ? urlClientId : null;
+        setInitialClientId(cId);
+        if (cId || tab === "accounts") {
             setActiveFilter("accounts");
         }
-    }, []);
+    }, [searchParams, urlClientId]);
 
     useEffect(() => {
         if (isLoading || !Array.isArray(workspaces) || !activeWorkspaceId) return;
@@ -1138,6 +1146,7 @@ export default function SourcesPage() {
                             <ClientAccountsSection
                                 workspaceId={activeWorkspaceId}
                                 initialClientId={initialClientId}
+                                onClientChange={(clientId) => switchClient(clientId)}
                             />
                         </section>
                     )}

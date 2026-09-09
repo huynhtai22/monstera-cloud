@@ -50,6 +50,7 @@ import { AnomalyDetailsModal } from "@/components/clients/AnomalyDetailsModal";
 import type { MarketingAnomaly } from "@/lib/marketing-anomalies";
 import { ReportReadinessPanel, readinessFetcher } from "@/components/reports/ReportReadinessPanel";
 import type { ReportReadinessEvaluation } from "@/lib/report-readiness";
+import { withClientContext } from "@/lib/client-context";
 
 type ReportSchedule = ReportScheduleData & {
   createdAt?: string;
@@ -713,25 +714,32 @@ export function ClientsClient() {
                     {/* Card Actions */}
                     <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-line/60 pt-3">
                       <Link
-                        href={`/sources?clientId=${encodeURIComponent(c.id)}&tab=accounts`}
+                        href={withClientContext("/sources?tab=accounts", c.id)}
                         className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.04] transition-colors"
                       >
                         <Database className="h-3.5 w-3.5" />
                         Manage sources
                       </Link>
                       <Link
-                        href={`/reports?clientId=${encodeURIComponent(c.id)}`}
+                        href={withClientContext("/reports", c.id)}
                         className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.04] transition-colors"
                       >
                         <LineChart className="h-3.5 w-3.5" />
                         Reports
                       </Link>
                       <Link
-                        href={`/explorer?clientId=${encodeURIComponent(c.id)}`}
+                        href={withClientContext("/explorer", c.id)}
                         className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.04] transition-colors"
                       >
                         <DatabaseZap className="h-3.5 w-3.5" />
                         Warehouse
+                      </Link>
+                      <Link
+                        href={withClientContext("/exports", c.id)}
+                        className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.04] transition-colors"
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                        Exports
                       </Link>
 
                       {!c.isDemo ? (

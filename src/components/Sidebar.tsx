@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { LogoMark } from "./Logo";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { shouldPropagateClientContext, withClientContext } from "@/lib/client-context";
 import { useState, useRef, useEffect } from "react";
 import {
     LayoutGrid,
@@ -67,6 +68,10 @@ export function Sidebar({
 }: SidebarProps) {
     const { data: session } = useSession();
     const pathname = usePathname();
+    const searchParams = useSearchParams();
+    const requestedClientId = searchParams.get("clientId");
+    const navHref = (href: string) =>
+        shouldPropagateClientContext(href) ? withClientContext(href, requestedClientId) : href;
     const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -316,10 +321,11 @@ export function Sidebar({
                         <div className="space-y-0.5">
                             {group.items.map((item) => {
                                 const isActive = navIsActive(pathname, item.href);
+                                const href = navHref(item.href);
                                 return (
                                     <Link
                                         key={item.href}
-                                        href={item.href}
+                                        href={href}
                                         onClick={() => {
                                             setIsWorkspaceOpen(false);
                                             setIsOpen?.(false);

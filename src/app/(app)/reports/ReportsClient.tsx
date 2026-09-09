@@ -14,6 +14,8 @@ import { REPORTS_SOURCE_CHIPS, pipelineMatchesSourceFilter } from "@/lib/reports
 import { SyncActivityTableSkeleton } from "@/components/reports/SyncActivityLoadingState";
 import { PerformanceReportDashboard } from "@/components/reports/PerformanceReportDashboard";
 import { WeeklyPerformanceBlueprint } from "@/components/reports/WeeklyPerformanceBlueprint";
+import { ALL_CLIENTS_TOKEN } from "@/lib/client-context";
+import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
 
 const REPORTS_VIEW_STORAGE = "monstera_reports_view_v1";
 
@@ -30,7 +32,9 @@ export function ReportsClient() {
     const router = useRouter();
     const pathname = usePathname();
     const sourceFilter = searchParams.get("source") ?? "";
-    const clientFilter = searchParams.get("clientId") ?? "";
+    const { switchClient } = useClientContextNavigation();
+    const clientFilterRaw = searchParams.get("clientId") ?? "";
+    const clientFilter = clientFilterRaw === ALL_CLIENTS_TOKEN ? "" : clientFilterRaw;
     const viewParam = searchParams.get("view");
     const viewMode: "performance" | "sync" = viewParam === "sync" ? "sync" : "performance";
 
@@ -191,17 +195,12 @@ export function ReportsClient() {
     };
 
     const setClient = (id: string) => {
-        const q = new URLSearchParams(searchParams.toString());
-        if (id) q.set("clientId", id);
-        else q.delete("clientId");
-        const qs = q.toString();
-        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        switchClient(id ? id : ALL_CLIENTS_TOKEN);
     };
 
     const resetFilters = () => {
         const q = new URLSearchParams(searchParams.toString());
         q.delete("source");
-        q.delete("clientId");
         const qs = q.toString();
         router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
         setDateFrom("");
@@ -291,7 +290,7 @@ export function ReportsClient() {
                         <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">Client</span>
                         <button
                             type="button"
-                            onClick={() => setClient("")}
+                            onClick={() => setClient(ALL_CLIENTS_TOKEN)}
                             className={cn(
                                 "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
                                 clientFilter === ""

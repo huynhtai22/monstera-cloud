@@ -1,7 +1,13 @@
 "use client";
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  ALL_CLIENTS_TOKEN,
+  UNASSIGNED_CLIENT_TOKEN,
+  canonicalHref,
+  switchClientKeepingFilters,
+} from "@/lib/client-context";
 import useSWR from "swr";
 import { resolveDataThrough, resolveWarehouseEmptyState } from "@/lib/warehouse-truth";
 import Link from "next/link";
@@ -506,6 +512,8 @@ function ToggleChip({
 export function WarehouseWorkbench() {
   const { activeWorkspaceId } = useWorkspaceStore();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const initialClientId = searchParams?.get("clientId") || "";
   const [selectedClientId, setSelectedClientId] = useState(initialClientId);
 
@@ -524,18 +532,13 @@ export function WarehouseWorkbench() {
   }, [searchParams]);
 
   const updateClientId = (newClientId: string) => {
-    setSelectedClientId(newClientId);
-    setSelectedPlatform("");
     setAccountFilterIds([]);
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      if (newClientId) {
-        url.searchParams.set("clientId", newClientId);
-      } else {
-        url.searchParams.delete("clientId");
-      }
-      window.history.replaceState(null, "", url.toString());
-    }
+    const nextValue = newClientId === "" ? ALL_CLIENTS_TOKEN : newClientId;
+    const next = switchClientKeepingFilters(
+      new URLSearchParams(searchParams?.toString() ?? ""),
+      nextValue,
+    );
+    router.push(canonicalHref(pathname, next));
   };
 
   const clientsUrl = useMemo(() => {
@@ -1112,7 +1115,6 @@ export function WarehouseWorkbench() {
                 const def = getPresetRange("30d");
                 setStartDate(def.start);
                 setEndDate(def.end);
-                updateClientId("");
                 setSelectedPlatform("");
                 setAccountFilterIds([]);
               }}
@@ -1146,15 +1148,15 @@ export function WarehouseWorkbench() {
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-ink-mute">Client</label>
             <Dropdown
-              value={selectedClientId}
+              value={selectedClientId === "" ? ALL_CLIENTS_TOKEN : selectedClientId}
               onChange={updateClientId}
               options={[
-                { value: "", label: "All clients" },
+                { value: ALL_CLIENTS_TOKEN, label: "All clients" },
                 ...(clientsData || []).map((c) => ({
                   value: c.id,
                   label: c.name,
                 })),
-                { value: "unassigned", label: "Unassigned accounts" },
+                { value: UNASSIGNED_CLIENT_TOKEN, label: "Unassigned accounts" },
               ]}
               placeholder="All clients"
               className="w-[200px] min-w-[200px] max-w-full"
