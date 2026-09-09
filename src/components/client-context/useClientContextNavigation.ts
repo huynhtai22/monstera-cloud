@@ -7,7 +7,7 @@ import {
   parseRequestedClientId,
   shouldPropagateClientContext,
   switchClientKeepingFilters,
-  withClientContext,
+  withClientContextAndFilters,
 } from "@/lib/client-context";
 
 export function useClientContextNavigation() {
@@ -24,8 +24,8 @@ export function useClientContextNavigation() {
 
   const hrefFor = useCallback((path: string) => {
     if (!shouldPropagateClientContext(path)) return path;
-    return withClientContext(path, requestedRaw);
-  }, [requestedRaw]);
+    return withClientContextAndFilters(path, requestedRaw, searchParams);
+  }, [requestedRaw, searchParams]);
 
   return { requested, requestedRaw, switchClient, hrefFor, searchParams, pathname };
 }

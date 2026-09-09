@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { LogoMark } from "./Logo";
 import { usePathname, useSearchParams } from "next/navigation";
-import { shouldPropagateClientContext, withClientContext } from "@/lib/client-context";
+import { shouldPropagateClientContext, withClientContextAndFilters } from "@/lib/client-context";
 import { useState, useRef, useEffect } from "react";
 import {
     LayoutGrid,
@@ -71,7 +71,9 @@ export function Sidebar({
     const searchParams = useSearchParams();
     const requestedClientId = searchParams.get("clientId");
     const navHref = (href: string) =>
-        shouldPropagateClientContext(href) ? withClientContext(href, requestedClientId) : href;
+        shouldPropagateClientContext(href)
+            ? withClientContextAndFilters(href, requestedClientId, searchParams)
+            : href;
     const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
 

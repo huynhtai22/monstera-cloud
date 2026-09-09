@@ -149,6 +149,32 @@ export function withClientContext(href: string, requested: string | null | undef
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+/**
+ * Carries the safe, cross-surface filters with a client context link. Page- or
+ * account-specific state is deliberately excluded: those values can refer to
+ * a different client's data after navigation.
+ */
+export function withClientContextAndFilters(
+  href: string,
+  requested: string | null | undefined,
+  current: URLSearchParams,
+): string {
+  const hasOrigin = /^[a-z][a-z0-9+.-]*:/i.test(href);
+  const url = hasOrigin ? new URL(href) : new URL(href, LOCAL_URL_ORIGIN);
+  for (const key of PRESERVED_FILTER_KEYS) {
+    if (!url.searchParams.has(key)) collapseToSingleValue(current, key, url.searchParams);
+  }
+
+  const parsed = parseRequestedClientId(requested ?? null);
+  if (parsed.kind === "missing") {
+    url.searchParams.delete(CLIENT_ID_QUERY_PARAM);
+  } else {
+    applyClientIdParam(url.searchParams, parsed.raw);
+  }
+  if (hasOrigin) return url.toString();
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
 export function canonicalHref(pathname: string, params: URLSearchParams): string {
   const search = params.toString();
   return search ? `${pathname}?${search}` : pathname;

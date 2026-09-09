@@ -197,7 +197,6 @@ test.describe("client context navigation", () => {
 
   test.afterAll(async () => {
     try {
-      expect({ alice: aliceSession.loginCount, rival: bobSession.loginCount }).toEqual({ alice: 1, rival: 1 });
       await db?.$transaction(async (tx) => {
         await tx.campaignMetric.deleteMany({ where: { workspaceId: fixture.workspaceId } });
         await tx.clientProviderAccountAssignment.deleteMany({ where: { workspaceId: fixture.workspaceId } });
@@ -310,5 +309,6 @@ test.describe("client context navigation", () => {
     } finally {
       await bob.context.close();
     }
+    expect({ alice: aliceSession.loginCount, rival: bobSession.loginCount }).toEqual({ alice: 1, rival: 1 });
   });
 });

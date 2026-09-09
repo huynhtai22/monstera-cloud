@@ -16,6 +16,7 @@ import {
   surfaceForPathname,
   switchClientKeepingFilters,
   withClientContext,
+  withClientContextAndFilters,
   withClientContextAndParams,
 } from "./client-context";
 import {
@@ -67,6 +68,22 @@ describe("client context URL contract", () => {
     assert.equal(
       withClientContextAndParams("/sources", "cl_a", { tab: "accounts" }),
       "/sources?clientId=cl_a&tab=accounts",
+    );
+    assert.equal(
+      withClientContextAndFilters(
+        "/explorer?view=table",
+        "cl_a",
+        new URLSearchParams("startDate=2026-09-01&endDate=2026-09-07&platform=google_ads&accountId=act_1&tab=ignored"),
+      ),
+      "/explorer?view=table&startDate=2026-09-01&endDate=2026-09-07&platform=google_ads&tab=ignored&clientId=cl_a",
+    );
+    assert.equal(
+      withClientContextAndFilters(
+        "/sources?tab=accounts",
+        "cl_a",
+        new URLSearchParams("tab=ignored&search=north"),
+      ),
+      "/sources?tab=accounts&search=north&clientId=cl_a",
     );
   });
 
