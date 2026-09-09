@@ -339,8 +339,11 @@ test.describe("client context navigation", () => {
 
   test("selected Warehouse view scopes Shopee catalog rows under a shared root", async ({ authenticatedPage: page }) => {
     await page.goto(`/explorer?clientId=${fixture.clients.aurora.id}&platform=shopee&startDate=${DATE}&endDate=${DATE}`);
-    await expect(page.getByText("Aurora Catalog Campaign")).toBeVisible();
-    await expect(page.getByText("Northwind Catalog Campaign")).toHaveCount(0);
+    // Catalog cards render `Campaign <externalCampaignId>` plus `shop <shopId>`;
+    // campaignName is API-only, so assert the rendered scoped shop identity.
+    await expect(page.getByRole("heading", { name: "Campaigns (1)" })).toBeVisible();
+    await expect(page.getByText("shop-aurora")).toBeVisible();
+    await expect(page.getByText("shop-northwind")).toHaveCount(0);
   });
 
   test("filter controls write canonical URLs and restore through refresh and history", async ({ authenticatedPage: page }) => {
