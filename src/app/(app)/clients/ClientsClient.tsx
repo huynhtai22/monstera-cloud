@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import useSWR, { useSWRConfig } from "swr";
@@ -50,7 +51,7 @@ import { AnomalyDetailsModal } from "@/components/clients/AnomalyDetailsModal";
 import type { MarketingAnomaly } from "@/lib/marketing-anomalies";
 import { ReportReadinessPanel, readinessFetcher } from "@/components/reports/ReportReadinessPanel";
 import type { ReportReadinessEvaluation } from "@/lib/report-readiness";
-import { withClientContext, withClientContextAndParams } from "@/lib/client-context";
+import { parseRequestedClientId, withClientContext, withClientContextAndParams } from "@/lib/client-context";
 
 type ReportSchedule = ReportScheduleData & {
   createdAt?: string;
@@ -88,6 +89,9 @@ function getProviderLogo(provider: string): string | null {
 export function ClientsClient() {
   const { activeWorkspaceId, setActiveWorkspaceId } = useWorkspaceStore();
   const { mutate } = useSWRConfig();
+  const searchParams = useSearchParams();
+  const requestedClient = parseRequestedClientId(searchParams.get("clientId"));
+  const concreteClientId = requestedClient.kind === "id" ? requestedClient.raw : null;
 
   const clientsKey = activeWorkspaceId ? `/api/clients?workspaceId=${activeWorkspaceId}` : null;
   const { data: clients, error: clientsError, isLoading: clientsLoading } = useSWR<ClientWithConnections[]>(
@@ -107,7 +111,12 @@ export function ClientsClient() {
   const readinessByClient = new Map((readinessPages?.flatMap(page => page.evaluations) ?? []).filter(e => e.workspaceId === activeWorkspaceId).map(e => [e.clientId, e]));
   const { data: schedules } = useSWR<ReportSchedule[]>(schedulesKey, fetcher);
 
-  const anomaliesKey = activeWorkspaceId ? `/api/anomalies?workspaceId=${activeWorkspaceId}` : null;
+  const anomaliesKey = activeWorkspaceId
+    ? `/api/anomalies?${new URLSearchParams({
+        workspaceId: activeWorkspaceId,
+        ...(searchParams.has("clientId") ? { clientId: searchParams.get("clientId")! } : {}),
+      })}`
+    : null;
   const { data: anomaliesData } = useSWR<{
     anomalies: MarketingAnomaly[];
     summary: { total: number; critical: number; warning: number };
@@ -126,6 +135,7 @@ export function ClientsClient() {
 
   // Portfolio controls
   const [viewMode, setViewMode] = useState<"clients" | "workspaces">("clients");
+  const displayViewMode = concreteClientId ? "clients" : viewMode;
   const [statusFilter, setStatusFilter] = useState<"all" | "attention" | "healthy" | "anomalies">("all");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -250,7 +260,12 @@ export function ClientsClient() {
 
   // Summaries
   const workspacesList = useMemo(() => (Array.isArray(workspaces) ? workspaces : []), [workspaces]);
-  const clientsList = useMemo(() => (Array.isArray(clients) ? clients : []), [clients]);
+  const workspaceClientsList = useMemo(() => (Array.isArray(clients) ? clients : []), [clients]);
+  const clientsList = useMemo(() => {
+    if (requestedClient.kind === "missing" || requestedClient.kind === "all") return workspaceClientsList;
+    if (requestedClient.kind === "id") return workspaceClientsList.filter((client) => client.id === requestedClient.raw);
+    return [];
+  }, [requestedClient.kind, requestedClient.raw, workspaceClientsList]);
 
   const workspacesSummary = useMemo(() => summarizeWorkspacesPortfolio(workspacesList), [workspacesList]);
   const clientsSummary = useMemo(() => summarizeClientsPortfolio(clientsList), [clientsList]);
@@ -303,11 +318,11 @@ export function ClientsClient() {
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl font-semibold tracking-tight text-ink">Agency Portfolio</h1>
             <span className="rounded-full bg-white/[0.06] border border-line px-2 py-0.5 text-[10px] font-mono text-ink-mute">
-              {viewMode === "clients" ? `${clientsList.length} Brands` : `${workspacesList.length} Workspaces`}
+              {displayViewMode === "clients" ? `${clientsList.length} Brands` : `${workspacesList.length} Workspaces`}
             </span>
           </div>
           <p className="mt-1 text-xs text-ink-mute">
-            {viewMode === "clients"
+            {displayViewMode === "clients"
               ? `Client brands in ${activeWorkspace?.name || "current workspace"} · grouped sources and reporting.`
               : "Cross-workspace health triage across all managed agency accounts."}
           </p>
@@ -321,7 +336,7 @@ export function ClientsClient() {
               onClick={() => { setViewMode("clients"); setStatusFilter("all"); }}
               className={cn(
                 "flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors",
-                viewMode === "clients"
+                displayViewMode === "clients"
                   ? "bg-white/[0.12] text-ink font-semibold shadow-xs"
                   : "text-ink-mute hover:text-ink"
               )}
@@ -329,22 +344,22 @@ export function ClientsClient() {
               <Briefcase className="h-3.5 w-3.5" />
               Client Brands ({clientsList.length})
             </button>
-            <button
+            {!concreteClientId ? <button
               type="button"
               onClick={() => { setViewMode("workspaces"); setStatusFilter("all"); }}
               className={cn(
                 "flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors",
-                viewMode === "workspaces"
+                displayViewMode === "workspaces"
                   ? "bg-white/[0.12] text-ink font-semibold shadow-xs"
                   : "text-ink-mute hover:text-ink"
               )}
             >
               <Building2 className="h-3.5 w-3.5" />
               All Workspaces ({workspacesList.length})
-            </button>
+            </button> : null}
           </div>
 
-          {viewMode === "clients" ? (
+          {displayViewMode === "clients" ? (
             <button
               type="button"
               onClick={openCreate}
@@ -369,19 +384,19 @@ export function ClientsClient() {
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-xl border border-line bg-panel/60 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wider text-ink-mute">
-            {viewMode === "clients" ? "Total Brands" : "Total Workspaces"}
+            {displayViewMode === "clients" ? "Total Brands" : "Total Workspaces"}
           </p>
           <p className="mt-1 text-2xl font-bold tracking-tight text-ink">
-            {viewMode === "clients" ? clientsSummary.totalClients : workspacesSummary.totalWorkspaces}
+            {displayViewMode === "clients" ? clientsSummary.totalClients : workspacesSummary.totalWorkspaces}
           </p>
         </div>
 
         <div className="rounded-xl border border-line bg-panel/60 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wider text-ink-mute">
-            {viewMode === "clients" ? "Assigned Accounts" : "Managed Sources"}
+            {displayViewMode === "clients" ? "Assigned Accounts" : "Managed Sources"}
           </p>
           <p className="mt-1 text-2xl font-bold tracking-tight text-ink">
-            {viewMode === "clients"
+            {displayViewMode === "clients"
               ? clientsList.reduce((s, c) => s + (c.accountAssignments?.length ?? c._count?.accountAssignments ?? c.connections?.length ?? 0), 0)
               : workspacesSummary.totalSources}
           </p>
@@ -390,11 +405,11 @@ export function ClientsClient() {
         <div className="rounded-xl border border-line bg-panel/60 p-4">
           <p className="text-[11px] font-medium uppercase tracking-wider text-ink-mute">Portfolio Health</p>
           <div className="mt-1 flex items-center gap-1.5">
-            {(viewMode === "clients" ? clientsSummary.attentionCount : workspacesSummary.attentionCount) > 0 ? (
+            {(displayViewMode === "clients" ? clientsSummary.attentionCount : workspacesSummary.attentionCount) > 0 ? (
               <>
                 <span className="h-2.5 w-2.5 rounded-full bg-red-400 animate-pulse" />
                 <span className="text-sm font-semibold text-red-300">
-                  {viewMode === "clients" ? clientsSummary.attentionCount : workspacesSummary.attentionCount} need attention
+                  {displayViewMode === "clients" ? clientsSummary.attentionCount : workspacesSummary.attentionCount} need attention
                 </span>
               </>
             ) : (
@@ -447,7 +462,7 @@ export function ClientsClient() {
                 : "text-ink-mute hover:text-ink"
             )}
           >
-            All ({viewMode === "clients" ? clientsList.length : workspacesList.length})
+            All ({displayViewMode === "clients" ? clientsList.length : workspacesList.length})
           </button>
           <button
             type="button"
@@ -461,7 +476,7 @@ export function ClientsClient() {
           >
             <AlertCircle className="h-3 w-3 text-red-400" />
             Needs Attention (
-            {viewMode === "clients" ? clientsSummary.attentionCount : workspacesSummary.attentionCount})
+            {displayViewMode === "clients" ? clientsSummary.attentionCount : workspacesSummary.attentionCount})
           </button>
           <button
             type="button"
@@ -487,7 +502,7 @@ export function ClientsClient() {
             )}
           >
             <CheckCircle2 className="h-3 w-3 text-emerald-400" />
-            Healthy ({viewMode === "clients" ? clientsSummary.healthyCount : workspacesSummary.healthyCount})
+            Healthy ({displayViewMode === "clients" ? clientsSummary.healthyCount : workspacesSummary.healthyCount})
           </button>
         </div>
 
@@ -497,19 +512,19 @@ export function ClientsClient() {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={viewMode === "clients" ? "Filter brands…" : "Filter workspaces…"}
+            placeholder={displayViewMode === "clients" ? "Filter brands…" : "Filter workspaces…"}
             className="w-full rounded-lg border border-line bg-panel pl-8 pr-3 py-1.5 text-xs text-ink placeholder:text-ink-mute focus:border-white focus:outline-none"
           />
         </div>
       </div>
 
       {/* ─── 4. CLIENTS VIEW ─── */}
-      {viewMode === "clients" && readinessPages?.at(-1)?.nextCursor ? (
+      {displayViewMode === "clients" && readinessPages?.at(-1)?.nextCursor ? (
         <button type="button" disabled={readinessValidating} onClick={() => void setReadinessSize(readinessSize + 1)} className="mb-3 text-xs text-ink underline disabled:opacity-50">
           {readinessValidating ? "Checking more clients…" : "Evaluate next 50 clients"}
         </button>
       ) : null}
-      {viewMode === "clients" && (
+      {displayViewMode === "clients" && (
         <>
           {clientsLoading ? (
             <div className="py-16 text-center text-sm text-ink-mute">Loading client portfolio…</div>
@@ -782,7 +797,7 @@ export function ClientsClient() {
       )}
 
       {/* ─── 5. ALL WORKSPACES VIEW ─── */}
-      {viewMode === "workspaces" && (
+      {displayViewMode === "workspaces" && (
         <>
           {workspacesLoading ? (
             <div className="py-16 text-center text-sm text-ink-mute">Loading agency workspaces…</div>

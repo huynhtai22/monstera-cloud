@@ -3,13 +3,13 @@ import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import {
-  assertQueryableClientContext,
-  resolveClientContext,
-  sourceConnectionIdsForClient,
+  resolveClientDataScope,
   toClientContextResponse,
-  warehouseClientId,
 } from "@/lib/client-context-server";
-import { sanitizeConnectionCredentials } from "@/lib/sanitize-connection-credentials";
+import {
+  sanitizeConnectionCredentials,
+  sanitizeConnectionCredentialsForAccounts,
+} from "@/lib/sanitize-connection-credentials";
 import { resolveSourceHealthState, SOURCE_HEALTH_STALE_AFTER_MS } from "@/lib/source-health";
 import { pickDataThroughDate } from "@/lib/connection-data-through";
 
@@ -33,16 +33,18 @@ export async function GET(req: Request, context: { params: any }) {
         // Verify membership
         await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer" });
 
-        const resolution = await resolveClientContext({
+        const scope = await resolveClientDataScope({
             workspaceId,
             requestedClientId: clientId,
             surface: "sources",
         });
-        assertQueryableClientContext(resolution);
-        const scopedClientId = warehouseClientId(resolution);
-        const assignedConnectionIds = scopedClientId
-            ? await sourceConnectionIdsForClient(workspaceId, scopedClientId)
-            : null;
+        const assignedConnectionIds = scope.resolution.status === "resolved" ? scope.connectionIds : null;
+        const assignedAccountsByConnection = new Map<string, string[]>();
+        for (const assignment of scope.assignments) {
+            const ids = assignedAccountsByConnection.get(assignment.connectionId) ?? [];
+            ids.push(assignment.accountId);
+            assignedAccountsByConnection.set(assignment.connectionId, ids);
+        }
 
         const connections = await prisma.connection.findMany({
             where: { 
@@ -60,7 +62,20 @@ export async function GET(req: Request, context: { params: any }) {
         const dataCoverage = sourceConnectionIds.length > 0
             ? await prisma.campaignMetric.groupBy({
                 by: ["connectionId"],
-                where: { workspaceId, connectionId: { in: sourceConnectionIds } },
+                where: {
+                    workspaceId,
+                    ...(scope.ownershipMode === "explicit"
+                        ? {
+                            OR: scope.assignments.length > 0
+                                ? scope.assignments.map((assignment) => ({
+                                    connectionId: assignment.connectionId,
+                                    platform: assignment.provider,
+                                    accountId: assignment.accountId,
+                                }))
+                                : [{ id: { in: [] } }],
+                        }
+                        : { connectionId: { in: sourceConnectionIds } }),
+                },
                 _max: { date: true },
             })
             : [];
@@ -70,7 +85,18 @@ export async function GET(req: Request, context: { params: any }) {
         const staleBefore = new Date(Date.now() - SOURCE_HEALTH_STALE_AFTER_MS);
         return NextResponse.json(connections.map((connection) => ({
             ...connection,
-            credentials: sanitizeConnectionCredentials(connection.credentials),
+            credentials: scope.ownershipMode === "explicit"
+                ? sanitizeConnectionCredentialsForAccounts(
+                    connection.credentials,
+                    connection.provider,
+                    assignedAccountsByConnection.get(connection.id) ?? [],
+                )
+                : sanitizeConnectionCredentials(connection.credentials),
+            assignedAccounts: scope.ownershipMode === "explicit"
+                ? (scope.assignments
+                    .filter((assignment) => assignment.connectionId === connection.id)
+                    .map(({ provider, accountId }) => ({ provider, accountId })))
+                : undefined,
             healthState: connection.type === "source"
                 ? resolveSourceHealthState({
                     connectionStatus: connection.status,

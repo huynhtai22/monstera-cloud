@@ -214,8 +214,7 @@ export async function GET(req: Request) {
 
     const platformList = typeof where.platform === "string" ? [where.platform] : where.platform?.in;
     const accountList = typeof where.accountId === "string" ? [where.accountId] : where.accountId?.in;
-    const [warehouseResult, dateRangeAgg, platforms] = await Promise.all([
-      queryWarehouse({
+    const warehouseResult = await queryWarehouse({
         workspaceId,
         clientId: scopedClientId,
         startDate: startDate ?? undefined,
@@ -226,22 +225,7 @@ export async function GET(req: Request) {
         cursor,
         limit: limits.explorerMaxRowsPerQuery,
         includeTotalCount: true,
-      }),
-      // Date range bounds for the workspace
-      prisma.campaignMetric.aggregate({
-        where: { workspaceId },
-        _min: { date: true },
-        _max: { date: true },
-      }),
-
-      // Available platforms (cached, low cost)
-      prisma.campaignMetric.findMany({
-        where: { workspaceId },
-        distinct: ["platform"],
-        select: { platform: true },
-        take: 50,
-      }),
-    ]);
+      });
 
     const metrics = warehouseResult.rows;
     const hasMore = warehouseResult.pagination.hasMore;
@@ -266,11 +250,8 @@ export async function GET(req: Request) {
       },
       summary: {
         pageTotals,
-        dateRange: {
-          earliest: dateRangeAgg._min.date,
-          latest: dateRangeAgg._max.date,
-        },
-        platforms: platforms.map((p) => p.platform),
+        dateRange: warehouseResult.dateRange,
+        platforms: warehouseResult.platforms,
         queryRangeDays: Math.ceil(dateRangeDays),
       },
       asOf: warehouseResult.asOf,

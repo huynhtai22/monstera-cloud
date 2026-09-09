@@ -6,7 +6,7 @@ const HARD_LIMIT = 100_000;
 const STALE_AFTER_MS = 26 * 60 * 60 * 1_000;
 export type ScopedTransaction = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
-export type WarehouseFreshnessStatus = "fresh" | "stale" | "refreshing" | "failed" | "never";
+export type WarehouseFreshnessStatus = "fresh" | "stale" | "refreshing" | "failed" | "never" | "unavailable";
 
 export interface WarehouseQueryInput {
   workspaceId: string;
@@ -113,12 +113,14 @@ function adNameFromRawData(rawData: string | null): string | null {
   }
 }
 
-export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTransaction = prisma) {
+async function queryWarehouseInSnapshot(input: WarehouseQueryInput, db: ScopedTransaction) {
   const take = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), HARD_LIMIT);
   const where: Prisma.CampaignMetricWhereInput = { workspaceId: input.workspaceId };
   let clientAuthoritativeConnectionIds: string[] | null = null;
+  let ownershipMode: "workspace" | "unassigned" | "legacy" | "explicit" = "workspace";
 
   if (input.clientId === "unassigned") {
+    ownershipMode = "unassigned";
     Object.assign(where, unassignedTupleFilter(
       await getUnassignedTupleExclusions(input.workspaceId, db),
     ));
@@ -131,6 +133,7 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
     const isExplicit = client?.accountAssignmentsConfiguredAt != null;
 
     if (isExplicit) {
+      ownershipMode = "explicit";
       const assignments = await db.clientProviderAccountAssignment.findMany({
         where: {
           workspaceId: input.workspaceId,
@@ -155,7 +158,13 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
         clientAuthoritativeConnectionIds = [];
       }
     } else {
-      where.connection = { workspaceId: input.workspaceId, clientId: input.clientId, type: "source" };
+      ownershipMode = "legacy";
+      const legacyConnections = await db.connection.findMany({
+        where: { workspaceId: input.workspaceId, clientId: input.clientId, type: "source" },
+        select: { id: true },
+      });
+      clientAuthoritativeConnectionIds = legacyConnections.map((connection) => connection.id);
+      where.connectionId = { in: clientAuthoritativeConnectionIds };
     }
   }
 
@@ -185,7 +194,7 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
   const countWhere = { ...where };
   delete countWhere.AND;
 
-  const [foundRows, totalCount, asOfAggregate, lastSyncAggregate, latestJob] = await Promise.all([
+  const [foundRows, totalCount, asOfAggregate, dateRangeAggregate, platformRows, lastSyncAggregate, latestJob] = await Promise.all([
     db.campaignMetric.findMany({
       where,
       orderBy: [{ date: "desc" }, { id: "desc" }],
@@ -194,22 +203,38 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
     }),
     input.includeTotalCount ? db.campaignMetric.count({ where: countWhere }) : Promise.resolve(undefined),
     db.campaignMetric.aggregate({ where: countWhere, _max: { pulledAt: true } }),
-    db.connection.aggregate({
-      where: {
-        workspaceId: input.workspaceId,
-        ...(clientAuthoritativeConnectionIds !== null
-          ? { id: { in: clientAuthoritativeConnectionIds } }
-          : input.clientId
-            ? { clientId: input.clientId, type: "source" }
-            : {}),
-      },
-      _max: { lastSyncAt: true },
-    }),
-    db.syncJob.findFirst({
-      where: { pipeline: { workspaceId: input.workspaceId } },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, status: true, finishedAt: true, errorMsg: true },
-    }),
+    db.campaignMetric.aggregate({ where: countWhere, _min: { date: true }, _max: { date: true } }),
+    db.campaignMetric.findMany({ where: countWhere, distinct: ["platform"], select: { platform: true }, take: 50 }),
+    ownershipMode === "explicit" || ownershipMode === "unassigned"
+      ? Promise.resolve({ _max: { lastSyncAt: null as Date | null } })
+      : db.connection.aggregate({
+          where: {
+            workspaceId: input.workspaceId,
+            ...(ownershipMode === "legacy" ? { clientId: input.clientId, type: "source" } : {}),
+          },
+          _max: { lastSyncAt: true },
+        }),
+    ownershipMode === "explicit" || ownershipMode === "unassigned"
+      ? Promise.resolve(null)
+      : db.syncJob.findFirst({
+          where: {
+            pipeline: {
+              workspaceId: input.workspaceId,
+              ...(ownershipMode === "legacy"
+                ? {
+                    OR: [
+                      { clientId: input.clientId },
+                      ...(clientAuthoritativeConnectionIds?.length
+                        ? [{ sourceConnectionId: { in: clientAuthoritativeConnectionIds } }]
+                        : []),
+                    ],
+                  }
+                : {}),
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, status: true, finishedAt: true, errorMsg: true },
+        }),
   ]);
 
   const hasMore = foundRows.length > take;
@@ -230,10 +255,14 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
   const lastSyncAt = lastSyncAggregate._max.lastSyncAt;
   const asOf = asOfAggregate._max.pulledAt;
 
-  let freshnessStatus: WarehouseFreshnessStatus = "never";
+  const jobAttribution = ownershipMode === "explicit" || ownershipMode === "unassigned"
+    ? "unavailable"
+    : "available";
+  const freshnessClock = jobAttribution === "available" ? lastSyncAt : asOf;
+  let freshnessStatus: WarehouseFreshnessStatus = jobAttribution === "unavailable" && !asOf ? "unavailable" : "never";
   if (latestJob?.status === "running" || latestJob?.status === "queued") freshnessStatus = "refreshing";
   else if (latestJob?.status === "failed") freshnessStatus = "failed";
-  else if (lastSyncAt) freshnessStatus = Date.now() - lastSyncAt.getTime() > STALE_AFTER_MS ? "stale" : "fresh";
+  else if (freshnessClock) freshnessStatus = Date.now() - freshnessClock.getTime() > STALE_AFTER_MS ? "stale" : "fresh";
 
   return {
     rows,
@@ -244,12 +273,30 @@ export async function queryWarehouse(input: WarehouseQueryInput, db: ScopedTrans
     },
     totalCount,
     asOf,
+    dateRange: {
+      earliest: dateRangeAggregate._min.date,
+      latest: dateRangeAggregate._max.date,
+    },
+    platforms: platformRows.map((row) => row.platform),
     freshness: {
       status: freshnessStatus,
       lastSyncAt,
+      jobAttribution,
       latestJobId: latestJob?.id ?? null,
       latestJobStatus: latestJob?.status ?? null,
       retryable: latestJob?.status === "failed",
     },
   };
+}
+
+/**
+ * Keep cutover-marker, assignment, rows and metadata reads in one snapshot.
+ * Callers already inside a transaction pass it explicitly to avoid nesting.
+ */
+export async function queryWarehouse(input: WarehouseQueryInput, db?: ScopedTransaction) {
+  if (db) return queryWarehouseInSnapshot(input, db);
+  return prisma.$transaction(
+    (tx) => queryWarehouseInSnapshot(input, tx as ScopedTransaction),
+    { isolationLevel: "RepeatableRead" },
+  );
 }

@@ -3,11 +3,8 @@ import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import {
-  assertQueryableClientContext,
-  resolveClientContext,
-  sourceConnectionIdsForClient,
+  resolveClientDataScope,
   toClientContextResponse,
-  warehouseClientId,
 } from "@/lib/client-context-server";
 
 /**
@@ -42,24 +39,27 @@ export async function GET(req: Request) {
     throw error;
   }
 
-  let scopedClientId: string | undefined;
+  let scope;
   try {
-    const resolution = await resolveClientContext({
+    scope = await resolveClientDataScope({
       workspaceId,
       requestedClientId: clientId,
       surface: "reports",
     });
-    assertQueryableClientContext(resolution);
-    scopedClientId = warehouseClientId(resolution);
   } catch (error) {
     const clientCtx = toClientContextResponse(error);
     if (clientCtx) return clientCtx;
     throw error;
   }
 
-  const assignedConnectionIds = scopedClientId
-    ? await sourceConnectionIdsForClient(workspaceId, scopedClientId)
-    : [];
+  // SyncLog has no provider-account identity. Once a client has cut over to
+  // account assignments, a connection/root alone is insufficient evidence on
+  // shared roots, so explicit scope reports this evidence as unavailable.
+  if (scope.ownershipMode === "explicit") {
+    return NextResponse.json({ logs: [], attribution: "unavailable" });
+  }
+
+  const scopedClientId = scope.resolution.status === "resolved" ? scope.resolution.client.id : undefined;
 
   const where: any = {
     pipeline: {
@@ -67,12 +67,12 @@ export async function GET(req: Request) {
       workspace: {
         members: { some: { userId: session.user.id } },
       },
-      ...(scopedClientId
+      ...(scopedClientId && scope.ownershipMode === "legacy"
         ? {
             OR: [
               { clientId: scopedClientId },
-              ...(assignedConnectionIds.length > 0
-                ? [{ sourceConnectionId: { in: assignedConnectionIds } }]
+              ...(scope.connectionIds.length > 0
+                ? [{ sourceConnectionId: { in: scope.connectionIds } }]
                 : []),
             ],
           }
@@ -92,6 +92,5 @@ export async function GET(req: Request) {
     take: 100,
   });
 
-  return NextResponse.json({ logs });
+  return NextResponse.json({ logs, attribution: "available" });
 }
-
