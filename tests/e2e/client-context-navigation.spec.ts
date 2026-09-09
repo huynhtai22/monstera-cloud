@@ -352,7 +352,9 @@ test.describe("client context navigation", () => {
     await expect(page).toHaveURL(/endDate=/);
     const dateInputs = page.locator('input[type="date"]');
     await dateInputs.nth(0).fill(DATE);
+    await expect(page).toHaveURL(new RegExp(`startDate=${DATE}`));
     await dateInputs.nth(1).fill(DATE);
+    await expect(page).toHaveURL(new RegExp(`endDate=${DATE}`));
 
     const platformControl = page.getByText("Platform", { exact: true }).locator("..").getByRole("button").first();
     await platformControl.click();
@@ -370,7 +372,9 @@ test.describe("client context navigation", () => {
     await followSidebarLink(page, "Reports");
     await page.getByRole("button", { name: "Sync activity" }).click();
     await page.getByLabel("From", { exact: true }).fill(DATE);
+    await expect(page).toHaveURL(new RegExp(`dateFrom=${DATE}`));
     await page.getByLabel("To", { exact: true }).fill(DATE);
+    await expect(page).toHaveURL(new RegExp(`dateTo=${DATE}`));
     await page.getByRole("button", { name: "Error", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`dateFrom=${DATE}`));
     await expect(page).toHaveURL(new RegExp(`dateTo=${DATE}`));
