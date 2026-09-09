@@ -515,11 +515,14 @@ export function WarehouseWorkbench() {
   const router = useRouter();
   const pathname = usePathname();
   const initialClientId = searchParams?.get("clientId") || "";
+  const initialStartDate = searchParams?.get("startDate") || "";
+  const initialEndDate = searchParams?.get("endDate") || "";
+  const initialPlatform = searchParams?.get("platform") || "";
   const [selectedClientId, setSelectedClientId] = useState(initialClientId);
 
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [selectedPlatform, setSelectedPlatform] = useState("");
+  const [startDate, setStartDate] = useState(initialStartDate);
+  const [endDate, setEndDate] = useState(initialEndDate);
+  const [selectedPlatform, setSelectedPlatform] = useState(initialPlatform);
   const [accountFilterIds, setAccountFilterIds] = useState<string[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [isRefreshOpen, setIsRefreshOpen] = useState(false);
@@ -563,12 +566,13 @@ export function WarehouseWorkbench() {
   const [rowSearch, setRowSearch] = useState("");
 
   useEffect(() => {
+    if (startDate && endDate) return;
     const end = new Date();
     const start = new Date();
     start.setDate(start.getDate() - 30);
-    setEndDate(end.toISOString().split("T")[0]);
-    setStartDate(start.toISOString().split("T")[0]);
-  }, []);
+    if (!endDate) setEndDate(end.toISOString().split("T")[0]);
+    if (!startDate) setStartDate(start.toISOString().split("T")[0]);
+  }, [endDate, startDate]);
 
   useEffect(() => {
     try {
