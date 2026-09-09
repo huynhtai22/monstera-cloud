@@ -113,6 +113,23 @@ function adNameFromRawData(rawData: string | null): string | null {
   }
 }
 
+/**
+ * Intersect a caller-supplied connection filter with an authoritative client
+ * scope. The scope is built first and independently; this combiner never
+ * broadens it. In particular a legacy scope of `in: []` (legacy-empty) stays
+ * empty no matter which concrete connection the caller supplies.
+ */
+export function intersectConnectionScope(
+  scopeConnectionIds: readonly string[] | null,
+  requestedConnectionId: string | undefined,
+): { in: string[] } | string | undefined {
+  if (requestedConnectionId === undefined) {
+    return scopeConnectionIds === null ? undefined : { in: [...scopeConnectionIds] };
+  }
+  if (scopeConnectionIds === null) return requestedConnectionId;
+  return scopeConnectionIds.includes(requestedConnectionId) ? requestedConnectionId : { in: [] };
+}
+
 async function queryWarehouseInSnapshot(input: WarehouseQueryInput, db: ScopedTransaction) {
   const take = Math.min(Math.max(input.limit ?? DEFAULT_LIMIT, 1), HARD_LIMIT);
   const where: Prisma.CampaignMetricWhereInput = { workspaceId: input.workspaceId };
@@ -164,8 +181,19 @@ async function queryWarehouseInSnapshot(input: WarehouseQueryInput, db: ScopedTr
         select: { id: true },
       });
       clientAuthoritativeConnectionIds = legacyConnections.map((connection) => connection.id);
-      where.connectionId = { in: clientAuthoritativeConnectionIds };
     }
+  }
+
+  // Authoritative scope and optional caller filters are built independently
+  // and combined by intersection below. A caller filter may only narrow the
+  // scope: it can never replace `in: []` (legacy-empty) or widen the legacy
+  // connection set. Explicit scope is tuple-based (`OR`), so an additional
+  // connection predicate only narrows it.
+  if (ownershipMode === "legacy") {
+    const narrowed = intersectConnectionScope(clientAuthoritativeConnectionIds, input.connectionId);
+    if (narrowed !== undefined) where.connectionId = narrowed;
+  } else if (input.connectionId) {
+    where.connectionId = input.connectionId;
   }
 
   if (input.startDate || input.endDate) {
@@ -177,7 +205,6 @@ async function queryWarehouseInSnapshot(input: WarehouseQueryInput, db: ScopedTr
   if (input.platforms?.length) where.platform = { in: input.platforms };
   if (input.accountIds?.length) where.accountId = { in: input.accountIds };
   if (input.campaignId) where.campaignId = input.campaignId;
-  if (input.connectionId) where.connectionId = input.connectionId;
 
   const decodedCursor = input.cursor ? decodeCursor(input.cursor) : null;
   if (decodedCursor) {
