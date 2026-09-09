@@ -4,6 +4,7 @@ import Link from "next/link";
 import { LogoMark } from "./Logo";
 import { usePathname, useSearchParams } from "next/navigation";
 import { shouldPropagateClientContext, withClientContextAndFilters } from "@/lib/client-context";
+import { usePendingNavigation } from "./client-context/PendingNavigationProvider";
 import { useState, useRef, useEffect } from "react";
 import {
     LayoutGrid,
@@ -70,10 +71,16 @@ export function Sidebar({
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const requestedClientId = searchParams.get("clientId");
-    const navHref = (href: string) =>
-        shouldPropagateClientContext(href)
-            ? withClientContextAndFilters(href, requestedClientId, searchParams)
-            : href;
+    // Pending-aware cross-surface links: an uncommitted page edit is visible
+    // in the rendered href immediately. Subscription rerenders links whenever
+    // staged destinations change.
+    const pending = usePendingNavigation();
+    const navHref = (href: string) => {
+        if (!shouldPropagateClientContext(href)) return href;
+        const live = `?${searchParams.toString()}`;
+        const effective = pathname ? pending.getBase(pathname, live) : live;
+        return withClientContextAndFilters(href, requestedClientId, new URLSearchParams(effective));
+    };
     const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
 

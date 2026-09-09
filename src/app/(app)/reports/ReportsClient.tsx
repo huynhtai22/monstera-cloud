@@ -15,11 +15,8 @@ import { SyncActivityTableSkeleton } from "@/components/reports/SyncActivityLoad
 import { PerformanceReportDashboard } from "@/components/reports/PerformanceReportDashboard";
 import { WeeklyPerformanceBlueprint } from "@/components/reports/WeeklyPerformanceBlueprint";
 import { ALL_CLIENTS_TOKEN } from "@/lib/client-context";
-import {
-    acknowledgePendingUrlState,
-    createPendingUrlTracker,
-    mergePendingUrlState,
-} from "@/lib/pending-query";
+import { mergePendingUrlState } from "@/lib/pending-query";
+import { usePendingNavigation } from "@/components/client-context/PendingNavigationProvider";
 import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
 
 const REPORTS_VIEW_STORAGE = "monstera_reports_view_v1";
@@ -56,34 +53,29 @@ export function ReportsClient() {
     const dateTo = normalizeDate(searchParams.get("dateTo"));
     const [selectedLog, setSelectedLog] = React.useState<SyncLogWithPipeline | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
-    // Single pending-query tracker for this surface: rapid filter edits merge
-    // against the most recent pending query, and view-mode changes build from
-    // it so a just-made edit is not lost while navigation is in flight.
-    const pendingTrackerRef = React.useRef(createPendingUrlTracker(
-        typeof window !== "undefined" ? window.location.search : "",
-    ));
+    // Pending navigations are owned by the shared provider store so filter
+    // edits, view-mode changes, the local client control, the global context
+    // bar and sidebar all observe the same pending query for this surface.
+    const pending = usePendingNavigation();
     const observedSearchString = searchParams.toString();
 
     const updateFilters = React.useCallback((changes: Record<string, string | null>, history: "push" | "replace" = "replace") => {
         const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
         const { search } = mergePendingUrlState({
             observedSearch: live,
-            pendingSearch: pendingTrackerRef.current.pendingSearch,
+            pendingSearch: pending.pendingFor(pathname),
             patch: changes,
         });
-        pendingTrackerRef.current = { ...pendingTrackerRef.current, pendingSearch: search };
+        pending.stage(pathname, live, search);
         router[history](search ? `${pathname}${search}` : pathname, { scroll: false });
-    }, [pathname, router, observedSearchString]);
+    }, [pathname, router, observedSearchString, pending]);
 
     // Acknowledge by serialized query content: recreated param objects with
     // identical content cannot clear pending state, while genuine external
     // history navigation discards it so controls hydrate from the observed URL.
     React.useEffect(() => {
-        pendingTrackerRef.current = acknowledgePendingUrlState(
-            pendingTrackerRef.current,
-            `?${observedSearchString}`,
-        );
-    }, [observedSearchString]);
+        pending.acknowledge(pathname, `?${observedSearchString}`);
+    }, [pathname, observedSearchString, pending]);
 
     const setStatusFilter = (value: "all" | "success" | "error") =>
         updateFilters({ status: value === "all" ? null : value }, "push");
@@ -103,12 +95,12 @@ export function ReportsClient() {
         const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
         const { search } = mergePendingUrlState({
             observedSearch: live,
-            pendingSearch: pendingTrackerRef.current.pendingSearch,
+            pendingSearch: pending.pendingFor(pathname),
             patch: mode === "sync" ? { view: "sync" } : { view: null },
         });
-        pendingTrackerRef.current = { ...pendingTrackerRef.current, pendingSearch: search };
+        pending.stage(pathname, live, search);
         router.push(search ? `${pathname}${search}` : pathname, { scroll: false });
-    }, [observedSearchString, router, pathname]);
+    }, [observedSearchString, router, pathname, pending]);
 
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const { data: clientsPayload } = useSWR(
@@ -254,8 +246,7 @@ export function ReportsClient() {
     };
 
     const setClient = (id: string) => {
-        const search = switchClient(id ? id : ALL_CLIENTS_TOKEN, pendingTrackerRef.current.pendingSearch);
-        pendingTrackerRef.current = { ...pendingTrackerRef.current, pendingSearch: search };
+        switchClient(id ? id : ALL_CLIENTS_TOKEN);
     };
 
     const resetFilters = () => {

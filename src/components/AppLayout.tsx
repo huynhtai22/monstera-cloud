@@ -11,6 +11,7 @@ import { KeyboardShortcutsProvider } from './KeyboardShortcutsProvider';
 import { NotificationCenter } from './NotificationCenter';
 import { UpgradeNudge } from './UpgradeNudge';
 import { ClientContextBarGate } from './client-context/ClientContextBarGate';
+import { PendingNavigationProvider } from './client-context/PendingNavigationProvider';
 import { Menu, Moon, Sun, ChevronRight } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { rememberAppPath } from "@/lib/app-return-path";
@@ -104,6 +105,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
     return (
         <KeyboardShortcutsProvider>
+        <PendingNavigationProvider>
         <WorkspaceSessionSync />
         {/* Mount only while auth is resolving — keeps a fixed z-[9999] layer out of the DOM after load (avoids blocking clicks). */}
         {loading ? <GlobeLoader visible /> : null}
@@ -189,6 +191,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
                 }}
             />
         </div>
+        </PendingNavigationProvider>
         </KeyboardShortcutsProvider>
     );
 }

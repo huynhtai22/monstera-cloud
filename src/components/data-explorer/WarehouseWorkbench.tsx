@@ -1,17 +1,16 @@
 "use client";
 
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ALL_CLIENTS_TOKEN,
   UNASSIGNED_CLIENT_TOKEN,
 } from "@/lib/client-context";
 import {
-  acknowledgePendingUrlState,
-  createPendingUrlTracker,
   mergePendingUrlState,
   switchPendingClient,
 } from "@/lib/pending-query";
+import { usePendingNavigation } from "@/components/client-context/PendingNavigationProvider";
 import useSWR from "swr";
 import { resolveDataThrough, resolveWarehouseEmptyState } from "@/lib/warehouse-truth";
 import Link from "next/link";
@@ -531,34 +530,29 @@ export function WarehouseWorkbench() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [isRefreshOpen, setIsRefreshOpen] = useState(false);
   const [isClientExportOpen, setIsClientExportOpen] = useState(false);
-  // Single pending-query tracker for this surface: rapid filter edits merge
-  // against the most recent pending query, and a client switch builds from
-  // it so a just-made edit is not lost while navigation is in flight.
-  const pendingTrackerRef = useRef(createPendingUrlTracker(
-    typeof window !== "undefined" ? window.location.search : "",
-  ));
+  // Pending navigations are owned by the shared provider store so filter
+  // edits, the local client control, the global context bar and sidebar all
+  // observe the same pending query for this surface.
+  const pending = usePendingNavigation();
   const observedSearchString = searchParams?.toString() ?? "";
 
   const replaceUrlFilters = useCallback((changes: Record<string, string | null>) => {
     const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
     const { search } = mergePendingUrlState({
       observedSearch: live,
-      pendingSearch: pendingTrackerRef.current.pendingSearch,
+      pendingSearch: pending.pendingFor(pathname),
       patch: changes,
     });
-    pendingTrackerRef.current = { ...pendingTrackerRef.current, pendingSearch: search };
+    pending.stage(pathname, live, search);
     router.replace(search ? `${pathname}${search}` : pathname, { scroll: false });
-  }, [pathname, router, observedSearchString]);
+  }, [pathname, router, observedSearchString, pending]);
 
   // Acknowledge by serialized query content: recreated param objects with
   // identical content cannot clear pending state, while genuine external
   // history navigation discards it so controls hydrate from the observed URL.
   useEffect(() => {
-    pendingTrackerRef.current = acknowledgePendingUrlState(
-      pendingTrackerRef.current,
-      `?${observedSearchString}`,
-    );
-  }, [observedSearchString]);
+    pending.acknowledge(pathname, `?${observedSearchString}`);
+  }, [pathname, observedSearchString, pending]);
 
   const setStartDate = (value: string) => replaceUrlFilters({ startDate: value });
   const setEndDate = (value: string) => replaceUrlFilters({ endDate: value });
@@ -574,10 +568,10 @@ export function WarehouseWorkbench() {
     const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
     const { search } = switchPendingClient({
       observedSearch: live,
-      pendingSearch: pendingTrackerRef.current.pendingSearch,
+      pendingSearch: pending.pendingFor(pathname),
       nextClientId: nextValue,
     });
-    pendingTrackerRef.current = { ...pendingTrackerRef.current, pendingSearch: search };
+    pending.stage(pathname, live, search);
     router.push(search ? `${pathname}${search}` : pathname);
   };
 
