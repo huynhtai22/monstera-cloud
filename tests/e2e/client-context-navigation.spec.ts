@@ -244,7 +244,11 @@ test.describe("client context navigation", () => {
     await page.getByRole("link", { name: "Clients" }).click();
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
     await page.getByRole("link", { name: "Exports & API" }).click();
-    await expect(page).toHaveURL(new RegExp(`/exports\\?clientId=${fixture.clients.northwind.id}`));
+    await expect(page).toHaveURL(/\/exports\?/);
+    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
+    await expect(page).toHaveURL(new RegExp(`startDate=${DATE}`));
+    await expect(page).toHaveURL(new RegExp(`endDate=${DATE}`));
+    await expect(page).toHaveURL(/platform=google_ads/);
     await page.getByRole("link", { name: "Sources" }).click();
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
     await page.getByRole("link", { name: "Warehouse" }).click();
