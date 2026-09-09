@@ -12,6 +12,7 @@
 import crypto from "node:crypto";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { emitConnectorTelemetry, type ConnectorProvider } from "@/lib/observability/connector-telemetry";
 
 export const LEASE_DURATION_MS = 20 * 60 * 1000; // 20 minutes — stale workers release by expiry
 
@@ -47,7 +48,7 @@ export async function acquireConnectionSyncLease(params: {
   const now = new Date();
   const leaseExpiresAt = new Date(now.getTime() + LEASE_DURATION_MS);
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRawUnsafe<Array<{ locked: boolean }>>(
       `SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0)) AS locked`,
       scope,
@@ -92,13 +93,26 @@ export async function acquireConnectionSyncLease(params: {
       lease: { scope, leaseId: lock.leaseId as string, fencingToken: lock.fencingToken as bigint },
     };
   });
+
+  emitConnectorTelemetry({
+    eventCategory: "lease_event",
+    provider: params.provider as ConnectorProvider,
+    operation: "connection_lease_acquire",
+    workspaceId: params.workspaceId,
+    connectionId: params.connectionId,
+    jobId: params.jobId,
+    outcome: result.acquired ? "success" : result.reason === "active" ? "throttled" : "retryable_failure",
+    leaseOutcome: result.acquired ? "acquired" : result.reason === "active" ? "refused_active" : "refused_contention",
+  });
+
+  return result;
 }
 
 /** Throws if this worker no longer owns the lease (expired/stolen/token advanced). */
 export async function assertConnectionSyncLease(lease: ConnectionLease): Promise<void> {
   const lock = await (prisma as any).syncLock.findUnique({
     where: { scope: lease.scope },
-    select: { leaseId: true, fencingToken: true, leaseExpiresAt: true, status: true },
+    select: { leaseId: true, fencingToken: true, leaseExpiresAt: true, status: true, workspaceId: true, connectionId: true, provider: true },
   });
   if (
     !lock ||
@@ -107,6 +121,16 @@ export async function assertConnectionSyncLease(lease: ConnectionLease): Promise
     BigInt(lock.fencingToken) !== lease.fencingToken ||
     new Date(lock.leaseExpiresAt) <= new Date()
   ) {
+    emitConnectorTelemetry({
+      eventCategory: "lease_event",
+      provider: (lock?.provider || "warehouse_queue") as ConnectorProvider,
+      operation: "connection_lease_assert",
+      workspaceId: lock?.workspaceId,
+      connectionId: lock?.connectionId,
+      outcome: "lease_lost",
+      leaseOutcome: "lost",
+      errorCategory: "lease_lost",
+    });
     throw new Error(
       `[SYNC_LEASE] Stale worker detected for scope=${lease.scope}. Refusing to update sync outcome.`,
     );
@@ -154,6 +178,12 @@ export async function releaseConnectionSyncLease(
         where: { scope: lease.scope, leaseId: lease.leaseId },
         data: { status: success ? "released" : "failed", heartbeatAt: new Date(), leaseExpiresAt: new Date() },
       });
+    });
+    emitConnectorTelemetry({
+      eventCategory: "lease_event",
+      operation: "connection_lease_release",
+      outcome: success ? "success" : "retryable_failure",
+      leaseOutcome: "released",
     });
   } catch (error) {
     logger.warn(`[SYNC_LEASE] Release failed for ${lease.scope} (expiry will recover):`, error);

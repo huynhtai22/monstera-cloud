@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth-session';
 import { tiktokReportClient, CreateReportTaskParams } from '@/lib/tiktok-business';
 import { getValidTikTokToken } from '@/lib/tiktok-refresh';
 import { getPlanLimits } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { logger } from "@/lib/logger";
+import { runWithConnectorContext } from '@/lib/observability/connector-telemetry';
 
 /**
  * POST /api/tiktok-business/report/create
@@ -45,7 +45,7 @@ function buildCacheKey(
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -93,28 +93,32 @@ export async function POST(req: Request) {
       });
     }
 
-    // Auto-refresh access token if it is close to expiry
-    const accessToken = await getValidTikTokToken(conn);
-    const creds = JSON.parse(safeDecrypt(conn.credentials)) as { sandbox?: boolean };
-
-    let responsePayload: any;
-
-    // Sandbox: use synchronous report endpoint (async tasks not supported)
-    if (creds.sandbox === true) {
-      const rows = await tiktokReportClient.getSyncReport(accessToken, {
-        ...taskParams,
-        advertiser_id,
-      });
-      responsePayload = { mode: 'sync', rows };
-    } else {
-      // Production: create async task
-      const taskId = await tiktokReportClient.createTask(
-        accessToken,
-        { ...taskParams, advertiser_id },
-        false,
-      );
-      responsePayload = { mode: 'async', task_id: taskId };
-    }
+    const responsePayload = await runWithConnectorContext({
+      workspaceId: conn.workspaceId,
+      connectionId: conn.id,
+      provider: 'tiktok_business',
+      accountId: advertiser_id,
+    }, async () => {
+      // Auto-refresh access token only after entering the authorized tenant context.
+      const accessToken = await getValidTikTokToken(conn);
+      const creds = JSON.parse(safeDecrypt(conn.credentials)) as { sandbox?: boolean };
+      // Sandbox: use synchronous report endpoint (async tasks not supported)
+      if (creds.sandbox === true) {
+        const rows = await tiktokReportClient.getSyncReport(accessToken, {
+          ...taskParams,
+          advertiser_id,
+        });
+        return { mode: 'sync', rows };
+      } else {
+        // Production: create async task
+        const taskId = await tiktokReportClient.createTask(
+          accessToken,
+          { ...taskParams, advertiser_id },
+          false,
+        );
+        return { mode: 'async', task_id: taskId };
+      }
+    });
 
     // Store result in cache
     reportCache.set(cacheKey, {

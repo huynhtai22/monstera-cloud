@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth-session';
 import { tiktokReportClient } from '@/lib/tiktok-business';
 import { getValidTikTokToken } from '@/lib/tiktok-refresh';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { logger } from "@/lib/logger";
+import { runWithConnectorContext } from '@/lib/observability/connector-telemetry';
 
 /**
  * GET /api/tiktok-business/report/[taskId]?connectionId=...&advertiser_id=...
@@ -15,7 +15,7 @@ export async function GET(
   req: Request,
   context: { params: Promise<{ taskId: string }> }
 ) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -43,29 +43,35 @@ export async function GET(
       return NextResponse.json({ error: 'TikTok Business connection not found' }, { status: 404 });
     }
 
-    // Auto-refresh access token if it is close to expiry
-    const accessToken = await getValidTikTokToken(conn);
-    const creds = JSON.parse(safeDecrypt(conn.credentials)) as { sandbox?: boolean };
-
-    const taskInfo = await tiktokReportClient.checkTask(
-      accessToken,
-      advertiserId,
-      taskId,
-      creds.sandbox === true,
-    );
-
-    if (taskInfo.status === 'SUCCESS' || taskInfo.status === 'COMPLETED') {
-      const downloadUrl = await tiktokReportClient.getDownloadUrl(
+    return await runWithConnectorContext({
+      workspaceId: conn.workspaceId,
+      connectionId: conn.id,
+      provider: 'tiktok_business',
+      accountId: advertiserId,
+    }, async () => {
+      // Auto-refresh access token only after entering the authorized tenant context.
+      const accessToken = await getValidTikTokToken(conn);
+      const creds = JSON.parse(safeDecrypt(conn.credentials)) as { sandbox?: boolean };
+      const taskInfo = await tiktokReportClient.checkTask(
         accessToken,
         advertiserId,
         taskId,
         creds.sandbox === true,
       );
-      const rows = await tiktokReportClient.downloadRows(downloadUrl);
-      return NextResponse.json({ status: taskInfo.status, rows });
-    }
 
-    return NextResponse.json({ status: taskInfo.status });
+      if (taskInfo.status === 'SUCCESS' || taskInfo.status === 'COMPLETED') {
+        const downloadUrl = await tiktokReportClient.getDownloadUrl(
+          accessToken,
+          advertiserId,
+          taskId,
+          creds.sandbox === true,
+        );
+        const rows = await tiktokReportClient.downloadRows(downloadUrl);
+        return NextResponse.json({ status: taskInfo.status, rows });
+      }
+
+      return NextResponse.json({ status: taskInfo.status });
+    });
   } catch (err: any) {
     logger.error('[TIKTOK_REPORT_CHECK]', err);
     return NextResponse.json({ error: err.message || 'Failed to check report task' }, { status: 500 });

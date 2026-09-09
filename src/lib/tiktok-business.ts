@@ -13,6 +13,7 @@
 
 import { logger } from "@/lib/logger";
 import { parse as parseCsv } from "csv-parse/sync";
+import { emitConnectorTelemetry } from "@/lib/observability/connector-telemetry";
 
 /** app_id from business-api.tiktok.com/portal */
 function appId(): string {
@@ -220,10 +221,22 @@ export function isTikTokRetryableFailure(status: number, code: unknown, message:
   return status === 429 || status >= 500 || /rate[ _-]?limit|quota|throttl|too many|temporar|timeout/i.test(`${code ?? ""} ${message ?? ""}`);
 }
 
-function retryAfterMs(value: string | null): number | null {
+export function retryAfterMs(value: string | null): number | null {
   if (!value) return null;
-  const seconds = Number(value);
-  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const seconds = Number(trimmed);
+  return Number.isSafeInteger(seconds) && Number.isSafeInteger(seconds * 1000)
+    ? seconds * 1000
+    : null;
+}
+
+type RetrySleeper = (delayMs: number) => Promise<void>;
+let retrySleeper: RetrySleeper = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs));
+
+/** Test-only seam; production always uses the normal timer-backed sleeper. */
+export function setTikTokRetrySleeperForTest(sleeper: RetrySleeper | null): void {
+  retrySleeper = sleeper ?? ((delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)));
 }
 
 /**
@@ -233,28 +246,91 @@ function retryAfterMs(value: string | null): number | null {
 async function fetchTikTokResponse(url: string, init: RequestInit = {}): Promise<Response> {
   const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const startMs = Date.now();
     let response: Response;
     try {
       response = await fetch(url, init);
     } catch (error) {
+      const durationMs = Date.now() - startMs;
       if (attempt < maxAttempts - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+        emitConnectorTelemetry({
+          eventCategory: "provider_request",
+          provider: "tiktok_business",
+          operation: "report_download",
+          attempt: attempt + 1,
+          maxAttempts,
+          outcome: "retryable_failure",
+          errorCategory: "network_error",
+          durationMs,
+          retryDelayMs: 500 * 2 ** attempt,
+        });
+        await retrySleeper(500 * 2 ** attempt);
         continue;
       }
+      emitConnectorTelemetry({
+        eventCategory: "provider_request",
+        provider: "tiktok_business",
+        operation: "report_download",
+        attempt: attempt + 1,
+        maxAttempts,
+        outcome: "retryable_failure",
+        errorCategory: "network_error",
+        durationMs,
+      });
       throw new TikTokProviderError(error instanceof Error ? error.message : "TikTok request failed", true);
     }
 
-    if (response.ok) return response;
+    const durationMs = Date.now() - startMs;
+    if (response.ok) {
+      emitConnectorTelemetry({
+        eventCategory: "provider_request",
+        provider: "tiktok_business",
+        operation: "report_download",
+        attempt: attempt + 1,
+        maxAttempts,
+        outcome: "success",
+        httpStatus: response.status,
+        durationMs,
+      });
+      return response;
+    }
 
     const body = await response.clone().json().catch(() => ({})) as Record<string, unknown>;
     const message = String(body.message ?? `TikTok request failed with HTTP ${response.status}`);
     const retryable = isTikTokRetryableFailure(response.status, body.code, message);
-    if (!retryable || attempt === maxAttempts - 1) {
+    const retryAfterRaw = response.headers.get("retry-after");
+    const retryAfterSupplied = typeof retryAfterRaw === "string" && retryAfterRaw.length > 0;
+    const isRateLimit = response.status === 429 || body.code === 40001 || /rate[_ ]limit|too many/i.test(message);
+
+    const parsedRetryAfterMs = retryAfterMs(retryAfterRaw);
+    const willRetry = retryable && attempt < maxAttempts - 1;
+    const emitResponseTelemetry = (retryAfterHonored: boolean) => emitConnectorTelemetry({
+      eventCategory: "provider_request",
+      provider: "tiktok_business",
+      operation: "report_download",
+      attempt: attempt + 1,
+      maxAttempts,
+      outcome: isRateLimit ? "throttled" : retryable ? "retryable_failure" : "permanent_failure",
+      errorCategory: isRateLimit ? "rate_limited" : retryable ? "provider_unavailable" : "internal_error",
+      httpStatus: response.status,
+      durationMs,
+      retryAfterSupplied,
+      retryAfterHonored,
+    });
+
+    if (!willRetry) {
+      emitResponseTelemetry(false);
       throw new TikTokProviderError(`TikTok API error ${body.code ?? response.status}: ${message}`, retryable, response.status);
     }
 
-    const delay = retryAfterMs(response.headers.get("retry-after")) ?? (500 * 2 ** attempt + Math.floor(Math.random() * 200));
-    await new Promise((resolve) => setTimeout(resolve, delay));
+    const delay = parsedRetryAfterMs ?? (500 * 2 ** attempt + Math.floor(Math.random() * 200));
+    try {
+      await retrySleeper(delay);
+    } catch (error) {
+      emitResponseTelemetry(false);
+      throw error;
+    }
+    emitResponseTelemetry(parsedRetryAfterMs !== null);
   }
   throw new TikTokProviderError("TikTok request failed", true);
 }
@@ -262,29 +338,93 @@ async function fetchTikTokResponse(url: string, init: RequestInit = {}): Promise
 async function fetchTikTokJson(url: string, init: RequestInit): Promise<Record<string, unknown>> {
   const maxAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const startMs = Date.now();
     let response: Response;
     try {
       response = await fetch(url, init);
     } catch (error) {
+      const durationMs = Date.now() - startMs;
       if (attempt < maxAttempts - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+        emitConnectorTelemetry({
+          eventCategory: "provider_request",
+          provider: "tiktok_business",
+          operation: "api_json",
+          attempt: attempt + 1,
+          maxAttempts,
+          outcome: "retryable_failure",
+          errorCategory: "network_error",
+          durationMs,
+          retryDelayMs: 500 * 2 ** attempt,
+        });
+        await retrySleeper(500 * 2 ** attempt);
         continue;
       }
+      emitConnectorTelemetry({
+        eventCategory: "provider_request",
+        provider: "tiktok_business",
+        operation: "api_json",
+        attempt: attempt + 1,
+        maxAttempts,
+        outcome: "retryable_failure",
+        errorCategory: "network_error",
+        durationMs,
+      });
       throw new TikTokProviderError(error instanceof Error ? error.message : "TikTok request failed", true);
     }
 
+    const durationMs = Date.now() - startMs;
     const json = await response.json().catch(() => ({})) as Record<string, unknown>;
     const failed = !response.ok || json.code !== 0;
-    if (!failed) return json;
+    if (!failed) {
+      emitConnectorTelemetry({
+        eventCategory: "provider_request",
+        provider: "tiktok_business",
+        operation: "api_json",
+        attempt: attempt + 1,
+        maxAttempts,
+        outcome: "success",
+        httpStatus: response.status,
+        durationMs,
+      });
+      return json;
+    }
 
     const message = String(json.message ?? `TikTok request failed with HTTP ${response.status}`);
     const retryable = isTikTokRetryableFailure(response.status, json.code, message);
-    if (!retryable || attempt === maxAttempts - 1) {
+    const retryAfterRaw = response.headers.get("retry-after");
+    const retryAfterSupplied = typeof retryAfterRaw === "string" && retryAfterRaw.length > 0;
+    const isRateLimit = response.status === 429 || json.code === 40001 || /rate[_ ]limit|too many/i.test(message);
+    const isAuthRevoked = json.code === 40100 || /token expired|invalid_token|unauthorized/i.test(message);
+
+    const parsedRetryAfterMs = retryAfterMs(retryAfterRaw);
+    const willRetry = retryable && attempt < maxAttempts - 1;
+    const emitResponseTelemetry = (retryAfterHonored: boolean) => emitConnectorTelemetry({
+      eventCategory: "provider_request",
+      provider: "tiktok_business",
+      operation: "api_json",
+      attempt: attempt + 1,
+      maxAttempts,
+      outcome: isRateLimit ? "throttled" : isAuthRevoked ? "permanent_failure" : retryable ? "retryable_failure" : "permanent_failure",
+      errorCategory: isRateLimit ? "rate_limited" : isAuthRevoked ? "auth_revoked" : retryable ? "provider_unavailable" : "internal_error",
+      httpStatus: response.status,
+      durationMs,
+      retryAfterSupplied,
+      retryAfterHonored,
+    });
+
+    if (!willRetry) {
+      emitResponseTelemetry(false);
       throw new TikTokProviderError(`TikTok API error ${json.code ?? response.status}: ${message}`, retryable, response.status);
     }
 
-    const delay = retryAfterMs(response.headers.get("retry-after")) ?? (500 * 2 ** attempt + Math.floor(Math.random() * 200));
-    await new Promise((resolve) => setTimeout(resolve, delay));
+    const delay = parsedRetryAfterMs ?? (500 * 2 ** attempt + Math.floor(Math.random() * 200));
+    try {
+      await retrySleeper(delay);
+    } catch (error) {
+      emitResponseTelemetry(false);
+      throw error;
+    }
+    emitResponseTelemetry(parsedRetryAfterMs !== null);
   }
   throw new TikTokProviderError("TikTok request failed", true);
 }

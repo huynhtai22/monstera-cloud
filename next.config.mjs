@@ -115,6 +115,9 @@ const nextConfig = {
 };
 
 export default withSentryConfig(nextConfig, {
+  // Disables Sentry build-plugin telemetry deterministically
+  telemetry: false,
+
   // Suppresses Sentry CLI output during build
   silent: !process.env.CI,
 

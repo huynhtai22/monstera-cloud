@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getAuthSession } from '@/lib/auth-session';
 import { googleAdsReportClient } from '@/lib/google-ads';
 import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import { clampGoogleAdsDatePeriodForPlan, getPlanLimits } from '@/lib/plan-config';
 import prisma from '@/lib/prisma';
 import { safeDecrypt } from '@/lib/encryption';
 import { logger } from "@/lib/logger";
+import { runWithConnectorContext } from '@/lib/observability/connector-telemetry';
 
 /**
  * POST /api/google-ads/report
@@ -28,7 +28,7 @@ function buildCacheKey(connectionId: string, customerId: string, reportType: str
 }
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -73,20 +73,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ ...cached.result, cached: true, cache_expires_in_seconds: remainingSec });
     }
 
-    const accessToken = await getValidOAuthToken(conn);
-    const creds = JSON.parse(safeDecrypt(conn.credentials)) as { mccId?: string };
-
-    let rows: unknown[];
-    switch (reportType) {
-      case 'adgroup':
-        rows = await googleAdsReportClient.getAdGroupPerformance(accessToken, customerId, datePeriod, creds.mccId);
-        break;
-      case 'shopping':
-        rows = await googleAdsReportClient.getShoppingPerformance(accessToken, customerId, datePeriod, creds.mccId);
-        break;
-      default:
-        rows = await googleAdsReportClient.getCampaignPerformance(accessToken, customerId, datePeriod, creds.mccId);
-    }
+    const rows = await runWithConnectorContext({
+      workspaceId: conn.workspaceId,
+      connectionId: conn.id,
+      provider: 'google_ads',
+      accountId: customerId,
+    }, async () => {
+      const accessToken = await getValidOAuthToken(conn);
+      const creds = JSON.parse(safeDecrypt(conn.credentials)) as { mccId?: string };
+      switch (reportType) {
+        case 'adgroup':
+          return await googleAdsReportClient.getAdGroupPerformance(accessToken, customerId, datePeriod, creds.mccId);
+        case 'shopping':
+          return await googleAdsReportClient.getShoppingPerformance(accessToken, customerId, datePeriod, creds.mccId);
+        default:
+          return await googleAdsReportClient.getCampaignPerformance(accessToken, customerId, datePeriod, creds.mccId);
+      }
+    });
 
     const responsePayload: Record<string, unknown> = { rows, reportType, datePeriod, rowCount: rows.length };
 

@@ -7,7 +7,7 @@ import { useWorkspaceStore } from "@/store/workspace";
 import { ExportDropdown } from "@/components/ExportDropdown";
 import { downloadCsv, downloadExcel } from "@/lib/export-utils";
 import { RefreshCw, AlertCircle, Facebook, TrendingUp } from "lucide-react";
-import { META_BREAKDOWN_OPTIONS, META_LEVEL_OPTIONS } from "@/lib/meta-ads";
+import { META_BREAKDOWN_OPTIONS, META_LEVEL_OPTIONS } from "@/lib/meta-ads-contract";
 import { IntegrationPageLayout, inputFocus } from "@/components/ui/IntegrationPageLayout";
 import { IntegrationSectionCard } from "@/components/ui/IntegrationSectionCard";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
