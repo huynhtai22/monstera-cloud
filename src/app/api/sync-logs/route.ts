@@ -1,15 +1,21 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  sourceConnectionIdsForClient,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 /**
  * GET /api/sync-logs?workspaceId=...&status=success|error
  * Returns latest sync logs for pipelines in a workspace the user belongs to.
  */
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -36,13 +42,41 @@ export async function GET(req: Request) {
     throw error;
   }
 
+  let scopedClientId: string | undefined;
+  try {
+    const resolution = await resolveClientContext({
+      workspaceId,
+      requestedClientId: clientId,
+      surface: "reports",
+    });
+    assertQueryableClientContext(resolution);
+    scopedClientId = warehouseClientId(resolution);
+  } catch (error) {
+    const clientCtx = toClientContextResponse(error);
+    if (clientCtx) return clientCtx;
+    throw error;
+  }
+
+  const assignedConnectionIds = scopedClientId
+    ? await sourceConnectionIdsForClient(workspaceId, scopedClientId)
+    : [];
+
   const where: any = {
     pipeline: {
       workspaceId,
       workspace: {
         members: { some: { userId: session.user.id } },
       },
-      ...(clientId ? { clientId } : {}),
+      ...(scopedClientId
+        ? {
+            OR: [
+              { clientId: scopedClientId },
+              ...(assignedConnectionIds.length > 0
+                ? [{ sourceConnectionId: { in: assignedConnectionIds } }]
+                : []),
+            ],
+          }
+        : {}),
     },
   };
   if (status === "success" || status === "error") {

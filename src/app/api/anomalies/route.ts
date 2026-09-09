@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  sourceConnectionIdsForClient,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 import { detectMarketingAnomalies, type MarketingAnomaly } from "@/lib/marketing-anomalies";
 import type { MetricRowExport } from "@/lib/client-export";
 
@@ -25,6 +32,13 @@ export async function GET(req: Request) {
     }
 
     await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer" });
+    const resolution = await resolveClientContext({
+      workspaceId,
+      requestedClientId: clientId,
+      surface: "clients",
+    });
+    assertQueryableClientContext(resolution);
+    const scopedClientId = warehouseClientId(resolution);
 
     // Fetch connections to map connectionId -> clientId & clientName
     const connections = await prisma.connection.findMany({
@@ -42,9 +56,14 @@ export async function GET(req: Request) {
     for (const c of connections) {
       if (c.clientId && c.client) {
         connToClientMap.set(c.id, { clientId: c.clientId, clientName: c.client.name });
-        if (clientId && c.clientId === clientId) {
+        if (scopedClientId && c.clientId === scopedClientId) {
           clientConnIds.add(c.id);
         }
+      }
+    }
+    if (scopedClientId) {
+      for (const connectionId of await sourceConnectionIdsForClient(workspaceId, scopedClientId)) {
+        clientConnIds.add(connectionId);
       }
     }
 
@@ -56,7 +75,7 @@ export async function GET(req: Request) {
       date: { gte: fourteenDaysAgo },
     };
 
-    if (clientId) {
+    if (scopedClientId) {
       if (clientConnIds.size === 0) {
         return NextResponse.json({
           anomalies: [],
@@ -159,6 +178,8 @@ export async function GET(req: Request) {
       byClient,
     });
   } catch (error: unknown) {
+    const clientCtx = toClientContextResponse(error);
+    if (clientCtx) return clientCtx;
     const rbac = toRbacResponse(error);
     if (rbac) return rbac;
     return NextResponse.json(

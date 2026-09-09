@@ -7,6 +7,13 @@ import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { queryWarehouse } from "@/lib/warehouse-query";
 import { aggregateCurrencySafe } from "@/lib/currency-safe-aggregation";
 import { queryMetricsAggregate } from "@/lib/warehouse-aggregate";
+import { clientContextCacheParams } from "@/lib/client-context";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 /**
  * GET /api/metrics/query?workspaceId=...&startDate=...&endDate=...&platform=...&cursor=...
@@ -67,14 +74,19 @@ export async function GET(req: Request) {
     throw err;
   }
 
-  if (clientId && clientId !== "unassigned") {
-    const client = await prisma.client.findFirst({
-      where: { id: clientId, workspaceId },
-      select: { id: true },
+  let scopedClientId: string | undefined;
+  try {
+    const resolution = await resolveClientContext({
+      workspaceId,
+      requestedClientId: clientId,
+      surface: "warehouse",
     });
-    if (!client) {
-      return NextResponse.json({ error: "Client not found in workspace" }, { status: 404 });
-    }
+    assertQueryableClientContext(resolution);
+    scopedClientId = warehouseClientId(resolution);
+  } catch (err) {
+    const clientCtx = toClientContextResponse(err);
+    if (clientCtx) return clientCtx;
+    throw err;
   }
 
   const workspace = await prisma.workspace.findUnique({
@@ -110,6 +122,7 @@ export async function GET(req: Request) {
   const cacheKey = generateCacheKey("metrics:query", {
     workspaceId,
     clientId,
+    ...clientContextCacheParams(clientId),
     startDateStr,
     endDateStr,
     platform,
@@ -177,7 +190,7 @@ export async function GET(req: Request) {
       try {
         const responseData = await queryMetricsAggregate({
           workspaceId,
-          clientId: clientId || undefined,
+          clientId: scopedClientId,
           startDateStr,
           endDateStr,
           platform,
@@ -204,7 +217,7 @@ export async function GET(req: Request) {
     const [warehouseResult, dateRangeAgg, platforms] = await Promise.all([
       queryWarehouse({
         workspaceId,
-        clientId: clientId || undefined,
+        clientId: scopedClientId,
         startDate: startDate ?? undefined,
         endDate: endDate ?? undefined,
         platforms: platformList,

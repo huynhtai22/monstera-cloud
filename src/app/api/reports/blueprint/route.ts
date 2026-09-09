@@ -7,8 +7,15 @@ import {
   reopenWeeklyBlueprint,
   STALE_REASON_LABELS,
 } from "@/lib/report-blueprint";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  toClientContextResponse,
+} from "@/lib/client-context-server";
 
 function blueprintErrorResponse(error: unknown) {
+  const clientCtx = toClientContextResponse(error);
+  if (clientCtx) return clientCtx;
   const rbac = toRbacResponse(error);
   if (rbac) return rbac;
   if (error instanceof BlueprintInputError) {
@@ -52,10 +59,19 @@ export async function POST(req: Request) {
       );
     }
     await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member" });
+    const resolution = await resolveClientContext({
+      workspaceId,
+      requestedClientId: clientId,
+      surface: "reports",
+    });
+    assertQueryableClientContext(resolution, { requireExplicitClient: true });
+    if (resolution.status !== "resolved") {
+      return NextResponse.json({ error: "workspaceId and clientId are required" }, { status: 400 });
+    }
 
     const result = await generateWeeklyBlueprint({
       workspaceId,
-      clientId,
+      clientId: resolution.client.id,
       windowStart: typeof windowStart === "string" ? windowStart : undefined,
       windowEnd: typeof windowEnd === "string" ? windowEnd : undefined,
     });
@@ -100,10 +116,19 @@ export async function GET(req: Request) {
       );
     }
     await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer" });
+    const resolution = await resolveClientContext({
+      workspaceId,
+      requestedClientId: clientId,
+      surface: "reports",
+    });
+    assertQueryableClientContext(resolution, { requireExplicitClient: true });
+    if (resolution.status !== "resolved") {
+      return NextResponse.json({ error: "workspaceId and clientId are required" }, { status: 400 });
+    }
 
     const result = await reopenWeeklyBlueprint({
       workspaceId,
-      clientId,
+      clientId: resolution.client.id,
       windowStart: windowStart ?? undefined,
       windowEnd: windowEnd ?? undefined,
     });

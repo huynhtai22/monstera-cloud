@@ -5,6 +5,12 @@ import { queryWarehouse } from "@/lib/warehouse-query";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
 import { retrieveClientDelivery } from "@/lib/report-delivery";
 import { toRbacResponse } from "@/lib/rbac";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 const HEADERS = [
   "date",
@@ -70,9 +76,18 @@ export async function POST(req: Request) {
       if (!connection) return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
+    const resolution = await resolveClientContext({
+      workspaceId,
+      requestedClientId: typeof body.clientId === "string" ? body.clientId : null,
+      surface: "exports",
+    });
+    assertQueryableClientContext(resolution);
+    const scopedClientId = warehouseClientId(resolution);
+
     const query = {
       workspaceId,
       connectionId: typeof connectionId === "string" ? connectionId : undefined,
+      clientId: scopedClientId,
       startDate: parseDate(start_date),
       endDate: parseDate(end_date, true),
       platforms: platform ? [platform] : undefined,
@@ -81,8 +96,8 @@ export async function POST(req: Request) {
       limit: 100_000,
       includeTotalCount: true,
     };
-    const result = body.clientId
-      ? await retrieveClientDelivery({ ...query, clientId: String(body.clientId) }, "google_sheets", membership.userId)
+    const result = resolution.status === "resolved"
+      ? await retrieveClientDelivery({ ...query, clientId: resolution.client.id }, "google_sheets", membership.userId)
       : await queryWarehouse(query);
 
     const rows = result.rows.map((row) => [
@@ -113,6 +128,7 @@ export async function POST(req: Request) {
       receiptId: "receiptId" in result ? result.receiptId : null,
     });
   } catch (error) {
+    const clientCtx = toClientContextResponse(error); if (clientCtx) return clientCtx;
     const rbac = toRbacResponse(error); if (rbac) return rbac;
     logger.error("[SHEETS_QUERY]", error);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });

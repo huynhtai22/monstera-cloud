@@ -5,6 +5,12 @@ import { logger } from "@/lib/logger";
 import { resolveApiKey } from "@/lib/api-key-security";
 import { warehouseAdsCsvRows, warehouseRetailOrdersCsvRows } from "@/lib/warehouse-csv-export";
 import { assertCsvExportAllowed, toPlanLimitResponse } from "@/lib/plan-entitlements";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 /**
  * GET /api/export/rows
@@ -53,14 +59,28 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const sourceId = searchParams.get("sourceId");
         const clientId = searchParams.get("clientId");
+        let resolution;
+        try {
+            resolution = await resolveClientContext({
+                workspaceId,
+                requestedClientId: clientId,
+                surface: "exports",
+            });
+            assertQueryableClientContext(resolution);
+        } catch (error) {
+            const clientCtx = toClientContextResponse(error);
+            if (clientCtx) return clientCtx;
+            throw error;
+        }
+        const scopedClientId = warehouseClientId(resolution);
 
         let client = null;
         let isExplicit = false;
         let clientAssignments: Array<{ connectionId: string; provider: string; accountId: string }> = [];
 
-        if (clientId) {
+        if (scopedClientId) {
             client = await prisma.client.findFirst({
-                where: { id: clientId, workspaceId },
+                where: { id: scopedClientId, workspaceId },
                 select: { id: true, accountAssignmentsConfiguredAt: true },
             });
             if (!client) {
@@ -71,7 +91,7 @@ export async function GET(request: Request) {
                 clientAssignments = await prisma.clientProviderAccountAssignment.findMany({
                     where: {
                         workspaceId,
-                        clientId: client.id,
+                        clientId: scopedClientId,
                         ...(sourceId ? { connectionId: sourceId } : {}),
                     },
                     select: { connectionId: true, provider: true, accountId: true },
@@ -88,7 +108,7 @@ export async function GET(request: Request) {
             connectionQuery.id = sourceId;
         }
 
-        if (clientId) {
+        if (scopedClientId) {
             if (isExplicit) {
                 const assignedConnIds = [...new Set(clientAssignments.map((a) => a.connectionId))];
                 connectionQuery.id = sourceId ? sourceId : { in: assignedConnIds };
@@ -108,7 +128,7 @@ export async function GET(request: Request) {
         }
 
         if (!sourceConnection) {
-            if (clientId) {
+            if (scopedClientId) {
                 return NextResponse.json({ success: true, rows: [] }, { status: 200 });
             }
             return NextResponse.json({ error: "No active source connections found in this workspace." }, { status: 404 });
@@ -118,7 +138,7 @@ export async function GET(request: Request) {
         let rows: Array<Array<string | number>>;
 
         if (provider === "shopee") {
-            if (clientId && !isExplicit && sourceConnection.clientId !== client!.id) {
+            if (scopedClientId && !isExplicit && sourceConnection.clientId !== client!.id) {
                 return NextResponse.json({ success: true, rows: [] }, { status: 200 });
             }
             const orders = await prisma.retailOrder.findMany({
@@ -131,7 +151,7 @@ export async function GET(request: Request) {
 
         } else if (provider === "meta_ads" || provider === "google_ads" || provider === "tiktok_business") {
             let metricWhere: Prisma.CampaignMetricWhereInput;
-            if (clientId && isExplicit) {
+            if (scopedClientId && isExplicit) {
                 const matchingAssignments = clientAssignments.filter((a) => a.connectionId === sourceConnection.id);
                 if (matchingAssignments.length === 0) {
                     return NextResponse.json({ success: true, rows: [] }, { status: 200 });
@@ -145,7 +165,7 @@ export async function GET(request: Request) {
                         accountId: a.accountId,
                     })),
                 };
-            } else if (clientId && !isExplicit) {
+            } else if (scopedClientId && !isExplicit) {
                 metricWhere = {
                     workspaceId,
                     connectionId: sourceConnection.id,
@@ -175,6 +195,8 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: true, rows }, { status: 200 });
 
     } catch (error) {
+        const clientCtx = toClientContextResponse(error);
+        if (clientCtx) return clientCtx;
         logger.error("Error in /api/export/rows:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

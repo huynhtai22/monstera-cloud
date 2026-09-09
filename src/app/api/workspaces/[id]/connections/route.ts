@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  sourceConnectionIdsForClient,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 import { sanitizeConnectionCredentials } from "@/lib/sanitize-connection-credentials";
 import { resolveSourceHealthState, SOURCE_HEALTH_STALE_AFTER_MS } from "@/lib/source-health";
 import { pickDataThroughDate } from "@/lib/connection-data-through";
@@ -12,7 +18,7 @@ import { pickDataThroughDate } from "@/lib/connection-data-through";
  */
 export async function GET(req: Request, context: { params: any }) {
     try {
-        const session = await getServerSession(authOptions);
+        const session = await getAuthSession();
         if (!session?.user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
@@ -22,14 +28,27 @@ export async function GET(req: Request, context: { params: any }) {
         const { searchParams } = new URL(req.url);
         const unassignedOnly = searchParams.get("unassigned") === "true";
         const type = searchParams.get("type");
+        const clientId = searchParams.get("clientId");
 
         // Verify membership
         await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer" });
+
+        const resolution = await resolveClientContext({
+            workspaceId,
+            requestedClientId: clientId,
+            surface: "sources",
+        });
+        assertQueryableClientContext(resolution);
+        const scopedClientId = warehouseClientId(resolution);
+        const assignedConnectionIds = scopedClientId
+            ? await sourceConnectionIdsForClient(workspaceId, scopedClientId)
+            : null;
 
         const connections = await prisma.connection.findMany({
             where: { 
                 workspaceId,
                 ...(unassignedOnly ? { clientId: null } : {}),
+                ...(assignedConnectionIds ? { id: { in: assignedConnectionIds } } : {}),
                 ...(type === "source" || type === "destination" ? { type } : {}),
             },
             orderBy: { createdAt: "desc" }
@@ -66,6 +85,8 @@ export async function GET(req: Request, context: { params: any }) {
             )?.toISOString() ?? null,
         })));
     } catch (error: unknown) {
+        const clientCtx = toClientContextResponse(error);
+        if (clientCtx) return clientCtx;
         const rbac = toRbacResponse(error);
         if (rbac) return rbac;
         return NextResponse.json({ error: error instanceof Error ? error.message : "Failed" }, { status: 500 });

@@ -1,15 +1,21 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { getUnassignedTupleExclusions, unassignedTupleFilter } from "@/lib/warehouse-query";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 /**
  * Distinct workspace ad accounts stored in CampaignMetric (for explorer filters).
  * GET ?workspaceId=
  */
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -19,19 +25,39 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
   }
 
-  const member = await prisma.workspaceMember.findFirst({
-    where: { workspaceId, userId: session.user.id },
-  });
-  if (!member) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  try {
+    await requireWorkspaceAccess({
+      userId: session.user.id,
+      workspaceId,
+      minimumRole: "viewer",
+      operation: "query_metrics_accounts",
+    });
+  } catch (err) {
+    const rbac = toRbacResponse(err);
+    if (rbac) return rbac;
+    throw err;
   }
 
   const clientId = new URL(req.url).searchParams.get("clientId");
+  let resolution;
+  try {
+    resolution = await resolveClientContext({
+      workspaceId,
+      requestedClientId: clientId,
+      surface: "warehouse",
+    });
+    assertQueryableClientContext(resolution);
+  } catch (err) {
+    const clientCtx = toClientContextResponse(err);
+    if (clientCtx) return clientCtx;
+    throw err;
+  }
+  const scopedClientId = warehouseClientId(resolution);
 
   try {
-    if (clientId && clientId !== "unassigned") {
+    if (scopedClientId && scopedClientId !== "unassigned") {
       const client = await prisma.client.findFirst({
-        where: { id: clientId, workspaceId },
+        where: { id: scopedClientId, workspaceId },
         select: { id: true, accountAssignmentsConfiguredAt: true },
       });
       if (!client) {
@@ -40,7 +66,7 @@ export async function GET(req: Request) {
       const isExplicit = client.accountAssignmentsConfiguredAt !== null;
       if (isExplicit) {
         const assignments = await prisma.clientProviderAccountAssignment.findMany({
-          where: { workspaceId, clientId },
+          where: { workspaceId, clientId: scopedClientId },
           select: { provider: true, accountId: true, connectionId: true },
         });
         if (assignments.length > 0) {
@@ -71,7 +97,7 @@ export async function GET(req: Request) {
 
       const grouped = await prisma.campaignMetric.groupBy({
         by: ["accountId", "platform"],
-        where: { workspaceId, connection: { clientId } },
+        where: { workspaceId, connection: { clientId: scopedClientId } },
         _max: { accountName: true },
         orderBy: [{ accountId: "asc" }, { platform: "asc" }],
       });
@@ -84,7 +110,7 @@ export async function GET(req: Request) {
       });
     }
 
-    if (clientId === "unassigned") {
+    if (scopedClientId === "unassigned") {
       const where = {
         workspaceId,
         ...unassignedTupleFilter(await getUnassignedTupleExclusions(workspaceId)),

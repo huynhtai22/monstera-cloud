@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { getUnassignedTupleExclusions, unassignedTupleFilter } from "@/lib/warehouse-query";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 /**
  * GET /api/metrics/platforms?workspaceId=...
@@ -12,7 +18,7 @@ import { getUnassignedTupleExclusions, unassignedTupleFilter } from "@/lib/wareh
  * Not affected by date range - shows all platforms that have ever synced data.
  */
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -24,21 +30,39 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "workspaceId required" }, { status: 400 });
   }
 
-  // Verify user has access to workspace
-  const membership = await prisma.workspaceMember.findFirst({
-    where: { workspaceId, userId: session.user.id },
-  });
-
-  if (!membership) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  try {
+    await requireWorkspaceAccess({
+      userId: session.user.id,
+      workspaceId,
+      minimumRole: "viewer",
+      operation: "query_metrics_platforms",
+    });
+  } catch (err) {
+    const rbac = toRbacResponse(err);
+    if (rbac) return rbac;
+    throw err;
   }
 
   const clientId = searchParams.get("clientId");
+  let resolution;
+  try {
+    resolution = await resolveClientContext({
+      workspaceId,
+      requestedClientId: clientId,
+      surface: "warehouse",
+    });
+    assertQueryableClientContext(resolution);
+  } catch (err) {
+    const clientCtx = toClientContextResponse(err);
+    if (clientCtx) return clientCtx;
+    throw err;
+  }
+  const scopedClientId = warehouseClientId(resolution);
 
   try {
-    if (clientId && clientId !== "unassigned") {
+    if (scopedClientId && scopedClientId !== "unassigned") {
       const client = await prisma.client.findFirst({
-        where: { id: clientId, workspaceId },
+        where: { id: scopedClientId, workspaceId },
         select: { id: true, accountAssignmentsConfiguredAt: true },
       });
       if (!client) {
@@ -47,7 +71,7 @@ export async function GET(req: Request) {
       const isExplicit = client.accountAssignmentsConfiguredAt !== null;
       if (isExplicit) {
         const assignments = await prisma.clientProviderAccountAssignment.findMany({
-          where: { workspaceId, clientId },
+          where: { workspaceId, clientId: scopedClientId },
           select: { provider: true },
         });
         if (assignments.length > 0) {
@@ -58,14 +82,14 @@ export async function GET(req: Request) {
       }
 
       const legacyPlatforms = await prisma.campaignMetric.findMany({
-        where: { workspaceId, connection: { clientId } },
+        where: { workspaceId, connection: { clientId: scopedClientId } },
         distinct: ["platform"],
         select: { platform: true },
       });
       return NextResponse.json({ platforms: legacyPlatforms.map((p) => p.platform) });
     }
 
-    if (clientId === "unassigned") {
+    if (scopedClientId === "unassigned") {
       const where = {
         workspaceId,
         ...unassignedTupleFilter(await getUnassignedTupleExclusions(workspaceId)),

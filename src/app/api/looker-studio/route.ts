@@ -10,6 +10,13 @@ import { createNodeRedis } from "@/lib/node-redis";
 import { assertLookerAllowed, toPlanLimitResponse } from "@/lib/plan-entitlements";
 import { retrieveClientDelivery } from "@/lib/report-delivery";
 import { toRbacResponse } from "@/lib/rbac";
+import { clientContextCacheParams } from "@/lib/client-context";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 type RateLimitResult = {
   success: boolean;
@@ -228,16 +235,31 @@ export async function GET(req: NextRequest) {
     const cursorParam = req.nextUrl.searchParams.get("cursor");
     const includeCount = req.nextUrl.searchParams.get("includeCount") === "1";
     const clientId = req.nextUrl.searchParams.get("clientId");
+    let resolution;
+    try {
+      resolution = await resolveClientContext({
+        workspaceId,
+        requestedClientId: clientId,
+        surface: "exports",
+      });
+      assertQueryableClientContext(resolution);
+    } catch (error) {
+      const clientCtx = toClientContextResponse(error);
+      if (clientCtx) return clientCtx;
+      throw error;
+    }
+    const scopedClientId = warehouseClientId(resolution);
 
     // Check cache early
     const cacheKey = generateCacheKey("looker-v2", {
       workspaceId,
       search: req.nextUrl.search,
+      ...clientContextCacheParams(clientId),
     });
     
     // Looker Studio dashboards change infrequently and trigger many concurrent queries.
-    // Cache for 15 minutes (900 seconds).
-    const cached = clientId ? null : await getCachedQuery(cacheKey);
+    // Cache for 15 minutes (900 seconds). Never share a cache entry across client scopes.
+    const cached = resolution.status === "resolved" ? null : await getCachedQuery(cacheKey);
     if (cached) {
       return NextResponse.json(cached);
     }
@@ -269,7 +291,7 @@ export async function GET(req: NextRequest) {
 
     const query = {
       workspaceId,
-      clientId: clientId || undefined,
+      clientId: scopedClientId,
       startDate,
       endDate,
       platforms: platform && platform !== "all" ? [platform] : undefined,
@@ -279,8 +301,8 @@ export async function GET(req: NextRequest) {
       includeTotalCount: includeCount,
     };
     // Unknown OAuth app identity cannot mint evidence; keep the existing query compatible.
-    const result = clientId
-      ? await retrieveClientDelivery({ ...query, clientId }, deliveryDestination, deliveryActor)
+    const result = resolution.status === "resolved"
+      ? await retrieveClientDelivery({ ...query, clientId: resolution.client.id }, deliveryDestination, deliveryActor)
       : await queryWarehouse(query);
 
     const formattedData = result.rows.map((m) => ({
@@ -331,10 +353,11 @@ export async function GET(req: NextRequest) {
     // Empty responses are often transient immediately after a warehouse refresh.
     // Keep only useful pages in the server cache; the Sheets add-on has its own
     // 10-minute user-cache for the same non-empty response type.
-    if (!clientId && formattedData.length > 0) await setCachedQuery(cacheKey, resObj, 900);
+    if (resolution.status !== "resolved" && formattedData.length > 0) await setCachedQuery(cacheKey, resObj, 900);
 
     return NextResponse.json(resObj, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error: unknown) {
+    const clientCtx = toClientContextResponse(error); if (clientCtx) return clientCtx;
     const rbac = toRbacResponse(error); if (rbac) return rbac;
     const planLimit = toPlanLimitResponse(error);
     if (planLimit) return planLimit;
