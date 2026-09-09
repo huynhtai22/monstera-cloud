@@ -51,21 +51,29 @@ export function ReportsClient() {
     const dateTo = normalizeDate(searchParams.get("dateTo"));
     const [selectedLog, setSelectedLog] = React.useState<SyncLogWithPipeline | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
+    // Tracks the last URL we wrote so rapid sequential edits (fill From then To)
+    // merge instead of dropping the first change while navigation is in flight.
+    const pendingFiltersRef = React.useRef<string | null>(null);
 
     const updateFilters = React.useCallback((changes: Record<string, string | null>, history: "push" | "replace" = "replace") => {
-        // Read the live URL so rapid sequential edits (e.g. filling From then To)
-        // do not drop the first change when React's searchParams snapshot is stale.
-        const current = typeof window !== "undefined"
-            ? new URLSearchParams(window.location.search)
-            : new URLSearchParams(searchParams.toString());
-        const q = new URLSearchParams(current.toString());
+        const live = typeof window !== "undefined"
+            ? window.location.search
+            : `?${searchParams.toString()}`;
+        const baseStr = pendingFiltersRef.current ?? live;
+        const base = new URLSearchParams(baseStr.startsWith("?") ? baseStr.slice(1) : baseStr);
+        const q = new URLSearchParams(base.toString());
         for (const [key, value] of Object.entries(changes)) {
             if (value) q.set(key, value);
             else q.delete(key);
         }
+        pendingFiltersRef.current = `?${q.toString()}`;
         const href = q.size ? `${pathname}?${q}` : pathname;
         router[history](href, { scroll: false });
     }, [pathname, router, searchParams]);
+
+    React.useEffect(() => {
+        pendingFiltersRef.current = null;
+    }, [searchParams]);
 
     const setStatusFilter = (value: "all" | "success" | "error") =>
         updateFilters({ status: value === "all" ? null : value }, "push");

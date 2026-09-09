@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ALL_CLIENTS_TOKEN,
@@ -527,20 +527,29 @@ export function WarehouseWorkbench() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [isRefreshOpen, setIsRefreshOpen] = useState(false);
   const [isClientExportOpen, setIsClientExportOpen] = useState(false);
+  // Tracks the last URL we wrote so rapid sequential edits (fill From then To)
+  // merge instead of dropping the first change while router.replace is in flight.
+  const pendingFiltersRef = useRef<string | null>(null);
 
   const replaceUrlFilters = useCallback((changes: Record<string, string | null>) => {
-    // Read the live URL so rapid sequential edits (e.g. filling From then To)
-    // do not drop the first change when React's searchParams snapshot is stale.
-    const current = typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search)
-      : new URLSearchParams(searchParams?.toString() ?? "");
-    const next = new URLSearchParams(current.toString());
+    const live = typeof window !== "undefined"
+      ? window.location.search
+      : `?${searchParams?.toString() ?? ""}`;
+    const baseStr = pendingFiltersRef.current ?? live;
+    const base = new URLSearchParams(baseStr.startsWith("?") ? baseStr.slice(1) : baseStr);
+    const next = new URLSearchParams(base.toString());
     for (const [key, value] of Object.entries(changes)) {
       if (value) next.set(key, value);
       else next.delete(key);
     }
+    pendingFiltersRef.current = `?${next.toString()}`;
     router.replace(canonicalHref(pathname, next), { scroll: false });
   }, [pathname, router, searchParams]);
+
+  // Clear pending once React's snapshot catches up (covers back/forward too).
+  useEffect(() => {
+    pendingFiltersRef.current = null;
+  }, [searchParams]);
 
   const setStartDate = (value: string) => replaceUrlFilters({ startDate: value });
   const setEndDate = (value: string) => replaceUrlFilters({ endDate: value });
