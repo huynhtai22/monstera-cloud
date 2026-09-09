@@ -404,12 +404,15 @@ test.describe("client context navigation", () => {
     await expect(page.getByText("Aurora Exclusive Campaign")).toBeVisible();
 
     // Fire date, date, platform and client-switch navigations back to back.
-    // No intermediate URL assertions: the product merges pending state.
+    // No intermediate URL assertions: the product merges pending state. The
+    // menu-visibility check below only ensures the platform menu itself is
+    // open before picking an option; it asserts nothing about URLs.
     const dateInputs = page.locator('input[type="date"]');
     await dateInputs.nth(0).fill(nextStart);
     await dateInputs.nth(1).fill(nextEnd);
     const platformControl = page.getByText("Platform", { exact: true }).locator("..").getByRole("button").first();
     await platformControl.click();
+    await expect(page.getByRole("button", { name: /Meta Ads/ }).last()).toBeVisible();
     await page.getByRole("button", { name: /Meta Ads/ }).last().click();
     await selectClient(page, fixture.clients.northwind.name);
 
