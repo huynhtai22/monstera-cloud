@@ -371,6 +371,7 @@ test.describe("client context navigation", () => {
 
     await followSidebarLink(page, "Reports");
     await page.getByRole("button", { name: "Sync activity" }).click();
+    await expect(page).toHaveURL(/view=sync/);
     await page.getByLabel("From", { exact: true }).fill(DATE);
     await expect(page).toHaveURL(new RegExp(`dateFrom=${DATE}`));
     await page.getByLabel("To", { exact: true }).fill(DATE);

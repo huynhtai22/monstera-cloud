@@ -90,12 +90,18 @@ export function ReportsClient() {
     }, [dateFrom, dateTo, searchParams, sourceFilter, sourceParam, statusFilter, statusParam, updateFilters]);
 
     const setViewMode = React.useCallback((mode: "performance" | "sync") => {
-        const q = new URLSearchParams(searchParams.toString());
+        const live = typeof window !== "undefined"
+            ? window.location.search
+            : `?${searchParams.toString()}`;
+        const baseStr = pendingFiltersRef.current ?? live;
+        const base = new URLSearchParams(baseStr.startsWith("?") ? baseStr.slice(1) : baseStr);
+        const q = new URLSearchParams(base.toString());
         if (mode === "sync") {
             q.set("view", "sync");
         } else {
             q.delete("view");
         }
+        pendingFiltersRef.current = `?${q.toString()}`;
         const qs = q.toString();
         router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     }, [searchParams, router, pathname]);
