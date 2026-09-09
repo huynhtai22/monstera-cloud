@@ -442,6 +442,39 @@ test.describe("client context navigation", () => {
     await expect(page.getByText("No scoped warehouse data")).toBeVisible();
   });
 
+  test("rapid filter edit followed by sidebar navigation keeps approved state", async ({ authenticatedPage: page }) => {
+    const nextStart = "2026-09-05";
+    await page.goto(
+      `/explorer?clientId=${fixture.clients.aurora.id}&startDate=${DATE}&endDate=${DATE}`
+      + `&platform=google_ads&accountId=unsafe-act&page=3&code=oauth-code`,
+    );
+    await expect(page.getByText("Aurora Exclusive Campaign")).toBeVisible();
+
+    // Edit a filter and immediately leave through the actual sidebar without
+    // waiting for the edit's URL mutation: the rendered link must already
+    // carry the pending value.
+    const dateInputs = page.locator('input[type="date"]');
+    await dateInputs.nth(0).fill(nextStart);
+    await followSidebarLink(page, "Reports");
+
+    await expect(page).toHaveURL(/\/reports\?/);
+    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.aurora.id}`));
+    await expect(page).toHaveURL(new RegExp(`startDate=${nextStart}`));
+    await expect(page).toHaveURL(new RegExp(`endDate=${DATE}`));
+    await expect(page).toHaveURL(/platform=google_ads/);
+    await expect(page).not.toHaveURL(/accountId=|page=3|code=/);
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/explorer/);
+    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.aurora.id}`));
+    await expect(page).toHaveURL(new RegExp(`startDate=${nextStart}`));
+    await expect(dateInputs.nth(0)).toHaveValue(nextStart);
+    await page.goForward();
+    await expect(page).toHaveURL(/\/reports\?/);
+    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.aurora.id}`));
+    await expect(page).toHaveURL(new RegExp(`startDate=${nextStart}`));
+  });
+
   test("rival and malformed client ids reveal no rival data and cannot broaden warehouse/report/export scope", async ({ authenticatedPage: page, browser }) => {
     await page.goto(`/explorer?clientId=${fixture.rivalClientId}&startDate=${DATE}&endDate=${DATE}`);
     await expect(page.getByTestId("client-context-bar")).toContainText("This client is no longer available");
