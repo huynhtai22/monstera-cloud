@@ -394,6 +394,54 @@ test.describe("client context navigation", () => {
     await expect(page).toHaveURL(/status=success/);
   });
 
+  test("rapid filter edits followed by client switch keep approved state without intermediate waits", async ({ authenticatedPage: page }) => {
+    const nextStart = "2026-09-05";
+    const nextEnd = "2026-09-06";
+    await page.goto(
+      `/explorer?clientId=${fixture.clients.aurora.id}&startDate=${DATE}&endDate=${DATE}`
+      + `&platform=google_ads&accountId=unsafe-act&page=3&code=oauth-code`,
+    );
+    await expect(page.getByText("Aurora Exclusive Campaign")).toBeVisible();
+
+    // Fire date, date, platform and client-switch navigations back to back.
+    // No intermediate URL assertions: the product merges pending state.
+    const dateInputs = page.locator('input[type="date"]');
+    await dateInputs.nth(0).fill(nextStart);
+    await dateInputs.nth(1).fill(nextEnd);
+    const platformControl = page.getByText("Platform", { exact: true }).locator("..").getByRole("button").first();
+    await platformControl.click();
+    await page.getByRole("button", { name: /Meta Ads/ }).last().click();
+    await selectClient(page, fixture.clients.northwind.name);
+
+    // Final URL retains every approved edit under exactly one clientId.
+    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
+    await expect(page.getByTestId("client-context-bar")).toContainText("Viewing: Northwind Traders");
+    await expect(page).toHaveURL(new RegExp(`startDate=${nextStart}`));
+    await expect(page).toHaveURL(new RegExp(`endDate=${nextEnd}`));
+    await expect(page).toHaveURL(/platform=meta_ads/);
+    await expect(page).not.toHaveURL(/accountId=|page=3|code=|unknown=/);
+    // Controls converged on the final URL: no Meta rows exist for either
+    // fixture client, so the scoped-empty state must render instead of stale
+    // Client A data.
+    await expect(dateInputs.nth(0)).toHaveValue(nextStart);
+    await expect(dateInputs.nth(1)).toHaveValue(nextEnd);
+    await expect(page.getByText("Aurora Exclusive Campaign")).toHaveCount(0);
+    await expect(page.getByText("Northwind Exclusive Campaign")).toHaveCount(0);
+    await expect(page.getByText("No scoped warehouse data")).toBeVisible();
+
+    // History stays consistent: back restores the pre-switch client with the
+    // same approved edits, forward returns to the switched scope.
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.aurora.id}`));
+    await expect(page).toHaveURL(new RegExp(`startDate=${nextStart}`));
+    await expect(page).toHaveURL(/platform=meta_ads/);
+    await expect(page.getByText("Aurora Exclusive Campaign")).toHaveCount(0);
+    await page.goForward();
+    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
+    await expect(page).toHaveURL(new RegExp(`endDate=${nextEnd}`));
+    await expect(page.getByText("No scoped warehouse data")).toBeVisible();
+  });
+
   test("rival and malformed client ids reveal no rival data and cannot broaden warehouse/report/export scope", async ({ authenticatedPage: page, browser }) => {
     await page.goto(`/explorer?clientId=${fixture.rivalClientId}&startDate=${DATE}&endDate=${DATE}`);
     await expect(page.getByTestId("client-context-bar")).toContainText("This client is no longer available");
