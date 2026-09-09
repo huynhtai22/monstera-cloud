@@ -5,9 +5,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ALL_CLIENTS_TOKEN,
   UNASSIGNED_CLIENT_TOKEN,
-  canonicalHref,
-  switchClientKeepingFilters,
 } from "@/lib/client-context";
+import {
+  acknowledgePendingUrlState,
+  createPendingUrlTracker,
+  mergePendingUrlState,
+  switchPendingClient,
+} from "@/lib/pending-query";
 import useSWR from "swr";
 import { resolveDataThrough, resolveWarehouseEmptyState } from "@/lib/warehouse-truth";
 import Link from "next/link";
@@ -527,29 +531,34 @@ export function WarehouseWorkbench() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [isRefreshOpen, setIsRefreshOpen] = useState(false);
   const [isClientExportOpen, setIsClientExportOpen] = useState(false);
-  // Tracks the last URL we wrote so rapid sequential edits (fill From then To)
-  // merge instead of dropping the first change while router.replace is in flight.
-  const pendingFiltersRef = useRef<string | null>(null);
+  // Single pending-query tracker for this surface: rapid filter edits merge
+  // against the most recent pending query, and a client switch builds from
+  // it so a just-made edit is not lost while navigation is in flight.
+  const pendingTrackerRef = useRef(createPendingUrlTracker(
+    typeof window !== "undefined" ? window.location.search : "",
+  ));
+  const observedSearchString = searchParams?.toString() ?? "";
 
   const replaceUrlFilters = useCallback((changes: Record<string, string | null>) => {
-    const live = typeof window !== "undefined"
-      ? window.location.search
-      : `?${searchParams?.toString() ?? ""}`;
-    const baseStr = pendingFiltersRef.current ?? live;
-    const base = new URLSearchParams(baseStr.startsWith("?") ? baseStr.slice(1) : baseStr);
-    const next = new URLSearchParams(base.toString());
-    for (const [key, value] of Object.entries(changes)) {
-      if (value) next.set(key, value);
-      else next.delete(key);
-    }
-    pendingFiltersRef.current = `?${next.toString()}`;
-    router.replace(canonicalHref(pathname, next), { scroll: false });
-  }, [pathname, router, searchParams]);
+    const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
+    const { search } = mergePendingUrlState({
+      observedSearch: live,
+      pendingSearch: pendingTrackerRef.current.pendingSearch,
+      patch: changes,
+    });
+    pendingTrackerRef.current = { ...pendingTrackerRef.current, pendingSearch: search };
+    router.replace(search ? `${pathname}${search}` : pathname, { scroll: false });
+  }, [pathname, router, observedSearchString]);
 
-  // Clear pending once React's snapshot catches up (covers back/forward too).
+  // Acknowledge by serialized query content: recreated param objects with
+  // identical content cannot clear pending state, while genuine external
+  // history navigation discards it so controls hydrate from the observed URL.
   useEffect(() => {
-    pendingFiltersRef.current = null;
-  }, [searchParams]);
+    pendingTrackerRef.current = acknowledgePendingUrlState(
+      pendingTrackerRef.current,
+      `?${observedSearchString}`,
+    );
+  }, [observedSearchString]);
 
   const setStartDate = (value: string) => replaceUrlFilters({ startDate: value });
   const setEndDate = (value: string) => replaceUrlFilters({ endDate: value });
@@ -562,11 +571,14 @@ export function WarehouseWorkbench() {
   const updateClientId = (newClientId: string) => {
     setAccountFilterIds([]);
     const nextValue = newClientId === "" ? ALL_CLIENTS_TOKEN : newClientId;
-    const next = switchClientKeepingFilters(
-      new URLSearchParams(searchParams?.toString() ?? ""),
-      nextValue,
-    );
-    router.push(canonicalHref(pathname, next));
+    const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
+    const { search } = switchPendingClient({
+      observedSearch: live,
+      pendingSearch: pendingTrackerRef.current.pendingSearch,
+      nextClientId: nextValue,
+    });
+    pendingTrackerRef.current = { ...pendingTrackerRef.current, pendingSearch: search };
+    router.push(search ? `${pathname}${search}` : pathname);
   };
 
   const clientsUrl = useMemo(() => {

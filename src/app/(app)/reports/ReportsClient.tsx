@@ -15,6 +15,11 @@ import { SyncActivityTableSkeleton } from "@/components/reports/SyncActivityLoad
 import { PerformanceReportDashboard } from "@/components/reports/PerformanceReportDashboard";
 import { WeeklyPerformanceBlueprint } from "@/components/reports/WeeklyPerformanceBlueprint";
 import { ALL_CLIENTS_TOKEN } from "@/lib/client-context";
+import {
+    acknowledgePendingUrlState,
+    createPendingUrlTracker,
+    mergePendingUrlState,
+} from "@/lib/pending-query";
 import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
 
 const REPORTS_VIEW_STORAGE = "monstera_reports_view_v1";
@@ -51,29 +56,34 @@ export function ReportsClient() {
     const dateTo = normalizeDate(searchParams.get("dateTo"));
     const [selectedLog, setSelectedLog] = React.useState<SyncLogWithPipeline | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
-    // Tracks the last URL we wrote so rapid sequential edits (fill From then To)
-    // merge instead of dropping the first change while navigation is in flight.
-    const pendingFiltersRef = React.useRef<string | null>(null);
+    // Single pending-query tracker for this surface: rapid filter edits merge
+    // against the most recent pending query, and view-mode changes build from
+    // it so a just-made edit is not lost while navigation is in flight.
+    const pendingTrackerRef = React.useRef(createPendingUrlTracker(
+        typeof window !== "undefined" ? window.location.search : "",
+    ));
+    const observedSearchString = searchParams.toString();
 
     const updateFilters = React.useCallback((changes: Record<string, string | null>, history: "push" | "replace" = "replace") => {
-        const live = typeof window !== "undefined"
-            ? window.location.search
-            : `?${searchParams.toString()}`;
-        const baseStr = pendingFiltersRef.current ?? live;
-        const base = new URLSearchParams(baseStr.startsWith("?") ? baseStr.slice(1) : baseStr);
-        const q = new URLSearchParams(base.toString());
-        for (const [key, value] of Object.entries(changes)) {
-            if (value) q.set(key, value);
-            else q.delete(key);
-        }
-        pendingFiltersRef.current = `?${q.toString()}`;
-        const href = q.size ? `${pathname}?${q}` : pathname;
-        router[history](href, { scroll: false });
-    }, [pathname, router, searchParams]);
+        const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
+        const { search } = mergePendingUrlState({
+            observedSearch: live,
+            pendingSearch: pendingTrackerRef.current.pendingSearch,
+            patch: changes,
+        });
+        pendingTrackerRef.current = { ...pendingTrackerRef.current, pendingSearch: search };
+        router[history](search ? `${pathname}${search}` : pathname, { scroll: false });
+    }, [pathname, router, observedSearchString]);
 
+    // Acknowledge by serialized query content: recreated param objects with
+    // identical content cannot clear pending state, while genuine external
+    // history navigation discards it so controls hydrate from the observed URL.
     React.useEffect(() => {
-        pendingFiltersRef.current = null;
-    }, [searchParams]);
+        pendingTrackerRef.current = acknowledgePendingUrlState(
+            pendingTrackerRef.current,
+            `?${observedSearchString}`,
+        );
+    }, [observedSearchString]);
 
     const setStatusFilter = (value: "all" | "success" | "error") =>
         updateFilters({ status: value === "all" ? null : value }, "push");
@@ -90,21 +100,15 @@ export function ReportsClient() {
     }, [dateFrom, dateTo, searchParams, sourceFilter, sourceParam, statusFilter, statusParam, updateFilters]);
 
     const setViewMode = React.useCallback((mode: "performance" | "sync") => {
-        const live = typeof window !== "undefined"
-            ? window.location.search
-            : `?${searchParams.toString()}`;
-        const baseStr = pendingFiltersRef.current ?? live;
-        const base = new URLSearchParams(baseStr.startsWith("?") ? baseStr.slice(1) : baseStr);
-        const q = new URLSearchParams(base.toString());
-        if (mode === "sync") {
-            q.set("view", "sync");
-        } else {
-            q.delete("view");
-        }
-        pendingFiltersRef.current = `?${q.toString()}`;
-        const qs = q.toString();
-        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    }, [searchParams, router, pathname]);
+        const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
+        const { search } = mergePendingUrlState({
+            observedSearch: live,
+            pendingSearch: pendingTrackerRef.current.pendingSearch,
+            patch: mode === "sync" ? { view: "sync" } : { view: null },
+        });
+        pendingTrackerRef.current = { ...pendingTrackerRef.current, pendingSearch: search };
+        router.push(search ? `${pathname}${search}` : pathname, { scroll: false });
+    }, [observedSearchString, router, pathname]);
 
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const { data: clientsPayload } = useSWR(
@@ -250,7 +254,8 @@ export function ReportsClient() {
     };
 
     const setClient = (id: string) => {
-        switchClient(id ? id : ALL_CLIENTS_TOKEN);
+        const search = switchClient(id ? id : ALL_CLIENTS_TOKEN, pendingTrackerRef.current.pendingSearch);
+        pendingTrackerRef.current = { ...pendingTrackerRef.current, pendingSearch: search };
     };
 
     const resetFilters = () => {
