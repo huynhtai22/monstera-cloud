@@ -31,18 +31,50 @@ export function ReportsClient() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
-    const sourceFilter = searchParams.get("source") ?? "";
+    const sourceParam = searchParams.get("source") ?? "";
+    const sourceFilter = REPORTS_SOURCE_CHIPS.some((chip) => chip.id === sourceParam) ? sourceParam : "";
     const { switchClient } = useClientContextNavigation();
     const clientFilterRaw = searchParams.get("clientId") ?? "";
     const clientFilter = clientFilterRaw === ALL_CLIENTS_TOKEN ? "" : clientFilterRaw;
     const viewParam = searchParams.get("view");
     const viewMode: "performance" | "sync" = viewParam === "sync" ? "sync" : "performance";
 
-    const [statusFilter, setStatusFilter] = React.useState<"all" | "success" | "error">("all");
-    const [dateFrom, setDateFrom] = React.useState("");
-    const [dateTo, setDateTo] = React.useState("");
+    const statusParam = searchParams.get("status");
+    const statusFilter: "all" | "success" | "error" = statusParam === "success" || statusParam === "error"
+        ? statusParam
+        : "all";
+    const normalizeDate = (value: string | null) =>
+        value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00.000Z`).getTime())
+            ? value
+            : "";
+    const dateFrom = normalizeDate(searchParams.get("dateFrom"));
+    const dateTo = normalizeDate(searchParams.get("dateTo"));
     const [selectedLog, setSelectedLog] = React.useState<SyncLogWithPipeline | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
+
+    const updateFilters = React.useCallback((changes: Record<string, string | null>, history: "push" | "replace" = "replace") => {
+        const q = new URLSearchParams(searchParams.toString());
+        for (const [key, value] of Object.entries(changes)) {
+            if (value) q.set(key, value);
+            else q.delete(key);
+        }
+        const href = q.size ? `${pathname}?${q}` : pathname;
+        router[history](href, { scroll: false });
+    }, [pathname, router, searchParams]);
+
+    const setStatusFilter = (value: "all" | "success" | "error") =>
+        updateFilters({ status: value === "all" ? null : value }, "push");
+    const setDateFrom = (value: string) => updateFilters({ dateFrom: value });
+    const setDateTo = (value: string) => updateFilters({ dateTo: value });
+
+    React.useEffect(() => {
+        const changes: Record<string, string | null> = {};
+        if (sourceParam && sourceFilter === "") changes.source = null;
+        if (statusParam && statusFilter === "all") changes.status = null;
+        if (searchParams.has("dateFrom") && !dateFrom) changes.dateFrom = null;
+        if (searchParams.has("dateTo") && !dateTo) changes.dateTo = null;
+        if (Object.keys(changes).length > 0) updateFilters(changes);
+    }, [dateFrom, dateTo, searchParams, sourceFilter, sourceParam, statusFilter, statusParam, updateFilters]);
 
     const setViewMode = React.useCallback((mode: "performance" | "sync") => {
         const q = new URLSearchParams(searchParams.toString());
@@ -84,14 +116,22 @@ export function ReportsClient() {
                 dateTo?: string;
                 viewMode?: "performance" | "sync";
             };
-            if (v.statusFilter) setStatusFilter(v.statusFilter);
-            if (typeof v.dateFrom === "string") setDateFrom(v.dateFrom);
-            if (typeof v.dateTo === "string") setDateTo(v.dateTo);
             const q = new URLSearchParams(searchParams.toString());
             let changed = false;
-            if (v.source !== undefined && v.source !== (searchParams.get("source") ?? "")) {
-                if (v.source) q.set("source", v.source);
-                else q.delete("source");
+            if (!searchParams.has("source") && v.source && REPORTS_SOURCE_CHIPS.some((chip) => chip.id === v.source)) {
+                q.set("source", v.source);
+                changed = true;
+            }
+            if (!searchParams.has("status") && (v.statusFilter === "success" || v.statusFilter === "error")) {
+                q.set("status", v.statusFilter);
+                changed = true;
+            }
+            if (!searchParams.has("dateFrom") && normalizeDate(v.dateFrom ?? "")) {
+                q.set("dateFrom", v.dateFrom!);
+                changed = true;
+            }
+            if (!searchParams.has("dateTo") && normalizeDate(v.dateTo ?? "")) {
+                q.set("dateTo", v.dateTo!);
                 changed = true;
             }
             if (v.viewMode && !searchParams.get("view") && v.viewMode === "sync") {
@@ -187,11 +227,7 @@ export function ReportsClient() {
     };
 
     const setSource = (id: string) => {
-        const q = new URLSearchParams(searchParams.toString());
-        if (id) q.set("source", id);
-        else q.delete("source");
-        const qs = q.toString();
-        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        updateFilters({ source: id }, "push");
     };
 
     const setClient = (id: string) => {
@@ -199,13 +235,7 @@ export function ReportsClient() {
     };
 
     const resetFilters = () => {
-        const q = new URLSearchParams(searchParams.toString());
-        q.delete("source");
-        const qs = q.toString();
-        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-        setDateFrom("");
-        setDateTo("");
-        setStatusFilter("all");
+        updateFilters({ source: null, dateFrom: null, dateTo: null, status: null }, "push");
     };
 
     const activeSourceLabel = REPORTS_SOURCE_CHIPS.find((chip) => chip.id === sourceFilter)?.label ?? "All sources";
@@ -435,6 +465,12 @@ export function ReportsClient() {
                             {isValidating ? "Trying again…" : "Try again"}
                         </button>
                     </div>
+                ) : data?.attribution === "unavailable" ? (
+                    <EmptyState
+                        icon={<Info className="h-12 w-12" />}
+                        title="Client-level sync activity unavailable"
+                        description="These pipeline logs do not record provider-account identity, so activity from a shared source cannot be safely attributed to this client. Warehouse data remains account-scoped."
+                    />
                 ) : rawLogs.length === 0 && !hasActiveFilters ? (
                     <EmptyState
                         icon={<Database className="h-12 w-12" />}

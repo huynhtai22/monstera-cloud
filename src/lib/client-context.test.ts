@@ -22,6 +22,7 @@ import {
 import {
   ClientContextError,
   assertQueryableClientContext,
+  resolveClientDataScope,
   resolveClientContext,
   toClientContextResponse,
   warehouseClientId,
@@ -122,6 +123,51 @@ describe("client context URL contract", () => {
     assert.deepEqual(next.getAll("clientId"), ["cl_b"]);
   });
 
+  it("preserves only allowlisted filters and drops unsafe or unknown state", () => {
+    const droppedCases: Array<[string, string[]]> = [
+      ["arbitrary", ["value"]],
+      ["unknownAccountSelector", ["act_9"]],
+      ["account", ["act_9"]],
+      ["accountId", ["act_9"]],
+      ["accountIds", ["act_9,act_10"]],
+      ["filename", ["client-a.csv"]],
+      ["artifact", ["export-2026.xlsx"]],
+      ["code", ["oauth-code"]],
+      ["state", ["oauth-state"]],
+      ["error", ["access_denied"]],
+      ["error_description", ["not-authorized"]],
+      ["callback", ["/sources"]],
+      ["redirect", ["/exports"]],
+      ["redirect_uri", ["https://example.test/callback"]],
+      ["cursor", ["cursor-1"]],
+      ["page", ["2"]],
+      ["offset", ["50"]],
+      ["duplicateUnknown", ["first", "second"]],
+    ];
+    const params = new URLSearchParams([
+      ["clientId", "cl_old"],
+      ["startDate", "2026-09-01"],
+      ["endDate", "2026-09-07"],
+      ["platform", "google_ads"],
+      ["view", "table"],
+      ["status", "success"],
+      ...droppedCases.flatMap(([key, values]) => values.map((value) => [key, value] as [string, string])),
+    ]);
+    const original = params.toString();
+
+    for (const nextClient of ["cl_new", "all", "unassigned", null]) {
+      const next = switchClientKeepingFilters(params, nextClient);
+      assert.equal(next.get("startDate"), "2026-09-01");
+      assert.equal(next.get("endDate"), "2026-09-07");
+      assert.equal(next.get("platform"), "google_ads");
+      assert.equal(next.get("view"), "table");
+      assert.equal(next.get("status"), "success");
+      for (const [key] of droppedCases) assert.equal(next.has(key), false, key);
+      assert.deepEqual(next.getAll("clientId"), nextClient == null ? [] : [nextClient]);
+    }
+    assert.equal(params.toString(), original);
+  });
+
   it("removes client context only when the next value is missing", () => {
     const current = new URLSearchParams("clientId=cl_a&platform=meta_ads");
     const cleared = switchClientKeepingFilters(current, null);
@@ -168,6 +214,35 @@ describe("client context URL contract", () => {
 });
 
 describe("client context server resolver contract", () => {
+  it("distinguishes legacy, explicit and explicit-empty ownership without unioning pointers", async () => {
+    const makeDb = (configuredAt: Date | null, assignments: Array<{ provider: string; accountId: string; connectionId: string }>) => ({
+      client: { findFirst: async () => ({ id: "cl_a", name: "A", workspaceId: "ws_1", accountAssignmentsConfiguredAt: configuredAt }) },
+      clientProviderAccountAssignment: { findMany: async () => assignments },
+      connection: { findMany: async () => [{ id: "legacy-root" }] },
+    });
+    const legacy = await resolveClientDataScope(
+      { workspaceId: "ws_1", requestedClientId: "cl_a", surface: "clients" },
+      makeDb(null, [{ provider: "google_ads", accountId: "111", connectionId: "candidate-root" }]),
+    );
+    assert.equal(legacy.ownershipMode, "legacy");
+    assert.deepEqual(legacy.connectionIds, ["legacy-root"]);
+    assert.deepEqual(legacy.assignments, []);
+
+    const explicit = await resolveClientDataScope(
+      { workspaceId: "ws_1", requestedClientId: "cl_a", surface: "clients" },
+      makeDb(new Date(), [{ provider: "google_ads", accountId: "111", connectionId: "shared-root" }]),
+    );
+    assert.equal(explicit.ownershipMode, "explicit");
+    assert.deepEqual(explicit.connectionIds, ["shared-root"]);
+    assert.deepEqual(explicit.assignments, [{ provider: "google_ads", accountId: "111", connectionId: "shared-root" }]);
+
+    const empty = await resolveClientDataScope(
+      { workspaceId: "ws_1", requestedClientId: "cl_a", surface: "clients" },
+      makeDb(new Date(), []),
+    );
+    assert.equal(empty.ownershipMode, "explicit");
+    assert.deepEqual(empty.connectionIds, []);
+  });
   it("returns none vs all as distinct statuses without querying", async () => {
     let lookedUp = false;
     const db = {

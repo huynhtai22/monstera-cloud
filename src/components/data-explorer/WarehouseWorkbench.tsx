@@ -514,25 +514,36 @@ export function WarehouseWorkbench() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const initialClientId = searchParams?.get("clientId") || "";
-  const initialStartDate = searchParams?.get("startDate") || "";
-  const initialEndDate = searchParams?.get("endDate") || "";
-  const initialPlatform = searchParams?.get("platform") || "";
-  const [selectedClientId, setSelectedClientId] = useState(initialClientId);
-
-  const [startDate, setStartDate] = useState(initialStartDate);
-  const [endDate, setEndDate] = useState(initialEndDate);
-  const [selectedPlatform, setSelectedPlatform] = useState(initialPlatform);
+  const selectedClientId = searchParams?.get("clientId") || "";
+  const isDateValue = (value: string | null): value is string =>
+    Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00.000Z`).getTime()));
+  const startDateParam = searchParams?.get("startDate") ?? null;
+  const endDateParam = searchParams?.get("endDate") ?? null;
+  const startDate = isDateValue(startDateParam) ? startDateParam : "";
+  const endDate = isDateValue(endDateParam) ? endDateParam : "";
+  const platformParam = searchParams?.get("platform") ?? "";
+  const selectedPlatform = PLATFORM_OPTIONS.some((option) => option.value === platformParam) ? platformParam : "";
   const [accountFilterIds, setAccountFilterIds] = useState<string[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [isRefreshOpen, setIsRefreshOpen] = useState(false);
   const [isClientExportOpen, setIsClientExportOpen] = useState(false);
 
-  // Sync state if URL changes externally
-  useEffect(() => {
-    const cid = searchParams?.get("clientId") || "";
-    setSelectedClientId(cid);
-  }, [searchParams]);
+  const replaceUrlFilters = useCallback((changes: Record<string, string | null>) => {
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    for (const [key, value] of Object.entries(changes)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    router.replace(canonicalHref(pathname, next), { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  const setStartDate = (value: string) => replaceUrlFilters({ startDate: value });
+  const setEndDate = (value: string) => replaceUrlFilters({ endDate: value });
+  const setSelectedPlatform = (value: string) => {
+    setAccountFilterIds([]);
+    replaceUrlFilters({ platform: value });
+  };
+  const setDateRange = (start: string, end: string) => replaceUrlFilters({ startDate: start, endDate: end });
 
   const updateClientId = (newClientId: string) => {
     setAccountFilterIds([]);
@@ -566,13 +577,17 @@ export function WarehouseWorkbench() {
   const [rowSearch, setRowSearch] = useState("");
 
   useEffect(() => {
-    if (startDate && endDate) return;
+    const invalidPlatform = Boolean(platformParam) && !PLATFORM_OPTIONS.some((option) => option.value === platformParam);
+    if (startDate && endDate && !invalidPlatform) return;
     const end = new Date();
     const start = new Date();
     start.setDate(start.getDate() - 30);
-    if (!endDate) setEndDate(end.toISOString().split("T")[0]);
-    if (!startDate) setStartDate(start.toISOString().split("T")[0]);
-  }, [endDate, startDate]);
+    replaceUrlFilters({
+      ...(!endDate ? { endDate: end.toISOString().split("T")[0] } : {}),
+      ...(!startDate ? { startDate: start.toISOString().split("T")[0] } : {}),
+      ...(invalidPlatform ? { platform: null } : {}),
+    });
+  }, [endDate, platformParam, replaceUrlFilters, startDate]);
 
   useEffect(() => {
     try {
@@ -605,8 +620,13 @@ export function WarehouseWorkbench() {
 
   const { data: platformsData } = useSWR(platformsUrl, fetcher);
   const catalogUrl = useMemo(
-    () => activeWorkspaceId ? `/api/data-explorer/shopee-catalog?workspaceId=${activeWorkspaceId}` : null,
-    [activeWorkspaceId],
+    () => {
+      if (!activeWorkspaceId) return null;
+      const params = new URLSearchParams({ workspaceId: activeWorkspaceId });
+      if (selectedClientId) params.set("clientId", selectedClientId);
+      return `/api/data-explorer/shopee-catalog?${params}`;
+    },
+    [activeWorkspaceId, selectedClientId],
   );
   const { data: shopeeCatalog } = useSWR(catalogUrl, fetcher);
   const {
@@ -805,8 +825,8 @@ export function WarehouseWorkbench() {
 
   const clearTableView = () => {
     setRowSearch("");
-    setSelectedPlatform("");
     setAccountFilterIds([]);
+    replaceUrlFilters({ platform: null });
   };
 
   useEffect(() => {
@@ -1034,10 +1054,15 @@ export function WarehouseWorkbench() {
     if (dataThrough) {
       parts.push(`Data through ${formatDateDisplay(dataThrough)}`);
     } else if (endDate) {
-      parts.push("No warehouse data yet");
+      parts.push(selectedClientId ? "No scoped warehouse data" : "No warehouse data yet");
+    }
+    if (data?.freshness?.status === "refreshing") parts.push("Scoped import active");
+    else if (data?.freshness?.status === "stale") parts.push("Scoped data is stale");
+    if (data?.freshness?.jobAttribution === "unavailable") {
+      parts.push("Job activity unavailable for this account scope");
     }
     return parts.length > 0 ? parts.join(" · ") : "Ready";
-  }, [availablePlatforms.length, warehousedAccounts.length, endDate, summary?.dateRange?.latest]);
+  }, [availablePlatforms.length, data?.freshness, endDate, selectedClientId, summary?.dateRange?.latest, warehousedAccounts.length]);
 
   const shopeeCampaigns = (shopeeCatalog?.campaigns ?? []) as Array<any>;
   const shopeeProducts = (shopeeCatalog?.products ?? []) as Array<any>;
@@ -1101,8 +1126,7 @@ export function WarehouseWorkbench() {
                   key={p.id}
                   type="button"
                   onClick={() => {
-                    setStartDate(range.start);
-                    setEndDate(range.end);
+                    setDateRange(range.start, range.end);
                   }}
                   className={cn(
                     "rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
@@ -1122,9 +1146,7 @@ export function WarehouseWorkbench() {
               type="button"
               onClick={() => {
                 const def = getPresetRange("30d");
-                setStartDate(def.start);
-                setEndDate(def.end);
-                setSelectedPlatform("");
+                replaceUrlFilters({ startDate: def.start, endDate: def.end, platform: null });
                 setAccountFilterIds([]);
               }}
               className="text-xs text-ink-mute hover:text-ink transition-colors cursor-pointer"

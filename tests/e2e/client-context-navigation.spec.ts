@@ -128,6 +128,8 @@ test.describe("client context navigation", () => {
 
     const connAurora = `conn-aurora-${suffix}`;
     const connNorth = `conn-north-${suffix}`;
+    const connShared = `conn-shared-${suffix}`;
+    const connShopeeShared = `conn-shopee-shared-${suffix}`;
     await db.connection.createMany({
       data: [
         {
@@ -150,14 +152,49 @@ test.describe("client context navigation", () => {
           remoteAccountId: `north-${suffix}`,
           credentials: JSON.stringify({ customerIds: ["8220008222"] }),
         },
+        {
+          id: connShared,
+          workspaceId: fixture.workspaceId,
+          name: "Shared Meta root",
+          provider: "meta_ads",
+          type: "source",
+          status: "connected",
+          remoteAccountId: `shared-${suffix}`,
+          credentials: JSON.stringify({
+            adAccountIds: ["act_8330008333", "act_8440008444"],
+            adAccounts: [
+              { id: "act_8330008333", name: "Aurora Shared Account" },
+              { id: "act_8440008444", name: "Northwind Shared Account" },
+            ],
+            accessToken: "must-not-render",
+          }),
+        },
+        {
+          id: connShopeeShared,
+          workspaceId: fixture.workspaceId,
+          name: "Shared Shopee root",
+          provider: "shopee",
+          type: "source",
+          status: "connected",
+          remoteAccountId: `shopee-shared-${suffix}`,
+          credentials: JSON.stringify({ shopId: "shop-northwind" }),
+        },
       ],
     });
     await db.clientProviderAccountAssignment.createMany({
       data: [
         { workspaceId: fixture.workspaceId, clientId: fixture.clients.aurora.id, provider: "google_ads", accountId: "8110008111", connectionId: connAurora },
         { workspaceId: fixture.workspaceId, clientId: fixture.clients.northwind.id, provider: "google_ads", accountId: "8220008222", connectionId: connNorth },
+        { workspaceId: fixture.workspaceId, clientId: fixture.clients.aurora.id, provider: "meta_ads", accountId: "8330008333", connectionId: connShared },
+        { workspaceId: fixture.workspaceId, clientId: fixture.clients.northwind.id, provider: "meta_ads", accountId: "8440008444", connectionId: connShared },
+        { workspaceId: fixture.workspaceId, clientId: fixture.clients.aurora.id, provider: "shopee", accountId: "shop-aurora", connectionId: connShopeeShared },
+        { workspaceId: fixture.workspaceId, clientId: fixture.clients.northwind.id, provider: "shopee", accountId: "shop-northwind", connectionId: connShopeeShared },
       ],
     });
+    await db.shopeeCampaign.createMany({ data: [
+      { workspaceId: fixture.workspaceId, connectionId: connShopeeShared, environment: "sandbox", shopId: "shop-aurora", region: "VN", externalCampaignId: `shopee-a-${suffix}`, adType: "search", campaignName: "Aurora Catalog Campaign" },
+      { workspaceId: fixture.workspaceId, connectionId: connShopeeShared, environment: "sandbox", shopId: "shop-northwind", region: "VN", externalCampaignId: `shopee-b-${suffix}`, adType: "search", campaignName: "Northwind Catalog Campaign" },
+    ] });
     await db.campaignMetric.createMany({
       data: [
         {
@@ -283,6 +320,70 @@ test.describe("client context navigation", () => {
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
       .toBeTruthy();
+  });
+
+  test("selected Clients view hides sibling-client content", async ({ authenticatedPage: page }) => {
+    await page.goto(`/clients?clientId=${fixture.clients.aurora.id}`);
+    await expect(page.getByTestId("client-context-bar")).toContainText("Viewing: Aurora Retailer");
+    await expect(page.getByRole("heading", { name: fixture.clients.aurora.name })).toBeVisible();
+    await expect(page.getByRole("heading", { name: fixture.clients.northwind.name })).toHaveCount(0);
+    await expect(page.getByText("1 Brands")).toBeVisible();
+  });
+
+  test("selected Sources view projects shared-root account metadata", async ({ authenticatedPage: page }) => {
+    await page.goto(`/sources?clientId=${fixture.clients.aurora.id}`);
+    await expect(page.getByText("8330008333")).toBeVisible();
+    await expect(page.getByText("8440008444")).toHaveCount(0);
+    await expect(page.getByText("must-not-render")).toHaveCount(0);
+  });
+
+  test("selected Warehouse view scopes Shopee catalog rows under a shared root", async ({ authenticatedPage: page }) => {
+    await page.goto(`/explorer?clientId=${fixture.clients.aurora.id}&platform=shopee&startDate=${DATE}&endDate=${DATE}`);
+    await expect(page.getByText("Aurora Catalog Campaign")).toBeVisible();
+    await expect(page.getByText("Northwind Catalog Campaign")).toHaveCount(0);
+  });
+
+  test("filter controls write canonical URLs and restore through refresh and history", async ({ authenticatedPage: page }) => {
+    await page.goto("/explorer");
+    await expect(page).toHaveURL(/startDate=/);
+    await expect(page).toHaveURL(/endDate=/);
+    const dateInputs = page.locator('input[type="date"]');
+    await dateInputs.nth(0).fill(DATE);
+    await dateInputs.nth(1).fill(DATE);
+
+    const platformControl = page.getByText("Platform", { exact: true }).locator("..").getByRole("button").first();
+    await platformControl.click();
+    await page.getByRole("button", { name: /Google Ads/ }).last().click();
+    await expect(page).toHaveURL(new RegExp(`startDate=${DATE}`));
+    await expect(page).toHaveURL(new RegExp(`endDate=${DATE}`));
+    await expect(page).toHaveURL(/platform=google_ads/);
+
+    await page.goto(`${page.url()}&accountId=unsafe&page=7&unknown=drop-me&code=oauth`);
+    await selectClient(page, fixture.clients.aurora.name);
+    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.aurora.id}`));
+    await expect(page).not.toHaveURL(/accountId=|page=7|unknown=|code=/);
+    await expect(page).toHaveURL(/platform=google_ads/);
+
+    await followSidebarLink(page, "Reports");
+    await page.getByRole("button", { name: "Sync activity" }).click();
+    await page.getByLabel("From").fill(DATE);
+    await page.getByLabel("To").fill(DATE);
+    await page.getByRole("button", { name: "Error", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`dateFrom=${DATE}`));
+    await expect(page).toHaveURL(new RegExp(`dateTo=${DATE}`));
+    await expect(page).toHaveURL(/status=error/);
+    await page.reload();
+    await expect(page.getByLabel("From")).toHaveValue(DATE);
+    await expect(page.getByLabel("To")).toHaveValue(DATE);
+    await expect(page.getByRole("button", { name: "Error", exact: true })).toHaveClass(/bg-white/);
+
+    await page.getByRole("button", { name: "Success", exact: true }).click();
+    await expect(page).toHaveURL(/status=success/);
+    await page.goBack();
+    await expect(page).toHaveURL(/status=error/);
+    await expect(page.getByRole("button", { name: "Error", exact: true })).toHaveClass(/bg-white/);
+    await page.goForward();
+    await expect(page).toHaveURL(/status=success/);
   });
 
   test("rival and malformed client ids reveal no rival data and cannot broaden warehouse/report/export scope", async ({ authenticatedPage: page, browser }) => {

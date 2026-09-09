@@ -54,20 +54,6 @@ export const PRESERVED_FILTER_KEYS = [
   "metrics",
 ] as const;
 
-/** Query keys dropped on client switch (account- or page-specific). */
-export const DROPPED_ON_CLIENT_SWITCH_KEYS = [
-  "accountId",
-  "accountIds",
-  "cursor",
-  "page",
-  "startRow",
-  "endRow",
-  "after",
-] as const;
-
-const PRESERVED_FILTER_KEY_SET = new Set<string>(PRESERVED_FILTER_KEYS);
-const DROPPED_ON_CLIENT_SWITCH_KEY_SET = new Set<string>(DROPPED_ON_CLIENT_SWITCH_KEYS);
-
 export function isValidClientIdFormat(value: string): boolean {
   return value.length > 0 && value.length <= CLIENT_ID_MAX_LENGTH && CLIENT_ID_PATTERN.test(value);
 }
@@ -103,12 +89,6 @@ export function switchClientKeepingFilters(
 ): URLSearchParams {
   const next = new URLSearchParams();
   for (const key of PRESERVED_FILTER_KEYS) {
-    collapseToSingleValue(current, key, next);
-  }
-  for (const key of new Set(current.keys())) {
-    if (key === CLIENT_ID_QUERY_PARAM) continue;
-    if (PRESERVED_FILTER_KEY_SET.has(key)) continue;
-    if (DROPPED_ON_CLIENT_SWITCH_KEY_SET.has(key)) continue;
     collapseToSingleValue(current, key, next);
   }
   const parsed = parseRequestedClientId(nextClientId ?? null);
