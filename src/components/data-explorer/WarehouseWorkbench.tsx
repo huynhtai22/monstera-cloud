@@ -639,12 +639,17 @@ export function WarehouseWorkbench() {
 
   const { data, error, isLoading, mutate } = useSWR(queryUrl, fetcher, {
     refreshInterval: 60000,
-    onSuccess: (newData) => {
-      setAllMetrics(newData?.metrics || []);
-      setCursor(newData?.pagination?.nextCursor || null);
-      setHasMore(newData?.pagination?.hasMore || false);
-    },
   });
+
+  // SWR may satisfy a remounted view from its cache without invoking the
+  // original request's onSuccess callback. Derive the table seed from `data`
+  // so returning to a preserved client/filter URL cannot leave the summary
+  // populated while the table is empty.
+  useEffect(() => {
+    setAllMetrics(data?.metrics || []);
+    setCursor(data?.pagination?.nextCursor || null);
+    setHasMore(data?.pagination?.hasMore || false);
+  }, [data]);
 
   const [isLoadingAll, setIsLoadingAll] = useState(false);
 
