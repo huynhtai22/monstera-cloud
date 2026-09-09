@@ -64,6 +64,13 @@ async function selectClient(page: Page, name: string) {
   await page.getByLabel("Switch client").selectOption({ label: name });
 }
 
+async function followSidebarLink(page: Page, name: string) {
+  if (await page.evaluate(() => window.innerWidth < 1024)) {
+    await page.getByRole("button", { name: "Open menu" }).click();
+  }
+  await page.getByRole("link", { name }).click();
+}
+
 test.describe("client context navigation", () => {
   test.describe.configure({ mode: "serial" });
 
@@ -239,19 +246,19 @@ test.describe("client context navigation", () => {
     await page.goto(`${copied.pathname}${copied.search}`);
     await expect(page.getByTestId("client-context-bar")).toContainText("Viewing: Northwind Traders");
 
-    await page.getByRole("link", { name: "Reports" }).click();
+    await followSidebarLink(page, "Reports");
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
-    await page.getByRole("link", { name: "Clients" }).click();
+    await followSidebarLink(page, "Clients");
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
-    await page.getByRole("link", { name: "Exports & API" }).click();
+    await followSidebarLink(page, "Exports & API");
     await expect(page).toHaveURL(/\/exports\?/);
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
     await expect(page).toHaveURL(new RegExp(`startDate=${DATE}`));
     await expect(page).toHaveURL(new RegExp(`endDate=${DATE}`));
     await expect(page).toHaveURL(/platform=google_ads/);
-    await page.getByRole("link", { name: "Sources" }).click();
+    await followSidebarLink(page, "Sources");
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
-    await page.getByRole("link", { name: "Warehouse" }).click();
+    await followSidebarLink(page, "Warehouse");
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
     await expect(page.getByText("Northwind Exclusive Campaign")).toBeVisible();
 
