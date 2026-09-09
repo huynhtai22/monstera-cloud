@@ -16,6 +16,7 @@ import {
   surfaceForPathname,
   switchClientKeepingFilters,
   withClientContext,
+  withClientContextAndParams,
 } from "./client-context";
 import {
   ClientContextError,
@@ -63,6 +64,10 @@ describe("client context URL contract", () => {
     );
     assert.equal(withClientContext("/exports", null), "/exports");
     assert.equal(withClientContext("/explorer?platform=google_ads", "all"), "/explorer?platform=google_ads&clientId=all");
+    assert.equal(
+      withClientContextAndParams("/sources", "cl_a", { tab: "accounts" }),
+      "/sources?clientId=cl_a&tab=accounts",
+    );
   });
 
   it("preserves relevant filters and drops account/pagination keys when switching clients", () => {

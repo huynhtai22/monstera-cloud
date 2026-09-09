@@ -50,7 +50,7 @@ import { AnomalyDetailsModal } from "@/components/clients/AnomalyDetailsModal";
 import type { MarketingAnomaly } from "@/lib/marketing-anomalies";
 import { ReportReadinessPanel, readinessFetcher } from "@/components/reports/ReportReadinessPanel";
 import type { ReportReadinessEvaluation } from "@/lib/report-readiness";
-import { withClientContext } from "@/lib/client-context";
+import { withClientContext, withClientContextAndParams } from "@/lib/client-context";
 
 type ReportSchedule = ReportScheduleData & {
   createdAt?: string;
@@ -714,7 +714,7 @@ export function ClientsClient() {
                     {/* Card Actions */}
                     <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-line/60 pt-3">
                       <Link
-                        href={withClientContext("/sources?tab=accounts", c.id)}
+                        href={withClientContextAndParams("/sources", c.id, { tab: "accounts" })}
                         className="inline-flex items-center gap-1 rounded-md border border-line bg-canvas px-2.5 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.04] transition-colors"
                       >
                         <Database className="h-3.5 w-3.5" />

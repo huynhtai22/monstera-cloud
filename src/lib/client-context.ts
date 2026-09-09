@@ -119,6 +119,23 @@ export function switchClientKeepingFilters(
 
 const LOCAL_URL_ORIGIN = "https://monstera.invalid";
 
+export function withClientContextAndParams(
+  pathname: string,
+  requested: string | null | undefined,
+  extra?: Record<string, string>,
+): string {
+  const params = new URLSearchParams();
+  const parsed = parseRequestedClientId(requested ?? null);
+  if (parsed.kind !== "missing") applyClientIdParam(params, parsed.raw);
+  if (extra) {
+    for (const [key, value] of Object.entries(extra)) {
+      if (key === CLIENT_ID_QUERY_PARAM) continue;
+      params.set(key, value);
+    }
+  }
+  return canonicalHref(pathname, params);
+}
+
 export function withClientContext(href: string, requested: string | null | undefined): string {
   const hasOrigin = /^[a-z][a-z0-9+.-]*:/i.test(href);
   const url = hasOrigin ? new URL(href) : new URL(href, LOCAL_URL_ORIGIN);
