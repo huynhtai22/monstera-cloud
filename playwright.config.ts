@@ -22,6 +22,9 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
+      // `npx next start` needs a home directory for its runtime cache. Keep it
+      // explicit so the test server still receives no ambient credentials.
+      HOME: process.env.HOME ?? "",
       HOSTNAME: "127.0.0.1",
       PORT: port,
       DATABASE_URL: process.env.DATABASE_URL ?? "",
