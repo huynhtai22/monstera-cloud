@@ -529,7 +529,12 @@ export function WarehouseWorkbench() {
   const [isClientExportOpen, setIsClientExportOpen] = useState(false);
 
   const replaceUrlFilters = useCallback((changes: Record<string, string | null>) => {
-    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    // Read the live URL so rapid sequential edits (e.g. filling From then To)
+    // do not drop the first change when React's searchParams snapshot is stale.
+    const current = typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search)
+      : new URLSearchParams(searchParams?.toString() ?? "");
+    const next = new URLSearchParams(current.toString());
     for (const [key, value] of Object.entries(changes)) {
       if (value) next.set(key, value);
       else next.delete(key);

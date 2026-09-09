@@ -53,7 +53,12 @@ export function ReportsClient() {
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
 
     const updateFilters = React.useCallback((changes: Record<string, string | null>, history: "push" | "replace" = "replace") => {
-        const q = new URLSearchParams(searchParams.toString());
+        // Read the live URL so rapid sequential edits (e.g. filling From then To)
+        // do not drop the first change when React's searchParams snapshot is stale.
+        const current = typeof window !== "undefined"
+            ? new URLSearchParams(window.location.search)
+            : new URLSearchParams(searchParams.toString());
+        const q = new URLSearchParams(current.toString());
         for (const [key, value] of Object.entries(changes)) {
             if (value) q.set(key, value);
             else q.delete(key);

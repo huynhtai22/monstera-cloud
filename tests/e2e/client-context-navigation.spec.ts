@@ -369,15 +369,15 @@ test.describe("client context navigation", () => {
 
     await followSidebarLink(page, "Reports");
     await page.getByRole("button", { name: "Sync activity" }).click();
-    await page.getByLabel("From").fill(DATE);
-    await page.getByLabel("To").fill(DATE);
+    await page.getByLabel("From", { exact: true }).fill(DATE);
+    await page.getByLabel("To", { exact: true }).fill(DATE);
     await page.getByRole("button", { name: "Error", exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`dateFrom=${DATE}`));
     await expect(page).toHaveURL(new RegExp(`dateTo=${DATE}`));
     await expect(page).toHaveURL(/status=error/);
     await page.reload();
-    await expect(page.getByLabel("From")).toHaveValue(DATE);
-    await expect(page.getByLabel("To")).toHaveValue(DATE);
+    await expect(page.getByLabel("From", { exact: true })).toHaveValue(DATE);
+    await expect(page.getByLabel("To", { exact: true })).toHaveValue(DATE);
     await expect(page.getByRole("button", { name: "Error", exact: true })).toHaveClass(/bg-white/);
 
     await page.getByRole("button", { name: "Success", exact: true }).click();
