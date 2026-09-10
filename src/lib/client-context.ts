@@ -12,7 +12,7 @@ export const UNASSIGNED_CLIENT_TOKEN = "unassigned";
 export const CLIENT_ID_MAX_LENGTH = 160;
 export const CLIENT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
-export type ClientContextSurface = "clients" | "sources" | "reports" | "warehouse" | "exports";
+export type ClientContextSurface = "clients" | "sources" | "reports" | "warehouse" | "exports" | "operations";
 
 export type RequestedClientKind = "missing" | "all" | "unassigned" | "id" | "malformed";
 
@@ -32,6 +32,11 @@ export const CLIENT_CONTEXT_SURFACE_POLICY: Record<
   reports: { allowsAllClients: true, allowsUnassigned: false },
   warehouse: { allowsAllClients: true, allowsUnassigned: true },
   exports: { allowsAllClients: true, allowsUnassigned: false },
+  // Operations Hub: workspace-wide and concrete-client scopes are supported.
+  // `unassigned` is intentionally rejected: the summary cannot define
+  // "unassigned" for connector health, readiness, delivery or anomalies
+  // without guessing, so the scope is refused explicitly rather than widened.
+  operations: { allowsAllClients: true, allowsUnassigned: false },
 };
 
 /** Query keys that survive a client switch. */
