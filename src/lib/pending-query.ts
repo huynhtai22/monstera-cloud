@@ -17,7 +17,7 @@
  *   when a pending edit exists.
  */
 
-import { switchClientKeepingFilters } from "./client-context";
+import { CLIENT_ID_QUERY_PARAM, switchClientKeepingFilters, withClientContextAndFilters } from "./client-context";
 
 export type UrlPatch = Record<string, string | null | undefined>;
 
@@ -132,4 +132,31 @@ export function acknowledgePendingUrlState(
     return { acknowledgedSearch: observed, pendingSearch: null };
   }
   return { ...tracker };
+}
+
+/**
+ * Build a cross-surface navigation href from pending-aware state. Filters
+ * come from the pending query when one is unacknowledged (so a rapid edit
+ * immediately followed by navigation keeps the edit); the requested client
+ * identity is read from that same effective query instead of the stale
+ * observed URL, so an uncommitted A→B switch is not overwritten with A.
+ * With no pending transition the effective query equals the observed one and
+ * the result is byte-identical to building from observed state directly.
+ * Routing stays through `withClientContextAndFilters`, preserving its
+ * single-canonical-clientId and unsafe-parameter rules.
+ */
+export function clientContextHrefWithPending(input: {
+  href: string;
+  observedSearch: string;
+  pendingSearch: string | null;
+  requestedClientId: string | null;
+}): string {
+  const { params: base } = selectPendingBase({
+    observedSearch: input.observedSearch,
+    pendingSearch: input.pendingSearch,
+  });
+  const requested = input.pendingSearch === null
+    ? input.requestedClientId
+    : base.get(CLIENT_ID_QUERY_PARAM);
+  return withClientContextAndFilters(input.href, requested, base);
 }

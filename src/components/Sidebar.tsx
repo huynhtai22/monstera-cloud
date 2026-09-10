@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { LogoMark } from "./Logo";
 import { usePathname, useSearchParams } from "next/navigation";
-import { shouldPropagateClientContext, withClientContextAndFilters } from "@/lib/client-context";
+import { shouldPropagateClientContext } from "@/lib/client-context";
+import { clientContextHrefWithPending } from "@/lib/pending-query";
 import { usePendingNavigation } from "./client-context/PendingNavigationProvider";
 import { useState, useRef, useEffect } from "react";
 import {
@@ -71,15 +72,20 @@ export function Sidebar({
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const requestedClientId = searchParams.get("clientId");
-    // Pending-aware cross-surface links: an uncommitted page edit is visible
-    // in the rendered href immediately. Subscription rerenders links whenever
-    // staged destinations change.
+    // Pending-aware cross-surface links: an uncommitted page edit — including
+    // an uncommitted client switch — is visible in the rendered href
+    // immediately. Subscription rerenders links whenever staged destinations
+    // change.
     const pending = usePendingNavigation();
     const navHref = (href: string) => {
         if (!shouldPropagateClientContext(href)) return href;
         const live = `?${searchParams.toString()}`;
-        const effective = pathname ? pending.getBase(pathname, live) : live;
-        return withClientContextAndFilters(href, requestedClientId, new URLSearchParams(effective));
+        return clientContextHrefWithPending({
+            href,
+            observedSearch: live,
+            pendingSearch: pathname ? pending.pendingFor(pathname) : null,
+            requestedClientId,
+        });
     };
     const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);

@@ -5,9 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   parseRequestedClientId,
   shouldPropagateClientContext,
-  withClientContextAndFilters,
 } from "@/lib/client-context";
-import { switchPendingClient } from "@/lib/pending-query";
+import { clientContextHrefWithPending, switchPendingClient } from "@/lib/pending-query";
 import { usePendingNavigation } from "./PendingNavigationProvider";
 
 export function useClientContextNavigation() {
@@ -50,10 +49,12 @@ export function useClientContextNavigation() {
     if (!shouldPropagateClientContext(path)) return path;
     const currentPath = pathname ?? "";
     const live = `?${observedSearchString}`;
-    const effective = currentPath
-      ? pending.getBase(currentPath, live)
-      : live;
-    return withClientContextAndFilters(path, requestedRaw, new URLSearchParams(effective));
+    return clientContextHrefWithPending({
+      href: path,
+      observedSearch: live,
+      pendingSearch: currentPath ? pending.pendingFor(currentPath) : null,
+      requestedClientId: requestedRaw,
+    });
   }, [requestedRaw, observedSearchString, pathname, pending]);
 
   return { requested, requestedRaw, switchClient, hrefFor, searchParams, pathname };
