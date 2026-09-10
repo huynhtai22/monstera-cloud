@@ -679,11 +679,15 @@ export function operationsSection<T>(
   data: T,
   options: { attention: boolean; empty: boolean; truncated: boolean; limit: number; href: string },
 ): OperationsSection<T> {
-  if (options.empty) {
+  // Fail closed on truncation. A bounded scan cannot certify the absence of
+  // evidence: rows beyond the bound may be attention-worthy (or anomalous), so
+  // a truncated section must never report `empty` or `ready`. It degrades to
+  // `attention`, surfacing the omission instead of presenting it as health.
+  if (options.empty && !options.truncated) {
     return { state: "empty", data, truncated: options.truncated, limit: options.limit, reason: null, href: options.href };
   }
   return {
-    state: options.attention ? "attention" : "ready",
+    state: options.attention || options.truncated ? "attention" : "ready",
     data,
     truncated: options.truncated,
     limit: options.limit,
@@ -907,13 +911,32 @@ async function loadIngestion(
       syncLogErrors.slice(0, OPERATIONS_LIST_LIMIT),
       { limit: OPERATIONS_LIST_LIMIT, windowDays: OPERATIONS_INGESTION_WINDOW_DAYS },
     );
-    // `totals.total` counts the bounded scan; grouped counts are authoritative.
-    const groupedTotal = grouped.reduce((sum, entry) => sum + entry._count._all, 0);
-    data.totals.total = groupedTotal;
+    // The grouped counts are authoritative for the whole window, so they drive
+    // BOTH the total and the per-status breakdown. Deriving the breakdown from
+    // the bounded job scan instead would make `sum(status) !== total` and would
+    // let `attention` miss failures outside the newest OPERATIONS_LIST_LIMIT jobs.
+    const totals: IngestionData["totals"] = {
+      total: 0,
+      queued: 0,
+      running: 0,
+      completed: 0,
+      partial: 0,
+      failed: 0,
+    };
+    for (const entry of grouped) {
+      const count = entry._count._all;
+      totals.total += count;
+      if (entry.status === "queued") totals.queued += count;
+      else if (entry.status === "running") totals.running += count;
+      else if (entry.status === "completed") totals.completed += count;
+      else if (entry.status === "partial") totals.partial += count;
+      else if (entry.status === "failed") totals.failed += count;
+    }
+    data.totals = totals;
 
     return operationsSection(data, {
-      attention: data.totals.failed > 0 || data.totals.partial > 0 || data.syncLogErrors.length > 0,
-      empty: groupedTotal === 0 && syncLogErrors.length === 0,
+      attention: totals.failed > 0 || totals.partial > 0 || data.syncLogErrors.length > 0,
+      empty: totals.total === 0 && syncLogErrors.length === 0,
       truncated,
       limit: OPERATIONS_LIST_LIMIT,
       href,
@@ -974,7 +997,7 @@ async function loadDelivery(
         ...(scope.clientId ? { clientId: scope.clientId } : scope.mode === "workspace" ? {} : { id: { in: [] } }),
       },
       orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
-      take: OPERATIONS_DELIVERY_RECEIPT_LIMIT,
+      take: OPERATIONS_DELIVERY_RECEIPT_LIMIT + 1,
       select: {
         id: true,
         clientId: true,
@@ -986,11 +1009,15 @@ async function loadDelivery(
         retrievedAt: true,
       },
     });
-    const data = summarizeDelivery(receipts, { now, limit: OPERATIONS_LIST_LIMIT });
+    const truncated = receipts.length > OPERATIONS_DELIVERY_RECEIPT_LIMIT;
+    const data = summarizeDelivery(receipts.slice(0, OPERATIONS_DELIVERY_RECEIPT_LIMIT), {
+      now,
+      limit: OPERATIONS_LIST_LIMIT,
+    });
     return operationsSection(data, {
       attention: data.totals.stale > 0,
       empty: data.totals.receipts === 0,
-      truncated: receipts.length >= OPERATIONS_DELIVERY_RECEIPT_LIMIT,
+      truncated,
       limit: OPERATIONS_LIST_LIMIT,
       href,
     });
@@ -1009,7 +1036,9 @@ async function loadAnomalies(
     const since = new Date(now.getTime() - OPERATIONS_ANOMALY_WINDOW_DAYS * DAY_MS);
     const metrics = await prisma.campaignMetric.findMany({
       where: { ...metricScopeWhere(scope, workspaceId), date: { gte: since } },
-      orderBy: [{ date: "asc" }, { connectionId: "asc" }, { accountId: "asc" }, { campaignId: "asc" }],
+      // Scan newest-first so a truncated scan retains the recent rows anomaly
+      // detection anchors to; oldest-first would drop them and suppress alerts.
+      orderBy: [{ date: "desc" }, { connectionId: "asc" }, { accountId: "asc" }, { campaignId: "asc" }],
       take: OPERATIONS_ANOMALY_ROW_LIMIT + 1,
       select: {
         connectionId: true,

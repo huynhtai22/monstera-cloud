@@ -371,3 +371,31 @@ describe("operations summary: query contract", () => {
     assert.equal(OPERATIONS_SUMMARY_VERSION, "operations-summary-v1");
   });
 });
+
+describe("operations summary: truncated evidence", () => {
+  it("fails closed on truncation instead of reporting ready or empty", () => {
+    const truncatedClean = operationsSection(
+      { value: 0 },
+      { attention: false, empty: false, truncated: true, limit: 25, href: "/sources" },
+    );
+    assert.equal(truncatedClean.state, "attention");
+    assert.equal(truncatedClean.truncated, true);
+
+    const truncatedEmpty = operationsSection(
+      { value: 0 },
+      { attention: false, empty: true, truncated: true, limit: 25, href: "/clients" },
+    );
+    assert.equal(truncatedEmpty.state, "attention");
+    assert.equal(truncatedEmpty.truncated, true);
+
+    // Untruncated sections keep the original, non-fail-closed semantics.
+    assert.equal(
+      operationsSection({ value: 0 }, { attention: false, empty: true, truncated: false, limit: 25, href: "/sources" }).state,
+      "empty",
+    );
+    assert.equal(
+      operationsSection({ value: 0 }, { attention: false, empty: false, truncated: false, limit: 25, href: "/sources" }).state,
+      "ready",
+    );
+  });
+});

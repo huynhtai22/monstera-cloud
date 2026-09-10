@@ -427,4 +427,105 @@ describe("PostgreSQL integration: operations summary isolation", () => {
       }
     }
   });
+
+  it("reports consistent ingestion totals and truthful attention when failures fall outside the bounded scan", async () => {
+    const wsIngest = `ws-ingest-${suffix}`;
+    const createdIds: string[] = [];
+    await db.workspace.create({
+      data: { id: wsIngest, ownerId: ids.ownerA, name: "Ops Ingest", slug: `ops-ingest-${suffix}`, plan: "professional" },
+    });
+    await db.warehouseImportJob.createMany({
+      data: [
+        ...Array.from({ length: 5 }, (_, index) => {
+          const id = `job-old-failed-${suffix}-${index}`;
+          createdIds.push(id);
+          return {
+            id,
+            workspaceId: wsIngest,
+            userId: ids.ownerA,
+            since: "2026-09-01",
+            until: "2026-09-07",
+            items: [],
+            status: "failed",
+            errorMsg: "older failure",
+            createdAt: new Date(`2026-09-08T0${index}:00:00.000Z`),
+          };
+        }),
+        ...Array.from({ length: 25 }, (_, index) => {
+          const id = `job-recent-completed-${suffix}-${index}`;
+          createdIds.push(id);
+          return {
+            id,
+            workspaceId: wsIngest,
+            userId: ids.ownerA,
+            since: "2026-09-01",
+            until: "2026-09-07",
+            items: [],
+            status: "completed",
+            createdAt: new Date(`2026-09-09T11:${String(index).padStart(2, "0")}:00.000Z`),
+          };
+        }),
+      ],
+    });
+    try {
+      const summary = await loadOperationsSummary({ workspaceId: wsIngest, now: NOW });
+      const totals = summary.sections.ingestion.data!.totals;
+      // The bounded scan keeps only the newest 25 jobs (all completed), so the
+      // five older failures are visible ONLY through the grouped counts.
+      assert.equal(totals.total, 30);
+      assert.equal(totals.completed, 25);
+      assert.equal(totals.failed, 5);
+      assert.equal(
+        totals.completed + totals.failed + totals.partial + totals.queued + totals.running,
+        totals.total,
+        "per-status counts must sum to the authoritative total",
+      );
+      assert.equal(summary.sections.ingestion.truncated, true);
+      assert.equal(summary.sections.ingestion.state, "attention");
+    } finally {
+      await db.warehouseImportJob.deleteMany({ where: { id: { in: createdIds } } });
+      await db.workspace.delete({ where: { id: wsIngest } });
+    }
+  });
+
+  it("fails closed when connector health evidence is truncated", async () => {
+    const wsTrunc = `ws-trunc-${suffix}`;
+    const connTrunc = `conn-trunc-${suffix}`;
+    await db.workspace.create({
+      data: { id: wsTrunc, ownerId: ids.ownerA, name: "Ops Trunc", slug: `ops-trunc-${suffix}`, plan: "professional" },
+    });
+    await db.connection.create({
+      data: {
+        id: connTrunc,
+        workspaceId: wsTrunc,
+        name: "Filler",
+        provider: "google_ads",
+        type: "source",
+        status: "connected",
+        remoteAccountId: `trunc-${suffix}`,
+        credentials: "{}",
+      },
+    });
+    await db.providerAccountHealth.createMany({
+      data: Array.from({ length: 30 }, (_, index) => ({
+        workspaceId: wsTrunc,
+        connectionId: connTrunc,
+        provider: "google_ads",
+        accountId: `acct-${String(index).padStart(3, "0")}`,
+        status: "healthy",
+      })),
+    });
+    try {
+      const summary = await loadOperationsSummary({ workspaceId: wsTrunc, now: NOW });
+      const section = summary.sections.connectorHealth;
+      assert.equal(section.truncated, true);
+      assert.equal(section.data?.attention.length, 0, "the retained slice is entirely healthy");
+      // 30 rows exceed the 25 bound, so the section must not certify `ready`.
+      assert.equal(section.state, "attention");
+    } finally {
+      await db.providerAccountHealth.deleteMany({ where: { workspaceId: wsTrunc } });
+      await db.connection.deleteMany({ where: { workspaceId: wsTrunc } });
+      await db.workspace.delete({ where: { id: wsTrunc } });
+    }
+  });
 });

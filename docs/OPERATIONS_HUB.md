@@ -91,6 +91,15 @@ collapsed into a healthy zero, and unsupported/unavailable sections carry no
 All lists use explicit sort keys with an `id` tiebreaker, so output is stable
 regardless of input order. `truncated` is reported rather than hidden.
 
+**Truncation fails closed.** A section that omitted rows can never report
+`ready` or `empty`: because rows beyond the bound may be attention-worthy, the
+section degrades to `attention` and sets `truncated: true`, so an omission can
+never be mistaken for health. Section counts are authoritative for the whole
+window (`ingestion` derives its total *and* its per-status breakdown from the
+grouped counts, never from the bounded job scan), so `sum(status) === total`.
+The `anomalies` scan reads newest-first so a truncated scan retains the recent
+rows detection anchors to.
+
 ### Sanitization
 
 Provider-supplied error text passes through `sanitizeEvidenceText`: control
