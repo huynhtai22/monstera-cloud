@@ -3,11 +3,13 @@ import { describe, it } from "node:test";
 import {
   acknowledgePendingUrlState,
   applyUrlPatch,
+  clientContextHrefWithPending,
   createPendingUrlTracker,
   mergePendingUrlState,
   selectPendingBase,
   switchPendingClient,
 } from "./pending-query";
+import { withClientContextAndFilters } from "./client-context";
 
 const OBSERVED = "?startDate=2026-09-01&endDate=2026-09-07&platform=google_ads";
 
@@ -230,5 +232,80 @@ describe("pending acknowledgement contract", () => {
     const snapshot = { ...tracker };
     acknowledgePendingUrlState(tracker, "?platform=meta_ads");
     assert.deepEqual(tracker, snapshot);
+  });
+});
+
+describe("pending-aware cross-surface href contract", () => {
+  const OBSERVED_A = "?clientId=cl_a&platform=google_ads&startDate=2026-09-04&accountId=act_9&page=2&code=oauth";
+  const PENDING_B = "?clientId=cl_b&platform=google_ads&startDate=2026-09-05&accountId=act_9&page=2&code=oauth";
+
+  it("staged A to B switch produces a destination URL with B", () => {
+    const href = clientContextHrefWithPending({
+      href: "/reports",
+      observedSearch: OBSERVED_A,
+      pendingSearch: PENDING_B,
+      requestedClientId: "cl_a",
+    });
+    const params = new URLSearchParams(href.split("?")[1] ?? "");
+    assert.deepEqual(params.getAll("clientId"), ["cl_b"]);
+    assert.equal(params.get("platform"), "google_ads");
+    assert.equal(params.get("startDate"), "2026-09-05");
+  });
+
+  it("no pending transition produces byte-identical settled URLs", () => {
+    const observed = "?clientId=cl_a&platform=google_ads&startDate=2026-09-04";
+    const viaHelper = clientContextHrefWithPending({
+      href: "/reports",
+      observedSearch: observed,
+      pendingSearch: null,
+      requestedClientId: "cl_a",
+    });
+    const direct = withClientContextAndFilters("/reports", "cl_a", new URLSearchParams(observed));
+    assert.equal(viaHelper, direct);
+  });
+
+  it("approved filters remain while unsafe parameters are removed", () => {
+    const href = clientContextHrefWithPending({
+      href: "/explorer",
+      observedSearch: OBSERVED_A,
+      pendingSearch: PENDING_B,
+      requestedClientId: "cl_a",
+    });
+    const params = new URLSearchParams(href.split("?")[1] ?? "");
+    assert.equal(params.get("clientId"), "cl_b");
+    assert.equal(params.get("platform"), "google_ads");
+    for (const key of ["accountId", "page", "code"]) {
+      assert.equal(params.has(key), false, key);
+    }
+  });
+
+  it("staged switch away from any client drops the client parameter", () => {
+    const href = clientContextHrefWithPending({
+      href: "/explorer",
+      observedSearch: OBSERVED_A,
+      pendingSearch: "?platform=google_ads",
+      requestedClientId: "cl_a",
+    });
+    const params = new URLSearchParams(href.split("?")[1] ?? "");
+    assert.equal(params.has("clientId"), false);
+    assert.equal(params.get("platform"), "google_ads");
+  });
+
+  it("independent pending inputs produce independent outputs", () => {
+    const first = clientContextHrefWithPending({
+      href: "/reports",
+      observedSearch: OBSERVED_A,
+      pendingSearch: PENDING_B,
+      requestedClientId: "cl_a",
+    });
+    const second = clientContextHrefWithPending({
+      href: "/reports",
+      observedSearch: OBSERVED_A,
+      pendingSearch: null,
+      requestedClientId: "cl_a",
+    });
+    assert.ok(first.includes("clientId=cl_b"));
+    assert.ok(second.includes("clientId=cl_a"));
+    assert.equal(OBSERVED_A.includes("cl_b"), false);
   });
 });

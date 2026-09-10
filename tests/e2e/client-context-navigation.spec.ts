@@ -484,6 +484,35 @@ test.describe("client context navigation", () => {
     await expect(page).toHaveURL(new RegExp(`startDate=${nextStart}`));
   });
 
+  test("client switch followed immediately by sidebar navigation keeps the new client", async ({ authenticatedPage: page }) => {
+    await page.goto(
+      `/explorer?clientId=${fixture.clients.aurora.id}&startDate=${DATE}&endDate=${DATE}`
+      + `&platform=google_ads&accountId=unsafe-act&page=3&code=oauth-code`,
+    );
+    await expect(page.getByText("Aurora Exclusive Campaign")).toBeVisible();
+
+    // Switch through the real global context bar and immediately leave
+    // through a real sidebar destination, with no intermediate URL wait: the
+    // rendered sidebar href must already carry the pending client.
+    await selectClient(page, fixture.clients.northwind.name);
+    await followSidebarLink(page, "Reports");
+
+    await expect(page).toHaveURL(/\/reports\?/);
+    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
+    await expect(page.getByTestId("client-context-bar")).toContainText("Viewing: Northwind Traders");
+    await expect(page).toHaveURL(new RegExp(`startDate=${DATE}`));
+    await expect(page).toHaveURL(/platform=google_ads/);
+    await expect(page).not.toHaveURL(/accountId=|page=3|code=/);
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/explorer/);
+    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
+    await expect(page.getByTestId("client-context-bar")).toContainText("Viewing: Northwind Traders");
+    await page.goForward();
+    await expect(page).toHaveURL(/\/reports\?/);
+    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
+  });
+
   test("rival and malformed client ids reveal no rival data and cannot broaden warehouse/report/export scope", async ({ authenticatedPage: page, browser }) => {
     await page.goto(`/explorer?clientId=${fixture.rivalClientId}&startDate=${DATE}&endDate=${DATE}`);
     await expect(page.getByTestId("client-context-bar")).toContainText("This client is no longer available");
