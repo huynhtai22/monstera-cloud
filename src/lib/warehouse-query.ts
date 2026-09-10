@@ -4,6 +4,17 @@ import prisma from "@/lib/prisma";
 const DEFAULT_LIMIT = 1_000;
 const HARD_LIMIT = 100_000;
 const STALE_AFTER_MS = 26 * 60 * 60 * 1_000;
+/**
+ * Interactive-transaction budget for one consistent warehouse snapshot read.
+ * Prisma defaults interactive transactions to five seconds, which a large
+ * export (up to HARD_LIMIT rows plus the count, aggregate and metadata reads
+ * sharing the same deadline) can exceed under load — failing the whole read
+ * closed. Mirrors the established heavier-transaction budget used elsewhere
+ * in the repo. Callers that already hold a transaction pass it explicitly and
+ * bypass this wrapper entirely.
+ */
+export const WAREHOUSE_SNAPSHOT_TIMEOUT_MS = 20_000;
+export const WAREHOUSE_SNAPSHOT_MAX_WAIT_MS = 10_000;
 export type ScopedTransaction = Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
 
 export type WarehouseFreshnessStatus = "fresh" | "stale" | "refreshing" | "failed" | "never" | "unavailable";
@@ -324,6 +335,10 @@ export async function queryWarehouse(input: WarehouseQueryInput, db?: ScopedTran
   if (db) return queryWarehouseInSnapshot(input, db);
   return prisma.$transaction(
     (tx) => queryWarehouseInSnapshot(input, tx as ScopedTransaction),
-    { isolationLevel: "RepeatableRead" },
+    {
+      isolationLevel: "RepeatableRead",
+      timeout: WAREHOUSE_SNAPSHOT_TIMEOUT_MS,
+      maxWait: WAREHOUSE_SNAPSHOT_MAX_WAIT_MS,
+    },
   );
 }
