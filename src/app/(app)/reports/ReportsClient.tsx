@@ -14,6 +14,10 @@ import { REPORTS_SOURCE_CHIPS, pipelineMatchesSourceFilter } from "@/lib/reports
 import { SyncActivityTableSkeleton } from "@/components/reports/SyncActivityLoadingState";
 import { PerformanceReportDashboard } from "@/components/reports/PerformanceReportDashboard";
 import { WeeklyPerformanceBlueprint } from "@/components/reports/WeeklyPerformanceBlueprint";
+import { ALL_CLIENTS_TOKEN } from "@/lib/client-context";
+import { mergePendingUrlState } from "@/lib/pending-query";
+import { usePendingNavigation } from "@/components/client-context/PendingNavigationProvider";
+import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
 
 const REPORTS_VIEW_STORAGE = "monstera_reports_view_v1";
 
@@ -29,27 +33,74 @@ export function ReportsClient() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const pathname = usePathname();
-    const sourceFilter = searchParams.get("source") ?? "";
-    const clientFilter = searchParams.get("clientId") ?? "";
+    const sourceParam = searchParams.get("source") ?? "";
+    const sourceFilter = REPORTS_SOURCE_CHIPS.some((chip) => chip.id === sourceParam) ? sourceParam : "";
+    const { switchClient } = useClientContextNavigation();
+    const clientFilterRaw = searchParams.get("clientId") ?? "";
+    const clientFilter = clientFilterRaw === ALL_CLIENTS_TOKEN ? "" : clientFilterRaw;
     const viewParam = searchParams.get("view");
     const viewMode: "performance" | "sync" = viewParam === "sync" ? "sync" : "performance";
 
-    const [statusFilter, setStatusFilter] = React.useState<"all" | "success" | "error">("all");
-    const [dateFrom, setDateFrom] = React.useState("");
-    const [dateTo, setDateTo] = React.useState("");
+    const statusParam = searchParams.get("status");
+    const statusFilter: "all" | "success" | "error" = statusParam === "success" || statusParam === "error"
+        ? statusParam
+        : "all";
+    const normalizeDate = (value: string | null) =>
+        value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00.000Z`).getTime())
+            ? value
+            : "";
+    const dateFrom = normalizeDate(searchParams.get("dateFrom"));
+    const dateTo = normalizeDate(searchParams.get("dateTo"));
     const [selectedLog, setSelectedLog] = React.useState<SyncLogWithPipeline | null>(null);
     const [isDrawerOpen, setIsDrawerOpen] = React.useState(false);
+    // Pending navigations are owned by the shared provider store so filter
+    // edits, view-mode changes, the local client control, the global context
+    // bar and sidebar all observe the same pending query for this surface.
+    const pending = usePendingNavigation();
+    const observedSearchString = searchParams.toString();
+
+    const updateFilters = React.useCallback((changes: Record<string, string | null>, history: "push" | "replace" = "replace") => {
+        const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
+        const { search } = mergePendingUrlState({
+            observedSearch: live,
+            pendingSearch: pending.pendingFor(pathname),
+            patch: changes,
+        });
+        pending.stage(pathname, live, search);
+        router[history](search ? `${pathname}${search}` : pathname, { scroll: false });
+    }, [pathname, router, observedSearchString, pending]);
+
+    // Acknowledge by serialized query content: recreated param objects with
+    // identical content cannot clear pending state, while genuine external
+    // history navigation discards it so controls hydrate from the observed URL.
+    React.useEffect(() => {
+        pending.acknowledge(pathname, `?${observedSearchString}`);
+    }, [pathname, observedSearchString, pending]);
+
+    const setStatusFilter = (value: "all" | "success" | "error") =>
+        updateFilters({ status: value === "all" ? null : value }, "push");
+    const setDateFrom = (value: string) => updateFilters({ dateFrom: value });
+    const setDateTo = (value: string) => updateFilters({ dateTo: value });
+
+    React.useEffect(() => {
+        const changes: Record<string, string | null> = {};
+        if (sourceParam && sourceFilter === "") changes.source = null;
+        if (statusParam && statusFilter === "all") changes.status = null;
+        if (searchParams.has("dateFrom") && !dateFrom) changes.dateFrom = null;
+        if (searchParams.has("dateTo") && !dateTo) changes.dateTo = null;
+        if (Object.keys(changes).length > 0) updateFilters(changes);
+    }, [dateFrom, dateTo, searchParams, sourceFilter, sourceParam, statusFilter, statusParam, updateFilters]);
 
     const setViewMode = React.useCallback((mode: "performance" | "sync") => {
-        const q = new URLSearchParams(searchParams.toString());
-        if (mode === "sync") {
-            q.set("view", "sync");
-        } else {
-            q.delete("view");
-        }
-        const qs = q.toString();
-        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    }, [searchParams, router, pathname]);
+        const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
+        const { search } = mergePendingUrlState({
+            observedSearch: live,
+            pendingSearch: pending.pendingFor(pathname),
+            patch: mode === "sync" ? { view: "sync" } : { view: null },
+        });
+        pending.stage(pathname, live, search);
+        router.push(search ? `${pathname}${search}` : pathname, { scroll: false });
+    }, [observedSearchString, router, pathname, pending]);
 
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const { data: clientsPayload } = useSWR(
@@ -80,14 +131,22 @@ export function ReportsClient() {
                 dateTo?: string;
                 viewMode?: "performance" | "sync";
             };
-            if (v.statusFilter) setStatusFilter(v.statusFilter);
-            if (typeof v.dateFrom === "string") setDateFrom(v.dateFrom);
-            if (typeof v.dateTo === "string") setDateTo(v.dateTo);
             const q = new URLSearchParams(searchParams.toString());
             let changed = false;
-            if (v.source !== undefined && v.source !== (searchParams.get("source") ?? "")) {
-                if (v.source) q.set("source", v.source);
-                else q.delete("source");
+            if (!searchParams.has("source") && v.source && REPORTS_SOURCE_CHIPS.some((chip) => chip.id === v.source)) {
+                q.set("source", v.source);
+                changed = true;
+            }
+            if (!searchParams.has("status") && (v.statusFilter === "success" || v.statusFilter === "error")) {
+                q.set("status", v.statusFilter);
+                changed = true;
+            }
+            if (!searchParams.has("dateFrom") && normalizeDate(v.dateFrom ?? "")) {
+                q.set("dateFrom", v.dateFrom!);
+                changed = true;
+            }
+            if (!searchParams.has("dateTo") && normalizeDate(v.dateTo ?? "")) {
+                q.set("dateTo", v.dateTo!);
                 changed = true;
             }
             if (v.viewMode && !searchParams.get("view") && v.viewMode === "sync") {
@@ -183,30 +242,15 @@ export function ReportsClient() {
     };
 
     const setSource = (id: string) => {
-        const q = new URLSearchParams(searchParams.toString());
-        if (id) q.set("source", id);
-        else q.delete("source");
-        const qs = q.toString();
-        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        updateFilters({ source: id }, "push");
     };
 
     const setClient = (id: string) => {
-        const q = new URLSearchParams(searchParams.toString());
-        if (id) q.set("clientId", id);
-        else q.delete("clientId");
-        const qs = q.toString();
-        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+        switchClient(id ? id : ALL_CLIENTS_TOKEN);
     };
 
     const resetFilters = () => {
-        const q = new URLSearchParams(searchParams.toString());
-        q.delete("source");
-        q.delete("clientId");
-        const qs = q.toString();
-        router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-        setDateFrom("");
-        setDateTo("");
-        setStatusFilter("all");
+        updateFilters({ source: null, dateFrom: null, dateTo: null, status: null }, "push");
     };
 
     const activeSourceLabel = REPORTS_SOURCE_CHIPS.find((chip) => chip.id === sourceFilter)?.label ?? "All sources";
@@ -291,7 +335,7 @@ export function ReportsClient() {
                         <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">Client</span>
                         <button
                             type="button"
-                            onClick={() => setClient("")}
+                            onClick={() => setClient(ALL_CLIENTS_TOKEN)}
                             className={cn(
                                 "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
                                 clientFilter === ""
@@ -436,6 +480,12 @@ export function ReportsClient() {
                             {isValidating ? "Trying again…" : "Try again"}
                         </button>
                     </div>
+                ) : data?.attribution === "unavailable" ? (
+                    <EmptyState
+                        icon={<Info className="h-12 w-12" />}
+                        title="Client-level sync activity unavailable"
+                        description="These pipeline logs do not record provider-account identity, so activity from a shared source cannot be safely attributed to this client. Warehouse data remains account-scoped."
+                    />
                 ) : rawLogs.length === 0 && !hasActiveFilters ? (
                     <EmptyState
                         icon={<Database className="h-12 w-12" />}

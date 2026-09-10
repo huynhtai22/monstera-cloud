@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AlertCircle, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { normalizeAnalystClientId } from "@/lib/client-context";
 import { useWorkspaceStore } from "@/store/workspace";
 
 type TurnResponse = {
@@ -30,9 +31,11 @@ function analystEnabled(): boolean {
 
 export function AnalystPane() {
   const enabled = analystEnabled();
-  const { activeWorkspaceId } = useWorkspaceStore();
-  const searchParams = useSearchParams();
-  const clientId = searchParams.get("clientId")?.trim() || undefined;
+    const { activeWorkspaceId } = useWorkspaceStore();
+    const searchParams = useSearchParams();
+    // The All Clients sentinel is a URL representation, not a database id:
+    // omit it so the request stays workspace-wide instead of 404ing.
+    const clientId = normalizeAnalystClientId(searchParams.get("clientId"));
 
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
@@ -68,7 +71,15 @@ export function AnalystPane() {
         return;
       }
       if (res.status === 404) {
-        setResult({ status: "refused", answer: "Governed analyst is not enabled.", blockers: ["flag"] });
+        // A 404 for a concrete client means the route's strict validation
+        // rejected it; any other 404 means the analyst is not enabled here.
+        // Never present an unknown client as a disabled analyst.
+        const unknownClient = data.error === "Client not found";
+        setResult({
+          status: "refused",
+          answer: unknownClient ? "Selected client is no longer available." : "Governed analyst is not enabled.",
+          blockers: [unknownClient ? "client" : "flag"],
+        });
         return;
       }
       if (!res.ok) {

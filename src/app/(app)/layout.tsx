@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { AppLayout } from "@/components/AppLayout";
 
 export default function AppLayoutGroup({
@@ -5,5 +6,9 @@ export default function AppLayoutGroup({
 }: Readonly<{
     children: React.ReactNode;
 }>) {
-    return <AppLayout>{children}</AppLayout>;
+    return (
+        <Suspense fallback={null}>
+            <AppLayout>{children}</AppLayout>
+        </Suspense>
+    );
 }

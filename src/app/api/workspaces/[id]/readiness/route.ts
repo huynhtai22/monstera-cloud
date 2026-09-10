@@ -3,6 +3,12 @@ import { getAuthSession } from "@/lib/auth-session";
 import { parseReadinessRequest } from "@/lib/report-readiness-request";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { deriveReportingReadiness } from "@/lib/reporting-readiness";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 /**
  * GET /api/workspaces/[id]/readiness?since=&until=&clientId=
@@ -35,9 +41,16 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
   }
 
   try {
-    const readiness = await deriveReportingReadiness(workspaceId, { since: parsed.window.start, until: parsed.window.end, clientId });
+    const resolution = await resolveClientContext({
+      workspaceId,
+      requestedClientId: clientId,
+      surface: "reports",
+    });
+    assertQueryableClientContext(resolution);
+    const scopedClientId = warehouseClientId(resolution);
+    const readiness = await deriveReportingReadiness(workspaceId, { since: parsed.window.start, until: parsed.window.end, clientId: scopedClientId });
     return NextResponse.json(readiness, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
-    return toRbacResponse(error) ?? NextResponse.json({ error: "Unable to evaluate readiness" }, { status: 500 });
+    return toClientContextResponse(error) ?? toRbacResponse(error) ?? NextResponse.json({ error: "Unable to evaluate readiness" }, { status: 500 });
   }
 }

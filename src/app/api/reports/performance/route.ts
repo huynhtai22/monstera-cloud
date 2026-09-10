@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth-session";
-import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { buildPerformanceReport } from "@/lib/performance-reports";
 import { detectMarketingAnomalies } from "@/lib/marketing-anomalies";
 import type { MetricRowExport } from "@/lib/client-export";
+import { queryWarehouse } from "@/lib/warehouse-query";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  resolvedClientPayload,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 /**
  * GET /api/reports/performance
@@ -50,72 +57,23 @@ export async function GET(req: Request) {
       start = new Date(end.getTime() - MAX_RANGE_MS);
     }
 
-    let clientInfo: { id: string; name: string } | null = null;
-    let connectionIds: string[] | undefined;
-
-    if (clientId) {
-      const client = await prisma.client.findFirst({
-        where: { id: clientId, workspaceId },
-        select: { id: true, name: true },
-      });
-      if (!client) {
-        return NextResponse.json({ error: "Client not found in this workspace" }, { status: 404 });
-      }
-      clientInfo = client;
-      const conns = await prisma.connection.findMany({
-        where: { workspaceId, clientId },
-        select: { id: true },
-      });
-      connectionIds = conns.map((c) => c.id);
-
-      if (connectionIds.length === 0) {
-        return NextResponse.json({
-          report: buildPerformanceReport([]),
-          client: clientInfo,
-          anomalies: [],
-          dateRange: {
-            startDate: start.toISOString().split("T")[0],
-            endDate: end.toISOString().split("T")[0],
-          },
-          latestDataDate: null,
-        });
-      }
-    }
-
-    const whereClause: any = {
+    const resolution = await resolveClientContext({
       workspaceId,
-      date: {
-        gte: start,
-        lte: end,
-      },
-    };
+      requestedClientId: clientId,
+      surface: "reports",
+    });
+    assertQueryableClientContext(resolution);
+    const clientInfo = resolvedClientPayload(resolution);
 
-    if (connectionIds) {
-      whereClause.connectionId = { in: connectionIds };
-    }
-
-    const dbRows = await prisma.campaignMetric.findMany({
-      where: whereClause,
-      take: 10_000,
-      select: {
-        platform: true,
-        accountId: true,
-        accountName: true,
-        campaignId: true,
-        campaignName: true,
-        connectionId: true,
-        date: true,
-        spend: true,
-        impressions: true,
-        clicks: true,
-        conversions: true,
-        revenue: true,
-        currency: true,
-      },
-      orderBy: { date: "asc" },
+    const warehouseResult = await queryWarehouse({
+      workspaceId,
+      clientId: warehouseClientId(resolution),
+      startDate: start,
+      endDate: end,
+      limit: 10_000,
     });
 
-    const rows: MetricRowExport[] = dbRows.map((r) => ({
+    const rows: MetricRowExport[] = warehouseResult.rows.map((r) => ({
       platform: r.platform,
       accountId: r.accountId,
       accountName: r.accountName,
@@ -154,6 +112,8 @@ export async function GET(req: Request) {
       latestDataDate,
     });
   } catch (error: unknown) {
+    const clientCtx = toClientContextResponse(error);
+    if (clientCtx) return clientCtx;
     const rbac = toRbacResponse(error);
     if (rbac) return rbac;
     return NextResponse.json(

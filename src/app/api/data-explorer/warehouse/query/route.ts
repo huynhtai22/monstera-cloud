@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
-import { requireWorkspaceAccess } from "@/lib/rbac";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { queryWarehouse } from "@/lib/warehouse-query";
+import {
+  assertQueryableClientContext,
+  resolveClientContext,
+  toClientContextResponse,
+  warehouseClientId,
+} from "@/lib/client-context-server";
 
 const WAREHOUSE_COLUMNS = ["date", "platform", "accountId", "accountName", "campaignId", "campaignName", "impressions", "clicks", "spend", "cpc", "ctr", "conversions", "roas", "currency"];
 
 export async function GET(request: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const query = new URL(request.url).searchParams;
   const workspaceId = query.get("workspaceId") ?? "";
@@ -24,20 +29,36 @@ export async function GET(request: Request) {
   if (!Number.isFinite(startRow) || !Number.isFinite(endRow) || startRow < 0 || endRow <= startRow || endRow - startRow > 500) {
     return NextResponse.json({ error: "Invalid startRow/endRow (max 500 rows)" }, { status: 400 });
   }
-  await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer", operation: "query_warehouse" });
+  try {
+    await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer", operation: "query_warehouse" });
+  } catch (error) {
+    const rbac = toRbacResponse(error);
+    if (rbac) return rbac;
+    throw error;
+  }
   if (connectionId) {
     const connection = await prisma.connection.findFirst({ where: { id: connectionId, workspaceId }, select: { id: true } });
     if (!connection) return NextResponse.json({ error: "Connection not found in workspace" }, { status: 404 });
   }
-  if (clientId && clientId !== "unassigned") {
-    const client = await prisma.client.findFirst({ where: { id: clientId, workspaceId }, select: { id: true } });
-    if (!client) return NextResponse.json({ error: "Client not found in workspace" }, { status: 404 });
+  let scopedClientId: string | undefined;
+  try {
+    const resolution = await resolveClientContext({
+      workspaceId,
+      requestedClientId: clientId || null,
+      surface: "warehouse",
+    });
+    assertQueryableClientContext(resolution);
+    scopedClientId = warehouseClientId(resolution);
+  } catch (error) {
+    const clientCtx = toClientContextResponse(error);
+    if (clientCtx) return clientCtx;
+    throw error;
   }
 
   const result = await queryWarehouse({
     workspaceId,
     connectionId: connectionId || undefined,
-    clientId: clientId || undefined,
+    clientId: scopedClientId,
     startDate: new Date(`${startDate}T00:00:00.000Z`),
     endDate: new Date(`${endDate}T23:59:59.999Z`),
     offset: startRow,

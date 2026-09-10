@@ -1,7 +1,16 @@
 "use client";
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  ALL_CLIENTS_TOKEN,
+  UNASSIGNED_CLIENT_TOKEN,
+} from "@/lib/client-context";
+import {
+  mergePendingUrlState,
+  switchPendingClient,
+} from "@/lib/pending-query";
+import { usePendingNavigation } from "@/components/client-context/PendingNavigationProvider";
 import useSWR from "swr";
 import { resolveDataThrough, resolveWarehouseEmptyState } from "@/lib/warehouse-truth";
 import Link from "next/link";
@@ -506,36 +515,64 @@ function ToggleChip({
 export function WarehouseWorkbench() {
   const { activeWorkspaceId } = useWorkspaceStore();
   const searchParams = useSearchParams();
-  const initialClientId = searchParams?.get("clientId") || "";
-  const [selectedClientId, setSelectedClientId] = useState(initialClientId);
-
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [selectedPlatform, setSelectedPlatform] = useState("");
+  const router = useRouter();
+  const pathname = usePathname();
+  const selectedClientId = searchParams?.get("clientId") || "";
+  const isDateValue = (value: string | null): value is string =>
+    Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00.000Z`).getTime()));
+  const startDateParam = searchParams?.get("startDate") ?? null;
+  const endDateParam = searchParams?.get("endDate") ?? null;
+  const startDate = isDateValue(startDateParam) ? startDateParam : "";
+  const endDate = isDateValue(endDateParam) ? endDateParam : "";
+  const platformParam = searchParams?.get("platform") ?? "";
+  const selectedPlatform = PLATFORM_OPTIONS.some((option) => option.value === platformParam) ? platformParam : "";
   const [accountFilterIds, setAccountFilterIds] = useState<string[]>([]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [isRefreshOpen, setIsRefreshOpen] = useState(false);
   const [isClientExportOpen, setIsClientExportOpen] = useState(false);
+  // Pending navigations are owned by the shared provider store so filter
+  // edits, the local client control, the global context bar and sidebar all
+  // observe the same pending query for this surface.
+  const pending = usePendingNavigation();
+  const observedSearchString = searchParams?.toString() ?? "";
 
-  // Sync state if URL changes externally
+  const replaceUrlFilters = useCallback((changes: Record<string, string | null>) => {
+    const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
+    const { search } = mergePendingUrlState({
+      observedSearch: live,
+      pendingSearch: pending.pendingFor(pathname),
+      patch: changes,
+    });
+    pending.stage(pathname, live, search);
+    router.replace(search ? `${pathname}${search}` : pathname, { scroll: false });
+  }, [pathname, router, observedSearchString, pending]);
+
+  // Acknowledge by serialized query content: recreated param objects with
+  // identical content cannot clear pending state, while genuine external
+  // history navigation discards it so controls hydrate from the observed URL.
   useEffect(() => {
-    const cid = searchParams?.get("clientId") || "";
-    setSelectedClientId(cid);
-  }, [searchParams]);
+    pending.acknowledge(pathname, `?${observedSearchString}`);
+  }, [pathname, observedSearchString, pending]);
+
+  const setStartDate = (value: string) => replaceUrlFilters({ startDate: value });
+  const setEndDate = (value: string) => replaceUrlFilters({ endDate: value });
+  const setSelectedPlatform = (value: string) => {
+    setAccountFilterIds([]);
+    replaceUrlFilters({ platform: value });
+  };
+  const setDateRange = (start: string, end: string) => replaceUrlFilters({ startDate: start, endDate: end });
 
   const updateClientId = (newClientId: string) => {
-    setSelectedClientId(newClientId);
-    setSelectedPlatform("");
     setAccountFilterIds([]);
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      if (newClientId) {
-        url.searchParams.set("clientId", newClientId);
-      } else {
-        url.searchParams.delete("clientId");
-      }
-      window.history.replaceState(null, "", url.toString());
-    }
+    const nextValue = newClientId === "" ? ALL_CLIENTS_TOKEN : newClientId;
+    const live = typeof window !== "undefined" ? window.location.search : `?${observedSearchString}`;
+    const { search } = switchPendingClient({
+      observedSearch: live,
+      pendingSearch: pending.pendingFor(pathname),
+      nextClientId: nextValue,
+    });
+    pending.stage(pathname, live, search);
+    router.push(search ? `${pathname}${search}` : pathname);
   };
 
   const clientsUrl = useMemo(() => {
@@ -560,12 +597,17 @@ export function WarehouseWorkbench() {
   const [rowSearch, setRowSearch] = useState("");
 
   useEffect(() => {
+    const invalidPlatform = Boolean(platformParam) && !PLATFORM_OPTIONS.some((option) => option.value === platformParam);
+    if (startDate && endDate && !invalidPlatform) return;
     const end = new Date();
     const start = new Date();
     start.setDate(start.getDate() - 30);
-    setEndDate(end.toISOString().split("T")[0]);
-    setStartDate(start.toISOString().split("T")[0]);
-  }, []);
+    replaceUrlFilters({
+      ...(!endDate ? { endDate: end.toISOString().split("T")[0] } : {}),
+      ...(!startDate ? { startDate: start.toISOString().split("T")[0] } : {}),
+      ...(invalidPlatform ? { platform: null } : {}),
+    });
+  }, [endDate, platformParam, replaceUrlFilters, startDate]);
 
   useEffect(() => {
     try {
@@ -598,8 +640,13 @@ export function WarehouseWorkbench() {
 
   const { data: platformsData } = useSWR(platformsUrl, fetcher);
   const catalogUrl = useMemo(
-    () => activeWorkspaceId ? `/api/data-explorer/shopee-catalog?workspaceId=${activeWorkspaceId}` : null,
-    [activeWorkspaceId],
+    () => {
+      if (!activeWorkspaceId) return null;
+      const params = new URLSearchParams({ workspaceId: activeWorkspaceId });
+      if (selectedClientId) params.set("clientId", selectedClientId);
+      return `/api/data-explorer/shopee-catalog?${params}`;
+    },
+    [activeWorkspaceId, selectedClientId],
   );
   const { data: shopeeCatalog } = useSWR(catalogUrl, fetcher);
   const {
@@ -632,12 +679,17 @@ export function WarehouseWorkbench() {
 
   const { data, error, isLoading, mutate } = useSWR(queryUrl, fetcher, {
     refreshInterval: 60000,
-    onSuccess: (newData) => {
-      setAllMetrics(newData?.metrics || []);
-      setCursor(newData?.pagination?.nextCursor || null);
-      setHasMore(newData?.pagination?.hasMore || false);
-    },
   });
+
+  // SWR may satisfy a remounted view from its cache without invoking the
+  // original request's onSuccess callback. Derive the table seed from `data`
+  // so returning to a preserved client/filter URL cannot leave the summary
+  // populated while the table is empty.
+  useEffect(() => {
+    setAllMetrics(data?.metrics || []);
+    setCursor(data?.pagination?.nextCursor || null);
+    setHasMore(data?.pagination?.hasMore || false);
+  }, [data]);
 
   const [isLoadingAll, setIsLoadingAll] = useState(false);
 
@@ -793,8 +845,8 @@ export function WarehouseWorkbench() {
 
   const clearTableView = () => {
     setRowSearch("");
-    setSelectedPlatform("");
     setAccountFilterIds([]);
+    replaceUrlFilters({ platform: null });
   };
 
   useEffect(() => {
@@ -1022,10 +1074,15 @@ export function WarehouseWorkbench() {
     if (dataThrough) {
       parts.push(`Data through ${formatDateDisplay(dataThrough)}`);
     } else if (endDate) {
-      parts.push("No warehouse data yet");
+      parts.push(selectedClientId ? "No scoped warehouse data" : "No warehouse data yet");
+    }
+    if (data?.freshness?.status === "refreshing") parts.push("Scoped import active");
+    else if (data?.freshness?.status === "stale") parts.push("Scoped data is stale");
+    if (data?.freshness?.jobAttribution === "unavailable") {
+      parts.push("Job activity unavailable for this account scope");
     }
     return parts.length > 0 ? parts.join(" · ") : "Ready";
-  }, [availablePlatforms.length, warehousedAccounts.length, endDate, summary?.dateRange?.latest]);
+  }, [availablePlatforms.length, data?.freshness, endDate, selectedClientId, summary?.dateRange?.latest, warehousedAccounts.length]);
 
   const shopeeCampaigns = (shopeeCatalog?.campaigns ?? []) as Array<any>;
   const shopeeProducts = (shopeeCatalog?.products ?? []) as Array<any>;
@@ -1089,8 +1146,7 @@ export function WarehouseWorkbench() {
                   key={p.id}
                   type="button"
                   onClick={() => {
-                    setStartDate(range.start);
-                    setEndDate(range.end);
+                    setDateRange(range.start, range.end);
                   }}
                   className={cn(
                     "rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer",
@@ -1110,10 +1166,7 @@ export function WarehouseWorkbench() {
               type="button"
               onClick={() => {
                 const def = getPresetRange("30d");
-                setStartDate(def.start);
-                setEndDate(def.end);
-                updateClientId("");
-                setSelectedPlatform("");
+                replaceUrlFilters({ startDate: def.start, endDate: def.end, platform: null });
                 setAccountFilterIds([]);
               }}
               className="text-xs text-ink-mute hover:text-ink transition-colors cursor-pointer"
@@ -1146,15 +1199,15 @@ export function WarehouseWorkbench() {
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-ink-mute">Client</label>
             <Dropdown
-              value={selectedClientId}
+              value={selectedClientId === "" ? ALL_CLIENTS_TOKEN : selectedClientId}
               onChange={updateClientId}
               options={[
-                { value: "", label: "All clients" },
+                { value: ALL_CLIENTS_TOKEN, label: "All clients" },
                 ...(clientsData || []).map((c) => ({
                   value: c.id,
                   label: c.name,
                 })),
-                { value: "unassigned", label: "Unassigned accounts" },
+                { value: UNASSIGNED_CLIENT_TOKEN, label: "Unassigned accounts" },
               ]}
               placeholder="All clients"
               className="w-[200px] min-w-[200px] max-w-full"

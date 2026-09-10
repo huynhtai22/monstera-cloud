@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { LogoMark } from "./Logo";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { shouldPropagateClientContext } from "@/lib/client-context";
+import { clientContextHrefWithPending } from "@/lib/pending-query";
+import { usePendingNavigation } from "./client-context/PendingNavigationProvider";
 import { useState, useRef, useEffect } from "react";
 import {
     LayoutGrid,
@@ -67,6 +70,23 @@ export function Sidebar({
 }: SidebarProps) {
     const { data: session } = useSession();
     const pathname = usePathname();
+    const searchParams = useSearchParams();
+    const requestedClientId = searchParams.get("clientId");
+    // Pending-aware cross-surface links: an uncommitted page edit — including
+    // an uncommitted client switch — is visible in the rendered href
+    // immediately. Subscription rerenders links whenever staged destinations
+    // change.
+    const pending = usePendingNavigation();
+    const navHref = (href: string) => {
+        if (!shouldPropagateClientContext(href)) return href;
+        const live = `?${searchParams.toString()}`;
+        return clientContextHrefWithPending({
+            href,
+            observedSearch: live,
+            pendingSearch: pathname ? pending.pendingFor(pathname) : null,
+            requestedClientId,
+        });
+    };
     const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
     const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -316,10 +336,11 @@ export function Sidebar({
                         <div className="space-y-0.5">
                             {group.items.map((item) => {
                                 const isActive = navIsActive(pathname, item.href);
+                                const href = navHref(item.href);
                                 return (
                                     <Link
                                         key={item.href}
-                                        href={item.href}
+                                        href={href}
                                         onClick={() => {
                                             setIsWorkspaceOpen(false);
                                             setIsOpen?.(false);

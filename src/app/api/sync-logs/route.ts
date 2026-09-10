@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import {
+  resolveClientDataScope,
+  toClientContextResponse,
+} from "@/lib/client-context-server";
 
 /**
  * GET /api/sync-logs?workspaceId=...&status=success|error
  * Returns latest sync logs for pipelines in a workspace the user belongs to.
  */
 export async function GET(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -36,13 +39,44 @@ export async function GET(req: Request) {
     throw error;
   }
 
+  let scope;
+  try {
+    scope = await resolveClientDataScope({
+      workspaceId,
+      requestedClientId: clientId,
+      surface: "reports",
+    });
+  } catch (error) {
+    const clientCtx = toClientContextResponse(error);
+    if (clientCtx) return clientCtx;
+    throw error;
+  }
+
+  // SyncLog has no provider-account identity. Once a client has cut over to
+  // account assignments, a connection/root alone is insufficient evidence on
+  // shared roots, so explicit scope reports this evidence as unavailable.
+  if (scope.ownershipMode === "explicit") {
+    return NextResponse.json({ logs: [], attribution: "unavailable" });
+  }
+
+  const scopedClientId = scope.resolution.status === "resolved" ? scope.resolution.client.id : undefined;
+
   const where: any = {
     pipeline: {
       workspaceId,
       workspace: {
         members: { some: { userId: session.user.id } },
       },
-      ...(clientId ? { clientId } : {}),
+      ...(scopedClientId && scope.ownershipMode === "legacy"
+        ? {
+            OR: [
+              { clientId: scopedClientId },
+              ...(scope.connectionIds.length > 0
+                ? [{ sourceConnectionId: { in: scope.connectionIds } }]
+                : []),
+            ],
+          }
+        : {}),
     },
   };
   if (status === "success" || status === "error") {
@@ -58,6 +92,5 @@ export async function GET(req: Request) {
     take: 100,
   });
 
-  return NextResponse.json({ logs });
+  return NextResponse.json({ logs, attribution: "available" });
 }
-

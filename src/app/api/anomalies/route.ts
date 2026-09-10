@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import {
+  resolveClientDataScope,
+  toClientContextResponse,
+} from "@/lib/client-context-server";
 import { detectMarketingAnomalies, type MarketingAnomaly } from "@/lib/marketing-anomalies";
 import type { MetricRowExport } from "@/lib/client-export";
 
@@ -25,6 +29,12 @@ export async function GET(req: Request) {
     }
 
     await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "viewer" });
+    const scope = await resolveClientDataScope({
+      workspaceId,
+      requestedClientId: clientId,
+      surface: "clients",
+    });
+    const selectedClient = scope.resolution.status === "resolved" ? scope.resolution.client : null;
 
     // Fetch connections to map connectionId -> clientId & clientName
     const connections = await prisma.connection.findMany({
@@ -42,11 +52,10 @@ export async function GET(req: Request) {
     for (const c of connections) {
       if (c.clientId && c.client) {
         connToClientMap.set(c.id, { clientId: c.clientId, clientName: c.client.name });
-        if (clientId && c.clientId === clientId) {
-          clientConnIds.add(c.id);
-        }
+        if (scope.ownershipMode === "legacy" && c.clientId === selectedClient?.id) clientConnIds.add(c.id);
       }
     }
+    for (const connectionId of scope.connectionIds) clientConnIds.add(connectionId);
 
     // Filter by 14 days ago to capture baseline and recent days
     const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
@@ -56,15 +65,29 @@ export async function GET(req: Request) {
       date: { gte: fourteenDaysAgo },
     };
 
-    if (clientId) {
-      if (clientConnIds.size === 0) {
+    if (selectedClient) {
+      if (scope.ownershipMode === "explicit") {
+        if (scope.assignments.length === 0) {
+          return NextResponse.json({
+            anomalies: [],
+            summary: { total: 0, critical: 0, warning: 0 },
+            byClient: {},
+          });
+        }
+        where.OR = scope.assignments.map((assignment) => ({
+          connectionId: assignment.connectionId,
+          platform: assignment.provider,
+          accountId: assignment.accountId,
+        }));
+      } else if (clientConnIds.size === 0) {
         return NextResponse.json({
           anomalies: [],
           summary: { total: 0, critical: 0, warning: 0 },
           byClient: {},
         });
+      } else {
+        where.connectionId = { in: Array.from(clientConnIds) };
       }
-      where.connectionId = { in: Array.from(clientConnIds) };
     }
 
     const metrics = await prisma.campaignMetric.findMany({
@@ -112,11 +135,14 @@ export async function GET(req: Request) {
 
     // Enrich anomalies with client information using connectionId or exact identity
     const enrichedAnomalies: MarketingAnomaly[] = detected.map((a) => {
-      // 1. Direct connectionId match (highest accuracy)
-      let clientInfo = a.connectionId ? connToClientMap.get(a.connectionId) : undefined;
+      // Explicit scope is already constrained by exact root/provider/account
+      // tuples, so stale legacy pointers on a shared root must never win.
+      let clientInfo = selectedClient && scope.ownershipMode === "explicit"
+        ? { clientId: selectedClient.id, clientName: selectedClient.name }
+        : a.connectionId ? connToClientMap.get(a.connectionId) : undefined;
 
       // 2. Exact match on platform + account + campaign ID
-      if (!clientInfo) {
+      if (!clientInfo && scope.ownershipMode !== "explicit") {
         const match = metrics.find(
           (m) =>
             m.platform === a.platform &&
@@ -159,6 +185,8 @@ export async function GET(req: Request) {
       byClient,
     });
   } catch (error: unknown) {
+    const clientCtx = toClientContextResponse(error);
+    if (clientCtx) return clientCtx;
     const rbac = toRbacResponse(error);
     if (rbac) return rbac;
     return NextResponse.json(

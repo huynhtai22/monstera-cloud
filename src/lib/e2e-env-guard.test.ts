@@ -407,7 +407,7 @@ test("CI stamps the production build with the checked-out GitHub SHA", () => {
   const workflow = fs.readFileSync(path.join(root, ".github/workflows/ci.yml"), "utf8");
   assert.match(
     workflow,
-    /- name: Production build\n\s+env:\n\s+RELEASE_COMMIT_SHA: \$\{\{ github\.sha \}\}\n\s+run: npm run build/,
+    /- name: Production build\n\s+env:[\s\S]*?RELEASE_COMMIT_SHA: \$\{\{ github\.sha \}\}[\s\S]*?run: npm run build/,
   );
 });
 

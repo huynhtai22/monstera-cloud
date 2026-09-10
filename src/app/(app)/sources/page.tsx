@@ -2,7 +2,9 @@
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ALL_CLIENTS_TOKEN } from "@/lib/client-context";
+import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
 import { toast } from "sonner";
 import { Database, Search, Plus, AlertCircle, CheckCircle2, ChevronRight, ChevronDown, X, Clock, Users } from "lucide-react";
 import { ConnectSourceModal } from "@/components/ConnectSourceModal";
@@ -71,6 +73,9 @@ const SOURCE_BLURB_BY_PROVIDER: Record<string, string> = {
 
 export default function SourcesPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const { switchClient } = useClientContextNavigation();
+    const urlClientId = searchParams.get("clientId");
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
     const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
     const [disconnectTarget, setDisconnectTarget] = useState<{ id: string; name: string } | null>(null);
@@ -285,7 +290,7 @@ export default function SourcesPage() {
             managerBadge: integration.managerBadge,
             accountEmail: integration.accountEmail,
         });
-    }, []);
+    }, [setFixConnectionTarget]);
 
     const handleConnect = useCallback((integration: any) => {
         trackEvent("integration_card_clicked", {
@@ -298,7 +303,7 @@ export default function SourcesPage() {
         });
         setSelectedIntegration(integration);
         setIsSourceModalOpen(true);
-    }, []);
+    }, [setSelectedIntegration, setIsSourceModalOpen]);
 
     // Fetch Data
     const { data: workspaces, error, isLoading: workspacesLoading } = useSWR("/api/workspaces", fetcher, {
@@ -307,8 +312,15 @@ export default function SourcesPage() {
         errorRetryCount: 3,
         dedupingInterval: 4000,
     });
+    const connectionsUrl = activeWorkspaceId
+        ? (() => {
+            const params = new URLSearchParams({ type: "source" });
+            if (urlClientId && urlClientId !== ALL_CLIENTS_TOKEN) params.set("clientId", urlClientId);
+            return `/api/workspaces/${activeWorkspaceId}/connections?${params.toString()}`;
+        })()
+        : null;
     const { data: sourceConnections = [], error: connectionsError, isLoading: connectionsLoading } = useSWR(
-        activeWorkspaceId ? `/api/workspaces/${activeWorkspaceId}/connections?type=source` : null,
+        connectionsUrl,
         fetcher,
         {
             errorRetryInterval: 3000,
@@ -459,17 +471,13 @@ export default function SourcesPage() {
     }, []);
 
     useEffect(() => {
-        if (typeof window === "undefined") return;
-        const params = new URLSearchParams(window.location.search);
-        const cId = params.get("clientId");
-        const tab = params.get("tab");
-        if (cId) {
-            setInitialClientId(cId);
-            setActiveFilter("accounts");
-        } else if (tab === "accounts") {
+        const tab = searchParams.get("tab");
+        const cId = urlClientId && urlClientId !== ALL_CLIENTS_TOKEN ? urlClientId : null;
+        setInitialClientId(cId);
+        if (cId || tab === "accounts") {
             setActiveFilter("accounts");
         }
-    }, []);
+    }, [searchParams, urlClientId]);
 
     useEffect(() => {
         if (isLoading || !Array.isArray(workspaces) || !activeWorkspaceId) return;
@@ -516,7 +524,8 @@ export default function SourcesPage() {
             .map((conn: any) => {
                 const logo = logoPathForConnectionProvider(conn.provider);
                 const catalogId = integrationCatalogId(conn.provider);
-                const relatedPipeline = Array.isArray(pipelines)
+                const explicitAccountScope = Array.isArray(conn.assignedAccounts);
+                const relatedPipeline = !explicitAccountScope && Array.isArray(pipelines)
                     ? pipelines.find((p: any) => p.sourceConnectionId === conn.id)
                     : null;
 
@@ -528,6 +537,13 @@ export default function SourcesPage() {
                 } catch {
                     creds = {};
                 }
+                const assignedAccountIds: string[] | null = Array.isArray(conn.assignedAccounts)
+                    ? conn.assignedAccounts
+                        .filter((account: unknown): account is { provider: string; accountId: string } =>
+                            Boolean(account && typeof account === "object" && typeof (account as { accountId?: unknown }).accountId === "string"),
+                        )
+                        .map((account: { accountId: string }) => account.accountId)
+                    : null;
 
                 // Extract ad accounts, manager badges, and account tags
                 const accountEmail = (creds.accountEmail || creds.email || null) as string | null;
@@ -541,8 +557,10 @@ export default function SourcesPage() {
 
                 if (conn.provider === 'meta_ads') {
                     const list: Array<{ id: string; name?: string }> =
-                        creds.adAccounts ??
-                        (creds.adAccountIds ?? []).map((id: string) => ({ id }));
+                        (Array.isArray(creds.adAccounts) && creds.adAccounts.length > 0 ? creds.adAccounts : null) ??
+                        ((Array.isArray(creds.adAccountIds) && creds.adAccountIds.length > 0
+                            ? creds.adAccountIds
+                            : assignedAccountIds ?? [])).map((id: string) => ({ id }));
                     accountTags = list.map((a: any) => ({
                         id: String(a.id),
                         label: a.name && a.name !== a.id ? a.name : String(a.id).replace(/^act_/, ''),
@@ -566,7 +584,9 @@ export default function SourcesPage() {
 
                     displayName = displayConnectionName(conn.provider, rawName);
                 } else if (conn.provider === 'google_ads') {
-                    const list: string[] = creds.customerIds ?? [];
+                    const list: string[] = Array.isArray(creds.customerIds) && creds.customerIds.length > 0
+                        ? creds.customerIds
+                        : assignedAccountIds ?? [];
                     accountTags = list.map((id: string) => {
                         const clean = String(id).replace(/\D/g, '');
                         const formatted = clean.length === 10
@@ -615,7 +635,9 @@ export default function SourcesPage() {
 
                     displayName = displayConnectionName(conn.provider, rawName);
                 } else if (conn.provider === 'tiktok_business') {
-                    const list: string[] = creds.advertiserIds ?? [];
+                    const list: string[] = Array.isArray(creds.advertiserIds) && creds.advertiserIds.length > 0
+                        ? creds.advertiserIds
+                        : assignedAccountIds ?? [];
                     accountTags = list.map((id: string) => ({ id: String(id), label: String(id) }));
                     const bcId = creds.businessCenterId || creds.bcId || null;
                     const totalCount = accountTags.length;
@@ -635,7 +657,7 @@ export default function SourcesPage() {
 
                     displayName = displayConnectionName(conn.provider, rawName);
                 } else if (conn.provider === 'shopee') {
-                    const shop = shopeeShopIdFrom(creds, rawName);
+                    const shop = assignedAccountIds?.[0] ?? shopeeShopIdFrom(creds, rawName);
                     if (shop) {
                         accountTags = [{ id: String(shop), label: `Shop ID: ${shop}` }];
                         managerBadge = `Shop: ${shop}`;
@@ -1138,6 +1160,7 @@ export default function SourcesPage() {
                             <ClientAccountsSection
                                 workspaceId={activeWorkspaceId}
                                 initialClientId={initialClientId}
+                                onClientChange={(clientId) => switchClient(clientId)}
                             />
                         </section>
                     )}
