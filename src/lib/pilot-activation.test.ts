@@ -8,6 +8,13 @@ import {
 } from "./pilot-activation";
 
 const trialEnd = new Date("2026-09-10T00:00:00.000Z");
+// Frozen evaluation clock for every rank/countdown check below. All fixtures
+// are anchored to it and every time-sensitive assertion passes it explicitly,
+// so this suite is independent of the real system date. Do not reintroduce
+// `new Date()` / `Date.now()` defaults here: the trial end above is only five
+// days after NOW, and any evaluation using the real clock would flip once the
+// calendar passes it.
+const NOW = new Date("2026-09-05T12:00:00.000Z");
 const freshSource = {
   id: "source-1",
   state: "fresh" as const,
@@ -114,16 +121,15 @@ describe("pilot activation state", () => {
     assert.equal(dashboardReviewAuditId("workspace-1"), "pilot-dashboard-reviewed-workspace-1");
     const blocked = derive({ sources: [{ id: "s", state: "error" }] });
     const ready = derive({ sources: [freshSource], rows7d: 1 });
-    assert.ok(pilotActivationSortRank(blocked) < pilotActivationSortRank(ready));
+    assert.ok(pilotActivationSortRank(blocked, NOW) < pilotActivationSortRank(ready, NOW));
   });
 
   it("orders operator view as blocked < expiring < ready_to_review < activated", () => {
-    const expiredTrial = new Date("2026-09-01T00:00:00.000Z").toISOString();
     const blocked = derive({ sources: [{ id: "s", state: "error" }] });
     const expiring = derive({
       sources: [freshSource],
       rows7d: 1,
-      subscriptionEndsAt: new Date(Date.now() - 1000).toISOString(),
+      subscriptionEndsAt: new Date(NOW.getTime() - 1000).toISOString(),
     });
     const ready = derive({ sources: [freshSource], rows7d: 1 });
     const activated = derive({
@@ -132,13 +138,13 @@ describe("pilot activation state", () => {
       dashboardReviewedAt: new Date("2026-09-03T01:00:00.000Z"),
     });
     // Expired trial is treated as blocked priority (rank 0)
-    assert.equal(pilotActivationSortRank(expiring), 0);
-    assert.equal(pilotActivationSortRank(blocked), 0);
-    assert.equal(pilotActivationSortRank(ready), 2);
-    assert.equal(pilotActivationSortRank(activated), 3);
-    assert.ok(pilotActivationSortRank(blocked) < pilotActivationSortRank(ready));
-    assert.ok(pilotActivationSortRank(ready) < pilotActivationSortRank(activated));
-    assert.ok(pilotActivationSortRank(expiring) < pilotActivationSortRank(ready));
+    assert.equal(pilotActivationSortRank(expiring, NOW), 0);
+    assert.equal(pilotActivationSortRank(blocked, NOW), 0);
+    assert.equal(pilotActivationSortRank(ready, NOW), 2);
+    assert.equal(pilotActivationSortRank(activated, NOW), 3);
+    assert.ok(pilotActivationSortRank(blocked, NOW) < pilotActivationSortRank(ready, NOW));
+    assert.ok(pilotActivationSortRank(ready, NOW) < pilotActivationSortRank(activated, NOW));
+    assert.ok(pilotActivationSortRank(expiring, NOW) < pilotActivationSortRank(ready, NOW));
   });
 
   it("keeps trial duration server-controlled and ignores browser offer param", () => {
@@ -148,5 +154,72 @@ describe("pilot activation state", () => {
     const withoutOffer = derive({ workspaceStatus: "PILOT", subscriptionEndsAt: trialEnd });
     assert.equal(withOffer.trialEndsAt, withoutOffer.trialEndsAt);
     assert.equal(withOffer.trialEndsAt, trialEnd.toISOString());
+  });
+});
+
+describe("pilot activation trial-window boundaries", () => {
+  const readyLike = () => derive({ sources: [freshSource], rows7d: 1 });
+  const endMs = trialEnd.getTime();
+
+  it("ranks active strictly before the exact end instant", () => {
+    const justBeforeEnd = new Date(endMs - 1);
+    assert.equal(pilotActivationSortRank(readyLike(), justBeforeEnd), 2);
+    assert.equal(trialDaysRemaining(trialEnd.toISOString(), justBeforeEnd), 1);
+  });
+
+  it("treats the exact end instant as expired (inclusive boundary)", () => {
+    assert.equal(pilotActivationSortRank(readyLike(), trialEnd), 0);
+    assert.equal(trialDaysRemaining(trialEnd.toISOString(), trialEnd), 0);
+  });
+
+  it("stays expired immediately after the end instant", () => {
+    const justAfterEnd = new Date(endMs + 1);
+    assert.equal(pilotActivationSortRank(readyLike(), justAfterEnd), 0);
+    assert.equal(trialDaysRemaining(trialEnd.toISOString(), justAfterEnd), 0);
+  });
+
+  it("reports full remaining time well inside the window", () => {
+    assert.equal(pilotActivationSortRank(readyLike(), NOW), 2);
+    assert.equal(trialDaysRemaining(trialEnd.toISOString(), NOW), 5);
+  });
+
+  it("clamps inverted windows to zero and rejects invalid input", () => {
+    assert.equal(trialDaysRemaining("2026-09-01T00:00:00.000Z", NOW), 0);
+    assert.equal(trialDaysRemaining(null, NOW), null);
+    assert.equal(trialDaysRemaining("not-a-date", NOW), null);
+  });
+
+  it("treats equivalent UTC instants identically regardless of offset notation", () => {
+    const zulu = "2026-09-10T00:00:00.000Z";
+    const offset = "2026-09-10T02:00:00+02:00";
+    assert.equal(new Date(offset).getTime(), new Date(zulu).getTime());
+    assert.equal(
+      pilotActivationSortRank(readyLike(), new Date(offset)),
+      pilotActivationSortRank(readyLike(), new Date(zulu)),
+    );
+    assert.equal(
+      trialDaysRemaining(offset, NOW),
+      trialDaysRemaining(zulu, NOW),
+    );
+  });
+
+  it("depends only on the injected clock, never on the real system date", () => {
+    // Same fixtures evaluated twice must agree exactly; advancing the real
+    // calendar cannot change these outcomes because no call site reads it.
+    const first = {
+      rank: pilotActivationSortRank(readyLike(), NOW),
+      remaining: trialDaysRemaining(trialEnd.toISOString(), NOW),
+    };
+    const second = {
+      rank: pilotActivationSortRank(readyLike(), new Date(NOW.getTime())),
+      remaining: trialDaysRemaining(trialEnd.toISOString(), new Date(NOW.getTime())),
+    };
+    assert.deepEqual(first, second);
+    assert.deepEqual(first, { rank: 2, remaining: 5 });
+    // The same fixtures under a far-future clock flip deterministically,
+    // proving the injected instant (not the wall clock) drives the outcome.
+    const future = new Date("2030-01-01T00:00:00.000Z");
+    assert.equal(pilotActivationSortRank(readyLike(), future), 0);
+    assert.equal(trialDaysRemaining(trialEnd.toISOString(), future), 0);
   });
 });
