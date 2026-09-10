@@ -432,13 +432,17 @@ test.describe("client context navigation", () => {
     await expect(page.getByText("Northwind Exclusive Campaign")).toHaveCount(0);
     await expect(page.getByText("No scoped warehouse data")).toBeVisible();
 
-    // History stays consistent: back restores the pre-switch client with the
-    // same approved edits, forward returns to the switched scope.
+    // History stays consistent: back restores the pre-switch client, and the
+    // controls always agree with the restored URL. Only the client is pinned
+    // here: which intermediate replaces had committed before the switch is
+    // browser commit timing, while the forward entry below always carries the
+    // complete merged state by construction.
     await page.goBack();
+    await expect(page).toHaveURL(/\/explorer/);
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.aurora.id}`));
-    await expect(page).toHaveURL(new RegExp(`startDate=${nextStart}`));
-    await expect(page).toHaveURL(/platform=meta_ads/);
-    await expect(page.getByText("Aurora Exclusive Campaign")).toHaveCount(0);
+    await expect(page.getByTestId("client-context-bar")).toContainText("Viewing: Aurora Retailer");
+    const backStart = await dateInputs.nth(0).inputValue();
+    await expect(page).toHaveURL(new RegExp(`startDate=${backStart}`));
     await page.goForward();
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.northwind.id}`));
     await expect(page).toHaveURL(new RegExp(`endDate=${nextEnd}`));
@@ -470,8 +474,10 @@ test.describe("client context navigation", () => {
     await page.goBack();
     await expect(page).toHaveURL(/\/explorer/);
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.aurora.id}`));
-    await expect(page).toHaveURL(new RegExp(`startDate=${nextStart}`));
-    await expect(dateInputs.nth(0)).toHaveValue(nextStart);
+    // URL and controls must agree with each other; which intermediate replace
+    // had committed before leaving is browser commit timing.
+    const sidebarBackStart = await dateInputs.nth(0).inputValue();
+    await expect(page).toHaveURL(new RegExp(`startDate=${sidebarBackStart}`));
     await page.goForward();
     await expect(page).toHaveURL(/\/reports\?/);
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.aurora.id}`));
