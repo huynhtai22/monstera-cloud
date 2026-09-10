@@ -9,6 +9,7 @@ import {
   applyClientIdParam,
   canonicalHref,
   clientContextCacheParams,
+  normalizeAnalystClientId,
   parseRequestedClientId,
   shouldPropagateClientContext,
   surfaceAllowsAllClients,
@@ -210,6 +211,16 @@ describe("client context URL contract", () => {
     const clientB = generateCacheKey("metrics:query", { ...base, ...clientContextCacheParams("cl_b") });
     const keys = new Set([missing, all, unassigned, clientA, clientB]);
     assert.equal(keys.size, 5);
+  });
+
+  it("normalizes analyst client context without hiding unknown ids", () => {
+    assert.equal(normalizeAnalystClientId(ALL_CLIENTS_TOKEN), undefined);
+    assert.equal(normalizeAnalystClientId(" all "), undefined);
+    assert.equal(normalizeAnalystClientId(null), undefined);
+    assert.equal(normalizeAnalystClientId(undefined), undefined);
+    assert.equal(normalizeAnalystClientId(""), undefined);
+    assert.equal(normalizeAnalystClientId("cl_a"), "cl_a");
+    assert.equal(normalizeAnalystClientId("cl_unknown"), "cl_unknown");
   });
 });
 

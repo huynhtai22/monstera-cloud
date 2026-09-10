@@ -201,3 +201,16 @@ export function clientContextCacheParams(requested: string | null | undefined): 
       return { clientScope: "malformed" };
   }
 }
+
+/**
+ * Normalize a client value for analyst (and similar workspace-scoped) request
+ * builders. The All Clients sentinel is a browser URL representation, not a
+ * database identity: it must be omitted so the server treats the request as
+ * workspace-wide. Concrete ids — including unknown ones — pass through
+ * untouched so server-side strict validation still applies.
+ */
+export function normalizeAnalystClientId(raw: string | null | undefined): string | undefined {
+  const value = raw?.trim();
+  if (!value || value === ALL_CLIENTS_TOKEN) return undefined;
+  return value;
+}
