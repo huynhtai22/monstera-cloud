@@ -39,6 +39,7 @@ export default defineConfig({
       GIT_COMMIT_SHA: commitSha,
       PILOT_MODE: "1",
       ENABLE_GOVERNED_ANALYST: "1",
+      NEXT_PUBLIC_ENABLE_GOVERNED_ANALYST: "1",
     },
   },
   projects: [

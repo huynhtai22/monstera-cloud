@@ -54,6 +54,10 @@ jobs:
       - name: Production build
         env:
           RELEASE_COMMIT_SHA: ${{ github.sha }}
+          # Inlined at build time into client component bundles ("use client")
+          # so governed analyst surfaces (AnalystPane) compile into the artifact
+          # exercised by Playwright browser QA journeys.
+          NEXT_PUBLIC_ENABLE_GOVERNED_ANALYST: "1"
         run: npm run build
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
@@ -77,6 +81,8 @@ jobs:
           DIRECT_URL: postgresql://postgres:postgres@localhost:5432/monstera_e2e
           MONSTERA_E2E_ISOLATED: "1"
           CLIENT_ASSIGNMENT_TEST_DB: "1"
+          # Enables server-side analyst routes during browser QA execution.
+          ENABLE_GOVERNED_ANALYST: "1"
           # The application records the actually tested commit in report
           # snapshots (generator_commit_sha). Playwright's webServer inherits
           # the step environment, so the real GitHub SHA reaches next start.
