@@ -178,6 +178,45 @@ describe("proxy page authentication (deny-by-default)", () => {
     );
     assert.equal(anon.headers.get("x-monstera-agency-slug"), "acme", "public paths still rewrite");
   });
+
+  it("rewrites /operations under agency tenant layout while preserving client context", async () => {
+    process.env.AGENCY_HOST_ROUTING_ENABLED = "1";
+    process.env.AGENCY_PRIMARY_DOMAIN_SUFFIX = "monsteracloud.com";
+    const proxy = __createProxyForTests({ getSessionToken: async () => ({ sub: "user_1" }) });
+
+    // 1. Authenticated agency host rewrites and sets x-monstera-agency-slug header
+    const req = new NextRequest("https://alpha-agency.monsteracloud.com/operations?clientId=cl_123", {
+      headers: { host: "alpha-agency.monsteracloud.com" },
+    });
+    const res = await proxy(req);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("x-monstera-agency-slug"), "alpha-agency");
+
+    // 2. Ordinary non-agency host does not rewrite and omits agency header
+    const ordinaryReq = new NextRequest("https://monsteracloud.com/operations?clientId=cl_123", {
+      headers: { host: "monsteracloud.com" },
+    });
+    const ordinaryRes = await proxy(ordinaryReq);
+    assert.equal(ordinaryRes.status, 200);
+    assert.equal(ordinaryRes.headers.get("x-monstera-agency-slug"), null);
+
+    // 3. Already-prefixed route does not trigger a rewrite loop
+    const prefixedReq = new NextRequest("https://alpha-agency.monsteracloud.com/agencies/alpha-agency/operations?clientId=cl_123", {
+      headers: { host: "alpha-agency.monsteracloud.com" },
+    });
+    const prefixedRes = await proxy(prefixedReq);
+    assert.equal(prefixedRes.status, 200);
+    assert.equal(prefixedRes.headers.get("x-monstera-agency-slug"), null);
+
+    // 4. Anonymous visitor to agency-host /operations is redirected to login
+    const anonProxy = __createProxyForTests({ getSessionToken: async () => null });
+    const anonRes = await anonProxy(req);
+    assert.equal(anonRes.status, 307);
+    const location = anonRes.headers.get("location") ?? "";
+    const loginUrl = new URL(location);
+    assert.equal(loginUrl.pathname, "/login");
+    assert.equal(loginUrl.searchParams.get("callbackUrl"), "/operations?clientId=cl_123");
+  });
 });
 
 describe("proxy API pipeline", () => {

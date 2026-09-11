@@ -177,7 +177,7 @@ describe("client context URL contract", () => {
   });
 
   it("allows all-clients on operational surfaces and unassigned only on warehouse", () => {
-    for (const surface of ["clients", "sources", "reports", "warehouse", "exports"] as const) {
+    for (const surface of ["clients", "sources", "reports", "warehouse", "exports", "operations"] as const) {
       assert.equal(surfaceAllowsAllClients(surface), true);
       assert.equal(CLIENT_CONTEXT_SURFACE_POLICY[surface].allowsAllClients, true);
     }
@@ -186,6 +186,9 @@ describe("client context URL contract", () => {
     assert.equal(surfaceAllowsUnassigned("exports"), false);
     assert.equal(surfaceAllowsUnassigned("sources"), false);
     assert.equal(surfaceAllowsUnassigned("clients"), false);
+    // The Operations Hub refuses `unassigned` explicitly instead of guessing
+    // what "unassigned" means for health/readiness/delivery/anomalies.
+    assert.equal(surfaceAllowsUnassigned("operations"), false);
   });
 
   it("maps operational pathnames and refuses to propagate onto workspace-wide pages", () => {
@@ -194,9 +197,11 @@ describe("client context URL contract", () => {
     assert.equal(surfaceForPathname("/reports"), "reports");
     assert.equal(surfaceForPathname("/explorer"), "warehouse");
     assert.equal(surfaceForPathname("/exports"), "exports");
+    assert.equal(surfaceForPathname("/operations"), "operations");
     assert.equal(surfaceForPathname("/console"), null);
     assert.equal(surfaceForPathname("/settings"), null);
     assert.equal(shouldPropagateClientContext("/reports"), true);
+    assert.equal(shouldPropagateClientContext("/operations"), true);
     assert.equal(shouldPropagateClientContext("/settings"), false);
     assert.equal(canonicalHref("/reports", new URLSearchParams("clientId=cl_a")), "/reports?clientId=cl_a");
     assert.equal(canonicalHref("/reports", new URLSearchParams()), "/reports");

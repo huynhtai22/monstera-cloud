@@ -39,4 +39,66 @@ describe("auth rate-limit fallback", () => {
     assert.equal(await allowAuthAttempt(input), true);
     assert.equal(await allowAuthAttempt(input), false);
   });
+
+  it("strictly preserves input limit in production or unconfigured environments", async () => {
+    const request = new Request("https://app.example.test/api/auth/test");
+    const input = {
+      request,
+      action: "login_standard",
+      identity: "standard@example.test",
+      limit: 10,
+      windowSeconds: 60,
+    };
+    const prodEnv = { NODE_ENV: "production" };
+
+    for (let i = 0; i < 10; i++) {
+      assert.equal(await allowAuthAttempt(input, prodEnv), true);
+    }
+    assert.equal(await allowAuthAttempt(input, prodEnv), false);
+  });
+
+  it("fails closed when an isolation flag is set alongside production markers", async () => {
+    const request = new Request("https://app.example.test/api/auth/test");
+    const input = {
+      request,
+      action: "login_tampered",
+      identity: "tampered@example.test",
+      limit: 3,
+      windowSeconds: 60,
+    };
+    const tamperedEnv = {
+      MONSTERA_E2E_ISOLATED: "1",
+      VERCEL_ENV: "production",
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/monstera_e2e",
+    };
+
+    for (let i = 0; i < 3; i++) {
+      assert.equal(await allowAuthAttempt(input, tamperedEnv), true);
+    }
+    assert.equal(await allowAuthAttempt(input, tamperedEnv), false);
+  });
+
+  it("elevates the limit in verified isolated E2E while remaining bounded", async () => {
+    const request = new Request("https://app.example.test/api/auth/test");
+    const input = {
+      request,
+      action: "login_e2e",
+      identity: "e2e-user@example.test",
+      limit: 10,
+      windowSeconds: 60,
+    };
+    const validE2eEnv = {
+      MONSTERA_E2E_ISOLATED: "1",
+      CLIENT_ASSIGNMENT_TEST_DB: "1",
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/monstera_e2e",
+      GIT_COMMIT_SHA: "154ca55b2afe27345d170fccfc4e773df3939310",
+      NEXTAUTH_URL: "http://127.0.0.1:3000",
+      NODE_ENV: "test",
+    };
+
+    // Valid isolated E2E permits more than 10 attempts
+    for (let i = 0; i < 15; i++) {
+      assert.equal(await allowAuthAttempt(input, validE2eEnv), true);
+    }
+  });
 });

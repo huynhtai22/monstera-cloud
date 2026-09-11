@@ -39,6 +39,7 @@ function mobileSectionTitle(pathname: string | null): string {
         "tiktok-ads": "TikTok Ads",
         shopee: "Shopee",
         ops: "Operations",
+        operations: "Operations",
         admin: "Admin",
     };
     if (map[first]) return map[first];

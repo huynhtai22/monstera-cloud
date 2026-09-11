@@ -562,3 +562,192 @@ describe("Client/Server Dependency Boundary Enforcement (AST-Verified Transitive
     });
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* Operations Hub architectural boundary                                      */
+/* -------------------------------------------------------------------------- */
+
+/** Server modules that reach a provider or a destination transport. */
+export const PROVIDER_TRANSPORT_SPECIFIERS = [
+  "@/lib/google-ads",
+  "@/lib/meta-ads",
+  "@/lib/tiktok-business",
+  "@/lib/shopee",
+  "@/lib/lazada",
+  "@/lib/ingestion/ad-platform-warehouse",
+  "@/lib/sync-connection",
+  "@/lib/warehouse-import-job",
+  "@/lib/connection-data-through",
+  "@/lib/connection-sync-lease",
+  "@/lib/meta-sync-lock",
+  "@/lib/oauth-framework/token-refresh",
+  "@/lib/encryption",
+  "@/lib/observability/connector-telemetry",
+  "@/lib/observability/connector-evidence-summary",
+] as const;
+
+const PRISMA_MUTATION_METHODS = new Set([
+  "create",
+  "createMany",
+  "createManyAndReturn",
+  "update",
+  "updateMany",
+  "upsert",
+  "delete",
+  "deleteMany",
+  "$executeRaw",
+  "$executeRawUnsafe",
+]);
+
+const MUTATING_ROUTE_METHODS = ["POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
+
+const MUTATION_RECEIVERS = ["prisma", "tx", "db"] as const;
+
+function receiverIsDatabaseClient(expression: ts.Expression): boolean {
+  const text = expression.getText();
+  return MUTATION_RECEIVERS.some((prefix) => text === prefix || text.startsWith(`${prefix}.`));
+}
+
+/**
+ * Finds mutation calls on a database client. Deliberately scoped to
+ * `prisma`/`tx`/`db` receivers so `Map.delete(...)` and `Set.delete(...)` are
+ * not mistaken for writes.
+ */
+export function findPrismaMutationCalls(sourceText: string, fileName = "module.ts"): string[] {
+  const sourceFile = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const found: string[] = [];
+  function visit(node: ts.Node) {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+      const method = node.expression.name.text;
+      if (PRISMA_MUTATION_METHODS.has(method) && receiverIsDatabaseClient(node.expression.expression)) {
+        found.push(method);
+      }
+    }
+    // `prisma.$executeRaw\`...\`` is a tagged template, not a call expression.
+    if (ts.isTaggedTemplateExpression(node) && ts.isPropertyAccessExpression(node.tag)) {
+      const method = node.tag.name.text;
+      if (PRISMA_MUTATION_METHODS.has(method) && receiverIsDatabaseClient(node.tag.expression)) {
+        found.push(method);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return found;
+}
+
+/** Names of every exported function or const at the top level of a module. */
+export function exportedFunctionNames(sourceText: string, fileName = "module.ts"): string[] {
+  const sourceFile = ts.createSourceFile(fileName, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const names: string[] = [];
+  for (const statement of sourceFile.statements) {
+    const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) ?? [] : [];
+    if (!modifiers.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
+    if (ts.isFunctionDeclaration(statement) && statement.name) names.push(statement.name.text);
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name)) names.push(declaration.name.text);
+      }
+    }
+  }
+  return names;
+}
+
+function collectRouteFiles(directory: string): string[] {
+  const files: string[] = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...collectRouteFiles(fullPath));
+    else if (entry.isFile() && entry.name === "route.ts") files.push(fullPath);
+  }
+  return files;
+}
+
+describe("Operations Hub architectural boundary", () => {
+  const repoRoot = path.resolve(__dirname, "../../..");
+  const summaryPath = path.join(repoRoot, "src/lib/operations-summary.ts");
+  const routePath = path.join(repoRoot, "src/app/api/operations/summary/route.ts");
+
+  it("1. operations-summary.ts imports no provider or destination transport", () => {
+    const content = fs.readFileSync(summaryPath, "utf8");
+    const violations = extractAstImports(content, summaryPath).filter(
+      (imp) =>
+        !imp.isTypeOnly &&
+        PROVIDER_TRANSPORT_SPECIFIERS.some(
+          (specifier) => imp.specifier === specifier || imp.specifier.endsWith(specifier.replace("@/lib/", "/")),
+        ),
+    );
+    assert.deepStrictEqual(
+      violations,
+      [],
+      `operations-summary.ts must not reach a provider transport: ${JSON.stringify(violations)}`,
+    );
+  });
+
+  it("2. operations-summary.ts contains no database mutation call", () => {
+    const content = fs.readFileSync(summaryPath, "utf8");
+    assert.deepStrictEqual(findPrismaMutationCalls(content, summaryPath), []);
+  });
+
+  it("3. the mutation detector is precise: it flags prisma writes and ignores collection deletes", () => {
+    const fixture = `
+      const prisma = getClient();
+      export async function run(tx: any) {
+        await prisma.connection.update({ where: {}, data: {} });
+        await tx.campaignMetric.deleteMany({ where: {} });
+        await prisma.$executeRaw\`delete from x\`;
+        const map = new Map<string, number>();
+        map.delete("key");
+        const set = new Set<string>();
+        set.delete("key");
+      }
+    `;
+    assert.deepStrictEqual(findPrismaMutationCalls(fixture, "fixture.ts"), ["update", "deleteMany", "$executeRaw"]);
+  });
+
+  it("4. the operations API route exports GET and no mutating method", () => {
+    const content = fs.readFileSync(routePath, "utf8");
+    const exported = exportedFunctionNames(content, routePath);
+    assert.ok(exported.includes("GET"), "the operations route must export GET");
+    for (const method of MUTATING_ROUTE_METHODS) {
+      assert.equal(exported.includes(method), false, `the operations route must not export ${method}`);
+    }
+  });
+
+  it("5. client code cannot import the server-only operations loader", () => {
+    const virtualFiles: Record<string, string> = {
+      "/app/ops-client.tsx": `"use client"; import { loadOperationsSummary } from "@/lib/operations-summary"; export const x = loadOperationsSummary;`,
+      "/src/lib/operations-summary.ts": fs.readFileSync(summaryPath, "utf8"),
+    };
+    const violations = traverseTransitiveClientBoundary(
+      "/app/ops-client.tsx",
+      repoRoot,
+      (specifier) => (specifier === "@/lib/operations-summary" ? "/src/lib/operations-summary.ts" : null),
+      (file) => virtualFiles[file] ?? "",
+    );
+    assert.ok(violations.length > 0, "a client importing the operations loader must be a boundary violation");
+    assert.ok(
+      violations.some((violation) => violation.forbiddenSpecifier === "@/lib/prisma"),
+      `expected the traversal to reach @/lib/prisma, saw ${JSON.stringify(violations)}`,
+    );
+  });
+
+  it("6. every API route that resolves client context also maps resolver failures", () => {
+    const routeFiles = collectRouteFiles(path.join(repoRoot, "src/app/api"));
+    assert.ok(routeFiles.length > 0, "expected to discover API routes");
+    const offenders: string[] = [];
+    for (const file of routeFiles) {
+      const content = fs.readFileSync(file, "utf8");
+      const usesResolver = /resolveClient(?:Context|DataScope)\s*\(/.test(content);
+      const mapsFailures = /toClientContextResponse\s*\(/.test(content);
+      if (usesResolver && !mapsFailures) {
+        offenders.push(path.relative(repoRoot, file));
+      }
+    }
+    assert.deepStrictEqual(
+      offenders,
+      [],
+      `routes resolving client context must map failures with toClientContextResponse:\n${offenders.join("\n")}`,
+    );
+  });
+});
