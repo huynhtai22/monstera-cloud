@@ -6,6 +6,8 @@ import { assertAllowedTestDatabase } from "./pg-test-discipline";
 import { ClientContextError } from "./client-context-server";
 import {
   loadOperationsSummary,
+  OPERATIONS_INGESTION_WINDOW_DAYS,
+  OPERATIONS_LIST_LIMIT,
   type FreshnessData,
   type OperationsSection,
 } from "./operations-summary";
@@ -175,8 +177,11 @@ describe("PostgreSQL integration: operations summary isolation", () => {
     });
     await db.syncLog.createMany({
       data: [
-        { pipelineId: ids.pipeA, status: "error", errorMsg: "pipeline A failed" },
-        { pipelineId: ids.pipeB, status: "error", errorMsg: "pipeline B failed" },
+        // Explicit timestamps: `createdAt` is part of the ingestion window
+        // predicate, so a wall-clock default would make these assertions
+        // depend on when the suite happens to run.
+        { pipelineId: ids.pipeA, status: "error", errorMsg: "pipeline A failed", createdAt: d3 },
+        { pipelineId: ids.pipeB, status: "error", errorMsg: "pipeline B failed", createdAt: d3 },
       ],
     });
   });
@@ -645,5 +650,252 @@ describe("PostgreSQL integration: operations summary isolation", () => {
       await db.client.deleteMany({ where: { workspaceId: wsReady } });
       await db.workspace.delete({ where: { id: wsReady } });
     }
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Sync-log ingestion window                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Real-PostgreSQL coverage for the ingestion window applied to `SyncLog`.
+ *
+ * `SyncLog` reaches the workspace only through `pipeline.workspaceId`, so the
+ * window predicate is the ONLY thing separating "a failure this workspace
+ * should act on" from "a historical failure that must stay buried". These
+ * tests pin the boundary from both sides and, critically, pin the AUTHORITATIVE
+ * COUNT as well as the bounded detail list -- an unbounded count would keep the
+ * section in `attention` forever while the details stayed empty.
+ *
+ * Every case drives the window from an injected `now`; none depend on the wall
+ * clock.
+ */
+describe("PostgreSQL integration: operations summary sync-log ingestion window", () => {
+  let db: PrismaClient;
+  const suffix = `opslog-${Date.now()}-${process.pid}`;
+
+  // Injected clock: the single source of truth for the window.
+  const NOW = new Date("2026-06-15T12:00:00.000Z");
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const SINCE = new Date(NOW.getTime() - OPERATIONS_INGESTION_WINDOW_DAYS * DAY_MS);
+
+  const ids = {
+    ownerOwn: `u-log-own-${suffix}`,
+    ownerRival: `u-log-rival-${suffix}`,
+    wsOwn: `ws-log-own-${suffix}`,
+    wsRival: `ws-log-rival-${suffix}`,
+    clientOwn: `cl-log-own-${suffix}`,
+    clientRival: `cl-log-rival-${suffix}`,
+    srcOwn: `src-log-own-${suffix}`,
+    dstOwn: `dst-log-own-${suffix}`,
+    srcRival: `src-log-rival-${suffix}`,
+    dstRival: `dst-log-rival-${suffix}`,
+    pipeOwn: `pipe-log-own-${suffix}`,
+    pipeRival: `pipe-log-rival-${suffix}`,
+  };
+
+  // Boundary probes. `OUT_*` sit strictly before the window opens.
+  const OUT_OLD = new Date(NOW.getTime() - 30 * DAY_MS);
+  const OUT_BEFORE_BOUNDARY = new Date(SINCE.getTime() - 1);
+  const BOUNDARY = new Date(SINCE.getTime());
+  const IN_AFTER_BOUNDARY = new Date(SINCE.getTime() + 1);
+  const IN_FRESH = new Date("2026-06-10T00:00:00.000Z");
+  const FUTURE = new Date("2026-06-16T12:00:00.000Z");
+
+  type SeedLog = { pipelineId: string; status: string; errorMsg: string; createdAt: Date };
+
+  async function seedLogs(rows: SeedLog[]): Promise<void> {
+    await db.syncLog.deleteMany({ where: { pipelineId: { in: [ids.pipeOwn, ids.pipeRival] } } });
+    if (rows.length > 0) {
+      await db.syncLog.createMany({ data: rows });
+    }
+  }
+
+  /** Loads the ingestion section, proving the window came from the injected clock. */
+  async function ingestion(workspaceId: string) {
+    const summary = await loadOperationsSummary({ workspaceId, now: NOW });
+    assert.equal(summary.generatedAt, NOW.toISOString(), "the injected clock must drive the window");
+    return summary.sections.ingestion;
+  }
+
+  before(async () => {
+    const url = assertAllowedTestDatabase(process.env.DATABASE_URL);
+    db = new PrismaClient({ datasources: { db: { url } } });
+    await db.$connect();
+
+    await db.user.createMany({
+      data: [
+        { id: ids.ownerOwn, email: `${ids.ownerOwn}@example.test`, name: "Log Own" },
+        { id: ids.ownerRival, email: `${ids.ownerRival}@example.test`, name: "Log Rival" },
+      ],
+    });
+    await db.workspace.createMany({
+      data: [
+        { id: ids.wsOwn, ownerId: ids.ownerOwn, name: "Log Own", slug: `log-own-${suffix}`, plan: "professional" },
+        { id: ids.wsRival, ownerId: ids.ownerRival, name: "Log Rival", slug: `log-rival-${suffix}`, plan: "professional" },
+      ],
+    });
+    await db.workspaceMember.createMany({
+      data: [
+        { workspaceId: ids.wsOwn, userId: ids.ownerOwn, role: "owner" },
+        { workspaceId: ids.wsRival, userId: ids.ownerRival, role: "owner" },
+      ],
+    });
+    await db.client.createMany({
+      data: [
+        { id: ids.clientOwn, workspaceId: ids.wsOwn, name: "Own Client", accountAssignmentsConfiguredAt: NOW },
+        { id: ids.clientRival, workspaceId: ids.wsRival, name: "Rival Client", accountAssignmentsConfiguredAt: NOW },
+      ],
+    });
+    await db.connection.createMany({
+      data: [
+        { id: ids.srcOwn, workspaceId: ids.wsOwn, name: "Own Src", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `lso-${suffix}`, credentials: "{}" },
+        { id: ids.dstOwn, workspaceId: ids.wsOwn, name: "Own Dst", provider: "google_sheets", type: "destination", status: "connected", remoteAccountId: `ldo-${suffix}`, credentials: "{}" },
+        { id: ids.srcRival, workspaceId: ids.wsRival, name: "Rival Src", provider: "google_ads", type: "source", status: "connected", remoteAccountId: `lsr-${suffix}`, credentials: "{}" },
+        { id: ids.dstRival, workspaceId: ids.wsRival, name: "Rival Dst", provider: "google_sheets", type: "destination", status: "connected", remoteAccountId: `ldr-${suffix}`, credentials: "{}" },
+      ],
+    });
+    await db.pipeline.createMany({
+      data: [
+        { id: ids.pipeOwn, workspaceId: ids.wsOwn, name: "Own Pipe", sourceConnectionId: ids.srcOwn, destinationConnectionId: ids.dstOwn },
+        { id: ids.pipeRival, workspaceId: ids.wsRival, name: "Rival Pipe", sourceConnectionId: ids.srcRival, destinationConnectionId: ids.dstRival },
+      ],
+    });
+  });
+
+  after(async () => {
+    try {
+      await db.syncLog.deleteMany({ where: { pipelineId: { in: [ids.pipeOwn, ids.pipeRival] } } });
+      await db.pipeline.deleteMany({ where: { workspaceId: { in: [ids.wsOwn, ids.wsRival] } } });
+      await db.connection.deleteMany({ where: { workspaceId: { in: [ids.wsOwn, ids.wsRival] } } });
+      await db.client.deleteMany({ where: { workspaceId: { in: [ids.wsOwn, ids.wsRival] } } });
+      await db.workspaceMember.deleteMany({ where: { workspaceId: { in: [ids.wsOwn, ids.wsRival] } } });
+      await db.workspace.deleteMany({ where: { id: { in: [ids.wsOwn, ids.wsRival] } } });
+      await db.user.deleteMany({ where: { id: { in: [ids.ownerOwn, ids.ownerRival] } } });
+    } finally {
+      await db.$disconnect();
+    }
+  });
+
+  it("ignores a sync-log failure older than the declared ingestion window", async () => {
+    await seedLogs([{ pipelineId: ids.pipeOwn, status: "error", errorMsg: "stale", createdAt: OUT_OLD }]);
+    const section = await ingestion(ids.wsOwn);
+    assert.equal(section.state, "empty");
+    assert.equal(section.data!.syncLogErrors.length, 0);
+    assert.equal(section.data!.totals.failed, 0);
+  });
+
+  it("ignores a sync-log failure one millisecond before the window opens", async () => {
+    await seedLogs([{ pipelineId: ids.pipeOwn, status: "error", errorMsg: "before", createdAt: OUT_BEFORE_BOUNDARY }]);
+    const section = await ingestion(ids.wsOwn);
+    assert.equal(section.state, "empty");
+    assert.equal(section.data!.syncLogErrors.length, 0);
+  });
+
+  it("includes a sync-log failure exactly on the window boundary", async () => {
+    await seedLogs([{ pipelineId: ids.pipeOwn, status: "error", errorMsg: "boundary", createdAt: BOUNDARY }]);
+    const section = await ingestion(ids.wsOwn);
+    assert.equal(section.state, "attention");
+    assert.equal(section.data!.syncLogErrors.length, 1);
+    assert.equal(section.data!.syncLogErrors[0]!.createdAt, BOUNDARY.toISOString());
+  });
+
+  it("includes a sync-log failure one millisecond after the window opens", async () => {
+    await seedLogs([{ pipelineId: ids.pipeOwn, status: "failed", errorMsg: "after", createdAt: IN_AFTER_BOUNDARY }]);
+    const section = await ingestion(ids.wsOwn);
+    assert.equal(section.state, "attention");
+    assert.equal(section.data!.syncLogErrors.length, 1);
+  });
+
+  it("keeps only in-window failures when stale and fresh failures are mixed", async () => {
+    await seedLogs([
+      { pipelineId: ids.pipeOwn, status: "error", errorMsg: "stale", createdAt: OUT_OLD },
+      { pipelineId: ids.pipeOwn, status: "error", errorMsg: "fresh", createdAt: IN_FRESH },
+    ]);
+    const section = await ingestion(ids.wsOwn);
+    assert.equal(section.state, "attention");
+    assert.deepEqual(section.data!.syncLogErrors.map((entry) => entry.errorSummary), ["fresh"]);
+  });
+
+  it("derives the latest-failure timestamp from in-window rows only", async () => {
+    // Pre-fix the out-of-window row sorts FIRST (it is one millisecond newer),
+    // so the UI advertised a timestamp from outside the window it claims.
+    await seedLogs([
+      { pipelineId: ids.pipeOwn, status: "error", errorMsg: "just-outside", createdAt: OUT_BEFORE_BOUNDARY },
+      { pipelineId: ids.pipeOwn, status: "error", errorMsg: "just-inside", createdAt: BOUNDARY },
+    ]);
+    const section = await ingestion(ids.wsOwn);
+    const newest = section.data!.syncLogErrors[0]!;
+    assert.equal(newest.errorSummary, "just-inside");
+    assert.equal(newest.createdAt, BOUNDARY.toISOString());
+    assert.equal(section.data!.syncLogErrors.length, 1);
+  });
+
+  it("binds the authoritative count to the window, not just the bounded detail list", async () => {
+    await seedLogs(
+      Array.from({ length: 30 }, (_, index) => ({
+        pipelineId: ids.pipeOwn,
+        status: "error",
+        errorMsg: `stale-${index}`,
+        createdAt: new Date(OUT_OLD.getTime() + index * 1000),
+      })),
+    );
+    const section = await ingestion(ids.wsOwn);
+    assert.equal(section.state, "empty", "an unbounded count would pin this section in attention forever");
+    assert.equal(section.data!.syncLogErrors.length, 0);
+    assert.equal(section.truncated, false);
+  });
+
+  it("still reports attention for in-window failures beyond the bounded detail list", async () => {
+    await seedLogs(
+      Array.from({ length: OPERATIONS_LIST_LIMIT + 5 }, (_, index) => ({
+        pipelineId: ids.pipeOwn,
+        status: "error",
+        errorMsg: `fresh-${index}`,
+        createdAt: new Date(IN_FRESH.getTime() + index * 1000),
+      })),
+    );
+    const section = await ingestion(ids.wsOwn);
+    assert.equal(section.state, "attention");
+    assert.equal(section.data!.syncLogErrors.length, OPERATIONS_LIST_LIMIT, "the detail list stays bounded");
+    assert.equal(section.truncated, true);
+  });
+
+  it("never surfaces a rival workspace's sync-log failure, in or out of window", async () => {
+    await seedLogs([
+      { pipelineId: ids.pipeRival, status: "error", errorMsg: "rival-stale", createdAt: OUT_OLD },
+      { pipelineId: ids.pipeRival, status: "error", errorMsg: "rival-fresh", createdAt: IN_FRESH },
+    ]);
+
+    const own = await ingestion(ids.wsOwn);
+    assert.equal(own.state, "empty");
+    assert.equal(own.data!.syncLogErrors.length, 0);
+
+    const rival = await ingestion(ids.wsRival);
+    assert.equal(rival.state, "attention");
+    assert.deepEqual(rival.data!.syncLogErrors.map((entry) => entry.errorSummary), ["rival-fresh"]);
+  });
+
+  it("treats a future-dated failure as in-window evidence (no upper bound on purpose)", async () => {
+    await seedLogs([{ pipelineId: ids.pipeOwn, status: "error", errorMsg: "future", createdAt: FUTURE }]);
+    const section = await ingestion(ids.wsOwn);
+    assert.equal(section.state, "attention");
+    assert.equal(section.data!.syncLogErrors.length, 1);
+  });
+
+  it("stays empty when the window holds only successful sync logs", async () => {
+    await seedLogs([
+      { pipelineId: ids.pipeOwn, status: "success", errorMsg: "", createdAt: IN_FRESH },
+      { pipelineId: ids.pipeOwn, status: "running", errorMsg: "", createdAt: IN_FRESH },
+    ]);
+    const section = await ingestion(ids.wsOwn);
+    assert.equal(section.state, "empty");
+  });
+
+  it("advertises the same window the predicate enforces", async () => {
+    await seedLogs([]);
+    const section = await ingestion(ids.wsOwn);
+    assert.equal(OPERATIONS_INGESTION_WINDOW_DAYS, 7);
+    assert.equal(section.data!.windowDays, OPERATIONS_INGESTION_WINDOW_DAYS);
   });
 });

@@ -949,9 +949,15 @@ async function loadIngestion(
   }
   try {
     const since = new Date(now.getTime() - OPERATIONS_INGESTION_WINDOW_DAYS * DAY_MS);
+    // Sync-log failures are scoped to the SAME ingestion window as the import
+    // jobs above. An unbounded predicate would let a historical failure keep
+    // ingestion in `attention` forever, block `empty`, surface out-of-window
+    // evidence in the details, and supply a stale "latest failure" timestamp --
+    // all while `totals.failed` correctly stayed at 0.
     const syncLogErrorWhere: Prisma.SyncLogWhereInput = {
       pipeline: { workspaceId },
       status: { in: ["error", "failed"] },
+      createdAt: { gte: since },
     };
     const [grouped, jobs, syncLogErrors, syncLogErrorTotal] = await Promise.all([
       prisma.warehouseImportJob.groupBy({
