@@ -26,6 +26,7 @@ export const AGENCY_APP_PREFIXES = new Set([
   "overview",
   "quickstart",
   "ops",
+  "operations",
   "meta-ads",
   "shopee",
   "google-ads",
