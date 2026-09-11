@@ -136,7 +136,8 @@ async function assignAccountFromUi(
   const row = accountRow(page, accountId);
   await expect(row).toBeVisible();
   await row.getByRole("button", { name: `Assign account ${accountId}` }).click();
-  await expect(page.getByRole("heading", { name: "Assign Account" })).toBeVisible();
+  const heading = page.getByRole("heading", { name: "Assign Account" });
+  await expect(heading).toBeVisible();
 
   await page.getByText("Target Client Brand", { exact: true }).locator("..").locator("select").selectOption(clientId);
   if (connectionId) {
@@ -154,6 +155,7 @@ async function assignAccountFromUi(
   );
   await page.getByRole("button", { name: "Confirm Assignment" }).click();
   await response;
+  await expect(heading).not.toBeVisible();
 }
 
 async function expectNoDocumentOverflow(page: Page) {
@@ -322,28 +324,30 @@ test.describe("client account assignment journeys", () => {
 
   test.afterAll(async () => {
     try {
-      // This is a regression guard around the real credential endpoint, not a
-      // limiter bypass: every assignment role signs in once per Playwright
-      // project invocation and each journey gets a clean derived context.
-      expect({
-        alice: aliceSession.loginCount,
-        viewer: charlieSession.loginCount,
-        rival: bobSession.loginCount,
-      }).toEqual({ alice: 1, viewer: 1, rival: 1 });
-
-      await db?.$transaction(async (tx) => {
-        await tx.campaignMetric.deleteMany({ where: { workspaceId: fixture.workspaceId } });
-        await tx.clientProviderAccountAssignment.deleteMany({ where: { workspaceId: fixture.workspaceId } });
-        await tx.connection.deleteMany({ where: { workspaceId: fixture.workspaceId } });
-        await tx.client.deleteMany({ where: { workspaceId: fixture.workspaceId } });
-        await tx.apiKey.deleteMany({ where: { workspaceId: fixture.workspaceId } });
-        await tx.workspaceMember.deleteMany({ where: { workspaceId: fixture.workspaceId } });
-        await tx.workspaceProviderAccess.deleteMany({ where: { workspaceId: fixture.workspaceId } });
-        await tx.workspace.delete({ where: { id: fixture.workspaceId } });
-      });
+      if (db && fixture?.workspaceId) {
+        await db.$transaction(async (tx) => {
+          await tx.campaignMetric.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+          await tx.clientProviderAccountAssignment.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+          await tx.connection.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+          await tx.client.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+          await tx.apiKey.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+          await tx.workspaceMember.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+          await tx.workspaceProviderAccess.deleteMany({ where: { workspaceId: fixture.workspaceId } });
+          await tx.workspace.delete({ where: { id: fixture.workspaceId } });
+        });
+      }
     } finally {
       await db?.$disconnect();
     }
+
+    // This is a regression guard around the real credential endpoint, not a
+    // limiter bypass: every assignment role signs in once per Playwright
+    // project invocation and each journey gets a clean derived context.
+    expect({
+      alice: aliceSession.loginCount,
+      viewer: charlieSession.loginCount,
+      rival: bobSession.loginCount,
+    }).toEqual({ alice: 1, viewer: 1, rival: 1 });
   });
 
   test("Manage sources deep-link selects the accounts tab and preserves five-client identity", async ({ authenticatedFixturePage: page }) => {
@@ -701,19 +705,28 @@ test.describe("client account assignment journeys", () => {
       await clientFilter.selectOption(clientId);
       if (expectedAccounts.length === 0) {
         await expect(page.getByText("No provider accounts found")).toBeVisible();
+        await expect(page.locator("tbody tr")).toHaveCount(0);
       } else {
+        await expect(page.locator("tbody tr")).toHaveCount(expectedAccounts.length);
         for (const accountId of expectedAccounts) {
           await expect(accountRow(page, accountId)).toBeVisible();
         }
-        const rendered = await page.locator("tbody tr").allTextContents();
-        for (const accountId of [
-          fixture.accounts.single,
-          fixture.accounts.bulkOne,
-          fixture.accounts.bulkTwo,
-          fixture.accounts.conflict,
-        ]) {
-          expect(rendered.some((row) => row.includes(accountId))).toBe(expectedAccounts.includes(accountId));
-        }
+        await expect.poll(async () => {
+          const rendered = await page.locator("tbody tr").allTextContents();
+          return [
+            fixture.accounts.single,
+            fixture.accounts.bulkOne,
+            fixture.accounts.bulkTwo,
+            fixture.accounts.conflict,
+          ].map((accountId) => rendered.some((row) => row.includes(accountId)));
+        }).toEqual(
+          [
+            fixture.accounts.single,
+            fixture.accounts.bulkOne,
+            fixture.accounts.bulkTwo,
+            fixture.accounts.conflict,
+          ].map((accountId) => expectedAccounts.includes(accountId)),
+        );
       }
     }
 
