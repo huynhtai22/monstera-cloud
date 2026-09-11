@@ -172,6 +172,7 @@ export function surfaceForPathname(pathname: string): ClientContextSurface | nul
   if (path === "/reports" || path.startsWith("/reports/")) return "reports";
   if (path === "/explorer" || path.startsWith("/explorer/")) return "warehouse";
   if (path === "/exports" || path.startsWith("/exports/")) return "exports";
+  if (path === "/operations" || path.startsWith("/operations/")) return "operations";
   return null;
 }
 

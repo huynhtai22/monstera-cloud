@@ -86,6 +86,7 @@ describe("page access policy (deny-by-default)", () => {
       "/synced-data",
       "/clients",
       "/exports",
+      "/operations",
       "/transformations",
       "/internal-templates",
       "/overview",

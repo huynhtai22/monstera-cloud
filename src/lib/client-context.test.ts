@@ -197,9 +197,11 @@ describe("client context URL contract", () => {
     assert.equal(surfaceForPathname("/reports"), "reports");
     assert.equal(surfaceForPathname("/explorer"), "warehouse");
     assert.equal(surfaceForPathname("/exports"), "exports");
+    assert.equal(surfaceForPathname("/operations"), "operations");
     assert.equal(surfaceForPathname("/console"), null);
     assert.equal(surfaceForPathname("/settings"), null);
     assert.equal(shouldPropagateClientContext("/reports"), true);
+    assert.equal(shouldPropagateClientContext("/operations"), true);
     assert.equal(shouldPropagateClientContext("/settings"), false);
     assert.equal(canonicalHref("/reports", new URLSearchParams("clientId=cl_a")), "/reports?clientId=cl_a");
     assert.equal(canonicalHref("/reports", new URLSearchParams()), "/reports");

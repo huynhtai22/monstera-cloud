@@ -26,6 +26,7 @@ import {
     Users,
     Download,
     Radio,
+    Activity,
 } from "lucide-react";
 import useSWR from "swr";
 import { useSession, signOut } from "next-auth/react";
@@ -146,6 +147,7 @@ export function Sidebar({
             label: "Overview",
             items: [
                 { name: "Dashboard", href: "/console", icon: LayoutGrid },
+                { name: "Operations", href: "/operations", icon: Activity },
             ],
         },
         {

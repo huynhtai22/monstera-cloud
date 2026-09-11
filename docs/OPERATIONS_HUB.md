@@ -1,6 +1,7 @@
-# Operations Hub — Backend Foundation (Slice 1)
+# Operations Hub — Backend Foundation and UI (Slices 1–2)
 
-Status: backend contract only. **No Operations Hub UI exists yet.**
+Status: the read-only backend contract (Slice 1) and the tenant-facing `/operations`
+page (Slice 2) are both implemented. The page renders the summary and writes nothing.
 
 This slice adds a tenant-safe, client-aware, read-only aggregation of operational
 evidence that already exists in the warehouse. It introduces no schema change, no
@@ -160,6 +161,24 @@ workspace-scoped only and explicitly unsupported for a concrete client.
 Section reads are isolated: one failing section degrades to `unavailable` and
 does not fail the whole request. No error detail is returned.
 
+## UI (`/operations`)
+
+The page is a tenant-facing, read-only view of the summary. It renders exactly the
+six sections the endpoint returns and adds no evidence of its own.
+
+| Concern | Behaviour |
+| --- | --- |
+| Route | `/operations` under the `(app)` group; deny-by-default auth via `src/lib/page-access-policy.ts` (no public allowlist entry). |
+| Data | One `GET /api/operations/summary` request, keyed by `workspaceId` + `clientId`. |
+| Client context | `/operations` is a client-context surface (`surfaceForPathname` → `operations`), so the shared bar renders and the scope propagates across surfaces. |
+| Writes | Zero. Every call to action links to an existing authorized surface. |
+| State | Each section shows its `state`, its totals, and — when `truncated` is true — an explicit capped-list notice. `unsupported` sections explain the reason instead of showing a zero. |
+
+Presentation helpers live in `src/lib/operations-view.ts` (pure, no server imports)
+and are covered by `src/lib/operations-view.test.ts`. The client component imports
+the response types with `import type` only, so the server-only loader never enters
+the client bundle (enforced by `src/lib/observability/client-boundary.test.ts`).
+
 ## Verification
 
 - `src/lib/operations-summary.test.ts` — deterministic aggregation, bounds and
@@ -176,6 +195,5 @@ does not fail the whole request. No error detail is returned.
 
 ## Remaining work (future UI slice)
 
-- The `/operations` page, navigation entry and page-access policy entry.
 - Per-blocker remediation deep links (readiness currently exposes only section-level hrefs).
 - Optional historical connector-health timeline (requires a telemetry sink; today telemetry is log-only).
