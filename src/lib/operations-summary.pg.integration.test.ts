@@ -488,7 +488,7 @@ describe("PostgreSQL integration: operations summary isolation", () => {
     }
   });
 
-  it("fails closed when connector health evidence is truncated", async () => {
+  it("derives connector health from the whole population, not the bounded list", async () => {
     const wsTrunc = `ws-trunc-${suffix}`;
     const connTrunc = `conn-trunc-${suffix}`;
     await db.workspace.create({
@@ -506,26 +506,106 @@ describe("PostgreSQL integration: operations summary isolation", () => {
         credentials: "{}",
       },
     });
-    await db.providerAccountHealth.createMany({
-      data: Array.from({ length: 30 }, (_, index) => ({
-        workspaceId: wsTrunc,
-        connectionId: connTrunc,
-        provider: "google_ads",
-        accountId: `acct-${String(index).padStart(3, "0")}`,
-        status: "healthy",
-      })),
-    });
     try {
-      const summary = await loadOperationsSummary({ workspaceId: wsTrunc, now: NOW });
-      const section = summary.sections.connectorHealth;
-      assert.equal(section.truncated, true);
-      assert.equal(section.data?.attention.length, 0, "the retained slice is entirely healthy");
-      // 30 rows exceed the 25 bound, so the section must not certify `ready`.
-      assert.equal(section.state, "attention");
+      // 30 healthy accounts exceed the 25-row list bound. The state is derived
+      // from the whole population, so this must NOT be a false `attention`.
+      await db.providerAccountHealth.createMany({
+        data: Array.from({ length: 30 }, (_, index) => ({
+          workspaceId: wsTrunc,
+          connectionId: connTrunc,
+          provider: "google_ads",
+          accountId: `acct-${String(index).padStart(3, "0")}`,
+          status: "healthy",
+        })),
+      });
+      const healthy = await loadOperationsSummary({ workspaceId: wsTrunc, now: NOW });
+      assert.equal(healthy.sections.connectorHealth.data?.totals.total, 30);
+      assert.equal(healthy.sections.connectorHealth.data?.totals.healthy, 30);
+      assert.equal(healthy.sections.connectorHealth.data?.attention.length, 0);
+      assert.equal(healthy.sections.connectorHealth.truncated, false);
+      assert.equal(healthy.sections.connectorHealth.state, "ready");
+
+      // 26 attention-worthy accounts exceed the list bound: the state must be
+      // `attention`, the totals must cover the whole population, and the capped
+      // display list is disclosed as truncated.
+      await db.providerAccountHealth.createMany({
+        data: Array.from({ length: 26 }, (_, index) => ({
+          workspaceId: wsTrunc,
+          connectionId: connTrunc,
+          provider: "google_ads",
+          accountId: `deg-${String(index).padStart(3, "0")}`,
+          status: "degraded",
+          consecutiveFailures: 2,
+        })),
+      });
+      const degraded = await loadOperationsSummary({ workspaceId: wsTrunc, now: NOW });
+      assert.equal(degraded.sections.connectorHealth.data?.totals.total, 56);
+      assert.equal(degraded.sections.connectorHealth.data?.totals.degraded, 26);
+      assert.equal(degraded.sections.connectorHealth.data?.attention.length, 25);
+      assert.equal(degraded.sections.connectorHealth.truncated, true);
+      assert.equal(degraded.sections.connectorHealth.state, "attention");
     } finally {
       await db.providerAccountHealth.deleteMany({ where: { workspaceId: wsTrunc } });
       await db.connection.deleteMany({ where: { workspaceId: wsTrunc } });
       await db.workspace.delete({ where: { id: wsTrunc } });
+    }
+  });
+
+  it("detects a stale delivery pair that the bounded receipt scan cannot see", async () => {
+    const wsDel = `ws-del-${suffix}`;
+    const clDel = `cl-del-${suffix}`;
+    await db.workspace.create({
+      data: { id: wsDel, ownerId: ids.ownerA, name: "Ops Delivery", slug: `ops-del-${suffix}`, plan: "professional" },
+    });
+    await db.client.create({
+      data: { id: clDel, workspaceId: wsDel, name: "Delivery Client", accountAssignmentsConfiguredAt: NOW },
+    });
+    const staleAt = new Date(NOW.getTime() - 30 * 24 * 60 * 60 * 1000);
+    try {
+      await db.destinationDeliveryReceipt.createMany({
+        data: [
+          // One stale pair ...
+          {
+            workspaceId: wsDel,
+            clientId: clDel,
+            destination: "looker",
+            windowStart: "2026-08-01",
+            windowEnd: "2026-08-07",
+            dataThroughDate: "2026-08-07",
+            datasetFingerprint: "fp-stale",
+            rowCount: 5,
+            retrievedAt: staleAt,
+            actorId: ids.ownerA,
+          },
+          // ... plus enough fresh receipts to push it out of the bounded scan,
+          // which is ordered `retrievedAt desc` and therefore drops the oldest.
+          ...Array.from({ length: 201 }, () => ({
+            workspaceId: wsDel,
+            clientId: clDel,
+            destination: "google_sheets",
+            windowStart: "2026-09-01",
+            windowEnd: "2026-09-07",
+            dataThroughDate: "2026-09-07",
+            datasetFingerprint: "fp-fresh",
+            rowCount: 9,
+            retrievedAt: NOW,
+            actorId: ids.ownerA,
+          })),
+        ],
+      });
+      const summary = await loadOperationsSummary({ workspaceId: wsDel, now: NOW });
+      const section = summary.sections.delivery;
+      // Authoritative totals count BOTH pairs, including the stale one that the
+      // bounded display scan could not retain.
+      assert.equal(section.data?.totals.receipts, 2);
+      assert.equal(section.data?.totals.stale, 1);
+      assert.equal(section.data?.latest.length, 1, "the bounded scan only retained the fresh pair");
+      assert.equal(section.truncated, true);
+      assert.equal(section.state, "attention");
+    } finally {
+      await db.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: wsDel } });
+      await db.client.deleteMany({ where: { workspaceId: wsDel } });
+      await db.workspace.delete({ where: { id: wsDel } });
     }
   });
 });

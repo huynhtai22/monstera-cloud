@@ -373,7 +373,9 @@ describe("operations summary: query contract", () => {
 });
 
 describe("operations summary: truncated evidence", () => {
-  it("fails closed on truncation instead of reporting ready or empty", () => {
+  it("fails closed when the state was derived from the bounded slice", () => {
+    // A truncated section whose state came from the slice cannot certify health:
+    // rows beyond the bound may be attention-worthy.
     const truncatedClean = operationsSection(
       { value: 0 },
       { attention: false, empty: false, truncated: true, limit: 25, href: "/sources" },
@@ -397,5 +399,31 @@ describe("operations summary: truncated evidence", () => {
       operationsSection({ value: 0 }, { attention: false, empty: false, truncated: false, limit: 25, href: "/sources" }).state,
       "ready",
     );
+  });
+
+  it("treats truncation as a display-only disclosure when the state is authoritative", () => {
+    // An authoritative state covers the whole population, so a capped display
+    // list must never manufacture a false `attention`.
+    const authoritativeClean = operationsSection(
+      { value: 0 },
+      { attention: false, empty: false, truncated: true, limit: 25, href: "/sources", stateAuthoritative: true },
+    );
+    assert.equal(authoritativeClean.state, "ready");
+    assert.equal(authoritativeClean.truncated, true);
+
+    const authoritativeAttention = operationsSection(
+      { value: 0 },
+      { attention: true, empty: false, truncated: true, limit: 25, href: "/sources", stateAuthoritative: true },
+    );
+    assert.equal(authoritativeAttention.state, "attention");
+    assert.equal(authoritativeAttention.truncated, true);
+
+    // An authoritative empty state stays `empty` even when the list is capped.
+    const authoritativeEmpty = operationsSection(
+      { value: 0 },
+      { attention: false, empty: true, truncated: true, limit: 25, href: "/sources", stateAuthoritative: true },
+    );
+    assert.equal(authoritativeEmpty.state, "empty");
+    assert.equal(authoritativeEmpty.truncated, true);
   });
 });

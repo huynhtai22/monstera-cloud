@@ -81,24 +81,43 @@ collapsed into a healthy zero, and unsupported/unavailable sections carry no
 
 | Section | Source | Bound |
 | --- | --- | --- |
-| `connectorHealth` | `ProviderAccountHealth` | 25 rows; quarantine threshold from `QUARANTINE_THRESHOLD` |
-| `freshness` | `Connection` (`type: "source"`) | 25 rows |
-| `ingestion` | `WarehouseImportJob` + `SyncLog` (via `pipeline.workspaceId`) | 25 rows; 7-day window |
-| `readiness` | `loadReportReadiness` | 10 clients; default 7-day window |
-| `delivery` | `DestinationDeliveryReceipt` | 25 latest per `(client, destination)`; 200 scanned |
-| `anomalies` | `CampaignMetric` → `detectMarketingAnomalies` | 25 items; 14-day window; 2 000 rows scanned |
+| `connectorHealth` | `ProviderAccountHealth` | whole-population `groupBy` for state; 25 attention rows displayed |
+| `freshness` | `Connection` (`type: "source"`) | every source connection read; 25 attention rows displayed |
+| `ingestion` | `WarehouseImportJob` + `SyncLog` (via `pipeline.workspaceId`) | whole-window `groupBy` for totals; 25 rows per list; 7-day window |
+| `readiness` | `loadReportReadiness` | up to 50 clients evaluated; 10 displayed; default 7-day window |
+| `delivery` | `DestinationDeliveryReceipt` | whole-population `groupBy` for staleness; 25 latest per `(client, destination)`; 200 scanned |
+| `anomalies` | `CampaignMetric` → `detectMarketingAnomalies` | 25 items; 14-day window; 2 000 rows scanned (state from the scan) |
 
 All lists use explicit sort keys with an `id` tiebreaker, so output is stable
 regardless of input order. `truncated` is reported rather than hidden.
 
-**Truncation fails closed.** A section that omitted rows can never report
-`ready` or `empty`: because rows beyond the bound may be attention-worthy, the
-section degrades to `attention` and sets `truncated: true`, so an omission can
-never be mistaken for health. Section counts are authoritative for the whole
-window (`ingestion` derives its total *and* its per-status breakdown from the
-grouped counts, never from the bounded job scan), so `sum(status) === total`.
-The `anomalies` scan reads newest-first so a truncated scan retains the recent
-rows detection anchors to.
+**State comes from the whole population; only lists are bounded.** Every section
+derives its `state` and its `totals` from an authoritative query over the whole
+scoped population, never from the bounded display list:
+
+- `connectorHealth` totals come from a `groupBy` on status — and only the literal
+  `"healthy"` counts as healthy, so `status != "healthy"` is an exact predicate
+  for attention. The displayed attention rows are fetched with that filter.
+- `freshness` reads every source connection for the workspace (a small
+  per-tenant table), so a stale or errored connection outside a list bound can
+  never be reported as `ready`.
+- `ingestion` derives its total *and* its per-status breakdown from the grouped
+  counts, and counts sync-log errors authoritatively, so `sum(status) === total`.
+- `delivery` derives per-`(client, destination)` recency from a `groupBy` with
+  `_max(retrievedAt)`, so `stale` is computed over every pair. This matters
+  because the receipt scan is ordered `retrievedAt desc` and therefore drops the
+  oldest — exactly the stale — receipts.
+- `readiness` evaluates up to `OPERATIONS_READINESS_EVAL_LIMIT` clients (50)
+  while displaying `OPERATIONS_READINESS_CLIENT_LIMIT` (10).
+
+Display lists stay capped at `OPERATIONS_LIST_LIMIT` and `truncated: true`
+discloses the cap, but a capped list never changes the state.
+
+**Truncation fails closed only where the state cannot come from an aggregate.**
+`anomalies` detection is row-based, so its state is derived from the bounded
+scan. Because rows beyond the bound may be anomalous, a truncated anomalies
+section degrades to `attention` instead of reporting `ready`/`empty`, and the
+scan reads newest-first so it retains the recent rows detection anchors to.
 
 ### Sanitization
 

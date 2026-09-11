@@ -51,8 +51,15 @@ export const OPERATIONS_SUMMARY_VERSION = "operations-summary-v1";
 
 /** Maximum rows returned by any single list in the summary. */
 export const OPERATIONS_LIST_LIMIT = 25;
-/** Maximum number of clients evaluated for workspace-wide readiness. */
+/** Maximum number of clients SHOWN in the readiness list. */
 export const OPERATIONS_READINESS_CLIENT_LIMIT = 10;
+/**
+ * Maximum number of clients EVALUATED to derive the readiness state. The state
+ * is authoritative only when the pager is exhausted within this ceiling; beyond
+ * it the section fails closed. Readiness evaluation is per-client, so this
+ * ceiling bounds the worst-case cost.
+ */
+export const OPERATIONS_READINESS_EVAL_LIMIT = 50;
 /** Ingestion window for import-job totals and recent failures. */
 export const OPERATIONS_INGESTION_WINDOW_DAYS = 7;
 /** Metric window scanned for marketing anomalies. */
@@ -677,17 +684,30 @@ export function summarizeAnomalies(
  */
 export function operationsSection<T>(
   data: T,
-  options: { attention: boolean; empty: boolean; truncated: boolean; limit: number; href: string },
+  options: {
+    attention: boolean;
+    empty: boolean;
+    truncated: boolean;
+    limit: number;
+    href: string;
+    /**
+     * Whether `attention`/`empty` were derived from evidence covering the WHOLE
+     * population rather than the bounded slice. When true, `truncated` is a
+     * display-only disclosure (a capped list) and does not affect the state.
+     *
+     * Defaults to false, which fails closed: a truncated section whose state
+     * came from the bounded slice can never report `ready` or `empty`, because
+     * rows beyond the bound may be attention-worthy.
+     */
+    stateAuthoritative?: boolean;
+  },
 ): OperationsSection<T> {
-  // Fail closed on truncation. A bounded scan cannot certify the absence of
-  // evidence: rows beyond the bound may be attention-worthy (or anomalous), so
-  // a truncated section must never report `empty` or `ready`. It degrades to
-  // `attention`, surfacing the omission instead of presenting it as health.
-  if (options.empty && !options.truncated) {
+  const failsClosed = options.truncated && options.stateAuthoritative !== true;
+  if (options.empty && !failsClosed) {
     return { state: "empty", data, truncated: options.truncated, limit: options.limit, reason: null, href: options.href };
   }
   return {
-    state: options.attention || options.truncated ? "attention" : "ready",
+    state: options.attention || failsClosed ? "attention" : "ready",
     data,
     truncated: options.truncated,
     limit: options.limit,
@@ -801,32 +821,69 @@ async function loadConnectorHealth(
   scope: OperationsScope,
 ): Promise<OperationsSection<ConnectorHealthData>> {
   const href = NAVIGATION.sources;
+  const scopeWhere = { workspaceId, ...accountScopeWhere(scope) };
   try {
-    const rows = await prisma.providerAccountHealth.findMany({
-      where: { workspaceId, ...accountScopeWhere(scope) },
-      orderBy: [{ connectionId: "asc" }, { accountId: "asc" }],
-      take: OPERATIONS_LIST_LIMIT + 1,
-      select: {
-        connectionId: true,
-        provider: true,
-        accountId: true,
-        accountName: true,
-        status: true,
-        errorCategory: true,
-        consecutiveFailures: true,
-        lastError: true,
-        lastSuccessAt: true,
-      },
-    });
-    const truncated = rows.length > OPERATIONS_LIST_LIMIT;
-    const data = summarizeConnectorHealth(rows.slice(0, OPERATIONS_LIST_LIMIT), { limit: OPERATIONS_LIST_LIMIT });
-    // Totals describe the bounded scan; truncation is reported, never hidden.
+    // The state is derived from an authoritative groupBy over the WHOLE scoped
+    // population, never from the bounded display list: a workspace with more
+    // accounts than the list bound must not be reported `ready` merely because
+    // the retained slice happens to be healthy. `normalizeAccountHealthStatus`
+    // maps only the literal "healthy" to healthy, so `status !== "healthy"` is
+    // an exact SQL predicate for attention.
+    const [grouped, attentionRows] = await Promise.all([
+      prisma.providerAccountHealth.groupBy({
+        by: ["status"],
+        where: scopeWhere,
+        _count: { _all: true },
+      }),
+      prisma.providerAccountHealth.findMany({
+        where: { ...scopeWhere, status: { not: "healthy" } },
+        orderBy: [{ connectionId: "asc" }, { accountId: "asc" }],
+        take: OPERATIONS_LIST_LIMIT,
+        select: {
+          connectionId: true,
+          provider: true,
+          accountId: true,
+          accountName: true,
+          status: true,
+          errorCategory: true,
+          consecutiveFailures: true,
+          lastError: true,
+          lastSuccessAt: true,
+        },
+      }),
+    ]);
+
+    const totals: ConnectorHealthData["totals"] = {
+      total: 0,
+      healthy: 0,
+      degraded: 0,
+      quarantined: 0,
+      reconnectRequired: 0,
+      unknown: 0,
+    };
+    for (const entry of grouped) {
+      const count = entry._count._all;
+      const status = normalizeAccountHealthStatus(entry.status);
+      totals.total += count;
+      if (status === "healthy") totals.healthy += count;
+      else if (status === "degraded") totals.degraded += count;
+      else if (status === "quarantined") totals.quarantined += count;
+      else if (status === "reconnect_required") totals.reconnectRequired += count;
+      else totals.unknown += count;
+    }
+
+    const attentionCount = totals.total - totals.healthy;
+    const data = summarizeConnectorHealth(attentionRows, { limit: OPERATIONS_LIST_LIMIT });
+    // Totals describe the whole population, not the bounded display list.
+    data.totals = totals;
     return operationsSection(data, {
-      attention: data.attention.length > 0,
-      empty: rows.length === 0,
-      truncated,
+      attention: attentionCount > 0,
+      empty: totals.total === 0,
+      // Display-only disclosure: the attention list is capped, not the evidence.
+      truncated: attentionCount > OPERATIONS_LIST_LIMIT,
       limit: OPERATIONS_LIST_LIMIT,
       href,
+      stateAuthoritative: true,
     });
   } catch {
     return operationsUnavailableSection<ConnectorHealthData>(href);
@@ -840,10 +897,14 @@ async function loadFreshness(
 ): Promise<OperationsSection<FreshnessData>> {
   const href = NAVIGATION.sources;
   try {
+    // Source connections are a small per-tenant table (each row is an OAuth
+    // link), so the WHOLE population is read and the state is derived from all
+    // of it; only the displayed attention list is capped. Bounding the scan
+    // would let a stale or errored connection outside the bound be reported as
+    // `ready`.
     const rows = await prisma.connection.findMany({
       where: { workspaceId, type: "source", ...connectionScopeWhere(scope) },
       orderBy: { id: "asc" },
-      take: OPERATIONS_LIST_LIMIT + 1,
       select: {
         id: true,
         provider: true,
@@ -854,17 +915,20 @@ async function loadFreshness(
         lastDataThrough: true,
       },
     });
-    const truncated = rows.length > OPERATIONS_LIST_LIMIT;
-    const data = summarizeFreshness(rows.slice(0, OPERATIONS_LIST_LIMIT), {
-      now,
-      limit: OPERATIONS_LIST_LIMIT,
-    });
+    const full = summarizeFreshness(rows, { now, limit: rows.length });
+    const attentionCount = full.attention.length;
+    const data: FreshnessData = {
+      ...full,
+      attention: full.attention.slice(0, OPERATIONS_LIST_LIMIT),
+    };
     return operationsSection(data, {
-      attention: data.attention.length > 0,
+      attention: attentionCount > 0,
       empty: rows.length === 0,
-      truncated,
+      // Display-only disclosure: the attention list is capped, not the evidence.
+      truncated: attentionCount > OPERATIONS_LIST_LIMIT,
       limit: OPERATIONS_LIST_LIMIT,
       href,
+      stateAuthoritative: true,
     });
   } catch {
     return operationsUnavailableSection<FreshnessData>(href);
@@ -885,7 +949,11 @@ async function loadIngestion(
   }
   try {
     const since = new Date(now.getTime() - OPERATIONS_INGESTION_WINDOW_DAYS * DAY_MS);
-    const [grouped, jobs, syncLogErrors] = await Promise.all([
+    const syncLogErrorWhere: Prisma.SyncLogWhereInput = {
+      pipeline: { workspaceId },
+      status: { in: ["error", "failed"] },
+    };
+    const [grouped, jobs, syncLogErrors, syncLogErrorTotal] = await Promise.all([
       prisma.warehouseImportJob.groupBy({
         by: ["status"],
         where: { workspaceId, createdAt: { gte: since } },
@@ -898,11 +966,14 @@ async function loadIngestion(
         select: { id: true, status: true, errorMsg: true, finishedAt: true, since: true, until: true },
       }),
       prisma.syncLog.findMany({
-        where: { pipeline: { workspaceId }, status: { in: ["error", "failed"] } },
+        where: syncLogErrorWhere,
         orderBy: [{ createdAt: "desc" }, { id: "asc" }],
         take: OPERATIONS_LIST_LIMIT + 1,
         select: { id: true, pipelineId: true, status: true, errorMsg: true, createdAt: true },
       }),
+      // Authoritative count: the bounded scan above can miss an older failure,
+      // so the state must not be derived from the slice alone.
+      prisma.syncLog.count({ where: syncLogErrorWhere }),
     ]);
 
     const truncated = jobs.length > OPERATIONS_LIST_LIMIT || syncLogErrors.length > OPERATIONS_LIST_LIMIT;
@@ -935,11 +1006,13 @@ async function loadIngestion(
     data.totals = totals;
 
     return operationsSection(data, {
-      attention: totals.failed > 0 || totals.partial > 0 || data.syncLogErrors.length > 0,
-      empty: totals.total === 0 && syncLogErrors.length === 0,
+      attention: totals.failed > 0 || totals.partial > 0 || syncLogErrorTotal > 0,
+      empty: totals.total === 0 && syncLogErrorTotal === 0,
+      // Display-only disclosure: the lists are capped, not the evidence.
       truncated,
       limit: OPERATIONS_LIST_LIMIT,
       href,
+      stateAuthoritative: true,
     });
   } catch {
     return operationsUnavailableSection<IngestionData>(href);
@@ -954,9 +1027,13 @@ async function loadReadiness(
   const href = NAVIGATION.reports;
   try {
     const window = defaultReportingWindow(now);
+    // Evaluate up to the (larger) evaluation ceiling so the state covers every
+    // client in a normal workspace, while the displayed list stays at the
+    // smaller display limit. If the pager is not exhausted within the ceiling
+    // the section fails closed instead of certifying a sampled state.
     const result = await loadReportReadiness(workspaceId, window, {
       clientId: scope.mode === "explicit" || scope.mode === "legacy" ? scope.clientId ?? undefined : undefined,
-      limit: OPERATIONS_READINESS_CLIENT_LIMIT,
+      limit: OPERATIONS_READINESS_EVAL_LIMIT,
     });
     const evaluations = result.evaluations;
     const clientIds = [...new Set(evaluations.map((evaluation) => evaluation.clientId))].sort();
@@ -971,13 +1048,14 @@ async function loadReadiness(
       clientNames: new Map(clients.map((client) => [client.id, client.name])),
       limit: OPERATIONS_READINESS_CLIENT_LIMIT,
     });
-    const truncated = Boolean(result.nextCursor) || evaluations.length > OPERATIONS_READINESS_CLIENT_LIMIT;
+    const exhaustive = !result.nextCursor;
     return operationsSection(data, {
       attention: data.totals.notReady > 0 || data.totals.warning > 0 || data.totals.unknown > 0,
       empty: evaluations.length === 0,
-      truncated,
+      truncated: !exhaustive,
       limit: OPERATIONS_READINESS_CLIENT_LIMIT,
       href,
+      stateAuthoritative: exhaustive,
     });
   } catch {
     return operationsUnavailableSection<ReadinessData>(href);
@@ -990,36 +1068,61 @@ async function loadDelivery(
   now: Date,
 ): Promise<OperationsSection<DeliveryData>> {
   const href = NAVIGATION.exports;
+  const scopeWhere: Prisma.DestinationDeliveryReceiptWhereInput = {
+    workspaceId,
+    ...(scope.clientId ? { clientId: scope.clientId } : scope.mode === "workspace" ? {} : { id: { in: [] } }),
+  };
   try {
-    const receipts = await prisma.destinationDeliveryReceipt.findMany({
-      where: {
-        workspaceId,
-        ...(scope.clientId ? { clientId: scope.clientId } : scope.mode === "workspace" ? {} : { id: { in: [] } }),
-      },
-      orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
-      take: OPERATIONS_DELIVERY_RECEIPT_LIMIT + 1,
-      select: {
-        id: true,
-        clientId: true,
-        destination: true,
-        windowStart: true,
-        windowEnd: true,
-        dataThroughDate: true,
-        rowCount: true,
-        retrievedAt: true,
-      },
-    });
-    const truncated = receipts.length > OPERATIONS_DELIVERY_RECEIPT_LIMIT;
+    // Authoritative per-(client, destination) recency over the WHOLE population.
+    // The bounded receipt scan is ordered `retrievedAt desc`, so it
+    // systematically drops the OLDEST receipts - exactly the stale ones - and
+    // therefore cannot certify staleness on its own.
+    const [pairs, receipts] = await Promise.all([
+      prisma.destinationDeliveryReceipt.groupBy({
+        by: ["clientId", "destination"],
+        where: scopeWhere,
+        _max: { retrievedAt: true },
+      }),
+      prisma.destinationDeliveryReceipt.findMany({
+        where: scopeWhere,
+        orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
+        take: OPERATIONS_DELIVERY_RECEIPT_LIMIT + 1,
+        select: {
+          id: true,
+          clientId: true,
+          destination: true,
+          windowStart: true,
+          windowEnd: true,
+          dataThroughDate: true,
+          rowCount: true,
+          retrievedAt: true,
+        },
+      }),
+    ]);
+
+    const cutoff = now.getTime() - OPERATIONS_DELIVERY_RECENCY_MS;
+    const stalePairs = pairs.filter((pair) => (pair._max.retrievedAt?.getTime() ?? 0) < cutoff).length;
+    // Display-only disclosure: both the receipt scan and the pair list are capped.
+    const truncated =
+      receipts.length > OPERATIONS_DELIVERY_RECEIPT_LIMIT || pairs.length > OPERATIONS_LIST_LIMIT;
+
     const data = summarizeDelivery(receipts.slice(0, OPERATIONS_DELIVERY_RECEIPT_LIMIT), {
       now,
       limit: OPERATIONS_LIST_LIMIT,
     });
+    // Totals describe the whole population, not the bounded display scan.
+    data.totals = {
+      receipts: pairs.length,
+      stale: stalePairs,
+      clients: new Set(pairs.map((pair) => pair.clientId)).size,
+    };
     return operationsSection(data, {
-      attention: data.totals.stale > 0,
-      empty: data.totals.receipts === 0,
+      attention: stalePairs > 0,
+      empty: pairs.length === 0,
       truncated,
       limit: OPERATIONS_LIST_LIMIT,
       href,
+      stateAuthoritative: true,
     });
   } catch {
     return operationsUnavailableSection<DeliveryData>(href);
@@ -1087,6 +1190,10 @@ async function loadAnomalies(
       truncated,
       limit: OPERATIONS_LIST_LIMIT,
       href,
+      // Deliberately NOT stateAuthoritative: detection is row-based, so the
+      // state cannot be derived from an aggregate. A truncated scan fails
+      // closed, and the scan is newest-first so it retains the recent rows
+      // that detection anchors to.
     });
   } catch {
     return operationsUnavailableSection<AnomaliesData>(href);
