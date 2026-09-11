@@ -229,9 +229,13 @@ test.describe("operations hub", () => {
     // Nothing may leak provider credentials into the page.
     await expect(page.locator("body")).not.toContainText("8550008555");
 
-    // Next actions card shows high priority action for connector health.
+    // The card lists one action per non-ready section, so this fixture yields
+    // five: connector health, freshness and readiness need attention, ingestion
+    // and anomalies are empty, and delivery is ready (no action). The
+    // assertions below then narrow to the high-priority connector-health action
+    // specifically.
     await expect(page.getByTestId("operations-actions")).toBeVisible();
-    await expect(page.getByTestId("operations-actions-count")).toHaveText("1");
+    await expect(page.getByTestId("operations-actions-count")).toHaveText("5");
     const connectorAction = page.getByTestId("operations-action-connectorHealth");
     await expect(connectorAction).toBeVisible();
     await expect(connectorAction).toHaveAttribute("data-priority", "high");
