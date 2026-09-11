@@ -228,6 +228,15 @@ test.describe("operations hub", () => {
 
     // Nothing may leak provider credentials into the page.
     await expect(page.locator("body")).not.toContainText("8550008555");
+
+    // Next actions card shows high priority action for connector health.
+    await expect(page.getByTestId("operations-actions")).toBeVisible();
+    await expect(page.getByTestId("operations-actions-count")).toHaveText("1");
+    const connectorAction = page.getByTestId("operations-action-connectorHealth");
+    await expect(connectorAction).toBeVisible();
+    await expect(connectorAction).toHaveAttribute("data-priority", "high");
+    await expect(connectorAction).toContainText("quarantined");
+    await expect(connectorAction.getByRole("link", { name: "Open sources" })).toHaveAttribute("href", "/sources");
   });
 
   test("scopes to a client, marks ingestion not applicable, and restores it for All clients", async ({ authenticatedPage: page }) => {
@@ -245,6 +254,11 @@ test.describe("operations hub", () => {
     await expect(page.getByTestId("operations-state-ingestion")).toHaveText(/Not applicable/);
     await expect(ingestion).toContainText("All clients");
 
+    // Ingestion action explains scope limitation
+    const ingestionAction = page.getByTestId("operations-action-ingestion");
+    await expect(ingestionAction).toBeVisible();
+    await expect(ingestionAction).toHaveAttribute("data-priority", "low");
+
     await page.getByLabel("Switch client").selectOption({ label: "All clients" });
     await expect(page.getByTestId("operations-section-ingestion")).not.toHaveAttribute("data-state", "unsupported");
   });
@@ -256,6 +270,20 @@ test.describe("operations hub", () => {
 
     await followSidebarLink(page, "Operations");
     await expect(page).toHaveURL(/\/operations\?/);
+    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.sick.id}`));
+    await expect(page.getByTestId("client-context-bar")).toContainText(`Viewing: ${fixture.clients.sick.name}`);
+  });
+
+  test("navigates through next action CTA preserving client context", async ({ authenticatedPage: page }) => {
+    await page.goto("/operations");
+    await page.getByLabel("Switch client").selectOption({ label: fixture.clients.sick.name });
+    await expect(page.getByTestId("operations-scope")).toContainText(fixture.clients.sick.name);
+
+    // Ingestion action points to reports and preserves client context
+    const ingestionAction = page.getByTestId("operations-action-ingestion");
+    await expect(ingestionAction).toBeVisible();
+    await ingestionAction.getByRole("link", { name: "Open reports" }).click();
+    await expect(page).toHaveURL(/\/reports\?/);
     await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.sick.id}`));
     await expect(page.getByTestId("client-context-bar")).toContainText(`Viewing: ${fixture.clients.sick.name}`);
   });
