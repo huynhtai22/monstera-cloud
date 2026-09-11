@@ -608,4 +608,42 @@ describe("PostgreSQL integration: operations summary isolation", () => {
       await db.workspace.delete({ where: { id: wsDel } });
     }
   });
+
+  it("discloses the readiness display cap without letting it change the state", async () => {
+    const wsReady = `ws-ready-${suffix}`;
+    const readyClientIds = Array.from(
+      { length: 11 },
+      (_, index) => `cl-ready-${suffix}-${String(index).padStart(2, "0")}`,
+    );
+    await db.workspace.create({
+      data: { id: wsReady, ownerId: ids.ownerA, name: "Ops Readiness", slug: `ops-ready-${suffix}`, plan: "professional" },
+    });
+    try {
+      await db.client.createMany({
+        data: readyClientIds.map((id, index) => ({
+          id,
+          workspaceId: wsReady,
+          name: `Ready ${index}`,
+          accountAssignmentsConfiguredAt: NOW,
+        })),
+      });
+      // 11 clients exceed the 10-client DISPLAY bound. The state still covers all
+      // of them (11 <= the 50-client evaluation ceiling), so the section must not
+      // fail closed - but the capped list must still be disclosed.
+      const wide = await loadOperationsSummary({ workspaceId: wsReady, now: NOW });
+      assert.equal(wide.sections.readiness.data?.evaluatedClients, 11);
+      assert.equal(wide.sections.readiness.data?.clients.length, 10);
+      assert.equal(wide.sections.readiness.truncated, true);
+
+      // Narrowing below the display bound clears the disclosure.
+      await db.client.deleteMany({ where: { workspaceId: wsReady, id: { in: readyClientIds.slice(3) } } });
+      const narrow = await loadOperationsSummary({ workspaceId: wsReady, now: NOW });
+      assert.equal(narrow.sections.readiness.data?.evaluatedClients, 3);
+      assert.equal(narrow.sections.readiness.data?.clients.length, 3);
+      assert.equal(narrow.sections.readiness.truncated, false);
+    } finally {
+      await db.client.deleteMany({ where: { workspaceId: wsReady } });
+      await db.workspace.delete({ where: { id: wsReady } });
+    }
+  });
 });

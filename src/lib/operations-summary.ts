@@ -1052,7 +1052,11 @@ async function loadReadiness(
     return operationsSection(data, {
       attention: data.totals.notReady > 0 || data.totals.warning > 0 || data.totals.unknown > 0,
       empty: evaluations.length === 0,
-      truncated: !exhaustive,
+      // Two distinct disclosures. `!exhaustive` means the evaluation ceiling was
+      // hit, so the state is no longer authoritative. The length check means the
+      // DISPLAY list is capped while the state still covers every evaluated
+      // client - the list must still be disclosed as capped.
+      truncated: !exhaustive || evaluations.length > OPERATIONS_READINESS_CLIENT_LIMIT,
       limit: OPERATIONS_READINESS_CLIENT_LIMIT,
       href,
       stateAuthoritative: exhaustive,

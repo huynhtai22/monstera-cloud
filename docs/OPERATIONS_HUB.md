@@ -110,8 +110,9 @@ scoped population, never from the bounded display list:
 - `readiness` evaluates up to `OPERATIONS_READINESS_EVAL_LIMIT` clients (50)
   while displaying `OPERATIONS_READINESS_CLIENT_LIMIT` (10).
 
-Display lists stay capped at `OPERATIONS_LIST_LIMIT` and `truncated: true`
-discloses the cap, but a capped list never changes the state.
+Display lists stay capped (`OPERATIONS_LIST_LIMIT` rows for most sections,
+`OPERATIONS_READINESS_CLIENT_LIMIT` clients for `readiness`) and `truncated:
+true` discloses a capped list, but a capped list never changes the state.
 
 **Truncation fails closed only where the state cannot come from an aggregate.**
 `anomalies` detection is row-based, so its state is derived from the bounded
