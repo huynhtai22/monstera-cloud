@@ -193,6 +193,25 @@ the client bundle (enforced by `src/lib/observability/client-boundary.test.ts`).
   transport import, no database mutation call, GET-only route, clients cannot
   import the server loader, and every resolver-consuming route maps failures.
 
+## Actionable Readiness v1 (Slice 1)
+
+Status: implemented. Converts summary evidence into a small, deterministic, prioritized list of next actions rendered near the top of `/operations`.
+
+- **Pure presentation derivation**: Implemented in `src/lib/operations-view.ts` (`deriveOperationsActions`), safely isolated from server-only code and verified by AST boundary tests.
+- **Priority derivation**:
+  - `attention` → `"high"` priority (rank 1): Reconnect accounts, investigate failing sources, address ingestion failures, resolve readiness blockers, inspect stale deliveries, or investigate critical anomalies.
+  - `unavailable` → `"medium"` priority (rank 2): Service check/recovery action. Never presented as healthy.
+  - `unsupported` → `"low"` priority (rank 3): Explains scope limitation (e.g. client-scoped ingestion). Never claims zero incidents or healthy operation.
+  - `empty` → `"low"` priority (rank 3): Setup actions when no connections or sources exist in this scope.
+  - `ready` → Produces no action. When all sections are ready, renders the calm "No immediate action required" state.
+- **Deterministic ordering**:
+  1. Priority rank: high (1) > medium (2) > low (3)
+  2. Stable section order: `connectorHealth` > `freshness` > `ingestion` > `readiness` > `delivery` > `anomalies`
+  3. Action ID: deterministic `localeCompare` tiebreaker
+- **Tenant & Client Context Safety**:
+  - Actions navigate only to existing authorized product surfaces (`/sources`, `/reports`, `/clients`, `/exports`).
+  - Actions link through `hrefFor(action.cta.href)` via `useClientContextNavigation`, strictly preserving client context while stripping unsafe query parameters.
+
 ## Remaining work (future UI slice)
 
 - Per-blocker remediation deep links (readiness currently exposes only section-level hrefs).
