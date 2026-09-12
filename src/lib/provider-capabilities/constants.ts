@@ -14,3 +14,13 @@ export const CAPABILITY_REASON_CODES = {
   GRANULARITY_NOT_SUPPORTED: "GRANULARITY_NOT_SUPPORTED",
   LOOKBACK_LIMIT_EXCEEDED: "LOOKBACK_LIMIT_EXCEEDED",
 } as const satisfies Record<string, CapabilityReasonCode>;
+
+/**
+ * Machine-readable tokens embedded in construction-time TypeError messages.
+ * These are registry-authoring failures, not evaluation findings, so they are
+ * kept separate from CAPABILITY_REASON_CODES.
+ */
+export const CAPABILITY_REGISTRY_ERROR_CODES = {
+  DUPLICATE_CAPABILITY_RECORD_ID: "DUPLICATE_CAPABILITY_RECORD_ID",
+  AMBIGUOUS_CAPABILITY_SELECTOR: "AMBIGUOUS_CAPABILITY_SELECTOR",
+} as const;

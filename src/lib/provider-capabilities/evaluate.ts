@@ -2,7 +2,7 @@ import {
   PROVIDER_CAPABILITY_REGISTRY,
   PROVIDER_CAPABILITY_REGISTRY_VERSION,
 } from "./registry";
-import { CAPABILITY_REASON_CODES } from "./constants";
+import { CAPABILITY_REASON_CODES, CAPABILITY_REGISTRY_ERROR_CODES } from "./constants";
 import {
   type AttributionRestriction,
   type CapabilityEvaluationOptions,
@@ -20,6 +20,7 @@ import {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_GUIDANCE_LENGTH = 280;
+const MAX_ERROR_DETAIL_LENGTH = 120;
 /**
  * Full request evaluation anchors each report surface on this report
  * capability; attribution evaluation resolves the same record.
@@ -122,6 +123,90 @@ function assertRegistryRecord(record: ProviderCapability): void {
 }
 
 /**
+ * Rejects duplicate record IDs. The reported ID is the lexicographically
+ * smallest duplicate, so the failure does not depend on input order.
+ */
+function assertUniqueRecordIds(records: CapabilityRegistry): void {
+  const counts = new Map<string, number>();
+  for (const record of records) {
+    counts.set(record.recordId, (counts.get(record.recordId) ?? 0) + 1);
+  }
+  const duplicated = [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([recordId]) => recordId)
+    .sort(compareText);
+  if (duplicated.length > 0) {
+    throw new TypeError(
+      `${CAPABILITY_REGISTRY_ERROR_CODES.DUPLICATE_CAPABILITY_RECORD_ID}: capability record id "${sanitizeText(
+        duplicated[0]!,
+        MAX_ERROR_DETAIL_LENGTH,
+      )}" appears more than once.`,
+    );
+  }
+}
+
+function selectorGroupKey(record: ProviderCapability): string {
+  return [record.provider, record.reportSurface, record.reportType, record.kind].join("\u0000");
+}
+
+/**
+ * Whether two records could both match one request at equal precedence.
+ * Exact and prefix records never tie (exact strictly precedes), two exact
+ * records tie only on the same identifier, and two prefix records tie when
+ * their families overlap on some shared identifier.
+ */
+function couldCompeteAtEqualPrecedence(
+  left: ProviderCapability,
+  right: ProviderCapability,
+): boolean {
+  const leftMode = left.identifierMatch ?? "exact";
+  const rightMode = right.identifierMatch ?? "exact";
+  if (leftMode !== rightMode) return false;
+  if (leftMode === "exact") return left.capabilityId === right.capabilityId;
+  return (
+    left.capabilityId === right.capabilityId ||
+    left.capabilityId.startsWith(right.capabilityId) ||
+    right.capabilityId.startsWith(left.capabilityId)
+  );
+}
+
+/**
+ * Rejects records that could compete at equal precedence: the same selector
+ * group and effective date with overlapping identifiers. Lifecycle versions of
+ * the same capability remain valid because their effective dates differ. The
+ * scan runs over a canonically sorted copy, so the reported pair — and the
+ * thrown message — does not depend on input order.
+ */
+function assertNoEqualPrecedenceCompetitors(records: CapabilityRegistry): void {
+  const ordered = [...records].sort(compareCapabilities);
+  for (let i = 0; i < ordered.length; i++) {
+    const group = selectorGroupKey(ordered[i]!);
+    for (let j = i + 1; j < ordered.length; j++) {
+      const left = ordered[i]!;
+      const right = ordered[j]!;
+      if (selectorGroupKey(right) !== group) break;
+      if (left.effectiveDate !== right.effectiveDate) continue;
+      if (!couldCompeteAtEqualPrecedence(left, right)) continue;
+      throw new TypeError(
+        `${CAPABILITY_REGISTRY_ERROR_CODES.AMBIGUOUS_CAPABILITY_SELECTOR}: records "${sanitizeText(
+          left.recordId,
+          MAX_ERROR_DETAIL_LENGTH,
+        )}" and "${sanitizeText(right.recordId, MAX_ERROR_DETAIL_LENGTH)}" both select ${sanitizeText(
+          left.provider,
+          MAX_ERROR_DETAIL_LENGTH,
+        )}/${sanitizeText(left.reportSurface, MAX_ERROR_DETAIL_LENGTH)}/${sanitizeText(
+          left.reportType,
+          MAX_ERROR_DETAIL_LENGTH,
+        )} ${left.kind} "${sanitizeText(
+          left.capabilityId,
+          MAX_ERROR_DETAIL_LENGTH,
+        )}" effective ${left.effectiveDate} at equal precedence.`,
+      );
+    }
+  }
+}
+
+/**
  * Creates a client-safe policy API from caller-owned data. Its defensive copy
  * prevents a caller, a second registry, or this module from changing another
  * registry's outcome.
@@ -133,6 +218,8 @@ export function createProviderCapabilityRegistry(
     throw new TypeError("A provider capability registry must be an array.");
   }
   input.forEach(assertRegistryRecord);
+  assertUniqueRecordIds(input);
+  assertNoEqualPrecedenceCompetitors(input);
   const registry = freezeResult(input.map(cloneRecord).sort(compareCapabilities));
 
   return freezeResult({
@@ -241,12 +328,16 @@ function subtractLookback(
   return result;
 }
 
-function sanitizeGuidance(value: string): string {
+function sanitizeText(value: string, maxLength: number): string {
   return value
     .replace(/[\u0000-\u001f\u007f]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, MAX_GUIDANCE_LENGTH);
+    .slice(0, maxLength);
+}
+
+function sanitizeGuidance(value: string): string {
+  return sanitizeText(value, MAX_GUIDANCE_LENGTH);
 }
 
 function makeReason(input: {

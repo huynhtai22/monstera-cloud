@@ -11,7 +11,7 @@ export {
   listProviderCapabilities,
   lookupProviderCapability,
 } from "./evaluate";
-export { CAPABILITY_REASON_CODES } from "./constants";
+export { CAPABILITY_REASON_CODES, CAPABILITY_REGISTRY_ERROR_CODES } from "./constants";
 export type {
   AttributionRestriction,
   CapabilityKind,

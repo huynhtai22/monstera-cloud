@@ -549,3 +549,83 @@ describe("provider capability registry report-rule lifecycle (PR #165 review)", 
   });
 });
 
+describe("provider capability registry record uniqueness (PR #165 review)", () => {
+  function constructionError(records: readonly ProviderCapability[]): string {
+    try {
+      createProviderCapabilityRegistry([...records]);
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+    return "";
+  }
+
+  it("rejects duplicate record ids regardless of payload differences", () => {
+    const active = customRecord({ recordId: "dup-record", lifecycle: "active" });
+    const retired = customRecord({ recordId: "dup-record", lifecycle: "retired" });
+    const message = constructionError([active, retired]);
+    assert.match(message, /DUPLICATE_CAPABILITY_RECORD_ID/);
+    assert.equal(message, constructionError([retired, active]));
+    assert.ok(message.length <= 300);
+  });
+
+  it("rejects equal-precedence semantic selectors with different record ids", () => {
+    const first = customRecord({ recordId: "r1", effectiveDate: "2020-01-01" });
+    const second = customRecord({ recordId: "r2", effectiveDate: "2020-01-01", lifecycle: "retired" });
+    const message = constructionError([first, second]);
+    assert.match(message, /AMBIGUOUS_CAPABILITY_SELECTOR/);
+    assert.equal(message, constructionError([second, first]));
+    assert.ok(message.length <= 300);
+  });
+
+  it("rejects overlapping declared prefixes at the same effective date", () => {
+    const broad = customRecord({
+      recordId: "broad",
+      capabilityId: "act_",
+      identifierMatch: "prefix",
+      effectiveDate: "2020-01-01",
+    });
+    const nested = customRecord({
+      recordId: "nested",
+      capabilityId: "act_v",
+      identifierMatch: "prefix",
+      effectiveDate: "2020-01-01",
+    });
+    const message = constructionError([broad, nested]);
+    assert.match(message, /AMBIGUOUS_CAPABILITY_SELECTOR/);
+    assert.equal(message, constructionError([nested, broad]));
+  });
+
+  it("accepts disjoint prefixes, exact-prefix pairs, and lifecycle versions", () => {
+    const disjoint = createProviderCapabilityRegistry([
+      customRecord({ recordId: "left", capabilityId: "act_x", identifierMatch: "prefix" }),
+      customRecord({ recordId: "right", capabilityId: "act_y", identifierMatch: "prefix" }),
+    ]);
+    assert.equal(disjoint.list().length, 2);
+
+    const exactAndPrefix = createProviderCapabilityRegistry([
+      customRecord({ recordId: "exact", identifierMatch: "exact" }),
+      customRecord({ recordId: "family", capabilityId: "metric", identifierMatch: "prefix" }),
+    ]);
+    assert.equal(exactAndPrefix.list().length, 2);
+
+    const lifecycle = createProviderCapabilityRegistry([
+      customRecord({ recordId: "v1", effectiveDate: "2020-01-01" }),
+      customRecord({ recordId: "v2", effectiveDate: "2021-01-01" }),
+    ]);
+    assert.equal(lifecycle.list().length, 2);
+  });
+
+  it("keeps the default registry unchanged when custom validation fails", () => {
+    const snapshot = JSON.stringify(listProviderCapabilities());
+    const frozen = Object.isFrozen(PROVIDER_CAPABILITY_REGISTRY);
+    assert.throws(
+      () => createProviderCapabilityRegistry([
+        customRecord({ recordId: "dup-record" }),
+        customRecord({ recordId: "dup-record" }),
+      ]),
+      /DUPLICATE_CAPABILITY_RECORD_ID/,
+    );
+    assert.equal(JSON.stringify(listProviderCapabilities()), snapshot);
+    assert.equal(Object.isFrozen(PROVIDER_CAPABILITY_REGISTRY), frozen);
+  });
+});

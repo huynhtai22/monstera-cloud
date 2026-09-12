@@ -41,6 +41,18 @@ Provider, surface, and report identifiers are extensible string types: editors s
 
 Add a provider by defining its immutable records (normally in a provider-local data module), including authoritative evidence and tests, then construct a policy with `createProviderCapabilityRegistry(records)`. Consumers keep using the common lookup/evaluation API and do not need provider-specific branches. Append later lifecycle records rather than rewriting history, and bump `PROVIDER_CAPABILITY_REGISTRY_VERSION` when default data or contract semantics change.
 
+Each report surface's report policy is anchored on its `standard_totals` report record: full request evaluation and attribution evaluation resolve that record with the rules above, so a connector must define it (with a later effective date to supersede an earlier policy).
+
+## Registry authoring rules
+
+Registry construction rejects ambiguous data deterministically, regardless of input order:
+
+- Duplicate `recordId` values fail with the `DUPLICATE_CAPABILITY_RECORD_ID` error code.
+- Two records that could compete at equal precedence fail with the `AMBIGUOUS_CAPABILITY_SELECTOR` error code: the same provider, report surface, report type, kind, capability identifier, and effective date — or two declared prefixes on the same date where one is a prefix of the other.
+- An exact record and a prefix record for the same identifier can coexist because exact matching strictly precedes prefix matching, and lifecycle versions of the same capability are legitimate when their effective dates differ.
+
+Ambiguous records are rejected whether or not their payloads differ, failure messages are bounded and control-character-sanitized, and a failed construction never mutates caller-owned data or the default registry.
+
 ```ts
 const policy = createProviderCapabilityRegistry(myProviderRecords);
 const result = policy.evaluate(request);
