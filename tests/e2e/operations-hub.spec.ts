@@ -1,4 +1,4 @@
-import { expect, test as base, type Page } from "@playwright/test";
+import { expect, test as base, type Page, type Request } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
 import { assertAllowedTestDatabase } from "../../src/lib/pg-test-discipline";
 import {
@@ -236,11 +236,20 @@ test.describe("operations hub", () => {
     // specifically.
     await expect(page.getByTestId("operations-actions")).toBeVisible();
     await expect(page.getByTestId("operations-actions-count")).toHaveText("5");
+
     const connectorAction = page.getByTestId("operations-action-connectorHealth");
     await expect(connectorAction).toBeVisible();
     await expect(connectorAction).toHaveAttribute("data-priority", "high");
     await expect(connectorAction).toContainText("quarantined");
     await expect(connectorAction.getByRole("link", { name: "Open sources" })).toHaveAttribute("href", "/sources");
+
+    // The fixture source has no lastSyncAt, so freshness is a pending (in flight)
+    // condition: monitoring at low priority, never described as stale.
+    const freshnessAction = page.getByTestId("operations-action-freshness");
+    await expect(freshnessAction).toBeVisible();
+    await expect(freshnessAction).toHaveAttribute("data-priority", "low");
+    await expect(freshnessAction).not.toContainText(/stale/i);
+    await expect(freshnessAction).not.toContainText(/exceed/i);
   });
 
   test("scopes to a client, marks ingestion not applicable, and restores it for All clients", async ({ authenticatedPage: page }) => {
@@ -278,17 +287,70 @@ test.describe("operations hub", () => {
     await expect(page.getByTestId("client-context-bar")).toContainText(`Viewing: ${fixture.clients.sick.name}`);
   });
 
-  test("navigates through next action CTA preserving client context", async ({ authenticatedPage: page }) => {
-    await page.goto("/operations");
-    await page.getByLabel("Switch client").selectOption({ label: fixture.clients.sick.name });
+  test("switches a client-scoped ingestion action to All Clients on the Operations surface", async ({ authenticatedPage: page }) => {
+    // Unsafe account/pagination parameters are present on the observed URL and
+    // must not survive the scope switch.
+    await page.goto(`/operations?clientId=${fixture.clients.sick.id}&accountId=999&debug=1`);
     await expect(page.getByTestId("operations-scope")).toContainText(fixture.clients.sick.name);
 
-    // Ingestion action points to reports and preserves client context
     const ingestionAction = page.getByTestId("operations-action-ingestion");
     await expect(ingestionAction).toBeVisible();
-    await ingestionAction.getByRole("link", { name: "Open reports" }).click();
-    await expect(page).toHaveURL(/\/reports\?/);
-    await expect(page).toHaveURL(new RegExp(`clientId=${fixture.clients.sick.id}`));
-    await expect(page.getByTestId("client-context-bar")).toContainText(`Viewing: ${fixture.clients.sick.name}`);
+    await expect(ingestionAction).toHaveAttribute("data-priority", "low");
+    await expect(ingestionAction).toContainText("Switch to All clients");
+
+    // The CTA is a canonical All Clients link on THIS surface, not a different
+    // page, and the shared client-context contract drops the unsafe parameters.
+    const scopeCta = ingestionAction.getByRole("link", { name: "View ingestion for All clients" });
+    const ctaHref = await scopeCta.getAttribute("href");
+    const ctaUrl = new URL(ctaHref ?? "", "http://127.0.0.1");
+    expect(ctaUrl.pathname).toBe("/operations");
+    expect(ctaUrl.searchParams.get("clientId")).toBe("all");
+    expect([...ctaUrl.searchParams.keys()]).toEqual(["clientId"]);
+    // A CTA must be a plain link: navigating is a read, never a write.
+    expect(await scopeCta.evaluate((element) => element.tagName)).toBe("A");
+
+    const warehouseWrites: string[] = [];
+    const recordWarehouseWrite = (request: Request) => {
+      const path = new URL(request.url()).pathname;
+      if (request.method() !== "GET" && path.startsWith("/api/data-explorer/")) {
+        warehouseWrites.push(`${request.method()} ${path}`);
+      }
+    };
+    page.on("request", recordWarehouseWrite);
+
+    await scopeCta.click();
+    await expect(page).toHaveURL(/\/operations\?/);
+    await expect(page).toHaveURL(/clientId=all/);
+    page.off("request", recordWarehouseWrite);
+
+    // Activating the scope switch performed no warehouse write.
+    expect(warehouseWrites).toEqual([]);
+
+    await expect(page.getByTestId("client-context-bar")).toContainText(/All clients/i);
+    // Workspace ingestion evidence becomes available instead of "not applicable".
+    await expect(page.getByTestId("operations-section-ingestion")).toHaveAttribute("data-state", "empty");
+    await expect(page.getByTestId("operations-action-ingestion")).toContainText("Import initial warehouse data");
+  });
+
+  test("routes the empty ingestion action to the data explorer importer", async ({ authenticatedPage: page }) => {
+    await page.goto("/operations");
+
+    // Workspace scope with no import jobs: ingestion is empty, not healthy.
+    await expect(page.getByTestId("operations-section-ingestion")).toHaveAttribute("data-state", "empty");
+
+    const ingestionAction = page.getByTestId("operations-action-ingestion");
+    await expect(ingestionAction).toBeVisible();
+    await expect(ingestionAction).toContainText("Import initial warehouse data");
+
+    const importerCta = ingestionAction.getByRole("link", { name: "Open data explorer" });
+    await expect(importerCta).toHaveAttribute("href", "/explorer");
+    await importerCta.click();
+
+    // The importer surface is genuinely reachable from the destination.
+    await expect(page).toHaveURL(/\/explorer/);
+    const refresh = page.getByRole("button", { name: "Refresh warehouse" });
+    await expect(refresh).toBeVisible();
+    await refresh.click();
+    await expect(page.getByRole("dialog")).toBeVisible();
   });
 });
