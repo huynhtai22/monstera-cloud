@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { requireCronSecret } from "@/lib/request-auth";
 import prisma from "@/lib/prisma";
 import {
+  beginDispatchAttempt,
   claimScheduleDispatch,
+  dispatchOccurrenceDate,
   executeScheduleDispatch,
   isScheduleDue,
   releaseScheduleDispatch,
@@ -41,10 +43,12 @@ export async function GET(request: Request) {
     );
 
     const now = new Date();
+    const occurrenceDate = dispatchOccurrenceDate(now);
     const results = [];
     let dueCount = 0;
     let skipped = 0;
     let skippedClaimed = 0;
+    let skippedAmbiguous = 0;
     let succeeded = 0;
     let failed = 0;
 
@@ -70,8 +74,29 @@ export async function GET(request: Request) {
           continue;
         }
 
+        // Durable occurrence/attempt state: an AMBIGUOUS or already-CONFIRMED
+        // occurrence is suppressed before any provider contact, and an
+        // orphaned PROVIDER_STARTED attempt resolves to AMBIGUOUS.
+        const attempt = await beginDispatchAttempt(schedule, occurrenceDate, token);
+        if (attempt.state === "suppressed") {
+          const ambiguous = attempt.reason === "AMBIGUOUS";
+          if (ambiguous) skippedAmbiguous++;
+          else skippedClaimed++;
+          results.push({
+            scheduleId: schedule.id,
+            clientId: schedule.clientId,
+            status: ambiguous ? "ambiguous" : "already_delivered",
+            occurrenceDate,
+          });
+          await releaseScheduleDispatch(schedule.id, schedule.workspaceId, token);
+          continue;
+        }
+
         try {
-          const dispatchResult = await executeScheduleDispatch(schedule.id, { token });
+          const dispatchResult = await executeScheduleDispatch(schedule.id, {
+            token,
+            attempt: attempt.context,
+          });
           results.push(dispatchResult);
           succeeded++;
         } catch (err: unknown) {
@@ -107,6 +132,7 @@ export async function GET(request: Request) {
       due: dueCount,
       skipped,
       skippedClaimed,
+      skippedAmbiguous,
       succeeded,
       failed,
       results,

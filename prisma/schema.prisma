@@ -153,6 +153,7 @@ model Workspace {
   clientAccountAssignments ClientProviderAccountAssignment[]
 
   @@index([subscriptionProvider, subscriptionEndsAt])
+  dispatchAttempts ReportScheduleDispatchAttempt[]
 }
 
 model Client {
@@ -730,9 +731,37 @@ model ReportSchedule {
   dispatchLeaseExpiresAt  DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  attempts    ReportScheduleDispatchAttempt[]
 
   @@index([workspaceId])
   @@index([clientId])
+}
+
+/// Durable per-occurrence dispatch state for one scheduled-report occurrence.
+/// occurrenceDate is the UTC calendar date of the sweep that evaluated the due
+/// slot (inheriting isScheduleDue's day-anchored semantics). State machine:
+/// CLAIMED -> PROVIDER_STARTED -> CONFIRMED | DEFINITIVE_FAILED | AMBIGUOUS.
+/// PROVIDER_STARTED is committed before any provider contact (crash boundary);
+/// AMBIGUOUS suppresses automatic retries for that occurrence and is surfaced
+/// for operator review.
+model ReportScheduleDispatchAttempt {
+  id                String    @id @default(cuid())
+  scheduleId        String
+  workspaceId       String
+  occurrenceDate    String
+  token             String
+  status            String
+  providerStartedAt DateTime?
+  finishedAt        DateTime?
+  channelOutcomes   Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  schedule          ReportSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  workspace         Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([scheduleId, occurrenceDate])
+  @@index([workspaceId])
+  @@index([scheduleId, status])
 }
 
 model AttributionSnapshot {

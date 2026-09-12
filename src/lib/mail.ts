@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import { logger } from "@/lib/logger";
 import { assertMailSimulationAllowed } from "@/lib/e2e-env-guard";
+import { classifyTransportFailure } from "@/lib/dispatch-outcome";
 
 // Vercel build phase evaluates this file statically. If RESEND_API_KEY is missing during
 // the build phase, the Resend constructor throws a fatal error and breaks the build.
@@ -330,8 +331,8 @@ export const sendClientBriefEmail = async (
   clientName: string,
   workspaceName: string,
   markdownBrief: string,
-  options?: { signal?: AbortSignal }
-): Promise<{ success: boolean; data?: any; error?: any }> => {
+  options?: { signal?: AbortSignal; idempotencyKey?: string }
+): Promise<{ success: boolean; ambiguous?: boolean; data?: any; error?: any }> => {
   try {
     if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === "re_dummy") {
       logger.warn('[MAIL] RESEND_API_KEY not configured, simulating delivery to:', to);
@@ -373,6 +374,7 @@ export const sendClientBriefEmail = async (
         headers: {
           Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
           "Content-Type": "application/json",
+          ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
         },
         body: JSON.stringify({
           from: 'Monstera Cloud <no-reply@monsteracloud.com>',
@@ -411,6 +413,8 @@ export const sendClientBriefEmail = async (
     return { success: true, data };
   } catch (err) {
     logger.error('[MAIL] ClientBrief Unexpected Error:', err);
-    return { success: false, error: err };
+    // A transport failure after the request may have been sent is ambiguous:
+    // the provider acceptance cannot be disproved from the client side.
+    return { success: false, ambiguous: classifyTransportFailure(err) === "AMBIGUOUS", error: err };
   }
 };
