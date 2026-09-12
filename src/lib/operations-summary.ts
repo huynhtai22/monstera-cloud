@@ -191,6 +191,11 @@ export type IngestionData = {
   };
   recentFailures: IngestionFailure[];
   syncLogErrors: IngestionSyncLogError[];
+  /**
+   * Authoritative count of sync-log errors in the window. The `syncLogErrors`
+   * array above is a capped display slice and must never be used as the total.
+   */
+  syncLogErrorTotal: number;
 };
 
 export type ReadinessClient = {
@@ -260,6 +265,7 @@ export type OperationsNavigationTargets = {
   clients: string;
   explorer: string;
   exports: string;
+  operations: string;
 };
 
 export type OperationsSummary = {
@@ -487,7 +493,7 @@ export type SyncLogErrorRow = {
 export function summarizeIngestion(
   jobs: readonly IngestionJobRow[],
   syncLogErrors: readonly SyncLogErrorRow[],
-  options: { limit?: number; windowDays?: number } = {},
+  options: { limit?: number; windowDays?: number; syncLogErrorTotal?: number } = {},
 ): IngestionData {
   const limit = options.limit ?? OPERATIONS_LIST_LIMIT;
   const totals = { total: jobs.length, queued: 0, running: 0, completed: 0, partial: 0, failed: 0 };
@@ -529,6 +535,7 @@ export function summarizeIngestion(
     totals,
     recentFailures,
     syncLogErrors: errors,
+    syncLogErrorTotal: options.syncLogErrorTotal ?? errors.length,
   };
 }
 
@@ -733,6 +740,7 @@ const NAVIGATION: OperationsNavigationTargets = {
   clients: "/clients",
   explorer: "/explorer",
   exports: "/exports",
+  operations: "/operations",
 };
 
 /* -------------------------------------------------------------------------- */
@@ -986,7 +994,7 @@ async function loadIngestion(
     const data = summarizeIngestion(
       jobs.slice(0, OPERATIONS_LIST_LIMIT),
       syncLogErrors.slice(0, OPERATIONS_LIST_LIMIT),
-      { limit: OPERATIONS_LIST_LIMIT, windowDays: OPERATIONS_INGESTION_WINDOW_DAYS },
+      { limit: OPERATIONS_LIST_LIMIT, windowDays: OPERATIONS_INGESTION_WINDOW_DAYS, syncLogErrorTotal },
     );
     // The grouped counts are authoritative for the whole window, so they drive
     // BOTH the total and the per-status breakdown. Deriving the breakdown from

@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useWorkspaceStore } from "@/store/workspace";
 import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
 import { cn } from "@/lib/utils";
+import { ALL_CLIENTS_TOKEN } from "@/lib/client-context";
 import {
     describeOperationsReason,
     deriveOperationsActions,
@@ -143,7 +144,7 @@ function NextActionsCard({
     hrefFor,
 }: {
     actions: OperationsAction[];
-    hrefFor: (path: string) => string;
+    hrefFor: (path: string, targetClientId?: string | null) => string;
 }) {
     return (
         <section
@@ -217,7 +218,7 @@ function NextActionsCard({
                                     ) : null}
                                 </div>
                                 <Link
-                                    href={hrefFor(action.cta.href)}
+                                    href={hrefFor(action.cta.href, action.cta.targetScope === "all" ? ALL_CLIENTS_TOKEN : undefined)}
                                     className="inline-flex shrink-0 items-center gap-1 self-start rounded-md border border-line bg-panel px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-white/[0.06] sm:self-center"
                                 >
                                     {action.cta.label}
