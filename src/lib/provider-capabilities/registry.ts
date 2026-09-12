@@ -1,46 +1,65 @@
 import type { ProviderCapability } from "./types";
 
-export const PROVIDER_CAPABILITY_REGISTRY_VERSION = "1.0.0";
+export const PROVIDER_CAPABILITY_REGISTRY_VERSION = "1.1.0";
+
+const META_INSIGHTS_SOURCE = {
+  title: "Meta Marketing API — Ads Insights",
+  url: "https://developers.facebook.com/docs/marketing-api/insights",
+  accessedOn: "2026-09-13",
+  evidence:
+    "Meta's Ads Insights documentation describes historical-data and attribution-window availability for the Insights surface.",
+} as const;
 
 const META_BREAKDOWNS_SOURCE = {
   title: "Meta Marketing API — Insights breakdowns",
   url: "https://developers.facebook.com/docs/marketing-api/insights/breakdowns",
   accessedOn: "2026-09-13",
+  evidence:
+    "Meta's breakdown reference identifies both hourly breakdown identifiers and their historical-data restriction.",
 } as const;
 
 const META_METRICS_UPDATE_SOURCE = {
   title: "Meta Business — Metrics updates to offer more actionable business insights",
   url: "https://www.facebook.com/business/news/metrics-updates-to-offer-you-more-actionable-business-insights",
   accessedOn: "2026-09-13",
-} as const;
-
-const META_ADS_INSIGHTS_CHANGE_SOURCE = {
-  title: "Meta for Developers — Ads Insights API historical data and attribution changes",
-  url: "https://developers.facebook.com/docs/marketing-api/insights",
-  accessedOn: "2026-09-13",
+  evidence:
+    "Meta's metrics-update notice documents replacement of relevance score by the three relevance diagnostics.",
 } as const;
 
 const ALL_GRANULARITIES = ["account", "campaign", "adset", "ad"] as const;
 const AD_GRANULARITY = ["ad"] as const;
 
+/*
+ * V1 deliberately contains only restrictions that have an accompanying Meta
+ * source reference. Broad report-level and frequency claims from the initial
+ * prototype were removed because their cited pages did not substantiate those
+ * exact identifiers, dates, and lookback values.
+ */
 const records = [
   {
     registryVersion: PROVIDER_CAPABILITY_REGISTRY_VERSION,
-    recordId: "meta_ads.ads_insights.performance.report.standard_totals.2021-05-25",
+    recordId: "meta_ads.ads_insights.performance.report.standard_totals.2026-01-12",
     provider: "meta_ads",
     reportSurface: "ads_insights",
     reportType: "performance",
     kind: "report",
     capabilityId: "standard_totals",
-    lifecycle: "restricted",
-    effectiveDate: "2021-05-25",
-    lookbackLimit: { value: 37, unit: "month", anchor: "evaluation_date" },
+    lifecycle: "active",
+    effectiveDate: "2026-01-12",
     granularities: ALL_GRANULARITIES,
-    attributionRestrictions: [],
+    attributionRestrictions: [
+      {
+        allowedWindows: ["1d_view"],
+        unavailableWindows: ["7d_view", "28d_view"],
+        forbiddenCombinations: [["7d_view", "28d_view"]],
+        explanation:
+          "Only the documented one-day view-through window is available; seven-day and 28-day view-through windows are retired.",
+      },
+    ],
     severity: "error",
     operatorExplanation:
-      "Meta Ads Insights total values are available for at most 37 calendar months. Preserve older reporting data in the warehouse before it ages out.",
-    sourceReference: META_ADS_INSIGHTS_CHANGE_SOURCE,
+      "Use one-day view-through attribution when view attribution is required and disclose the measurement change.",
+    sourceReference: META_INSIGHTS_SOURCE,
   },
   {
     registryVersion: PROVIDER_CAPABILITY_REGISTRY_VERSION,
@@ -98,70 +117,29 @@ const records = [
     attributionRestrictions: [],
     severity: "error" as const,
     operatorExplanation:
-      "Meta limits unique-count fields to 13 calendar months of history. Use already-warehoused values for older comparisons.",
-    sourceReference: META_ADS_INSIGHTS_CHANGE_SOURCE,
+      "Meta limits these unique-count fields to 13 calendar months of history. Use already-warehoused values for older comparisons.",
+    sourceReference: META_INSIGHTS_SOURCE,
   })),
-  {
+  ...[
+    "hourly_stats_aggregated_by_advertiser_time_zone",
+    "hourly_stats_aggregated_by_audience_time_zone",
+  ].map((capabilityId) => ({
     registryVersion: PROVIDER_CAPABILITY_REGISTRY_VERSION,
-    recordId:
-      "meta_ads.ads_insights.performance.breakdown.hourly_stats_aggregated_by_advertiser_time_zone.2026-01-12",
-    provider: "meta_ads",
-    reportSurface: "ads_insights",
-    reportType: "performance",
-    kind: "breakdown",
-    capabilityId: "hourly_stats_aggregated_by_advertiser_time_zone",
-    lifecycle: "restricted",
-    effectiveDate: "2026-01-12",
-    lookbackLimit: { value: 13, unit: "month", anchor: "evaluation_date" },
-    granularities: ALL_GRANULARITIES,
-    attributionRestrictions: [],
-    severity: "error",
-    operatorExplanation:
-      "Meta limits hourly breakdowns to 13 calendar months of history. Remove the hourly breakdown or use already-warehoused detail for older periods.",
-    sourceReference: META_BREAKDOWNS_SOURCE,
-  },
-  {
-    registryVersion: PROVIDER_CAPABILITY_REGISTRY_VERSION,
-    recordId: "meta_ads.ads_insights.performance.breakdown.frequency_value.2026-01-12",
-    provider: "meta_ads",
-    reportSurface: "ads_insights",
-    reportType: "performance",
-    kind: "breakdown",
-    capabilityId: "frequency_value",
-    lifecycle: "restricted",
-    effectiveDate: "2026-01-12",
-    lookbackLimit: { value: 6, unit: "month", anchor: "evaluation_date" },
-    granularities: ALL_GRANULARITIES,
-    attributionRestrictions: [],
-    severity: "error",
-    operatorExplanation:
-      "Meta limits frequency breakdowns to six calendar months of history. Remove the breakdown or use already-warehoused detail for older periods.",
-    sourceReference: META_BREAKDOWNS_SOURCE,
-  },
-  ...["7d_view", "28d_view"].map((capabilityId) => ({
-    registryVersion: PROVIDER_CAPABILITY_REGISTRY_VERSION,
-    recordId: `meta_ads.ads_insights.performance.attribution_window.${capabilityId}.2026-01-12`,
+    recordId: `meta_ads.ads_insights.performance.breakdown.${capabilityId}.2026-01-12`,
     provider: "meta_ads" as const,
     reportSurface: "ads_insights" as const,
     reportType: "performance" as const,
-    kind: "attribution_window" as const,
+    kind: "breakdown" as const,
     capabilityId,
-    lifecycle: "retired" as const,
+    lifecycle: "restricted" as const,
     effectiveDate: "2026-01-12",
-    replacement: ["1d_view"],
+    lookbackLimit: { value: 13, unit: "month" as const, anchor: "evaluation_date" as const },
     granularities: ALL_GRANULARITIES,
-    attributionRestrictions: [
-      {
-        unavailableWindows: [capabilityId],
-        allowedWindows: ["1d_view"],
-        explanation:
-          "Longer view-through windows no longer return Ads Insights data; use one-day view-through attribution when view attribution is required.",
-      },
-    ],
+    attributionRestrictions: [],
     severity: "error" as const,
     operatorExplanation:
-      "This view-through attribution window no longer returns Ads Insights data. Replace it with one-day view-through attribution and disclose the measurement change.",
-    sourceReference: META_ADS_INSIGHTS_CHANGE_SOURCE,
+      "Meta limits hourly breakdowns to 13 calendar months of history. Remove the hourly breakdown or use already-warehoused detail for older periods.",
+    sourceReference: META_BREAKDOWNS_SOURCE,
   })),
 ] satisfies ProviderCapability[];
 

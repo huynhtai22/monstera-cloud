@@ -4,6 +4,9 @@ export {
 } from "./registry";
 export {
   evaluateCapabilityRequest,
+  evaluateAttributionWindows,
+  getAffectedFields,
+  createProviderCapabilityRegistry,
   isCapabilityEffective,
   listProviderCapabilities,
   lookupProviderCapability,
@@ -12,6 +15,8 @@ export { CAPABILITY_REASON_CODES } from "./constants";
 export type {
   AttributionRestriction,
   CapabilityKind,
+  CapabilityIdentifierMatch,
+  CapabilityEvaluationOptions,
   CapabilityLifecycle,
   CapabilityLookbackLimit,
   CapabilityLookup,
@@ -19,11 +24,13 @@ export type {
   CapabilityReasonCode,
   CapabilityRequest,
   CapabilitySeverity,
+  CapabilityRegistry,
   CapabilitySourceReference,
   CompatibilityEvaluation,
   CompatibilityReason,
   LookbackUnit,
   ProviderCapability,
+  ProviderCapabilityRegistryApi,
   ReportGranularity,
   ReportSurface,
   ReportType,

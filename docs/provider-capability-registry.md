@@ -1,25 +1,49 @@
 # Provider Capability Registry V1
 
-The provider capability registry is a pure TypeScript policy data set for deciding whether a provider reporting request is compatible with known provider limits. V1 is intentionally disconnected from routes, UI, databases, credentials, and provider clients.
+The provider capability registry is a pure TypeScript policy data set for deciding whether a provider reporting request is compatible with verified provider limits. V1 is intentionally disconnected from routes, UI, databases, credentials, and provider clients. It makes no database, network, environment, or server-only imports, so a client can safely import its deterministic helpers.
 
 ## Contract
 
-`src/lib/provider-capabilities` exports an immutable, versioned registry plus deterministic lookup, effective-date, listing, and request-evaluation functions. Evaluation requires an explicit `asOf` date, so the same request and registry version always produce the same result. Results use stable reason codes and static, control-character-sanitized operator guidance.
+`src/lib/provider-capabilities` exports an immutable, versioned default registry and pure APIs:
 
-Each record identifies the provider, report surface and type, provider-native capability ID, lifecycle, effective date, optional replacement, optional lookback limit, supported report granularities, attribution restrictions, severity, operator explanation, source reference, and registry version.
+- `lookupProviderCapability` selects one deterministic record.
+- `isCapabilityEffective` evaluates inclusive UTC lifecycle dates.
+- `evaluateCapabilityRequest` returns `compatible`, `findings`, stable reason codes, and affected fields. `reasons` remains a deprecated V1 alias for callers already using it.
+- `evaluateAttributionWindows` evaluates attribution rules without requiring a complete request evaluation.
+- `getAffectedFields` derives a sorted immutable field list from findings.
+- `createProviderCapabilityRegistry` creates an isolated evaluator from caller-owned records.
 
-V1 contains only verified Meta Ads Insights limitations. Google Ads and TikTok Ads were deliberately not inferred from field mappings or transport code; they should be added only after their lifecycle and limit claims have authoritative references.
+Evaluation requires an explicit `asOf` date, so the same request and registry version always produce the same result. Guidance is static, control-character-sanitized, and capped at 280 characters; untrusted request strings are never interpolated into guidance.
+
+Each record identifies the provider, report surface and type, provider-native capability ID, lifecycle, effective date, optional replacement, optional lookback limit, supported report granularities, attribution restrictions, severity, operator explanation, source reference, and registry version. The default registry and all returned data are deep-frozen. Custom input is cloned before it is frozen, so custom registries never mutate their input, each other, or the default registry.
+
+## Matching and lifecycle selection
+
+Capability identifiers use **exact** matching unless a record explicitly sets `identifierMatch: "prefix"`. A prefix rule matches only strings that start with its declared prefix. If exact and prefix records both match, the exact record wins. Among otherwise equal records, evaluation selects the latest entry effective on `asOf`, then sorts by record ID; it filters future records before selection, so a future retirement cannot shadow the current rule.
+
+Records must provide an ISO UTC calendar effective date. A request before the first effective record remains unaffected by a future lifecycle record; an unrecognized identifier still produces `UNKNOWN_CAPABILITY`.
+
+## Severity and attribution
+
+`error` findings make `compatible` false. `warning` and `info` findings remain compatible and are intended for caller presentation or telemetry; consumers must read `findings`, rather than treating advisory guidance as rejection.
+
+Attribution restrictions can declare `allowedWindows`, `unavailableWindows`, and `forbiddenCombinations`. The evaluator distinguishes unknown, retired/unavailable, and forbidden combination cases with stable reason codes. The default Meta policy recognizes the source-backed one-day view-through window and marks seven-day and 28-day view-through windows unavailable. It also carries both verified hourly Insights breakdown restrictions and only the documented restricted unique-count fields. Unsubstantiated broad report-level and frequency rules are intentionally absent.
+
+## Evidence standard
+
+Every non-obvious limitation must have a public, authoritative source reference and a concise `evidence` note that identifies what the source supports. The source must substantiate the identifier, restriction, effective date, and lookback behavior before a rule is added. Do not infer provider policy from transport code, field mappings, or a similar provider. Google Ads and TikTok Ads are deliberately absent until their own sources support their lifecycle and limit claims.
 
 ## Adding a connector without changing consumers
 
-1. Add provider/report literal values to `types.ts`.
-2. Add immutable records to `registry.ts`, including an authoritative provider source and the date it was checked.
-3. If a capability changes over time, append a record with a later `effectiveDate`; do not rewrite history.
-4. Bump `PROVIDER_CAPABILITY_REGISTRY_VERSION` for any data or contract change.
-5. Add boundary tests for the effective date and any lookback, granularity, replacement, or attribution rule.
+Provider, surface, and report identifiers are extensible string types: editors still autocomplete known values such as `meta_ads`, while new provider strings do not require edits to a closed union. Runtime validation in `createProviderCapabilityRegistry` still requires well-formed records, supported lifecycle/severity/kind values, valid dates, granularities, and source evidence.
 
-Consumers continue calling `lookupProviderCapability`, `listProviderCapabilities`, or `evaluateCapabilityRequest`; they do not need provider-specific branches. A future split into per-provider data modules can preserve the same exported API by concatenating and freezing those modules in `registry.ts`.
+Add a provider by defining its immutable records (normally in a provider-local data module), including authoritative evidence and tests, then construct a policy with `createProviderCapabilityRegistry(records)`. Consumers keep using the common lookup/evaluation API and do not need provider-specific branches. Append later lifecycle records rather than rewriting history, and bump `PROVIDER_CAPABILITY_REGISTRY_VERSION` when default data or contract semantics change.
 
-## Integration proposal (not implemented)
+```ts
+const policy = createProviderCapabilityRegistry(myProviderRecords);
+const result = policy.evaluate(request);
+```
 
-Before a report route calls a provider, a later integration task can translate its validated request body into `CapabilityRequest`, reject error-severity reasons, and log reason codes without logging raw operator input. That integration should be performed independently because the current Meta report route is outside Task B and may overlap parallel feature work.
+## Integration proposal (intentionally deferred)
+
+A later, independent route-integration slice can translate an already validated report request into `CapabilityRequest`, reject only error-severity findings before provider contact, and log reason codes without raw operator input. Route integration is deliberately deferred: this registry change must not alter the current Meta request boundary while parallel remediation work is in progress.
