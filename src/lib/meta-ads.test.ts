@@ -3,6 +3,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import {
   metaReportClient,
   MetaOAuthRevokedError,
+  MetaProviderOutputError,
   setMetaRetrySleeperForTest,
 } from "./meta-ads";
 import {
@@ -280,5 +281,31 @@ describe("Meta Ads client telemetry & error handling", () => {
     } finally {
       capture.restore();
     }
+  });
+
+  it("6. Empty or structurally unsupported report payloads fail instead of representing zero", async () => {
+    for (const payload of [{}, { data: [] }]) {
+      globalThis.fetch = (async () => new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+      await assert.rejects(
+        () => metaReportClient.getInsights("valid-token", {
+          adAccountId: "act_12345",
+          fields: ["spend"],
+          level: "campaign",
+        }),
+        (error) => error instanceof MetaProviderOutputError,
+      );
+    }
+
+    globalThis.fetch = (async () => new Response(JSON.stringify({}), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })) as typeof fetch;
+    await assert.rejects(
+      () => metaReportClient.checkAsyncReport("valid-token", "run_123"),
+      (error) => error instanceof MetaProviderOutputError,
+    );
   });
 });
