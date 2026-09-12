@@ -18,13 +18,18 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useWorkspaceStore } from "@/store/workspace";
 import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
 import { cn } from "@/lib/utils";
+import { ALL_CLIENTS_TOKEN } from "@/lib/client-context";
 import {
     describeOperationsReason,
+    deriveOperationsActions,
     formatEvidenceDay,
     formatEvidenceTimestamp,
+    operationsPriorityLabel,
+    operationsPriorityTone,
     operationsStateLabel,
     operationsStateTone,
     operationsTruncationNotice,
+    type OperationsAction,
     type OperationsSectionStateView,
     type OperationsTone,
 } from "@/lib/operations-view";
@@ -131,6 +136,100 @@ function SectionNotice({ reason }: { reason: string | null }) {
         <p className="rounded-md border border-line bg-canvas px-3 py-2.5 text-xs text-ink-mute">
             {describeOperationsReason(reason)}
         </p>
+    );
+}
+
+function NextActionsCard({
+    actions,
+    hrefFor,
+}: {
+    actions: OperationsAction[];
+    hrefFor: (path: string, targetClientId?: string | null) => string;
+}) {
+    return (
+        <section
+            data-testid="operations-actions"
+            aria-labelledby="operations-actions-heading"
+            className="mb-6 rounded-lg border border-line bg-panel p-5 shadow-xs"
+        >
+            <header className="flex items-center justify-between gap-3 border-b border-line pb-3">
+                <div className="flex items-center gap-2">
+                    <h2 id="operations-actions-heading" className="text-sm font-semibold text-ink">
+                        Next actions
+                    </h2>
+                    <span
+                        data-testid="operations-actions-count"
+                        className="rounded-full border border-line bg-canvas px-2 py-0.5 text-[11px] font-medium text-ink-mute"
+                    >
+                        {actions.length}
+                    </span>
+                </div>
+            </header>
+
+            {actions.length === 0 ? (
+                <div
+                    data-testid="operations-actions-empty"
+                    className="mt-4 flex items-start gap-3 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-700 dark:text-emerald-300"
+                >
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                    <div>
+                        <p className="font-semibold">No immediate action required</p>
+                        <p className="mt-0.5 text-ink-mute">
+                            All systems operational across connectors, freshness, ingestion, readiness, delivery, and anomalies.
+                        </p>
+                    </div>
+                </div>
+            ) : (
+                <ul data-testid="operations-actions-list" className="mt-3 space-y-2">
+                    {actions.map((action) => {
+                        const tone = operationsPriorityTone(action.priority);
+                        const priorityLabel = operationsPriorityLabel(action.priority);
+                        return (
+                            <li
+                                key={action.id}
+                                data-testid={`operations-action-${action.sectionKey}`}
+                                data-priority={action.priority}
+                                className="flex flex-col gap-3 rounded-md border border-line bg-canvas p-3 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span
+                                            data-testid="operations-action-priority"
+                                            className={cn(
+                                                "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]",
+                                                TONE_BADGE[tone],
+                                            )}
+                                            aria-label={priorityLabel}
+                                        >
+                                            {priorityLabel}
+                                        </span>
+                                        <h3 className="text-xs font-semibold text-ink">{action.title}</h3>
+                                        {action.count !== undefined && action.count > 0 ? (
+                                            <span className="text-[11px] text-ink-mute">
+                                                ({action.count})
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                    <p className="mt-1 text-xs text-ink-mute">{action.explanation}</p>
+                                    {action.latestEvidenceAt ? (
+                                        <p className="mt-1 text-[11px] text-ink-mute">
+                                            Latest evidence: {formatEvidenceTimestamp(action.latestEvidenceAt)}
+                                        </p>
+                                    ) : null}
+                                </div>
+                                <Link
+                                    href={hrefFor(action.cta.href, action.cta.targetScope === "all" ? ALL_CLIENTS_TOKEN : undefined)}
+                                    className="inline-flex shrink-0 items-center gap-1 self-start rounded-md border border-line bg-panel px-3 py-1.5 text-xs font-semibold text-ink transition-colors hover:bg-white/[0.06] sm:self-center"
+                                >
+                                    {action.cta.label}
+                                    <ChevronRight className="h-3 w-3" aria-hidden />
+                                </Link>
+                            </li>
+                        );
+                    })}
+                </ul>
+            )}
+        </section>
     );
 }
 
@@ -495,6 +594,8 @@ export function OperationsClient() {
         return "Workspace-wide";
     })();
 
+    const actions = React.useMemo(() => deriveOperationsActions(data), [data]);
+
     return (
         <PageShell>
             <div data-testid="operations-page" className="mx-auto w-full max-w-6xl">
@@ -548,7 +649,9 @@ export function OperationsClient() {
                 ) : isLoading || !data ? (
                     <LoadingGrid />
                 ) : (
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                    <>
+                        <NextActionsCard actions={actions} hrefFor={hrefFor} />
+                        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                         <SectionCard
                             sectionKey="connectorHealth"
                             title="Connector health"
@@ -633,6 +736,7 @@ export function OperationsClient() {
                             {renderAnomalies(data.sections.anomalies)}
                         </SectionCard>
                     </div>
+                    </>
                 )}
             </div>
         </PageShell>

@@ -45,7 +45,13 @@ export function useClientContextNavigation() {
     return search;
   }, [pathname, router, observedSearchString, pending]);
 
-  const hrefFor = useCallback((path: string) => {
+  /**
+   * Build a link href for another surface. `targetClientId` lets a CTA request a
+   * defined client scope (for example the canonical All Clients sentinel); when
+   * omitted the operator's current scope is preserved. Both paths go through the
+   * shared contract, so unsafe parameters are still dropped.
+   */
+  const hrefFor = useCallback((path: string, targetClientId?: string | null) => {
     if (!shouldPropagateClientContext(path)) return path;
     const currentPath = pathname ?? "";
     const live = `?${observedSearchString}`;
@@ -54,6 +60,7 @@ export function useClientContextNavigation() {
       observedSearch: live,
       pendingSearch: currentPath ? pending.pendingFor(currentPath) : null,
       requestedClientId: requestedRaw,
+      targetClientId,
     });
   }, [requestedRaw, observedSearchString, pathname, pending]);
 

@@ -59,7 +59,7 @@ Scope resolution:
   version: "operations-summary-v1",
   workspaceId, generatedAt,             // generatedAt comes from the injected clock
   clientContext: { status, client, scope },
-  navigation: { sources, reports, clients, explorer, exports },   // internal paths only
+  navigation: { sources, reports, clients, explorer, exports, operations },   // internal paths only
   sections: {
     connectorHealth, freshness, ingestion, readiness, delivery, anomalies
   }
@@ -192,6 +192,35 @@ the client bundle (enforced by `src/lib/observability/client-boundary.test.ts`).
 - `src/lib/observability/client-boundary.test.ts` — AST boundary: no provider
   transport import, no database mutation call, GET-only route, clients cannot
   import the server loader, and every resolver-consuming route maps failures.
+
+## Actionable Readiness v1 (Slice 1)
+
+Status: implemented. Converts summary evidence into a small, deterministic, prioritized list of next actions rendered near the top of `/operations`.
+
+- **Pure presentation derivation**: Implemented in `src/lib/operations-view.ts` (`deriveOperationsActions`), safely isolated from server-only code and verified by AST boundary tests.
+- **Priority derivation**:
+  - `attention` → `"high"` priority (rank 1) when an authoritative count proves a blocking condition: quarantined or errored accounts, stale or failing sources, failed/partial import jobs or sync-log errors, readiness blockers, stale deliveries, or critical/warning anomalies.
+  - `attention` degraded to `"medium"` (rank 2) when the evidence is real but is not yet a proven failure: unrecognized connector or source states, readiness coverage that could not be evaluated, or an anomaly evaluation that could not cover every metric row.
+  - `attention` degraded to `"low"` (rank 3) when the condition is in flight rather than broken: source connections still pending or syncing their first sync.
+  - `unavailable` → `"medium"` priority (rank 2): Service check/recovery action. Never presented as healthy.
+  - `unsupported` → `"low"` priority (rank 3): Explains scope limitation (e.g. client-scoped ingestion). Never claims zero incidents or healthy operation.
+  - `empty` → `"low"` priority (rank 3): Setup actions when no connections or sources exist in this scope.
+  - `ready` → Produces no action. When all sections are ready, renders the calm "No immediate action required" state.
+- **Deterministic ordering**:
+  1. Priority rank: high (1) > medium (2) > low (3)
+  2. Stable section order: `connectorHealth` > `freshness` > `ingestion` > `readiness` > `delivery` > `anomalies`
+  3. Action ID: a deterministic comparison as a defensive final tiebreaker. Each section emits at most one action, so it cannot currently change the observed order.
+- **Tenant & Client Context Safety**:
+  - Actions navigate only to existing authorized product surfaces: `/sources`, `/reports`, `/clients`, `/exports`, `/explorer` (the warehouse importer) and `/operations` itself. No CTA invents a destination.
+  - Actions link through `hrefFor(action.cta.href, action.cta.targetScope === "all" ? ALL_CLIENTS_TOKEN : undefined)` via `useClientContextNavigation`, preserving valid client context while stripping unsafe query parameters.
+  - A CTA may declare an explicit `targetScope: "all"` (the canonical All Clients sentinel). It is used where the corrective action *is* a scope switch on the same surface: client-scoped `ingestion` links to `/operations?clientId=all`, never to a different page with the unchanged client.
+  - Every CTA renders as a plain link. Navigating is a read: no CTA performs a write, and the importer CTA only opens the warehouse surface, where the operator starts an import explicitly.
+- **Evidence truthfulness — no exact-zero overstatement**:
+  - Counts and copy come from authoritative aggregates over the whole scoped population, never from the capped display slices.
+  - A capped slice is never presented as a total. When no authoritative category accounts for an `attention` state, the copy stays explicitly bounded ("Showing N … More may exist in this scope") instead of asserting a total derived from the slice.
+  - Fail-closed conditions never render a misleading exact zero: incomplete readiness coverage, an unevaluated readiness state, a truncated anomaly scan and an unclassified source state each produce prose that says the evidence is incomplete, rather than "0 warnings" or "0 anomalies".
+  - `unsupported` sections explain the scope limitation instead of showing a zero.
+- **Verification**: `src/lib/operations-view.test.ts` pins the derivation (priority, ordering, authoritative counts, scope-aware CTAs, immutability), and `tests/e2e/operations-hub.spec.ts` covers the rendered actions end to end, including the All Clients scope switch and the `/explorer` importer destination.
 
 ## Remaining work (future UI slice)
 

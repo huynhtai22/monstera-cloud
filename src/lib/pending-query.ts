@@ -144,19 +144,27 @@ export function acknowledgePendingUrlState(
  * the result is byte-identical to building from observed state directly.
  * Routing stays through `withClientContextAndFilters`, preserving its
  * single-canonical-clientId and unsafe-parameter rules.
+ *
+ * `targetClientId` expresses a CTA that must land in a defined client scope
+ * (for example the canonical All Clients sentinel). It wins over both pending
+ * and observed state so the destination never depends on an unacknowledged
+ * transition. Omitting it preserves the existing behaviour exactly.
  */
 export function clientContextHrefWithPending(input: {
   href: string;
   observedSearch: string;
   pendingSearch: string | null;
   requestedClientId: string | null;
+  targetClientId?: string | null;
 }): string {
   const { params: base } = selectPendingBase({
     observedSearch: input.observedSearch,
     pendingSearch: input.pendingSearch,
   });
-  const requested = input.pendingSearch === null
-    ? input.requestedClientId
-    : base.get(CLIENT_ID_QUERY_PARAM);
+  const requested = input.targetClientId !== undefined
+    ? input.targetClientId
+    : input.pendingSearch === null
+      ? input.requestedClientId
+      : base.get(CLIENT_ID_QUERY_PARAM);
   return withClientContextAndFilters(input.href, requested, base);
 }
