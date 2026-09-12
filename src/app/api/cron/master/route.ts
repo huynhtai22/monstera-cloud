@@ -38,5 +38,16 @@ export async function GET(request: Request) {
 
   const settled = [...p1, ...p2, ...p3];
 
-  return NextResponse.json({ timestamp: new Date().toISOString(), executed: Object.fromEntries(settled) });
+  // Every scheduled task is required: the orchestrator must not report
+  // success while any child task returned a non-2xx status or threw. The
+  // executed map intentionally carries status codes only — child response
+  // bodies, error details, and secrets are never surfaced here.
+  const allSucceeded = settled.every(
+    ([, status]) => typeof status === "number" && status >= 200 && status < 300,
+  );
+
+  return NextResponse.json(
+    { timestamp: new Date().toISOString(), executed: Object.fromEntries(settled) },
+    { status: allSucceeded ? 200 : 500 },
+  );
 }
