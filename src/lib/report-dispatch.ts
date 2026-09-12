@@ -80,8 +80,14 @@ export function parseRecipients(input: string): ParsedRecipients {
 
 /**
  * Send a formatted brief to a Slack incoming webhook.
+ * The request is genuinely cancelled via `AbortSignal` when the per-request
+ * timeout or the overall schedule deadline fires.
  */
-export async function sendSlackWebhook(webhookUrl: string, text: string): Promise<boolean> {
+export async function sendSlackWebhook(
+  webhookUrl: string,
+  text: string,
+  delivery?: DispatchDeliveryOptions,
+): Promise<boolean> {
   try {
     const res = await fetch(webhookUrl, {
       method: "POST",
@@ -90,6 +96,10 @@ export async function sendSlackWebhook(webhookUrl: string, text: string): Promis
         text,
         mrkdwn: true,
       }),
+      signal: composeDeliverySignal(
+        delivery?.signal,
+        delivery?.perRequestTimeoutMs ?? DISPATCH_PER_REQUEST_TIMEOUT_MS,
+      ),
     });
     return res.ok;
   } catch (err) {
@@ -104,7 +114,8 @@ export async function sendSlackWebhook(webhookUrl: string, text: string): Promis
 export async function sendTelegramBrief(
   botToken: string,
   chatId: string,
-  text: string
+  text: string,
+  delivery?: DispatchDeliveryOptions,
 ): Promise<boolean> {
   try {
     const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -115,6 +126,10 @@ export async function sendTelegramBrief(
         text,
         parse_mode: "Markdown",
       }),
+      signal: composeDeliverySignal(
+        delivery?.signal,
+        delivery?.perRequestTimeoutMs ?? DISPATCH_PER_REQUEST_TIMEOUT_MS,
+      ),
     });
     return res.ok;
   } catch (err) {
@@ -336,14 +351,80 @@ export async function compileClientBrief(params: {
  * - Handled failures release the lease (also ownership-checked) and leave
  *   `lastSentAt` untouched, keeping the schedule retryable.
  * - A crashed owner never releases: the lease simply expires (TTL below), and
- *   only then can another caller reclaim it. The TTL exceeds any bounded
- *   delivery budget (the Pilot curl budget is 110s and serverless functions
- *   cap well below it) while staying far under the cron cadence (15 minutes
- *   for Pilot, daily for master), so crash recovery needs no manual action.
+ *   only then can another caller reclaim it. The TTL exceeds the enforced
+ *   delivery budget (see DISPATCH_OVERALL_DEADLINE_MS) while staying far under
+ *   the cron cadence (15 minutes for Pilot, daily for master), so crash
+ *   recovery needs no manual action.
  * - No database transaction is held across provider/network delivery, and no
  *   `lastSentAt` is ever written before delivery succeeds.
  */
 export const DISPATCH_LEASE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Enforced delivery budget. Provider transports (Slack/Telegram fetch, email)
+ * carry no deadlines of their own — without this budget a stalled endpoint
+ * could keep a delivery alive past the lease TTL, letting another sweep
+ * reclaim and re-deliver the same schedule. The overall deadline bounds the
+ * COMPLETE schedule delivery (every Slack recipient, Telegram, and email,
+ * sequentially), and every provider request additionally carries a per-request
+ * timeout; both are strictly below the lease TTL:
+ *
+ *   DISPATCH_PER_REQUEST_TIMEOUT_MS (20s)
+ *     < DISPATCH_OVERALL_DEADLINE_MS (90s)
+ *       < DISPATCH_LEASE_TTL_MS (300s)   [safety margin: 210s]
+ */
+export const DISPATCH_PER_REQUEST_TIMEOUT_MS = 20_000;
+export const DISPATCH_OVERALL_DEADLINE_MS = 90_000;
+
+/** Sanitized internal reason used to abort deliveries that exceed the budget. */
+export class DispatchDeadlineExceededError extends Error {
+  constructor() {
+    super("Dispatch deadline exceeded");
+    this.name = "DispatchDeadlineExceededError";
+  }
+}
+
+/** Options for one provider delivery attempt. */
+export interface DispatchDeliveryOptions {
+  /** Overall schedule deadline signal; composed with the per-request timeout. */
+  signal?: AbortSignal;
+  /** Per-request timeout override for deterministic tests. */
+  perRequestTimeoutMs?: number;
+}
+
+/**
+ * Composes the caller's overall deadline signal (if any) with a fresh
+ * per-request timeout into the single signal handed to `fetch`, so transport
+ * cancellation is genuine: aborting either deadline tears down the in-flight
+ * request, not just an early return.
+ */
+function composeDeliverySignal(signal: AbortSignal | undefined, perRequestTimeoutMs: number): AbortSignal {
+  const perRequest = AbortSignal.timeout(perRequestTimeoutMs);
+  return signal ? AbortSignal.any([signal, perRequest]) : perRequest;
+}
+
+/** Bounds one complete schedule delivery; the abort reason is sanitized. */
+class DispatchDeadline {
+  readonly signal: AbortSignal;
+  private readonly timer: NodeJS.Timeout;
+
+  constructor(overallDeadlineMs: number) {
+    const controller = new AbortController();
+    this.timer = setTimeout(
+      () => controller.abort(new DispatchDeadlineExceededError()),
+      overallDeadlineMs,
+    );
+    this.signal = controller.signal;
+  }
+
+  get exceeded(): boolean {
+    return this.signal.aborted;
+  }
+
+  dispose(): void {
+    clearTimeout(this.timer);
+  }
+}
 
 export interface DispatchLeaseOptions {
   /** Injected clock for deterministic tests; defaults to the current time. */
@@ -418,6 +499,7 @@ export async function releaseScheduleDispatch(
 export async function executeScheduleDispatch(
   scheduleId: string,
   lease?: { token: string },
+  budget?: { overallDeadlineMs?: number; perRequestTimeoutMs?: number },
 ): Promise<DispatchResult> {
   const schedule = await prisma.reportSchedule.findUnique({
     where: { id: scheduleId },
@@ -427,95 +509,131 @@ export async function executeScheduleDispatch(
     throw new Error(`ReportSchedule not found: ${scheduleId}`);
   }
 
-  const recipients = parseRecipients(schedule.recipients);
-  const { markdown, clientName } = await compileClientBrief({
-    workspaceId: schedule.workspaceId,
-    clientId: schedule.clientId,
-  });
+  // The overall deadline bounds the COMPLETE delivery of this schedule — every
+  // Slack recipient, Telegram chat, and email, sequentially — and is strictly
+  // below the dispatch lease TTL. Delivery options carry the deadline signal
+  // plus a per-request timeout to every provider call, so stalled transports
+  // are genuinely cancelled instead of outliving the lease.
+  const deadline = new DispatchDeadline(budget?.overallDeadlineMs ?? DISPATCH_OVERALL_DEADLINE_MS);
+  const perRequestTimeoutMs = budget?.perRequestTimeoutMs ?? DISPATCH_PER_REQUEST_TIMEOUT_MS;
 
-  const workspace = await prisma.workspace.findUnique({
-    where: { id: schedule.workspaceId },
-    select: { name: true },
-  });
-  const workspaceName = workspace?.name || "Monstera Cloud";
+  try {
+    const recipients = parseRecipients(schedule.recipients);
+    const { markdown, clientName } = await compileClientBrief({
+      workspaceId: schedule.workspaceId,
+      clientId: schedule.clientId,
+    });
 
-  const result: DispatchResult = {
-    scheduleId: schedule.id,
-    clientId: schedule.clientId,
-    clientName,
-    slackDelivered: 0,
-    slackFailed: 0,
-    telegramDelivered: 0,
-    telegramFailed: 0,
-    emailsDelivered: 0,
-    emailsFailed: 0,
-    errors: [],
-  };
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: schedule.workspaceId },
+      select: { name: true },
+    });
+    const workspaceName = workspace?.name || "Monstera Cloud";
 
-  // 1. Deliver to Slack Webhooks
-  for (const webhook of recipients.slackWebhooks) {
-    const ok = await sendSlackWebhook(webhook, markdown);
-    if (ok) {
-      result.slackDelivered++;
-    } else {
-      result.slackFailed++;
-      result.errors.push(`Slack webhook failed: ${webhook.slice(0, 30)}...`);
+    const result: DispatchResult = {
+      scheduleId: schedule.id,
+      clientId: schedule.clientId,
+      clientName,
+      slackDelivered: 0,
+      slackFailed: 0,
+      telegramDelivered: 0,
+      telegramFailed: 0,
+      emailsDelivered: 0,
+      emailsFailed: 0,
+      errors: [],
+    };
+
+    // 1. Deliver to Slack Webhooks. Error strings are sanitized: no URLs,
+    // chat IDs, email addresses, tokens, or raw provider responses.
+    for (const webhook of recipients.slackWebhooks) {
+      if (deadline.exceeded) {
+        result.slackFailed++;
+        result.errors.push("Slack webhook skipped: dispatch deadline exceeded.");
+        continue;
+      }
+      const ok = await sendSlackWebhook(webhook, markdown, { signal: deadline.signal, perRequestTimeoutMs });
+      if (ok) {
+        result.slackDelivered++;
+      } else {
+        result.slackFailed++;
+        result.errors.push("Slack webhook failed.");
+      }
     }
-  }
 
-  // 2. Deliver to Telegram Chats
-  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  if (recipients.telegramChatIds.length > 0) {
-    if (!botToken) {
-      result.telegramFailed += recipients.telegramChatIds.length;
-      result.errors.push("TELEGRAM_BOT_TOKEN not configured");
-    } else {
-      for (const chatId of recipients.telegramChatIds) {
-        const ok = await sendTelegramBrief(botToken, chatId, markdown);
-        if (ok) {
-          result.telegramDelivered++;
-        } else {
-          result.telegramFailed++;
-          result.errors.push(`Telegram send failed for chat ${chatId}`);
+    // 2. Deliver to Telegram Chats
+    const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    if (recipients.telegramChatIds.length > 0) {
+      if (!botToken) {
+        result.telegramFailed += recipients.telegramChatIds.length;
+        result.errors.push("TELEGRAM_BOT_TOKEN not configured");
+      } else {
+        for (const chatId of recipients.telegramChatIds) {
+          if (deadline.exceeded) {
+            result.telegramFailed++;
+            result.errors.push("Telegram send skipped: dispatch deadline exceeded.");
+            continue;
+          }
+          const ok = await sendTelegramBrief(botToken, chatId, markdown, { signal: deadline.signal, perRequestTimeoutMs });
+          if (ok) {
+            result.telegramDelivered++;
+          } else {
+            result.telegramFailed++;
+            result.errors.push("Telegram send failed.");
+          }
         }
       }
     }
-  }
 
-  // 3. Deliver to Email recipients
-  for (const email of recipients.emails) {
-    const emailResult = await sendClientBriefEmail(email, clientName, workspaceName, markdown);
-    if (emailResult.success) {
-      result.emailsDelivered++;
-    } else {
-      result.emailsFailed++;
-      result.errors.push(`Email send failed for ${email}`);
-    }
-  }
-
-  // Only advance lastSentAt if at least one delivery succeeded. With a lease,
-  // completion and lease-clearing are the same ownership-checked atomic update;
-  // a stale (fenced) owner can neither mark success nor clear another caller's
-  // lease. A handled all-channel failure releases the lease so a later tick
-  // can retry, while lastSentAt stays unchanged.
-  const totalDelivered = result.slackDelivered + result.telegramDelivered + result.emailsDelivered;
-  if (totalDelivered > 0) {
-    if (lease) {
-      const owned = await completeScheduleDispatch(schedule.id, schedule.workspaceId, lease.token);
-      if (!owned) {
-        logger.warn(
-          `[report-dispatch] Dispatch of schedule ${schedule.id} delivered but its lease was taken over (expired); completion left to the current owner.`,
-        );
+    // 3. Deliver to Email recipients
+    for (const email of recipients.emails) {
+      if (deadline.exceeded) {
+        result.emailsFailed++;
+        result.errors.push("Email send skipped: dispatch deadline exceeded.");
+        continue;
       }
-    } else {
-      await prisma.reportSchedule.update({
-        where: { id: schedule.id },
-        data: { lastSentAt: new Date() },
-      });
+      const emailResult = await sendClientBriefEmail(
+        email,
+        clientName,
+        workspaceName,
+        markdown,
+        { signal: AbortSignal.any([deadline.signal, AbortSignal.timeout(perRequestTimeoutMs)]) },
+      );
+      if (emailResult.success) {
+        result.emailsDelivered++;
+      } else {
+        result.emailsFailed++;
+        result.errors.push("Email send failed.");
+      }
     }
-  } else if (lease) {
-    await releaseScheduleDispatch(schedule.id, schedule.workspaceId, lease.token);
-  }
 
-  return result;
+    // Only advance lastSentAt if at least one delivery succeeded. With a lease,
+    // completion and lease-clearing are the same ownership-checked atomic update;
+    // a stale (fenced) owner can neither mark success nor clear another caller's
+    // lease. A handled all-channel failure releases the lease so a later tick
+    // can retry, while lastSentAt stays unchanged.
+    const totalDelivered = result.slackDelivered + result.telegramDelivered + result.emailsDelivered;
+    if (totalDelivered > 0) {
+      if (lease) {
+        const owned = await completeScheduleDispatch(schedule.id, schedule.workspaceId, lease.token);
+        if (!owned) {
+          logger.warn(
+            `[report-dispatch] Dispatch of schedule ${schedule.id} delivered but its lease was taken over (expired); completion left to the current owner.`,
+          );
+        }
+      } else {
+        await prisma.reportSchedule.update({
+          where: { id: schedule.id },
+          data: { lastSentAt: new Date() },
+        });
+      }
+    } else if (lease) {
+      await releaseScheduleDispatch(schedule.id, schedule.workspaceId, lease.token);
+    }
+
+    return result;
+  } finally {
+    // No deadline timer, and therefore no delivery budget, survives the
+    // dispatch: timed-out transports were already torn down via their signals.
+    deadline.dispose();
+  }
 }
