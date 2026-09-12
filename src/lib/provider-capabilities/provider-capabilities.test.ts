@@ -376,3 +376,176 @@ describe("provider capability registry", () => {
     );
   });
 });
+
+describe("provider capability registry report-rule lifecycle (PR #165 review)", () => {
+  const baseField = customRecord();
+
+  const olderReport = customRecord({
+    recordId: "example_ads.surface.performance.report.standard_totals.2020-01-01",
+    kind: "report",
+    capabilityId: "standard_totals",
+    effectiveDate: "2020-01-01",
+    granularities: ["account", "campaign", "adset", "ad"],
+    attributionRestrictions: [
+      {
+        allowedWindows: ["1d_view"],
+        unavailableWindows: ["7d_view"],
+        forbiddenCombinations: [["7d_view", "28d_view"]],
+        explanation: "older policy: seven-day view-through is retired",
+      },
+    ],
+  });
+
+  const replacedNewerReport = customRecord({
+    recordId: "example_ads.surface.performance.report.standard_totals.2026-06-01",
+    kind: "report",
+    capabilityId: "standard_totals",
+    effectiveDate: "2026-06-01",
+    granularities: ["account", "campaign", "adset", "ad"],
+    attributionRestrictions: [
+      {
+        allowedWindows: ["1d_view", "7d_view"],
+        explanation: "newer policy restores seven-day view-through",
+      },
+    ],
+  });
+
+  const liftedNewerReport = customRecord({
+    recordId: "example_ads.surface.performance.report.standard_totals.2026-06-01",
+    kind: "report",
+    capabilityId: "standard_totals",
+    effectiveDate: "2026-06-01",
+    granularities: ["account", "campaign", "adset", "ad"],
+    attributionRestrictions: [],
+  });
+
+  it("applies the older report policy until the newer lifecycle record is effective", () => {
+    const policy = createProviderCapabilityRegistry([baseField, olderReport, replacedNewerReport]);
+    const retired = policy.evaluate(
+      customRequest({ since: "2026-05-01", until: "2026-05-31", asOf: "2026-05-31", attributionWindows: ["7d_view"] }),
+    );
+    assert.equal(retired.compatible, false);
+    assert.equal(
+      retired.findings.some((finding) => finding.code === CAPABILITY_REASON_CODES.ATTRIBUTION_WINDOW_RETIRED),
+      true,
+    );
+    assert.deepEqual(
+      policy.evaluate(
+        customRequest({ since: "2026-05-01", until: "2026-05-31", asOf: "2026-05-31", attributionWindows: ["1d_view"] }),
+      ).findings,
+      [],
+    );
+  });
+
+  it("applies only the newer report policy on its effective date instead of merging the old one", () => {
+    const policy = createProviderCapabilityRegistry([baseField, olderReport, replacedNewerReport]);
+    const lifted = policy.evaluate(
+      customRequest({ since: "2026-06-01", until: "2026-06-01", asOf: "2026-06-01", attributionWindows: ["7d_view"] }),
+    );
+    assert.deepEqual(lifted.findings, []);
+    const unlisted = policy.evaluate(
+      customRequest({ since: "2026-06-01", until: "2026-06-01", asOf: "2026-06-01", attributionWindows: ["28d_view"] }),
+    );
+    assert.equal(unlisted.findings[0]?.code, CAPABILITY_REASON_CODES.UNKNOWN_ATTRIBUTION_WINDOW);
+  });
+
+  it("lets a newer empty report restriction list lift an older restriction", () => {
+    const policy = createProviderCapabilityRegistry([baseField, olderReport, liftedNewerReport]);
+    const lifted = policy.evaluate(
+      customRequest({ since: "2026-06-01", until: "2026-06-01", asOf: "2026-06-01", attributionWindows: ["7d_view"] }),
+    );
+    assert.deepEqual(lifted.findings, []);
+    const before = policy.evaluate(
+      customRequest({ since: "2026-05-01", until: "2026-05-31", asOf: "2026-05-31", attributionWindows: ["7d_view"] }),
+    );
+    assert.equal(
+      before.findings.some((finding) => finding.code === CAPABILITY_REASON_CODES.ATTRIBUTION_WINDOW_RETIRED),
+      true,
+    );
+  });
+
+  it("keeps future report lifecycle records ineffective before their effective date", () => {
+    const futureReport = customRecord({
+      recordId: "example_ads.surface.performance.report.standard_totals.2030-01-01",
+      kind: "report",
+      capabilityId: "standard_totals",
+      effectiveDate: "2030-01-01",
+      granularities: ["account", "campaign", "adset", "ad"],
+      attributionRestrictions: [
+        {
+          allowedWindows: ["9d_view"],
+          unavailableWindows: ["1d_view"],
+          explanation: "future policy",
+        },
+      ],
+    });
+    const policy = createProviderCapabilityRegistry([baseField, olderReport, futureReport]);
+
+    const current = policy.evaluate(
+      customRequest({ attributionWindows: ["1d_view", "7d_view"] }),
+    );
+    assert.deepEqual(
+      current.findings.map((finding) => finding.code),
+      [CAPABILITY_REASON_CODES.ATTRIBUTION_WINDOW_RETIRED],
+    );
+
+    const future = policy.evaluate(
+      customRequest({ since: "2030-01-01", until: "2030-01-01", asOf: "2030-01-01", attributionWindows: ["1d_view", "9d_view"] }),
+    );
+    assert.deepEqual(
+      future.findings.map((finding) => finding.code),
+      [CAPABILITY_REASON_CODES.ATTRIBUTION_WINDOW_RETIRED],
+    );
+    assert.equal(future.findings[0]?.capabilityId, "1d_view");
+  });
+
+  it("selects the same report rule regardless of registry input order", () => {
+    for (const asOf of ["2026-05-31", "2026-06-01"]) {
+      const forward = createProviderCapabilityRegistry([baseField, olderReport, replacedNewerReport]).evaluate(
+        customRequest({ since: asOf, until: asOf, asOf, attributionWindows: ["7d_view"] }),
+      );
+      const backward = createProviderCapabilityRegistry([baseField, replacedNewerReport, olderReport]).evaluate(
+        customRequest({ since: asOf, until: asOf, asOf, attributionWindows: ["7d_view"] }),
+      );
+      assert.deepEqual(forward.findings, backward.findings);
+    }
+  });
+
+  it("keeps standalone attribution evaluation consistent with full request evaluation", () => {
+    const policy = createProviderCapabilityRegistry([baseField, olderReport, replacedNewerReport]);
+    const request = customRequest({
+      since: "2026-06-01",
+      until: "2026-06-01",
+      asOf: "2026-06-01",
+      attributionWindows: ["7d_view", "28d_view"],
+    });
+    assert.deepEqual(
+      policy.evaluateAttributionWindows(request).map((finding) => finding.code),
+      policy.evaluate(request).findings.map((finding) => finding.code),
+    );
+  });
+
+  it("keeps advisory attribution severity compatible while errors stay incompatible", () => {
+    const advisory = customRecord({
+      recordId: "example_ads.surface.performance.report.standard_totals.2020-01-01",
+      kind: "report",
+      capabilityId: "standard_totals",
+      effectiveDate: "2020-01-01",
+      granularities: ["account", "campaign", "adset", "ad"],
+      severity: "warning",
+      attributionRestrictions: [{ unavailableWindows: ["7d_view"], explanation: "advisory retirement" }],
+    });
+    const warnings = createProviderCapabilityRegistry([baseField, advisory]).evaluate(
+      customRequest({ attributionWindows: ["7d_view"] }),
+    );
+    assert.equal(warnings.compatible, true);
+    assert.equal(warnings.findings[0]?.severity, "warning");
+
+    const blocking = createProviderCapabilityRegistry([baseField, { ...advisory, severity: "error" }]).evaluate(
+      customRequest({ attributionWindows: ["7d_view"] }),
+    );
+    assert.equal(blocking.compatible, false);
+    assert.equal(blocking.findings[0]?.severity, "error");
+  });
+});
+

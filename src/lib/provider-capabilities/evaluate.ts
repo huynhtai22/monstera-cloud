@@ -20,6 +20,11 @@ import {
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_GUIDANCE_LENGTH = 280;
+/**
+ * Full request evaluation anchors each report surface on this report
+ * capability; attribution evaluation resolves the same record.
+ */
+const REPORT_CAPABILITY_ID = "standard_totals";
 const VALID_KINDS = new Set<CapabilityKind>([
   "report",
   "field",
@@ -274,7 +279,7 @@ function requestedCapabilities(request: CapabilityRequest): Array<{
     kind: Exclude<CapabilityKind, "attribution_window">;
     capabilityId: string;
   }> = [
-    { kind: "report", capabilityId: "standard_totals" },
+    { kind: "report", capabilityId: REPORT_CAPABILITY_ID },
     ...(request.fields ?? []).map((capabilityId) => ({ kind: "field" as const, capabilityId })),
     ...(request.breakdowns ?? []).map((capabilityId) => ({
       kind: "breakdown" as const,
@@ -298,22 +303,28 @@ function compareReasons(left: CompatibilityReason, right: CompatibilityReason): 
   );
 }
 
-function reportRestrictions(
+/**
+ * Resolves the one report rule that is current for the request's surface using
+ * the same effective-date filtering and exact-over-prefix precedence as any
+ * capability lookup. Records with a later effective date than the evaluation
+ * date cannot compete, superseded records never contribute restrictions, and
+ * ties resolve deterministically without depending on registry input order.
+ */
+function resolveCurrentReportRule(
   registry: CapabilityRegistry,
   request: CapabilityRequest,
-): Array<{ restriction: AttributionRestriction; capability: ProviderCapability }> {
-  return registry
-    .filter(
-      (capability) =>
-        capability.provider === request.provider &&
-        capability.reportSurface === request.reportSurface &&
-        capability.reportType === request.reportType &&
-        capability.kind === "report" &&
-        isCapabilityEffective(capability, request.asOf),
-    )
-    .flatMap((capability) =>
-      capability.attributionRestrictions.map((restriction) => ({ restriction, capability })),
-    );
+): ProviderCapability | undefined {
+  return lookupProviderCapability(
+    {
+      provider: request.provider,
+      reportSurface: request.reportSurface,
+      reportType: request.reportType,
+      kind: "report",
+      capabilityId: REPORT_CAPABILITY_ID,
+      asOf: request.asOf,
+    },
+    { registry },
+  );
 }
 
 /** Evaluates attribution windows independently so callers can present advisory findings. */
@@ -325,8 +336,8 @@ export function evaluateAttributionWindows(
   const selected = [...new Set(request.attributionWindows ?? [])].sort(compareText);
   if (selected.length === 0) return freezeResult([]);
 
-  const restrictions = reportRestrictions(registry, request);
-  if (restrictions.length === 0) {
+  const reportRule = resolveCurrentReportRule(registry, request);
+  if (!reportRule) {
     return freezeResult(
       selected.map((capabilityId) =>
         makeReason({
@@ -340,36 +351,38 @@ export function evaluateAttributionWindows(
     );
   }
 
+  // Only the winning record's restrictions apply: an empty list means the
+  // current lifecycle version carries no attribution policy and lifts any
+  // restriction an older record declared.
+  const restrictions = reportRule.attributionRestrictions;
+  if (restrictions.length === 0) return freezeResult([]);
+
   const allowed = new Set<string>();
-  const unavailable = new Map<string, { restriction: AttributionRestriction; capability: ProviderCapability }>();
-  const forbidden: Array<{
-    combination: readonly string[];
-    restriction: AttributionRestriction;
-    capability: ProviderCapability;
-  }> = [];
-  for (const entry of restrictions) {
-    for (const window of entry.restriction.allowedWindows ?? []) allowed.add(window);
-    for (const window of entry.restriction.unavailableWindows ?? []) {
-      unavailable.set(window, entry);
+  const unavailable = new Map<string, AttributionRestriction>();
+  const forbidden: Array<{ combination: readonly string[]; restriction: AttributionRestriction }> = [];
+  for (const restriction of restrictions) {
+    for (const window of restriction.allowedWindows ?? []) allowed.add(window);
+    for (const window of restriction.unavailableWindows ?? []) {
+      unavailable.set(window, restriction);
     }
-    for (const combination of entry.restriction.forbiddenCombinations ?? []) {
-      forbidden.push({ combination, ...entry });
+    for (const combination of restriction.forbiddenCombinations ?? []) {
+      forbidden.push({ combination, restriction });
     }
   }
 
   const reasons: CompatibilityReason[] = [];
   for (const capabilityId of selected) {
-    const unavailableEntry = unavailable.get(capabilityId);
-    if (unavailableEntry) {
+    const restriction = unavailable.get(capabilityId);
+    if (restriction) {
       reasons.push(
         makeReason({
           code: CAPABILITY_REASON_CODES.ATTRIBUTION_WINDOW_RETIRED,
-          severity: unavailableEntry.capability.severity,
+          severity: reportRule.severity,
           kind: "attribution_window",
           capabilityId,
-          replacement: unavailableEntry.restriction.allowedWindows,
-          operatorGuidance: unavailableEntry.restriction.explanation,
-          sourceReference: unavailableEntry.capability.sourceReference,
+          replacement: restriction.allowedWindows,
+          operatorGuidance: restriction.explanation,
+          sourceReference: reportRule.sourceReference,
         }),
       );
     } else if (allowed.size > 0 && !allowed.has(capabilityId)) {
@@ -384,15 +397,15 @@ export function evaluateAttributionWindows(
       );
     }
   }
-  for (const entry of forbidden) {
-    if (entry.combination.every((window) => selected.includes(window))) {
+  for (const { combination, restriction } of forbidden) {
+    if (combination.every((window) => selected.includes(window))) {
       reasons.push(
         makeReason({
           code: CAPABILITY_REASON_CODES.ATTRIBUTION_WINDOW_FORBIDDEN_COMBINATION,
-          severity: entry.capability.severity,
+          severity: reportRule.severity,
           kind: "attribution_window",
-          operatorGuidance: entry.restriction.explanation,
-          sourceReference: entry.capability.sourceReference,
+          operatorGuidance: restriction.explanation,
+          sourceReference: reportRule.sourceReference,
         }),
       );
     }

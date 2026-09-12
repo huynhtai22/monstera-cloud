@@ -23,6 +23,8 @@ Capability identifiers use **exact** matching unless a record explicitly sets `i
 
 Records must provide an ISO UTC calendar effective date. A request before the first effective record remains unaffected by a future lifecycle record; an unrecognized identifier still produces `UNKNOWN_CAPABILITY`.
 
+The same selection machinery resolves each surface's **report rule** — the `standard_totals` report capability — before its attribution restrictions apply. Only records effective on the evaluation date compete, exact matches win over declared prefixes, and the latest effective record wins ties by record ID. The winning record supplies the active attribution policy for the surface: older records remain historical evidence, restrictions are never accumulated across superseded lifecycle versions, and a newer current record with an empty restriction list lifts restrictions an older one declared. A record whose effective date is in the future has no effect before that date.
+
 ## Severity and attribution
 
 `error` findings make `compatible` false. `warning` and `info` findings remain compatible and are intended for caller presentation or telemetry; consumers must read `findings`, rather than treating advisory guidance as rejection.
