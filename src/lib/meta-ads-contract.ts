@@ -325,10 +325,16 @@ export function validateMetaReportHistoricalAvailability(
   if (!usesThirteenMonthLimitedData(params)) return;
 
   const cutoff = subtractUtcCalendarMonthsClamped(now, 13);
+  // Meta `since` inputs are calendar dates at midnight UTC. Normalize the
+  // clamped cutoff to the same UTC day boundary so validation is identical
+  // throughout the calendar day instead of depending on the evaluation hour.
+  const cutoffDay = new Date(
+    Date.UTC(cutoff.getUTCFullYear(), cutoff.getUTCMonth(), cutoff.getUTCDate()),
+  );
   const since = params.timeRange?.since;
   const requestsUnavailableHistory = since
-    ? new Date(`${since}T00:00:00.000Z`) < cutoff
-    : datePresetRequestsUnavailableHistory(params.datePreset, cutoff, now);
+    ? new Date(`${since}T00:00:00.000Z`) < cutoffDay
+    : datePresetRequestsUnavailableHistory(params.datePreset, cutoffDay, now);
 
   if (requestsUnavailableHistory) {
     throw new MetaReportValidationError('HISTORICAL_DATA_UNAVAILABLE');

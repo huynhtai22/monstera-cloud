@@ -163,6 +163,119 @@ describe('Meta report query contract', () => {
     );
   });
 
+  it('accepts the exact cutoff date at any hour of the same UTC day', () => {
+    const base = { connectionId: 'conn-1', adAccountId: '123', fields: ['unique_actions'] };
+    const evaluationDay = new Date('2026-03-31T12:00:00.000Z');
+    const cutoffDate = subtractUtcCalendarMonthsClamped(evaluationDay, 13).toISOString().slice(0, 10);
+    assert.equal(cutoffDate, '2025-02-28');
+    const request = normalizeMetaReportRequest({ ...base, timeRange: { since: cutoffDate, until: '2026-03-31' } });
+    for (const instant of ['2026-03-31T00:00:00.000Z', '2026-03-31T12:00:00.000Z', '2026-03-31T23:59:59.999Z']) {
+      assert.doesNotThrow(
+        () => validateMetaReportHistoricalAvailability(request.params, new Date(instant)),
+        `the exact cutoff date must be accepted at ${instant}`,
+      );
+    }
+  });
+
+  it('rejects the day before the cutoff for every restricted input at any hour', () => {
+    const restrictedQueries = [
+      { fields: ['unique_actions'] },
+      { fields: ['cost_per_unique_action_type'] },
+      { fields: ['spend'], breakdowns: ['hourly_stats_aggregated_by_advertiser_time_zone'] },
+      { fields: ['spend'], breakdowns: ['hourly_stats_aggregated_by_audience_time_zone'] },
+    ];
+    for (const query of restrictedQueries) {
+      const request = normalizeMetaReportRequest({
+        connectionId: 'conn-1', adAccountId: '123', ...query,
+        timeRange: { since: '2025-02-27', until: '2026-03-31' },
+      });
+      for (const instant of ['2026-03-31T00:00:00.000Z', '2026-03-31T12:00:00.000Z', '2026-03-31T23:59:59.999Z']) {
+        assert.throws(
+          () => validateMetaReportHistoricalAvailability(request.params, new Date(instant)),
+          (error) => error instanceof MetaReportValidationError && error.code === 'HISTORICAL_DATA_UNAVAILABLE',
+          `the day before the cutoff must be rejected at ${instant}`,
+        );
+      }
+    }
+  });
+
+  it('accepts the day after the cutoff at any hour', () => {
+    const base = { connectionId: 'conn-1', adAccountId: '123', fields: ['unique_actions'] };
+    const request = normalizeMetaReportRequest({ ...base, timeRange: { since: '2025-03-01', until: '2026-03-31' } });
+    for (const instant of ['2026-03-31T00:00:00.000Z', '2026-03-31T12:00:00.000Z', '2026-03-31T23:59:59.999Z']) {
+      assert.doesNotThrow(
+        () => validateMetaReportHistoricalAvailability(request.params, new Date(instant)),
+        `the day after the cutoff must be accepted at ${instant}`,
+      );
+    }
+  });
+
+  it('validates a restricted query identically throughout one UTC calendar day', () => {
+    const base = { connectionId: 'conn-1', adAccountId: '123', fields: ['unique_actions'] };
+    const request = normalizeMetaReportRequest({ ...base, timeRange: { since: '2025-02-28', until: '2026-03-31' } });
+    const instants = [
+      '2026-03-31T00:00:00.000Z', '2026-03-31T06:00:00.000Z', '2026-03-31T12:00:00.000Z',
+      '2026-03-31T18:00:00.000Z', '2026-03-31T23:59:59.999Z',
+    ];
+    const outcomes = instants.map((instant) => {
+      try {
+        validateMetaReportHistoricalAvailability(request.params, new Date(instant));
+        return 'accepted';
+      } catch {
+        return 'rejected';
+      }
+    });
+    assert.deepEqual(outcomes, Array(instants.length).fill('accepted'));
+  });
+
+  it('applies the day-precision cutoff to the last_year date preset', () => {
+    const base = { connectionId: 'conn-1', adAccountId: '123', fields: ['unique_actions'] };
+    // With now = 2026-02-01 the 13-month cutoff date is exactly 2025-01-01, so
+    // the prior calendar year's earliest day sits on the supported boundary.
+    const boundary = normalizeMetaReportRequest({ ...base, datePreset: 'last_year' });
+    for (const instant of ['2026-02-01T00:00:00.000Z', '2026-02-01T12:00:00.000Z', '2026-02-01T23:59:59.999Z']) {
+      assert.doesNotThrow(
+        () => validateMetaReportHistoricalAvailability(boundary.params, new Date(instant)),
+        `last_year must be accepted at ${instant} when Jan 1 lands on the cutoff date`,
+      );
+    }
+    const older = normalizeMetaReportRequest({ ...base, datePreset: 'last_year' });
+    assert.throws(
+      () => validateMetaReportHistoricalAvailability(older.params, new Date('2026-02-02T00:00:00.000Z')),
+      (error) => error instanceof MetaReportValidationError && error.code === 'HISTORICAL_DATA_UNAVAILABLE',
+    );
+  });
+
+  it('keeps month-end clamping exact across year boundaries', () => {
+    assert.equal(
+      subtractUtcCalendarMonthsClamped(new Date('2026-01-31T10:30:00.000Z'), 13).toISOString(),
+      '2024-12-31T10:30:00.000Z',
+    );
+    assert.equal(
+      subtractUtcCalendarMonthsClamped(new Date('2026-03-31T23:59:59.999Z'), 13).toISOString(),
+      '2025-02-28T23:59:59.999Z',
+    );
+  });
+
+  it('accepts the exact cutoff date for every source-backed restricted input at midday', () => {
+    const restrictedQueries = [
+      { fields: ['unique_actions'] },
+      { fields: ['cost_per_unique_action_type'] },
+      { fields: ['spend'], breakdowns: ['hourly_stats_aggregated_by_advertiser_time_zone'] },
+      { fields: ['spend'], breakdowns: ['hourly_stats_aggregated_by_audience_time_zone'] },
+    ];
+    for (const query of restrictedQueries) {
+      const request = normalizeMetaReportRequest({
+        connectionId: 'conn-1', adAccountId: '123', ...query,
+        timeRange: { since: '2025-02-28', until: '2026-03-31' },
+      });
+      assert.doesNotThrow(
+        () => validateMetaReportHistoricalAvailability(request.params, new Date('2026-03-31T12:00:00.000Z')),
+        `${JSON.stringify(query)} must be accepted on the exact cutoff date regardless of evaluation hour`,
+      );
+    }
+  });
+
   it('preserves filtering clause order while canonicalizing filter object properties', () => {
     const base = normalizeMetaReportRequest({ connectionId: 'conn-1', adAccountId: '123' });
     const identity = { workspaceId: 'ws-1', connectionId: 'conn-1', provider: 'meta_ads' as const, adAccountId: '123' };
