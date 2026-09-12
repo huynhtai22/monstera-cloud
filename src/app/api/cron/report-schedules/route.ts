@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireCronSecret } from "@/lib/request-auth";
 import prisma from "@/lib/prisma";
-import { executeScheduleDispatch, isScheduleDue } from "@/lib/report-dispatch";
+import {
+  claimScheduleDispatch,
+  executeScheduleDispatch,
+  isScheduleDue,
+  releaseScheduleDispatch,
+} from "@/lib/report-dispatch";
 import { logger } from "@/lib/logger";
 import { withSystemScope } from "@/lib/tenant-guard";
 
@@ -10,38 +15,63 @@ import { withSystemScope } from "@/lib/tenant-guard";
  * Cron job endpoint that processes active report schedules and dispatches briefs
  * only for schedules that are currently due according to their cron expression.
  *
- * The schedule sweep is inherently cross-workspace, so the scan and its
- * dispatches run inside the bounded fleet system scope (the same pattern as
- * token-prefetch and warehouse-jobs). Cron authentication happens before the
- * scope opens, dispatch helpers issue workspace-scoped queries, and the guard
- * stays active for every path outside this callback.
+ * Concurrency contract: overlapping callers (GitHub Pilot cron, Vercel master
+ * cron) never deliver the same schedule twice. Discovery is the only operation
+ * that needs the bounded fleet system scope; each due schedule is then claimed
+ * with an atomic, workspace-qualified, ownership-tracked lease (see
+ * `claimScheduleDispatch`) BEFORE any provider delivery. The lease owner
+ * completes it (lastSentAt + lease clear in one atomic update) after a
+ * successful delivery, releases it after a handled failure, and a crashed
+ * owner's lease simply expires. No network await runs with elevated system
+ * scope and no database transaction is held across provider delivery.
  */
 export async function GET(request: Request) {
   const denied = requireCronSecret(request);
   if (denied) return denied;
 
   try {
-    const summary = await withSystemScope(async () => {
-      const activeSchedules = await prisma.reportSchedule.findMany({
+    // Fleet discovery is the only query that cannot carry a workspace filter,
+    // so it alone runs inside the bounded fleet system scope. Everything after
+    // this await — claiming, dispatching, completing — uses guarded,
+    // explicitly workspace-qualified operations with no elevated scope.
+    const activeSchedules = await withSystemScope(async () =>
+      prisma.reportSchedule.findMany({
         where: { enabled: true },
-      });
+      }),
+    );
 
-      const now = new Date();
-      const results = [];
-      let dueCount = 0;
-      let skipped = 0;
-      let succeeded = 0;
-      let failed = 0;
+    const now = new Date();
+    const results = [];
+    let dueCount = 0;
+    let skipped = 0;
+    let skippedClaimed = 0;
+    let succeeded = 0;
+    let failed = 0;
 
-      for (const schedule of activeSchedules) {
-        if (!isScheduleDue(schedule.cron, schedule.lastSentAt, now)) {
-          skipped++;
+    for (const schedule of activeSchedules) {
+      if (!isScheduleDue(schedule.cron, schedule.lastSentAt, now)) {
+        skipped++;
+        continue;
+      }
+
+      dueCount++;
+      try {
+        // Atomic claim: exactly one concurrent sweep can own a schedule's
+        // dispatch. Zero affected rows means another owner holds a live lease
+        // (or completed the schedule first) — skipped, not failed.
+        const token = await claimScheduleDispatch(schedule);
+        if (!token) {
+          skippedClaimed++;
+          results.push({
+            scheduleId: schedule.id,
+            clientId: schedule.clientId,
+            status: "already_claimed",
+          });
           continue;
         }
 
-        dueCount++;
         try {
-          const dispatchResult = await executeScheduleDispatch(schedule.id);
+          const dispatchResult = await executeScheduleDispatch(schedule.id, { token });
           results.push(dispatchResult);
           succeeded++;
         } catch (err: unknown) {
@@ -52,27 +82,34 @@ export async function GET(request: Request) {
             clientId: schedule.clientId,
             error: err instanceof Error ? err.message : String(err),
           });
+          // Ownership-checked best-effort release so the next tick can retry;
+          // a release failure is logged without masking the original error.
+          try {
+            await releaseScheduleDispatch(schedule.id, schedule.workspaceId, token);
+          } catch (releaseErr: unknown) {
+            logger.error(`[cron:report-schedules] Lease release failed for schedule ${schedule.id}:`, releaseErr);
+          }
         }
+      } catch (claimErr: unknown) {
+        failed++;
+        logger.error(`[cron:report-schedules] Failed claiming schedule ${schedule.id}:`, claimErr);
+        results.push({
+          scheduleId: schedule.id,
+          clientId: schedule.clientId,
+          error: claimErr instanceof Error ? claimErr.message : String(claimErr),
+        });
       }
-
-      return {
-        totalActive: activeSchedules.length,
-        due: dueCount,
-        skipped,
-        succeeded,
-        failed,
-        results,
-      };
-    });
+    }
 
     return NextResponse.json({
       ok: true,
-      totalActive: summary.totalActive,
-      due: summary.due,
-      skipped: summary.skipped,
-      succeeded: summary.succeeded,
-      failed: summary.failed,
-      results: summary.results,
+      totalActive: activeSchedules.length,
+      due: dueCount,
+      skipped,
+      skippedClaimed,
+      succeeded,
+      failed,
+      results,
     });
   } catch (error: unknown) {
     logger.error("[cron:report-schedules] Fatal execution error:", error);

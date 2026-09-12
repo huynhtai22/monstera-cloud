@@ -722,6 +722,12 @@ model ReportSchedule {
   recipients  String // comma-separated email list
   enabled     Boolean   @default(true)
   lastSentAt  DateTime?
+  // Durable dispatch claim. Set atomically by the cron sweep before provider
+  // delivery; null (or expired) means unclaimed. Cleared by the lease owner on
+  // completion or handled failure; a crashed owner's lease simply expires, so
+  // no manual recovery is needed. TTL: 5 minutes.
+  dispatchLeaseToken      String?
+  dispatchLeaseExpiresAt  DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

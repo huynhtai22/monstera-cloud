@@ -34,12 +34,24 @@ describe("CRON /api/cron/report-schedules fleet system scope (real PostgreSQL)",
   let failingWebhooks: Set<string> = new Set();
   let originalCronSecret: string | undefined;
 
+
+  // File-level runner parallelism would otherwise let two fleet-sweeping
+  // suites contend for the same due schedules. A session-level advisory lock
+  // on a dedicated single-connection client serializes the report-schedule pg
+  // suites without affecting any other suite. Session locks die with the
+  // connection, so a crashed process cannot leave a stale lock behind.
+  const suiteLockDb = new PrismaClient({
+    datasources: { db: { url: `${process.env.DATABASE_URL}${process.env.DATABASE_URL?.includes("?") ? "&" : "?"}connection_limit=1` } },
+  });
+  const SUITE_LOCK_KEY = "report-schedules-pg-suite";
+
   const authed = () =>
     new Request("http://localhost:3000/api/cron/report-schedules", {
       headers: { Authorization: `Bearer ${SECRET}` },
     });
 
   before(async () => {
+    await suiteLockDb.$executeRaw`SELECT pg_advisory_lock(hashtext(${SUITE_LOCK_KEY}))`;
     // Never permit this suite against anything but the isolated loopback DB.
     const url = new URL(process.env.DATABASE_URL!);
     assert.ok(["localhost", "127.0.0.1"].includes(url.hostname));
@@ -105,6 +117,8 @@ describe("CRON /api/cron/report-schedules fleet system scope (real PostgreSQL)",
     }
     await db.user.deleteMany({ where: { id: { in: [userA, userB] } } });
     await db.$disconnect();
+    await suiteLockDb.$executeRaw`SELECT pg_advisory_unlock(hashtext(${SUITE_LOCK_KEY}))`;
+    await suiteLockDb.$disconnect();
   });
 
   it("keeps ReportSchedule in the tenant-guarded model set", () => {
@@ -153,6 +167,7 @@ describe("CRON /api/cron/report-schedules fleet system scope (real PostgreSQL)",
     assert.equal(body.totalActive, 5);
     assert.equal(body.due, 4);
     assert.equal(body.skipped, 1);
+    assert.equal(body.skippedClaimed, 0);
     assert.equal(body.succeeded, 4);
     assert.equal(body.failed, 0);
     assert.deepEqual(
@@ -165,9 +180,12 @@ describe("CRON /api/cron/report-schedules fleet system scope (real PostgreSQL)",
     for (const id of [dueA, dueB, catchUp]) {
       const row = await db.reportSchedule.findUnique({ where: { id } });
       assert.ok(row?.lastSentAt, `lastSentAt advanced for ${id}`);
+      assert.equal(row?.dispatchLeaseToken, null, `lease cleared after completion for ${id}`);
+      assert.equal(row?.dispatchLeaseExpiresAt, null, `lease expiry cleared for ${id}`);
     }
     const failedRow = await db.reportSchedule.findUnique({ where: { id: failing } });
     assert.equal(failedRow?.lastSentAt, null, "failed delivery must not advance lastSentAt");
+    assert.equal(failedRow?.dispatchLeaseToken, null, "handled failure releases the lease");
     const notDueRow = await db.reportSchedule.findUnique({ where: { id: notDue } });
     assert.equal(notDueRow?.lastSentAt?.toISOString(), notDueSentAt.toISOString(), "not-due schedule left untouched");
     const disabledRow = await db.reportSchedule.findUnique({ where: { id: disabled } });
@@ -184,6 +202,8 @@ describe("CRON /api/cron/report-schedules fleet system scope (real PostgreSQL)",
     assert.deepEqual(deliveries, [slack("failing")]);
     const row = await db.reportSchedule.findUnique({ where: { id: failing } });
     assert.ok(row?.lastSentAt);
+    assert.equal(row?.dispatchLeaseToken, null);
+    assert.equal(row?.dispatchLeaseExpiresAt, null);
   });
 
   it("does not re-send a schedule already sent within its cycle", async () => {

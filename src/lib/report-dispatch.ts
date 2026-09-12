@@ -4,6 +4,7 @@
  * formats verified performance briefs, and delivers them across channels.
  */
 
+import { randomUUID } from "node:crypto";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { sendClientBriefEmail } from "@/lib/mail";
@@ -319,9 +320,105 @@ export async function compileClientBrief(params: {
 }
 
 /**
- * Execute dispatch for a single ReportSchedule record.
+ * Durable dispatch-lease contract.
+ *
+ * Overlapping cron callers (GitHub Pilot cron, Vercel master cron) must never
+ * deliver the same due schedule twice. `lastSentAt` is written only AFTER a
+ * successful delivery, so it cannot prevent that overlap. Instead every
+ * dispatching code path first atomically claims a bounded lease:
+ *
+ * - `claimScheduleDispatch` is one atomic updateMany whose predicate requires
+ *   schedule identity, workspace identity, enabled state, an unchanged
+ *   `lastSentAt` (compare-and-set against the scanned row) and no active
+ *   lease. Affecting exactly one row makes the caller the sole owner.
+ * - Completion is ownership-checked: `lastSentAt` is set and the lease is
+ *   cleared in the same update, gated on the exact lease token.
+ * - Handled failures release the lease (also ownership-checked) and leave
+ *   `lastSentAt` untouched, keeping the schedule retryable.
+ * - A crashed owner never releases: the lease simply expires (TTL below), and
+ *   only then can another caller reclaim it. The TTL exceeds any bounded
+ *   delivery budget (the Pilot curl budget is 110s and serverless functions
+ *   cap well below it) while staying far under the cron cadence (15 minutes
+ *   for Pilot, daily for master), so crash recovery needs no manual action.
+ * - No database transaction is held across provider/network delivery, and no
+ *   `lastSentAt` is ever written before delivery succeeds.
  */
-export async function executeScheduleDispatch(scheduleId: string): Promise<DispatchResult> {
+export const DISPATCH_LEASE_TTL_MS = 5 * 60 * 1000;
+
+export interface DispatchLeaseOptions {
+  /** Injected clock for deterministic tests; defaults to the current time. */
+  now?: Date;
+  /** Injected token source for deterministic tests; defaults to randomUUID. */
+  tokenGenerator?: () => string;
+  /** Injected TTL for deterministic tests; defaults to DISPATCH_LEASE_TTL_MS. */
+  ttlMs?: number;
+}
+
+export async function claimScheduleDispatch(
+  schedule: { id: string; workspaceId: string; lastSentAt?: Date | string | null },
+  options?: DispatchLeaseOptions,
+): Promise<string | null> {
+  const now = options?.now ?? new Date();
+  const token = (options?.tokenGenerator ?? randomUUID)();
+  const expiresAt = new Date(now.getTime() + (options?.ttlMs ?? DISPATCH_LEASE_TTL_MS));
+  const claimed = await prisma.reportSchedule.updateMany({
+    where: {
+      id: schedule.id,
+      workspaceId: schedule.workspaceId,
+      enabled: true,
+      // Compare-and-set against the scanned row: if another sweep completed
+      // this schedule between discovery and claim, the token is refused.
+      lastSentAt: schedule.lastSentAt ?? null,
+      OR: [{ dispatchLeaseToken: null }, { dispatchLeaseExpiresAt: { lte: now } }],
+    },
+    data: { dispatchLeaseToken: token, dispatchLeaseExpiresAt: expiresAt },
+  });
+  return claimed.count === 1 ? token : null;
+}
+
+/** Ownership-checked completion: `lastSentAt` + lease clear in one atomic update. */
+export async function completeScheduleDispatch(
+  scheduleId: string,
+  workspaceId: string,
+  token: string,
+  options?: DispatchLeaseOptions,
+): Promise<boolean> {
+  const completed = await prisma.reportSchedule.updateMany({
+    where: { id: scheduleId, workspaceId, dispatchLeaseToken: token },
+    data: {
+      lastSentAt: options?.now ?? new Date(),
+      dispatchLeaseToken: null,
+      dispatchLeaseExpiresAt: null,
+    },
+  });
+  return completed.count === 1;
+}
+
+/** Ownership-checked release after handled failure: clears the lease, leaves `lastSentAt` untouched. */
+export async function releaseScheduleDispatch(
+  scheduleId: string,
+  workspaceId: string,
+  token: string,
+): Promise<boolean> {
+  const released = await prisma.reportSchedule.updateMany({
+    where: { id: scheduleId, workspaceId, dispatchLeaseToken: token },
+    data: { dispatchLeaseToken: null, dispatchLeaseExpiresAt: null },
+  });
+  return released.count === 1;
+}
+
+/**
+ * Execute dispatch for a single ReportSchedule record.
+ *
+ * `lease` must be provided by concurrent-callers-facing code paths (the cron
+ * route): completion then requires the exact lease token, and a handled
+ * failure releases the lease without touching `lastSentAt`. A fenced (stale)
+ * owner can neither complete nor release another caller's lease.
+ */
+export async function executeScheduleDispatch(
+  scheduleId: string,
+  lease?: { token: string },
+): Promise<DispatchResult> {
   const schedule = await prisma.reportSchedule.findUnique({
     where: { id: scheduleId },
   });
@@ -396,13 +493,28 @@ export async function executeScheduleDispatch(scheduleId: string): Promise<Dispa
     }
   }
 
-  // Only advance lastSentAt if at least one delivery succeeded
+  // Only advance lastSentAt if at least one delivery succeeded. With a lease,
+  // completion and lease-clearing are the same ownership-checked atomic update;
+  // a stale (fenced) owner can neither mark success nor clear another caller's
+  // lease. A handled all-channel failure releases the lease so a later tick
+  // can retry, while lastSentAt stays unchanged.
   const totalDelivered = result.slackDelivered + result.telegramDelivered + result.emailsDelivered;
   if (totalDelivered > 0) {
-    await prisma.reportSchedule.update({
-      where: { id: schedule.id },
-      data: { lastSentAt: new Date() },
-    });
+    if (lease) {
+      const owned = await completeScheduleDispatch(schedule.id, schedule.workspaceId, lease.token);
+      if (!owned) {
+        logger.warn(
+          `[report-dispatch] Dispatch of schedule ${schedule.id} delivered but its lease was taken over (expired); completion left to the current owner.`,
+        );
+      }
+    } else {
+      await prisma.reportSchedule.update({
+        where: { id: schedule.id },
+        data: { lastSentAt: new Date() },
+      });
+    }
+  } else if (lease) {
+    await releaseScheduleDispatch(schedule.id, schedule.workspaceId, lease.token);
   }
 
   return result;
