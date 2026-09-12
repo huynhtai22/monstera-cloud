@@ -166,6 +166,24 @@ describe('POST /api/meta-ads/report query integrity', () => {
     assert.match((await empty.json()).error, /no report rows/);
   });
 
+  it('does not cache an upstream empty failure and keeps a later identical request fresh', async () => {
+    installConnection();
+    let providerCalls = 0;
+    metaReportClient.getInsights = (async () => {
+      providerCalls++;
+      return providerCalls === 1 ? [] : [{ spend: '10' }];
+    }) as any;
+
+    const empty = await POST(request({ fields: ['spend'] }));
+    assert.equal(empty.status, 502);
+    assert.match((await empty.json()).error, /no report rows/);
+
+    const retry = await POST(request({ fields: ['spend'] }));
+    assert.equal(retry.status, 200);
+    assert.deepEqual(await retry.json(), { mode: 'sync', rows: [{ spend: '10' }] });
+    assert.equal(providerCalls, 2, 'the empty 502 must not have written a cache entry');
+  });
+
   it('does not present a completed async report with empty output as a genuine zero', async () => {
     installConnection();
     metaReportClient.checkAsyncReport = (async () => ({

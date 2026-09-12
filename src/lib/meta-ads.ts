@@ -375,11 +375,10 @@ export class MetaReportClient {
       afterCursor = json.paging?.next ? (json.paging.cursors?.after ?? null) : null;
     } while (afterCursor && allRows.length < 500_000);
 
-    if (allRows.length === 0) {
-      throw new MetaProviderOutputError(
-        'Meta Insights returned no rows; the requested fields or breakdowns may be unsupported',
-      );
-    }
+    // A successful zero-row response is a valid transport result. The shared
+    // client returns it verbatim so warehouse sync can record a legitimate
+    // zero-row refresh; interactive report boundaries reject empty output
+    // themselves before anything is cached or returned as a genuine zero.
     return allRows;
   }
 
