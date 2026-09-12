@@ -245,15 +245,33 @@ describe("ReportSchedule dispatch lease (real PostgreSQL)", { skip: !hasDb }, ()
         assert.equal(body.skippedClaimed, 1);
         assert.equal(body.failed, 0);
       }
-      assert.deepEqual(
-        bodies.map((b: { results: Array<{ scheduleId: string; status?: string; slackDelivered?: number }> }) =>
-          b.results.map((r) => ({ delivered: r.slackDelivered ?? 0, status: r.status ?? "dispatched" })).sort(),
-        ).sort(),
+      // Result entries arrive in PostgreSQL heap order, which is not part of
+      // the API contract: normalize both sides with an explicit scheduleId
+      // comparator before the strict deep-equal. Per-schedule outcome identity
+      // (which schedule was delivered by exactly one sweep and which was
+      // already claimed) is still asserted in full.
+      const byScheduleId = (
+        left: { scheduleId: string; delivered: number; status: string },
+        right: { scheduleId: string; delivered: number; status: string },
+      ) => left.scheduleId.localeCompare(right.scheduleId) || left.delivered - right.delivered;
+      const normalized = bodies
+        .map((b: { results: Array<{ scheduleId: string; status?: string; slackDelivered?: number }> }) =>
+          b.results
+            .map((r) => ({ scheduleId: r.scheduleId, delivered: r.slackDelivered ?? 0, status: r.status ?? "dispatched" }))
+            .sort(byScheduleId),
+        )
+        .sort((left, right) => byScheduleId(left[0], right[0]));
+      const expected = [
         [
-          [{ delivered: 1, status: "dispatched" }, { delivered: 0, status: "already_claimed" }],
-          [{ delivered: 1, status: "dispatched" }, { delivered: 0, status: "already_claimed" }],
+          { scheduleId: idA, delivered: 1, status: "dispatched" },
+          { scheduleId: idB, delivered: 0, status: "already_claimed" },
         ],
-      );
+        [
+          { scheduleId: idA, delivered: 0, status: "already_claimed" },
+          { scheduleId: idB, delivered: 1, status: "dispatched" },
+        ],
+      ].sort((left, right) => byScheduleId(left[0], right[0]));
+      assert.deepEqual(normalized, expected);
       for (const body of bodies) {
         assert.equal(body.ok, true);
         assert.equal(JSON.stringify(body).includes("dispatchLease"), false);
