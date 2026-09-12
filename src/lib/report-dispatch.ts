@@ -4,6 +4,8 @@
  * formats verified performance briefs, and delivers them across channels.
  */
 
+import { createHash, randomUUID } from "node:crypto";
+import { classifyTransportFailure, type DispatchChannelOutcome } from "./dispatch-outcome";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { sendClientBriefEmail } from "@/lib/mail";
@@ -32,6 +34,16 @@ export interface DispatchResult {
   emailsDelivered: number;
   emailsFailed: number;
   errors: string[];
+  /** Additive: per-channel ambiguous (outcome unknown) counts. */
+  slackAmbiguous: number;
+  telegramAmbiguous: number;
+  emailsAmbiguous: number;
+  ambiguous: number;
+  /** Additive: the occurrence this dispatch belonged to (attempt-backed). */
+  occurrenceDate?: string;
+  /** Additive: set when the provider-started boundary lost ownership and no
+   * provider request was sent by this worker. */
+  ownershipLost?: boolean;
 }
 
 /**
@@ -79,8 +91,19 @@ export function parseRecipients(input: string): ParsedRecipients {
 
 /**
  * Send a formatted brief to a Slack incoming webhook.
+ * The request is genuinely cancelled via `AbortSignal` when the per-request
+ * timeout or the overall schedule deadline fires.
  */
-export async function sendSlackWebhook(webhookUrl: string, text: string): Promise<boolean> {
+export async function sendSlackWebhook(
+  webhookUrl: string,
+  text: string,
+  delivery?: DispatchDeliveryOptions,
+): Promise<DispatchChannelResult> {
+  // An already-aborted overall signal means the delivery never starts: no
+  // request is sent, so the failure is definitive rather than ambiguous.
+  if (delivery?.signal?.aborted) {
+    return { outcome: "DEFINITIVE_FAILED" };
+  }
   try {
     const res = await fetch(webhookUrl, {
       method: "POST",
@@ -89,11 +112,15 @@ export async function sendSlackWebhook(webhookUrl: string, text: string): Promis
         text,
         mrkdwn: true,
       }),
+      signal: composeDeliverySignal(
+        delivery?.signal,
+        delivery?.perRequestTimeoutMs ?? DISPATCH_PER_REQUEST_TIMEOUT_MS,
+      ),
     });
-    return res.ok;
+    return { outcome: res.ok ? "CONFIRMED" : "DEFINITIVE_FAILED" };
   } catch (err) {
     logger.error("[report-dispatch] Failed to send Slack webhook:", err);
-    return false;
+    return { outcome: classifyTransportFailure(err) };
   }
 }
 
@@ -103,8 +130,12 @@ export async function sendSlackWebhook(webhookUrl: string, text: string): Promis
 export async function sendTelegramBrief(
   botToken: string,
   chatId: string,
-  text: string
-): Promise<boolean> {
+  text: string,
+  delivery?: DispatchDeliveryOptions,
+): Promise<DispatchChannelResult> {
+  if (delivery?.signal?.aborted) {
+    return { outcome: "DEFINITIVE_FAILED" };
+  }
   try {
     const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
       method: "POST",
@@ -114,11 +145,15 @@ export async function sendTelegramBrief(
         text,
         parse_mode: "Markdown",
       }),
+      signal: composeDeliverySignal(
+        delivery?.signal,
+        delivery?.perRequestTimeoutMs ?? DISPATCH_PER_REQUEST_TIMEOUT_MS,
+      ),
     });
-    return res.ok;
+    return { outcome: res.ok ? "CONFIRMED" : "DEFINITIVE_FAILED" };
   } catch (err) {
     logger.error("[report-dispatch] Failed to send Telegram brief:", err);
-    return false;
+    return { outcome: classifyTransportFailure(err) };
   }
 }
 
@@ -319,9 +354,330 @@ export async function compileClientBrief(params: {
 }
 
 /**
- * Execute dispatch for a single ReportSchedule record.
+ * Durable dispatch-lease contract.
+ *
+ * Overlapping cron callers (GitHub Pilot cron, Vercel master cron) must never
+ * deliver the same due schedule twice. `lastSentAt` is written only AFTER a
+ * successful delivery, so it cannot prevent that overlap. Instead every
+ * dispatching code path first atomically claims a bounded lease:
+ *
+ * - `claimScheduleDispatch` is one atomic updateMany whose predicate requires
+ *   schedule identity, workspace identity, enabled state, an unchanged
+ *   `lastSentAt` (compare-and-set against the scanned row) and no active
+ *   lease. Affecting exactly one row makes the caller the sole owner.
+ * - Completion is ownership-checked: `lastSentAt` is set and the lease is
+ *   cleared in the same update, gated on the exact lease token.
+ * - Handled failures release the lease (also ownership-checked) and leave
+ *   `lastSentAt` untouched, keeping the schedule retryable.
+ * - A crashed owner never releases: the lease simply expires (TTL below), and
+ *   only then can another caller reclaim it. The TTL exceeds the enforced
+ *   delivery budget (see DISPATCH_OVERALL_DEADLINE_MS) while staying far under
+ *   the cron cadence (15 minutes for Pilot, daily for master), so crash
+ *   recovery needs no manual action.
+ * - No database transaction is held across provider/network delivery, and no
+ *   `lastSentAt` is ever written before delivery succeeds.
  */
-export async function executeScheduleDispatch(scheduleId: string): Promise<DispatchResult> {
+export const DISPATCH_LEASE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Enforced delivery budget. Provider transports (Slack/Telegram fetch, email)
+ * carry no deadlines of their own — without this budget a stalled endpoint
+ * could keep a delivery alive past the lease TTL, letting another sweep
+ * reclaim and re-deliver the same schedule. The overall deadline bounds the
+ * COMPLETE schedule delivery (every Slack recipient, Telegram, and email,
+ * sequentially), and every provider request additionally carries a per-request
+ * timeout; both are strictly below the lease TTL:
+ *
+ *   DISPATCH_PER_REQUEST_TIMEOUT_MS (20s)
+ *     < DISPATCH_OVERALL_DEADLINE_MS (90s)
+ *       < DISPATCH_LEASE_TTL_MS (300s)   [safety margin: 210s]
+ */
+export const DISPATCH_PER_REQUEST_TIMEOUT_MS = 20_000;
+export const DISPATCH_OVERALL_DEADLINE_MS = 90_000;
+
+/** Sanitized internal reason used to abort deliveries that exceed the budget. */
+export class DispatchDeadlineExceededError extends Error {
+  constructor() {
+    super("Dispatch deadline exceeded");
+    this.name = "DispatchDeadlineExceededError";
+  }
+}
+
+/** Tri-state result of one provider delivery attempt. */
+export interface DispatchChannelResult {
+  outcome: DispatchChannelOutcome;
+}
+
+/** Options for one provider delivery attempt. */
+export interface DispatchDeliveryOptions {
+  /** Overall schedule deadline signal; composed with the per-request timeout. */
+  signal?: AbortSignal;
+  /** Per-request timeout override for deterministic tests. */
+  perRequestTimeoutMs?: number;
+}
+
+/**
+ * Composes the caller's overall deadline signal (if any) with a fresh
+ * per-request timeout into the single signal handed to `fetch`, so transport
+ * cancellation is genuine: aborting either deadline tears down the in-flight
+ * request, not just an early return.
+ */
+function composeDeliverySignal(signal: AbortSignal | undefined, perRequestTimeoutMs: number): AbortSignal {
+  const perRequest = AbortSignal.timeout(perRequestTimeoutMs);
+  return signal ? AbortSignal.any([signal, perRequest]) : perRequest;
+}
+
+/** Bounds one complete schedule delivery; the abort reason is sanitized. */
+class DispatchDeadline {
+  readonly signal: AbortSignal;
+  private readonly timer: NodeJS.Timeout;
+
+  constructor(overallDeadlineMs: number) {
+    const controller = new AbortController();
+    this.timer = setTimeout(
+      () => controller.abort(new DispatchDeadlineExceededError()),
+      overallDeadlineMs,
+    );
+    this.signal = controller.signal;
+  }
+
+  get exceeded(): boolean {
+    return this.signal.aborted;
+  }
+
+  dispose(): void {
+    clearTimeout(this.timer);
+  }
+}
+
+/**
+ * Durable per-occurrence attempt states. PROVIDER_STARTED is the crash
+ * boundary committed before any provider contact; AMBIGUOUS occurrences
+ * suppress automatic retries and await operator review.
+ */
+export const DISPATCH_ATTEMPT_STATUS = {
+  CLAIMED: "CLAIMED",
+  PROVIDER_STARTED: "PROVIDER_STARTED",
+  CONFIRMED: "CONFIRMED",
+  DEFINITIVE_FAILED: "DEFINITIVE_FAILED",
+  AMBIGUOUS: "AMBIGUOUS",
+} as const;
+
+/**
+ * Stable scheduled-occurrence identity: the UTC calendar date of the sweep
+ * evaluating the due slot. It intentionally inherits `isScheduleDue`'s
+ * day-anchored UTC semantics (at most one due slot per UTC calendar day), so
+ * every sweep evaluating the same occurrence derives the same key, the next
+ * day's slot derives a different key, and DST cannot perturb it (the shipped
+ * scheduling model is UTC-based and `ReportSchedule` carries no timezone).
+ */
+export function dispatchOccurrenceDate(now: Date): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/** Deterministic, opaque per-destination idempotency key for one occurrence. */
+export function dispatchIdempotencyKey(
+  workspaceId: string,
+  scheduleId: string,
+  occurrenceDate: string,
+  channel: string,
+  destination: string,
+): string {
+  return createHash("sha256")
+    .update([workspaceId, scheduleId, occurrenceDate, channel, destination].join("\u0000"))
+    .digest("hex");
+}
+
+export interface DispatchAttemptContext {
+  attemptId: string;
+  token: string;
+  occurrenceDate: string;
+}
+
+export type BeginDispatchAttemptResult =
+  | { state: "claimed"; context: DispatchAttemptContext }
+  | { state: "suppressed"; reason: "AMBIGUOUS" | "CONFIRMED" };
+
+/**
+ * Creates or reclaims the durable attempt row for one occurrence under the
+ * caller's schedule lease. An AMBIGUOUS or CONFIRMED row suppresses the
+ * occurrence; PROVIDER_STARTED rows orphaned by an expired lease resolve to
+ * AMBIGUOUS (their provider contact cannot be disproved); CLAIMED rows
+ * (crash before provider start) and DEFINITIVE_FAILED rows are reclaimed for
+ * a fresh attempt under the new lease token.
+ */
+export async function beginDispatchAttempt(
+  schedule: { id: string; workspaceId: string },
+  occurrenceDate: string,
+  token: string,
+  options?: { now?: Date },
+): Promise<BeginDispatchAttemptResult> {
+  const finishedAt = options?.now ?? new Date();
+  const existing = await prisma.reportScheduleDispatchAttempt.findUnique({
+    where: { scheduleId_occurrenceDate: { scheduleId: schedule.id, occurrenceDate } },
+  });
+  if (!existing) {
+    const created = await prisma.reportScheduleDispatchAttempt.create({
+      data: {
+        scheduleId: schedule.id,
+        workspaceId: schedule.workspaceId,
+        occurrenceDate,
+        token,
+        status: DISPATCH_ATTEMPT_STATUS.CLAIMED,
+      },
+    });
+    return { state: "claimed", context: { attemptId: created.id, token, occurrenceDate } };
+  }
+  if (
+    existing.status === DISPATCH_ATTEMPT_STATUS.AMBIGUOUS ||
+    existing.status === DISPATCH_ATTEMPT_STATUS.CONFIRMED
+  ) {
+    return { state: "suppressed", reason: existing.status };
+  }
+  if (existing.status === DISPATCH_ATTEMPT_STATUS.PROVIDER_STARTED) {
+    // The previous worker's schedule lease expired (this sweep's claim
+    // succeeded), so it is gone. Its provider contact cannot be disproved:
+    // resolve to AMBIGUOUS instead of returning to retryable state.
+    await prisma.reportScheduleDispatchAttempt.updateMany({
+      where: {
+        id: existing.id,
+        workspaceId: schedule.workspaceId,
+        status: DISPATCH_ATTEMPT_STATUS.PROVIDER_STARTED,
+      },
+      data: { status: DISPATCH_ATTEMPT_STATUS.AMBIGUOUS, finishedAt },
+    });
+    return { state: "suppressed", reason: "AMBIGUOUS" };
+  }
+  // CLAIMED (crashed before provider start) or DEFINITIVE_FAILED (clear
+  // rejection): reclaim for a fresh attempt under the new lease token.
+  const reclaimed = await prisma.reportScheduleDispatchAttempt.updateMany({
+    where: { id: existing.id, workspaceId: schedule.workspaceId, status: existing.status },
+    data: { token, status: DISPATCH_ATTEMPT_STATUS.CLAIMED, providerStartedAt: null, finishedAt: null },
+  });
+  if (reclaimed.count !== 1) {
+    return { state: "suppressed", reason: "AMBIGUOUS" };
+  }
+  return { state: "claimed", context: { attemptId: existing.id, token, occurrenceDate } };
+}
+
+/** Ownership-checked crash boundary: commits PROVIDER_STARTED before any
+ * provider contact. Zero affected rows means ownership or occurrence state
+ * moved on — the caller must not contact a provider. */
+export async function markDispatchAttemptProviderStarted(
+  attempt: DispatchAttemptContext,
+  workspaceId: string,
+  options?: { now?: Date },
+): Promise<boolean> {
+  const started = await prisma.reportScheduleDispatchAttempt.updateMany({
+    where: {
+      id: attempt.attemptId,
+      workspaceId,
+      token: attempt.token,
+      status: DISPATCH_ATTEMPT_STATUS.CLAIMED,
+    },
+    data: {
+      status: DISPATCH_ATTEMPT_STATUS.PROVIDER_STARTED,
+      providerStartedAt: options?.now ?? new Date(),
+    },
+  });
+  return started.count === 1;
+}
+
+/** Ownership-checked terminal resolution of a PROVIDER_STARTED attempt. */
+export async function resolveDispatchAttempt(
+  attempt: DispatchAttemptContext,
+  workspaceId: string,
+  status: "CONFIRMED" | "DEFINITIVE_FAILED" | "AMBIGUOUS",
+  channelOutcomes: Record<string, { attempted: number; confirmed: number; definitiveFailed: number; ambiguous: number }>,
+  options?: { now?: Date },
+): Promise<boolean> {
+  const resolved = await prisma.reportScheduleDispatchAttempt.updateMany({
+    where: {
+      id: attempt.attemptId,
+      workspaceId,
+      token: attempt.token,
+      status: DISPATCH_ATTEMPT_STATUS.PROVIDER_STARTED,
+    },
+    data: { status, finishedAt: options?.now ?? new Date(), channelOutcomes },
+  });
+  return resolved.count === 1;
+}
+
+export interface DispatchLeaseOptions {
+  /** Injected clock for deterministic tests; defaults to the current time. */
+  now?: Date;
+  /** Injected token source for deterministic tests; defaults to randomUUID. */
+  tokenGenerator?: () => string;
+  /** Injected TTL for deterministic tests; defaults to DISPATCH_LEASE_TTL_MS. */
+  ttlMs?: number;
+}
+
+export async function claimScheduleDispatch(
+  schedule: { id: string; workspaceId: string; lastSentAt?: Date | string | null },
+  options?: DispatchLeaseOptions,
+): Promise<string | null> {
+  const now = options?.now ?? new Date();
+  const token = (options?.tokenGenerator ?? randomUUID)();
+  const expiresAt = new Date(now.getTime() + (options?.ttlMs ?? DISPATCH_LEASE_TTL_MS));
+  const claimed = await prisma.reportSchedule.updateMany({
+    where: {
+      id: schedule.id,
+      workspaceId: schedule.workspaceId,
+      enabled: true,
+      // Compare-and-set against the scanned row: if another sweep completed
+      // this schedule between discovery and claim, the token is refused.
+      lastSentAt: schedule.lastSentAt ?? null,
+      OR: [{ dispatchLeaseToken: null }, { dispatchLeaseExpiresAt: { lte: now } }],
+    },
+    data: { dispatchLeaseToken: token, dispatchLeaseExpiresAt: expiresAt },
+  });
+  return claimed.count === 1 ? token : null;
+}
+
+/** Ownership-checked completion: `lastSentAt` + lease clear in one atomic update. */
+export async function completeScheduleDispatch(
+  scheduleId: string,
+  workspaceId: string,
+  token: string,
+  options?: DispatchLeaseOptions,
+): Promise<boolean> {
+  const completed = await prisma.reportSchedule.updateMany({
+    where: { id: scheduleId, workspaceId, dispatchLeaseToken: token },
+    data: {
+      lastSentAt: options?.now ?? new Date(),
+      dispatchLeaseToken: null,
+      dispatchLeaseExpiresAt: null,
+    },
+  });
+  return completed.count === 1;
+}
+
+/** Ownership-checked release after handled failure: clears the lease, leaves `lastSentAt` untouched. */
+export async function releaseScheduleDispatch(
+  scheduleId: string,
+  workspaceId: string,
+  token: string,
+): Promise<boolean> {
+  const released = await prisma.reportSchedule.updateMany({
+    where: { id: scheduleId, workspaceId, dispatchLeaseToken: token },
+    data: { dispatchLeaseToken: null, dispatchLeaseExpiresAt: null },
+  });
+  return released.count === 1;
+}
+
+/**
+ * Execute dispatch for a single ReportSchedule record.
+ *
+ * `lease` must be provided by concurrent-callers-facing code paths (the cron
+ * route): completion then requires the exact lease token, and a handled
+ * failure releases the lease without touching `lastSentAt`. A fenced (stale)
+ * owner can neither complete nor release another caller's lease.
+ */
+export async function executeScheduleDispatch(
+  scheduleId: string,
+  lease?: { token: string; attempt?: DispatchAttemptContext },
+  budget?: { overallDeadlineMs?: number; perRequestTimeoutMs?: number },
+): Promise<DispatchResult> {
   const schedule = await prisma.reportSchedule.findUnique({
     where: { id: scheduleId },
   });
@@ -330,80 +686,211 @@ export async function executeScheduleDispatch(scheduleId: string): Promise<Dispa
     throw new Error(`ReportSchedule not found: ${scheduleId}`);
   }
 
-  const recipients = parseRecipients(schedule.recipients);
-  const { markdown, clientName } = await compileClientBrief({
-    workspaceId: schedule.workspaceId,
-    clientId: schedule.clientId,
-  });
+  // The overall deadline bounds the COMPLETE delivery of this schedule — every
+  // Slack recipient, Telegram chat, and email, sequentially — and is strictly
+  // below the dispatch lease TTL. Delivery options carry the deadline signal
+  // plus a per-request timeout to every provider call, so stalled transports
+  // are genuinely cancelled instead of outliving the lease.
+  const now = new Date();
+  const deadline = new DispatchDeadline(budget?.overallDeadlineMs ?? DISPATCH_OVERALL_DEADLINE_MS);
+  const perRequestTimeoutMs = budget?.perRequestTimeoutMs ?? DISPATCH_PER_REQUEST_TIMEOUT_MS;
 
-  const workspace = await prisma.workspace.findUnique({
-    where: { id: schedule.workspaceId },
-    select: { name: true },
-  });
-  const workspaceName = workspace?.name || "Monstera Cloud";
+  try {
+    const recipients = parseRecipients(schedule.recipients);
+    const { markdown, clientName } = await compileClientBrief({
+      workspaceId: schedule.workspaceId,
+      clientId: schedule.clientId,
+    });
 
-  const result: DispatchResult = {
-    scheduleId: schedule.id,
-    clientId: schedule.clientId,
-    clientName,
-    slackDelivered: 0,
-    slackFailed: 0,
-    telegramDelivered: 0,
-    telegramFailed: 0,
-    emailsDelivered: 0,
-    emailsFailed: 0,
-    errors: [],
-  };
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: schedule.workspaceId },
+      select: { name: true },
+    });
+    const workspaceName = workspace?.name || "Monstera Cloud";
 
-  // 1. Deliver to Slack Webhooks
-  for (const webhook of recipients.slackWebhooks) {
-    const ok = await sendSlackWebhook(webhook, markdown);
-    if (ok) {
-      result.slackDelivered++;
-    } else {
-      result.slackFailed++;
-      result.errors.push(`Slack webhook failed: ${webhook.slice(0, 30)}...`);
+    const result: DispatchResult = {
+      scheduleId: schedule.id,
+      clientId: schedule.clientId,
+      clientName,
+      slackDelivered: 0,
+      slackFailed: 0,
+      telegramDelivered: 0,
+      telegramFailed: 0,
+      emailsDelivered: 0,
+      emailsFailed: 0,
+      errors: [],
+      slackAmbiguous: 0,
+      telegramAmbiguous: 0,
+      emailsAmbiguous: 0,
+      ambiguous: 0,
+    };
+
+    // Crash boundary: commit PROVIDER_STARTED durably before any provider
+    // contact. Zero affected rows means ownership or occurrence state moved
+    // on — no provider request may be sent by this worker.
+    if (lease?.attempt) {
+      const started = await markDispatchAttemptProviderStarted(lease.attempt, schedule.workspaceId, { now });
+      if (!started) {
+        return {
+          ...result,
+          ownershipLost: true,
+          occurrenceDate: lease.attempt.occurrenceDate,
+          errors: ["Dispatch attempt ownership lost; no delivery attempted."],
+        };
+      }
     }
-  }
 
-  // 2. Deliver to Telegram Chats
-  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  if (recipients.telegramChatIds.length > 0) {
-    if (!botToken) {
-      result.telegramFailed += recipients.telegramChatIds.length;
-      result.errors.push("TELEGRAM_BOT_TOKEN not configured");
-    } else {
-      for (const chatId of recipients.telegramChatIds) {
-        const ok = await sendTelegramBrief(botToken, chatId, markdown);
-        if (ok) {
-          result.telegramDelivered++;
-        } else {
-          result.telegramFailed++;
-          result.errors.push(`Telegram send failed for chat ${chatId}`);
+    // 1. Deliver to Slack Webhooks. Error strings are sanitized: no URLs,
+    // chat IDs, email addresses, tokens, or raw provider responses. Timeout
+    // and abort outcomes are ambiguous (the provider may have accepted the
+    // request); a clear non-2xx response is a definitive failure.
+    for (const webhook of recipients.slackWebhooks) {
+      if (deadline.exceeded) {
+        result.slackAmbiguous++;
+        result.errors.push("Slack webhook skipped: dispatch deadline exceeded (outcome unknown).");
+        continue;
+      }
+      const sent = await sendSlackWebhook(webhook, markdown, { signal: deadline.signal, perRequestTimeoutMs });
+      if (sent.outcome === "CONFIRMED") {
+        result.slackDelivered++;
+      } else if (sent.outcome === "AMBIGUOUS") {
+        result.slackAmbiguous++;
+        result.errors.push("Slack webhook outcome unknown (delivery deadline exceeded).");
+      } else {
+        result.slackFailed++;
+        result.errors.push("Slack webhook failed.");
+      }
+    }
+
+    // 2. Deliver to Telegram Chats
+    const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    if (recipients.telegramChatIds.length > 0) {
+      if (!botToken) {
+        result.telegramFailed += recipients.telegramChatIds.length;
+        result.errors.push("TELEGRAM_BOT_TOKEN not configured");
+      } else {
+        for (const chatId of recipients.telegramChatIds) {
+          if (deadline.exceeded) {
+            result.telegramAmbiguous++;
+            result.errors.push("Telegram send skipped: dispatch deadline exceeded (outcome unknown).");
+            continue;
+          }
+          const sent = await sendTelegramBrief(botToken, chatId, markdown, { signal: deadline.signal, perRequestTimeoutMs });
+          if (sent.outcome === "CONFIRMED") {
+            result.telegramDelivered++;
+          } else if (sent.outcome === "AMBIGUOUS") {
+            result.telegramAmbiguous++;
+            result.errors.push("Telegram send outcome unknown (delivery deadline exceeded).");
+          } else {
+            result.telegramFailed++;
+            result.errors.push("Telegram send failed.");
+          }
         }
       }
     }
-  }
 
-  // 3. Deliver to Email recipients
-  for (const email of recipients.emails) {
-    const emailResult = await sendClientBriefEmail(email, clientName, workspaceName, markdown);
-    if (emailResult.success) {
-      result.emailsDelivered++;
-    } else {
-      result.emailsFailed++;
-      result.errors.push(`Email send failed for ${email}`);
+    // 3. Deliver to Email recipients
+    for (const email of recipients.emails) {
+      if (deadline.exceeded) {
+        result.emailsAmbiguous++;
+        result.errors.push("Email send skipped: dispatch deadline exceeded (outcome unknown).");
+        continue;
+      }
+      const emailResult = await sendClientBriefEmail(
+        email,
+        clientName,
+        workspaceName,
+        markdown,
+        {
+          signal: AbortSignal.any([deadline.signal, AbortSignal.timeout(perRequestTimeoutMs)]),
+          idempotencyKey: lease?.attempt
+            ? dispatchIdempotencyKey(schedule.workspaceId, schedule.id, lease.attempt.occurrenceDate, "email", email)
+            : undefined,
+        },
+      );
+      if (emailResult.success) {
+        result.emailsDelivered++;
+      } else if (emailResult.ambiguous) {
+        result.emailsAmbiguous++;
+        result.errors.push("Email send outcome unknown (delivery deadline exceeded).");
+      } else {
+        result.emailsFailed++;
+        result.errors.push("Email send failed.");
+      }
     }
-  }
 
-  // Only advance lastSentAt if at least one delivery succeeded
-  const totalDelivered = result.slackDelivered + result.telegramDelivered + result.emailsDelivered;
-  if (totalDelivered > 0) {
-    await prisma.reportSchedule.update({
-      where: { id: schedule.id },
-      data: { lastSentAt: new Date() },
-    });
-  }
+    result.ambiguous = result.slackAmbiguous + result.telegramAmbiguous + result.emailsAmbiguous;
 
-  return result;
+    // Resolve the durable attempt (ownership-checked): an occurrence with at
+    // least one confirmed channel completes under the existing contract while
+    // ambiguous destinations stay disclosed; an occurrence without any
+    // confirmation is AMBIGUOUS when any outcome is unknown (suppressed from
+    // automatic retry) and DEFINITIVE_FAILED when every failure was provably
+    // pre-acceptance (automatic retry remains possible).
+    const channelOutcomes = {
+      slack: {
+        attempted: recipients.slackWebhooks.length,
+        confirmed: result.slackDelivered,
+        definitiveFailed: result.slackFailed,
+        ambiguous: result.slackAmbiguous,
+      },
+      telegram: {
+        attempted: recipients.telegramChatIds.length,
+        confirmed: result.telegramDelivered,
+        definitiveFailed: result.telegramFailed,
+        ambiguous: result.telegramAmbiguous,
+      },
+      email: {
+        attempted: recipients.emails.length,
+        confirmed: result.emailsDelivered,
+        definitiveFailed: result.emailsFailed,
+        ambiguous: result.emailsAmbiguous,
+      },
+    };
+    const totalDelivered = result.slackDelivered + result.telegramDelivered + result.emailsDelivered;
+    const totalAmbiguous = result.ambiguous;
+    if (lease?.attempt) {
+      const status = totalDelivered > 0 ? "CONFIRMED" : totalAmbiguous > 0 ? "AMBIGUOUS" : "DEFINITIVE_FAILED";
+      const resolved = await resolveDispatchAttempt(lease.attempt, schedule.workspaceId, status, channelOutcomes, { now });
+      if (!resolved) {
+        logger.warn(
+          `[report-dispatch] Dispatch of schedule ${schedule.id} resolved but its attempt was taken over (expired); resolution left to the current owner.`,
+        );
+      }
+    }
+
+    // Only advance lastSentAt if at least one delivery succeeded. With a lease,
+    // completion and lease-clearing are the same ownership-checked atomic update;
+    // a stale (fenced) owner can neither mark success nor clear another caller's
+    // lease. A handled all-channel failure releases the lease so a later tick
+    // can retry, while lastSentAt stays unchanged. An all-ambiguous attempt also
+    // releases the lease, but the AMBIGUOUS attempt row suppresses automatic
+    // retries of that occurrence and surfaces the outcome for operator review.
+    if (totalDelivered > 0) {
+      if (lease) {
+        const owned = await completeScheduleDispatch(schedule.id, schedule.workspaceId, lease.token);
+        if (!owned) {
+          logger.warn(
+            `[report-dispatch] Dispatch of schedule ${schedule.id} delivered but its lease was taken over (expired); completion left to the current owner.`,
+          );
+        }
+      } else {
+        await prisma.reportSchedule.update({
+          where: { id: schedule.id },
+          data: { lastSentAt: new Date() },
+        });
+      }
+    } else if (lease) {
+      await releaseScheduleDispatch(schedule.id, schedule.workspaceId, lease.token);
+    }
+
+    if (lease?.attempt) {
+      result.occurrenceDate = lease.attempt.occurrenceDate;
+    }
+    return result;
+  } finally {
+    // No deadline timer, and therefore no delivery budget, survives the
+    // dispatch: timed-out transports were already torn down via their signals.
+    deadline.dispose();
+  }
 }

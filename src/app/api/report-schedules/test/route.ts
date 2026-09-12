@@ -62,7 +62,8 @@ export async function POST(req: Request) {
 
     // Send Slack
     for (const webhook of recipients.slackWebhooks) {
-      const ok = await sendSlackWebhook(webhook, messageToSend);
+      const sent = await sendSlackWebhook(webhook, messageToSend);
+      const ok = sent.outcome === "CONFIRMED";
       if (ok) {
         slackDelivered++;
       } else {
@@ -79,7 +80,8 @@ export async function POST(req: Request) {
         errors.push("TELEGRAM_BOT_TOKEN not configured on server");
       } else {
         for (const chatId of recipients.telegramChatIds) {
-          const ok = await sendTelegramBrief(botToken, chatId, messageToSend);
+          const sent = await sendTelegramBrief(botToken, chatId, messageToSend);
+          const ok = sent.outcome === "CONFIRMED";
           if (ok) {
             telegramDelivered++;
           } else {

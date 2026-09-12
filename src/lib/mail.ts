@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import { logger } from "@/lib/logger";
 import { assertMailSimulationAllowed } from "@/lib/e2e-env-guard";
+import { classifyTransportFailure } from "@/lib/dispatch-outcome";
 
 // Vercel build phase evaluates this file statically. If RESEND_API_KEY is missing during
 // the build phase, the Resend constructor throws a fatal error and breaks the build.
@@ -329,8 +330,9 @@ export const sendClientBriefEmail = async (
   to: string,
   clientName: string,
   workspaceName: string,
-  markdownBrief: string
-): Promise<{ success: boolean; data?: any; error?: any }> => {
+  markdownBrief: string,
+  options?: { signal?: AbortSignal; idempotencyKey?: string }
+): Promise<{ success: boolean; ambiguous?: boolean; data?: any; error?: any }> => {
   try {
     if (!process.env.RESEND_API_KEY || process.env.RESEND_API_KEY === "re_dummy") {
       logger.warn('[MAIL] RESEND_API_KEY not configured, simulating delivery to:', to);
@@ -347,11 +349,7 @@ export const sendClientBriefEmail = async (
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\n/g, '<br/>');
 
-    const { data, error } = await getResendClient().emails.send({
-      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
-      to: [to],
-      subject: `Marketing Brief: ${clientName} – Monstera Cloud`,
-      html: `
+    const html = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 650px; margin: 0 auto; padding: 28px; border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff; color: #1e293b;">
           <h2 style="color: #0f172a; margin-bottom: 4px;">Marketing Brief: ${clientName}</h2>
           <p style="color: #64748b; margin-top: 0; margin-bottom: 20px; font-size: 13px;">
@@ -364,7 +362,48 @@ export const sendClientBriefEmail = async (
             © 2026 Monstera Cloud. All rights reserved.
           </div>
         </div>
-      `,
+      `;
+
+    // The installed Resend SDK does not propagate AbortSignals, so callers that
+    // carry a delivery deadline (the report-schedule cron) use the equivalent
+    // direct, cancellable REST call; the payload is identical. Callers without
+    // a signal keep the SDK path.
+    if (options?.signal) {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+          ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
+        },
+        body: JSON.stringify({
+          from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+          to: [to],
+          subject: `Marketing Brief: ${clientName} – Monstera Cloud`,
+          reply_to: 'no-reply@monsteracloud.com',
+          html,
+        }),
+        signal: options.signal,
+      });
+      if (!response.ok) {
+        let apiError: unknown = `Resend API error ${response.status}`;
+        try {
+          apiError = await response.json();
+        } catch {
+          // keep the sanitized status-only error
+        }
+        logger.error('[MAIL] ClientBrief Resend Error:', apiError);
+        return { success: false, error: apiError };
+      }
+      const data = await response.json();
+      return { success: true, data };
+    }
+
+    const { data, error } = await getResendClient().emails.send({
+      from: 'Monstera Cloud <no-reply@monsteracloud.com>',
+      to: [to],
+      subject: `Marketing Brief: ${clientName} – Monstera Cloud`,
+      html,
     });
 
     if (error) {
@@ -374,6 +413,8 @@ export const sendClientBriefEmail = async (
     return { success: true, data };
   } catch (err) {
     logger.error('[MAIL] ClientBrief Unexpected Error:', err);
-    return { success: false, error: err };
+    // A transport failure after the request may have been sent is ambiguous:
+    // the provider acceptance cannot be disproved from the client side.
+    return { success: false, ambiguous: classifyTransportFailure(err) === "AMBIGUOUS", error: err };
   }
 };
