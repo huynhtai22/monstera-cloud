@@ -252,6 +252,29 @@ describe("provider capability registry", () => {
     assert.equal(result.compatible, true);
   });
 
+  it("rejects ad-only relevance diagnostics at unsupported granularities", () => {
+    const unsupported = evaluateCapabilityRequest({
+      ...BASE_REQUEST,
+      granularity: "account",
+      fields: ["quality_ranking"],
+    });
+    assert.equal(unsupported.compatible, false);
+    const finding = unsupported.findings.find(
+      (candidate) => candidate.code === CAPABILITY_REASON_CODES.GRANULARITY_NOT_SUPPORTED,
+    );
+    assert.equal(finding?.capabilityId, "quality_ranking");
+    assert.equal(finding?.severity, "error");
+    assert.deepEqual(finding?.affectedFields, ["quality_ranking"]);
+
+    const supported = evaluateCapabilityRequest({
+      ...BASE_REQUEST,
+      granularity: "ad",
+      fields: ["quality_ranking"],
+    });
+    assert.equal(supported.compatible, true);
+    assert.deepEqual(supported.findings, []);
+  });
+
   it("evaluates allowed, retired, combination, and unknown attribution windows", () => {
     const allowed = evaluateCapabilityRequest({ ...BASE_REQUEST, attributionWindows: ["1d_view"] });
     const retired = evaluateCapabilityRequest({ ...BASE_REQUEST, attributionWindows: ["7d_view"] });
