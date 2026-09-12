@@ -84,12 +84,12 @@ describe("report dispatch delivery deadline", () => {
   it("genuinely aborts a Slack request against an endpoint that never responds", { timeout: 20000 }, async () => {
     const stall = await startStallServer();
     const startedAt = Date.now();
-    const delivered = await sendSlackWebhook(stall.url, "deadline probe", {
+    const sent = await sendSlackWebhook(stall.url, "deadline probe", {
       perRequestTimeoutMs: 250,
     });
     const elapsed = Date.now() - startedAt;
 
-    assert.equal(delivered, false, "stalled delivery is classified as failed");
+    assert.equal(sent.outcome, "AMBIGUOUS", "stalled delivery is classified as ambiguous");
     assert.ok(elapsed < 5_000, `request was cancelled promptly (took ${elapsed}ms, undici's default would be ~300s)`);
     assert.ok(stall.connectionsOpened() >= 1, "the connection was really attempted");
     // The server observes the client-side teardown one tick later; wait for
@@ -108,12 +108,12 @@ describe("report dispatch delivery deadline", () => {
     const controller = new AbortController();
     controller.abort(new Error("deadline already exceeded"));
 
-    const delivered = await sendSlackWebhook(stall.url, "probe", {
+    const sent = await sendSlackWebhook(stall.url, "probe", {
       signal: controller.signal,
       perRequestTimeoutMs: 5_000,
     });
 
-    assert.equal(delivered, false);
+    assert.equal(sent.outcome, "DEFINITIVE_FAILED", "an already-aborted overall signal fails before any contact");
     assert.equal(stall.connectionsOpened(), 0, "an already-aborted overall signal must not open a connection");
     await stall.close();
   });
@@ -135,10 +135,10 @@ describe("report dispatch delivery deadline", () => {
     }) as typeof fetch;
 
     const keepAlive = setInterval(() => {}, 250);
-    let delivered = false;
+    let sent: Awaited<ReturnType<typeof sendTelegramBrief>>;
     const startedAt = Date.now();
     try {
-      delivered = await sendTelegramBrief("review-test-token", "123456789", "probe", {
+      sent = await sendTelegramBrief("review-test-token", "123456789", "probe", {
         perRequestTimeoutMs: 250,
       });
     } finally {
@@ -146,7 +146,7 @@ describe("report dispatch delivery deadline", () => {
     }
     const elapsed = Date.now() - startedAt;
 
-    assert.equal(delivered, false, "stalled Telegram delivery is classified as failed");
+    assert.equal(sent.outcome, "AMBIGUOUS", "stalled Telegram delivery is classified as ambiguous");
     assert.ok(elapsed < 5_000, `request was cancelled promptly (took ${elapsed}ms)`);
     assert.ok(transportObservedAbort, "the composed deadline signal reached the transport");
   });

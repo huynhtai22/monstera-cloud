@@ -4,9 +4,11 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { assertCiDatabaseReachableWhenMissing } from "@/lib/pg-test-discipline";
 import {
+  beginDispatchAttempt,
   claimScheduleDispatch,
   executeScheduleDispatch,
 } from "@/lib/report-dispatch";
+import { GET as reportSchedules } from "./route";
 
 // Real-PostgreSQL proof that the delivery deadline integrates with the lease
 // lifecycle: a fully timed-out delivery releases the owner's lease without
@@ -14,6 +16,11 @@ import {
 assertCiDatabaseReachableWhenMissing();
 const hasDb = Boolean(process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("mock"));
 const SECRET = "deadline-suite-secret-0123456789abcdef0123456789";
+
+const authed = () =>
+  new Request("http://localhost:3000/api/cron/report-schedules", {
+    headers: { Authorization: `Bearer ${SECRET}` },
+  });
 
 describe("ReportSchedule dispatch deadline vs lease (real PostgreSQL)", { skip: !hasDb }, () => {
   const db = new PrismaClient();
@@ -112,20 +119,25 @@ describe("ReportSchedule dispatch deadline vs lease (real PostgreSQL)", { skip: 
     const { id, webhooks } = await seedDueSchedule("timeout", 3);
     const token = await claimScheduleDispatch({ id, workspaceId: ws, lastSentAt: null });
     assert.ok(token, "owner acquires the lease");
+    const attempt = await beginDispatchAttempt({ id, workspaceId: ws }, TEST_OCCURRENCE_DATE, token);
+    assert.equal(attempt.state, "claimed");
 
     stallDeliveries = true;
     const startedAt = Date.now();
     const result = await executeScheduleDispatch(
       id,
-      { token },
+      { token, attempt: attempt.context },
       { overallDeadlineMs: 600, perRequestTimeoutMs: 200 },
     );
     const elapsed = Date.now() - startedAt;
 
     // All three sequential recipients were attempted and every one of them
-    // failed; the overall deadline bounded the whole sequence.
+    // ended ambiguous — the provider may have accepted each request; the
+    // overall deadline bounded the whole sequence.
     assert.equal(result.slackDelivered, 0);
-    assert.equal(result.slackFailed, 3);
+    assert.equal(result.slackAmbiguous, 3);
+    assert.equal(result.slackFailed, 0);
+    assert.equal(result.ambiguous, 3);
     assert.equal(result.errors.length, 3);
     assert.ok(elapsed < 15_000, `three stalled requests were bounded by the deadline (took ${elapsed}ms)`);
     // Sanitized: no URLs, hosts, tokens, or raw provider responses.
@@ -140,39 +152,84 @@ describe("ReportSchedule dispatch deadline vs lease (real PostgreSQL)", { skip: 
     assert.equal(row?.lastSentAt, null, "a fully failed delivery never advances lastSentAt");
     assert.equal(row?.dispatchLeaseToken, null, "the owner's lease is released");
     assert.equal(row?.dispatchLeaseExpiresAt, null, "the lease expiry is cleared");
+    // The durable attempt is AMBIGUOUS with per-channel outcomes: the
+    // occurrence must not be automatically retried.
+    const ambiguousAttempt = await db.reportScheduleDispatchAttempt.findUnique({
+      where: { scheduleId_occurrenceDate: { scheduleId: id, occurrenceDate: TEST_OCCURRENCE_DATE } },
+    });
+    assert.equal(ambiguousAttempt?.status, "AMBIGUOUS");
+    assert.ok(ambiguousAttempt?.finishedAt);
+    const outcomes = ambiguousAttempt?.channelOutcomes as {
+      slack: { attempted: number; confirmed: number; definitiveFailed: number; ambiguous: number };
+    };
+    assert.equal(outcomes.slack.attempted, 3);
+    assert.equal(outcomes.slack.ambiguous, 3);
   });
 
-  it("lets a later invocation reclaim and complete the schedule after deadline failure", { timeout: 30000 }, async () => {
+  it("suppresses the ambiguous occurrence on the next invocation instead of re-contacting the provider", { timeout: 30000 }, async () => {
     const { id } = await seedDueSchedule("retry", 1);
 
-    // First sweep: delivery times out and the lease is released.
+    // First sweep: provider accepts the request, response is lost, the client
+    // times out, and the durable attempt becomes AMBIGUOUS.
     stallDeliveries = true;
     const firstToken = await claimScheduleDispatch({ id, workspaceId: ws, lastSentAt: null });
     assert.ok(firstToken);
+    const firstAttempt = await beginDispatchAttempt({ id, workspaceId: ws }, TEST_OCCURRENCE_DATE, firstToken);
+    assert.equal(firstAttempt.state, "claimed");
     const failed = await executeScheduleDispatch(
       id,
-      { token: firstToken },
+      { token: firstToken, attempt: firstAttempt.context },
       { overallDeadlineMs: 600, perRequestTimeoutMs: 200 },
     );
-    assert.equal(failed.slackFailed, 1);
+    assert.equal(failed.slackAmbiguous, 1);
     const failedRow = await db.reportSchedule.findUnique({ where: { id } });
     assert.equal(failedRow?.lastSentAt, null);
     assert.equal(failedRow?.dispatchLeaseToken, null);
+    const ambiguousAttempt = await db.reportScheduleDispatchAttempt.findUnique({
+      where: { scheduleId_occurrenceDate: { scheduleId: id, occurrenceDate: TEST_OCCURRENCE_DATE } },
+    });
+    assert.equal(ambiguousAttempt?.status, "AMBIGUOUS");
 
-    // Second sweep: healthy delivery reclaims (CAS on the unchanged
-    // lastSentAt) and completes ownership-checked.
+    // Second sweep: the ambiguous occurrence is suppressed before any
+    // provider contact and remains operator-visible.
     stallDeliveries = false;
     const secondToken = await claimScheduleDispatch({ id, workspaceId: ws, lastSentAt: null });
-    assert.ok(secondToken, "the schedule is reclaimable after the deadline failure");
-    const recovered = await executeScheduleDispatch(
-      id,
-      { token: secondToken },
-      { overallDeadlineMs: 600, perRequestTimeoutMs: 200 },
-    );
-    assert.equal(recovered.slackDelivered, 1);
-    const doneRow = await db.reportSchedule.findUnique({ where: { id } });
-    assert.ok(doneRow?.lastSentAt, "successful retry advances lastSentAt exactly once");
-    assert.equal(doneRow?.dispatchLeaseToken, null);
-    assert.equal(doneRow?.dispatchLeaseExpiresAt, null);
+    assert.ok(secondToken, "the schedule lease is reclaimable");
+    const suppressed = await beginDispatchAttempt({ id, workspaceId: ws }, TEST_OCCURRENCE_DATE, secondToken);
+    assert.equal(suppressed.state, "suppressed");
+    assert.equal(suppressed.reason, "AMBIGUOUS");
+    const stillAmbiguous = await db.reportScheduleDispatchAttempt.findUnique({
+      where: { scheduleId_occurrenceDate: { scheduleId: id, occurrenceDate: TEST_OCCURRENCE_DATE } },
+    });
+    assert.equal(stillAmbiguous?.status, "AMBIGUOUS", "the ambiguous state is durable");
+  });
+
+  it("reclaims a crashed CLAIMED lease (expired, provider never contacted)", { timeout: 30000 }, async () => {
+    const { id } = await seedDueSchedule("crash-claimed", 1);
+    // Simulated crash after claim but before the provider-started boundary:
+    // only the schedule lease exists, and it has expired.
+    await db.reportSchedule.update({
+      where: { id },
+      data: {
+        dispatchLeaseToken: "crashed-before-provider-start",
+        dispatchLeaseExpiresAt: new Date(Date.now() - 1000),
+      },
+    });
+
+    // Recovery sweep: the expired pre-provider claim is reclaimed and the
+    // delivery proceeds through the full attempt flow.
+    stallDeliveries = false;
+    deliveries = [];
+    const res = await reportSchedules(authed());
+    const body = await res.json();
+    assert.equal(body.succeeded, 1);
+    assert.equal(deliveries.length, 1, "a crashed pre-provider claim is recoverable and delivers once");
+    const row = await db.reportSchedule.findUnique({ where: { id } });
+    assert.ok(row?.lastSentAt);
+    const attempt = await db.reportScheduleDispatchAttempt.findFirst({ where: { scheduleId: id } });
+    assert.equal(attempt?.status, "CONFIRMED");
   });
 });
+
+/** Fixed UTC occurrence date for helper-level attempt flows. */
+const TEST_OCCURRENCE_DATE = "2026-09-12";
