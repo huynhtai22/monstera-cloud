@@ -199,5 +199,3 @@ describe("baseline-gap recovery migration contract (real PostgreSQL)", { skip: !
     }
   });
 });
-
-
