@@ -53,6 +53,11 @@ export async function GET(
 
       if (status.async_status === 'Job Completed') {
         const rows = await metaReportClient.fetchAsyncResults(accessToken, reportRunId);
+        if (!Array.isArray(rows) || rows.length === 0) {
+          throw new MetaProviderOutputError(
+            'Meta async report completed without report rows; the requested output is unavailable.',
+          );
+        }
         return NextResponse.json({ status: 'COMPLETED', percent: 100, rows });
       }
 

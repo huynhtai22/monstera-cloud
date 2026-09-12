@@ -6,6 +6,7 @@ import { metaReportClient } from '@/lib/meta-ads';
 import type { MetaInsightsParams } from '@/lib/meta-ads-contract';
 import prisma from '@/lib/prisma';
 import { clearMetaReportCacheForTest, POST } from './route';
+import { GET as getAsyncReport } from './[reportRunId]/route';
 
 const session = {
   user: { id: 'meta-report-user', email: 'meta-report@example.test' },
@@ -16,6 +17,9 @@ describe('POST /api/meta-ads/report query integrity', () => {
   const originalFindFirst = prisma.connection.findFirst;
   const originalGetInsights = metaReportClient.getInsights;
   const originalCreateAsyncReport = metaReportClient.createAsyncReport;
+  const originalCheckAsyncReport = metaReportClient.checkAsyncReport;
+  const originalFetchAsyncResults = metaReportClient.fetchAsyncResults;
+  const originalEncryptionKey = process.env.ENCRYPTION_KEY;
 
   beforeEach(() => {
     process.env.ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
@@ -29,6 +33,10 @@ describe('POST /api/meta-ads/report query integrity', () => {
     prisma.connection.findFirst = originalFindFirst;
     metaReportClient.getInsights = originalGetInsights;
     metaReportClient.createAsyncReport = originalCreateAsyncReport;
+    metaReportClient.checkAsyncReport = originalCheckAsyncReport;
+    metaReportClient.fetchAsyncResults = originalFetchAsyncResults;
+    if (originalEncryptionKey === undefined) delete process.env.ENCRYPTION_KEY;
+    else process.env.ENCRYPTION_KEY = originalEncryptionKey;
   });
 
   function installConnection() {
@@ -52,17 +60,33 @@ describe('POST /api/meta-ads/report query integrity', () => {
     });
   }
 
-  it('rejects retired attribution before database, token, or provider contact', async () => {
+  it('rejects unknown identifiers and retired attribution before database, token, or provider contact', async () => {
     let databaseCalls = 0;
-    let providerCalls = 0;
+    let syncProviderCalls = 0;
+    let asyncProviderCalls = 0;
     prisma.connection.findFirst = (async () => { databaseCalls++; return null; }) as typeof prisma.connection.findFirst;
-    metaReportClient.getInsights = (async () => { providerCalls++; return [{ spend: '1' }]; }) as any;
+    metaReportClient.getInsights = (async () => { syncProviderCalls++; return [{ spend: '1' }]; }) as any;
+    metaReportClient.createAsyncReport = (async () => { asyncProviderCalls++; return 'run'; }) as any;
 
-    const response = await POST(request({ actionAttributionWindows: ['1d_click', '7d_view'] }));
-    assert.equal(response.status, 400);
-    assert.match((await response.json()).error, /7d_view/);
+    for (const [body, code] of [
+      [{ fields: ['unknown_field'] }, 'INVALID_FIELD'],
+      [{ breakdowns: ['unknown_breakdown'] }, 'INVALID_BREAKDOWN'],
+      [{ actionAttributionWindows: ['unknown_window'] }, 'INVALID_ATTRIBUTION_WINDOW'],
+      [{ actionAttributionWindows: ['1d_click', '7d_view'] }, 'RETIRED_ATTRIBUTION_WINDOW'],
+      [{ actionAttributionWindows: ['28d_view'] }, 'RETIRED_ATTRIBUTION_WINDOW'],
+      [{ actionAttributionWindows: ['7d_view', '28d_view'] }, 'RETIRED_ATTRIBUTION_WINDOW'],
+      [{ limit: 1 }, 'UNSUPPORTED_LIMIT'],
+      [{ filtering: [] }, 'UNSUPPORTED_FILTERING'],
+    ] as const) {
+      const response = await POST(request(body));
+      assert.equal(response.status, 400);
+      const payload = await response.json();
+      assert.equal(payload.code, code);
+      assert.ok(payload.error.length < 160);
+    }
     assert.equal(databaseCalls, 0);
-    assert.equal(providerCalls, 0);
+    assert.equal(syncProviderCalls, 0);
+    assert.equal(asyncProviderCalls, 0);
   });
 
   it('rejects over-age restricted queries before token or provider contact', async () => {
@@ -75,7 +99,7 @@ describe('POST /api/meta-ads/report query integrity', () => {
       timeRange: { since: '2020-01-01', until: '2020-01-31' },
     }));
     assert.equal(response.status, 400);
-    assert.match((await response.json()).error, /limited to 13 months/);
+    assert.equal((await response.json()).code, 'HISTORICAL_DATA_UNAVAILABLE');
     assert.equal(providerCalls, 0);
   });
 
@@ -137,8 +161,31 @@ describe('POST /api/meta-ads/report query integrity', () => {
 
     clearMetaReportCacheForTest();
     metaReportClient.getInsights = (async () => []) as any;
-    const empty = await POST(request({ fields: ['unsupported_metric'] }));
+    const empty = await POST(request({ fields: ['spend'] }));
     assert.equal(empty.status, 502);
     assert.match((await empty.json()).error, /no report rows/);
+  });
+
+  it('does not present a completed async report with empty output as a genuine zero', async () => {
+    installConnection();
+    metaReportClient.checkAsyncReport = (async () => ({
+      async_status: 'Job Completed', async_percent_completion: 100,
+    })) as any;
+    metaReportClient.fetchAsyncResults = (async () => []) as any;
+
+    const empty = await getAsyncReport(
+      new Request('http://localhost/api/meta-ads/report/run-1?connectionId=conn-meta') as any,
+      { params: Promise.resolve({ reportRunId: 'run-1' }) },
+    );
+    assert.equal(empty.status, 502);
+    assert.match((await empty.json()).error, /completed without report rows/);
+
+    metaReportClient.fetchAsyncResults = (async () => [{ spend: '10.00' }]) as any;
+    const rows = await getAsyncReport(
+      new Request('http://localhost/api/meta-ads/report/run-1?connectionId=conn-meta') as any,
+      { params: Promise.resolve({ reportRunId: 'run-1' }) },
+    );
+    assert.equal(rows.status, 200);
+    assert.deepEqual(await rows.json(), { status: 'COMPLETED', percent: 100, rows: [{ spend: '10.00' }] });
   });
 });

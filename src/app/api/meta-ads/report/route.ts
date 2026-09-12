@@ -43,6 +43,11 @@ export function clearMetaReportCacheForTest(): void {
   reportCache.clear();
 }
 
+function validationErrorResponse(error: MetaReportValidationError) {
+  // Keep `error` a string for existing clients while exposing a stable code.
+  return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
+}
+
 export async function POST(req: Request) {
   const session = await getAuthSession();
   if (!session?.user?.id) {
@@ -55,12 +60,12 @@ export async function POST(req: Request) {
   } catch (err) {
     if (err instanceof SyntaxError) {
       return NextResponse.json(
-        { error: 'Request body must be valid JSON' },
+        { error: 'Invalid Meta report request.', code: 'INVALID_REQUEST' },
         { status: 400 },
       );
     }
     if (err instanceof MetaReportValidationError) {
-      return NextResponse.json({ error: err.message }, { status: 400 });
+      return validationErrorResponse(err);
     }
     throw err;
   }
@@ -141,7 +146,7 @@ export async function POST(req: Request) {
     return NextResponse.json(responsePayload);
   } catch (err: unknown) {
     if (err instanceof MetaReportValidationError) {
-      return NextResponse.json({ error: err.message }, { status: 400 });
+      return validationErrorResponse(err);
     }
     if (err instanceof MetaProviderOutputError) {
       return NextResponse.json({ error: err.message }, { status: 502 });
