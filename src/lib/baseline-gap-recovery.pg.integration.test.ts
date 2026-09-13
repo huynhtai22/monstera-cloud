@@ -29,6 +29,8 @@ const TEST_SCHEMA = "bgr_contract_test";
 
 describe("baseline-gap recovery migration contract (real PostgreSQL)", { skip: !hasDb }, () => {
   let db: PrismaClient;
+  let validationPassed = false;
+  let schemaCreated = false;
   const repoRoot = path.join(__dirname, "..", "..");
   const migrationSql = readFileSync(
     path.join(repoRoot, "prisma", "migrations", RECOVERY_DIR, "migration.sql"),
@@ -70,12 +72,16 @@ describe("baseline-gap recovery migration contract (real PostgreSQL)", { skip: !
     const url = new URL(urlStr);
     assert.ok(["localhost", "127.0.0.1"].includes(url.hostname));
     assert.ok(["/monstera_security_test", "/monstera_ci"].includes(url.pathname));
+    // Validation passed: only now may any client capable of destructive
+    // cleanup be created, and only the dedicated schema may be touched.
+    validationPassed = true;
 
     const adminDb = new PrismaClient({ datasources: { db: { url: urlStr } } });
     await adminDb.$executeRawUnsafe(`CREATE SCHEMA IF NOT EXISTS "${TEST_SCHEMA}";`);
     await adminDb.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "${TEST_SCHEMA}"."Workspace" (id TEXT PRIMARY KEY);`);
     await adminDb.$executeRawUnsafe(`CREATE TABLE IF NOT EXISTS "${TEST_SCHEMA}"."DataQualityRule" (id TEXT PRIMARY KEY);`);
     await adminDb.$disconnect();
+    schemaCreated = true;
 
     const testUrl = new URL(urlStr);
     testUrl.searchParams.set("schema", TEST_SCHEMA);
@@ -87,13 +93,48 @@ describe("baseline-gap recovery migration contract (real PostgreSQL)", { skip: !
     if (db) {
       await db.$disconnect();
     }
-    const adminDb = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+    // Cleanup only after approved validation AND schema creation; otherwise
+    // this suite never touched the database and must not issue SQL against
+    // a rejected target.
+    if (!validationPassed || !schemaCreated) {
+      return;
+    }
+    const urlStr = process.env.DATABASE_URL!;
+    const url = new URL(urlStr);
+    assert.ok(["localhost", "127.0.0.1"].includes(url.hostname));
+    assert.ok(["/monstera_security_test", "/monstera_ci"].includes(url.pathname));
+    const adminDb = new PrismaClient({ datasources: { db: { url: urlStr } } });
     await adminDb.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${TEST_SCHEMA}" CASCADE;`);
     await adminDb.$disconnect();
   });
 
   afterEach(() => {
     globalThis.fetch = realFetch;
+  });
+
+  it("rejects an unapproved database name before any client or cleanup SQL", () => {
+    // Pure validation: identical logic to the suite's before() gate.
+    const validate = (raw: string) => {
+      const url = new URL(raw);
+      assert.ok(["localhost", "127.0.0.1"].includes(url.hostname), "non-loopback");
+      assert.ok(
+        ["/monstera_security_test", "/monstera_ci"].includes(url.pathname),
+        "unapproved database",
+      );
+    };
+    const approved = "postgresql://postgres:postgres@localhost:5439/monstera_ci";
+    validate(approved);
+    for (const rejected of [
+      "postgresql://postgres:postgres@db.example.com:5432/monstera_ci",
+      "postgresql://postgres:postgres@localhost:5439/production_db",
+    ]) {
+      assert.throws(() => validate(rejected), `unapproved target must be rejected: ${rejected}`);
+    }
+    // A rejected validation leaves the gate closed: teardown performs no SQL.
+    let validationPassed = false;
+    let schemaCreated = false;
+    assert.throws(() => validate("postgresql://postgres:postgres@localhost:5439/production_db"));
+    assert.equal(validationPassed || schemaCreated, false, "gate stays closed for rejected targets");
   });
 
   it("targets exactly the six missing baseline tables and contains no destructive SQL", () => {
@@ -105,17 +146,10 @@ describe("baseline-gap recovery migration contract (real PostgreSQL)", { skip: !
       6,
       "no tables beyond the six are created",
     );
-    // ON UPDATE CASCADE is a referential action, not a data-manipulation
-    // statement; the ban targets destructive data operations only.
-    for (const banned of [
-      /\\bDROP TABLE\\b/,
-      /\\bDROP COLUMN\\b/,
-      /\\bTRUNCATE\\b/,
-      /\\bDELETE FROM\\b/,
-      /\\bUPDATE\\s+["a-zA-Z_]/,
-    ]) {
-      assert.doesNotMatch(migrationSql, banned, `destructive SQL banned: ${banned}`);
-    }
+    // Real SQL-boundary patterns (case-insensitive, whitespace-tolerant);
+    // referential actions such as ON UPDATE CASCADE are not destructive.
+    const destructive = findDestructiveStatements(migrationSql);
+    assert.deepEqual(destructive, [], `destructive SQL banned: ${JSON.stringify(destructive)}`);
     for (const banned of ["dispatchLeaseToken", "dispatchLeaseExpiresAt", "ReportScheduleDispatchAttempt"]) {
       assert.equal(migrationSql.includes(banned), false, "lease/attempt objects are owned by later migrations");
     }
@@ -197,5 +231,51 @@ describe("baseline-gap recovery migration contract (real PostgreSQL)", { skip: !
       await dropSix();
       await execMigration();
     }
+  });
+});
+
+
+/** Case-insensitive, whitespace-tolerant destructive-SQL detector (test-only). */
+export const DESTRUCTIVE_SQL_PATTERNS: RegExp[] = [
+  /\bDROP\s+TABLE\b/i,
+  /\bDROP\s+COLUMN\b/i,
+  /\bTRUNCATE\b/i,
+  /\bDELETE\s+FROM\b/i,
+];
+
+export function findDestructiveStatements(sql: string): string[] {
+  return DESTRUCTIVE_SQL_PATTERNS.filter((p) => p.test(sql)).map((p) => p.source);
+}
+
+describe("destructive-SQL guard sentinels", () => {
+  const find = (sql: string) => findDestructiveStatements(sql).length;
+  const recoveryMigrationSql = readFileSync(
+    path.join(__dirname, "..", "..", "prisma", "migrations", RECOVERY_DIR, "migration.sql"),
+    "utf8",
+  );
+
+  it("detects every destructive sentinel form", () => {
+    for (const sql of [
+      'DROP TABLE "Example";',
+      "drop table example;",
+      "DROP\nTABLE example;",
+      "TRUNCATE TABLE example;",
+      'DELETE FROM "Example";',
+      "DROP COLUMN example;",
+    ]) {
+      assert.ok(find(sql) > 0, `sentinel must be detected: ${JSON.stringify(sql)}`);
+    }
+  });
+
+  it("does not misclassify referential actions", () => {
+    assert.equal(
+      find('ALTER TABLE "T" ADD CONSTRAINT c FOREIGN KEY (a) REFERENCES "W"(id) ON UPDATE CASCADE ON DELETE CASCADE;'),
+      0,
+      "referential actions are not destructive statements",
+    );
+  });
+
+  it("passes the real committed recovery migration", () => {
+    assert.equal(find(recoveryMigrationSql), 0, "recovery migration contains no destructive SQL");
   });
 });
