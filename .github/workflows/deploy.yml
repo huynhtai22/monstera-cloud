@@ -40,14 +40,17 @@ jobs:
         run: |
           vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
+      # Migrations must never source the pulled environment file: Vercel
+      # secrets are injected directly into the child process by
+      # `vercel env run` and are not written to the runner's disk. The
+      # validator fails closed on a missing, malformed or pooled DIRECT_URL
+      # before Prisma migration execution. `vercel pull` is retained for the
+      # project/build configuration consumed by `vercel build` below.
       - name: Apply database migrations
         run: |
-          set -a
-          source .vercel/.env.production.local
-          set +a
-          test -n "$DATABASE_URL"
           npm ci
-          DIRECT_URL="${DIRECT_URL:-$DATABASE_URL}" npm run db:migrate:prepare
+          vercel env run --environment=production --token=${{ secrets.VERCEL_TOKEN }} -- node scripts/validate-migration-env.mjs
+          vercel env run --environment=production --token=${{ secrets.VERCEL_TOKEN }} -- npm run db:migrate:prepare
 
       - name: Build project
         env:
