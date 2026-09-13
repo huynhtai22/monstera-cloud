@@ -4,7 +4,12 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { assertCiDatabaseReachableWhenMissing } from "@/lib/pg-test-discipline";
 import {
+  acquireSuiteFleetLock,
+  type FleetSuiteLock,
+} from "@/lib/report-schedule-fleet-lock";
+import {
   beginDispatchAttempt,
+  dispatchOccurrenceDate,
   claimScheduleDispatch,
   executeScheduleDispatch,
 } from "@/lib/report-dispatch";
@@ -38,13 +43,13 @@ describe("ReportSchedule dispatch deadline vs lease (real PostgreSQL)", { skip: 
   // suite's due schedules. The same session-level advisory lock used by the
   // other report-schedule pg suites serializes them; session locks die with
   // the connection, so a crashed process cannot leave a stale lock behind.
-  const suiteLockDb = new PrismaClient({
-    datasources: { db: { url: `${process.env.DATABASE_URL}${process.env.DATABASE_URL?.includes("?") ? "&" : "?"}connection_limit=1` } },
-  });
-  const SUITE_LOCK_KEY = "report-schedules-pg-suite";
+  let fleetLock: FleetSuiteLock;
+  let fleetBackendPid = 0;
 
   before(async () => {
-    await suiteLockDb.$executeRaw`SELECT pg_advisory_lock(hashtext(${SUITE_LOCK_KEY}))`;
+    const fleet = await acquireSuiteFleetLock(process.env.DATABASE_URL!);
+    fleetLock = fleet.lock;
+    fleetBackendPid = fleet.backendPid;
     const url = new URL(process.env.DATABASE_URL!);
     assert.ok(["localhost", "127.0.0.1"].includes(url.hostname));
     assert.ok(["/monstera_security_test", "/monstera_ci"].includes(url.pathname));
@@ -99,8 +104,11 @@ describe("ReportSchedule dispatch deadline vs lease (real PostgreSQL)", { skip: 
     await db.workspace.deleteMany({ where: { id: ws } });
     await db.user.deleteMany({ where: { id: user } });
     await db.$disconnect();
-    await suiteLockDb.$executeRaw`SELECT pg_advisory_unlock(hashtext(${SUITE_LOCK_KEY}))`;
-    await suiteLockDb.$disconnect();
+    // Clean the suite's own fixtures BEFORE releasing the lock: leftover
+    // AMBIGUOUS attempts would otherwise pollute the next fleet suite's
+    // sweeps (suppressed schedules still count as due).
+    await db.reportSchedule.deleteMany({ where: { id: { startsWith: "dl-sched-" } } });
+    await fleetLock.releaseAndClose();
   });
 
   const seedDueSchedule = async (tag: string, webhookCount: number) => {
@@ -115,11 +123,17 @@ describe("ReportSchedule dispatch deadline vs lease (real PostgreSQL)", { skip: 
     return { id, webhooks };
   };
 
+  beforeEach(async () => {
+    // Fail closed before any fixture or route work if the fleet lock session
+    // was lost (a reaped connection would silently unlock the fleet).
+    await fleetLock.assertHeld();
+  });
+
   it("times out every stalled recipient, sanitizes errors, releases the lease, and keeps lastSentAt unchanged", { timeout: 30000 }, async () => {
     const { id, webhooks } = await seedDueSchedule("timeout", 3);
     const token = await claimScheduleDispatch({ id, workspaceId: ws, lastSentAt: null });
     assert.ok(token, "owner acquires the lease");
-    const attempt = await beginDispatchAttempt({ id, workspaceId: ws }, TEST_OCCURRENCE_DATE, token);
+    const attempt = await beginDispatchAttempt({ id, workspaceId: ws }, suiteOccurrenceDate, token);
     assert.equal(attempt.state, "claimed");
 
     stallDeliveries = true;
@@ -155,7 +169,7 @@ describe("ReportSchedule dispatch deadline vs lease (real PostgreSQL)", { skip: 
     // The durable attempt is AMBIGUOUS with per-channel outcomes: the
     // occurrence must not be automatically retried.
     const ambiguousAttempt = await db.reportScheduleDispatchAttempt.findUnique({
-      where: { scheduleId_occurrenceDate: { scheduleId: id, occurrenceDate: TEST_OCCURRENCE_DATE } },
+      where: { scheduleId_occurrenceDate: { scheduleId: id, occurrenceDate: suiteOccurrenceDate } },
     });
     assert.equal(ambiguousAttempt?.status, "AMBIGUOUS");
     assert.ok(ambiguousAttempt?.finishedAt);
@@ -174,7 +188,7 @@ describe("ReportSchedule dispatch deadline vs lease (real PostgreSQL)", { skip: 
     stallDeliveries = true;
     const firstToken = await claimScheduleDispatch({ id, workspaceId: ws, lastSentAt: null });
     assert.ok(firstToken);
-    const firstAttempt = await beginDispatchAttempt({ id, workspaceId: ws }, TEST_OCCURRENCE_DATE, firstToken);
+    const firstAttempt = await beginDispatchAttempt({ id, workspaceId: ws }, suiteOccurrenceDate, firstToken);
     assert.equal(firstAttempt.state, "claimed");
     const failed = await executeScheduleDispatch(
       id,
@@ -186,7 +200,7 @@ describe("ReportSchedule dispatch deadline vs lease (real PostgreSQL)", { skip: 
     assert.equal(failedRow?.lastSentAt, null);
     assert.equal(failedRow?.dispatchLeaseToken, null);
     const ambiguousAttempt = await db.reportScheduleDispatchAttempt.findUnique({
-      where: { scheduleId_occurrenceDate: { scheduleId: id, occurrenceDate: TEST_OCCURRENCE_DATE } },
+      where: { scheduleId_occurrenceDate: { scheduleId: id, occurrenceDate: suiteOccurrenceDate } },
     });
     assert.equal(ambiguousAttempt?.status, "AMBIGUOUS");
 
@@ -195,11 +209,11 @@ describe("ReportSchedule dispatch deadline vs lease (real PostgreSQL)", { skip: 
     stallDeliveries = false;
     const secondToken = await claimScheduleDispatch({ id, workspaceId: ws, lastSentAt: null });
     assert.ok(secondToken, "the schedule lease is reclaimable");
-    const suppressed = await beginDispatchAttempt({ id, workspaceId: ws }, TEST_OCCURRENCE_DATE, secondToken);
+    const suppressed = await beginDispatchAttempt({ id, workspaceId: ws }, suiteOccurrenceDate, secondToken);
     assert.equal(suppressed.state, "suppressed");
     assert.equal(suppressed.reason, "AMBIGUOUS");
     const stillAmbiguous = await db.reportScheduleDispatchAttempt.findUnique({
-      where: { scheduleId_occurrenceDate: { scheduleId: id, occurrenceDate: TEST_OCCURRENCE_DATE } },
+      where: { scheduleId_occurrenceDate: { scheduleId: id, occurrenceDate: suiteOccurrenceDate } },
     });
     assert.equal(stillAmbiguous?.status, "AMBIGUOUS", "the ambiguous state is durable");
   });
@@ -222,6 +236,7 @@ describe("ReportSchedule dispatch deadline vs lease (real PostgreSQL)", { skip: 
     deliveries = [];
     const res = await reportSchedules(authed());
     const body = await res.json();
+    console.log("DBG-DEADLINE-3:", JSON.stringify({ due: body.due, sc: body.skippedClaimed, sa: body.skippedAmbiguous, ok: body.succeeded, deliveries }));
     assert.equal(body.succeeded, 1);
     assert.equal(deliveries.length, 1, "a crashed pre-provider claim is recoverable and delivers once");
     const row = await db.reportSchedule.findUnique({ where: { id } });
@@ -231,5 +246,7 @@ describe("ReportSchedule dispatch deadline vs lease (real PostgreSQL)", { skip: 
   });
 });
 
-/** Fixed UTC occurrence date for helper-level attempt flows. */
-const TEST_OCCURRENCE_DATE = "2026-09-12";
+/** Suite occurrence date: derived once per run from the same UTC semantics
+ * the route uses (dispatchOccurrenceDate), so fixture attempt rows and route
+ * sweeps always share the occurrence key. */
+const suiteOccurrenceDate = dispatchOccurrenceDate(new Date());

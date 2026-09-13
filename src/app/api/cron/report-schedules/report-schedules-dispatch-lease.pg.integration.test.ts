@@ -3,6 +3,10 @@ import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { assertCiDatabaseReachableWhenMissing } from "@/lib/pg-test-discipline";
+import {
+  acquireSuiteFleetLock,
+  type FleetSuiteLock,
+} from "@/lib/report-schedule-fleet-lock";
 import prisma from "@/lib/prisma";
 import {
   claimScheduleDispatch,
@@ -43,14 +47,14 @@ describe("ReportSchedule dispatch lease (real PostgreSQL)", { skip: !hasDb }, ()
   // on a dedicated single-connection client serializes the report-schedule pg
   // suites without affecting any other suite. Session locks die with the
   // connection, so a crashed process cannot leave a stale lock behind.
-  const suiteLockDb = new PrismaClient({
-    datasources: { db: { url: `${process.env.DATABASE_URL}${process.env.DATABASE_URL?.includes("?") ? "&" : "?"}connection_limit=1` } },
-  });
-  const SUITE_LOCK_KEY = "report-schedules-pg-suite";
+  let fleetLock: FleetSuiteLock;
+  let fleetBackendPid = 0;
 
 
   before(async () => {
-    await suiteLockDb.$executeRaw`SELECT pg_advisory_lock(hashtext(${SUITE_LOCK_KEY}))`;
+    const fleet = await acquireSuiteFleetLock(process.env.DATABASE_URL!);
+    fleetLock = fleet.lock;
+    fleetBackendPid = fleet.backendPid;
     const url = new URL(process.env.DATABASE_URL!);
     assert.ok(["localhost", "127.0.0.1"].includes(url.hostname));
     assert.ok(["/monstera_security_test", "/monstera_ci"].includes(url.pathname));
@@ -108,8 +112,7 @@ describe("ReportSchedule dispatch lease (real PostgreSQL)", { skip: !hasDb }, ()
     await db.workspace.deleteMany({ where: { id: { startsWith: "lease-ws-" } } });
     await db.user.deleteMany({ where: { id: user } });
     await db.$disconnect();
-    await suiteLockDb.$executeRaw`SELECT pg_advisory_unlock(hashtext(${SUITE_LOCK_KEY}))`;
-    await suiteLockDb.$disconnect();
+    await fleetLock.releaseAndClose();
   });
 
   const seedDueSchedule = async (tag: string, workspaceId: string, clientId: string) => {
@@ -166,6 +169,12 @@ describe("ReportSchedule dispatch lease (real PostgreSQL)", { skip: !hasDb }, ()
     }) as typeof fetch;
     (globalThis.fetch as any).__tag = "parked-stub";
   };
+
+  beforeEach(async () => {
+    // Fail closed before any fixture or route work if the fleet lock session
+    // was lost (a reaped connection would silently unlock the fleet).
+    await fleetLock.assertHeld();
+  });
 
   it("delivers a due schedule exactly once under two concurrent authenticated sweeps", { timeout: 30000 }, async () => {
     for (let iteration = 0; iteration < 3; iteration++) {

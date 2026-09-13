@@ -4,6 +4,10 @@ import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { assertCiDatabaseReachableWhenMissing } from "@/lib/pg-test-discipline";
 import {
+  acquireSuiteFleetLock,
+  type FleetSuiteLock,
+} from "@/lib/report-schedule-fleet-lock";
+import {
   DISPATCH_ATTEMPT_STATUS,
   beginDispatchAttempt,
   claimScheduleDispatch,
@@ -25,7 +29,8 @@ import { GET as reportSchedules } from "./route";
 assertCiDatabaseReachableWhenMissing();
 const hasDb = Boolean(process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("mock"));
 const SECRET = "occurrence-suite-secret-0123456789abcdef0123456789";
-const OCCURRENCE = "2026-09-12";
+/** Suite occurrence date: same UTC derivation as the route sweeps. */
+const OCCURRENCE = dispatchOccurrenceDate(new Date());
 
 describe("ReportSchedule dispatch occurrence state (real PostgreSQL)", { skip: !hasDb }, () => {
   const db = new PrismaClient();
@@ -49,14 +54,14 @@ describe("ReportSchedule dispatch occurrence state (real PostgreSQL)", { skip: !
   // suite's due schedules. The same session-level advisory lock used by the
   // other report-schedule pg suites serializes them; session locks die with
   // the connection, so a crashed process cannot leave a stale lock behind.
-  const suiteLockDb = new PrismaClient({
-    datasources: { db: { url: `${process.env.DATABASE_URL}${process.env.DATABASE_URL?.includes("?") ? "&" : "?"}connection_limit=1` } },
-  });
-  const SUITE_LOCK_KEY = "report-schedules-pg-suite";
+  let fleetLock: FleetSuiteLock;
+  let fleetBackendPid = 0;
 
 
   before(async () => {
-    await suiteLockDb.$executeRaw`SELECT pg_advisory_lock(hashtext(${SUITE_LOCK_KEY}))`;
+    const fleet = await acquireSuiteFleetLock(process.env.DATABASE_URL!);
+    fleetLock = fleet.lock;
+    fleetBackendPid = fleet.backendPid;
     const url = new URL(process.env.DATABASE_URL!);
     assert.ok(["localhost", "127.0.0.1"].includes(url.hostname));
     assert.ok(["/monstera_security_test", "/monstera_ci"].includes(url.pathname));
@@ -114,8 +119,7 @@ describe("ReportSchedule dispatch occurrence state (real PostgreSQL)", { skip: !
     await db.workspace.deleteMany({ where: { id: { startsWith: "oc-ws-" } } });
     await db.user.deleteMany({ where: { id: user } });
     await db.$disconnect();
-    await suiteLockDb.$executeRaw`SELECT pg_advisory_unlock(hashtext(${SUITE_LOCK_KEY}))`;
-    await suiteLockDb.$disconnect();
+    await fleetLock.releaseAndClose();
   });
 
   const seedDueSchedule = async (tag: string, workspaceId = wsA) => {
@@ -133,6 +137,12 @@ describe("ReportSchedule dispatch occurrence state (real PostgreSQL)", { skip: !
     });
     return id;
   };
+
+  beforeEach(async () => {
+    // Fail closed before any fixture or route work if the fleet lock session
+    // was lost (a reaped connection would silently unlock the fleet).
+    await fleetLock.assertHeld();
+  });
 
   it("records AMBIGUOUS after an accepted-then-stalled delivery and suppresses the next sweep (5 iterations)", { timeout: 60000 }, async () => {
     for (let iteration = 0; iteration < 5; iteration++) {
@@ -235,8 +245,11 @@ describe("ReportSchedule dispatch occurrence state (real PostgreSQL)", { skip: !
     // The same occurrence retry would reuse the identical key.
     const retryKey = dispatchIdempotencyKey(wsA, id, OCCURRENCE, "email", email);
     assert.equal(retryKey, key);
-    // The next occurrence derives a different key.
-    assert.notEqual(dispatchIdempotencyKey(wsA, id, "2026-09-13", "email", email), key);
+    // The next occurrence derives a different key (the day after the suite's
+    // occurrence date).
+    const nextDate = dispatchOccurrenceDate(new Date(Date.now() + 86_400_000));
+    assert.notEqual(nextDate, OCCURRENCE, "next occurrence date differs from today");
+    assert.notEqual(dispatchIdempotencyKey(wsA, id, nextDate, "email", email), key);
     await db.reportSchedule.deleteMany({ where: { id } });
   });
 
@@ -260,6 +273,7 @@ describe("ReportSchedule dispatch occurrence state (real PostgreSQL)", { skip: !
     deliveries = [];
     const res = await reportSchedules(authed());
     const body = await res.json();
+    console.log("DBG-OCC-4:", JSON.stringify({ due: body.due, sc: body.skippedClaimed, sa: body.skippedAmbiguous, ok: body.succeeded, deliveries }));
     assert.equal(body.due, 1);
     assert.equal(body.skippedAmbiguous, 1);
     assert.equal(body.succeeded, 0);
