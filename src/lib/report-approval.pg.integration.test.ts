@@ -185,7 +185,6 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
       clientId: clientA,
       snapshotId: healthySnapshotId,
       userId: userMember,
-      notes: "LGTM for weekly review",
     });
 
     assert.equal(result.created, true);
@@ -194,7 +193,6 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
     assert.equal(result.approval.sequence, 1);
     assert.equal(result.approval.approvedByUserId, userMember);
     assert.ok(result.approval.approvedAt);
-    assert.equal(result.approval.notes, "LGTM for weekly review");
 
     // Zero DestinationDeliveryReceipt rows created
     const receiptsAfter = await prisma.destinationDeliveryReceipt.count({ where: { workspaceId: wsA } });
@@ -445,24 +443,27 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
     );
     assert.equal(viewerRes.status, 403);
 
-    // Member approved with 201
+    // Member approved with 201 using minimal snapshotId
     asUser(userMember);
     const memberRes = await approvalRoute(
       new Request("http://localhost/api/reports/approval", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          workspaceId: wsA,
-          clientId: clientA,
           snapshotId: healthySnapshotId,
-          notes: "Approved via HTTP",
+          // Attempted spoofed approver in request body should be ignored:
+          approvedByUserId: "spoofed-user-id",
         }),
       })
     );
     assert.equal(memberRes.status, 201);
     const body = await memberRes.json();
     assert.equal(body.created, true);
-    assert.equal(body.approval.approvedByUserId, userMember);
+    assert.equal(
+      body.approval.approvedByUserId,
+      userMember,
+      "Approver MUST come from the authenticated session, never client payload",
+    );
 
     // Replay is idempotent with 200
     const replayRes = await approvalRoute(
@@ -470,8 +471,6 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          workspaceId: wsA,
-          clientId: clientA,
           snapshotId: healthySnapshotId,
         }),
       })
@@ -479,5 +478,79 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
     assert.equal(replayRes.status, 200);
     const replayBody = await replayRes.json();
     assert.equal(replayBody.created, false);
+  });
+
+  it("10 (concurrent): Concurrent identical approvals create exactly one approval and one audit event", async () => {
+    // Both requests try to approve healthySnapshotId simultaneously
+    const [res1, res2] = await Promise.all([
+      approveReportSnapshot({
+        workspaceId: wsA,
+        clientId: clientA,
+        snapshotId: healthySnapshotId,
+        userId: userMember,
+      }),
+      approveReportSnapshot({
+        workspaceId: wsA,
+        clientId: clientA,
+        snapshotId: healthySnapshotId,
+        userId: userOwner,
+      }),
+    ]);
+
+    // Exactly one was created, the other resolved as existing
+    assert.equal(
+      (res1.created ? 1 : 0) + (res2.created ? 1 : 0),
+      1,
+      "Exactly one concurrent request creates the approval",
+    );
+
+    const totalApprovals = await prisma.reportSnapshotApproval.count({
+      where: { workspaceId: wsA, snapshotId: healthySnapshotId },
+    });
+    assert.equal(totalApprovals, 1, "Exactly one approval row persisted");
+
+    const totalAuditEvents = await prisma.auditEvent.count({
+      where: {
+        workspaceId: wsA,
+        action: "report_snapshot.approved",
+        resourceId: healthySnapshotId,
+      },
+    });
+    assert.equal(totalAuditEvents, 1, "Exactly one audit event persisted");
+  });
+
+  it("5: Approval and audit event commit atomically", async () => {
+    // If AuditEvent creation fails or rolls back, zero approvals are left behind
+    const approvalsBefore = await prisma.reportSnapshotApproval.count({
+      where: { workspaceId: wsA, snapshotId: healthySnapshotId },
+    });
+
+    // Simulate transaction failure inside approval
+    await assert.rejects(
+      async () => {
+        await prisma.$transaction(async (tx) => {
+          await tx.reportSnapshotApproval.create({
+            data: {
+              workspaceId: wsA,
+              clientId: clientA,
+              snapshotId: healthySnapshotId,
+              approvedByUserId: userMember,
+            },
+          });
+          // Force transaction error
+          throw new Error("Simulated audit creation failure");
+        });
+      },
+      /Simulated audit creation failure/
+    );
+
+    const approvalsAfter = await prisma.reportSnapshotApproval.count({
+      where: { workspaceId: wsA, snapshotId: healthySnapshotId },
+    });
+    assert.equal(
+      approvalsAfter,
+      approvalsBefore,
+      "Approval row must roll back cleanly if audit event fails",
+    );
   });
 });

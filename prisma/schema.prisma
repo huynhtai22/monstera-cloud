@@ -238,30 +238,25 @@ model ReportSnapshot {
 }
 
 /// Durable human approval for an exact, immutable ReportSnapshot.
-/// Tenant-scoped, references the exact snapshot and its fingerprint/dependency hash.
+/// Tenant-scoped, references the exact snapshot.
 /// A snapshot can only be approved once per workspace (idempotent); newer snapshots
 /// for the same generationKey leave historical approvals intact but non-current.
 model ReportSnapshotApproval {
-  id                 String         @id @default(cuid())
-  workspaceId        String
-  clientId           String
-  snapshotId         String
-  generationKey      String
-  sequence           Int
-  datasetFingerprint String
-  dependencyHash     String
-  approvedByUserId   String
-  approvedAt         DateTime       @default(now())
-  notes              String?
+  id               String         @id @default(cuid())
+  workspaceId      String
+  clientId         String
+  snapshotId       String
+  approvedByUserId String
+  approvedAt       DateTime       @default(now())
 
-  workspace          Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  client             Client         @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
-  snapshot           ReportSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-  approvedBy         User           @relation(fields: [approvedByUserId], references: [id], onDelete: Cascade)
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client           Client         @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  snapshot         ReportSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  approvedByUser   User           @relation(fields: [approvedByUserId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, snapshotId])
   @@index([workspaceId, clientId, approvedAt])
-  @@index([workspaceId, generationKey, sequence])
+  @@index([workspaceId, approvedByUserId])
 }
 
 /// Authoritative client assignment for a provider account discovered via a root connection.

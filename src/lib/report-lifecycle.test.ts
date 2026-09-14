@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { evaluateReportReadiness, type SourceEvidence } from "./report-readiness";
-import { deriveReportLifecycleState, type ReportApprovalSummary } from "./report-lifecycle";
+import {
+  deriveReportLifecycle,
+  deriveReportLifecycleState,
+  type ReportApprovalSummary,
+} from "./report-lifecycle";
 import { approveReportSnapshot } from "./report-approval";
 
 const now = new Date("2026-09-04T12:00:00Z");
@@ -45,7 +49,6 @@ function sampleApproval(overrides: Partial<ReportApprovalSummary> = {}): ReportA
     approvedByUserName: "Operator A",
     approvedByUserEmail: "operator@example.com",
     approvedAt: "2026-09-04T12:30:00.000Z",
-    notes: null,
     ...overrides,
   };
 }
@@ -155,9 +158,11 @@ describe("Report Lifecycle v1 contracts", () => {
         latestReportApproval: null,
         destinationVerified: true, // Destination proof exists, but NO operator approved
       });
+      assert.notEqual(state, "Delivered");
+      assert.notEqual(state, "Approved — ready to send");
       assert.equal(
         state,
-        "Ready to review",
+        "Delivered (unapproved)",
         "A delivery receipt alone must never imply human approval",
       );
     });
@@ -220,6 +225,60 @@ describe("Report Lifecycle v1 contracts", () => {
         destinationVerified: true,
       });
       assert.equal(state, "Approval outdated");
+    });
+
+    it("8. Delivered-but-unapproved is represented honestly across all three axes", () => {
+      const lifecycle = deriveReportLifecycle({
+        dataStatus: "READY",
+        currentSnapshot,
+        activeApproval: null,
+        latestReportApproval: null,
+        destinationVerified: true,
+      });
+      assert.deepEqual(lifecycle, {
+        dataStatus: "READY",
+        approvalStatus: "NOT_APPROVED",
+        deliveryStatus: "DELIVERED",
+        summaryLabel: "Delivered (unapproved)",
+      });
+    });
+
+    it("9. Three independent axes preserve all states without false conflation", () => {
+      // Complete data, approved, delivered
+      const full = deriveReportLifecycle({
+        dataStatus: "READY",
+        currentSnapshot,
+        activeApproval: sampleApproval(),
+        destinationVerified: true,
+      });
+      assert.equal(full.dataStatus, "READY");
+      assert.equal(full.approvalStatus, "APPROVED");
+      assert.equal(full.deliveryStatus, "DELIVERED");
+      assert.equal(full.summaryLabel, "Delivered");
+
+      // Complete data, approved, not delivered
+      const approvedOnly = deriveReportLifecycle({
+        dataStatus: "READY",
+        currentSnapshot,
+        activeApproval: sampleApproval(),
+        destinationVerified: false,
+      });
+      assert.equal(approvedOnly.dataStatus, "READY");
+      assert.equal(approvedOnly.approvalStatus, "APPROVED");
+      assert.equal(approvedOnly.deliveryStatus, "NOT_DELIVERED");
+      assert.equal(approvedOnly.summaryLabel, "Approved — ready to send");
+
+      // Broken data, approved (historical), delivered
+      const brokenData = deriveReportLifecycle({
+        dataStatus: "NOT_READY",
+        currentSnapshot,
+        activeApproval: sampleApproval(),
+        destinationVerified: true,
+      });
+      assert.equal(brokenData.dataStatus, "NOT_READY");
+      assert.equal(brokenData.approvalStatus, "APPROVED");
+      assert.equal(brokenData.deliveryStatus, "DELIVERED");
+      assert.equal(brokenData.summaryLabel, "Not ready to review");
     });
   });
 });

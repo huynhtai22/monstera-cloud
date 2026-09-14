@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
 import { getAuthSession } from "@/lib/auth-session";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { approveReportSnapshot, ReportApprovalError } from "@/lib/report-approval";
@@ -26,24 +27,48 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { workspaceId, clientId, snapshotId, notes } = body ?? {};
+    const { snapshotId } = body ?? {};
+    let { workspaceId, clientId } = body ?? {};
 
-    if (!workspaceId || !clientId || !snapshotId) {
+    if (!snapshotId) {
       return NextResponse.json(
-        { error: "workspaceId, clientId, and snapshotId are required" },
+        { error: "snapshotId is required" },
         { status: 400 },
       );
     }
 
-    await requireWorkspaceAccess({
-      userId: session.user.id,
-      workspaceId,
-      minimumRole: "member",
+    // 1. Load the snapshot to resolve authoritative tenant and client identity server-side
+    const snapshot = await prisma.reportSnapshot.findUnique({
+      where: { id: snapshotId },
+      select: { id: true, workspaceId: true, clientId: true },
     });
 
+    if (!snapshot) {
+      return NextResponse.json({ error: "Report snapshot not found" }, { status: 404 });
+    }
+
+    // Resolve workspaceId: verify against provided workspaceId or session active workspace
+    const targetWorkspaceId = workspaceId ?? snapshot.workspaceId;
+    if (targetWorkspaceId !== snapshot.workspaceId) {
+      return NextResponse.json({ error: "Snapshot does not belong to this workspace" }, { status: 403 });
+    }
+
+    // 2. Authorize operator with at least "member" role
+    await requireWorkspaceAccess({
+      userId: session.user.id,
+      workspaceId: targetWorkspaceId,
+      minimumRole: "member",
+      operation: "approve_report_snapshot",
+    });
+
+    // Verify client belongs to workspace
+    if (clientId && clientId !== snapshot.clientId) {
+      return NextResponse.json({ error: "Snapshot does not belong to this client" }, { status: 400 });
+    }
+
     const resolution = await resolveClientContext({
-      workspaceId,
-      requestedClientId: clientId,
+      workspaceId: targetWorkspaceId,
+      requestedClientId: snapshot.clientId,
       surface: "reports",
     });
     assertQueryableClientContext(resolution, { requireExplicitClient: true });
@@ -52,11 +77,10 @@ export async function POST(req: Request) {
     }
 
     const result = await approveReportSnapshot({
-      workspaceId,
-      clientId: resolution.client.id,
+      workspaceId: targetWorkspaceId,
+      clientId: snapshot.clientId,
       snapshotId,
       userId: session.user.id,
-      notes: typeof notes === "string" ? notes : null,
     });
 
     return NextResponse.json(result, { status: result.created ? 201 : 200 });

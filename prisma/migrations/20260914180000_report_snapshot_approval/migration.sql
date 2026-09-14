@@ -4,13 +4,8 @@ CREATE TABLE "ReportSnapshotApproval" (
     "workspaceId" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
     "snapshotId" TEXT NOT NULL,
-    "generationKey" TEXT NOT NULL,
-    "sequence" INTEGER NOT NULL,
-    "datasetFingerprint" TEXT NOT NULL,
-    "dependencyHash" TEXT NOT NULL,
     "approvedByUserId" TEXT NOT NULL,
     "approvedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "notes" TEXT,
 
     CONSTRAINT "ReportSnapshotApproval_pkey" PRIMARY KEY ("id")
 );
@@ -22,7 +17,7 @@ CREATE UNIQUE INDEX "ReportSnapshotApproval_workspaceId_snapshotId_key" ON "Repo
 CREATE INDEX "ReportSnapshotApproval_workspaceId_clientId_approvedAt_idx" ON "ReportSnapshotApproval"("workspaceId", "clientId", "approvedAt");
 
 -- CreateIndex
-CREATE INDEX "ReportSnapshotApproval_workspaceId_generationKey_sequence_idx" ON "ReportSnapshotApproval"("workspaceId", "generationKey", "sequence");
+CREATE INDEX "ReportSnapshotApproval_workspaceId_approvedByUserId_idx" ON "ReportSnapshotApproval"("workspaceId", "approvedByUserId");
 
 -- AddForeignKey
 ALTER TABLE "ReportSnapshotApproval" ADD CONSTRAINT "ReportSnapshotApproval_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "Workspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;

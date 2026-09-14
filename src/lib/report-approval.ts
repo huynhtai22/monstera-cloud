@@ -8,16 +8,18 @@
  * - Authenticated workspace role: "member" or higher (viewers rejected).
  * - Tenant-scoped: enforces workspaceId and clientId matching.
  * - Idempotent: repeated approval of the exact same snapshot returns existing record with zero writes.
+ * - Concurrent identical approvals result in exactly one approval and one audit event.
  * - Strictly rejects missing, cross-tenant, or stale snapshots with zero writes.
- * - Strictly rejects snapshots whose underlying data is not ready (blockers present).
+ * - Strictly rejects snapshots whose captured dataStatus is not READY.
  * - Never modifies ReportSnapshot row (snapshots are immutable).
  * - Never creates or modifies DestinationDeliveryReceipt.
  * - Zero provider, destination or external network calls.
- * - Emits AuditEvent on approval.
+ * - Emits AuditEvent atomically with the approval.
  */
 
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess } from "@/lib/rbac";
+import type { ReportReadinessStatus } from "./report-readiness";
 import type { ReportApprovalSummary } from "./report-lifecycle";
 
 export class ReportApprovalError extends Error {
@@ -43,7 +45,6 @@ export type ApproveReportSnapshotInput = {
   clientId: string;
   snapshotId: string;
   userId: string;
-  notes?: string | null;
 };
 
 export type ApproveReportSnapshotResult = {
@@ -51,13 +52,109 @@ export type ApproveReportSnapshotResult = {
   created: boolean;
 };
 
+type DbApprovalWithRelations = {
+  id: string;
+  workspaceId: string;
+  clientId: string;
+  snapshotId: string;
+  approvedByUserId: string;
+  approvedAt: Date;
+  snapshot?: {
+    generationKey: string;
+    sequence: number;
+    datasetFingerprint: string;
+    dependencyHash: string;
+  } | null;
+  approvedByUser?: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  } | null;
+};
+
+function toReportApprovalSummary(
+  record: DbApprovalWithRelations,
+  fallbackSnapshot?: {
+    generationKey: string;
+    sequence: number;
+    datasetFingerprint: string;
+    dependencyHash: string;
+  },
+): ReportApprovalSummary {
+  const snap = record.snapshot ?? fallbackSnapshot;
+  return {
+    id: record.id,
+    snapshotId: record.snapshotId,
+    generationKey: snap?.generationKey ?? "",
+    sequence: snap?.sequence ?? 1,
+    datasetFingerprint: snap?.datasetFingerprint ?? "",
+    dependencyHash: snap?.dependencyHash ?? "",
+    approvedByUserId: record.approvedByUserId,
+    approvedByUserName: record.approvedByUser?.name ?? null,
+    approvedByUserEmail: record.approvedByUser?.email ?? null,
+    approvedAt: record.approvedAt.toISOString(),
+  };
+}
+
+function isPrismaUniqueConstraintError(err: unknown): boolean {
+  if (err && typeof err === "object") {
+    const code = (err as { code?: string }).code;
+    return code === "P2002";
+  }
+  return false;
+}
+
+/**
+ * Extract durable dataStatus from a snapshot's captured evidence, with safe legacy fallback.
+ * Legacy snapshots without explicit dataStatus are NOT silently classified as ready.
+ */
+export function getSnapshotDataStatus(snapshot: {
+  readinessStatus: string;
+  readinessEvidence: unknown;
+}): ReportReadinessStatus {
+  const evidence = snapshot.readinessEvidence as {
+    outcome?: {
+      dataStatus?: ReportReadinessStatus;
+      status?: ReportReadinessStatus;
+      blockers?: Array<{ code: string }>;
+    };
+    dependencyEvidence?: {
+      outcome?: {
+        dataStatus?: ReportReadinessStatus;
+        status?: ReportReadinessStatus;
+        blockers?: Array<{ code: string }>;
+      };
+    };
+  } | null;
+
+  const outcome = evidence?.outcome ?? evidence?.dependencyEvidence?.outcome;
+  if (outcome?.dataStatus) {
+    const blockers = outcome.blockers ?? [];
+    const dataBlockers = blockers.filter((b) => !b.code.startsWith("DESTINATION_"));
+    if (dataBlockers.length > 0) {
+      return "NOT_READY";
+    }
+    return outcome.dataStatus;
+  }
+
+  // Backfill / legacy fallback:
+  // "Do not silently classify old snapshots as ready."
+  if (snapshot.readinessStatus === "READY" && (!outcome?.blockers || outcome.blockers.length === 0)) {
+    return "READY";
+  }
+
+  if (snapshot.readinessStatus === "NOT_READY") return "NOT_READY";
+  if (snapshot.readinessStatus === "WARNING") return "WARNING";
+  return "UNKNOWN";
+}
+
 /**
  * Record durable human approval for an exact ReportSnapshot.
  */
 export async function approveReportSnapshot(
   input: ApproveReportSnapshotInput,
 ): Promise<ApproveReportSnapshotResult> {
-  const { workspaceId, clientId, snapshotId, userId, notes } = input;
+  const { workspaceId, clientId, snapshotId, userId } = input;
 
   if (!workspaceId || !clientId || !snapshotId || !userId) {
     throw new ReportApprovalError("workspaceId, clientId, snapshotId, and userId are required", "invalid_input", 400);
@@ -68,6 +165,7 @@ export async function approveReportSnapshot(
     userId,
     workspaceId,
     minimumRole: "member",
+    operation: "approve_report_snapshot",
   });
 
   // 2. Fetch the snapshot and verify tenant boundary
@@ -90,7 +188,7 @@ export async function approveReportSnapshot(
     throw new ReportApprovalError("Snapshot does not belong to this client", "client_mismatch", 400);
   }
 
-  // 3. Check idempotency: If already approved for this exact snapshot in this workspace, return existing approval
+  // 3. Fast-path check: If already approved for this exact snapshot in this workspace, return existing approval
   const existing = await prisma.reportSnapshotApproval.findUnique({
     where: {
       workspaceId_snapshotId: {
@@ -99,60 +197,33 @@ export async function approveReportSnapshot(
       },
     },
     include: {
-      approvedBy: { select: { id: true, name: true, email: true } },
+      snapshot: {
+        select: {
+          generationKey: true,
+          sequence: true,
+          datasetFingerprint: true,
+          dependencyHash: true,
+        },
+      },
+      approvedByUser: { select: { id: true, name: true, email: true } },
     },
   });
 
   if (existing) {
     return {
-      approval: {
-        id: existing.id,
-        snapshotId: existing.snapshotId,
-        generationKey: existing.generationKey,
-        sequence: existing.sequence,
-        datasetFingerprint: existing.datasetFingerprint,
-        dependencyHash: existing.dependencyHash,
-        approvedByUserId: existing.approvedByUserId,
-        approvedByUserName: existing.approvedBy?.name ?? null,
-        approvedByUserEmail: existing.approvedBy?.email ?? null,
-        approvedAt: existing.approvedAt.toISOString(),
-        notes: existing.notes,
-      },
+      approval: toReportApprovalSummary(existing, snapshot),
       created: false,
     };
   }
 
-  // 4. Validate data readiness:
-  // Inspect stored readiness evidence to verify that data is ready to review.
-  const evidence = snapshot.readinessEvidence as {
-    outcome?: {
-      status?: string;
-      dataStatus?: string;
-      blockers?: Array<{ code: string }>;
-    };
-    dependencyEvidence?: {
-      outcome?: {
-        status?: string;
-        dataStatus?: string;
-        blockers?: Array<{ code: string }>;
-      };
-    };
-  } | null;
-
-  const outcome = evidence?.outcome ?? evidence?.dependencyEvidence?.outcome;
-  const dataStatus = outcome?.dataStatus;
-  const blockers = outcome?.blockers ?? [];
-  const dataBlockers = blockers.filter((b) => !b.code.startsWith("DESTINATION_"));
-
-  // Reject if dataStatus is explicitly not READY or if there are non-destination data blockers
-  if (dataStatus && dataStatus !== "READY") {
-    throw new ReportApprovalError("Cannot approve report: data is not ready to review", "data_not_ready", 409);
-  }
-  if (dataBlockers.length > 0) {
-    throw new ReportApprovalError("Cannot approve report: data has unresolved blockers", "data_not_ready", 409);
-  }
-  if (snapshot.readinessStatus === "NOT_READY" && !dataStatus) {
-    throw new ReportApprovalError("Cannot approve report: readiness status is NOT_READY", "data_not_ready", 409);
+  // 4. Validate captured data readiness:
+  const dataStatus = getSnapshotDataStatus(snapshot);
+  if (dataStatus !== "READY") {
+    throw new ReportApprovalError(
+      `Cannot approve report: snapshot captured data status is "${dataStatus}" (must be "READY")`,
+      "data_not_ready",
+      409,
+    );
   }
 
   // 5. Validate that snapshot has not been superseded by a newer sequence
@@ -160,8 +231,7 @@ export async function approveReportSnapshot(
     where: {
       workspaceId: snapshot.workspaceId,
       clientId: snapshot.clientId,
-      reportingWindowStart: snapshot.reportingWindowStart,
-      reportingWindowEnd: snapshot.reportingWindowEnd,
+      generationKey: snapshot.generationKey,
       sequence: { gt: snapshot.sequence },
     },
     select: { id: true },
@@ -174,64 +244,84 @@ export async function approveReportSnapshot(
     );
   }
 
-  // 6. Persist approval and audit event atomically
-  const created = await prisma.$transaction(async (tx) => {
-    const approval = await tx.reportSnapshotApproval.create({
-      data: {
-        workspaceId,
-        clientId,
-        snapshotId: snapshot.id,
-        generationKey: snapshot.generationKey,
-        sequence: snapshot.sequence,
-        datasetFingerprint: snapshot.datasetFingerprint,
-        dependencyHash: snapshot.dependencyHash,
-        approvedByUserId: userId,
-        notes: notes ?? null,
-      },
-      include: {
-        approvedBy: { select: { id: true, name: true, email: true } },
-      },
-    });
-
-    await tx.auditEvent.create({
-      data: {
-        workspaceId,
-        actorUserId: userId,
-        action: "report_snapshot.approved",
-        resource: "report_snapshot",
-        resourceId: snapshot.id,
-        metadata: {
-          approvalId: approval.id,
-          snapshotId: snapshot.id,
+  // 6. Persist approval and audit event atomically.
+  // Catch P2002 unique constraint violations so concurrent duplicate requests safely resolve.
+  try {
+    const created = await prisma.$transaction(async (tx) => {
+      const approval = await tx.reportSnapshotApproval.create({
+        data: {
+          workspaceId,
           clientId: snapshot.clientId,
-          generationKey: snapshot.generationKey,
-          sequence: snapshot.sequence,
-          datasetFingerprint: snapshot.datasetFingerprint,
-          dependencyHash: snapshot.dependencyHash,
-          notes: notes ?? null,
+          snapshotId: snapshot.id,
+          approvedByUserId: userId,
         },
-      },
+        include: {
+          snapshot: {
+            select: {
+              generationKey: true,
+              sequence: true,
+              datasetFingerprint: true,
+              dependencyHash: true,
+            },
+          },
+          approvedByUser: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          workspaceId,
+          actorUserId: userId,
+          action: "report_snapshot.approved",
+          resource: "report_snapshot",
+          resourceId: snapshot.id,
+          metadata: {
+            approvalId: approval.id,
+            snapshotId: snapshot.id,
+            clientId: snapshot.clientId,
+            generationKey: snapshot.generationKey,
+            sequence: snapshot.sequence,
+          },
+        },
+      });
+
+      return approval;
     });
 
-    return approval;
-  });
-
-  return {
-    approval: {
-      id: created.id,
-      snapshotId: created.snapshotId,
-      generationKey: created.generationKey,
-      sequence: created.sequence,
-      datasetFingerprint: created.datasetFingerprint,
-      dependencyHash: created.dependencyHash,
-      approvedByUserId: created.approvedByUserId,
-      approvedByUserName: created.approvedBy?.name ?? null,
-      approvedByUserEmail: created.approvedBy?.email ?? null,
-      approvedAt: created.approvedAt.toISOString(),
-      notes: created.notes,
-    },
-    created: true,
-  };
+    return {
+      approval: toReportApprovalSummary(created, snapshot),
+      created: true,
+    };
+  } catch (err: unknown) {
+    if (isPrismaUniqueConstraintError(err)) {
+      const raced = await prisma.reportSnapshotApproval.findUnique({
+        where: {
+          workspaceId_snapshotId: {
+            workspaceId,
+            snapshotId: snapshot.id,
+          },
+        },
+        include: {
+          snapshot: {
+            select: {
+              generationKey: true,
+              sequence: true,
+              datasetFingerprint: true,
+              dependencyHash: true,
+            },
+          },
+          approvedByUser: { select: { id: true, name: true, email: true } },
+        },
+      });
+      if (raced) {
+        return {
+          approval: toReportApprovalSummary(raced, snapshot),
+          created: false,
+        };
+      }
+    }
+    throw err;
+  }
 }
 
 /**
@@ -249,25 +339,20 @@ export async function getSnapshotApproval(
       },
     },
     include: {
-      approvedBy: { select: { id: true, name: true, email: true } },
+      snapshot: {
+        select: {
+          generationKey: true,
+          sequence: true,
+          datasetFingerprint: true,
+          dependencyHash: true,
+        },
+      },
+      approvedByUser: { select: { id: true, name: true, email: true } },
     },
   });
 
   if (!record) return null;
-
-  return {
-    id: record.id,
-    snapshotId: record.snapshotId,
-    generationKey: record.generationKey,
-    sequence: record.sequence,
-    datasetFingerprint: record.datasetFingerprint,
-    dependencyHash: record.dependencyHash,
-    approvedByUserId: record.approvedByUserId,
-    approvedByUserName: record.approvedBy?.name ?? null,
-    approvedByUserEmail: record.approvedBy?.email ?? null,
-    approvedAt: record.approvedAt.toISOString(),
-    notes: record.notes,
-  };
+  return toReportApprovalSummary(record);
 }
 
 /**
@@ -280,27 +365,28 @@ export async function getLatestReportApproval(
   const record = await prisma.reportSnapshotApproval.findFirst({
     where: {
       workspaceId,
-      generationKey,
+      snapshot: {
+        generationKey,
+      },
     },
-    orderBy: [{ sequence: "desc" }, { approvedAt: "desc" }],
+    orderBy: {
+      snapshot: {
+        sequence: "desc",
+      },
+    },
     include: {
-      approvedBy: { select: { id: true, name: true, email: true } },
+      snapshot: {
+        select: {
+          generationKey: true,
+          sequence: true,
+          datasetFingerprint: true,
+          dependencyHash: true,
+        },
+      },
+      approvedByUser: { select: { id: true, name: true, email: true } },
     },
   });
 
   if (!record) return null;
-
-  return {
-    id: record.id,
-    snapshotId: record.snapshotId,
-    generationKey: record.generationKey,
-    sequence: record.sequence,
-    datasetFingerprint: record.datasetFingerprint,
-    dependencyHash: record.dependencyHash,
-    approvedByUserId: record.approvedByUserId,
-    approvedByUserName: record.approvedBy?.name ?? null,
-    approvedByUserEmail: record.approvedBy?.email ?? null,
-    approvedAt: record.approvedAt.toISOString(),
-    notes: record.notes,
-  };
+  return toReportApprovalSummary(record);
 }

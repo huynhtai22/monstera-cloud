@@ -82,6 +82,7 @@ export async function POST(req: Request) {
       created: result.created,
       readiness: result.readiness,
       approval: result.approval,
+      lifecycle: result.lifecycle,
       lifecycleState: result.lifecycleState,
     });
   } catch (error: unknown) {
@@ -153,6 +154,7 @@ export async function GET(req: Request) {
       report: result.report,
       defaultWindow: result.defaultWindow,
       approval: result.approval,
+      lifecycle: result.lifecycle,
       lifecycleState: result.lifecycleState,
     });
   } catch (error: unknown) {

@@ -39,7 +39,9 @@ import { withSystemScope } from "@/lib/tenant-guard";
 import { PROVIDER_SOURCE_GRAINS } from "@/lib/provider-metric-grain";
 export { PROVIDER_SOURCE_GRAINS } from "@/lib/provider-metric-grain";
 import {
+  deriveReportLifecycle,
   deriveReportLifecycleState,
+  type ReportLifecycle,
   type ReportLifecycleState,
   type ReportApprovalSummary,
 } from "./report-lifecycle";
@@ -47,7 +49,8 @@ import {
   getSnapshotApproval,
   getLatestReportApproval,
 } from "./report-approval";
-export type { ReportLifecycleState, ReportApprovalSummary };
+export type { ReportLifecycle, ReportLifecycleState, ReportApprovalSummary };
+export { deriveReportLifecycle, deriveReportLifecycleState };
 
 export const BLUEPRINT_ID = "weekly-paid-media-performance";
 export const BLUEPRINT_VERSION = 1;
@@ -1204,6 +1207,7 @@ export type GenerateResult = {
     destinationState: ReportReadinessEvaluation["destination"]["state"];
   };
   approval: ReportApprovalSummary | null;
+  lifecycle: ReportLifecycle;
   lifecycleState: ReportLifecycleState;
 };
 
@@ -1647,19 +1651,23 @@ export async function generateWeeklyBlueprint(params: {
         storedReport.overview.readiness.destinationState === "verified" ||
         (storedReport.overview.verification.status === "VERIFIED" &&
           !storedReport.overview.verification.reasons.includes("destination_evidence_missing"));
-      const lifecycleState = deriveReportLifecycleState({
+      const lifecycle = deriveReportLifecycle({
         dataStatus,
         currentSnapshot: {
           id: result.row.id,
           generationKey: result.row.generationKey,
           sequence: result.row.sequence,
+          datasetFingerprint: (result.row as any).datasetFingerprint,
           dependencyHash: result.row.dependencyHash,
           freshness: postCommitFreshness,
         },
         activeApproval,
         latestReportApproval,
         destinationVerified,
+        destinationState: storedReport.overview.readiness.destinationState,
+        deliveryReceipts: ((result.row as any).destinationReceipts as any) ?? [],
       });
+      const lifecycleState = lifecycle.summaryLabel;
 
       if (result.kind === "existing") {
         return {
@@ -1674,6 +1682,7 @@ export async function generateWeeklyBlueprint(params: {
             destinationState: (result.row.readinessEvidence as { destinationState?: ReportReadinessEvaluation["destination"]["state"] }).destinationState ?? "unverified",
           },
           approval: activeApproval,
+          lifecycle,
           lifecycleState,
         };
       }
@@ -1683,6 +1692,7 @@ export async function generateWeeklyBlueprint(params: {
         created: true,
         readiness: storedReport.overview.readiness,
         approval: activeApproval,
+        lifecycle,
         lifecycleState,
       };
     } catch (error: unknown) {
@@ -1870,6 +1880,7 @@ export async function reopenWeeklyBlueprint(params: {
   report: BlueprintReport | null;
   defaultWindow: ReportingWindow;
   approval: ReportApprovalSummary | null;
+  lifecycle: ReportLifecycle;
   lifecycleState: ReportLifecycleState;
 }> {
   const { workspaceId, clientId, now = new Date() } = params;
@@ -1904,7 +1915,7 @@ export async function reopenWeeklyBlueprint(params: {
   if (!snapshot) {
     const readiness = await loadReportReadiness(workspaceId, window, { clientId, tx: prisma });
     const dataStatus = readiness.evaluations[0]?.dataStatus ?? "UNKNOWN";
-    const lifecycleState = deriveReportLifecycleState({
+    const lifecycle = deriveReportLifecycle({
       dataStatus,
       currentSnapshot: null,
       activeApproval: null,
@@ -1916,7 +1927,8 @@ export async function reopenWeeklyBlueprint(params: {
       report: null,
       defaultWindow: lastCompleteWeek(now),
       approval: null,
-      lifecycleState,
+      lifecycle,
+      lifecycleState: lifecycle.summaryLabel,
     };
   }
 
@@ -1948,19 +1960,23 @@ export async function reopenWeeklyBlueprint(params: {
     report?.overview?.readiness?.destinationState === "verified" ||
     (verification.status === "VERIFIED" && !snapshot.verificationReasons.includes("destination_evidence_missing"));
 
-  const lifecycleState = deriveReportLifecycleState({
+  const lifecycle = deriveReportLifecycle({
     dataStatus,
     currentSnapshot: {
       id: snapshot.id,
       generationKey: snapshot.generationKey,
       sequence: snapshot.sequence,
+      datasetFingerprint: snapshot.datasetFingerprint,
       dependencyHash: snapshot.dependencyHash,
       freshness,
     },
     activeApproval,
     latestReportApproval,
     destinationVerified,
+    destinationState: report?.overview?.readiness?.destinationState,
+    deliveryReceipts: (snapshot.destinationReceipts as any) ?? [],
   });
+  const lifecycleState = lifecycle.summaryLabel;
 
   return {
     client,
@@ -1982,6 +1998,7 @@ export async function reopenWeeklyBlueprint(params: {
     report,
     defaultWindow: lastCompleteWeek(now),
     approval: activeApproval,
+    lifecycle,
     lifecycleState,
   };
 }
