@@ -65,6 +65,7 @@ export const TENANT_GUARDED_MODELS = new Set([
   "DestinationDeliveryReceipt",
   // Verified weekly report blueprint (2026-09): direct workspaceId owners
   "ReportSnapshot",
+  "ReportSnapshotApproval",
   // Client provider account assignment (2026-09): direct workspaceId owners
   "ClientProviderAccountAssignment",
 ]);

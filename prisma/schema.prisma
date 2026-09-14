@@ -87,8 +87,9 @@ model User {
   platformRole   PlatformRole      @default(USER)
   accounts       Account[]
   sessions       Session[]
-  workspaces     WorkspaceMember[]
-  paymentOrders  PaymentOrder[]
+  workspaces              WorkspaceMember[]
+  paymentOrders           PaymentOrder[]
+  reportSnapshotApprovals ReportSnapshotApproval[]
 }
 
 model Workspace {
@@ -150,6 +151,7 @@ model Workspace {
   paymentOrders            PaymentOrder[]
   providerAccountHealth    ProviderAccountHealth[]
   reportSnapshots          ReportSnapshot[]
+  reportSnapshotApprovals  ReportSnapshotApproval[]
   clientAccountAssignments ClientProviderAccountAssignment[]
 
   @@index([subscriptionProvider, subscriptionEndsAt])
@@ -173,6 +175,7 @@ model Client {
   accountAssignmentsConfiguredAt DateTime?
   deliveryReceipts               DestinationDeliveryReceipt[]
   reportSnapshots                ReportSnapshot[]
+  reportSnapshotApprovals        ReportSnapshotApproval[]
   accountAssignments             ClientProviderAccountAssignment[]
 
   @@unique([workspaceId, id])
@@ -227,10 +230,38 @@ model ReportSnapshot {
   /// Composite FK mirrors PR #152's tenant pattern: the client MUST belong to
   /// the same workspace, enforced by the database, not application code.
   client    Client    @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  approvals ReportSnapshotApproval[]
 
   @@unique([generationKey, sequence])
   @@unique([generationKey, dependencyHash])
   @@index([workspaceId, clientId, generatedAt])
+}
+
+/// Durable human approval for an exact, immutable ReportSnapshot.
+/// Tenant-scoped, references the exact snapshot and its fingerprint/dependency hash.
+/// A snapshot can only be approved once per workspace (idempotent); newer snapshots
+/// for the same generationKey leave historical approvals intact but non-current.
+model ReportSnapshotApproval {
+  id                 String         @id @default(cuid())
+  workspaceId        String
+  clientId           String
+  snapshotId         String
+  generationKey      String
+  sequence           Int
+  datasetFingerprint String
+  dependencyHash     String
+  approvedByUserId   String
+  approvedAt         DateTime       @default(now())
+  notes              String?
+
+  workspace          Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client             Client         @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  snapshot           ReportSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  approvedBy         User           @relation(fields: [approvedByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, snapshotId])
+  @@index([workspaceId, clientId, approvedAt])
+  @@index([workspaceId, generationKey, sequence])
 }
 
 /// Authoritative client assignment for a provider account discovered via a root connection.
