@@ -14,8 +14,8 @@ async function fetchConfiguration(url: string): Promise<Configuration> {
   if (!res.ok) throw new Error("Configuration unavailable");
   return res.json();
 }
-export function ReportingConfiguration({ workspaceId, clientId, onSaved }: { workspaceId: string; clientId: string; onSaved?: () => void }) {
-  const [open, setOpen] = useState(false);
+export function ReportingConfiguration({ workspaceId, clientId, onSaved, defaultOpen }: { workspaceId: string; clientId: string; onSaved?: () => void; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
   const { data, error, isLoading, mutate } = useSWR(open ? `/api/reports/readiness/configuration?${new URLSearchParams({ workspaceId, clientId })}` : null, fetchConfiguration, { keepPreviousData: false, errorRetryCount: 0 });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");

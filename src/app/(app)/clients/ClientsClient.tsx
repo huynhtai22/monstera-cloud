@@ -50,6 +50,7 @@ import { ScheduleReportModal, type ReportScheduleData } from "@/components/clien
 import { AnomalyDetailsModal } from "@/components/clients/AnomalyDetailsModal";
 import type { MarketingAnomaly } from "@/lib/marketing-anomalies";
 import { ReportReadinessPanel, readinessFetcher } from "@/components/reports/ReportReadinessPanel";
+import { ClientSetupChecklistContainer } from "@/components/reports/ClientSetupChecklist";
 import type { ReportReadinessEvaluation } from "@/lib/report-readiness";
 import { parseRequestedClientId, withClientContext, withClientContextAndParams } from "@/lib/client-context";
 
@@ -660,6 +661,16 @@ export function ClientsClient() {
                       error={Boolean(readinessError)}
                       onRetry={() => void recheckReadiness()}
                     />
+
+                    {concreteClientId === c.id && activeWorkspaceId ? (
+                      <ClientSetupChecklistContainer
+                        key={`${activeWorkspaceId}:${c.id}`}
+                        workspaceId={activeWorkspaceId}
+                        clientId={c.id}
+                        clientName={c.name}
+                        evaluation={readinessByClient.get(c.id) ?? null}
+                      />
+                    ) : null}
 
                     {/* Marketing Anomaly Alert Banner */}
                     {(() => {
