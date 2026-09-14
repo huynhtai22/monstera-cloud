@@ -118,3 +118,55 @@ describe("guided client setup checklist component", () => {
     }
   });
 });
+
+describe("guided setup marketplace wording and recovery focus", () => {
+  const shopeeConfigured = {
+    role: "admin",
+    canEdit: true,
+    requirements: { providers: ["shopee"], destinations: ["google_sheets"], configuredAt: "2026-09-01T00:00:00.000Z" },
+    discovered: [{ provider: "shopee", accountId: "shop-1", assignedClientId: CLIENT, connectionIds: ["conn-shopee-1"] }],
+  };
+
+  it("marketplace row keeps account completeness and states Blueprint non-verification", () => {
+    const markup = render(setupState(shopeeConfigured));
+    assert.ok(markup.includes("Complete"), "account setup stays complete");
+    assert.ok(
+      markup.includes("Weekly Blueprint v1 does not currently verify this provider"),
+      "row must state non-verification",
+    );
+    assert.ok(!markup.includes("<select"), "no marketplace account picker appears");
+  });
+
+  it("paid-media rows receive no unsupported qualifier", () => {
+    const markup = render(setupState({
+      role: "admin",
+      canEdit: true,
+      requirements: { providers: ["meta_ads"], destinations: ["google_sheets"], configuredAt: "2026-09-01T00:00:00.000Z" },
+      discovered: [{ provider: "meta_ads", accountId: "act_1", assignedClientId: CLIENT, connectionIds: ["c1"] }],
+    }));
+    assert.ok(!markup.includes("does not currently verify"), "ads rows must stay unqualified");
+    assert.ok(markup.includes("Setup is sufficient to generate a Weekly Performance Blueprint."));
+  });
+
+  it("summary cannot imply verified-Blueprint readiness for required marketplace providers", () => {
+    const markup = render(setupState(shopeeConfigured));
+    assert.ok(!markup.includes("Setup is sufficient to generate a Weekly Performance Blueprint."));
+    assert.ok(markup.includes("Weekly Blueprint v1 cannot verify the required marketplace provider"));
+  });
+
+  it("checklist target is programmatically focusable and names the client", () => {
+    const markup = render(setupState({ role: "member", canEdit: false }));
+    assert.ok(markup.includes('id="reporting-setup"'), "anchor target must exist");
+    assert.ok(markup.includes('tabindex="-1"'), "anchor target must be programmatically focusable");
+    assert.ok(markup.includes('aria-label="Reporting setup for Setup Test Client"'));
+  });
+
+  it("member and viewer behavior is unchanged by the focus work", () => {
+    const memberMarkup = render(setupState({ role: "member", canEdit: false }));
+    assert.ok(memberMarkup.includes("Waiting for admin"));
+    assert.ok(!memberMarkup.includes("Configure reporting evidence"));
+    const viewerMarkup = render(setupState({ role: "viewer", canEdit: false }));
+    assert.ok(!viewerMarkup.includes("<button"));
+    assert.ok(viewerMarkup.includes("/reports?clientId="));
+  });
+});

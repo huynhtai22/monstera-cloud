@@ -6,6 +6,7 @@ import {
   SETUP_STATE_LABELS,
   clientSetupHref,
   deriveClientSetupState,
+  isSetupFocusFragment,
   type ChecklistDiscoveredInput,
   type ChecklistEvaluationInput,
   type DeriveClientSetupInput,
@@ -245,5 +246,100 @@ describe("guided client setup checklist state derivation", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe("guided setup marketplace truthfulness and recovery focus", () => {
+  const configuredShopee = {
+    requirements: { providers: ["shopee"], destinations: ["google_sheets"], configuredAt: "2026-09-01T00:00:00.000Z" },
+    discovered: [{ provider: "shopee", accountId: "shop-1", assignedClientId: CLIENT, connectionIds: ["conn-shopee-1"] }],
+  };
+
+  it("truthfulness 1: a required Shopee connection stays complete for account setup", () => {
+    const result = deriveClientSetupState(baseInput(configuredShopee));
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    const shopee = result.state.providers.find((p) => p.provider === "shopee");
+    assert.ok(shopee);
+    assert.equal(shopee.state, "complete");
+    assert.equal(shopee.blueprintSupported, false);
+  });
+
+  it("truthfulness 2: the Shopee row states Blueprint v1 does not verify the provider", () => {
+    const result = deriveClientSetupState(baseInput(configuredShopee));
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    const shopee = result.state.providers.find((p) => p.provider === "shopee");
+    assert.ok(shopee);
+    assert.ok(shopee.detail.includes("connection credentials"), "credential resolution must stay explained");
+    assert.ok(
+      shopee.detail.includes("Weekly Blueprint v1 does not currently verify this provider"),
+      "non-verification must be stated on the row",
+    );
+  });
+
+  it("truthfulness 3: required Lazada behaves equivalently", () => {
+    const result = deriveClientSetupState(baseInput({
+      requirements: { providers: ["lazada"], destinations: ["google_sheets"], configuredAt: "2026-09-01T00:00:00.000Z" },
+      discovered: [{ provider: "lazada", accountId: "seller-1", assignedClientId: CLIENT, connectionIds: ["conn-lazada-1"] }],
+    }));
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    const lazada = result.state.providers.find((p) => p.provider === "lazada");
+    assert.ok(lazada);
+    assert.equal(lazada.state, "complete");
+    assert.equal(lazada.blueprintSupported, false);
+    assert.ok(lazada.detail.includes("Weekly Blueprint v1 does not currently verify this provider"));
+  });
+
+  it("truthfulness 4: Meta, Google and TikTok receive no unsupported qualifier", () => {
+    const result = deriveClientSetupState(baseInput({
+      requirements: { providers: ["meta_ads", "google_ads", "tiktok_business"], destinations: ["google_sheets"], configuredAt: "2026-09-01T00:00:00.000Z" },
+      discovered: [
+        { provider: "meta_ads", accountId: "act_1", assignedClientId: CLIENT, connectionIds: ["c1"] },
+        { provider: "google_ads", accountId: "1112223333", assignedClientId: CLIENT, connectionIds: ["c2"] },
+        { provider: "tiktok_business", accountId: "adv-1", assignedClientId: CLIENT, connectionIds: ["c3"] },
+      ],
+    }));
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    for (const provider of result.state.providers) {
+      assert.equal(provider.blueprintSupported, true);
+      assert.ok(!provider.detail.includes("does not currently verify"), `${provider.provider} must not be qualified`);
+    }
+    assert.deepEqual(result.state.unsupportedRequiredProviders, []);
+  });
+
+  it("truthfulness 5: unsupported marketplace requirements are exposed without blocking generation", () => {
+    const result = deriveClientSetupState(baseInput(configuredShopee));
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.state.generationBlocked, false);
+    assert.deepEqual(result.state.unsupportedRequiredProviders, ["shopee"]);
+  });
+
+  it("truthfulness 6: an unassigned Shopee row keeps Sources recovery plus the verification note", () => {
+    const result = deriveClientSetupState(baseInput({
+      role: "member",
+      canEdit: false,
+      requirements: { providers: ["shopee"], destinations: ["google_sheets"], configuredAt: "2026-09-01T00:00:00.000Z" },
+      discovered: [],
+    }));
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    const shopee = result.state.providers.find((p) => p.provider === "shopee");
+    assert.ok(shopee);
+    assert.equal(shopee.state, "waiting-for-admin");
+    assert.ok(shopee.detail.includes("Weekly Blueprint v1 does not currently verify this provider"));
+    assert.ok(shopee.recovery?.href.includes("/sources"));
+  });
+
+  it("focus 1: only the exact checklist fragment requests focus", () => {
+    assert.equal(isSetupFocusFragment("#reporting-setup"), true);
+    assert.equal(isSetupFocusFragment(""), false);
+    assert.equal(isSetupFocusFragment(null), false);
+    assert.equal(isSetupFocusFragment(undefined), false);
+    assert.equal(isSetupFocusFragment("#other-section"), false);
+    assert.equal(isSetupFocusFragment("reporting-setup"), false);
   });
 });

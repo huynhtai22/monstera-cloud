@@ -33,6 +33,23 @@ export function clientSetupHref(clientId: string): string {
 export const ACCOUNT_DISCOVERY_PROVIDERS = ["meta_ads", "google_ads", "tiktok_business"] as const;
 export const CREDENTIAL_RESOLVED_PROVIDERS = ["shopee", "lazada"] as const;
 
+/**
+ * Weekly Blueprint v1 verification scope. Mirrors the canonical
+ * `BLUEPRINT_SUPPORTED_PROVIDERS` in `src/lib/report-blueprint.ts` (which is
+ * server-only: node:crypto + Prisma — so the list is repeated here instead of
+ * imported to keep this presentation module browser-safe). Connection and
+ * assignment completeness is tracked independently from verification support.
+ */
+export const BLUEPRINT_V1_SUPPORTED_PROVIDERS = ["google_ads", "meta_ads", "tiktok_business"] as const;
+
+export function isBlueprintV1Supported(provider: string): boolean {
+  return (BLUEPRINT_V1_SUPPORTED_PROVIDERS as readonly string[]).includes(provider);
+}
+
+export function isSetupFocusFragment(value: string | null | undefined): boolean {
+  return value === `#${SETUP_SECTION_ANCHOR}`;
+}
+
 export const PROVIDER_LABELS: Record<string, string> = {
   meta_ads: "Meta Ads",
   google_ads: "Google Ads",
@@ -132,6 +149,10 @@ export interface ProviderSetupState {
   state: SetupStepState;
   detail: string;
   discovery: "account-picker" | "credential-resolved" | "unknown";
+  /** Whether Weekly Blueprint v1 verifies this provider. Independent from
+   * account/connection completeness: a marketplace row can be `complete`
+   * while unsupported. */
+  blueprintSupported: boolean;
   recovery: SetupRecovery | null;
 }
 
@@ -150,6 +171,9 @@ export interface ClientSetupState {
   canEdit: boolean;
   requirementsConfigured: boolean;
   generationBlocked: boolean;
+  /** Required providers that Weekly Blueprint v1 does not verify. Exposed so
+   * the summary can qualify readiness without changing generation gating. */
+  unsupportedRequiredProviders: string[];
   readinessStatus: ReportReadinessStatus | "unevaluated";
   dataStatus: ReportReadinessStatus | "unevaluated";
   recoveryHref: string;
@@ -260,6 +284,10 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
   const providers: ProviderSetupState[] = requiredProviders.map((provider) => {
     const label = providerLabel(provider);
     const assigned = assignedForClient.filter((d) => d.provider === provider);
+    const blueprintSupported = isBlueprintV1Supported(provider);
+    const verificationNote = blueprintSupported
+      ? ""
+      : " Weekly Blueprint v1 does not currently verify this provider.";
     const discovery = (ACCOUNT_DISCOVERY_PROVIDERS as readonly string[]).includes(provider)
       ? ("account-picker" as const)
       : (CREDENTIAL_RESOLVED_PROVIDERS as readonly string[]).includes(provider)
@@ -271,17 +299,18 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
         label,
         state: "complete" as SetupStepState,
         detail: discovery === "credential-resolved"
-          ? `${assigned.length} linked shop resolves through the ${label} connection credentials.`
+          ? `Account setup complete. The shop resolves through the ${label} connection credentials.${verificationNote}`
           : `${assigned.length} assigned ${assigned.length === 1 ? "account" : "accounts"}.`,
         discovery,
+        blueprintSupported,
         recovery: null,
       };
     }
     const hasConnection = providersWithConnection.has(provider);
     const detail = discovery === "credential-resolved"
       ? hasConnection
-        ? `The shop resolves through the ${label} connection credentials — link it to this client in Sources.`
-        : `Connect ${label} in Sources first; the shop resolves through the connection credentials.`
+        ? `The shop resolves through the ${label} connection credentials — link it to this client in Sources.${verificationNote}`
+        : `Connect ${label} in Sources first; the shop resolves through the connection credentials.${verificationNote}`
       : hasConnection
         ? `A ${label} connection exists but no account is assigned to this client yet.`
         : `No ${label} connection or assigned account was found for this client.`;
@@ -291,9 +320,11 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
       state: canEdit ? ("action-required" as SetupStepState) : ("waiting-for-admin" as SetupStepState),
       detail,
       discovery,
+      blueprintSupported,
       recovery: { href: sourcesHref(clientId), label: `Assign a ${label} account in Sources` },
     };
   });
+  const unsupportedRequiredProviders = requiredProviders.filter((provider) => !isBlueprintV1Supported(provider));
 
   const requirementsSection: SetupSectionState = requirementsConfigured
     ? {
@@ -552,6 +583,7 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
       canEdit,
       requirementsConfigured,
       generationBlocked,
+      unsupportedRequiredProviders,
       readinessStatus,
       dataStatus,
       recoveryHref,

@@ -225,6 +225,9 @@ test.describe("guided client reporting setup", () => {
     await expect(checklist.getByText(/Required providers:.*Meta Ads/i).first()).toBeVisible({ timeout: 15_000 });
     // The checklist now names the missing assignment with a direct Sources recovery action.
     await expect(checklist.getByRole("link", { name: /assign.*sources/i }).first()).toBeVisible({ timeout: 15_000 });
+    // Saving and revalidating must not steal keyboard focus.
+    const activeAfterSave = await page.evaluate(() => document.activeElement?.id ?? null);
+    expect(activeAfterSave).not.toBe("reporting-setup");
   });
 
   test("admin journey: assign the required account and observe completion", async ({ browser }) => {
@@ -285,5 +288,27 @@ test.describe("guided client reporting setup", () => {
     await expect(betaPage.getByRole("region", { name: /Reporting setup for/ })).toBeVisible();
     await expect(betaPage.getByText(clientAName)).toBeHidden();
     await expect(betaPage.getByText(clientBName)).toBeHidden();
+  });
+
+  test("recovery focus follows the fragment without stealing", async ({ browser }) => {
+    test.setTimeout(120_000);
+    const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", adminSession);
+
+    await page.goto(`/clients?clientId=${clientAId}#reporting-setup`, { waitUntil: "domcontentloaded" });
+    await expect
+      .poll(async () => page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? null))
+      .toContain(clientAName);
+
+    await page.goto(`/clients?clientId=${clientBId}`, { waitUntil: "domcontentloaded" });
+    await expect
+      .poll(async () => page.evaluate(() => document.activeElement?.tagName ?? null))
+      .toBe("BODY");
+
+    await page.goto(`/clients?clientId=${clientBId}#reporting-setup`, { waitUntil: "domcontentloaded" });
+    await expect
+      .poll(async () => page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? null))
+      .toContain(clientBName);
+    const label = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? "");
+    expect(label).not.toContain(clientAName);
   });
 });

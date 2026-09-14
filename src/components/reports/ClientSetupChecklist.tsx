@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import useSWR from "swr";
 import { ReportingConfiguration } from "./ReportingConfiguration";
 import {
@@ -7,6 +8,8 @@ import {
   SETUP_STATE_LABELS,
   clientSetupHref,
   deriveClientSetupState,
+  isSetupFocusFragment,
+  providerLabel,
   type ClientSetupState,
   type SetupRole,
   type SetupSectionState,
@@ -83,6 +86,23 @@ function SectionItem({ section, scope, showLinks }: { section: SetupSectionState
 export function ClientSetupChecklist({ state, onConfigurationSaved }: { state: ClientSetupState; onConfigurationSaved?: () => void }) {
   const scope = `${state.clientName}`;
   const showLinks = state.role !== "viewer";
+  const unsupportedLabels = state.unsupportedRequiredProviders.map(providerLabel);
+  const overallState: SetupStepState = state.generationBlocked
+    ? (state.canEdit ? "action-required" : "waiting-for-admin")
+    : unsupportedLabels.length > 0 ? "needs-attention" : "complete";
+  const sectionRef = useRef<HTMLElement>(null);
+  // Move keyboard and assistive-technology focus to the checklist only when
+  // the checklist was the explicit recovery target. Mount-only: saves,
+  // revalidation and fragment-less visits never steal focus, and a remount
+  // always represents the currently selected client.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!isSetupFocusFragment(window.location.hash)) return;
+    const frame = requestAnimationFrame(() => {
+      sectionRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
   const ordered = [
     state.sections.requirements,
     state.sections.accounts,
@@ -92,20 +112,19 @@ export function ClientSetupChecklist({ state, onConfigurationSaved }: { state: C
     state.sections.delivery,
   ];
   return (
-    <section aria-label={`Reporting setup for ${state.clientName}`} id={SETUP_SECTION_ANCHOR} className="my-3 min-w-0 rounded-xl border border-line bg-canvas/50 p-3 sm:p-4">
+    <section ref={sectionRef} tabIndex={-1} aria-label={`Reporting setup for ${state.clientName}`} id={SETUP_SECTION_ANCHOR} className="my-3 min-w-0 scroll-mt-20 rounded-xl border border-line bg-canvas/50 p-3 focus-visible:ring-2 focus-visible:ring-white/30 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-xs font-semibold text-ink">Reporting setup</h3>
-        <StateBadge
-          state={state.generationBlocked ? (state.canEdit ? "action-required" : "waiting-for-admin") : "complete"}
-          scope={`overall setup for ${scope}`}
-        />
+        <StateBadge state={overallState} scope={`overall setup for ${scope}`} />
       </div>
       <p className="mt-2 text-xs leading-relaxed text-ink-mute">
         {state.generationBlocked
           ? state.canEdit
             ? "Finish the steps below, then generate the Weekly Performance Blueprint."
             : "An owner or admin must finish the steps below before Blueprint generation is available."
-          : "Setup is sufficient to generate a Weekly Performance Blueprint."}
+          : unsupportedLabels.length > 0
+            ? `Setup prerequisites are complete, but Weekly Blueprint v1 cannot verify the required marketplace provider${unsupportedLabels.length === 1 ? "" : "s"} listed below: ${unsupportedLabels.join(", ")}.`
+            : "Setup is sufficient to generate a Weekly Performance Blueprint."}
       </p>
       <ol className="mt-3 space-y-2">
         {ordered.map((section) => {
