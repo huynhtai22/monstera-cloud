@@ -669,6 +669,8 @@ export function ClientsClient() {
                         clientId={c.id}
                         clientName={c.name}
                         evaluation={readinessByClient.get(c.id) ?? null}
+                        evaluationLoading={readinessLoading || readinessValidating}
+                        onRequestReadinessRefresh={() => recheckReadiness()}
                       />
                     ) : null}
 

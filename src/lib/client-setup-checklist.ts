@@ -50,6 +50,34 @@ export function isSetupFocusFragment(value: string | null | undefined): boolean 
   return value === `#${SETUP_SECTION_ANCHOR}`;
 }
 
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Canonical readiness request key for the checklist. Returns null unless the
+ * request would be well-formed: a workspace/client scope plus either both
+ * window dates or neither (dates omitted lets the server apply its default
+ * complete week). Never emits a half-specified or malformed window.
+ */
+export function readinessRequestKey(input: {
+  workspaceId?: string | null;
+  clientId?: string | null;
+  windowStart?: string | null;
+  windowEnd?: string | null;
+}): string | null {
+  const { workspaceId, clientId, windowStart, windowEnd } = input;
+  if (!workspaceId || !clientId) return null;
+  const hasStart = Boolean(windowStart);
+  const hasEnd = Boolean(windowEnd);
+  if (hasStart !== hasEnd) return null;
+  if (hasStart && hasEnd && (!DATE_PATTERN.test(windowStart!) || !DATE_PATTERN.test(windowEnd!))) return null;
+  const params = new URLSearchParams({ workspaceId, clientId });
+  if (hasStart && hasEnd) {
+    params.set("start", windowStart!);
+    params.set("end", windowEnd!);
+  }
+  return `/api/reports/readiness?${params.toString()}`;
+}
+
 export const PROVIDER_LABELS: Record<string, string> = {
   meta_ads: "Meta Ads",
   google_ads: "Google Ads",
@@ -94,6 +122,13 @@ export interface ChecklistDiscoveredInput {
   connectionIds: string[];
 }
 
+export type DiscoveryStatus = "idle" | "loading" | "ready" | "error";
+
+export interface DiscoveryStateInput {
+  status: DiscoveryStatus;
+  accounts: ChecklistDiscoveredInput[];
+}
+
 export interface ChecklistConfigurationAccountInput {
   connectionId: string;
   accountId: string;
@@ -124,10 +159,17 @@ export interface DeriveClientSetupInput {
   clientName: string;
   role: SetupRole;
   canEdit: boolean;
+  /** Whether the operator may perform the existing member-authorized account
+   * assignment operation. Separate from requirements editing: members can
+   * assign accounts but cannot change requirements or overrides. */
+  canManageAssignments: boolean;
   requirements: ChecklistRequirementsInput;
-  discovered: ChecklistDiscoveredInput[];
+  discovery: DiscoveryStateInput;
   configurationAccounts: ChecklistConfigurationAccountInput[];
   evaluation: ChecklistEvaluationInput | null;
+  /** True while readiness is being revalidated after a saved configuration
+   * change. Data sections render as rechecking instead of current. */
+  evaluationStale?: boolean;
 }
 
 export interface SetupRecovery {
@@ -267,12 +309,12 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
   // (POST /api/reports/blueprint → requirements_not_configured). No extra gates.
   const generationBlocked = !requirementsConfigured;
 
-  const assignedForClient = input.discovered.filter((d) => d.assignedClientId === clientId);
+  const assignedForClient = input.discovery.accounts.filter((d) => d.assignedClientId === clientId);
   const providersWithConnection = new Set(
-    input.discovered.flatMap((d) => (d.connectionIds.length > 0 ? [d.provider] : [])),
+    input.discovery.accounts.flatMap((d) => (d.connectionIds.length > 0 ? [d.provider] : [])),
   );
   for (const account of input.configurationAccounts) {
-    const match = input.discovered.find(
+    const match = input.discovery.accounts.find(
       (d) => d.connectionIds.includes(account.connectionId) || d.accountId === account.accountId,
     );
     if (match) providersWithConnection.add(match.provider);
@@ -317,7 +359,7 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
     return {
       provider,
       label,
-      state: canEdit ? ("action-required" as SetupStepState) : ("waiting-for-admin" as SetupStepState),
+      state: input.canManageAssignments ? ("action-required" as SetupStepState) : ("waiting-for-admin" as SetupStepState),
       detail,
       discovery,
       blueprintSupported,
@@ -325,6 +367,9 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
     };
   });
   const unsupportedRequiredProviders = requiredProviders.filter((provider) => !isBlueprintV1Supported(provider));
+
+  const discoveryPending = input.discovery.status === "idle" || input.discovery.status === "loading";
+  const discoveryFailed = input.discovery.status === "error";
 
   const requirementsSection: SetupSectionState = requirementsConfigured
     ? {
@@ -345,7 +390,24 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
     };
 
   const accountsSection: SetupSectionState = (() => {
-    if (requiredProviders.length === 0) {
+    if (discoveryPending) {
+      return {
+        id: "accounts" as const,
+        title: "Provider accounts",
+        state: "needs-attention" as SetupStepState,
+        summary: "Checking assigned accounts. No action is needed until the check finishes.",
+        recovery: null,
+      };
+    }
+    if (discoveryFailed) {
+      return {
+        id: "accounts" as const,
+        title: "Provider accounts",
+        state: "needs-attention" as SetupStepState,
+        summary: "Assigned-account status is unavailable right now. Retry the setup check to refresh it.",
+        recovery: null,
+      };
+    }    if (requiredProviders.length === 0) {
       return {
         id: "accounts" as const,
         title: "Provider accounts",
@@ -369,7 +431,7 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
     return {
       id: "accounts" as const,
       title: "Provider accounts",
-      state: canEdit ? ("action-required" as SetupStepState) : ("waiting-for-admin" as SetupStepState),
+      state: input.canManageAssignments ? ("action-required" as SetupStepState) : ("waiting-for-admin" as SetupStepState),
       summary: `Missing assignments: ${missing.map((p) => p.label).join(", ")}.`,
       recovery: { href: sourcesHref(clientId), label: "Assign accounts in Sources" },
     };
@@ -377,8 +439,18 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
 
   const readinessStatus = evaluation?.status ?? "unevaluated";
   const dataStatus = evaluation?.dataStatus ?? "unevaluated";
+  const staleCopy = "Rechecking readiness for the saved configuration. These results may still reflect the previous configuration.";
 
   const dataSection: SetupSectionState = (() => {
+    if (input.evaluationStale && evaluation) {
+      return {
+        id: "data" as const,
+        title: "Reporting data",
+        state: "needs-attention" as SetupStepState,
+        summary: staleCopy,
+        recovery: null,
+      };
+    }
     if (!evaluation) {
       return {
         id: "data" as const,
@@ -422,6 +494,15 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
   const contextSection: SetupSectionState = (() => {
     const overrideCount = input.configurationAccounts.filter((a) => a.hasOverride).length;
     const overrideNote = overrideCount > 0 ? ` ${overrideCount} recorded account override${overrideCount === 1 ? "" : "s"}.` : "";
+    if (input.evaluationStale && evaluation) {
+      return {
+        id: "context" as const,
+        title: "Reporting context",
+        state: "needs-attention" as SetupStepState,
+        summary: staleCopy,
+        recovery: null,
+      };
+    }
     if (!evaluation) {
       return {
         id: "context" as const,
@@ -481,7 +562,15 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
   })();
 
   const readinessSection: SetupSectionState = (() => {
-    if (!evaluation) {
+    if (input.evaluationStale && evaluation) {
+      return {
+        id: "readiness" as const,
+        title: "Readiness",
+        state: "needs-attention" as SetupStepState,
+        summary: staleCopy,
+        recovery: null,
+      };
+    }    if (!evaluation) {
       return {
         id: "readiness" as const,
         title: "Readiness",
@@ -595,7 +684,7 @@ export function deriveClientSetupState(input: DeriveClientSetupInput): SetupDeri
         readiness: readinessSection,
         delivery: deliverySection,
       },
-      providers,
+      providers: input.discovery.status === "ready" ? providers : [],
       blockers,
     },
   };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { ReportingConfiguration } from "./ReportingConfiguration";
 import {
@@ -10,7 +10,9 @@ import {
   deriveClientSetupState,
   isSetupFocusFragment,
   providerLabel,
+  readinessRequestKey,
   type ClientSetupState,
+  type DiscoveryStatus,
   type SetupRole,
   type SetupSectionState,
   type SetupStepState,
@@ -224,6 +226,8 @@ export function ClientSetupChecklistContainer({
   windowStart,
   windowEnd,
   evaluation: providedEvaluation,
+  evaluationLoading = false,
+  onRequestReadinessRefresh,
 }: {
   workspaceId: string;
   clientId: string;
@@ -231,17 +235,27 @@ export function ClientSetupChecklistContainer({
   windowStart?: string;
   windowEnd?: string;
   evaluation?: ReportReadinessEvaluation | null;
+  /** True while the parent is still resolving its own readiness evaluation.
+   * Suppresses a duplicate child request for the same evaluation. */
+  evaluationLoading?: boolean;
+  /** Explicit parent refresh contract: invoked after a successful
+   * configuration save so parent-supplied readiness is revalidated. May
+   * return the parent revalidation promise when available. */
+  onRequestReadinessRefresh?: () => Promise<unknown> | void;
 }) {
   const configurationKey = workspaceId && clientId
     ? `/api/reports/readiness/configuration?${new URLSearchParams({ workspaceId, clientId })}`
     : null;
   const discoveredKey = workspaceId ? `/api/workspaces/${workspaceId}/client-accounts` : null;
-  const readinessParams = new URLSearchParams({ workspaceId, clientId });
-  if (windowStart) readinessParams.set("start", windowStart);
-  if (windowEnd) readinessParams.set("end", windowEnd);
-  const readinessKey = workspaceId && clientId && providedEvaluation === undefined && windowStart && windowEnd
-    ? `/api/reports/readiness?${readinessParams.toString()}`
-    : null;
+  // An explicit null parent evaluation means "absent": the child may fetch a
+  // scoped fallback. Only a usable parent evaluation or a loading parent
+  // suppresses the child request. Partial date pairs never produce a key.
+  const requestedKey = readinessRequestKey({ workspaceId, clientId, windowStart, windowEnd });
+  const parentEvaluationUsable = providedEvaluation != null
+    && providedEvaluation.workspaceId === workspaceId
+    && providedEvaluation.clientId === clientId
+    && (!windowStart || !windowEnd || (providedEvaluation.window.start === windowStart && providedEvaluation.window.end === windowEnd));
+  const readinessKey = requestedKey && !parentEvaluationUsable && !evaluationLoading ? requestedKey : null;
 
   const {
     data: configuration,
@@ -249,8 +263,24 @@ export function ClientSetupChecklistContainer({
     isLoading: configurationLoading,
     mutate: retryConfiguration,
   } = useSWR<ConfigurationResponse>(configurationKey, jsonFetcher, { errorRetryCount: 1 });
-  const { data: discovered, mutate: retryDiscovered } = useSWR<DiscoveredResponse>(discoveredKey, jsonFetcher, { errorRetryCount: 1 });
-  const { data: readiness } = useSWR<{ evaluation?: ReportReadinessEvaluation }>(readinessKey, jsonFetcher, { errorRetryCount: 1 });
+  const {
+    data: discovered,
+    error: discoveredError,
+    isLoading: discoveredLoading,
+    mutate: retryDiscovered,
+  } = useSWR<DiscoveredResponse>(discoveredKey, jsonFetcher, { errorRetryCount: 1 });
+  const {
+    data: readiness,
+    mutate: retryReadiness,
+  } = useSWR<{ evaluation?: ReportReadinessEvaluation }>(readinessKey, jsonFetcher, { errorRetryCount: 1 });
+
+  // Tracks saves whose readiness revalidation is still in flight. While set,
+  // displayed readiness is qualified as rechecking instead of current. Clears
+  // when the displayed evaluation postdates the save, or when the
+  // container-owned request settles. Remounts (workspace/client switches)
+  // reset it, so a stale flag can never follow another client.
+  const [pendingSaveRefresh, setPendingSaveRefresh] = useState(false);
+  const saveEpochRef = useRef(0);
 
   if (!workspaceId || !clientId) return null;
   if (configurationLoading) {
@@ -270,53 +300,83 @@ export function ClientSetupChecklistContainer({
   }
 
   const fetchedEvaluation = readiness?.evaluation;
-  const windowMatches = !windowStart || !windowEnd || !fetchedEvaluation
-    || (fetchedEvaluation.window.start === windowStart && fetchedEvaluation.window.end === windowEnd);
-  const scopedProvided = providedEvaluation
-    && providedEvaluation.workspaceId === workspaceId
-    && providedEvaluation.clientId === clientId
-    && (!windowStart || !windowEnd || (providedEvaluation.window.start === windowStart && providedEvaluation.window.end === windowEnd));
-  // Never retain another workspace/client/window result.
-  const evaluation = (scopedProvided ? providedEvaluation : null)
-    ?? (windowMatches ? fetchedEvaluation ?? null : null);
+  // Never retain another workspace/client/window result. Default-window
+  // fetches accept the server-computed window; explicit windows must match.
+  const fetchedUsable = fetchedEvaluation
+    && fetchedEvaluation.workspaceId === workspaceId
+    && fetchedEvaluation.clientId === clientId
+    && (!windowStart || !windowEnd || (fetchedEvaluation.window.start === windowStart && fetchedEvaluation.window.end === windowEnd))
+    ? fetchedEvaluation
+    : null;
+  const evaluation = (parentEvaluationUsable ? providedEvaluation : null) ?? fetchedUsable;
+  const discoveryStatus: DiscoveryStatus = !discoveredKey ? "idle" : discoveredError ? "error" : discoveredLoading || !discovered ? "loading" : "ready";
 
   const role: SetupRole = configuration.role
     ?? (configuration.canEdit ? "admin" : "viewer");
+  // Assignment permission mirrors the authoritative assignment route's actual
+  // minimum role (member). Viewers stay read-only; the fallback role above
+  // already fails closed to viewer when the server omits it.
+  const canManageAssignments = role === "owner" || role === "admin" || role === "member";
   const derived = deriveClientSetupState({
     workspaceId,
     clientId,
     clientName: clientName ?? clientId,
     role,
     canEdit: configuration.canEdit,
+    canManageAssignments,
     requirements: {
       providers: configuration.requiredProviders ?? [],
       destinations: configuration.requiredDestinations ?? [],
       configuredAt: configuration.requirementsConfiguredAt,
     },
-    discovered: (discovered?.accounts ?? []).map((account) => ({
-      provider: account.provider,
-      accountId: account.accountId,
-      assignedClientId: account.assignedClient?.id ?? null,
-      connectionIds: [
-        ...(account.authoritativeConnectionId ? [account.authoritativeConnectionId] : []),
-        ...account.availableConnections.map((connection) => connection.id),
-      ],
-    })),
+    discovery: {
+      status: discoveryStatus,
+      accounts: (discovered?.accounts ?? []).map((account) => ({
+        provider: account.provider,
+        accountId: account.accountId,
+        assignedClientId: account.assignedClient?.id ?? null,
+        connectionIds: [
+          ...(account.authoritativeConnectionId ? [account.authoritativeConnectionId] : []),
+          ...account.availableConnections.map((connection) => connection.id),
+        ],
+      })),
+    },
     configurationAccounts: (configuration.accounts ?? []).map((account) => ({
       connectionId: account.connectionId,
       accountId: account.accountId,
       hasOverride: Boolean(account.context?.overrideAt),
     })),
     evaluation: evaluation ?? null,
+    evaluationStale: pendingSaveRefresh && evaluation != null,
   });
   if (!derived.ok) return null;
+
+  const handleConfigurationSaved = () => {
+    const epoch = ++saveEpochRef.current;
+    setPendingSaveRefresh(true);
+    const refreshes: Array<Promise<unknown>> = [retryConfiguration(), retryDiscovered()];
+    if (readinessKey) {
+      // Revalidate the exact readiness key (default or explicit window).
+      refreshes.push(retryReadiness());
+    }
+    // Parent-owned readiness: await the parent revalidation when it exposes
+    // its refresh promise so the stale flag clears exactly when fresh data
+    // has arrived, never on an older save's completion.
+    refreshes.push(Promise.resolve(onRequestReadinessRefresh?.()));
+    void Promise.allSettled(refreshes).then(() => {
+      if (saveEpochRef.current === epoch) setPendingSaveRefresh(false);
+    });
+  };
+
   return (
-    <ClientSetupChecklist
-      state={derived.state}
-      onConfigurationSaved={() => {
-        void retryConfiguration();
-        void retryDiscovered();
-      }}
-    />
+    <>
+      {discoveredError ? (
+        <div role="alert" className="my-3 rounded-xl border border-line p-3 text-xs text-ink-mute sm:p-4">
+          <p>Assigned-account status is unavailable right now. Existing assignments were not changed.</p>
+          <button type="button" onClick={() => void retryDiscovered()} className="mt-2 underline">Retry discovery</button>
+        </div>
+      ) : null}
+      <ClientSetupChecklist state={derived.state} onConfigurationSaved={handleConfigurationSaved} />
+    </>
   );
 }
