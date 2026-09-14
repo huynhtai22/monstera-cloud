@@ -9,9 +9,29 @@ import {
   deriveClientSetupState,
   type ClientSetupState,
 } from "../../lib/client-setup-checklist";
+import type { ChecklistEvaluationInput } from "../../lib/client-setup-checklist";
 
 const WORKSPACE = "ws-setup-1";
 const CLIENT = "client-setup-1";
+
+function readyEvaluation(): ChecklistEvaluationInput {
+  return {
+    workspaceId: WORKSPACE,
+    clientId: CLIENT,
+    status: "READY",
+    dataStatus: "READY",
+    dataBlockers: [],
+    dataWarnings: [],
+    blockers: [],
+    warnings: [],
+    requiredProviders: ["meta_ads"],
+    requiredProvidersBasis: "explicit",
+    providers: [],
+    destination: { state: "verified", configuredCount: 1, required: ["google_sheets"], receipts: [] },
+    currencies: ["USD"],
+    timezones: ["Asia/Ho_Chi_Minh"],
+  };
+}
 
 function setupState(overrides: Record<string, unknown> = {}): ClientSetupState {
   const result = deriveClientSetupState({
@@ -20,8 +40,9 @@ function setupState(overrides: Record<string, unknown> = {}): ClientSetupState {
     clientName: "Setup Test Client",
     role: "member",
     canEdit: false,
+    canManageAssignments: true,
     requirements: { providers: [], destinations: [], configuredAt: null },
-    discovered: [],
+    discovery: { status: "ready", accounts: [] },
     configurationAccounts: [],
     evaluation: null,
     ...overrides,
@@ -168,5 +189,69 @@ describe("guided setup marketplace wording and recovery focus", () => {
     const viewerMarkup = render(setupState({ role: "viewer", canEdit: false }));
     assert.ok(!viewerMarkup.includes("<button"));
     assert.ok(viewerMarkup.includes("/reports?clientId="));
+  });
+});
+
+describe("guided setup remediation: actionable permissions and async discovery", () => {
+  const memberMissingAssignment = {
+    role: "member",
+    canEdit: false,
+    canManageAssignments: true,
+    requirements: { providers: ["meta_ads"], destinations: ["google_sheets"], configuredAt: "2026-09-01T00:00:00.000Z" },
+    discovery: { status: "ready", accounts: [] },
+  };
+
+  it("remediation 1: member sees Action required with the Sources link for assignments", () => {
+    const markup = render(setupState(memberMissingAssignment));
+    assert.ok(markup.includes("Action required"), "assignment step must read actionable for members");
+    assert.ok(markup.includes("/sources?"), "member keeps the authorized Sources recovery link");
+    assert.ok(!markup.includes("Configure reporting evidence"), "member still gets no requirements controls");
+  });
+
+  it("remediation 3: member still waits for admin on requirements", () => {
+    const markup = render(setupState({ role: "member", canEdit: false, canManageAssignments: true }));
+    assert.ok(markup.includes("Waiting for admin"));
+  });
+
+  it("remediation 4: viewer receives no assignment or configuration mutation link", () => {
+    const markup = render(setupState({
+      role: "viewer",
+      canEdit: false,
+      canManageAssignments: false,
+      requirements: { providers: ["meta_ads"], destinations: ["google_sheets"], configuredAt: "2026-09-01T00:00:00.000Z" },
+      discovery: { status: "ready", accounts: [] },
+    }));
+    assert.ok(!markup.includes("/sources?"), "viewer must receive no assignment link");
+    assert.ok(!markup.includes("Configure reporting evidence"), "viewer must receive no configuration control");
+    assert.ok(markup.includes("/reports?clientId="), "viewer keeps the read-only report link");
+  });
+
+  it("remediation 7: loading discovery renders a checking state without provider rows", () => {
+    const markup = render(setupState({
+      requirements: { providers: ["meta_ads"], destinations: ["google_sheets"], configuredAt: "2026-09-01T00:00:00.000Z" },
+      discovery: { status: "loading", accounts: [] },
+    }));
+    assert.ok(markup.toLowerCase().includes("checking"), "loading state must be visible");
+    assert.ok(!markup.includes("Missing assignments"), "no false missing-assignment verdict while loading");
+    assert.ok(!markup.includes('aria-label="Meta Ads for'), "no provider rows until discovery succeeds");
+  });
+
+  it("remediation 8/9: discovery error renders retry guidance without missing assignments", () => {
+    const markup = render(setupState({
+      requirements: { providers: ["meta_ads"], destinations: ["google_sheets"], configuredAt: "2026-09-01T00:00:00.000Z" },
+      discovery: { status: "error", accounts: [] },
+    }));
+    assert.ok(!markup.includes("Missing assignments"), "error must not read as missing assignments");
+    assert.match(markup, /unavailable|retry/i);
+  });
+
+  it("remediation 17: stale readiness renders rechecking copy in data sections", () => {
+    const markup = render(setupState({
+      requirements: { providers: ["meta_ads"], destinations: ["google_sheets"], configuredAt: "2026-09-01T00:00:00.000Z" },
+      discovery: { status: "ready", accounts: [] },
+      evaluation: readyEvaluation(),
+      evaluationStale: true,
+    }));
+    assert.match(markup, /recheck/i);
   });
 });

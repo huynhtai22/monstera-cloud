@@ -201,6 +201,21 @@ test.describe("guided client reporting setup", () => {
     ).toHaveAttribute("href", `/clients?clientId=${clientAId}#reporting-setup`);
   });
 
+  test("member journey: missing assignments stay actionable with the Sources link", async ({ browser }) => {
+    test.setTimeout(120_000);
+    const { page } = await sharedSession(browser, MEMBER_EMAIL, MEMBER_PASSWORD, memberSession);
+    // Client B ships with Meta Ads required but no assigned account yet.
+    await page.goto(`/clients?clientId=${clientBId}`, { waitUntil: "domcontentloaded" });
+
+    const checklist = page.getByRole("region", { name: `Reporting setup for ${clientBName}` });
+    await expect(checklist).toBeVisible();
+    await expect(checklist.getByText("Missing assignments: Meta Ads.").first()).toBeVisible({ timeout: 30_000 });
+    await expect(checklist.getByRole("link", { name: /assign.*sources/i }).first()).toBeVisible();
+    // Requirements editing remains admin-only for the same member.
+    await expect(checklist.getByText("Configure reporting evidence")).toBeHidden();
+    await expect(checklist.getByText("Save requirements")).toBeHidden();
+  });
+
   test("admin journey: configure requirements through the exposed checklist", async ({ browser }) => {
     test.setTimeout(120_000);
     const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", adminSession);
@@ -310,5 +325,99 @@ test.describe("guided client reporting setup", () => {
       .toContain(clientBName);
     const label = await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? "");
     expect(label).not.toContain(clientAName);
+  });
+
+  test("discovery journey: loading, failure and retry never invent missing assignments", async ({ browser }) => {
+    test.setTimeout(120_000);
+    const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", adminSession);
+    const mutating: string[] = [];
+    await page.route("**/api/**", async (route) => {
+      if (route.request().method() !== "GET") mutating.push(`${route.request().method()} ${route.request().url()}`);
+      await route.continue();
+    });
+    let mode: "slow" | "fail" | "live" = "slow";
+    await page.route("**/api/workspaces/*/client-accounts", async (route) => {
+      if (mode === "fail") {
+        await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Discovery unavailable" }) });
+        return;
+      }
+      if (mode === "slow") {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      await route.continue();
+    });
+
+    await page.goto(`/clients?clientId=${clientBId}`, { waitUntil: "domcontentloaded" });
+    const checklist = page.getByRole("region", { name: `Reporting setup for ${clientBName}` });
+    await expect(checklist).toBeVisible();
+    // While discovery is delayed, no false missing-assignment verdict may appear.
+    await expect(checklist.getByText("Checking assigned accounts.").first()).toBeVisible({ timeout: 15_000 });
+    await expect(checklist.getByText("Missing assignments:")).toBeHidden();
+
+    // Sanitized failure instead of a persisted false verdict.
+    mode = "fail";
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(checklist.getByText("Assigned-account status is unavailable right now.").first()).toBeVisible({ timeout: 30_000 });
+    await expect(checklist.getByText("Missing assignments:")).toBeHidden();
+
+    // Successful retry reveals the real assignment state without any mutation.
+    // The retry control lives in the sibling discovery alert, outside the
+    // checklist region itself.
+    mode = "live";
+    await page.getByRole("button", { name: "Retry discovery" }).click();
+    await expect(checklist.getByText("Missing assignments: Meta Ads.").first()).toBeVisible({ timeout: 30_000 });
+    expect(mutating).toEqual([]);
+  });
+
+  test("configuration journey: provider change revalidates readiness for the new scope", async ({ browser }) => {
+    test.setTimeout(120_000);
+    const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", adminSession);
+    await page.goto(`/clients?clientId=${clientBId}`, { waitUntil: "domcontentloaded" });
+
+    const checklist = page.getByRole("region", { name: `Reporting setup for ${clientBName}` });
+    await expect(checklist).toBeVisible();
+    await checklist.getByRole("button", { name: "Configure reporting evidence" }).click();
+    const requirementsForm = checklist.locator("form").filter({ hasText: "Save requirements" });
+    await expect(requirementsForm).toBeVisible();
+    await requirementsForm.getByRole("checkbox", { name: "meta ads" }).uncheck();
+    await requirementsForm.getByRole("checkbox", { name: "google ads" }).check();
+    const saved = page.waitForResponse(
+      (candidate) => candidate.request().method() === "PATCH"
+        && candidate.url().includes("/api/reports/readiness/configuration")
+        && candidate.status() === 200,
+    );
+    const readinessRefetch = page.waitForResponse(
+      (candidate) => candidate.request().method() === "GET"
+        && candidate.url().includes("/api/reports/readiness")
+        && candidate.url().includes(`workspaceId=${workspaceId}`)
+        && candidate.status() === 200,
+    );
+    await requirementsForm.getByRole("button", { name: "Save requirements" }).click();
+    await saved;
+    // The save revalidates readiness for this exact client (parent list refresh).
+    await readinessRefetch;
+    await expect(checklist.getByText(/Required providers:.*Google Ads/i).first()).toBeVisible({ timeout: 15_000 });
+    await expect(checklist.getByText("Missing assignments: Google Ads.").first()).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("default-window journey: prerequisites fetch readiness without explicit dates", async ({ browser }) => {
+    test.setTimeout(120_000);
+    const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", adminSession);
+    const readinessUrls: string[] = [];
+    await page.route("**/api/reports/readiness*", async (route) => {
+      if (route.request().method() === "GET") readinessUrls.push(route.request().url());
+      await route.continue();
+    });
+    await page.goto(`/reports?clientId=${clientBId}`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByText("Check prerequisites for this client")).toBeVisible();
+    await page.getByText("Check prerequisites for this client").click();
+    const checklist = page.getByRole("region", { name: `Reporting setup for ${clientBName}` });
+    await expect(checklist).toBeVisible({ timeout: 30_000 });
+    await expect
+      .poll(() => readinessUrls.some((url) => url.includes(`clientId=${clientBId}`) && !url.includes("start=")))
+      .toBe(true);
+    // Default-window evaluation renders real sections instead of an unevaluated placeholder.
+    await expect(checklist.getByRole("heading", { name: "Reporting data" })).toBeVisible();
+    await expect(checklist.getByText("Readiness has not been evaluated for this client yet.")).toBeHidden();
   });
 });
