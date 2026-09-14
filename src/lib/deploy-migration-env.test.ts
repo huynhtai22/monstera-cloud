@@ -103,6 +103,32 @@ describe("secret-safe production migration environment", () => {
     assert.match(pooled, /-pooler/, "the sanitized diagnostic names the offending host");
   });
 
+  it("rejects pooled endpoints regardless of hostname case", () => {
+    const upperCasePooled =
+      "postgresql://owner:secret43@EP-ROYAL-GRASS-AD3YIGL2-POOLER.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require";
+    const result = validateMigrationEnv(envWith({ DIRECT_URL: upperCasePooled, DATABASE_URL: DIRECT_URL }));
+    assert.equal(
+      result.ok,
+      false,
+      "an upper-case pooled hostname must still be rejected (DNS hostnames are case-insensitive)",
+    );
+    assert.ok(
+      result.failures.some((f) => f.includes("pooled endpoint")),
+      "the pooled-host failure must be reported for the case-variant host",
+    );
+  });
+
+  it("does not let an @ in the query string affect hostname extraction", () => {
+    const queryAtDirect =
+      "postgresql://ep-royal-grass-ad3yigl2.c-2.us-east-1.aws.neon.tech/neondb?options=@x-pooler";
+    const result = validateMigrationEnv(envWith({ DIRECT_URL: queryAtDirect, DATABASE_URL: DIRECT_URL }));
+    assert.equal(
+      result.ok,
+      true,
+      `a valid direct URL whose query contains @x-pooler must not be falsely rejected: ${JSON.stringify(result.failures)}`,
+    );
+  });
+
   it("fails closed when DATABASE_URL is missing or malformed", () => {
     const missing = validateMigrationEnv(envWith({ DIRECT_URL: DIRECT_URL }));
     assert.equal(missing.ok, false);

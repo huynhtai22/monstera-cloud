@@ -4,17 +4,18 @@ import { resolve } from "node:path";
 const PROTOCOL_PATTERN = /^postgres(?:ql)?:\/\//;
 
 /**
- * Extracts the hostname from a scheme-valid connection URL without ever
- * retaining or returning userinfo, path or query string. Returns null when
- * the remainder cannot be parsed.
+ * Extracts the hostname from a scheme-valid connection URL using standard
+ * WHATWG URL parsing: userinfo is split at the last "@", the hostname is
+ * lowercased, ports and IPv6 brackets are handled, and the path/query never
+ * influence the result. Never retains or returns userinfo, path or query
+ * string. Returns null when the value cannot be parsed.
  */
-export function safeHost(url) {
-  const withoutProtocol = url.replace(PROTOCOL_PATTERN, "");
-  const withoutUserInfo = withoutProtocol.includes("@")
-    ? withoutProtocol.slice(withoutProtocol.indexOf("@") + 1)
-    : withoutProtocol;
-  const hostMatch = withoutUserInfo.match(/^[^/:?#]+/);
-  return hostMatch ? hostMatch[0] : null;
+export function safeHost(value) {
+  try {
+    return new URL(value).hostname.toLowerCase() || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
