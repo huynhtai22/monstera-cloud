@@ -12,6 +12,7 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
   const wsA = `appr-ws-a-${uid}`;
   const wsB = `appr-ws-b-${uid}`;
   const clientA = `appr-cl-a-${uid}`;
+  const clientA2 = `appr-cl-a2-${uid}`;
   const clientB = `appr-cl-b-${uid}`;
   const userOwner = `appr-owner-${uid}`;
   const userMember = `appr-member-${uid}`;
@@ -65,6 +66,7 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
     await prisma.client.createMany({
       data: [
         { id: clientA, workspaceId: wsA, name: "Client A" },
+        { id: clientA2, workspaceId: wsA, name: "Client A2" },
         { id: clientB, workspaceId: wsB, name: "Client B" },
       ],
     });
@@ -552,5 +554,156 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
       approvalsBefore,
       "Approval row must roll back cleanly if audit event fails",
     );
+  });
+
+  it("P1 DB enforcement: raw cross-workspace snapshot approval is rejected by composite foreign key", async () => {
+    // Attempt raw write: workspace B tries to insert an approval referencing snapshot from workspace A
+    await assert.rejects(
+      async () => {
+        await prisma.reportSnapshotApproval.create({
+          data: {
+            workspaceId: wsB,
+            clientId: clientB,
+            snapshotId: healthySnapshotId, // belongs to wsA / clientA
+            approvedByUserId: userForeign,
+          },
+        });
+      },
+      (err: unknown) => {
+        const code = (err as { code?: string }).code;
+        assert.equal(code, "P2003", "PostgreSQL must reject cross-workspace snapshot with foreign key error P2003");
+        return true;
+      }
+    );
+  });
+
+  it("P1 DB enforcement: raw same-workspace cross-client snapshot approval is rejected by composite foreign key", async () => {
+    // Attempt raw write: same workspace wsA, but clientA2 tries to approve snapshot belonging to clientA
+    await assert.rejects(
+      async () => {
+        await prisma.reportSnapshotApproval.create({
+          data: {
+            workspaceId: wsA,
+            clientId: clientA2,
+            snapshotId: healthySnapshotId, // belongs to wsA / clientA
+            approvedByUserId: userMember,
+          },
+        });
+      },
+      (err: unknown) => {
+        const code = (err as { code?: string }).code;
+        assert.equal(code, "P2003", "PostgreSQL must reject cross-client snapshot with composite foreign key error P2003");
+        return true;
+      }
+    );
+  });
+
+  it("P2 DB enforcement: deleting an approving user is restricted by foreign key and preserves approval history", async () => {
+    // 1. Approve healthy snapshot with userMember
+    await approveReportSnapshot({
+      workspaceId: wsA,
+      clientId: clientA,
+      snapshotId: healthySnapshotId,
+      userId: userMember,
+    });
+
+    const approvalsBefore = await prisma.reportSnapshotApproval.count({
+      where: { workspaceId: wsA, snapshotId: healthySnapshotId, approvedByUserId: userMember },
+    });
+    assert.equal(approvalsBefore, 1, "Approval row exists before attempted user deletion");
+
+    // 2. Attempt to delete userMember directly in the database
+    await assert.rejects(
+      async () => {
+        await prisma.user.delete({
+          where: { id: userMember },
+        });
+      },
+      (err: unknown) => {
+        const code = (err as { code?: string }).code;
+        assert.equal(code, "P2003", "PostgreSQL must reject deleting user with foreign key restriction error P2003");
+        return true;
+      }
+    );
+
+    // 3. Approval and audit events must remain intact
+    const approvalsAfter = await prisma.reportSnapshotApproval.count({
+      where: { workspaceId: wsA, snapshotId: healthySnapshotId, approvedByUserId: userMember },
+    });
+    assert.equal(approvalsAfter, 1, "Approval row remains intact after rejected user deletion");
+
+    const auditCount = await prisma.auditEvent.count({
+      where: { workspaceId: wsA, action: "report_snapshot.approved", actorUserId: userMember },
+    });
+    assert.equal(auditCount, 1, "Audit event remains intact after rejected user deletion");
+  });
+
+  it("P1 DB enforcement: deleting the owning client cascades and deletes the approval", async () => {
+    // 1. Create a disposable client and snapshot
+    const disposableClientId = `appr-cl-disp-${uid}`;
+    await prisma.client.create({
+      data: {
+        id: disposableClientId,
+        workspaceId: wsA,
+        name: "Disposable Client",
+      },
+    });
+
+    const dispSnap = await prisma.reportSnapshot.create({
+      data: {
+        workspaceId: wsA,
+        clientId: disposableClientId,
+        blueprintId: "weekly-paid-media-performance",
+        blueprintVersion: 1,
+        generationKey: `gen-disp-${uid}`,
+        sequence: 1,
+        reportingWindowStart: new Date("2026-09-01T00:00:00.000Z"),
+        reportingWindowEnd: new Date("2026-09-07T23:59:59.999Z"),
+        datasetFingerprint: `fp-disp-${uid}`,
+        dependencyHash: `hash-disp-${uid}`,
+        readinessStatus: "READY",
+        verificationStatus: "VERIFIED",
+        verificationReasons: [],
+        dataThroughByProvider: { meta_ads: "2026-09-07" },
+        metricContractVersions: { metrics: "v3" },
+        readinessEvidence: { outcome: { status: "READY", dataStatus: "READY" } },
+        destinationReceipts: [],
+        result: {
+          overview: {
+            readiness: {
+              status: "READY",
+              dataStatus: "READY",
+              blockers: [],
+              warnings: [],
+              destinationState: "verified",
+            },
+          },
+        },
+      },
+    });
+
+    // 2. Approve this disposable snapshot
+    await approveReportSnapshot({
+      workspaceId: wsA,
+      clientId: disposableClientId,
+      snapshotId: dispSnap.id,
+      userId: userMember,
+    });
+
+    const countBefore = await prisma.reportSnapshotApproval.count({
+      where: { workspaceId: wsA, clientId: disposableClientId },
+    });
+    assert.equal(countBefore, 1);
+
+    // 3. Delete the client
+    await prisma.client.delete({
+      where: { workspaceId_id: { workspaceId: wsA, id: disposableClientId } },
+    });
+
+    // 4. Approval must be cascaded and deleted
+    const countAfter = await prisma.reportSnapshotApproval.count({
+      where: { workspaceId: wsA, clientId: disposableClientId },
+    });
+    assert.equal(countAfter, 0, "Deleting client cascades and deletes approval records");
   });
 });

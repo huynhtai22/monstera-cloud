@@ -11,6 +11,9 @@ CREATE TABLE "ReportSnapshotApproval" (
 );
 
 -- CreateIndex
+CREATE UNIQUE INDEX "ReportSnapshot_workspaceId_clientId_id_key" ON "ReportSnapshot"("workspaceId", "clientId", "id");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "ReportSnapshotApproval_workspaceId_snapshotId_key" ON "ReportSnapshotApproval"("workspaceId", "snapshotId");
 
 -- CreateIndex
@@ -26,7 +29,7 @@ ALTER TABLE "ReportSnapshotApproval" ADD CONSTRAINT "ReportSnapshotApproval_work
 ALTER TABLE "ReportSnapshotApproval" ADD CONSTRAINT "ReportSnapshotApproval_workspaceId_clientId_fkey" FOREIGN KEY ("workspaceId", "clientId") REFERENCES "Client"("workspaceId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "ReportSnapshotApproval" ADD CONSTRAINT "ReportSnapshotApproval_snapshotId_fkey" FOREIGN KEY ("snapshotId") REFERENCES "ReportSnapshot"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ReportSnapshotApproval" ADD CONSTRAINT "ReportSnapshotApproval_workspaceId_clientId_snapshotId_fkey" FOREIGN KEY ("workspaceId", "clientId", "snapshotId") REFERENCES "ReportSnapshot"("workspaceId", "clientId", "id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "ReportSnapshotApproval" ADD CONSTRAINT "ReportSnapshotApproval_approvedByUserId_fkey" FOREIGN KEY ("approvedByUserId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ReportSnapshotApproval" ADD CONSTRAINT "ReportSnapshotApproval_approvedByUserId_fkey" FOREIGN KEY ("approvedByUserId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

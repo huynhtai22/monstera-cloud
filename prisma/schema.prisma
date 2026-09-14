@@ -234,6 +234,7 @@ model ReportSnapshot {
 
   @@unique([generationKey, sequence])
   @@unique([generationKey, dependencyHash])
+  @@unique([workspaceId, clientId, id])
   @@index([workspaceId, clientId, generatedAt])
 }
 
@@ -251,8 +252,8 @@ model ReportSnapshotApproval {
 
   workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   client           Client         @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
-  snapshot         ReportSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
-  approvedByUser   User           @relation(fields: [approvedByUserId], references: [id], onDelete: Cascade)
+  snapshot         ReportSnapshot @relation(fields: [workspaceId, clientId, snapshotId], references: [workspaceId, clientId, id], onDelete: Cascade)
+  approvedByUser   User           @relation(fields: [approvedByUserId], references: [id], onDelete: Restrict)
 
   @@unique([workspaceId, snapshotId])
   @@index([workspaceId, clientId, approvedAt])
