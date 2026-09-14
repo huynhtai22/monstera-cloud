@@ -55,6 +55,7 @@ export type ReadinessDependencyEvidence = {
   limited: boolean;
   outcome: {
     status: ReportReadinessStatus;
+    dataStatus?: ReportReadinessStatus;
     providerStates: Array<{ connectionId: string; provider: string; status: ReportReadinessStatus; health: SourceHealthState; freshness: "fresh" | "stale" | "unknown" }>;
     blockers: ReadinessIssue[];
     warnings: ReadinessIssue[];
@@ -64,7 +65,9 @@ export type ReadinessDependencyEvidence = {
 };
 export type ReportReadinessEvaluation = {
   workspaceId: string; clientId: string; window: ReportingWindow; evaluatedAt: string;
-  status: ReportReadinessStatus; requiredProviders: string[]; requiredProvidersBasis: "assigned_sources" | "explicit";
+  status: ReportReadinessStatus; dataStatus: ReportReadinessStatus;
+  dataBlockers: ReadinessIssue[]; dataWarnings: ReadinessIssue[];
+  requiredProviders: string[]; requiredProvidersBasis: "assigned_sources" | "explicit";
   providers: ProviderReadiness[]; latestSuccessfulSyncAt: string | null; latestDataDate: string | null;
   freshness: "fresh" | "stale" | "unknown";
   destination: { state: "verified" | "unavailable" | "unverified" | "stale"; configuredCount: number;
@@ -161,6 +164,7 @@ function readinessDependencyEvidence(
     limited: Boolean(input.limited),
     outcome: {
       status: result.status,
+      dataStatus: result.dataStatus,
       providerStates: result.providers.map(provider => ({
         connectionId: provider.connectionId,
         provider: provider.provider,
@@ -254,24 +258,33 @@ export function evaluateReportReadiness(input: {
       blockers, warnings, evidence: { rowCount: source.days.reduce((n,d) => n + d.rows, 0), expectedDays: dates.length, accounts, syncs },
     };
   });
-  const blockers = providers.flatMap(p => p.blockers), warnings = providers.flatMap(p => p.warnings);
+  const dataBlockers = [...providers.flatMap(p => p.blockers)];
+  const dataWarnings = [...providers.flatMap(p => p.warnings)];
   const requiredProviders = unique(input.requiredProviders);
-  if (!requiredProviders.length && !input.limited) blockers.push({ code: "SOURCE_MISSING" });
+  if (!requiredProviders.length && !input.limited) dataBlockers.push({ code: "SOURCE_MISSING" });
   for (const provider of requiredProviders) {
-    if (!input.limited && !providers.some(p => p.provider === provider)) blockers.push({ code: "SOURCE_MISSING", provider });
+    if (!input.limited && !providers.some(p => p.provider === provider)) dataBlockers.push({ code: "SOURCE_MISSING", provider });
   }
-  if (input.requiredProvidersBasis === "assigned_sources") warnings.push({ code: "REQUIRED_PROVIDERS_INFERRED" });
-  if (input.destination.state === "unavailable") blockers.push({ code: "DESTINATION_UNAVAILABLE" });
-  else if (input.destination.state === "stale") blockers.push({ code: "DESTINATION_STALE" });
-  else if (input.destination.state !== "verified") warnings.push({ code: "DESTINATION_UNVERIFIED" });
-  if (!input.destination.required?.length) warnings.push({ code: "DESTINATION_REQUIREMENTS_MISSING" });
-  if (input.limited) warnings.push({ code: "EVIDENCE_LIMIT_REACHED" });
+  if (input.requiredProvidersBasis === "assigned_sources") dataWarnings.push({ code: "REQUIRED_PROVIDERS_INFERRED" });
+  if (input.limited) dataWarnings.push({ code: "EVIDENCE_LIMIT_REACHED" });
   const currencies = unique(providers.flatMap(p => p.currencies));
-  if (currencies.length > 1) warnings.push({ code: "MIXED_CURRENCY" });
-  if (unique(providers.flatMap(p => p.timezone ? [p.timezone] : [])).length > 1) blockers.push({ code: "TIMEZONE_CONFLICT" });
+  if (currencies.length > 1) dataWarnings.push({ code: "MIXED_CURRENCY" });
+  if (unique(providers.flatMap(p => p.timezone ? [p.timezone] : [])).length > 1) dataBlockers.push({ code: "TIMEZONE_CONFLICT" });
+
+  const destinationBlockers: ReadinessIssue[] = [];
+  const destinationWarnings: ReadinessIssue[] = [];
+  if (input.destination.state === "unavailable") destinationBlockers.push({ code: "DESTINATION_UNAVAILABLE" });
+  else if (input.destination.state === "stale") destinationBlockers.push({ code: "DESTINATION_STALE" });
+  else if (input.destination.state !== "verified") destinationWarnings.push({ code: "DESTINATION_UNVERIFIED" });
+  if (!input.destination.required?.length) destinationWarnings.push({ code: "DESTINATION_REQUIREMENTS_MISSING" });
+
+  const blockers = [...dataBlockers, ...destinationBlockers];
+  const warnings = [...dataWarnings, ...destinationWarnings];
+  const dataStatus = decision(dataBlockers, dataWarnings);
+
   const result: Omit<ReportReadinessEvaluation, "dependencyEvidence"> = {
     workspaceId: input.workspaceId, clientId: input.clientId, window: input.window, evaluatedAt: input.now.toISOString(),
-    status: decision(blockers,warnings), requiredProviders, requiredProvidersBasis: input.requiredProvidersBasis,
+    status: decision(blockers,warnings), dataStatus, dataBlockers, dataWarnings, requiredProviders, requiredProvidersBasis: input.requiredProvidersBasis,
     providers, latestSuccessfulSyncAt: latest(providers.map(p => p.latestSuccessfulSyncAt)),
     latestDataDate: latest(providers.map(p => p.latestDataDate)),
     freshness: !providers.length || providers.some(p => p.freshness === "unknown") ? "unknown" : providers.some(p => p.freshness === "stale") ? "stale" : "fresh",

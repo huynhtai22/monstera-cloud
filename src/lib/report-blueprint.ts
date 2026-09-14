@@ -38,6 +38,16 @@ import { RbacError } from "@/lib/rbac";
 import { withSystemScope } from "@/lib/tenant-guard";
 import { PROVIDER_SOURCE_GRAINS } from "@/lib/provider-metric-grain";
 export { PROVIDER_SOURCE_GRAINS } from "@/lib/provider-metric-grain";
+import {
+  deriveReportLifecycleState,
+  type ReportLifecycleState,
+  type ReportApprovalSummary,
+} from "./report-lifecycle";
+import {
+  getSnapshotApproval,
+  getLatestReportApproval,
+} from "./report-approval";
+export type { ReportLifecycleState, ReportApprovalSummary };
 
 export const BLUEPRINT_ID = "weekly-paid-media-performance";
 export const BLUEPRINT_VERSION = 1;
@@ -769,6 +779,7 @@ export type BlueprintReport = {
     verification: VerificationResult;
     readiness: {
       status: BlueprintReadinessStatus;
+      dataStatus?: BlueprintReadinessStatus;
       blockers: string[];
       warnings: string[];
       destinationState: ReportReadinessEvaluation["destination"]["state"];
@@ -1114,6 +1125,7 @@ function buildReport(ctx: GenerationContext, verification: VerificationResult): 
       verification,
       readiness: {
         status: ctx.evaluation.status,
+        dataStatus: ctx.evaluation.dataStatus,
         blockers: ctx.evaluation.blockers.map((issue) => issue.code),
         warnings: ctx.evaluation.warnings.map((issue) => issue.code),
         destinationState: ctx.evaluation.destination.state,
@@ -1186,10 +1198,13 @@ export type GenerateResult = {
   created: boolean;
   readiness: {
     status: BlueprintReadinessStatus;
+    dataStatus?: BlueprintReadinessStatus;
     blockers: string[];
     warnings: string[];
     destinationState: ReportReadinessEvaluation["destination"]["state"];
   };
+  approval: ReportApprovalSummary | null;
+  lifecycleState: ReportLifecycleState;
 };
 
 function toSnapshotMeta(snapshot: {
@@ -1621,25 +1636,54 @@ export async function generateWeeklyBlueprint(params: {
         continue;
       }
 
+      const [activeApproval, latestReportApproval] = await Promise.all([
+        getSnapshotApproval(workspaceId, result.row.id),
+        getLatestReportApproval(workspaceId, generationKey),
+      ]);
+      const storedReport = result.row.result as unknown as BlueprintReport;
+      const dataStatus: ReportReadinessStatus =
+        storedReport.overview.readiness.dataStatus ?? (result.row.readinessStatus as ReportReadinessStatus);
+      const destinationVerified =
+        storedReport.overview.readiness.destinationState === "verified" ||
+        (storedReport.overview.verification.status === "VERIFIED" &&
+          !storedReport.overview.verification.reasons.includes("destination_evidence_missing"));
+      const lifecycleState = deriveReportLifecycleState({
+        dataStatus,
+        currentSnapshot: {
+          id: result.row.id,
+          generationKey: result.row.generationKey,
+          sequence: result.row.sequence,
+          dependencyHash: result.row.dependencyHash,
+          freshness: postCommitFreshness,
+        },
+        activeApproval,
+        latestReportApproval,
+        destinationVerified,
+      });
+
       if (result.kind === "existing") {
         return {
           snapshot: toSnapshotMeta(result.row),
-          report: result.row.result as unknown as BlueprintReport,
+          report: storedReport,
           created: false,
           readiness: {
             status: result.row.readinessStatus as BlueprintReadinessStatus,
+            dataStatus,
             blockers: (result.row.readinessEvidence as { blockers?: Array<{ code: string }> }).blockers?.map((issue) => issue.code) ?? [],
             warnings: (result.row.readinessEvidence as { warnings?: Array<{ code: string }> }).warnings?.map((issue) => issue.code) ?? [],
             destinationState: (result.row.readinessEvidence as { destinationState?: ReportReadinessEvaluation["destination"]["state"] }).destinationState ?? "unverified",
           },
+          approval: activeApproval,
+          lifecycleState,
         };
       }
-      const storedReport = result.row.result as unknown as BlueprintReport;
       return {
         snapshot: toSnapshotMeta(result.row),
         report: storedReport,
         created: true,
         readiness: storedReport.overview.readiness,
+        approval: activeApproval,
+        lifecycleState,
       };
     } catch (error: unknown) {
       if (error instanceof PublicationLockUnavailableError) {
@@ -1825,6 +1869,8 @@ export async function reopenWeeklyBlueprint(params: {
   snapshot: (SnapshotMeta & { freshness: FreshnessResult; verification: VerificationResult }) | null;
   report: BlueprintReport | null;
   defaultWindow: ReportingWindow;
+  approval: ReportApprovalSummary | null;
+  lifecycleState: ReportLifecycleState;
 }> {
   const { workspaceId, clientId, now = new Date() } = params;
   const client = await prisma.client.findFirst({
@@ -1856,7 +1902,22 @@ export async function reopenWeeklyBlueprint(params: {
     orderBy: [{ sequence: "desc" }],
   });
   if (!snapshot) {
-    return { client, snapshot: null, report: null, defaultWindow: lastCompleteWeek(now) };
+    const readiness = await loadReportReadiness(workspaceId, window, { clientId, tx: prisma });
+    const dataStatus = readiness.evaluations[0]?.dataStatus ?? "UNKNOWN";
+    const lifecycleState = deriveReportLifecycleState({
+      dataStatus,
+      currentSnapshot: null,
+      activeApproval: null,
+      latestReportApproval: null,
+    });
+    return {
+      client,
+      snapshot: null,
+      report: null,
+      defaultWindow: lastCompleteWeek(now),
+      approval: null,
+      lifecycleState,
+    };
   }
 
   const freshness = await evaluateSnapshotFreshness(snapshot);
@@ -1866,6 +1927,40 @@ export async function reopenWeeklyBlueprint(params: {
       status: "NOT_VERIFIED",
       reasons: [...snapshot.verificationReasons, "dependency_evidence_changed"],
     };
+
+  const [activeApproval, latestReportApproval] = await Promise.all([
+    getSnapshotApproval(workspaceId, snapshot.id),
+    getLatestReportApproval(workspaceId, generationKey),
+  ]);
+
+  const report = snapshot.result as unknown as BlueprintReport;
+  const evidence = snapshot.readinessEvidence as {
+    outcome?: { dataStatus?: ReportReadinessStatus };
+    dependencyEvidence?: { outcome?: { dataStatus?: ReportReadinessStatus } };
+  } | null;
+  const dataStatus: ReportReadinessStatus =
+    evidence?.outcome?.dataStatus ??
+    evidence?.dependencyEvidence?.outcome?.dataStatus ??
+    (report?.overview?.readiness?.dataStatus as ReportReadinessStatus) ??
+    (snapshot.readinessStatus as ReportReadinessStatus);
+
+  const destinationVerified =
+    report?.overview?.readiness?.destinationState === "verified" ||
+    (verification.status === "VERIFIED" && !snapshot.verificationReasons.includes("destination_evidence_missing"));
+
+  const lifecycleState = deriveReportLifecycleState({
+    dataStatus,
+    currentSnapshot: {
+      id: snapshot.id,
+      generationKey: snapshot.generationKey,
+      sequence: snapshot.sequence,
+      dependencyHash: snapshot.dependencyHash,
+      freshness,
+    },
+    activeApproval,
+    latestReportApproval,
+    destinationVerified,
+  });
 
   return {
     client,
@@ -1884,8 +1979,10 @@ export async function reopenWeeklyBlueprint(params: {
       freshness,
       verification,
     },
-    report: snapshot.result as unknown as BlueprintReport,
+    report,
     defaultWindow: lastCompleteWeek(now),
+    approval: activeApproval,
+    lifecycleState,
   };
 }
 
