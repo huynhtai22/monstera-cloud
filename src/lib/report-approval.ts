@@ -15,6 +15,19 @@
  * - Never creates or modifies DestinationDeliveryReceipt.
  * - Zero provider, destination or external network calls.
  * - Emits AuditEvent atomically with the approval.
+ *
+ * Concurrency contract (see approveReportSnapshot for details):
+ * - pg_advisory_xact_lock(hashtext(generationKey)) — BLOCKING — serializes
+ *   concurrent approvals and prevents concurrent blueprint generation from
+ *   publishing a new snapshot while approval is evaluating the current one.
+ * - SELECT ... FOR UPDATE on the Client row — blocks concurrent requirement
+ *   and destination mutations until this approval commits.
+ * - RepeatableRead isolation — all dependency reads see a single consistent
+ *   DB snapshot taken at transaction start.
+ * - Architectural boundary: warehouse data mutations (CampaignMetric ingest)
+ *   do NOT acquire the generationKey advisory lock. Adding that coordination
+ *   across meta-sync-lock.ts, connection-sync-lease.ts and all provider ingest
+ *   paths requires a large cross-cutting change and is out of scope here.
  */
 
 import prisma from "@/lib/prisma";
@@ -36,6 +49,25 @@ export {
 };
 export type { DbApprovalWithRelations };
 export { extractSnapshotDataStatus as getSnapshotDataStatus } from "./report-readiness";
+
+/**
+ * @internal TEST-ONLY seam for deterministic approval interleaving in race tests.
+ * Never called by routes; not exposed through any API or Zod input.
+ */
+const approvalHooks: {
+  afterFreshnessCheck?: (info: { snapshotId: string; generationKey: string }) => Promise<void>;
+} = {};
+
+/**
+ * @internal TEST-ONLY. Install/remove deterministic approval test hooks.
+ * Call with {} to clear after each test.
+ */
+export function _setApprovalTestHooks(hooks: {
+  afterFreshnessCheck?: (info: { snapshotId: string; generationKey: string }) => Promise<void>;
+}): void {
+  approvalHooks.afterFreshnessCheck = hooks.afterFreshnessCheck;
+}
+
 
 export class ReportApprovalError extends Error {
   constructor(
@@ -77,8 +109,33 @@ function isPrismaUniqueConstraintError(err: unknown): boolean {
   return false;
 }
 
+
 /**
  * Record durable human approval for an exact ReportSnapshot.
+ *
+ * Concurrency mechanism:
+ *   1. pg_advisory_xact_lock(hashtext(generationKey)) — BLOCKING — acquired
+ *      first inside the RepeatableRead transaction. This is the SAME advisory
+ *      key scope used by blueprint generation, which uses the non-blocking
+ *      `pg_try_advisory_xact_lock`. The blocking form here serializes concurrent
+ *      approval calls and prevents concurrent blueprint re-generation from
+ *      publishing a new snapshot while this approval is evaluating the current one.
+ *   2. SELECT ... FOR UPDATE on the Client row — blocks concurrent Client
+ *      requirement/destination mutations until this approval commits.
+ *   3. RepeatableRead isolation — all dependency reads see one consistent DB
+ *      snapshot. Any configuration change that committed BEFORE this transaction
+ *      started is detected by the freshness diff. Changes protected by the
+ *      Client FOR UPDATE are blocked from committing until this tx commits.
+ *
+ * Architectural boundary (warehouse data):
+ *   Warehouse metric ingest paths (meta-sync-lock.ts, connection-sync-lease.ts,
+ *   all provider ingestion mappers) do NOT acquire the generationKey advisory
+ *   lock. A warehouse write that commits AFTER this transaction's snapshot point
+ *   but BEFORE this transaction commits is not visible to the freshness check
+ *   within this transaction. Requiring all ingest paths to acquire this lock
+ *   would require modifying a large number of unrelated ingestion paths and is
+ *   intentionally out of scope. This boundary is documented, tested, and must
+ *   not be papered over with false claims.
  */
 export async function approveReportSnapshot(
   input: ApproveReportSnapshotInput,
@@ -117,7 +174,25 @@ export async function approveReportSnapshot(
           throw new ReportApprovalError("Snapshot does not belong to this client", "client_mismatch", 400);
         }
 
-        // 3. Fast-path check: If already approved for this exact snapshot in this workspace, return existing approval
+        // 3. Acquire blocking advisory lock on the generationKey.
+        // Same advisory key as blueprint generation (hashtext(generationKey)).
+        // Blueprint generation uses pg_try_advisory_xact_lock (non-blocking, boolean return);
+        // this blocking form uses $executeRaw because pg_advisory_xact_lock returns void.
+        // Lock is automatically released when this transaction commits or rolls back.
+        await tx.$executeRaw`
+          SELECT pg_advisory_xact_lock(hashtext(${snapshot.generationKey}))`;
+
+        // 4. Lock the Client row FOR UPDATE.
+        // Blocks concurrent Client requirement/destination mutations from
+        // committing until this approval transaction commits, ensuring
+        // the freshness check reads the definitive current requirement state.
+        // Using $queryRaw<[{id: string}]> to verify the client still exists and return its id.
+        await tx.$queryRaw<[{ id: string }]>`
+          SELECT id FROM "Client"
+          WHERE id = ${clientId} AND "workspaceId" = ${workspaceId}
+          FOR UPDATE`;
+
+        // 5. Fast-path: If already approved for this exact snapshot, return idempotent result.
         const existing = await tx.reportSnapshotApproval.findUnique({
           where: {
             workspaceId_snapshotId: {
@@ -145,7 +220,7 @@ export async function approveReportSnapshot(
           };
         }
 
-        // 4. Validate captured data readiness:
+        // 6. Validate captured data readiness
         const dataStatus = extractSnapshotDataStatus(snapshot);
         if (dataStatus !== "READY") {
           throw new ReportApprovalError(
@@ -155,7 +230,7 @@ export async function approveReportSnapshot(
           );
         }
 
-        // 5. Validate that snapshot has not been superseded by a newer sequence
+        // 7. Validate that snapshot has not been superseded by a newer sequence
         const newerSnapshot = await tx.reportSnapshot.findFirst({
           where: {
             workspaceId: snapshot.workspaceId,
@@ -173,8 +248,23 @@ export async function approveReportSnapshot(
           );
         }
 
-        // 6. Verify dependency freshness inside this RepeatableRead transaction
+        // 8. Verify dependency freshness inside this RepeatableRead transaction.
+        // All dependency reads (Client requirements, dataset fingerprint, account
+        // assignments, readiness evidence) see the same consistent DB snapshot.
+        // Configuration mutations are blocked by the Client FOR UPDATE (step 4).
+        // Concurrent blueprint generation is blocked by the advisory lock (step 3).
+        // Warehouse data changes that committed before this transaction started
+        // are correctly detected. The architectural boundary for concurrent
+        // warehouse writes is documented in the module header.
         const freshness = await evaluateSnapshotApprovalFreshness(snapshot, tx);
+
+        // TEST-ONLY: deterministic barrier for race condition tests.
+        // In production approvalHooks is always empty ({}).
+        await approvalHooks.afterFreshnessCheck?.({
+          snapshotId: snapshot.id,
+          generationKey: snapshot.generationKey,
+        });
+
         if (!freshness.fresh) {
           throw new ReportApprovalError(
             `Cannot approve report: snapshot is stale due to changed dependencies (${freshness.staleReasons.join(", ")})`,
@@ -183,7 +273,7 @@ export async function approveReportSnapshot(
           );
         }
 
-        // 7. Persist approval and audit event atomically
+        // 9. Persist approval and audit event atomically
         const created = await tx.reportSnapshotApproval.create({
           data: {
             workspaceId,
