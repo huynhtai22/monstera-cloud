@@ -28,7 +28,8 @@ export function safeHost(value) {
  *   direct (non-pooled) host — the pooled endpoint is not acceptable for
  *   Prisma migration sessions.
  * - DATABASE_URL is mandatory because it remains the application runtime
- *   connection; it must be scheme-valid (pooling is fine for runtime).
+ *   connection; it must be scheme-valid and parseable (pooling is fine for
+ *   runtime).
  *
  * Diagnostics are sanitized: never the URL, username, password, database
  * path or query string — only the hostname where it was safely extractable.
@@ -59,6 +60,8 @@ export function validateMigrationEnv(env = process.env) {
     failures.push("DATABASE_URL is missing; it remains the application runtime connection");
   } else if (!PROTOCOL_PATTERN.test(databaseUrl)) {
     failures.push("DATABASE_URL must start with the protocol postgresql:// or postgres://");
+  } else if (!safeHost(databaseUrl)) {
+    failures.push("DATABASE_URL is not a valid PostgreSQL connection URL");
   }
 
   return { ok: failures.length === 0, failures };

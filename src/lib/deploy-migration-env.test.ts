@@ -9,6 +9,8 @@ const DIRECT_URL =
   "postgresql://owner:supersecret42@ep-royal-grass-ad3yigl2.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require";
 const POOLED_URL =
   "postgresql://owner:supersecret42@ep-royal-grass-ad3yigl2-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require";
+const MALFORMED_DATABASE_URL =
+  "postgresql://synthetic-runtime-user:synthetic-runtime-password@[not-an-ipv6/runtime-db?token=synthetic-query-token";
 
 /** Builds a ProcessEnv containing only the crafted variables under test. */
 function envWith(vars: Record<string, string>): NodeJS.ProcessEnv {
@@ -16,7 +18,16 @@ function envWith(vars: Record<string, string>): NodeJS.ProcessEnv {
 }
 
 /** The credential-bearing fragments that must never reach workflow output. */
-const SECRET_FRAGMENTS = ["supersecret42", "owner:", "sslmode=require", "/neondb"];
+const SECRET_FRAGMENTS = [
+  "supersecret42",
+  "owner:",
+  "sslmode=require",
+  "/neondb",
+  "synthetic-runtime-user",
+  "synthetic-runtime-password",
+  "/runtime-db",
+  "synthetic-query-token",
+];
 
 function extractStep(workflow: string, stepName: string): string {
   const marker = `- name: ${stepName}`;
@@ -129,7 +140,7 @@ describe("secret-safe production migration environment", () => {
     );
   });
 
-  it("fails closed when DATABASE_URL is missing or malformed", () => {
+  it("fails closed when DATABASE_URL is missing or has an invalid scheme", () => {
     const missing = validateMigrationEnv(envWith({ DIRECT_URL: DIRECT_URL }));
     assert.equal(missing.ok, false);
     assert.ok(missing.failures.some((f) => f.includes("DATABASE_URL is missing")));
@@ -137,6 +148,53 @@ describe("secret-safe production migration environment", () => {
     const malformed = validateMigrationEnv(envWith({ DIRECT_URL: DIRECT_URL, DATABASE_URL: "not-a-url" }));
     assert.equal(malformed.ok, false);
     assert.ok(malformed.failures.some((f) => f.includes("DATABASE_URL must start with the protocol")));
+  });
+
+  it("fails closed when DATABASE_URL has a malformed authority", () => {
+    const result = validateMigrationEnv(
+      envWith({ DIRECT_URL: DIRECT_URL, DATABASE_URL: "postgresql://[" }),
+    );
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.failures, ["DATABASE_URL is not a valid PostgreSQL connection URL"]);
+  });
+
+  it("rejects DATABASE_URL values without a hostname", () => {
+    const result = validateMigrationEnv(
+      envWith({ DIRECT_URL: DIRECT_URL, DATABASE_URL: "postgresql://" }),
+    );
+    assert.equal(result.ok, false);
+    assert.ok(result.failures.some((f) => f.includes("not a valid PostgreSQL connection URL")));
+  });
+
+  it("rejects a malformed bracketed IPv6 DATABASE_URL authority", () => {
+    const result = validateMigrationEnv(
+      envWith({ DIRECT_URL: DIRECT_URL, DATABASE_URL: "postgresql://[2001:db8::1/database" }),
+    );
+    assert.equal(result.ok, false);
+    assert.ok(result.failures.some((f) => f.includes("not a valid PostgreSQL connection URL")));
+  });
+
+  it("rejects invalid DATABASE_URL port syntax", () => {
+    const result = validateMigrationEnv(
+      envWith({
+        DIRECT_URL: DIRECT_URL,
+        DATABASE_URL: "postgresql://runtime.synthetic.test:not-a-port/database",
+      }),
+    );
+    assert.equal(result.ok, false);
+    assert.ok(result.failures.some((f) => f.includes("not a valid PostgreSQL connection URL")));
+  });
+
+  it("accepts valid direct and IPv6 DATABASE_URL values", () => {
+    const direct = validateMigrationEnv(envWith({ DIRECT_URL: DIRECT_URL, DATABASE_URL: DIRECT_URL }));
+    const ipv6 = validateMigrationEnv(
+      envWith({
+        DIRECT_URL: DIRECT_URL,
+        DATABASE_URL: "postgresql://runtime:synthetic@[2001:db8::1]:5432/database",
+      }),
+    );
+    assert.equal(direct.ok, true);
+    assert.equal(ipv6.ok, true);
   });
 
   it("accepts a pooled DATABASE_URL because runtime pooling is legitimate", () => {
@@ -162,6 +220,7 @@ describe("secret-safe production migration environment", () => {
     const cases = [
       runValidator({ DIRECT_URL: POOLED_URL, DATABASE_URL: DIRECT_URL }),
       runValidator({ DIRECT_URL: "nonsense-value", DATABASE_URL: DIRECT_URL }),
+      runValidator({ DIRECT_URL: DIRECT_URL, DATABASE_URL: MALFORMED_DATABASE_URL }),
       runValidator({ DIRECT_URL: DIRECT_URL, DATABASE_URL: DIRECT_URL }),
     ];
     for (const result of cases) {
