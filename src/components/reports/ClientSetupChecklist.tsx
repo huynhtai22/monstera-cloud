@@ -80,7 +80,7 @@ function SectionItem({ section, scope, showLinks }: { section: SetupSectionState
  * Presentational guided checklist. Pure render from derived state: performs
  * no fetching and triggers no approval, delivery or synchronization.
  */
-export function ClientSetupChecklist({ state }: { state: ClientSetupState }) {
+export function ClientSetupChecklist({ state, onConfigurationSaved }: { state: ClientSetupState; onConfigurationSaved?: () => void }) {
   const scope = `${state.clientName}`;
   const showLinks = state.role !== "viewer";
   const ordered = [
@@ -168,6 +168,7 @@ export function ClientSetupChecklist({ state }: { state: ClientSetupState }) {
           workspaceId={state.workspaceId}
           clientId={state.clientId}
           defaultOpen={!state.requirementsConfigured}
+          onSaved={onConfigurationSaved}
         />
       ) : state.role === "viewer" ? (
         <p className="mt-3 text-xs text-ink-mute">
@@ -229,7 +230,7 @@ export function ClientSetupChecklistContainer({
     isLoading: configurationLoading,
     mutate: retryConfiguration,
   } = useSWR<ConfigurationResponse>(configurationKey, jsonFetcher, { errorRetryCount: 1 });
-  const { data: discovered } = useSWR<DiscoveredResponse>(discoveredKey, jsonFetcher, { errorRetryCount: 1 });
+  const { data: discovered, mutate: retryDiscovered } = useSWR<DiscoveredResponse>(discoveredKey, jsonFetcher, { errorRetryCount: 1 });
   const { data: readiness } = useSWR<{ evaluation?: ReportReadinessEvaluation }>(readinessKey, jsonFetcher, { errorRetryCount: 1 });
 
   if (!workspaceId || !clientId) return null;
@@ -290,5 +291,13 @@ export function ClientSetupChecklistContainer({
     evaluation: evaluation ?? null,
   });
   if (!derived.ok) return null;
-  return <ClientSetupChecklist state={derived.state} />;
+  return (
+    <ClientSetupChecklist
+      state={derived.state}
+      onConfigurationSaved={() => {
+        void retryConfiguration();
+        void retryDiscovered();
+      }}
+    />
+  );
 }

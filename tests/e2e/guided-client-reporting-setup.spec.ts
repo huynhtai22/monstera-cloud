@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { PrismaClient } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import {
   createAuthenticatedSessionCache,
@@ -57,7 +58,9 @@ test.describe("guided client reporting setup", () => {
   let clientBId: string;
   let betaClientId: string;
   let connectionAId: string;
-  const accountA = `m-${SUFFIX}`;
+  // Meta canonicalization folds digit-heavy ids (act_<digits>); keep the
+  // synthetic account digit-free so UI text matches the seeded value exactly.
+  const accountA = `m-setup-${randomUUID().replace(/[^a-z]/g, "").slice(0, 10)}`;
   const WEEK_DAYS = ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28", "2026-08-29", "2026-08-30"];
   const clientAName = `Setup Client A ${SUFFIX}`;
   const clientBName = `Setup Client B ${SUFFIX}`;
@@ -172,7 +175,7 @@ test.describe("guided client reporting setup", () => {
     await prisma.campaignMetric.deleteMany({ where: { connectionId: connectionAId } }).catch(() => undefined);
     await prisma.accountReportingContext.deleteMany({ where: { connectionId: connectionAId } }).catch(() => undefined);
     await prisma.providerAccountHealth.deleteMany({ where: { connectionId: connectionAId } }).catch(() => undefined);
-    await prisma.clientProviderAccountAssignment.deleteMany({ where: { workspaceId } }).catch(() => undefined);
+    await prisma.clientProviderAccountAssignment.deleteMany({ where: { connectionId: connectionAId } }).catch(() => undefined);
     await prisma.connection.deleteMany({ where: { id: connectionAId } }).catch(() => undefined);
     await prisma.client.deleteMany({ where: { id: { in: [clientAId, clientBId] } } }).catch(() => undefined);
     await prisma.client.deleteMany({ where: { id: betaClientId } }).catch(() => undefined);
@@ -192,8 +195,10 @@ test.describe("guided client reporting setup", () => {
     await expect(checklist.getByText(/owner or admin/i).first()).toBeVisible();
     await expect(checklist.getByText("Configure reporting evidence")).toBeHidden();
     await expect(checklist.getByText("Save requirements")).toBeHidden();
-    // Member keeps member-authorized recovery navigation, never admin forms.
-    await expect(checklist.getByRole("link", { name: /sources/i }).first()).toBeVisible();
+    // Member keeps read-only navigation into the same setup section, never admin forms.
+    await expect(
+      checklist.getByRole("link", { name: "Open this client's reporting setup" }),
+    ).toHaveAttribute("href", `/clients?clientId=${clientAId}#reporting-setup`);
   });
 
   test("admin journey: configure requirements through the exposed checklist", async ({ browser }) => {
@@ -218,14 +223,17 @@ test.describe("guided client reporting setup", () => {
     await requirementsForm.getByRole("button", { name: "Save requirements" }).click();
     await saved;
     await expect(checklist.getByText(/Required providers:.*Meta Ads/i).first()).toBeVisible({ timeout: 15_000 });
+    // The checklist now names the missing assignment with a direct Sources recovery action.
+    await expect(checklist.getByRole("link", { name: /assign.*sources/i }).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test("admin journey: assign the required account and observe completion", async ({ browser }) => {
     test.setTimeout(120_000);
     const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", adminSession);
-    await page.goto(`/sources?clientId=${clientAId}&tab=accounts`, { waitUntil: "domcontentloaded" });
+    await page.goto("/sources?tab=accounts", { waitUntil: "domcontentloaded" });
+    await page.getByLabel("Filter accounts by client").selectOption("unassigned");
 
-    const row = page.locator("tr, li, div", { hasText: accountA }).filter({ hasText: `Assign account ${accountA}` }).first();
+    const row = page.locator("tbody tr", { hasText: accountA }).first();
     await expect(row.getByRole("button", { name: `Assign account ${accountA}` })).toBeVisible({ timeout: 30_000 });
     await row.getByRole("button", { name: `Assign account ${accountA}` }).click();
     await expect(page.getByRole("heading", { name: "Assign Account" })).toBeVisible();
