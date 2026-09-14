@@ -11,6 +11,7 @@ const POOLED_URL =
   "postgresql://owner:supersecret42@ep-royal-grass-ad3yigl2-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require";
 const MALFORMED_DATABASE_URL =
   "postgresql://synthetic-runtime-user:synthetic-runtime-password@[not-an-ipv6/runtime-db?token=synthetic-query-token";
+const MIGRATION_SECRET_EXPRESSION = "${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}";
 
 /** Builds a ProcessEnv containing only the crafted variables under test. */
 function envWith(vars: Record<string, string>): NodeJS.ProcessEnv {
@@ -37,6 +38,64 @@ function extractStep(workflow: string, stepName: string): string {
   return workflow.slice(start, nextStep === -1 ? undefined : nextStep);
 }
 
+function extractDeployJobCondition(workflow: string): string {
+  const lines = workflow.split("\n");
+  const deployAt = lines.findIndex((line) => /^  deploy:\s*$/.test(line));
+  assert.ok(deployAt !== -1, "workflow must contain the deploy job");
+  const conditionAt = lines.findIndex(
+    (line, index) => index > deployAt && /^    if:\s*/.test(line),
+  );
+  assert.ok(conditionAt !== -1, "deploy job must have a job-level condition");
+
+  const firstLine = lines[conditionAt].replace(/^    if:\s*/, "").trim();
+  if (firstLine !== ">-") return firstLine;
+
+  const continuation: string[] = [];
+  for (let index = conditionAt + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim() && !/^\s{6,}/.test(line)) break;
+    if (line.trim()) continuation.push(line.trim());
+  }
+  assert.ok(continuation.length > 0, "folded deploy condition must not be empty");
+  return continuation.join(" ");
+}
+
+type WorkflowRunCase = {
+  event: string;
+  headRepository: string;
+  headBranch: string;
+  conclusion: string;
+};
+
+function evaluateDeployJobCondition(condition: string, workflowRun: WorkflowRunCase): boolean {
+  const currentRepository = "huynhtai22/monstera-cloud";
+  const values: Record<string, string> = {
+    "github.event.workflow_run.conclusion": workflowRun.conclusion,
+    "github.event.workflow_run.event": workflowRun.event,
+    "github.event.workflow_run.head_repository.full_name": workflowRun.headRepository,
+    "github.event.workflow_run.head_branch": workflowRun.headBranch,
+    "github.repository": currentRepository,
+  };
+  const expression = condition
+    .replace(/^\$\{\{\s*/, "")
+    .replace(/\s*\}\}$/, "")
+    .trim();
+  const terms = expression.split(/\s*&&\s*/);
+
+  return terms.every((term) => {
+    const comparison = term.match(
+      /^([A-Za-z0-9_.]+)\s*==\s*(?:'([^']*)'|"([^"]*)"|([A-Za-z0-9_.]+))$/,
+    );
+    assert.ok(comparison, `unsupported deploy condition term: ${term}`);
+    const [, leftPath, singleQuoted, doubleQuoted, rightPath] = comparison;
+    assert.ok(leftPath in values, `unsupported deploy condition context: ${leftPath}`);
+    const rightValue =
+      singleQuoted ?? doubleQuoted ?? (rightPath && values[rightPath]);
+    assert.notEqual(rightValue, undefined, `unsupported deploy condition value: ${term}`);
+    return values[leftPath] === rightValue;
+  });
+}
+
 function runValidator(vars: Record<string, string>) {
   return spawnSync(process.execPath, ["scripts/validate-migration-env.mjs"], {
     cwd: process.cwd(),
@@ -49,15 +108,167 @@ function runValidator(vars: Record<string, string>) {
   });
 }
 
+describe("trusted production deployment origin", () => {
+  const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy.yml"), "utf8");
+  const condition = extractDeployJobCondition(workflow);
+  const currentRepository = "huynhtai22/monstera-cloud";
+  const forkRepository = "untrusted-fork/monstera-cloud";
+  const cases: Array<{ name: string; input: WorkflowRunCase; deploy: boolean }> = [
+    {
+      name: "allows a successful push from this repository's main branch",
+      input: {
+        event: "push",
+        headRepository: currentRepository,
+        headBranch: "main",
+        conclusion: "success",
+      },
+      deploy: true,
+    },
+    {
+      name: "rejects a pull request from this repository's main branch",
+      input: {
+        event: "pull_request",
+        headRepository: currentRepository,
+        headBranch: "main",
+        conclusion: "success",
+      },
+      deploy: false,
+    },
+    {
+      name: "rejects a pull request from a fork branch named main",
+      input: {
+        event: "pull_request",
+        headRepository: forkRepository,
+        headBranch: "main",
+        conclusion: "success",
+      },
+      deploy: false,
+    },
+    {
+      name: "rejects a push attributed to a different repository",
+      input: {
+        event: "push",
+        headRepository: forkRepository,
+        headBranch: "main",
+        conclusion: "success",
+      },
+      deploy: false,
+    },
+    {
+      name: "rejects a push from a feature branch",
+      input: {
+        event: "push",
+        headRepository: currentRepository,
+        headBranch: "feature/untrusted",
+        conclusion: "success",
+      },
+      deploy: false,
+    },
+    {
+      name: "rejects a failed push from this repository's main branch",
+      input: {
+        event: "push",
+        headRepository: currentRepository,
+        headBranch: "main",
+        conclusion: "failure",
+      },
+      deploy: false,
+    },
+  ];
+
+  for (const testCase of cases) {
+    it(testCase.name, () => {
+      assert.equal(evaluateDeployJobCondition(condition, testCase.input), testCase.deploy);
+    });
+  }
+
+  it("places the complete trust condition on the job before checkout", () => {
+    const deployAt = workflow.indexOf("  deploy:");
+    const conditionAt = workflow.indexOf("    if:", deployAt);
+    const checkoutAt = workflow.indexOf("- uses: actions/checkout@v4", deployAt);
+    assert.ok(deployAt !== -1 && conditionAt > deployAt);
+    assert.ok(checkoutAt > conditionAt, "the trust gate must run before checkout");
+    assert.match(condition, /github\.event\.workflow_run\.conclusion\s*==\s*['"]success['"]/);
+    assert.match(condition, /github\.event\.workflow_run\.event\s*==\s*['"]push['"]/);
+    assert.match(
+      condition,
+      /github\.event\.workflow_run\.head_repository\.full_name\s*==\s*github\.repository/,
+    );
+    assert.match(condition, /github\.event\.workflow_run\.head_branch\s*==\s*['"]main['"]/);
+  });
+});
+
 describe("secret-safe production migration environment", () => {
-  it("runs the production migration through vercel env run", () => {
+  it("maps the GitHub migration secret to both URLs at migration-step scope only", () => {
     const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy.yml"), "utf8");
     const step = extractStep(workflow, "Apply database migrations");
     assert.match(
       step,
-      /vercel env run --environment=production\b[^\n]*-- npm run db:migrate:prepare/,
-      "migrations must execute inside vercel's secret-safe env run",
+      /env:\s*\n\s+DIRECT_URL: \$\{\{ secrets\.PRODUCTION_DIRECT_DATABASE_URL \}\}\s*\n\s+DATABASE_URL: \$\{\{ secrets\.PRODUCTION_DIRECT_DATABASE_URL \}\}/,
+      "the migration step must map the dedicated repository secret to both process variables",
     );
+    assert.equal(
+      step.split(MIGRATION_SECRET_EXPRESSION).length - 1,
+      2,
+      "the migration step must reference the dedicated secret exactly twice",
+    );
+    assert.equal(
+      workflow.split(MIGRATION_SECRET_EXPRESSION).length - 1,
+      2,
+      "the dedicated secret must not be referenced outside the migration step",
+    );
+    assert.ok(
+      !workflow.replace(step, "").includes(MIGRATION_SECRET_EXPRESSION),
+      "the dedicated secret must be scoped only to the migration step",
+    );
+  });
+
+  it("does not ask Vercel to retrieve write-only secrets for migrations", () => {
+    const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy.yml"), "utf8");
+    const step = extractStep(workflow, "Apply database migrations");
+    assert.ok(
+      !step.includes("vercel env run"),
+      "the migration step must receive its URLs from GitHub Actions step env",
+    );
+  });
+
+  it("never places or prints the migration secret in command lines", () => {
+    const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy.yml"), "utf8");
+    const installStep = extractStep(workflow, "Install project dependencies");
+    const step = extractStep(workflow, "Apply database migrations");
+    const runAt = step.indexOf("run: |");
+    assert.ok(runAt !== -1, "the migration step must contain a run block");
+    const runBlock = step.slice(runAt);
+    assert.ok(
+      !runBlock.includes(MIGRATION_SECRET_EXPRESSION),
+      "the GitHub secret expression must not appear in command arguments",
+    );
+    assert.doesNotMatch(
+      runBlock,
+      /\b(?:echo|printf|printenv)\b[^\n]*(?:DIRECT_URL|DATABASE_URL)/,
+      "migration URL variables must never be printed",
+    );
+    assert.ok(!runBlock.includes("DIRECT_URL="), "DIRECT_URL must not be assigned in a command");
+    assert.ok(!runBlock.includes("DATABASE_URL="), "DATABASE_URL must not be assigned in a command");
+    assert.ok(!runBlock.includes("npm ci"), "dependency installation must run outside the secret-scoped step");
+    assert.match(installStep, /run:\s*\|\s*\n\s+npm ci(?:\s*\n|$)/);
+    assert.ok(!installStep.includes("env:"), "dependency installation must not receive migration secrets");
+    assert.ok(
+      workflow.indexOf(installStep) < workflow.indexOf(step),
+      "dependencies must be installed before the migration step",
+    );
+  });
+
+  it("retains Vercel environment pull only for project and build configuration", () => {
+    const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy.yml"), "utf8");
+    const pullStep = extractStep(workflow, "Pull Vercel environment");
+    const migrationStep = extractStep(workflow, "Apply database migrations");
+    assert.match(
+      pullStep,
+      /vercel pull --yes --environment=production --token=\$\{\{ secrets\.VERCEL_TOKEN \}\}/,
+      "vercel pull must remain available for the later build path",
+    );
+    assert.ok(!migrationStep.includes("vercel pull"), "the migration step must not pull Vercel secrets");
   });
 
   it("no longer sources production credentials from the pulled env file", () => {
@@ -208,6 +419,12 @@ describe("secret-safe production migration environment", () => {
     assert.equal(pooled.status, 1);
     const missing = runValidator({ DATABASE_URL: DIRECT_URL });
     assert.equal(missing.status, 1);
+    const empty = runValidator({ DIRECT_URL: "", DATABASE_URL: "" });
+    assert.equal(empty.status, 1);
+    const emptyOutput = `${empty.stdout ?? ""}${empty.stderr ?? ""}`;
+    assert.match(emptyOutput, /DIRECT_URL is missing/);
+    assert.match(emptyOutput, /DATABASE_URL is missing/);
+    assert.ok(!emptyOutput.includes("postgresql://"));
   });
 
   it("exits zero on a valid production environment", () => {
