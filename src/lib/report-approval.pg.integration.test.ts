@@ -6,6 +6,7 @@ import { approveReportSnapshot, getSnapshotApproval, getLatestReportApproval, Re
 import { deriveReportLifecycleState } from "./report-lifecycle";
 import { POST as approvalRoute } from "@/app/api/reports/approval/route";
 import { setAuthSessionOverride } from "./auth-session";
+import { loadCurrentDependencyState, computeDependencyHash } from "./report-blueprint";
 
 describe("PostgreSQL integration: Report snapshot approval and lifecycle", () => {
   const uid = randomUUID();
@@ -65,13 +66,92 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
     // 4. Clients
     await prisma.client.createMany({
       data: [
-        { id: clientA, workspaceId: wsA, name: "Client A" },
+        {
+          id: clientA,
+          workspaceId: wsA,
+          name: "Client A",
+          requiredProviders: ["meta_ads"],
+          requiredDestinations: ["google_sheets"],
+          requirementsConfiguredAt: new Date("2026-08-20T00:00:00.000Z"),
+          accountAssignmentsConfiguredAt: new Date("2026-08-20T00:00:00.000Z"),
+        },
         { id: clientA2, workspaceId: wsA, name: "Client A2" },
         { id: clientB, workspaceId: wsB, name: "Client B" },
       ],
     });
 
+    const connMetaA = `appr-conn-meta-${uid}`;
+    await prisma.connection.create({
+      data: {
+        id: connMetaA,
+        workspaceId: wsA,
+        clientId: clientA,
+        name: "Meta A",
+        type: "source",
+        provider: "meta_ads",
+        credentials: "enc:v1:test",
+        remoteAccountId: "act_meta_1",
+        status: "connected",
+        lastSyncAt: new Date(),
+      },
+    });
+
+    await prisma.clientProviderAccountAssignment.create({
+      data: {
+        workspaceId: wsA,
+        clientId: clientA,
+        provider: "meta_ads",
+        accountId: "act_meta_1",
+        connectionId: connMetaA,
+      },
+    });
+
+    await prisma.accountReportingContext.create({
+      data: {
+        workspaceId: wsA,
+        connectionId: connMetaA,
+        accountId: "act_meta_1",
+        providerTimezone: "Asia/Ho_Chi_Minh",
+        providerCurrency: "VND",
+        providerObservedAt: new Date(),
+      },
+    });
+
+    const dates = ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06", "2026-09-07"];
+    for (const date of dates) {
+      await prisma.campaignMetric.create({
+        data: {
+          workspaceId: wsA,
+          connectionId: connMetaA,
+          accountId: "act_meta_1",
+          platform: "meta_ads",
+          date: new Date(`${date}T00:00:00.000Z`),
+          campaignId: `cmp_1_${uid}`,
+          campaignName: "Test Campaign",
+          spend: 100000,
+          impressions: 1000,
+          clicks: 50,
+          conversions: 5,
+          revenue: 500000,
+          currency: "VND",
+        },
+      });
+    }
+
     // 5. Create a healthy snapshot (ready to review)
+    const windowStart = new Date("2026-09-01T00:00:00.000Z");
+    const windowEnd = new Date("2026-09-07T23:59:59.999Z");
+    const healthyDepState = await loadCurrentDependencyState(
+      {
+        workspaceId: wsA,
+        clientId: clientA,
+        reportingWindowStart: windowStart,
+        reportingWindowEnd: windowEnd,
+      },
+      prisma,
+    );
+    const healthyDepHash = computeDependencyHash(healthyDepState);
+
     const healthySnap = await prisma.reportSnapshot.create({
       data: {
         workspaceId: wsA,
@@ -80,22 +160,25 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
         blueprintVersion: 1,
         generationKey,
         sequence: 1,
-        reportingWindowStart: new Date("2026-09-01T00:00:00.000Z"),
-        reportingWindowEnd: new Date("2026-09-07T23:59:59.999Z"),
-        datasetFingerprint: `fp-healthy-${uid}`,
-        dependencyHash: `hash-healthy-${uid}`,
+        reportingWindowStart: windowStart,
+        reportingWindowEnd: windowEnd,
+        datasetFingerprint: healthyDepState.datasetFingerprint,
+        dependencyHash: healthyDepHash,
         readinessStatus: "WARNING", // Overall status WARNING due to unverified destination
         verificationStatus: "NOT_VERIFIED",
         verificationReasons: ["destination_evidence_missing"],
         dataThroughByProvider: { meta_ads: "2026-09-07" },
         metricContractVersions: { metrics: "v3" },
         readinessEvidence: {
-          outcome: {
-            status: "WARNING",
-            dataStatus: "READY",
-            blockers: [],
-            warnings: [{ code: "DESTINATION_UNVERIFIED" }],
-          },
+          evaluatedAt: new Date().toISOString(),
+          blockers: [],
+          warnings: [{ code: "DESTINATION_UNVERIFIED" }],
+          currencies: ["VND"],
+          timezones: ["Asia/Ho_Chi_Minh"],
+          destinationState: "unverified",
+          latestDataDate: null,
+          evidenceIdentifier: healthyDepHash,
+          dependencyState: healthyDepState,
         },
         destinationReceipts: [],
         result: {
@@ -160,6 +243,10 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
   after(async () => {
     setAuthSessionOverride(null);
     for (const ws of [wsA, wsB]) {
+      await prisma.campaignMetric.deleteMany({ where: { workspaceId: ws } });
+      await prisma.accountReportingContext.deleteMany({ where: { workspaceId: ws } });
+      await prisma.clientProviderAccountAssignment.deleteMany({ where: { workspaceId: ws } });
+      await prisma.connection.deleteMany({ where: { workspaceId: ws } });
       await prisma.reportSnapshotApproval.deleteMany({ where: { workspaceId: ws } });
       await prisma.destinationDeliveryReceipt.deleteMany({ where: { workspaceId: ws } });
       await prisma.auditEvent.deleteMany({ where: { workspaceId: ws } });
@@ -646,8 +733,81 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
         id: disposableClientId,
         workspaceId: wsA,
         name: "Disposable Client",
+        requiredProviders: ["meta_ads"],
+        requiredDestinations: ["google_sheets"],
+        requirementsConfiguredAt: new Date("2026-08-20T00:00:00.000Z"),
+        accountAssignmentsConfiguredAt: new Date("2026-08-20T00:00:00.000Z"),
       },
     });
+
+    const connDisp = `appr-conn-disp-${uid}`;
+    await prisma.connection.create({
+      data: {
+        id: connDisp,
+        workspaceId: wsA,
+        clientId: disposableClientId,
+        name: "Meta Disp",
+        type: "source",
+        provider: "meta_ads",
+        credentials: "enc:v1:test",
+        remoteAccountId: "act_disp_1",
+        status: "connected",
+        lastSyncAt: new Date(),
+      },
+    });
+
+    await prisma.clientProviderAccountAssignment.create({
+      data: {
+        workspaceId: wsA,
+        clientId: disposableClientId,
+        provider: "meta_ads",
+        accountId: "act_disp_1",
+        connectionId: connDisp,
+      },
+    });
+
+    await prisma.accountReportingContext.create({
+      data: {
+        workspaceId: wsA,
+        connectionId: connDisp,
+        accountId: "act_disp_1",
+        providerTimezone: "Asia/Ho_Chi_Minh",
+        providerCurrency: "VND",
+        providerObservedAt: new Date(),
+      },
+    });
+
+    const dispDates = ["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04", "2026-09-05", "2026-09-06", "2026-09-07"];
+    for (const d of dispDates) {
+      await prisma.campaignMetric.create({
+        data: {
+          workspaceId: wsA,
+          connectionId: connDisp,
+          accountId: "act_disp_1",
+          platform: "meta_ads",
+          date: new Date(`${d}T00:00:00.000Z`),
+          campaignId: `cmp_disp_${uid}`,
+          campaignName: "Test Campaign",
+          spend: 100000,
+          impressions: 1000,
+          clicks: 50,
+          conversions: 5,
+          revenue: 500000,
+          currency: "VND",
+        },
+      });
+    }
+
+    const dispDepState = await loadCurrentDependencyState(
+      {
+        workspaceId: wsA,
+        clientId: disposableClientId,
+        reportingWindowStart: new Date("2026-09-01T00:00:00.000Z"),
+        reportingWindowEnd: new Date("2026-09-07T23:59:59.999Z"),
+      },
+      prisma,
+    );
+    const dispDepHash = computeDependencyHash(dispDepState);
 
     const dispSnap = await prisma.reportSnapshot.create({
       data: {
@@ -659,14 +819,18 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
         sequence: 1,
         reportingWindowStart: new Date("2026-09-01T00:00:00.000Z"),
         reportingWindowEnd: new Date("2026-09-07T23:59:59.999Z"),
-        datasetFingerprint: `fp-disp-${uid}`,
-        dependencyHash: `hash-disp-${uid}`,
+        datasetFingerprint: dispDepState.datasetFingerprint,
+        dependencyHash: dispDepHash,
         readinessStatus: "READY",
         verificationStatus: "VERIFIED",
         verificationReasons: [],
         dataThroughByProvider: { meta_ads: "2026-09-07" },
         metricContractVersions: { metrics: "v3" },
-        readinessEvidence: { outcome: { status: "READY", dataStatus: "READY" } },
+        readinessEvidence: {
+          evaluatedAt: new Date().toISOString(),
+          evidenceIdentifier: dispDepHash,
+          dependencyState: dispDepState,
+        },
         destinationReceipts: [],
         result: {
           overview: {
@@ -705,5 +869,412 @@ describe("PostgreSQL integration: Report snapshot approval and lifecycle", () =>
       where: { workspaceId: wsA, clientId: disposableClientId },
     });
     assert.equal(countAfter, 0, "Deleting client cascades and deletes approval records");
+  });
+
+  it("P1-A contract: canonically generated READY data with unverified destination is approved", async () => {
+    const result = await approveReportSnapshot({
+      workspaceId: wsA,
+      clientId: clientA,
+      snapshotId: healthySnapshotId,
+      userId: userMember,
+    });
+
+    assert.equal(result.created, true);
+    assert.equal(result.approval.snapshotId, healthySnapshotId);
+    assert.equal(result.approval.approvedByUserId, userMember);
+
+    const dbRow = await prisma.reportSnapshotApproval.findUnique({
+      where: { workspaceId_snapshotId: { workspaceId: wsA, snapshotId: healthySnapshotId } },
+    });
+    assert.ok(dbRow, "Approval row is persisted in the database");
+  });
+
+  it("P1-A contract: malformed or missing readiness evidence fails closed with 409 data_not_ready and zero writes", async () => {
+    const malformedSnap = await prisma.reportSnapshot.create({
+      data: {
+        workspaceId: wsA,
+        clientId: clientA,
+        blueprintId: "weekly-paid-media-performance",
+        blueprintVersion: 1,
+        generationKey: `gen-malformed-${uid}`,
+        sequence: 1,
+        reportingWindowStart: new Date("2026-09-01T00:00:00.000Z"),
+        reportingWindowEnd: new Date("2026-09-07T23:59:59.999Z"),
+        datasetFingerprint: "fp-malformed",
+        dependencyHash: "hash-malformed",
+        readinessStatus: "READY",
+        verificationStatus: "VERIFIED",
+        verificationReasons: [],
+        dataThroughByProvider: {},
+        metricContractVersions: { metrics: "v3" },
+        readinessEvidence: {}, // Empty / missing outcome
+        destinationReceipts: [],
+        result: {},
+      },
+    });
+
+    const approvalsBefore = await prisma.reportSnapshotApproval.count({ where: { workspaceId: wsA } });
+    const auditBefore = await prisma.auditEvent.count({ where: { workspaceId: wsA } });
+
+    await assert.rejects(
+      async () => {
+        await approveReportSnapshot({
+          workspaceId: wsA,
+          clientId: clientA,
+          snapshotId: malformedSnap.id,
+          userId: userMember,
+        });
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof ReportApprovalError);
+        assert.equal(err.code, "data_not_ready");
+        assert.equal(err.status, 409);
+        return true;
+      },
+    );
+
+    const approvalsAfter = await prisma.reportSnapshotApproval.count({ where: { workspaceId: wsA } });
+    const auditAfter = await prisma.auditEvent.count({ where: { workspaceId: wsA } });
+    assert.equal(approvalsAfter, approvalsBefore, "Zero approval writes on malformed evidence");
+    assert.equal(auditAfter, auditBefore, "Zero audit writes on malformed evidence");
+
+    await prisma.reportSnapshot.delete({ where: { id: malformedSnap.id } });
+  });
+
+  it("P1-B contract: warehouse metric modification after snapshot generation causes 409 snapshot_stale and zero writes", async () => {
+    const testGenKey = `gen-metric-stale-${uid}`;
+    const windowStart = new Date("2026-09-01T00:00:00.000Z");
+    const windowEnd = new Date("2026-09-07T23:59:59.999Z");
+    const baselineDepState = await loadCurrentDependencyState(
+      {
+        workspaceId: wsA,
+        clientId: clientA,
+        reportingWindowStart: windowStart,
+        reportingWindowEnd: windowEnd,
+      },
+      prisma,
+    );
+    const baselineDepHash = computeDependencyHash(baselineDepState);
+
+    const snap = await prisma.reportSnapshot.create({
+      data: {
+        workspaceId: wsA,
+        clientId: clientA,
+        blueprintId: "weekly-paid-media-performance",
+        blueprintVersion: 1,
+        generationKey: testGenKey,
+        sequence: 1,
+        reportingWindowStart: windowStart,
+        reportingWindowEnd: windowEnd,
+        datasetFingerprint: baselineDepState.datasetFingerprint,
+        dependencyHash: baselineDepHash,
+        readinessStatus: "WARNING",
+        verificationStatus: "NOT_VERIFIED",
+        verificationReasons: [],
+        dataThroughByProvider: { meta_ads: "2026-09-07" },
+        metricContractVersions: { metrics: "v3" },
+        readinessEvidence: {
+          evaluatedAt: new Date().toISOString(),
+          evidenceIdentifier: baselineDepHash,
+          dependencyState: baselineDepState,
+        },
+        destinationReceipts: [],
+        result: {},
+      },
+    });
+
+    const extraMetric = await prisma.campaignMetric.create({
+      data: {
+        workspaceId: wsA,
+        connectionId: `appr-conn-meta-${uid}`,
+        accountId: "act_meta_1",
+        platform: "meta_ads",
+        date: new Date("2026-09-05T00:00:00.000Z"),
+        campaignId: `cmp_extra_${uid}`,
+        entityId: `cmp_extra_${uid}`,
+        level: "campaign",
+        campaignName: "Extra Campaign",
+        spend: 50000,
+        impressions: 500,
+        clicks: 25,
+        conversions: 2,
+        revenue: 250000,
+        currency: "VND",
+      },
+    });
+
+    const approvalsBefore = await prisma.reportSnapshotApproval.count({ where: { workspaceId: wsA } });
+    const auditBefore = await prisma.auditEvent.count({ where: { workspaceId: wsA } });
+
+    await assert.rejects(
+      async () => {
+        await approveReportSnapshot({
+          workspaceId: wsA,
+          clientId: clientA,
+          snapshotId: snap.id,
+          userId: userMember,
+        });
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof ReportApprovalError);
+        assert.equal(err.code, "snapshot_stale");
+        assert.equal(err.status, 409);
+        assert.match(err.message, /dataset_changed/);
+        return true;
+      },
+    );
+
+    const approvalsAfter = await prisma.reportSnapshotApproval.count({ where: { workspaceId: wsA } });
+    const auditAfter = await prisma.auditEvent.count({ where: { workspaceId: wsA } });
+    assert.equal(approvalsAfter, approvalsBefore, "Zero approvals written on stale dataset");
+    assert.equal(auditAfter, auditBefore, "Zero audit events written on stale dataset");
+
+    await prisma.campaignMetric.delete({ where: { id: extraMetric.id } });
+    await prisma.reportSnapshot.delete({ where: { id: snap.id } });
+  });
+
+  it("P1-B contract: client reporting-requirement modification causes 409 snapshot_stale and zero writes", async () => {
+    const testGenKey = `gen-req-stale-${uid}`;
+    const windowStart = new Date("2026-09-01T00:00:00.000Z");
+    const windowEnd = new Date("2026-09-07T23:59:59.999Z");
+    const baselineDepState = await loadCurrentDependencyState(
+      {
+        workspaceId: wsA,
+        clientId: clientA,
+        reportingWindowStart: windowStart,
+        reportingWindowEnd: windowEnd,
+      },
+      prisma,
+    );
+    const baselineDepHash = computeDependencyHash(baselineDepState);
+
+    const snap = await prisma.reportSnapshot.create({
+      data: {
+        workspaceId: wsA,
+        clientId: clientA,
+        blueprintId: "weekly-paid-media-performance",
+        blueprintVersion: 1,
+        generationKey: testGenKey,
+        sequence: 1,
+        reportingWindowStart: windowStart,
+        reportingWindowEnd: windowEnd,
+        datasetFingerprint: baselineDepState.datasetFingerprint,
+        dependencyHash: baselineDepHash,
+        readinessStatus: "WARNING",
+        verificationStatus: "NOT_VERIFIED",
+        verificationReasons: [],
+        dataThroughByProvider: { meta_ads: "2026-09-07" },
+        metricContractVersions: { metrics: "v3" },
+        readinessEvidence: {
+          evaluatedAt: new Date().toISOString(),
+          evidenceIdentifier: baselineDepHash,
+          dependencyState: baselineDepState,
+        },
+        destinationReceipts: [],
+        result: {},
+      },
+    });
+
+    const origClient = await prisma.client.findUniqueOrThrow({
+      where: { workspaceId_id: { workspaceId: wsA, id: clientA } },
+    });
+    await prisma.client.update({
+      where: { workspaceId_id: { workspaceId: wsA, id: clientA } },
+      data: {
+        requiredProviders: ["meta_ads", "google_ads"],
+        requirementsConfiguredAt: new Date("2026-09-01T00:00:00.000Z"),
+      },
+    });
+
+    await assert.rejects(
+      async () => {
+        await approveReportSnapshot({
+          workspaceId: wsA,
+          clientId: clientA,
+          snapshotId: snap.id,
+          userId: userMember,
+        });
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof ReportApprovalError);
+        assert.equal(err.code, "snapshot_stale");
+        assert.equal(err.status, 409);
+        assert.match(err.message, /requirement_changed/);
+        return true;
+      },
+    );
+
+    await prisma.client.update({
+      where: { workspaceId_id: { workspaceId: wsA, id: clientA } },
+      data: {
+        requiredProviders: origClient.requiredProviders,
+        requirementsConfiguredAt: origClient.requirementsConfiguredAt,
+      },
+    });
+    await prisma.reportSnapshot.delete({ where: { id: snap.id } });
+  });
+
+  it("P1-B contract: provider account assignment change causes 409 snapshot_stale and zero writes", async () => {
+    const testGenKey = `gen-assign-stale-${uid}`;
+    const windowStart = new Date("2026-09-01T00:00:00.000Z");
+    const windowEnd = new Date("2026-09-07T23:59:59.999Z");
+    const baselineDepState = await loadCurrentDependencyState(
+      {
+        workspaceId: wsA,
+        clientId: clientA,
+        reportingWindowStart: windowStart,
+        reportingWindowEnd: windowEnd,
+      },
+      prisma,
+    );
+    const baselineDepHash = computeDependencyHash(baselineDepState);
+
+    const snap = await prisma.reportSnapshot.create({
+      data: {
+        workspaceId: wsA,
+        clientId: clientA,
+        blueprintId: "weekly-paid-media-performance",
+        blueprintVersion: 1,
+        generationKey: testGenKey,
+        sequence: 1,
+        reportingWindowStart: windowStart,
+        reportingWindowEnd: windowEnd,
+        datasetFingerprint: baselineDepState.datasetFingerprint,
+        dependencyHash: baselineDepHash,
+        readinessStatus: "WARNING",
+        verificationStatus: "NOT_VERIFIED",
+        verificationReasons: [],
+        dataThroughByProvider: { meta_ads: "2026-09-07" },
+        metricContractVersions: { metrics: "v3" },
+        readinessEvidence: {
+          evaluatedAt: new Date().toISOString(),
+          evidenceIdentifier: baselineDepHash,
+          dependencyState: baselineDepState,
+        },
+        destinationReceipts: [],
+        result: {},
+      },
+    });
+
+    const extraAssignment = await prisma.clientProviderAccountAssignment.create({
+      data: {
+        workspaceId: wsA,
+        clientId: clientA,
+        provider: "meta_ads",
+        accountId: "act_meta_extra",
+        connectionId: `appr-conn-meta-${uid}`,
+      },
+    });
+
+    await assert.rejects(
+      async () => {
+        await approveReportSnapshot({
+          workspaceId: wsA,
+          clientId: clientA,
+          snapshotId: snap.id,
+          userId: userMember,
+        });
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof ReportApprovalError);
+        assert.equal(err.code, "snapshot_stale");
+        assert.equal(err.status, 409);
+        assert.match(err.message, /account_assignment_changed/);
+        return true;
+      },
+    );
+
+    await prisma.clientProviderAccountAssignment.delete({ where: { id: extraAssignment.id } });
+    await prisma.reportSnapshot.delete({ where: { id: snap.id } });
+  });
+
+  it("P1-B contract: destination delivery receipt minted after snapshot generation does NOT invalidate data approval", async () => {
+    const testGenKey = `gen-dest-receipt-${uid}`;
+    const windowStart = new Date("2026-09-01T00:00:00.000Z");
+    const windowEnd = new Date("2026-09-07T23:59:59.999Z");
+    const baselineDepState = await loadCurrentDependencyState(
+      {
+        workspaceId: wsA,
+        clientId: clientA,
+        reportingWindowStart: windowStart,
+        reportingWindowEnd: windowEnd,
+      },
+      prisma,
+    );
+    const baselineDepHash = computeDependencyHash(baselineDepState);
+
+    const snap = await prisma.reportSnapshot.create({
+      data: {
+        workspaceId: wsA,
+        clientId: clientA,
+        blueprintId: "weekly-paid-media-performance",
+        blueprintVersion: 1,
+        generationKey: testGenKey,
+        sequence: 1,
+        reportingWindowStart: windowStart,
+        reportingWindowEnd: windowEnd,
+        datasetFingerprint: baselineDepState.datasetFingerprint,
+        dependencyHash: baselineDepHash,
+        readinessStatus: "WARNING",
+        verificationStatus: "NOT_VERIFIED",
+        verificationReasons: ["destination_evidence_missing"],
+        dataThroughByProvider: { meta_ads: "2026-09-07" },
+        metricContractVersions: { metrics: "v3" },
+        readinessEvidence: {
+          evaluatedAt: new Date().toISOString(),
+          evidenceIdentifier: baselineDepHash,
+          dependencyState: baselineDepState,
+        },
+        destinationReceipts: [],
+        result: {},
+      },
+    });
+
+    const receipt = await prisma.destinationDeliveryReceipt.create({
+      data: {
+        workspaceId: wsA,
+        clientId: clientA,
+        destination: "google_sheets",
+        windowStart: "2026-09-01",
+        windowEnd: "2026-09-07",
+        datasetFingerprint: baselineDepState.datasetFingerprint,
+        dataThroughDate: "2026-09-07",
+        rowCount: 7,
+        actorId: userMember,
+        retrievedAt: new Date(),
+      },
+    });
+
+    const result = await approveReportSnapshot({
+      workspaceId: wsA,
+      clientId: clientA,
+      snapshotId: snap.id,
+      userId: userMember,
+    });
+
+    assert.equal(result.created, true, "Approval succeeds even after destination receipt is minted");
+    assert.equal(result.approval.snapshotId, snap.id);
+
+    await prisma.destinationDeliveryReceipt.delete({ where: { id: receipt.id } });
+    await prisma.reportSnapshot.delete({ where: { id: snap.id } });
+  });
+
+  it("P1-B contract: snapshot row is immutable during approval", async () => {
+    const snapBefore = await prisma.reportSnapshot.findUniqueOrThrow({
+      where: { id: healthySnapshotId },
+    });
+
+    await approveReportSnapshot({
+      workspaceId: wsA,
+      clientId: clientA,
+      snapshotId: healthySnapshotId,
+      userId: userMember,
+    });
+
+    const snapAfter = await prisma.reportSnapshot.findUniqueOrThrow({
+      where: { id: healthySnapshotId },
+    });
+
+    assert.deepEqual(snapBefore, snapAfter, "ReportSnapshot row must never be mutated during approval");
   });
 });

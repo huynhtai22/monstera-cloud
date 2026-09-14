@@ -293,3 +293,107 @@ export function evaluateReportReadiness(input: {
   };
   return { ...result, dependencyEvidence: readinessDependencyEvidence(input, result) };
 }
+
+/**
+ * Canonical extractor for snapshot dataStatus from persisted readiness evidence.
+ * Reads:
+ * 1. readinessEvidence.dependencyState.readinessEvidence.outcome (canonical generated path)
+ * 2. readinessEvidence.dependencyEvidence.outcome (legacy / flat dependency evidence)
+ * 3. readinessEvidence.readinessEvidence.outcome
+ * 4. readinessEvidence.outcome (direct outcome path)
+ *
+ * Rules:
+ * - Missing or malformed readiness evidence fails closed to UNKNOWN (never silently classified as READY).
+ * - Destination-only blockers or warnings (e.g. DESTINATION_UNVERIFIED) do not downgrade dataStatus.
+ * - Provider/data blockers force dataStatus to NOT_READY.
+ * - Legacy paths without explicit dataStatus behave strictly according to the documented fallback contract.
+ */
+export function extractSnapshotDataStatus(snapshot: {
+  readinessStatus: string;
+  readinessEvidence: unknown;
+}): ReportReadinessStatus {
+  if (!snapshot.readinessEvidence || typeof snapshot.readinessEvidence !== "object") {
+    return "UNKNOWN";
+  }
+
+  const evidence = snapshot.readinessEvidence as Record<string, unknown>;
+  const depState =
+    evidence.dependencyState && typeof evidence.dependencyState === "object"
+      ? (evidence.dependencyState as Record<string, unknown>)
+      : undefined;
+  const depReadiness =
+    depState?.readinessEvidence && typeof depState.readinessEvidence === "object"
+      ? (depState.readinessEvidence as Record<string, unknown>)
+      : undefined;
+
+  const outcome = (
+    depReadiness?.outcome ??
+    (evidence.dependencyEvidence as Record<string, unknown> | undefined)?.outcome ??
+    (evidence.readinessEvidence as Record<string, unknown> | undefined)?.outcome ??
+    evidence.outcome
+  ) as
+    | {
+        dataStatus?: ReportReadinessStatus;
+        status?: ReportReadinessStatus;
+        blockers?: Array<{ code: string }>;
+        warnings?: Array<{ code: string }>;
+      }
+    | undefined;
+
+  if (outcome && typeof outcome === "object") {
+    if (outcome.dataStatus) {
+      const blockers = Array.isArray(outcome.blockers) ? outcome.blockers : [];
+      const dataBlockers = blockers.filter(
+        (b) => typeof b?.code === "string" && !b.code.startsWith("DESTINATION_"),
+      );
+      if (dataBlockers.length > 0) {
+        return "NOT_READY";
+      }
+      return outcome.dataStatus;
+    }
+
+    // Legacy outcome without explicit dataStatus:
+    if (outcome.status === "READY" && (!outcome.blockers || outcome.blockers.length === 0)) {
+      return "READY";
+    }
+    if (outcome.status === "NOT_READY") {
+      const blockers = Array.isArray(outcome.blockers) ? outcome.blockers : [];
+      const dataBlockers = blockers.filter(
+        (b) => typeof b?.code === "string" && !b.code.startsWith("DESTINATION_"),
+      );
+      if (dataBlockers.length > 0) return "NOT_READY";
+      const warnings = Array.isArray(outcome.warnings) ? outcome.warnings : [];
+      const dataWarnings = warnings.filter(
+        (w) => typeof w?.code === "string" && !w.code.startsWith("DESTINATION_"),
+      );
+      if (dataWarnings.length > 0) return "WARNING";
+      return "READY";
+    }
+    if (outcome.status === "WARNING") {
+      const blockers = Array.isArray(outcome.blockers) ? outcome.blockers : [];
+      const dataBlockers = blockers.filter(
+        (b) => typeof b?.code === "string" && !b.code.startsWith("DESTINATION_"),
+      );
+      if (dataBlockers.length > 0) return "NOT_READY";
+      const warnings = Array.isArray(outcome.warnings) ? outcome.warnings : [];
+      const dataWarnings = warnings.filter(
+        (w) => typeof w?.code === "string" && !w.code.startsWith("DESTINATION_"),
+      );
+      if (dataWarnings.length === 0) return "READY";
+      return "WARNING";
+    }
+  }
+
+  // Legacy fallback when outcome is absent but snapshot has valid legacy evidence structure:
+  const hasLegacyStructure = Boolean(
+    evidence.evaluatedAt || evidence.evidenceIdentifier || evidence.contractVersion,
+  );
+  if (hasLegacyStructure) {
+    if (snapshot.readinessStatus === "READY") return "READY";
+    if (snapshot.readinessStatus === "NOT_READY") return "NOT_READY";
+    if (snapshot.readinessStatus === "WARNING") return "WARNING";
+  }
+
+  // Malformed or empty evidence fails closed
+  return "UNKNOWN";
+}
