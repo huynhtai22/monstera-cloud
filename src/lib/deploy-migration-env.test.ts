@@ -38,6 +38,64 @@ function extractStep(workflow: string, stepName: string): string {
   return workflow.slice(start, nextStep === -1 ? undefined : nextStep);
 }
 
+function extractDeployJobCondition(workflow: string): string {
+  const lines = workflow.split("\n");
+  const deployAt = lines.findIndex((line) => /^  deploy:\s*$/.test(line));
+  assert.ok(deployAt !== -1, "workflow must contain the deploy job");
+  const conditionAt = lines.findIndex(
+    (line, index) => index > deployAt && /^    if:\s*/.test(line),
+  );
+  assert.ok(conditionAt !== -1, "deploy job must have a job-level condition");
+
+  const firstLine = lines[conditionAt].replace(/^    if:\s*/, "").trim();
+  if (firstLine !== ">-") return firstLine;
+
+  const continuation: string[] = [];
+  for (let index = conditionAt + 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.trim() && !/^\s{6,}/.test(line)) break;
+    if (line.trim()) continuation.push(line.trim());
+  }
+  assert.ok(continuation.length > 0, "folded deploy condition must not be empty");
+  return continuation.join(" ");
+}
+
+type WorkflowRunCase = {
+  event: string;
+  headRepository: string;
+  headBranch: string;
+  conclusion: string;
+};
+
+function evaluateDeployJobCondition(condition: string, workflowRun: WorkflowRunCase): boolean {
+  const currentRepository = "huynhtai22/monstera-cloud";
+  const values: Record<string, string> = {
+    "github.event.workflow_run.conclusion": workflowRun.conclusion,
+    "github.event.workflow_run.event": workflowRun.event,
+    "github.event.workflow_run.head_repository.full_name": workflowRun.headRepository,
+    "github.event.workflow_run.head_branch": workflowRun.headBranch,
+    "github.repository": currentRepository,
+  };
+  const expression = condition
+    .replace(/^\$\{\{\s*/, "")
+    .replace(/\s*\}\}$/, "")
+    .trim();
+  const terms = expression.split(/\s*&&\s*/);
+
+  return terms.every((term) => {
+    const comparison = term.match(
+      /^([A-Za-z0-9_.]+)\s*==\s*(?:'([^']*)'|"([^"]*)"|([A-Za-z0-9_.]+))$/,
+    );
+    assert.ok(comparison, `unsupported deploy condition term: ${term}`);
+    const [, leftPath, singleQuoted, doubleQuoted, rightPath] = comparison;
+    assert.ok(leftPath in values, `unsupported deploy condition context: ${leftPath}`);
+    const rightValue =
+      singleQuoted ?? doubleQuoted ?? (rightPath && values[rightPath]);
+    assert.notEqual(rightValue, undefined, `unsupported deploy condition value: ${term}`);
+    return values[leftPath] === rightValue;
+  });
+}
+
 function runValidator(vars: Record<string, string>) {
   return spawnSync(process.execPath, ["scripts/validate-migration-env.mjs"], {
     cwd: process.cwd(),
@@ -49,6 +107,96 @@ function runValidator(vars: Record<string, string>) {
     },
   });
 }
+
+describe("trusted production deployment origin", () => {
+  const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy.yml"), "utf8");
+  const condition = extractDeployJobCondition(workflow);
+  const currentRepository = "huynhtai22/monstera-cloud";
+  const forkRepository = "untrusted-fork/monstera-cloud";
+  const cases: Array<{ name: string; input: WorkflowRunCase; deploy: boolean }> = [
+    {
+      name: "allows a successful push from this repository's main branch",
+      input: {
+        event: "push",
+        headRepository: currentRepository,
+        headBranch: "main",
+        conclusion: "success",
+      },
+      deploy: true,
+    },
+    {
+      name: "rejects a pull request from this repository's main branch",
+      input: {
+        event: "pull_request",
+        headRepository: currentRepository,
+        headBranch: "main",
+        conclusion: "success",
+      },
+      deploy: false,
+    },
+    {
+      name: "rejects a pull request from a fork branch named main",
+      input: {
+        event: "pull_request",
+        headRepository: forkRepository,
+        headBranch: "main",
+        conclusion: "success",
+      },
+      deploy: false,
+    },
+    {
+      name: "rejects a push attributed to a different repository",
+      input: {
+        event: "push",
+        headRepository: forkRepository,
+        headBranch: "main",
+        conclusion: "success",
+      },
+      deploy: false,
+    },
+    {
+      name: "rejects a push from a feature branch",
+      input: {
+        event: "push",
+        headRepository: currentRepository,
+        headBranch: "feature/untrusted",
+        conclusion: "success",
+      },
+      deploy: false,
+    },
+    {
+      name: "rejects a failed push from this repository's main branch",
+      input: {
+        event: "push",
+        headRepository: currentRepository,
+        headBranch: "main",
+        conclusion: "failure",
+      },
+      deploy: false,
+    },
+  ];
+
+  for (const testCase of cases) {
+    it(testCase.name, () => {
+      assert.equal(evaluateDeployJobCondition(condition, testCase.input), testCase.deploy);
+    });
+  }
+
+  it("places the complete trust condition on the job before checkout", () => {
+    const deployAt = workflow.indexOf("  deploy:");
+    const conditionAt = workflow.indexOf("    if:", deployAt);
+    const checkoutAt = workflow.indexOf("- uses: actions/checkout@v4", deployAt);
+    assert.ok(deployAt !== -1 && conditionAt > deployAt);
+    assert.ok(checkoutAt > conditionAt, "the trust gate must run before checkout");
+    assert.match(condition, /github\.event\.workflow_run\.conclusion\s*==\s*['"]success['"]/);
+    assert.match(condition, /github\.event\.workflow_run\.event\s*==\s*['"]push['"]/);
+    assert.match(
+      condition,
+      /github\.event\.workflow_run\.head_repository\.full_name\s*==\s*github\.repository/,
+    );
+    assert.match(condition, /github\.event\.workflow_run\.head_branch\s*==\s*['"]main['"]/);
+  });
+});
 
 describe("secret-safe production migration environment", () => {
   it("maps the GitHub migration secret to both URLs at migration-step scope only", () => {
