@@ -55,6 +55,7 @@ export type ReadinessDependencyEvidence = {
   limited: boolean;
   outcome: {
     status: ReportReadinessStatus;
+    dataStatus?: ReportReadinessStatus;
     providerStates: Array<{ connectionId: string; provider: string; status: ReportReadinessStatus; health: SourceHealthState; freshness: "fresh" | "stale" | "unknown" }>;
     blockers: ReadinessIssue[];
     warnings: ReadinessIssue[];
@@ -64,7 +65,9 @@ export type ReadinessDependencyEvidence = {
 };
 export type ReportReadinessEvaluation = {
   workspaceId: string; clientId: string; window: ReportingWindow; evaluatedAt: string;
-  status: ReportReadinessStatus; requiredProviders: string[]; requiredProvidersBasis: "assigned_sources" | "explicit";
+  status: ReportReadinessStatus; dataStatus: ReportReadinessStatus;
+  dataBlockers: ReadinessIssue[]; dataWarnings: ReadinessIssue[];
+  requiredProviders: string[]; requiredProvidersBasis: "assigned_sources" | "explicit";
   providers: ProviderReadiness[]; latestSuccessfulSyncAt: string | null; latestDataDate: string | null;
   freshness: "fresh" | "stale" | "unknown";
   destination: { state: "verified" | "unavailable" | "unverified" | "stale"; configuredCount: number;
@@ -161,6 +164,7 @@ function readinessDependencyEvidence(
     limited: Boolean(input.limited),
     outcome: {
       status: result.status,
+      dataStatus: result.dataStatus,
       providerStates: result.providers.map(provider => ({
         connectionId: provider.connectionId,
         provider: provider.provider,
@@ -254,24 +258,33 @@ export function evaluateReportReadiness(input: {
       blockers, warnings, evidence: { rowCount: source.days.reduce((n,d) => n + d.rows, 0), expectedDays: dates.length, accounts, syncs },
     };
   });
-  const blockers = providers.flatMap(p => p.blockers), warnings = providers.flatMap(p => p.warnings);
+  const dataBlockers = [...providers.flatMap(p => p.blockers)];
+  const dataWarnings = [...providers.flatMap(p => p.warnings)];
   const requiredProviders = unique(input.requiredProviders);
-  if (!requiredProviders.length && !input.limited) blockers.push({ code: "SOURCE_MISSING" });
+  if (!requiredProviders.length && !input.limited) dataBlockers.push({ code: "SOURCE_MISSING" });
   for (const provider of requiredProviders) {
-    if (!input.limited && !providers.some(p => p.provider === provider)) blockers.push({ code: "SOURCE_MISSING", provider });
+    if (!input.limited && !providers.some(p => p.provider === provider)) dataBlockers.push({ code: "SOURCE_MISSING", provider });
   }
-  if (input.requiredProvidersBasis === "assigned_sources") warnings.push({ code: "REQUIRED_PROVIDERS_INFERRED" });
-  if (input.destination.state === "unavailable") blockers.push({ code: "DESTINATION_UNAVAILABLE" });
-  else if (input.destination.state === "stale") blockers.push({ code: "DESTINATION_STALE" });
-  else if (input.destination.state !== "verified") warnings.push({ code: "DESTINATION_UNVERIFIED" });
-  if (!input.destination.required?.length) warnings.push({ code: "DESTINATION_REQUIREMENTS_MISSING" });
-  if (input.limited) warnings.push({ code: "EVIDENCE_LIMIT_REACHED" });
+  if (input.requiredProvidersBasis === "assigned_sources") dataWarnings.push({ code: "REQUIRED_PROVIDERS_INFERRED" });
+  if (input.limited) dataWarnings.push({ code: "EVIDENCE_LIMIT_REACHED" });
   const currencies = unique(providers.flatMap(p => p.currencies));
-  if (currencies.length > 1) warnings.push({ code: "MIXED_CURRENCY" });
-  if (unique(providers.flatMap(p => p.timezone ? [p.timezone] : [])).length > 1) blockers.push({ code: "TIMEZONE_CONFLICT" });
+  if (currencies.length > 1) dataWarnings.push({ code: "MIXED_CURRENCY" });
+  if (unique(providers.flatMap(p => p.timezone ? [p.timezone] : [])).length > 1) dataBlockers.push({ code: "TIMEZONE_CONFLICT" });
+
+  const destinationBlockers: ReadinessIssue[] = [];
+  const destinationWarnings: ReadinessIssue[] = [];
+  if (input.destination.state === "unavailable") destinationBlockers.push({ code: "DESTINATION_UNAVAILABLE" });
+  else if (input.destination.state === "stale") destinationBlockers.push({ code: "DESTINATION_STALE" });
+  else if (input.destination.state !== "verified") destinationWarnings.push({ code: "DESTINATION_UNVERIFIED" });
+  if (!input.destination.required?.length) destinationWarnings.push({ code: "DESTINATION_REQUIREMENTS_MISSING" });
+
+  const blockers = [...dataBlockers, ...destinationBlockers];
+  const warnings = [...dataWarnings, ...destinationWarnings];
+  const dataStatus = decision(dataBlockers, dataWarnings);
+
   const result: Omit<ReportReadinessEvaluation, "dependencyEvidence"> = {
     workspaceId: input.workspaceId, clientId: input.clientId, window: input.window, evaluatedAt: input.now.toISOString(),
-    status: decision(blockers,warnings), requiredProviders, requiredProvidersBasis: input.requiredProvidersBasis,
+    status: decision(blockers,warnings), dataStatus, dataBlockers, dataWarnings, requiredProviders, requiredProvidersBasis: input.requiredProvidersBasis,
     providers, latestSuccessfulSyncAt: latest(providers.map(p => p.latestSuccessfulSyncAt)),
     latestDataDate: latest(providers.map(p => p.latestDataDate)),
     freshness: !providers.length || providers.some(p => p.freshness === "unknown") ? "unknown" : providers.some(p => p.freshness === "stale") ? "stale" : "fresh",
@@ -279,4 +292,108 @@ export function evaluateReportReadiness(input: {
     blockers, warnings, evidence: { derived: true, limited: Boolean(input.limited), timezonePersisted: providers.length > 0 && providers.every(p => Boolean(p.timezone)) },
   };
   return { ...result, dependencyEvidence: readinessDependencyEvidence(input, result) };
+}
+
+/**
+ * Canonical extractor for snapshot dataStatus from persisted readiness evidence.
+ * Reads:
+ * 1. readinessEvidence.dependencyState.readinessEvidence.outcome (canonical generated path)
+ * 2. readinessEvidence.dependencyEvidence.outcome (legacy / flat dependency evidence)
+ * 3. readinessEvidence.readinessEvidence.outcome
+ * 4. readinessEvidence.outcome (direct outcome path)
+ *
+ * Rules:
+ * - Missing or malformed readiness evidence fails closed to UNKNOWN (never silently classified as READY).
+ * - Destination-only blockers or warnings (e.g. DESTINATION_UNVERIFIED) do not downgrade dataStatus.
+ * - Provider/data blockers force dataStatus to NOT_READY.
+ * - Legacy paths without explicit dataStatus behave strictly according to the documented fallback contract.
+ */
+export function extractSnapshotDataStatus(snapshot: {
+  readinessStatus: string;
+  readinessEvidence: unknown;
+}): ReportReadinessStatus {
+  if (!snapshot.readinessEvidence || typeof snapshot.readinessEvidence !== "object") {
+    return "UNKNOWN";
+  }
+
+  const evidence = snapshot.readinessEvidence as Record<string, unknown>;
+  const depState =
+    evidence.dependencyState && typeof evidence.dependencyState === "object"
+      ? (evidence.dependencyState as Record<string, unknown>)
+      : undefined;
+  const depReadiness =
+    depState?.readinessEvidence && typeof depState.readinessEvidence === "object"
+      ? (depState.readinessEvidence as Record<string, unknown>)
+      : undefined;
+
+  const outcome = (
+    depReadiness?.outcome ??
+    (evidence.dependencyEvidence as Record<string, unknown> | undefined)?.outcome ??
+    (evidence.readinessEvidence as Record<string, unknown> | undefined)?.outcome ??
+    evidence.outcome
+  ) as
+    | {
+        dataStatus?: ReportReadinessStatus;
+        status?: ReportReadinessStatus;
+        blockers?: Array<{ code: string }>;
+        warnings?: Array<{ code: string }>;
+      }
+    | undefined;
+
+  if (outcome && typeof outcome === "object") {
+    if (outcome.dataStatus) {
+      const blockers = Array.isArray(outcome.blockers) ? outcome.blockers : [];
+      const dataBlockers = blockers.filter(
+        (b) => typeof b?.code === "string" && !b.code.startsWith("DESTINATION_"),
+      );
+      if (dataBlockers.length > 0) {
+        return "NOT_READY";
+      }
+      return outcome.dataStatus;
+    }
+
+    // Legacy outcome without explicit dataStatus:
+    if (outcome.status === "READY" && (!outcome.blockers || outcome.blockers.length === 0)) {
+      return "READY";
+    }
+    if (outcome.status === "NOT_READY") {
+      const blockers = Array.isArray(outcome.blockers) ? outcome.blockers : [];
+      const dataBlockers = blockers.filter(
+        (b) => typeof b?.code === "string" && !b.code.startsWith("DESTINATION_"),
+      );
+      if (dataBlockers.length > 0) return "NOT_READY";
+      const warnings = Array.isArray(outcome.warnings) ? outcome.warnings : [];
+      const dataWarnings = warnings.filter(
+        (w) => typeof w?.code === "string" && !w.code.startsWith("DESTINATION_"),
+      );
+      if (dataWarnings.length > 0) return "WARNING";
+      return "READY";
+    }
+    if (outcome.status === "WARNING") {
+      const blockers = Array.isArray(outcome.blockers) ? outcome.blockers : [];
+      const dataBlockers = blockers.filter(
+        (b) => typeof b?.code === "string" && !b.code.startsWith("DESTINATION_"),
+      );
+      if (dataBlockers.length > 0) return "NOT_READY";
+      const warnings = Array.isArray(outcome.warnings) ? outcome.warnings : [];
+      const dataWarnings = warnings.filter(
+        (w) => typeof w?.code === "string" && !w.code.startsWith("DESTINATION_"),
+      );
+      if (dataWarnings.length === 0) return "READY";
+      return "WARNING";
+    }
+  }
+
+  // Legacy fallback when outcome is absent but snapshot has valid legacy evidence structure:
+  const hasLegacyStructure = Boolean(
+    evidence.evaluatedAt || evidence.evidenceIdentifier || evidence.contractVersion,
+  );
+  if (hasLegacyStructure) {
+    if (snapshot.readinessStatus === "READY") return "READY";
+    if (snapshot.readinessStatus === "NOT_READY") return "NOT_READY";
+    if (snapshot.readinessStatus === "WARNING") return "WARNING";
+  }
+
+  // Malformed or empty evidence fails closed
+  return "UNKNOWN";
 }

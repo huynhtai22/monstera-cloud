@@ -81,6 +81,9 @@ export async function POST(req: Request) {
       report: result.report,
       created: result.created,
       readiness: result.readiness,
+      approval: result.approval,
+      lifecycle: result.lifecycle,
+      lifecycleState: result.lifecycleState,
     });
   } catch (error: unknown) {
     return blueprintErrorResponse(error);
@@ -150,6 +153,9 @@ export async function GET(req: Request) {
         : null,
       report: result.report,
       defaultWindow: result.defaultWindow,
+      approval: result.approval,
+      lifecycle: result.lifecycle,
+      lifecycleState: result.lifecycleState,
     });
   } catch (error: unknown) {
     return blueprintErrorResponse(error);

@@ -68,6 +68,7 @@ type BlueprintReport = {
     verification: { status: "VERIFIED" | "NOT_VERIFIED"; reasons: string[] };
     readiness: {
       status: "READY" | "NOT_READY" | "WARNING" | "UNKNOWN";
+      dataStatus?: "READY" | "NOT_READY" | "WARNING" | "UNKNOWN";
       blockers: string[];
       warnings: string[];
       destinationState: "verified" | "unavailable" | "unverified" | "stale";
@@ -122,11 +123,42 @@ type SnapshotState = {
   verification: { status: "VERIFIED" | "NOT_VERIFIED"; reasons: string[] };
 } | null;
 
+export type ReportLifecycleState =
+  | "Not ready to review"
+  | "Ready to review"
+  | "Approved — ready to send"
+  | "Delivered"
+  | "Approval outdated"
+  | string;
+
+export type ReportLifecycle = {
+  dataStatus: "READY" | "WARNING" | "NOT_READY" | "UNKNOWN";
+  approvalStatus: "NOT_APPROVED" | "APPROVED" | "OUTDATED";
+  deliveryStatus: "NOT_DELIVERED" | "DELIVERED" | "FAILED" | "OUTDATED";
+  summaryLabel: string;
+};
+
+export type ReportApprovalState = {
+  id: string;
+  snapshotId: string;
+  generationKey: string;
+  sequence: number;
+  datasetFingerprint: string;
+  dependencyHash: string;
+  approvedByUserId: string;
+  approvedByUserName?: string | null;
+  approvedByUserEmail?: string | null;
+  approvedAt: string;
+};
+
 type BlueprintPayload = {
   client: ClientRequirement;
   snapshot: SnapshotState;
   report: BlueprintReport | null;
   defaultWindow: { start: string; end: string } | null;
+  approval?: ReportApprovalState | null;
+  lifecycle?: ReportLifecycle | null;
+  lifecycleState?: string;
   error?: string;
 };
 
@@ -152,6 +184,42 @@ function deltaLabel(delta: PercentDelta | undefined): string {
   if (!delta || delta.deltaPercent === null || !Number.isFinite(delta.deltaPercent)) return "—";
   const rounded = Math.round(delta.deltaPercent * 10) / 10;
   return `${rounded > 0 ? "+" : ""}${rounded}%`;
+}
+
+function LifecycleBadge({ state }: { state: ReportLifecycleState }) {
+  const configs: Record<ReportLifecycleState, { tone: string; icon: React.ElementType }> = {
+    "Not ready to review": {
+      tone: "border-red-500/40 bg-red-950/30 text-red-300",
+      icon: AlertCircle,
+    },
+    "Ready to review": {
+      tone: "border-blue-500/40 bg-blue-950/30 text-blue-300",
+      icon: Clock,
+    },
+    "Approved — ready to send": {
+      tone: "border-emerald-500/40 bg-emerald-950/30 text-emerald-300",
+      icon: CheckCircle2,
+    },
+    "Delivered": {
+      tone: "border-purple-500/40 bg-purple-950/30 text-purple-300",
+      icon: BadgeCheck,
+    },
+    "Approval outdated": {
+      tone: "border-amber-500/40 bg-amber-950/30 text-amber-300",
+      icon: ShieldAlert,
+    },
+  };
+  const config = configs[state] ?? {
+    tone: "border-line bg-canvas text-ink-mute",
+    icon: HelpCircle,
+  };
+  const Icon = config.icon;
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold tracking-wide", config.tone)}>
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      {state}
+    </span>
+  );
 }
 
 function VerificationBadge({ status }: { status: string }) {
@@ -203,6 +271,7 @@ export function WeeklyPerformanceBlueprint({
   const [windowStart, setWindowStart] = React.useState("");
   const [windowEnd, setWindowEnd] = React.useState("");
   const [generating, setGenerating] = React.useState(false);
+  const [approving, setApproving] = React.useState(false);
 
   const query = new URLSearchParams({ workspaceId, clientId: selectedClientId });
   if (windowStart && windowEnd) {
@@ -251,10 +320,33 @@ export function WeeklyPerformanceBlueprint({
     }
   };
 
+  const approve = async () => {
+    if (!data?.snapshot?.id) return;
+    setApproving(true);
+    try {
+      const res = await fetch("/api/reports/approval", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          snapshotId: data.snapshot.id,
+          workspaceId,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || "Failed to approve report");
+      toast.success(payload.created ? "Report approved successfully" : "Report is already approved");
+      await revalidate();
+    } catch (approveError) {
+      toast.error(approveError instanceof Error ? approveError.message : "Failed to approve report");
+    } finally {
+      setApproving(false);
+    }
+  };
+
   if (!enabled) {
     return (
       <section className={cn(CARD, "relative z-10")} aria-label="Verified Weekly Performance Blueprint">
-        <BlueprintHeader status={null} />
+        <BlueprintHeader status={null} lifecycleState={null} />
         {clients.length === 0 ? (
           <EmptyState
             icon={<Sparkles className="h-12 w-12" />}
@@ -292,7 +384,7 @@ export function WeeklyPerformanceBlueprint({
 
   return (
     <section className={cn(CARD, "relative z-10")} aria-label="Verified Weekly Performance Blueprint">
-      <BlueprintHeader status={effectiveStatus} />
+      <BlueprintHeader status={effectiveStatus} lifecycleState={data?.lifecycleState ?? null} />
 
       {/* Client selector (chips, consistent with the Reports page) */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -409,6 +501,102 @@ export function WeeklyPerformanceBlueprint({
             <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
             Try again
           </button>
+        </div>
+      ) : null}
+
+      {/* Lifecycle & Human Approval Section */}
+      {!isLoading && !error && snapshot ? (
+        <div className="mt-4 rounded-lg border border-line bg-canvas p-4 text-xs">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[10px] font-medium uppercase tracking-[0.14em] text-ink-mute">Report Status</span>
+              <LifecycleBadge state={(data?.lifecycle?.summaryLabel ?? data?.lifecycleState ?? "Not ready to review") as ReportLifecycleState} />
+            </div>
+
+            {/* Authenticated approval action */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void approve()}
+                disabled={
+                  approving ||
+                  !snapshot ||
+                  (data?.lifecycle?.dataStatus ?? report?.overview.readiness.dataStatus ?? report?.overview.readiness.status) !== "READY" ||
+                  data?.lifecycle?.approvalStatus === "APPROVED"
+                }
+                title={
+                  (data?.lifecycle?.dataStatus ?? report?.overview.readiness.dataStatus ?? report?.overview.readiness.status) !== "READY"
+                    ? "Data readiness must be READY before approval"
+                    : data?.lifecycle?.approvalStatus === "APPROVED"
+                      ? "Report is already approved"
+                      : "Approve this report snapshot"
+                }
+                className={cn(
+                  "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
+                  data?.lifecycle?.approvalStatus !== "APPROVED" && (data?.lifecycle?.dataStatus ?? report?.overview.readiness.dataStatus ?? report?.overview.readiness.status) === "READY"
+                    ? "bg-emerald-600 text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    : "border border-line bg-panel text-ink-mute disabled:cursor-not-allowed disabled:opacity-40",
+                )}
+              >
+                {approving ? (
+                  <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" aria-hidden="true" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                )}
+                {approving
+                  ? "Approving…"
+                  : data?.lifecycle?.approvalStatus === "APPROVED"
+                    ? "Approved"
+                    : "Approve this report"}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 border-t border-line/60 pt-3 sm:grid-cols-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-mute">1. Data Readiness</p>
+              <p className="mt-0.5 font-medium text-ink">
+                {(data?.lifecycle?.dataStatus ?? report?.overview.readiness.dataStatus ?? report?.overview.readiness.status) === "READY" ? (
+                  <span className="text-emerald-400">Ready to review (data complete)</span>
+                ) : (
+                  <span className="text-amber-400">
+                    Not ready (status: {data?.lifecycle?.dataStatus ?? report?.overview.readiness.dataStatus ?? report?.overview.readiness.status})
+                  </span>
+                )}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-mute">2. Human Approval</p>
+              <p className="mt-0.5 font-medium text-ink">
+                {data?.lifecycle?.approvalStatus === "APPROVED" && data?.approval ? (
+                  <span className="text-emerald-400">
+                    Approved by {data.approval.approvedByUserName || data.approval.approvedByUserEmail || data.approval.approvedByUserId} on{" "}
+                    {new Date(data.approval.approvedAt).toLocaleDateString()}
+                  </span>
+                ) : data?.lifecycle?.approvalStatus === "OUTDATED" ? (
+                  <span className="text-amber-400">
+                    Approval outdated {data?.approval ? `(prior approval: ${new Date(data.approval.approvedAt).toLocaleDateString()})` : ""} — re-approval required
+                  </span>
+                ) : (
+                  <span className="text-ink-mute">Not approved</span>
+                )}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-ink-mute">3. Destination Delivery</p>
+              <p className="mt-0.5 font-medium text-ink">
+                {data?.lifecycle?.deliveryStatus === "DELIVERED" ? (
+                  <span className="text-emerald-400">Delivered (proof verified)</span>
+                ) : data?.lifecycle?.deliveryStatus === "OUTDATED" ? (
+                  <span className="text-amber-400">Delivery outdated (snapshot updated)</span>
+                ) : data?.lifecycle?.deliveryStatus === "FAILED" ? (
+                  <span className="text-red-400">Delivery failed</span>
+                ) : (
+                  <span className="text-ink-mute">Not delivered (pending send)</span>
+                )}
+              </p>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -610,7 +798,13 @@ export function WeeklyPerformanceBlueprint({
   );
 }
 
-function BlueprintHeader({ status }: { status: string | null }) {
+function BlueprintHeader({
+  status,
+  lifecycleState,
+}: {
+  status: string | null;
+  lifecycleState?: ReportLifecycleState | null;
+}) {
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div>
@@ -625,7 +819,10 @@ function BlueprintHeader({ status }: { status: string | null }) {
           directly and never converts currency; marketplace providers are out of scope for this blueprint.
         </p>
       </div>
-      <VerificationBadge status={status ?? "UNKNOWN"} />
+      <div className="flex flex-wrap items-center gap-2">
+        {lifecycleState ? <LifecycleBadge state={lifecycleState} /> : null}
+        <VerificationBadge status={status ?? "UNKNOWN"} />
+      </div>
     </div>
   );
 }

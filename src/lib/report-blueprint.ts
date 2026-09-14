@@ -38,6 +38,19 @@ import { RbacError } from "@/lib/rbac";
 import { withSystemScope } from "@/lib/tenant-guard";
 import { PROVIDER_SOURCE_GRAINS } from "@/lib/provider-metric-grain";
 export { PROVIDER_SOURCE_GRAINS } from "@/lib/provider-metric-grain";
+import {
+  deriveReportLifecycle,
+  deriveReportLifecycleState,
+  type ReportLifecycle,
+  type ReportLifecycleState,
+  type ReportApprovalSummary,
+} from "./report-lifecycle";
+import {
+  getSnapshotApproval,
+  getLatestReportApproval,
+} from "./report-snapshot-approvals";
+export type { ReportLifecycle, ReportLifecycleState, ReportApprovalSummary };
+export { deriveReportLifecycle, deriveReportLifecycleState };
 
 export const BLUEPRINT_ID = "weekly-paid-media-performance";
 export const BLUEPRINT_VERSION = 1;
@@ -730,6 +743,94 @@ export function computeDependencyHash(state: DependencyState): string {
   return sha256Hex(canonicalJson(state));
 }
 
+/**
+ * Strips destination receipts and destination-only status/warnings from readiness evidence.
+ * Human approval certifies data readiness and metrics accuracy, which is not invalidated
+ * when delivery receipts are created or destination status changes.
+ */
+export function extractApprovalReadinessEvidence(readinessEvidence: unknown): unknown {
+  if (!readinessEvidence || typeof readinessEvidence !== "object") return readinessEvidence;
+  const ev = readinessEvidence as Record<string, unknown>;
+  const outcome = ev.outcome as Record<string, unknown> | undefined;
+
+  const filteredOutcome = outcome
+    ? {
+        dataStatus: outcome.dataStatus,
+        providerStates: outcome.providerStates,
+        blockers: Array.isArray(outcome.blockers)
+          ? outcome.blockers.filter(
+              (b: { code?: string }) => typeof b?.code === "string" && !b.code.startsWith("DESTINATION_"),
+            )
+          : [],
+        warnings: Array.isArray(outcome.warnings)
+          ? outcome.warnings.filter(
+              (w: { code?: string }) => typeof w?.code === "string" && !w.code.startsWith("DESTINATION_"),
+            )
+          : [],
+        currencies: outcome.currencies,
+        timezones: outcome.timezones,
+      }
+    : undefined;
+
+  return {
+    contractVersion: ev.contractVersion,
+    window: ev.window,
+    requiredProviders: ev.requiredProviders,
+    requiredProvidersBasis: ev.requiredProvidersBasis,
+    requirementsConfiguredAt: ev.requirementsConfiguredAt,
+    sources: ev.sources,
+    limited: ev.limited,
+    outcome: filteredOutcome,
+  };
+}
+
+/**
+ * Approval-specific dependency diff.
+ * Excludes destination delivery receipts and destination verification changes.
+ */
+export function diffApprovalDependencyComponents(
+  stored: DependencyState,
+  current: DependencyState,
+): string[] {
+  const reasons: string[] = [];
+  if (canonicalJson(stored.requirement) !== canonicalJson(current.requirement)) {
+    reasons.push("requirement_changed");
+  }
+  if (
+    stored.datasetFingerprint !== current.datasetFingerprint ||
+    stored.evidenceAt !== current.evidenceAt ||
+    stored.dataThroughDate !== current.dataThroughDate ||
+    stored.rowCount !== current.rowCount
+  ) {
+    reasons.push("dataset_changed");
+  }
+  if (
+    stored.comparisonDatasetFingerprint !== current.comparisonDatasetFingerprint ||
+    stored.comparisonEvidenceAt !== current.comparisonEvidenceAt ||
+    stored.comparisonDataThroughDate !== current.comparisonDataThroughDate ||
+    stored.comparisonRowCount !== current.comparisonRowCount
+  ) {
+    reasons.push("dataset_changed");
+  }
+  // Destination receipts are intentionally excluded: destination receipts must NOT invalidate data approval.
+  if (canonicalJson(stored.accountScopeEvidence) !== canonicalJson(current.accountScopeEvidence)) {
+    reasons.push("account_scope_changed");
+  }
+  if (canonicalJson(stored.accountAssignments ?? []) !== canonicalJson(current.accountAssignments ?? [])) {
+    reasons.push("account_assignment_changed");
+  }
+  if (
+    canonicalJson(extractApprovalReadinessEvidence(stored.readinessEvidence)) !==
+    canonicalJson(extractApprovalReadinessEvidence(current.readinessEvidence))
+  ) {
+    reasons.push("readiness_evidence_changed");
+  }
+  if (canonicalJson(stored.contractVersions) !== canonicalJson(current.contractVersions)) {
+    reasons.push("contract_changed");
+  }
+  return reasons;
+}
+
 // ---------------------------------------------------------------------------
 // Report model
 // ---------------------------------------------------------------------------
@@ -769,6 +870,7 @@ export type BlueprintReport = {
     verification: VerificationResult;
     readiness: {
       status: BlueprintReadinessStatus;
+      dataStatus?: BlueprintReadinessStatus;
       blockers: string[];
       warnings: string[];
       destinationState: ReportReadinessEvaluation["destination"]["state"];
@@ -1114,6 +1216,7 @@ function buildReport(ctx: GenerationContext, verification: VerificationResult): 
       verification,
       readiness: {
         status: ctx.evaluation.status,
+        dataStatus: ctx.evaluation.dataStatus,
         blockers: ctx.evaluation.blockers.map((issue) => issue.code),
         warnings: ctx.evaluation.warnings.map((issue) => issue.code),
         destinationState: ctx.evaluation.destination.state,
@@ -1186,10 +1289,14 @@ export type GenerateResult = {
   created: boolean;
   readiness: {
     status: BlueprintReadinessStatus;
+    dataStatus?: BlueprintReadinessStatus;
     blockers: string[];
     warnings: string[];
     destinationState: ReportReadinessEvaluation["destination"]["state"];
   };
+  approval: ReportApprovalSummary | null;
+  lifecycle: ReportLifecycle;
+  lifecycleState: ReportLifecycleState;
 };
 
 function toSnapshotMeta(snapshot: {
@@ -1621,25 +1728,60 @@ export async function generateWeeklyBlueprint(params: {
         continue;
       }
 
+      const [activeApproval, latestReportApproval] = await Promise.all([
+        getSnapshotApproval(workspaceId, result.row.id),
+        getLatestReportApproval(workspaceId, generationKey),
+      ]);
+      const storedReport = result.row.result as unknown as BlueprintReport;
+      const dataStatus: ReportReadinessStatus =
+        storedReport.overview.readiness.dataStatus ?? (result.row.readinessStatus as ReportReadinessStatus);
+      const destinationVerified =
+        storedReport.overview.readiness.destinationState === "verified" ||
+        (storedReport.overview.verification.status === "VERIFIED" &&
+          !storedReport.overview.verification.reasons.includes("destination_evidence_missing"));
+      const lifecycle = deriveReportLifecycle({
+        dataStatus,
+        currentSnapshot: {
+          id: result.row.id,
+          generationKey: result.row.generationKey,
+          sequence: result.row.sequence,
+          datasetFingerprint: (result.row as any).datasetFingerprint,
+          dependencyHash: result.row.dependencyHash,
+          freshness: postCommitFreshness,
+        },
+        activeApproval,
+        latestReportApproval,
+        destinationVerified,
+        destinationState: storedReport.overview.readiness.destinationState,
+        deliveryReceipts: ((result.row as any).destinationReceipts as any) ?? [],
+      });
+      const lifecycleState = lifecycle.summaryLabel;
+
       if (result.kind === "existing") {
         return {
           snapshot: toSnapshotMeta(result.row),
-          report: result.row.result as unknown as BlueprintReport,
+          report: storedReport,
           created: false,
           readiness: {
             status: result.row.readinessStatus as BlueprintReadinessStatus,
+            dataStatus,
             blockers: (result.row.readinessEvidence as { blockers?: Array<{ code: string }> }).blockers?.map((issue) => issue.code) ?? [],
             warnings: (result.row.readinessEvidence as { warnings?: Array<{ code: string }> }).warnings?.map((issue) => issue.code) ?? [],
             destinationState: (result.row.readinessEvidence as { destinationState?: ReportReadinessEvaluation["destination"]["state"] }).destinationState ?? "unverified",
           },
+          approval: activeApproval,
+          lifecycle,
+          lifecycleState,
         };
       }
-      const storedReport = result.row.result as unknown as BlueprintReport;
       return {
         snapshot: toSnapshotMeta(result.row),
         report: storedReport,
         created: true,
         readiness: storedReport.overview.readiness,
+        approval: activeApproval,
+        lifecycle,
+        lifecycleState,
       };
     } catch (error: unknown) {
       if (error instanceof PublicationLockUnavailableError) {
@@ -1667,6 +1809,123 @@ export type FreshnessResult = {
 };
 
 /**
+ * Load current canonical dependency state inside a given transaction client.
+ * Shared by Blueprint generation, reopen staleness evaluation, and snapshot approval freshness verification.
+ */
+export async function loadCurrentDependencyState(
+  snapshot: {
+    workspaceId: string;
+    clientId: string;
+    reportingWindowStart: Date;
+    reportingWindowEnd: Date;
+  },
+  tx: ScopedTransaction,
+): Promise<DependencyState> {
+  const window: ReportingWindow = {
+    start: snapshot.reportingWindowStart.toISOString().slice(0, 10),
+    end: snapshot.reportingWindowEnd.toISOString().slice(0, 10),
+  };
+  const comparisonWindow = comparisonWindowFor(window);
+
+  const client = await tx.client.findFirst({
+    where: { id: snapshot.clientId, workspaceId: snapshot.workspaceId },
+    select: {
+      requiredProviders: true,
+      requiredDestinations: true,
+      requirementsConfiguredAt: true,
+    },
+  });
+  const scope = client?.requirementsConfiguredAt && client.requiredProviders.length > 0
+    ? client.requiredProviders
+    : undefined;
+  const [readiness, dataset, comparisonDataset, currentAssignments] = await Promise.all([
+    loadReportReadiness(snapshot.workspaceId, window, { clientId: snapshot.clientId, tx }),
+    reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, window, scope),
+    reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, comparisonWindow, scope),
+    tx.clientProviderAccountAssignment.findMany({
+      where: {
+        workspaceId: snapshot.workspaceId,
+        clientId: snapshot.clientId,
+        ...(scope ? { provider: { in: scope } } : {}),
+      },
+      select: { provider: true, accountId: true, connectionId: true },
+      orderBy: [{ provider: "asc" }, { accountId: "asc" }],
+    }),
+  ]);
+  const evaluation = readiness.evaluations[0];
+  if (!evaluation) throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
+  // Same canonical account-scope logic as generation: authoritative rows for
+  // the client's explicitly required providers, both windows, recomputed in
+  // this transaction.
+  const supportedProviders = (client?.requiredProviders ?? []).filter(
+    (provider) => (BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
+  );
+  const [currentWindowRows, previousWindowRows] = await Promise.all([
+    loadWindowRows(tx, snapshot.workspaceId, snapshot.clientId, client?.requiredProviders ?? [], window),
+    loadWindowRows(tx, snapshot.workspaceId, snapshot.clientId, client?.requiredProviders ?? [], comparisonWindow),
+  ]);
+  const accountScopeEvidence = buildAccountScopeEvidence(
+    authoritativeRowsForProviders(currentWindowRows.rows, supportedProviders),
+    authoritativeRowsForProviders(previousWindowRows.rows, supportedProviders),
+    supportedProviders,
+  );
+  // Latest receipt per required destination, with PR #152 currentness
+  // (exact window + destination + fingerprint + not older than evidence),
+  // evaluated against THIS transaction's dataset.
+  const receiptRows = await Promise.all(
+    (client?.requiredDestinations ?? []).map((destination) =>
+      tx.destinationDeliveryReceipt.findFirst({
+        where: {
+          workspaceId: snapshot.workspaceId,
+          clientId: snapshot.clientId,
+          destination,
+          windowStart: window.start,
+          windowEnd: window.end,
+        },
+        orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
+      })),
+  );
+  return {
+    requirement: client
+      ? {
+        requiredProviders: [...client.requiredProviders].sort(),
+        requiredDestinations: [...client.requiredDestinations].sort(),
+        requirementsConfiguredAt: client.requirementsConfiguredAt?.toISOString() ?? null,
+      }
+      : null,
+    datasetFingerprint: dataset.fingerprint,
+    evidenceAt: new Date(dataset.evidenceAt).toISOString(),
+    dataThroughDate: dataset.dataThroughDate,
+    rowCount: dataset.rowCount,
+    comparisonDatasetFingerprint: comparisonDataset.fingerprint,
+    comparisonEvidenceAt: new Date(comparisonDataset.evidenceAt).toISOString(),
+    comparisonDataThroughDate: comparisonDataset.dataThroughDate,
+    comparisonRowCount: comparisonDataset.rowCount,
+    receipts: receiptRows.flatMap((receipt) => receipt ? [{
+      id: receipt.id,
+      destination: receipt.destination,
+      retrievedAt: receipt.retrievedAt.toISOString(),
+      dataThroughDate: receipt.dataThroughDate,
+      current: !dataset.limited
+        && receipt.datasetFingerprint === dataset.fingerprint
+        && receipt.retrievedAt.getTime() >= dataset.evidenceAt,
+    }] : []),
+    accountScopeEvidence: accountScopeEvidence.evidence.map((entry) => ({ ...entry })),
+    accountAssignments: currentAssignments.map((a) => ({
+      provider: a.provider,
+      accountId: a.accountId,
+      connectionId: a.connectionId,
+    })),
+    readinessEvidence: evaluation.dependencyEvidence,
+    contractVersions: {
+      metrics: METRIC_CONTRACT_VERSION,
+      dataset: REPORTING_DATASET_CONTRACT_VERSION,
+      readiness: READINESS_EVIDENCE_CONTRACT_VERSION,
+    },
+  };
+}
+
+/**
  * Recompute the stored snapshot's canonical dependency state from live
  * warehouse/configuration/receipt data and diff it against generation time.
  */
@@ -1684,113 +1943,13 @@ export async function evaluateSnapshotFreshness(snapshot: {
     return { freshness: "STALE", staleReasons: ["contract_changed"], dependencyHashMatches: false };
   }
 
-  const window: ReportingWindow = {
-    start: snapshot.reportingWindowStart.toISOString().slice(0, 10),
-    end: snapshot.reportingWindowEnd.toISOString().slice(0, 10),
-  };
-  const comparisonWindow = comparisonWindowFor(window);
-
   // Requirements, both dataset fingerprints, and receipts are re-read through
   // ONE RepeatableRead transaction so the recomputed dependency state can
   // never mix reads from different moments.
-  const currentState = await prisma.$transaction(async (tx) => {
-    const client = await tx.client.findFirst({
-      where: { id: snapshot.clientId, workspaceId: snapshot.workspaceId },
-      select: {
-        requiredProviders: true,
-        requiredDestinations: true,
-        requirementsConfiguredAt: true,
-      },
-    });
-    const scope = client?.requirementsConfiguredAt && client.requiredProviders.length > 0
-      ? client.requiredProviders
-      : undefined;
-    const [readiness, dataset, comparisonDataset, currentAssignments] = await Promise.all([
-      loadReportReadiness(snapshot.workspaceId, window, { clientId: snapshot.clientId, tx }),
-      reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, window, scope),
-      reportingDataset(tx, snapshot.workspaceId, snapshot.clientId, comparisonWindow, scope),
-      tx.clientProviderAccountAssignment.findMany({
-        where: {
-          workspaceId: snapshot.workspaceId,
-          clientId: snapshot.clientId,
-          ...(scope ? { provider: { in: scope } } : {}),
-        },
-        select: { provider: true, accountId: true, connectionId: true },
-        orderBy: [{ provider: "asc" }, { accountId: "asc" }],
-      }),
-    ]);
-    const evaluation = readiness.evaluations[0];
-    if (!evaluation) throw new BlueprintInputError("Client not found in this workspace.", "client_not_found");
-    // Same canonical account-scope logic as generation: authoritative rows for
-    // the client's explicitly required providers, both windows, recomputed in
-    // this transaction.
-    const supportedProviders = (client?.requiredProviders ?? []).filter(
-      (provider) => (BLUEPRINT_SUPPORTED_PROVIDERS as readonly string[]).includes(provider),
-    );
-    const [currentWindowRows, previousWindowRows] = await Promise.all([
-      loadWindowRows(tx, snapshot.workspaceId, snapshot.clientId, client?.requiredProviders ?? [], window),
-      loadWindowRows(tx, snapshot.workspaceId, snapshot.clientId, client?.requiredProviders ?? [], comparisonWindow),
-    ]);
-    const accountScopeEvidence = buildAccountScopeEvidence(
-      authoritativeRowsForProviders(currentWindowRows.rows, supportedProviders),
-      authoritativeRowsForProviders(previousWindowRows.rows, supportedProviders),
-      supportedProviders,
-    );
-    // Latest receipt per required destination, with PR #152 currentness
-    // (exact window + destination + fingerprint + not older than evidence),
-    // evaluated against THIS transaction's dataset.
-    const receiptRows = await Promise.all(
-      (client?.requiredDestinations ?? []).map((destination) =>
-        tx.destinationDeliveryReceipt.findFirst({
-          where: {
-            workspaceId: snapshot.workspaceId,
-            clientId: snapshot.clientId,
-            destination,
-            windowStart: window.start,
-            windowEnd: window.end,
-          },
-          orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
-        })),
-    );
-    return {
-      requirement: client
-        ? {
-          requiredProviders: [...client.requiredProviders].sort(),
-          requiredDestinations: [...client.requiredDestinations].sort(),
-          requirementsConfiguredAt: client.requirementsConfiguredAt?.toISOString() ?? null,
-        }
-        : null,
-      datasetFingerprint: dataset.fingerprint,
-      evidenceAt: new Date(dataset.evidenceAt).toISOString(),
-      dataThroughDate: dataset.dataThroughDate,
-      rowCount: dataset.rowCount,
-      comparisonDatasetFingerprint: comparisonDataset.fingerprint,
-      comparisonEvidenceAt: new Date(comparisonDataset.evidenceAt).toISOString(),
-      comparisonDataThroughDate: comparisonDataset.dataThroughDate,
-      comparisonRowCount: comparisonDataset.rowCount,
-      receipts: receiptRows.flatMap((receipt) => receipt ? [{
-        id: receipt.id,
-        destination: receipt.destination,
-        retrievedAt: receipt.retrievedAt.toISOString(),
-        dataThroughDate: receipt.dataThroughDate,
-        current: !dataset.limited
-          && receipt.datasetFingerprint === dataset.fingerprint
-          && receipt.retrievedAt.getTime() >= dataset.evidenceAt,
-      }] : []),
-      accountScopeEvidence: accountScopeEvidence.evidence.map((entry) => ({ ...entry })),
-      accountAssignments: currentAssignments.map((a) => ({
-        provider: a.provider,
-        accountId: a.accountId,
-        connectionId: a.connectionId,
-      })),
-      readinessEvidence: evaluation.dependencyEvidence,
-      contractVersions: {
-        metrics: METRIC_CONTRACT_VERSION,
-        dataset: REPORTING_DATASET_CONTRACT_VERSION,
-        readiness: READINESS_EVIDENCE_CONTRACT_VERSION,
-      },
-    };
-  }, { isolationLevel: "RepeatableRead", timeout: 30_000 });
+  const currentState = await prisma.$transaction(
+    (tx) => loadCurrentDependencyState(snapshot, tx),
+    { isolationLevel: "RepeatableRead", timeout: 30_000 },
+  );
 
   const currentHash = computeDependencyHash(currentState);
   if (currentHash === snapshot.dependencyHash) {
@@ -1800,6 +1959,38 @@ export async function evaluateSnapshotFreshness(snapshot: {
     freshness: "STALE",
     staleReasons: diffDependencyComponents(storedState, currentState),
     dependencyHashMatches: false,
+  };
+}
+
+/**
+ * Evaluate snapshot freshness strictly for human data approval.
+ * Evaluates inside the caller's RepeatableRead transaction.
+ * Destination-receipt-only changes do NOT invalidate human data approval.
+ */
+export async function evaluateSnapshotApprovalFreshness(
+  snapshot: {
+    workspaceId: string;
+    clientId: string;
+    reportingWindowStart: Date;
+    reportingWindowEnd: Date;
+    readinessEvidence: unknown;
+  },
+  tx: ScopedTransaction,
+): Promise<{
+  fresh: boolean;
+  staleReasons: string[];
+}> {
+  const evidence = snapshot.readinessEvidence as { dependencyState?: DependencyState } | null;
+  const storedState = evidence?.dependencyState;
+  if (!storedState) {
+    return { fresh: false, staleReasons: ["contract_changed"] };
+  }
+
+  const currentState = await loadCurrentDependencyState(snapshot, tx);
+  const staleReasons = diffApprovalDependencyComponents(storedState, currentState);
+  return {
+    fresh: staleReasons.length === 0,
+    staleReasons,
   };
 }
 
@@ -1825,6 +2016,9 @@ export async function reopenWeeklyBlueprint(params: {
   snapshot: (SnapshotMeta & { freshness: FreshnessResult; verification: VerificationResult }) | null;
   report: BlueprintReport | null;
   defaultWindow: ReportingWindow;
+  approval: ReportApprovalSummary | null;
+  lifecycle: ReportLifecycle;
+  lifecycleState: ReportLifecycleState;
 }> {
   const { workspaceId, clientId, now = new Date() } = params;
   const client = await prisma.client.findFirst({
@@ -1856,7 +2050,23 @@ export async function reopenWeeklyBlueprint(params: {
     orderBy: [{ sequence: "desc" }],
   });
   if (!snapshot) {
-    return { client, snapshot: null, report: null, defaultWindow: lastCompleteWeek(now) };
+    const readiness = await loadReportReadiness(workspaceId, window, { clientId, tx: prisma });
+    const dataStatus = readiness.evaluations[0]?.dataStatus ?? "UNKNOWN";
+    const lifecycle = deriveReportLifecycle({
+      dataStatus,
+      currentSnapshot: null,
+      activeApproval: null,
+      latestReportApproval: null,
+    });
+    return {
+      client,
+      snapshot: null,
+      report: null,
+      defaultWindow: lastCompleteWeek(now),
+      approval: null,
+      lifecycle,
+      lifecycleState: lifecycle.summaryLabel,
+    };
   }
 
   const freshness = await evaluateSnapshotFreshness(snapshot);
@@ -1866,6 +2076,49 @@ export async function reopenWeeklyBlueprint(params: {
       status: "NOT_VERIFIED",
       reasons: [...snapshot.verificationReasons, "dependency_evidence_changed"],
     };
+
+  const [activeApproval, latestReportApproval] = await Promise.all([
+    getSnapshotApproval(workspaceId, snapshot.id),
+    getLatestReportApproval(workspaceId, generationKey),
+  ]);
+
+  const approvalFreshness = activeApproval
+    ? await evaluateSnapshotApprovalFreshness(snapshot, prisma)
+    : null;
+
+  const report = snapshot.result as unknown as BlueprintReport;
+  const evidence = snapshot.readinessEvidence as {
+    outcome?: { dataStatus?: ReportReadinessStatus };
+    dependencyEvidence?: { outcome?: { dataStatus?: ReportReadinessStatus } };
+  } | null;
+  const dataStatus: ReportReadinessStatus =
+    evidence?.outcome?.dataStatus ??
+    evidence?.dependencyEvidence?.outcome?.dataStatus ??
+    (report?.overview?.readiness?.dataStatus as ReportReadinessStatus) ??
+    (snapshot.readinessStatus as ReportReadinessStatus);
+
+  const destinationVerified =
+    report?.overview?.readiness?.destinationState === "verified" ||
+    (verification.status === "VERIFIED" && !snapshot.verificationReasons.includes("destination_evidence_missing"));
+
+  const lifecycle = deriveReportLifecycle({
+    dataStatus,
+    currentSnapshot: {
+      id: snapshot.id,
+      generationKey: snapshot.generationKey,
+      sequence: snapshot.sequence,
+      datasetFingerprint: snapshot.datasetFingerprint,
+      dependencyHash: snapshot.dependencyHash,
+      freshness,
+      approvalFreshness,
+    },
+    activeApproval,
+    latestReportApproval,
+    destinationVerified,
+    destinationState: report?.overview?.readiness?.destinationState,
+    deliveryReceipts: (snapshot.destinationReceipts as any) ?? [],
+  });
+  const lifecycleState = lifecycle.summaryLabel;
 
   return {
     client,
@@ -1884,8 +2137,11 @@ export async function reopenWeeklyBlueprint(params: {
       freshness,
       verification,
     },
-    report: snapshot.result as unknown as BlueprintReport,
+    report,
     defaultWindow: lastCompleteWeek(now),
+    approval: activeApproval,
+    lifecycle,
+    lifecycleState,
   };
 }
 
