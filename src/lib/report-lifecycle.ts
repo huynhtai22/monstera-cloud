@@ -54,7 +54,8 @@ export type DeriveLifecycleInput = {
     sequence: number;
     datasetFingerprint?: string;
     dependencyHash?: string;
-    freshness?: { freshness: "CURRENT" | "STALE" } | null;
+    freshness?: { freshness: "CURRENT" | "STALE"; staleReasons?: string[] } | null;
+    approvalFreshness?: { fresh: boolean; staleReasons?: string[] } | null;
   } | null;
   activeApproval: ReportApprovalSummary | null;
   latestReportApproval?: ReportApprovalSummary | null;
@@ -80,8 +81,19 @@ export function deriveReportLifecycle(input: DeriveLifecycleInput): ReportLifecy
   let approvalStatus: ReportApprovalStatus = "NOT_APPROVED";
   if (input.currentSnapshot) {
     if (input.activeApproval) {
+      const isApprovalStale = input.currentSnapshot.approvalFreshness
+        ? !input.currentSnapshot.approvalFreshness.fresh
+        : (() => {
+            const staleReasons = input.currentSnapshot.freshness?.staleReasons;
+            const isReceiptOnlyChange =
+              Array.isArray(staleReasons) &&
+              staleReasons.length > 0 &&
+              staleReasons.every((r) => r === "destination_evidence_changed");
+            return input.currentSnapshot.freshness?.freshness === "STALE" && !isReceiptOnlyChange;
+          })();
+
       if (
-        input.currentSnapshot.freshness?.freshness === "STALE" ||
+        isApprovalStale ||
         input.activeApproval.snapshotId !== input.currentSnapshot.id ||
         (input.currentSnapshot.dependencyHash &&
           input.activeApproval.dependencyHash &&

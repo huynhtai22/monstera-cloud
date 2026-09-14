@@ -16,18 +16,22 @@
  * - Zero provider, destination or external network calls.
  * - Emits AuditEvent atomically with the approval.
  *
- * Concurrency contract (see approveReportSnapshot for details):
- * - pg_advisory_xact_lock(hashtext(generationKey)) — BLOCKING — serializes
- *   concurrent approvals and prevents concurrent blueprint generation from
- *   publishing a new snapshot while approval is evaluating the current one.
- * - SELECT ... FOR UPDATE on the Client row — blocks concurrent requirement
- *   and destination mutations until this approval commits.
- * - RepeatableRead isolation — all dependency reads see a single consistent
- *   DB snapshot taken at transaction start.
- * - Architectural boundary: warehouse data mutations (CampaignMetric ingest)
- *   do NOT acquire the generationKey advisory lock. Adding that coordination
- *   across meta-sync-lock.ts, connection-sync-lease.ts and all provider ingest
- *   paths requires a large cross-cutting change and is out of scope here.
+ * Transaction-snapshot freshness semantics:
+ * - Report Lifecycle v1 uses transaction-snapshot freshness, not global commit-time freshness.
+ * - An approval certifies the immutable ReportSnapshot and the canonical dependencies visible
+ *   from the consistent PostgreSQL transaction snapshot used for approval.
+ * - Relevant changes committed before the approval transaction's dependency snapshot are
+ *   detected and rejected with 409 snapshot_stale and zero writes.
+ * - pg_advisory_xact_lock(hashtext(generationKey)) — BLOCKING — serializes snapshot generation
+ *   and duplicate approval for the same generationKey.
+ * - SELECT ... FOR UPDATE on the Client row — blocks concurrent requirement and destination
+ *   mutations until this approval commits.
+ * - RepeatableRead isolation — all dependency reads see a single consistent DB snapshot taken
+ *   at transaction start.
+ * - Warehouse-ingestion boundary: warehouse data mutations (CampaignMetric ingest) do NOT acquire
+ *   the generationKey advisory lock. A warehouse mutation overlapping approval after its
+ *   dependency snapshot point may commit; the approval remains preserved as historical evidence,
+ *   and the next lifecycle recomputation immediately classifies it as OUTDATED.
  */
 
 import prisma from "@/lib/prisma";
@@ -113,7 +117,7 @@ function isPrismaUniqueConstraintError(err: unknown): boolean {
 /**
  * Record durable human approval for an exact ReportSnapshot.
  *
- * Concurrency mechanism:
+ * Transaction-snapshot freshness mechanism:
  *   1. pg_advisory_xact_lock(hashtext(generationKey)) — BLOCKING — acquired
  *      first inside the RepeatableRead transaction. This is the SAME advisory
  *      key scope used by blueprint generation, which uses the non-blocking
@@ -123,19 +127,16 @@ function isPrismaUniqueConstraintError(err: unknown): boolean {
  *   2. SELECT ... FOR UPDATE on the Client row — blocks concurrent Client
  *      requirement/destination mutations until this approval commits.
  *   3. RepeatableRead isolation — all dependency reads see one consistent DB
- *      snapshot. Any configuration change that committed BEFORE this transaction
- *      started is detected by the freshness diff. Changes protected by the
- *      Client FOR UPDATE are blocked from committing until this tx commits.
+ *      snapshot. Any configuration or warehouse metric change that committed
+ *      BEFORE this transaction started is detected by the freshness diff and
+ *      rejected with 409 snapshot_stale.
  *
- * Architectural boundary (warehouse data):
+ * Warehouse-ingestion boundary:
  *   Warehouse metric ingest paths (meta-sync-lock.ts, connection-sync-lease.ts,
  *   all provider ingestion mappers) do NOT acquire the generationKey advisory
  *   lock. A warehouse write that commits AFTER this transaction's snapshot point
- *   but BEFORE this transaction commits is not visible to the freshness check
- *   within this transaction. Requiring all ingest paths to acquire this lock
- *   would require modifying a large number of unrelated ingestion paths and is
- *   intentionally out of scope. This boundary is documented, tested, and must
- *   not be papered over with false claims.
+ *   may commit concurrently; the approval is preserved as historical evidence,
+ *   and subsequent lifecycle recomputation immediately classifies it as OUTDATED.
  */
 export async function approveReportSnapshot(
   input: ApproveReportSnapshotInput,

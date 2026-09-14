@@ -2082,6 +2082,10 @@ export async function reopenWeeklyBlueprint(params: {
     getLatestReportApproval(workspaceId, generationKey),
   ]);
 
+  const approvalFreshness = activeApproval
+    ? await evaluateSnapshotApprovalFreshness(snapshot, prisma)
+    : null;
+
   const report = snapshot.result as unknown as BlueprintReport;
   const evidence = snapshot.readinessEvidence as {
     outcome?: { dataStatus?: ReportReadinessStatus };
@@ -2106,6 +2110,7 @@ export async function reopenWeeklyBlueprint(params: {
       datasetFingerprint: snapshot.datasetFingerprint,
       dependencyHash: snapshot.dependencyHash,
       freshness,
+      approvalFreshness,
     },
     activeApproval,
     latestReportApproval,
