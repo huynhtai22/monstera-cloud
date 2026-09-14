@@ -11,6 +11,7 @@ const POOLED_URL =
   "postgresql://owner:supersecret42@ep-royal-grass-ad3yigl2-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require";
 const MALFORMED_DATABASE_URL =
   "postgresql://synthetic-runtime-user:synthetic-runtime-password@[not-an-ipv6/runtime-db?token=synthetic-query-token";
+const MIGRATION_SECRET_EXPRESSION = "${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}";
 
 /** Builds a ProcessEnv containing only the crafted variables under test. */
 function envWith(vars: Record<string, string>): NodeJS.ProcessEnv {
@@ -50,14 +51,76 @@ function runValidator(vars: Record<string, string>) {
 }
 
 describe("secret-safe production migration environment", () => {
-  it("runs the production migration through vercel env run", () => {
+  it("maps the GitHub migration secret to both URLs at migration-step scope only", () => {
     const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy.yml"), "utf8");
     const step = extractStep(workflow, "Apply database migrations");
     assert.match(
       step,
-      /vercel env run --environment=production\b[^\n]*-- npm run db:migrate:prepare/,
-      "migrations must execute inside vercel's secret-safe env run",
+      /env:\s*\n\s+DIRECT_URL: \$\{\{ secrets\.PRODUCTION_DIRECT_DATABASE_URL \}\}\s*\n\s+DATABASE_URL: \$\{\{ secrets\.PRODUCTION_DIRECT_DATABASE_URL \}\}/,
+      "the migration step must map the dedicated repository secret to both process variables",
     );
+    assert.equal(
+      step.split(MIGRATION_SECRET_EXPRESSION).length - 1,
+      2,
+      "the migration step must reference the dedicated secret exactly twice",
+    );
+    assert.equal(
+      workflow.split(MIGRATION_SECRET_EXPRESSION).length - 1,
+      2,
+      "the dedicated secret must not be referenced outside the migration step",
+    );
+    assert.ok(
+      !workflow.replace(step, "").includes(MIGRATION_SECRET_EXPRESSION),
+      "the dedicated secret must be scoped only to the migration step",
+    );
+  });
+
+  it("does not ask Vercel to retrieve write-only secrets for migrations", () => {
+    const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy.yml"), "utf8");
+    const step = extractStep(workflow, "Apply database migrations");
+    assert.ok(
+      !step.includes("vercel env run"),
+      "the migration step must receive its URLs from GitHub Actions step env",
+    );
+  });
+
+  it("never places or prints the migration secret in command lines", () => {
+    const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy.yml"), "utf8");
+    const installStep = extractStep(workflow, "Install project dependencies");
+    const step = extractStep(workflow, "Apply database migrations");
+    const runAt = step.indexOf("run: |");
+    assert.ok(runAt !== -1, "the migration step must contain a run block");
+    const runBlock = step.slice(runAt);
+    assert.ok(
+      !runBlock.includes(MIGRATION_SECRET_EXPRESSION),
+      "the GitHub secret expression must not appear in command arguments",
+    );
+    assert.doesNotMatch(
+      runBlock,
+      /\b(?:echo|printf|printenv)\b[^\n]*(?:DIRECT_URL|DATABASE_URL)/,
+      "migration URL variables must never be printed",
+    );
+    assert.ok(!runBlock.includes("DIRECT_URL="), "DIRECT_URL must not be assigned in a command");
+    assert.ok(!runBlock.includes("DATABASE_URL="), "DATABASE_URL must not be assigned in a command");
+    assert.ok(!runBlock.includes("npm ci"), "dependency installation must run outside the secret-scoped step");
+    assert.match(installStep, /run:\s*\|\s*\n\s+npm ci(?:\s*\n|$)/);
+    assert.ok(!installStep.includes("env:"), "dependency installation must not receive migration secrets");
+    assert.ok(
+      workflow.indexOf(installStep) < workflow.indexOf(step),
+      "dependencies must be installed before the migration step",
+    );
+  });
+
+  it("retains Vercel environment pull only for project and build configuration", () => {
+    const workflow = readFileSync(resolve(process.cwd(), ".github/workflows/deploy.yml"), "utf8");
+    const pullStep = extractStep(workflow, "Pull Vercel environment");
+    const migrationStep = extractStep(workflow, "Apply database migrations");
+    assert.match(
+      pullStep,
+      /vercel pull --yes --environment=production --token=\$\{\{ secrets\.VERCEL_TOKEN \}\}/,
+      "vercel pull must remain available for the later build path",
+    );
+    assert.ok(!migrationStep.includes("vercel pull"), "the migration step must not pull Vercel secrets");
   });
 
   it("no longer sources production credentials from the pulled env file", () => {
@@ -208,6 +271,12 @@ describe("secret-safe production migration environment", () => {
     assert.equal(pooled.status, 1);
     const missing = runValidator({ DATABASE_URL: DIRECT_URL });
     assert.equal(missing.status, 1);
+    const empty = runValidator({ DIRECT_URL: "", DATABASE_URL: "" });
+    assert.equal(empty.status, 1);
+    const emptyOutput = `${empty.stdout ?? ""}${empty.stderr ?? ""}`;
+    assert.match(emptyOutput, /DIRECT_URL is missing/);
+    assert.match(emptyOutput, /DATABASE_URL is missing/);
+    assert.ok(!emptyOutput.includes("postgresql://"));
   });
 
   it("exits zero on a valid production environment", () => {

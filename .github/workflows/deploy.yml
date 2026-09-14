@@ -40,17 +40,23 @@ jobs:
         run: |
           vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
-      # Migrations must never source the pulled environment file: Vercel
-      # secrets are injected directly into the child process by
-      # `vercel env run` and are not written to the runner's disk. The
-      # validator fails closed on a missing, malformed or pooled DIRECT_URL
-      # before Prisma migration execution. `vercel pull` is retained for the
-      # project/build configuration consumed by `vercel build` below.
-      - name: Apply database migrations
+      - name: Install project dependencies
         run: |
           npm ci
-          vercel env run --environment=production --token=${{ secrets.VERCEL_TOKEN }} -- node scripts/validate-migration-env.mjs
-          vercel env run --environment=production --token=${{ secrets.VERCEL_TOKEN }} -- npm run db:migrate:prepare
+
+      # Migrations must never source the pulled environment file: the dedicated
+      # GitHub repository secret is scoped to this step and injected into the
+      # migration process only. Both URLs intentionally use the same direct,
+      # non-pooled connection. The validator fails closed on a missing,
+      # malformed or pooled DIRECT_URL before Prisma migration execution.
+      # `vercel pull` is retained for project/build configuration only.
+      - name: Apply database migrations
+        env:
+          DIRECT_URL: ${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.PRODUCTION_DIRECT_DATABASE_URL }}
+        run: |
+          node scripts/validate-migration-env.mjs
+          npm run db:migrate:prepare
 
       - name: Build project
         env:
