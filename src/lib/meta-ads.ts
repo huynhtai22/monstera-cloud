@@ -4,7 +4,8 @@
  * Insights: https://developers.facebook.com/docs/marketing-api/insights
  *
  * Auth flow:
- *   OAuth 2.0 → short-lived token → exchange for long-lived token (60 days)
+ *   Facebook Login for Business with the reviewed configuration ID
+ *   (META_ADS_LOGIN_CONFIG_ID) → short-lived token → long-lived token (60 days)
  *   For SaaS production: upgrade to System User Token (never expires) via Business Manager
  *
  * Rate limits:
@@ -14,11 +15,19 @@
 
 import { logger } from '@/lib/logger';
 import { emitConnectorTelemetry } from '@/lib/observability/connector-telemetry';
+import { OAuthError } from '@/lib/oauth-framework/types';
 
 const META_API_VERSION = 'v23.0';
 const META_GRAPH_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
 const META_AUTH_BASE = 'https://www.facebook.com/dialog/oauth';
 const META_TOKEN_URL = `https://graph.facebook.com/${META_API_VERSION}/oauth/access_token`;
+
+/**
+ * Facebook Login for Business configuration identifiers are numeric.
+ * Deliberately strict: a malformed value must fail closed rather than send an
+ * unusable `config_id`, which Meta rejects before it reaches our callback.
+ */
+const META_LOGIN_CONFIG_ID_PATTERN = /^[0-9]+$/;
 
 function appId(): string {
   return (process.env.META_ADS_APP_ID || '').trim();
@@ -26,6 +35,35 @@ function appId(): string {
 
 function appSecret(): string {
   return (process.env.META_ADS_APP_SECRET || '').trim();
+}
+
+/**
+ * Read and validate the reviewed Facebook Login for Business configuration ID.
+ *
+ * Evaluated lazily at authorization time — never at module load — so builds,
+ * CI and unrelated routes are unaffected when the variable is absent. The
+ * returned value is never logged, and errors never echo it.
+ */
+export function requireMetaLoginConfigId(): string {
+  const configured = (process.env.META_ADS_LOGIN_CONFIG_ID || '').trim();
+
+  if (!configured) {
+    throw new OAuthError(
+      'configuration_error',
+      'META_ADS_LOGIN_CONFIG_ID is not configured; Meta authorization is unavailable',
+      'meta_ads',
+    );
+  }
+
+  if (!META_LOGIN_CONFIG_ID_PATTERN.test(configured)) {
+    throw new OAuthError(
+      'configuration_error',
+      'META_ADS_LOGIN_CONFIG_ID is malformed; expected the numeric Meta configuration identifier',
+      'meta_ads',
+    );
+  }
+
+  return configured;
 }
 
 import type {
@@ -43,19 +81,25 @@ export * from './meta-ads-contract';
 
 export class MetaAdsClient {
   /**
-   * Step 1 — Build the Facebook OAuth URL.
-   * Scope: ads_read, which is sufficient for ad account discovery and reporting.
+   * Step 1 — Build the Facebook Login for Business authorization URL.
+   *
+   * Permission selection is owned by the reviewed Business Login configuration
+   * referenced by `config_id`, so the legacy `scope` parameter is intentionally
+   * omitted. Meta ignores `scope` when `config_id` is present, and sending both
+   * would let the requested permissions drift from the reviewed configuration.
    */
   getAuthorizeUrl(state: string, redirectUri: string): string {
     const id = appId();
     if (!id) throw new Error('META_ADS_APP_ID is not configured');
+    const configId = requireMetaLoginConfigId();
 
     const url = new URL(META_AUTH_BASE);
     url.searchParams.set('client_id', id);
     url.searchParams.set('redirect_uri', redirectUri);
     url.searchParams.set('state', state);
-    url.searchParams.set('scope', 'ads_read');
+    url.searchParams.set('config_id', configId);
     url.searchParams.set('response_type', 'code');
+    url.searchParams.set('override_default_response_type', 'true');
 
     return url.toString();
   }
