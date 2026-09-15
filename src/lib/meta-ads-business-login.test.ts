@@ -4,6 +4,9 @@ import { metaAdsClient } from "./meta-ads";
 import { MetaAdsOAuthAdapter } from "./oauth-framework/providers/meta-ads";
 import { isProviderConfigured, isProviderEnabled, getAvailableProviders } from "./oauth-framework/registry";
 import { TestCertificationHarness } from "./ad-certification/test-simulation-adapter";
+import { NextRequest } from "next/server";
+import { GET as connectGET } from "@/app/api/auth/connect/route";
+import { setAuthSessionOverride } from "./auth-session";
 
 /**
  * Facebook Login for Business authorization boundary.
@@ -131,6 +134,7 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = originalFetch;
   consoleRestore();
+  setAuthSessionOverride(null);
   for (const key of trackedKeys) {
     const value = originalEnv[key];
     if (value === undefined) delete process.env[key];
@@ -474,13 +478,19 @@ describe("Meta Ads provider configuration and readiness contracts", () => {
     assert.equal(available.includes("meta_ads"), false);
   });
 
-  it("proves /api/auth/connect configuration guard rejects invalid Meta configuration before attempt creation or provider contact", () => {
+  it("proves /api/auth/connect rejects invalid Meta configuration before attempt creation, redirect or provider contact", async () => {
+    setAuthSessionOverride(async () => ({
+      user: { id: "synthetic_user_1", email: "user@example.test" },
+      expires: new Date(Date.now() + 86400000).toISOString(),
+    }));
     setMetaEnv({ META_ADS_LOGIN_CONFIG_ID: SYNTHETIC_BAD_CONFIG_ID });
-    assert.equal(
-      isProviderConfigured("meta_ads"),
-      false,
-      "connect route guard relies on isProviderConfigured to return false for bad config",
-    );
-    assert.equal(recordedUrls.length, 0, "no provider contact when unconfigured");
+
+    const req = new NextRequest("https://example.test/api/auth/connect?provider=meta_ads&workspaceId=ws_123");
+    const res = await connectGET(req);
+
+    assert.equal(res.status, 404);
+    const body = await res.json();
+    assert.deepEqual(body, { error: 'Provider "meta_ads" is not enabled' });
+    assert.equal(recordedUrls.length, 0, "no external provider calls made");
   });
 });
