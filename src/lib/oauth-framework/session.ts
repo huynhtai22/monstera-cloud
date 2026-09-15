@@ -3,13 +3,13 @@
  * Standardized session handling for all OAuth flows
  */
 
-import { getServerSession } from "next-auth/next";
+import { getAuthSession } from "@/lib/auth-session";
 import { authOptions } from "@/lib/auth";
 import type { SessionContext } from "./types";
 import { OAuthError as OAuthErrorClass } from "./types";
 
 export async function requireSession(): Promise<SessionContext> {
-    const session = await getServerSession(authOptions);
+    const session = await getAuthSession(authOptions);
     
     if (!session?.user?.id) {
         throw new OAuthErrorClass("unauthorized", "Session required for OAuth flow");
