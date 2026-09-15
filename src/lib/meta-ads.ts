@@ -14,6 +14,7 @@
 
 import { logger } from '@/lib/logger';
 import { emitConnectorTelemetry } from '@/lib/observability/connector-telemetry';
+import { MetaProviderOutputError } from './meta-ads-contract';
 
 const META_API_VERSION = 'v23.0';
 const META_GRAPH_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
@@ -364,10 +365,20 @@ export class MetaReportClient {
         throw new Error(`Meta Insights error ${json.error.code}: ${json.error.message}`);
       }
 
-      allRows.push(...(json.data ?? []));
+      if (!Array.isArray(json.data)) {
+        throw new MetaProviderOutputError(
+          'Meta Insights returned an unsupported response without a data array',
+        );
+      }
+
+      allRows.push(...json.data);
       afterCursor = json.paging?.next ? (json.paging.cursors?.after ?? null) : null;
     } while (afterCursor && allRows.length < 500_000);
 
+    // A successful zero-row response is a valid transport result. The shared
+    // client returns it verbatim so warehouse sync can record a legitimate
+    // zero-row refresh; interactive report boundaries reject empty output
+    // themselves before anything is cached or returned as a genuine zero.
     return allRows;
   }
 
@@ -404,7 +415,9 @@ export class MetaReportClient {
       if (json.error.code === 190) throw new MetaOAuthRevokedError(json.error.message, json.error.code);
       throw new Error(`Meta async report error ${json.error.code}: ${json.error.message}`);
     }
-    if (!json.report_run_id) throw new Error('Meta async report did not return a report_run_id');
+    if (typeof json.report_run_id !== 'string' || !json.report_run_id.trim()) {
+      throw new MetaProviderOutputError('Meta async report did not return a valid report_run_id');
+    }
 
     return json.report_run_id;
   }
@@ -421,6 +434,19 @@ export class MetaReportClient {
     if ((json as any).error) {
       if ((json as any).error.code === 190) throw new MetaOAuthRevokedError((json as any).error.message, (json as any).error.code);
       throw new Error(`Meta async status error ${(json as any).error.code}: ${(json as any).error.message}`);
+    }
+
+    const supportedStatuses = new Set<MetaAsyncReportStatus['async_status']>([
+      'Job Not Started',
+      'Job Started',
+      'Job Running',
+      'Job Completed',
+      'Job Failed',
+      'Job Skipped',
+    ]);
+    if (!supportedStatuses.has(json.async_status) ||
+        !Number.isFinite(json.async_percent_completion)) {
+      throw new MetaProviderOutputError('Meta async report returned an unsupported status payload');
     }
 
     return json;
@@ -452,10 +478,21 @@ export class MetaReportClient {
         throw new Error(`Meta fetch results error ${json.error.code}: ${json.error.message}`);
       }
 
-      allRows.push(...(json.data ?? []));
+      if (!Array.isArray(json.data)) {
+        throw new MetaProviderOutputError(
+          'Meta async report returned an unsupported response without a data array',
+        );
+      }
+
+      allRows.push(...json.data);
       afterCursor = json.paging?.next ? (json.paging.cursors?.after ?? null) : null;
     } while (afterCursor && allRows.length < 500_000);
 
+    if (allRows.length === 0) {
+      throw new MetaProviderOutputError(
+        'Meta async report returned no rows; the requested fields or breakdowns may be unsupported',
+      );
+    }
     return allRows;
   }
 }

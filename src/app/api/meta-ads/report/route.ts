@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getAuthSession } from '@/lib/auth-session';
-import { metaReportClient, MetaInsightsParams, META_DEFAULT_FIELDS } from '@/lib/meta-ads';
+import { metaReportClient } from '@/lib/meta-ads';
+import {
+  buildMetaReportCacheKey,
+  MetaProviderOutputError,
+  MetaReportValidationError,
+  normalizeMetaReportRequest,
+  validateMetaReportHistoricalAvailability,
+} from '@/lib/meta-ads-contract';
 import { getValidOAuthToken } from '@/lib/oauth-framework/token-refresh';
 import {
   clampMetaDatePresetForPlan,
@@ -32,19 +39,13 @@ import { runWithConnectorContext } from '@/lib/observability/connector-telemetry
 
 const reportCache = new Map<string, { result: Record<string, unknown>; cachedAt: number }>();
 
-function buildCacheKey(connectionId: string, adAccountId: string, params: MetaInsightsParams): string {
-  const fields = [...(params.fields ?? [])].sort().join(',');
-  const breakdowns = [...(params.breakdowns ?? [])].sort().join(',');
-  return [
-    connectionId,
-    adAccountId,
-    params.level,
-    fields,
-    breakdowns,
-    params.datePreset ?? '',
-    params.timeRange ? `${params.timeRange.since}:${params.timeRange.until}` : '',
-    String(params.timeIncrement ?? ''),
-  ].join(':');
+export function clearMetaReportCacheForTest(): void {
+  reportCache.clear();
+}
+
+function validationErrorResponse(error: MetaReportValidationError) {
+  // Keep `error` a string for existing clients while exposing a stable code.
+  return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
 }
 
 export async function POST(req: Request) {
@@ -53,25 +54,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  let request;
   try {
-    const body = await req.json() as {
-      connectionId: string;
-      adAccountId: string;
-      fields?: string[];
-      level?: string;
-      datePreset?: string;
-      timeRange?: { since: string; until: string };
-      timeIncrement?: number;
-      breakdowns?: string[];
-      actionAttributionWindows?: string[];
-      async?: boolean;
-    };
-
-    const { connectionId, adAccountId } = body;
-
-    if (!connectionId || !adAccountId) {
-      return NextResponse.json({ error: 'connectionId and adAccountId are required' }, { status: 400 });
+    request = normalizeMetaReportRequest(await req.json());
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      return NextResponse.json(
+        { error: 'Invalid Meta report request.', code: 'INVALID_REQUEST' },
+        { status: 400 },
+      );
     }
+    if (err instanceof MetaReportValidationError) {
+      return validationErrorResponse(err);
+    }
+    throw err;
+  }
+
+  try {
+    const { connectionId, adAccountId, mode } = request;
 
     // IDOR-safe: scope to the user's workspaces
     const conn = await (prisma.connection as any).findFirst({
@@ -90,24 +90,21 @@ export async function POST(req: Request) {
     const plan = conn.workspace.plan ?? 'pilot';
     const limits = getPlanLimits(plan);
 
-    let datePreset = body.datePreset ?? 'last_30d';
-    datePreset = clampMetaDatePresetForPlan(plan, datePreset) ?? datePreset;
-    // \"Free rewind\": do not clamp user-provided timeRange.
-    const timeRange = body.timeRange;
-
-    const params: MetaInsightsParams = {
-      adAccountId,
-      fields: body.fields ?? META_DEFAULT_FIELDS,
-      level: (body.level as MetaInsightsParams['level']) ?? 'campaign',
-      datePreset,
-      timeRange,
-      timeIncrement: body.timeIncrement ?? 1,
-      breakdowns: body.breakdowns ?? [],
-      actionAttributionWindows: body.actionAttributionWindows ?? ['7d_click', '1d_view'],
-    };
+    const params = request.params;
+    if (params.datePreset) {
+      params.datePreset = clampMetaDatePresetForPlan(plan, params.datePreset) ?? params.datePreset;
+    }
+    // "Free rewind": do not clamp user-provided timeRange, but reject combinations
+    // for which Meta no longer retains the requested history.
+    validateMetaReportHistoricalAvailability(params);
 
     // Check plan-gated cooldown cache
-    const cacheKey = buildCacheKey(connectionId, adAccountId, params);
+    const cacheKey = buildMetaReportCacheKey({
+      workspaceId: conn.workspaceId,
+      connectionId: conn.id,
+      provider: 'meta_ads',
+      adAccountId,
+    }, params, mode);
     const cached = reportCache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt < limits.metaReportCooldownMs) {
       const remainingSec = Math.ceil((limits.metaReportCooldownMs - (Date.now() - cached.cachedAt)) / 1000);
@@ -121,13 +118,18 @@ export async function POST(req: Request) {
       accountId: adAccountId,
     }, async () => {
       const accessToken = await getValidOAuthToken(conn);
-      if (body.async) {
+      if (mode === 'async') {
         // Large dataset — create async report job
         const reportRunId = await metaReportClient.createAsyncReport(accessToken, params);
         return { mode: 'async', report_run_id: reportRunId };
       } else {
         // Synchronous — good for up to ~14-day ranges
         const rows = await metaReportClient.getInsights(accessToken, params);
+        if (!Array.isArray(rows) || rows.length === 0) {
+          throw new MetaProviderOutputError(
+            'Meta returned no report rows; the requested fields or breakdowns may be unsupported',
+          );
+        }
         return { mode: 'sync', rows };
       }
     });
@@ -142,8 +144,15 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(responsePayload);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    if (err instanceof MetaReportValidationError) {
+      return validationErrorResponse(err);
+    }
+    if (err instanceof MetaProviderOutputError) {
+      return NextResponse.json({ error: err.message }, { status: 502 });
+    }
     logger.error('[META_ADS_REPORT]', err);
-    return NextResponse.json({ error: err.message || 'Failed to run Meta Ads report' }, { status: 500 });
+    const message = err instanceof Error ? err.message : 'Failed to run Meta Ads report';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

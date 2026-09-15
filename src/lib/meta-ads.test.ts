@@ -3,6 +3,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import {
   metaReportClient,
   MetaOAuthRevokedError,
+  MetaProviderOutputError,
   setMetaRetrySleeperForTest,
 } from "./meta-ads";
 import {
@@ -280,5 +281,56 @@ describe("Meta Ads client telemetry & error handling", () => {
     } finally {
       capture.restore();
     }
+  });
+
+  it("6. Malformed payloads fail while a legitimate empty window resolves to an empty array", async () => {
+    // Structurally malformed payload (no data array) must still fail loudly.
+    globalThis.fetch = (async () => new Response(JSON.stringify({}), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })) as typeof fetch;
+    await assert.rejects(
+      () => metaReportClient.getInsights("valid-token", {
+        adAccountId: "act_12345",
+        fields: ["spend"],
+        level: "campaign",
+      }),
+      (error) => error instanceof MetaProviderOutputError,
+    );
+
+    // A successful zero-row response is a valid transport result. Policy about
+    // whether empty output is acceptable belongs to the callers: report
+    // boundaries reject it, while warehouse sync records a zero-row refresh.
+    globalThis.fetch = (async () => new Response(JSON.stringify({ data: [] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })) as typeof fetch;
+    const rows = await metaReportClient.getInsights("valid-token", {
+      adAccountId: "act_12345",
+      fields: ["spend"],
+      level: "campaign",
+    });
+    assert.deepEqual(rows, []);
+
+    // Report-specific transports keep their empty-output rejection: their only
+    // caller is the completed-async-report route, which must never surface a
+    // completed job with no rows as a genuine zero.
+    globalThis.fetch = (async () => new Response(JSON.stringify({ data: [] }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })) as typeof fetch;
+    await assert.rejects(
+      () => metaReportClient.fetchAsyncResults("valid-token", "run_123"),
+      (error) => error instanceof MetaProviderOutputError,
+    );
+
+    globalThis.fetch = (async () => new Response(JSON.stringify({}), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })) as typeof fetch;
+    await assert.rejects(
+      () => metaReportClient.checkAsyncReport("valid-token", "run_123"),
+      (error) => error instanceof MetaProviderOutputError,
+    );
   });
 });
