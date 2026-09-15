@@ -15,7 +15,6 @@
 
 import { logger } from '@/lib/logger';
 import { emitConnectorTelemetry } from '@/lib/observability/connector-telemetry';
-import { OAuthError } from '@/lib/oauth-framework/types';
 
 const META_API_VERSION = 'v23.0';
 const META_GRAPH_BASE = `https://graph.facebook.com/${META_API_VERSION}`;

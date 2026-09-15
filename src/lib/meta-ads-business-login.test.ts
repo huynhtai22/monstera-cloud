@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { metaAdsClient } from "./meta-ads";
 import { MetaAdsOAuthAdapter } from "./oauth-framework/providers/meta-ads";
-import { isProviderConfigured, isProviderEnabled, getAvailableProviders } from "./oauth-framework/registry";
+import { isProviderConfigured, getAvailableProviders } from "./oauth-framework/registry";
 import { TestCertificationHarness } from "./ad-certification/test-simulation-adapter";
 import { NextRequest } from "next/server";
 import { GET as connectGET } from "@/app/api/auth/connect/route";
