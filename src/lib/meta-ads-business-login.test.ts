@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { metaAdsClient } from "./meta-ads";
 import { MetaAdsOAuthAdapter } from "./oauth-framework/providers/meta-ads";
+import { isProviderConfigured, isProviderEnabled, getAvailableProviders } from "./oauth-framework/registry";
+import { TestCertificationHarness } from "./ad-certification/test-simulation-adapter";
 
 /**
  * Facebook Login for Business authorization boundary.
@@ -360,5 +362,125 @@ describe("Meta Ads callback compatibility", () => {
     assert.equal(first, second, "the URL must be a pure function of state and redirect URI");
     assert.equal(new URL(first).searchParams.get("config_id"), SYNTHETIC_CONFIG_ID);
     assert.equal(recordedUrls.length, 0);
+  });
+});
+
+describe("Meta Ads provider configuration and readiness contracts", () => {
+  it("rejects isProviderConfigured when META_ADS_APP_ID is missing", () => {
+    setMetaEnv({ META_ADS_LOGIN_CONFIG_ID: SYNTHETIC_CONFIG_ID });
+    delete process.env.META_ADS_APP_ID;
+    delete process.env.META_APP_ID;
+    assert.equal(isProviderConfigured("meta_ads"), false);
+  });
+
+  it("rejects isProviderConfigured when META_ADS_APP_SECRET is missing", () => {
+    setMetaEnv({ META_ADS_LOGIN_CONFIG_ID: SYNTHETIC_CONFIG_ID });
+    delete process.env.META_ADS_APP_SECRET;
+    delete process.env.META_APP_SECRET;
+    assert.equal(isProviderConfigured("meta_ads"), false);
+  });
+
+  it("rejects isProviderConfigured when META_ADS_LOGIN_CONFIG_ID is missing", () => {
+    setMetaEnv(); // sets valid app_id & secret, but deletes config_id
+    assert.equal(isProviderConfigured("meta_ads"), false);
+  });
+
+  it("rejects isProviderConfigured for empty, whitespace-only and malformed configuration IDs", () => {
+    const invalidValues = [
+      "",
+      "   ",
+      "\t\n",
+      "config_12345",
+      "12345abc",
+      "abc12345",
+      "1234-5678",
+      "1234.5678",
+      "1234 5678",
+      "1234\t5678",
+      "0x1234",
+      "-12345",
+      SYNTHETIC_BAD_CONFIG_ID,
+    ];
+
+    for (const invalid of invalidValues) {
+      setMetaEnv({ META_ADS_LOGIN_CONFIG_ID: invalid });
+      assert.equal(
+        isProviderConfigured("meta_ads"),
+        false,
+        `Expected isProviderConfigured("meta_ads") to be false for value: ${JSON.stringify(invalid)}`,
+      );
+    }
+  });
+
+  it("returns true only when App ID, App Secret, and a valid numeric Configuration ID exist", () => {
+    setMetaEnv({ META_ADS_LOGIN_CONFIG_ID: SYNTHETIC_CONFIG_ID });
+    assert.equal(isProviderConfigured("meta_ads"), true);
+  });
+
+  it("handles surrounding whitespace consistently in readiness and URL construction", () => {
+    setMetaEnv({ META_ADS_LOGIN_CONFIG_ID: `  ${SYNTHETIC_CONFIG_ID}  \n` });
+    assert.equal(isProviderConfigured("meta_ads"), true);
+
+    const raw = authorizeUrl();
+    const url = new URL(raw);
+    assert.deepEqual(url.searchParams.getAll("config_id"), [SYNTHETIC_CONFIG_ID]);
+  });
+
+  it("preserves configuration checks for other providers", () => {
+    assert.equal(typeof isProviderConfigured("tiktok_business"), "boolean");
+    assert.equal(typeof isProviderConfigured("amazon"), "boolean");
+    assert.equal(typeof isProviderConfigured("google_ads"), "boolean");
+    assert.equal(typeof isProviderConfigured("shopee"), "boolean");
+    assert.equal(typeof isProviderConfigured("lazada"), "boolean");
+    assert.equal(typeof isProviderConfigured("shopify"), "boolean");
+  });
+
+  it("blocks ad certification gates when Meta configuration ID is invalid or missing", async () => {
+    setMetaEnv({ META_ADS_LOGIN_CONFIG_ID: SYNTHETIC_BAD_CONFIG_ID });
+    const { evidencePack } = await new TestCertificationHarness().executeTestSimulation({
+      workspaceId: "ws_meta_test",
+      provider: "meta_ads",
+      accountId: "act_1234567890",
+      startDate: "2026-08-01",
+      endDate: "2026-08-07",
+      buildId: "test-build-meta",
+      evidenceClass: "synthetic_fixture",
+    });
+    const sandboxGate = evidencePack.gateOutcomes.find((g) => g.gate === "SANDBOX_VERIFIED");
+    assert.ok(sandboxGate);
+    assert.equal(sandboxGate.status, "BLOCKED");
+    assert.equal(sandboxGate.blockerCategory, "MISSING_META_CREDENTIALS");
+  });
+
+  it("never echoes the invalid configuration value in certification output or logs", async () => {
+    setMetaEnv({ META_ADS_LOGIN_CONFIG_ID: SYNTHETIC_BAD_CONFIG_ID });
+    const { evidencePack, markdownReport } = await new TestCertificationHarness().executeTestSimulation({
+      workspaceId: "ws_meta_test",
+      provider: "meta_ads",
+      accountId: "act_1234567890",
+      startDate: "2026-08-01",
+      endDate: "2026-08-07",
+      buildId: "test-build-meta",
+      evidenceClass: "synthetic_fixture",
+    });
+    assertNoLeak(SYNTHETIC_BAD_CONFIG_ID);
+    assert.equal(JSON.stringify(evidencePack).includes(SYNTHETIC_BAD_CONFIG_ID), false);
+    assert.equal(markdownReport.includes(SYNTHETIC_BAD_CONFIG_ID), false);
+  });
+
+  it("excludes Meta from getAvailableProviders when unconfigured", () => {
+    setMetaEnv(); // valid app_id & secret, but no config_id
+    const available = getAvailableProviders();
+    assert.equal(available.includes("meta_ads"), false);
+  });
+
+  it("proves /api/auth/connect configuration guard rejects invalid Meta configuration before attempt creation or provider contact", () => {
+    setMetaEnv({ META_ADS_LOGIN_CONFIG_ID: SYNTHETIC_BAD_CONFIG_ID });
+    assert.equal(
+      isProviderConfigured("meta_ads"),
+      false,
+      "connect route guard relies on isProviderConfigured to return false for bad config",
+    );
+    assert.equal(recordedUrls.length, 0, "no provider contact when unconfigured");
   });
 });

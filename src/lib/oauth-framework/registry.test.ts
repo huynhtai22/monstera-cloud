@@ -12,6 +12,11 @@ const trackedKeys = [
   "AMAZON_LWA_CLIENT_ID",
   "AMAZON_LWA_CLIENT_SECRET",
   "AMAZON_CONNECT_ENABLED",
+  "META_ADS_APP_ID",
+  "META_ADS_APP_SECRET",
+  "META_ADS_LOGIN_CONFIG_ID",
+  "META_APP_ID",
+  "META_APP_SECRET",
 ] as const;
 
 const originalEnv = Object.fromEntries(
@@ -52,5 +57,28 @@ describe("OAuth provider configuration aliases", () => {
     assert.equal(isProviderEnabled("amazon"), false);
     process.env.AMAZON_CONNECT_ENABLED = "true";
     assert.equal(isProviderEnabled("amazon"), true);
+  });
+
+  it("requires META_ADS_LOGIN_CONFIG_ID to be present and strictly numeric for meta_ads", () => {
+    clearTrackedEnv();
+    assert.equal(isProviderConfigured("meta_ads"), false);
+
+    process.env.META_ADS_APP_ID = "100000000000001";
+    process.env.META_ADS_APP_SECRET = "synthetic-app-secret";
+    delete process.env.META_ADS_LOGIN_CONFIG_ID;
+    // Missing config ID must NOT be configured
+    assert.equal(isProviderConfigured("meta_ads"), false);
+
+    // Malformed config ID must NOT be configured
+    process.env.META_ADS_LOGIN_CONFIG_ID = "invalid-non-numeric";
+    assert.equal(isProviderConfigured("meta_ads"), false);
+
+    // Empty/whitespace must NOT be configured
+    process.env.META_ADS_LOGIN_CONFIG_ID = "   ";
+    assert.equal(isProviderConfigured("meta_ads"), false);
+
+    // Valid numeric config ID must be configured
+    process.env.META_ADS_LOGIN_CONFIG_ID = "1234567890123457";
+    assert.equal(isProviderConfigured("meta_ads"), true);
   });
 });
