@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ClientSetupChecklistContainer } from "@/components/reports/ClientSetupChecklist";
+import { clientSetupHref } from "@/lib/client-setup-checklist";
 
 const fetcher = async (url: string) => {
   const res = await fetch(url);
@@ -272,6 +274,11 @@ export function WeeklyPerformanceBlueprint({
   const [windowEnd, setWindowEnd] = React.useState("");
   const [generating, setGenerating] = React.useState(false);
   const [approving, setApproving] = React.useState(false);
+  const [generateError, setGenerateError] = React.useState<{ message: string; code?: string } | null>(null);
+
+  React.useEffect(() => {
+    setGenerateError(null);
+  }, [selectedClientId, workspaceId]);
 
   const query = new URLSearchParams({ workspaceId, clientId: selectedClientId });
   if (windowStart && windowEnd) {
@@ -300,6 +307,7 @@ export function WeeklyPerformanceBlueprint({
   const generate = async () => {
     if (!workspaceId || !selectedClientId) return;
     setGenerating(true);
+    setGenerateError(null);
     try {
       const res = await fetch("/api/reports/blueprint", {
         method: "POST",
@@ -311,7 +319,10 @@ export function WeeklyPerformanceBlueprint({
         }),
       });
       const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || "Failed to generate report");
+      if (!res.ok) {
+        setGenerateError({ message: payload.error || "Failed to generate report", code: payload.code });
+        throw new Error(payload.error || "Failed to generate report");
+      }
       await revalidate();
     } catch (generateError) {
       toast.error(generateError instanceof Error ? generateError.message : "Failed to generate report");
@@ -455,7 +466,7 @@ export function WeeklyPerformanceBlueprint({
         </button>
         <div className="flex items-center gap-2 sm:ml-auto">
           <Link
-            href={`/clients?clientId=${encodeURIComponent(selectedClientId)}`}
+            href={clientSetupHref(selectedClientId)}
             className="inline-flex items-center gap-1.5 rounded-md border border-line bg-panel px-3 py-2 text-xs font-medium text-ink hover:bg-white/[0.04]"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
@@ -478,9 +489,33 @@ export function WeeklyPerformanceBlueprint({
       {!requirementsConfigured ? (
         <p className="mt-4 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3 text-xs text-amber-200">
           Reporting requirements are not configured for this client yet. An owner or admin must choose required
-          providers and destinations (Clients page) before a verified report can be generated.
+          providers and destinations before a verified report can be generated.{" "}
+          <Link className="font-semibold underline" href={clientSetupHref(selectedClientId)}>
+            Open this client&apos;s reporting setup
+          </Link>
         </p>
       ) : null}
+
+      {generateError?.code === "requirements_not_configured" ? (
+        <p role="alert" className="mt-4 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3 text-xs text-amber-200">
+          {generateError.message}{" "}
+          <Link className="font-semibold underline" href={clientSetupHref(selectedClientId)}>
+            Open this client&apos;s reporting setup
+          </Link>
+        </p>
+      ) : null}
+
+      <details className="mt-4 rounded-lg border border-line bg-canvas p-3 text-xs">
+        <summary className="cursor-pointer font-medium text-ink">Check prerequisites for this client</summary>
+        <ClientSetupChecklistContainer
+          key={`${workspaceId}:${selectedClientId}:${windowStart}-${windowEnd}`}
+          workspaceId={workspaceId}
+          clientId={selectedClientId}
+          clientName={clients.find((client) => client.id === selectedClientId)?.name}
+          windowStart={windowStart || undefined}
+          windowEnd={windowEnd || undefined}
+        />
+      </details>
 
       {/* Loading / error states */}
       {isLoading ? <BlueprintSkeleton /> : null}
