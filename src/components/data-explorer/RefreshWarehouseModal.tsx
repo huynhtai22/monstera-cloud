@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import useSWR from "swr";
@@ -28,15 +28,38 @@ interface RefreshWarehouseModalProps {
   onClose: () => void;
   workspaceId: string | null;
   onRefreshStarted?: () => void;
+  onRefreshCompleted?: (info: {
+    since: string;
+    until: string;
+    rowsIngested: number;
+    platform?: string | null;
+    accountId?: string | null;
+  }) => void;
+  initialStartDate?: string;
+  initialEndDate?: string;
+  initialPlatform?: string | null;
+  initialAccountId?: string | null;
+  onApplyViewFilters?: (filters: {
+    startDate: string;
+    endDate: string;
+    platform?: string | null;
+    accountId?: string | null;
+  }) => void;
 }
 
-type Step = "config" | "success" | "error";
+type Step = "config" | "polling" | "success" | "error";
 
 export function RefreshWarehouseModal({
   isOpen,
   onClose,
   workspaceId,
   onRefreshStarted,
+  onRefreshCompleted,
+  initialStartDate,
+  initialEndDate,
+  initialPlatform,
+  initialAccountId,
+  onApplyViewFilters,
 }: RefreshWarehouseModalProps) {
   const mounted = useMounted();
   const [step, setStep] = useState<Step>("config");
@@ -49,19 +72,50 @@ export function RefreshWarehouseModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [queuedCount, setQueuedCount] = useState(0);
+  const [pollingJobId, setPollingJobId] = useState<string | null>(null);
+  const [jobOutcome, setJobOutcome] = useState<{
+    id?: string;
+    status?: string;
+    since?: string;
+    until?: string;
+    requestedRange?: { since: string; until: string };
+    effectiveRange?: { since: string; until: string };
+    clamped?: boolean;
+    approximateRows?: number;
+    results?: any[];
+    errorMsg?: string | null;
+  } | null>(null);
+  const initializedAccountSelectionRef = useRef(false);
+  const [accountNotFoundNotice, setAccountNotFoundNotice] = useState<string | null>(null);
 
-  // Initialize date range to last 30 days
+
+  // Initialize date range from active Warehouse view or fallback to last 30 days
   useEffect(() => {
     if (!isOpen) return;
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - 30);
-    setEndDate(end.toISOString().split("T")[0]);
-    setStartDate(start.toISOString().split("T")[0]);
-    setPreset("30");
+    if (
+      initialStartDate &&
+      initialEndDate &&
+      /^\d{4}-\d{2}-\d{2}$/.test(initialStartDate) &&
+      /^\d{4}-\d{2}-\d{2}$/.test(initialEndDate)
+    ) {
+      setStartDate(initialStartDate);
+      setEndDate(initialEndDate);
+      setPreset("custom");
+    } else {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 30);
+      setEndDate(end.toISOString().split("T")[0]);
+      setStartDate(start.toISOString().split("T")[0]);
+      setPreset("30");
+    }
     setStep("config");
     setErrorMessage(null);
-  }, [isOpen]);
+    setPollingJobId(null);
+    setJobOutcome(null);
+    initializedAccountSelectionRef.current = false;
+    setAccountNotFoundNotice(null);
+  }, [isOpen, initialStartDate, initialEndDate]);
 
   const { data: connectionsData, isLoading: connectionsLoading } = useSWR(
     isOpen && workspaceId ? `/api/workspaces/${workspaceId}/connections` : null,
@@ -77,13 +131,6 @@ export function RefreshWarehouseModal({
     );
   }, [connectionsData]);
 
-  // Select all connected sources by default when loaded
-  useEffect(() => {
-    if (connections.length > 0 && selectedConnIds.size === 0) {
-      setSelectedConnIds(new Set(connections.map((c) => c.id)));
-    }
-  }, [connections, selectedConnIds.size]);
-
   const fetchMetaAccounts = useCallback(async (connId: string) => {
     try {
       const res = await fetch(`/api/data-explorer/meta-accounts?connectionId=${encodeURIComponent(connId)}`);
@@ -96,6 +143,56 @@ export function RefreshWarehouseModal({
     }
   }, []);
 
+  // Select matching source if initialPlatform is provided; otherwise conservative explicit selection
+  useEffect(() => {
+    if (connections.length > 0 && selectedConnIds.size === 0) {
+      if (initialPlatform) {
+        const matching = connections.filter((c) => c.provider === initialPlatform);
+        if (matching.length > 0) {
+          setSelectedConnIds(new Set(matching.map((c) => c.id)));
+          if (initialPlatform === "meta_ads") {
+            for (const c of matching) {
+              void fetchMetaAccounts(c.id);
+            }
+          }
+          return;
+        }
+      }
+      // Conservative explicit selection: when no initialPlatform is given, leave selectedConnIds empty
+    }
+  }, [connections, initialPlatform, selectedConnIds.size, fetchMetaAccounts]);
+
+  // Wire initialAccountId: match using normalized Meta comparison and select ONLY that connection/account
+  useEffect(() => {
+    if (!initialAccountId || initializedAccountSelectionRef.current) return;
+    const normTarget = initialAccountId.replace(/^act_/, "").trim();
+    let matchFound = false;
+
+    for (const [connId, accounts] of Object.entries(metaAccountsByConn)) {
+      if (!Array.isArray(accounts) || accounts.length === 0) continue;
+      const match = accounts.find(
+        (a) => a.id === initialAccountId || a.id.replace(/^act_/, "").trim() === normTarget
+      );
+      if (match) {
+        matchFound = true;
+        initializedAccountSelectionRef.current = true;
+        setSelectedConnIds(new Set([connId]));
+        setMetaAcctPick({ [connId]: new Set([match.id]) });
+        setAccountNotFoundNotice(null);
+        break;
+      }
+    }
+
+    const allLoaded = connections
+      .filter((c) => c.provider === "meta_ads")
+      .every((c) => Array.isArray(metaAccountsByConn[c.id]));
+    if (!matchFound && allLoaded && connections.some((c) => c.provider === "meta_ads")) {
+      setAccountNotFoundNotice(
+        `Configured account ${initialAccountId} was not found in linked Meta connections. Please select an account manually.`
+      );
+    }
+  }, [initialAccountId, metaAccountsByConn, connections]);
+
   const handlePreset = (days: number, key: "7" | "30" | "90") => {
     const end = new Date();
     const start = new Date();
@@ -106,6 +203,7 @@ export function RefreshWarehouseModal({
   };
 
   const toggleSource = (connId: string, provider: string) => {
+    initializedAccountSelectionRef.current = true;
     const next = new Set(selectedConnIds);
     if (next.has(connId)) {
       next.delete(connId);
@@ -124,6 +222,7 @@ export function RefreshWarehouseModal({
   };
 
   const toggleMetaAcct = (connId: string, acctId: string) => {
+    initializedAccountSelectionRef.current = true;
     setMetaAcctPick((prev) => {
       const base = new Set(prev[connId] ?? []);
       if (base.has(acctId)) base.delete(acctId);
@@ -131,6 +230,7 @@ export function RefreshWarehouseModal({
       return { ...prev, [connId]: base };
     });
   };
+
 
   const handleRunRefresh = async () => {
     if (!workspaceId || !startDate || !endDate) {
@@ -184,8 +284,35 @@ export function RefreshWarehouseModal({
       }
 
       setQueuedCount(items.length);
-      setStep("success");
       onRefreshStarted?.();
+
+      if (data.jobId) {
+        setPollingJobId(data.jobId);
+        setStep("polling");
+      } else {
+        const effSince = data.effectiveRange?.since || startDate;
+        const effUntil = data.effectiveRange?.until || endDate;
+        const totalRows =
+          data.approximateRows ??
+          (data.results?.reduce((s: number, r: any) => s + (r.rowsIngested ?? r.upserted ?? 0), 0) || 0);
+        setJobOutcome({
+          id: "sync",
+          status: data.success ? "completed" : "failed",
+          since: effSince,
+          until: effUntil,
+          requestedRange: data.requestedRange,
+          effectiveRange: data.effectiveRange,
+          clamped: data.clamped,
+          approximateRows: totalRows,
+          results: data.results || [],
+        });
+        setStep(data.success ? "success" : "error");
+        onRefreshCompleted?.({
+          since: effSince,
+          until: effUntil,
+          rowsIngested: totalRows,
+        });
+      }
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Failed to start refresh");
       setStep("error");
@@ -193,6 +320,48 @@ export function RefreshWarehouseModal({
       setIsSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (step !== "polling" || !pollingJobId) return;
+
+    let isCancelled = false;
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/data-explorer/warehouse/jobs/${encodeURIComponent(pollingJobId)}`);
+        if (!res.ok) return;
+        const job = await res.json();
+        if (isCancelled) return;
+
+        if (job.status === "completed" || job.status === "partial" || job.status === "failed") {
+          clearInterval(pollInterval);
+          setJobOutcome(job);
+          if (job.status === "failed") {
+            setErrorMessage(job.errorMsg || "Import job failed");
+            setStep("error");
+          } else {
+            setStep("success");
+            const effSince = job.effectiveRange?.since || job.since;
+            const effUntil = job.effectiveRange?.until || job.until;
+            const totalRows =
+              job.approximateRows ??
+              (job.results?.reduce((s: number, r: any) => s + (r.rowsIngested ?? r.upserted ?? 0), 0) || 0);
+            onRefreshCompleted?.({
+              since: effSince,
+              until: effUntil,
+              rowsIngested: totalRows,
+            });
+          }
+        }
+      } catch {
+        /* Retry on next poll */
+      }
+    }, 1500);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(pollInterval);
+    };
+  }, [step, pollingJobId, onRefreshCompleted]);
 
   const logoForProvider = (provider: string) => {
     switch (provider) {
@@ -435,6 +604,13 @@ export function RefreshWarehouseModal({
                 )}
               </div>
 
+              {accountNotFoundNotice && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-900/40 bg-amber-950/20 p-3 text-xs text-amber-300">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
+                  <span>{accountNotFoundNotice}</span>
+                </div>
+              )}
+
               {errorMessage && (
                 <div className="flex items-start gap-2 rounded-md border border-red-900/50 bg-red-950/30 p-3 text-xs text-red-300">
                   <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
@@ -444,33 +620,120 @@ export function RefreshWarehouseModal({
             </div>
           )}
 
-          {step === "success" && (
-            <div className="py-6 text-center">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-950/40 border border-emerald-500/30">
-                <CheckCircle2 className="h-6 w-6 text-emerald-400" strokeWidth={1.5} />
+          {step === "polling" && (
+            <div className="py-8 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-line bg-canvas">
+                <RefreshCw className="h-6 w-6 animate-spin text-ink" strokeWidth={1.5} />
               </div>
-              <h4 className="text-base font-semibold text-ink">Warehouse refresh started</h4>
-              <p className="mt-1 text-sm text-ink-mute">
-                {queuedCount} source{queuedCount === 1 ? "" : "s"} queued for extraction and normalization.
+              <h4 className="text-base font-semibold text-ink">Refreshing warehouse data…</h4>
+              <p className="mt-1.5 text-xs text-ink-mute">
+                Extracting and persisting campaign metrics across {selectedConnIds.size} source{selectedConnIds.size === 1 ? "" : "s"} ({queuedCount} task{queuedCount === 1 ? "" : "s"}).
               </p>
-              <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-                <Link
-                  href="/reports"
-                  onClick={onClose}
-                  className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-md border border-line bg-canvas px-4 py-2 text-xs font-medium text-ink hover:bg-white/[0.04]"
-                >
-                  View progress in Sync activity <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
+
+              <p className="mt-1 text-[11px] text-ink-mute/70">
+                This process runs asynchronously in your warehouse pipeline.
+              </p>
+              <div className="mt-6 flex justify-center">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="w-full sm:w-auto rounded-md bg-white px-4 py-2 text-xs font-semibold text-neutral-900 hover:bg-neutral-100"
+                  className="rounded-md border border-line bg-canvas px-4 py-2 text-xs font-medium text-ink-mute hover:text-ink"
                 >
-                  Done
+                  Close & continue in background
                 </button>
               </div>
             </div>
           )}
+
+          {step === "success" && (() => {
+            const effSince = jobOutcome?.effectiveRange?.since || jobOutcome?.since || startDate;
+            const effUntil = jobOutcome?.effectiveRange?.until || jobOutcome?.until || endDate;
+            const totalRows =
+              jobOutcome?.approximateRows ??
+              (jobOutcome?.results?.reduce((s: number, r: any) => s + (r.rowsIngested ?? r.upserted ?? 0), 0) || 0);
+            const isClamped = Boolean(jobOutcome?.clamped);
+
+            const isOutsideView =
+              Boolean(initialStartDate && initialEndDate) &&
+              (effSince < initialStartDate! || effUntil > initialEndDate! || effUntil < initialStartDate! || effSince > initialEndDate!);
+
+            const allSelectedProviders = connections
+              .filter((c) => selectedConnIds.has(c.id))
+              .map((c) => c.provider);
+            const uniformProvider =
+              allSelectedProviders.length > 0 && allSelectedProviders.every((p) => p === allSelectedProviders[0])
+                ? allSelectedProviders[0]
+                : null;
+
+            return (
+              <div className="py-6 text-center">
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-950/40">
+                  <CheckCircle2 className="h-6 w-6 text-emerald-400" strokeWidth={1.5} />
+                </div>
+                <h4 className="text-base font-semibold text-ink">Warehouse refresh complete</h4>
+                <p className="mt-1 text-sm text-ink-mute">
+                  {totalRows} row{totalRows === 1 ? "" : "s"} imported for <span className="font-mono text-ink">{effSince}</span> to <span className="font-mono text-ink">{effUntil}</span>.
+                </p>
+
+                {isClamped && (
+                  <div className="mx-auto mt-3 max-w-sm rounded-md border border-amber-900/50 bg-amber-950/20 p-2.5 text-left text-[11px] text-amber-300">
+                    <div className="flex items-center gap-1.5 font-medium">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                      <span>Date range clamped by workspace plan</span>
+                    </div>
+                    <p className="mt-1 text-amber-300/80">
+                      Requested: {jobOutcome?.requestedRange?.since || startDate} to {jobOutcome?.requestedRange?.until || endDate}. Effective: {effSince} to {effUntil}.
+                    </p>
+                  </div>
+                )}
+
+                {isOutsideView && (
+                  <div className="mx-auto mt-3 max-w-sm rounded-md border border-sky-900/50 bg-sky-950/20 p-2.5 text-left text-[11px] text-sky-300">
+                    <div className="flex items-center gap-1.5 font-medium">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+                      <span>Imported data is outside your current view</span>
+                    </div>
+                    <p className="mt-1 text-sky-300/80">
+                      Your workbench view is currently set to <span className="font-mono">{initialStartDate}</span> – <span className="font-mono">{initialEndDate}</span>.
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+                  {onApplyViewFilters && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onApplyViewFilters({
+                          startDate: effSince,
+                          endDate: effUntil,
+                          platform: uniformProvider || initialPlatform || undefined,
+                        });
+                        onClose();
+                      }}
+                      className="w-full sm:w-auto rounded-md bg-white px-4 py-2 text-xs font-semibold text-neutral-900 hover:bg-neutral-100"
+                    >
+                      {isOutsideView ? `View imported data (${effSince} to ${effUntil})` : "Apply & view data"}
+                    </button>
+                  )}
+                  <Link
+                    href="/reports"
+                    onClick={onClose}
+                    className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-md border border-line bg-canvas px-4 py-2 text-xs font-medium text-ink hover:bg-white/[0.04]"
+                  >
+                    View sync activity <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="w-full sm:w-auto rounded-md border border-line bg-panel px-4 py-2 text-xs font-medium text-ink-mute hover:text-ink"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {step === "error" && (
             <div className="py-6 text-center">

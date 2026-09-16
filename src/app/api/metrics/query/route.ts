@@ -2,12 +2,20 @@ import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { getPlanLimits } from "@/lib/plan-config";
-import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-cache";
+import {
+  getCachedQuery,
+  setCachedQuery,
+  generateMetricsQueryCacheKey,
+  getWorkspaceMetricsGeneration,
+} from "@/lib/redis-cache";
+import { getCanonicalDateRange, type CanonicalDateRange } from "@/lib/warehouse-date-range";
+import { buildAccountFilterPredicate, appendWherePredicate } from "@/lib/warehouse-account-filter";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { queryWarehouse } from "@/lib/warehouse-query";
 import { aggregateCurrencySafe } from "@/lib/currency-safe-aggregation";
 import { queryMetricsAggregate } from "@/lib/warehouse-aggregate";
 import { clientContextCacheParams } from "@/lib/client-context";
+
 import {
   assertQueryableClientContext,
   resolveClientContext,
@@ -29,12 +37,15 @@ import {
 
 interface MetricWhereClause {
   workspaceId: string;
-  date?: { gte?: Date; lte?: Date };
+  date?: { gte?: Date; lt?: Date; lte?: Date };
   platform?: string | { in: string[] };
   accountId?: string | { in: string[] };
   campaignId?: string;
   id?: { lt?: string }; // For cursor pagination
+  AND?: any[];
+  OR?: any[];
 }
+
 
 export async function GET(req: Request) {
   const session = await getAuthSession();
@@ -96,87 +107,80 @@ export async function GET(req: Request) {
   const plan = workspace?.plan ?? 'free';
   const limits = getPlanLimits(plan);
 
-  // Validate and parse dates
-  const startDate = startDateStr ? new Date(startDateStr) : null;
-  const endDate = endDateStr ? new Date(endDateStr) : null;
-
-  // Validate date range inputs
-  if (!startDate || !endDate || !startDateStr || !endDateStr) {
+  // Validate and parse dates using single canonical date helper
+  if (!startDateStr || !endDateStr) {
     return NextResponse.json(
       { error: "startDate and endDate are required" },
       { status: 400 }
     );
   }
 
-  const dateRangeMs = endDate.getTime() - startDate.getTime();
-  const dateRangeDays = dateRangeMs / (1000 * 60 * 60 * 24);
-
-  if (dateRangeDays < 0) {
+  let canonicalRange: CanonicalDateRange;
+  try {
+    canonicalRange = getCanonicalDateRange(startDateStr, endDateStr);
+  } catch (err: any) {
     return NextResponse.json(
-      { error: "startDate must be before endDate" },
+      { error: err.message || "Invalid date range" },
       { status: 400 }
     );
   }
 
-  // Generate deterministic cache key
-  const cacheKey = generateCacheKey("metrics:query", {
-    workspaceId,
-    clientId,
-    ...clientContextCacheParams(clientId),
-    startDateStr,
-    endDateStr,
-    platform,
-    platformsParam,
-    accountId,
-    accountIdsParam,
-    campaignId,
-    cursor,
-    dimensionsParam,
-    metricsParam,
-    mode,
-  });
+  const dateRangeDays =
+    (canonicalRange.endUtc.getTime() - canonicalRange.startUtc.getTime()) / (1000 * 60 * 60 * 24) + 1;
+
+  // Check cache (only for aggregate queries without a cursor, as cursors mean pagination)
+  const wantsAggregate = mode === "aggregate" || Boolean(dimensionsParam) || Boolean(metricsParam);
+  const canCache = wantsAggregate && !cursor;
+  let cacheKey: string | null = null;
+  if (canCache) {
+    const generation = await getWorkspaceMetricsGeneration(workspaceId);
+    cacheKey = generateMetricsQueryCacheKey(workspaceId, generation, {
+      workspaceId,
+      clientId,
+      ...clientContextCacheParams(clientId),
+      startDateStr: canonicalRange.since,
+      endDateStr: canonicalRange.until,
+      platform,
+      platformsParam,
+      accountId,
+      accountIdsParam,
+      campaignId,
+      cursor,
+      dimensionsParam,
+      metricsParam,
+      mode,
+    });
+    const cached = await getCachedQuery(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached);
+    }
+  }
 
   try {
-    // Check cache (only for aggregate queries without a cursor, as cursors mean pagination)
-    const wantsAggregate = mode === "aggregate" || Boolean(dimensionsParam) || Boolean(metricsParam);
-    const canCache = wantsAggregate && !cursor;
-    if (canCache) {
-      const cached = await getCachedQuery(cacheKey);
-      if (cached) {
-        return NextResponse.json(cached);
-      }
-    }
     // Build where clause with proper typing
     const where: MetricWhereClause = { workspaceId };
+    where.date = canonicalRange.dbWhereDate;
 
-    const startOfRange = new Date(startDateStr);
-    if (!startDateStr.includes("T")) {
-      startOfRange.setUTCHours(0, 0, 0, 0);
-    }
-    const endOfRange = new Date(endDateStr);
-    if (!endDateStr.includes("T")) {
-      endOfRange.setUTCHours(23, 59, 59, 999);
-    }
-
-    where.date = {
-      gte: startOfRange,
-      lte: endOfRange,
-    };
-
-    if (platformsParam) {
-      const list = platformsParam.split(",").map((s) => s.trim()).filter(Boolean);
-      if (list.length === 1) where.platform = list[0];
-      else if (list.length > 1) where.platform = { in: list };
-    } else if (platform) {
-      where.platform = platform;
+    const platforms = platformsParam
+      ? platformsParam.split(",").map((s) => s.trim()).filter(Boolean)
+      : platform
+        ? [platform]
+        : null;
+    if (platforms?.length) {
+      where.platform = platforms.length === 1 ? platforms[0] : { in: platforms };
     }
 
-    if (accountIdsParam) {
-      const list = accountIdsParam.split(",").map((s) => s.trim()).filter(Boolean);
-      if (list.length === 1) where.accountId = list[0];
-      else if (list.length > 1) where.accountId = { in: list };
-    } else if (accountId) {
-      where.accountId = accountId;
+    const accountIds = accountIdsParam
+      ? accountIdsParam.split(",").map((s) => s.trim()).filter(Boolean)
+      : accountId
+        ? [accountId]
+        : null;
+    if (accountIds?.length) {
+      const accountPredicate = buildAccountFilterPredicate({
+        accountIds,
+        platforms,
+      });
+      appendWherePredicate(where, accountPredicate);
     }
 
     if (campaignId) where.campaignId = campaignId;
@@ -191,18 +195,18 @@ export async function GET(req: Request) {
         const responseData = await queryMetricsAggregate({
           workspaceId,
           clientId: scopedClientId,
-          startDateStr,
-          endDateStr,
+          startDateStr: canonicalRange.since,
+          endDateStr: canonicalRange.until,
           platform,
-          platforms: platformsParam ? platformsParam.split(",").map((s) => s.trim()).filter(Boolean) : null,
+          platforms: platforms ?? null,
           accountId,
-          accountIds: accountIdsParam ? accountIdsParam.split(",").map((s) => s.trim()).filter(Boolean) : null,
+          accountIds: accountIds ?? null,
           campaignId,
           dimensions: dimensionsParam?.split(",").map((s) => s.trim()).filter(Boolean),
           metrics: metricsParam?.split(",").map((s) => s.trim()).filter(Boolean),
           plan,
         });
-        if (canCache) {
+        if (canCache && cacheKey) {
           await setCachedQuery(cacheKey, responseData, 300);
         }
         return NextResponse.json(responseData);
@@ -212,20 +216,21 @@ export async function GET(req: Request) {
       }
     }
 
-    const platformList = typeof where.platform === "string" ? [where.platform] : where.platform?.in;
-    const accountList = typeof where.accountId === "string" ? [where.accountId] : where.accountId?.in;
+    const platformList = platforms ?? undefined;
+    const accountList = accountIds ?? undefined;
     const warehouseResult = await queryWarehouse({
-        workspaceId,
-        clientId: scopedClientId,
-        startDate: startDate ?? undefined,
-        endDate: endDate ?? undefined,
-        platforms: platformList,
-        accountIds: accountList,
-        campaignId: where.campaignId,
-        cursor,
-        limit: limits.explorerMaxRowsPerQuery,
-        includeTotalCount: true,
-      });
+      workspaceId,
+      clientId: scopedClientId,
+      startDate: canonicalRange.startUtc,
+      endDate: canonicalRange.endUtc,
+      platforms: platformList,
+      accountIds: accountList,
+      campaignId: where.campaignId,
+      cursor,
+      limit: limits.explorerMaxRowsPerQuery,
+      includeTotalCount: true,
+    });
+
 
     const metrics = warehouseResult.rows;
     const hasMore = warehouseResult.pagination.hasMore;
@@ -258,7 +263,7 @@ export async function GET(req: Request) {
       freshness: warehouseResult.freshness,
     };
     
-    if (canCache) {
+    if (canCache && cacheKey) {
       await setCachedQuery(cacheKey, responseData, 300); // 5 min TTL
     }
     

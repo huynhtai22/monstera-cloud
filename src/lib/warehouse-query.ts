@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { getCanonicalDateRange } from "@/lib/warehouse-date-range";
+import { buildAccountFilterPredicate, appendWherePredicate } from "@/lib/warehouse-account-filter";
 
 const DEFAULT_LIMIT = 1_000;
 const HARD_LIMIT = 100_000;
@@ -207,30 +209,48 @@ async function queryWarehouseInSnapshot(input: WarehouseQueryInput, db: ScopedTr
     where.connectionId = input.connectionId;
   }
 
-  if (input.startDate || input.endDate) {
-    where.date = {
-      ...(input.startDate ? { gte: input.startDate } : {}),
-      ...(input.endDate ? { lte: input.endDate } : {}),
-    };
+  if (input.startDate && input.endDate) {
+    const canonical = getCanonicalDateRange(input.startDate, input.endDate);
+    where.date = canonical.dbWhereDate;
+  } else if (input.startDate) {
+    where.date = { gte: input.startDate };
+  } else if (input.endDate) {
+    where.date = { lte: input.endDate };
   }
+
   if (input.platforms?.length) where.platform = { in: input.platforms };
-  if (input.accountIds?.length) where.accountId = { in: input.accountIds };
+
+  if (input.accountIds?.length) {
+    const accountPredicate = buildAccountFilterPredicate({
+      accountIds: input.accountIds,
+      platforms: input.platforms,
+    });
+    appendWherePredicate(where, accountPredicate);
+  }
   if (input.campaignId) where.campaignId = input.campaignId;
+
+  const countWhere = { ...where };
+  if (Array.isArray(where.AND)) {
+    countWhere.AND = [...where.AND];
+  }
 
   const decodedCursor = input.cursor ? decodeCursor(input.cursor) : null;
   if (decodedCursor) {
-    where.AND = [
-      {
-        OR: [
-          { date: { lt: decodedCursor.date } },
-          { date: decodedCursor.date, id: { lt: decodedCursor.id } },
-        ],
-      },
-    ];
+    const cursorPredicate = {
+      OR: [
+        { date: { lt: decodedCursor.date } },
+        { date: decodedCursor.date, id: { lt: decodedCursor.id } },
+      ],
+    };
+    if (Array.isArray(where.AND)) {
+      where.AND = [...where.AND, cursorPredicate];
+    } else if (where.AND) {
+      where.AND = [where.AND, cursorPredicate];
+    } else {
+      where.AND = [cursorPredicate];
+    }
   }
 
-  const countWhere = { ...where };
-  delete countWhere.AND;
 
   const [foundRows, totalCount, asOfAggregate, dateRangeAggregate, platformRows, lastSyncAggregate, latestJob] = await Promise.all([
     db.campaignMetric.findMany({

@@ -4,6 +4,9 @@ import { getRedis } from "@/lib/redis";
 import { logger } from "@/lib/logger";
 import { emitConnectorTelemetry } from "@/lib/observability/connector-telemetry";
 import type { ProviderRetryState } from "@/lib/sync-outcome";
+import { invalidateWorkspaceMetricsCache } from "@/lib/redis-cache";
+
+export { invalidateWorkspaceMetricsCache };
 
 export interface BatchImportItem {
   connectionId: string;
@@ -12,6 +15,9 @@ export interface BatchImportItem {
   adAccountId?: string;
   /** Internal continuation state. API request validation intentionally strips it. */
   providerState?: ProviderRetryState;
+  requestedSince?: string;
+  requestedUntil?: string;
+  clamped?: boolean;
 }
 
 export interface BatchImportJobResult {
@@ -35,6 +41,9 @@ export interface BatchImportJobState {
   plan: string;
   since: string;
   until: string;
+  requestedRange?: { since: string; until: string };
+  effectiveRange?: { since: string; until: string };
+  clamped?: boolean;
   items: BatchImportItem[];
   totalItems: number;
   completedItems: number;
@@ -88,6 +97,12 @@ function toState(record: any): BatchImportJobState {
   const createdAt = record.createdAt ? new Date(record.createdAt).toISOString() : new Date().toISOString();
   const updatedAt = record.updatedAt ? new Date(record.updatedAt).toISOString() : new Date().toISOString();
 
+  const items = (record.items as unknown as BatchImportItem[]) || [];
+  const firstItem = items[0];
+  const requestedSince = firstItem?.requestedSince ?? record.since;
+  const requestedUntil = firstItem?.requestedUntil ?? record.until;
+  const clamped = Boolean(firstItem?.clamped ?? (requestedSince !== record.since || requestedUntil !== record.until));
+
   return {
     id: record.id,
     workspaceId: record.workspaceId,
@@ -95,8 +110,11 @@ function toState(record: any): BatchImportJobState {
     plan: record.plan,
     since: record.since,
     until: record.until,
-    items: (record.items as unknown as BatchImportItem[]) || [],
-    totalItems: record.totalItems ?? (record.items?.length || 0),
+    requestedRange: { since: requestedSince, until: requestedUntil },
+    effectiveRange: { since: record.since, until: record.until },
+    clamped,
+    items,
+    totalItems: record.totalItems ?? (items.length || 0),
     completedItems: record.completedItems ?? 0,
     approximateRows: record.approximateRows ?? 0,
     status: record.status,
@@ -126,6 +144,9 @@ export async function createImportJob(params: {
   plan?: string;
   since: string;
   until: string;
+  requestedSince?: string;
+  requestedUntil?: string;
+  clamped?: boolean;
   items: BatchImportItem[];
   idempotencyKey?: string;
   priority?: number;
@@ -149,6 +170,17 @@ export async function createImportJob(params: {
     }
   }
 
+  const persistedItems = params.items.map((item, idx) =>
+    idx === 0
+      ? {
+          ...item,
+          requestedSince: params.requestedSince ?? params.since,
+          requestedUntil: params.requestedUntil ?? params.until,
+          clamped: Boolean(params.clamped),
+        }
+      : item
+  );
+
   try {
     const created = await prisma.warehouseImportJob.create({
       data: {
@@ -158,7 +190,7 @@ export async function createImportJob(params: {
         plan: params.plan || "pilot",
         since: params.since,
         until: params.until,
-        items: params.items as any,
+        items: persistedItems as any,
         totalItems: params.items.length,
         status: "queued",
         priority: params.priority || 1,
@@ -491,6 +523,10 @@ export async function completeImportJob(
     const redis = getRedis();
     await redis.set(`${JOB_KEY_PREFIX}${jobId}`, JSON.stringify(state), { ex: JOB_CACHE_TTL_SECONDS });
   } catch {}
+
+  if (outcome === "completed" || outcome === "partial") {
+    await invalidateWorkspaceMetricsCache(state.workspaceId).catch(() => {});
+  }
 
   return state;
 }

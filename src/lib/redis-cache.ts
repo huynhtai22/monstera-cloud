@@ -45,3 +45,76 @@ export async function setCachedQuery(
     console.error(`[Redis Cache Error] setCachedQuery failed for key ${key}:`, error);
   }
 }
+
+/**
+ * Remove a cached query key from Redis.
+ */
+export async function invalidateCachedQuery(
+  key: string,
+  redis: NodeRedisClient | null = createNodeRedis(),
+): Promise<void> {
+  if (!redis) return;
+  try {
+    await redis.del(key);
+  } catch (error) {
+    console.error(`[Redis Cache Error] invalidateCachedQuery failed for key ${key}:`, error);
+  }
+}
+
+/**
+ * Metrics-specific query cache key generator with workspace scoping and generation versioning.
+ * Key format: metrics:query:${workspaceId}:v${generation}:${hash}
+ */
+export function generateMetricsQueryCacheKey(
+  workspaceId: string,
+  generation: number,
+  params: Record<string, any>,
+): string {
+  const serialized = JSON.stringify(params, Object.keys(params).sort());
+  const hash = crypto.createHash("sha256").update(serialized).digest("hex");
+  return `metrics:query:${workspaceId}:v${generation}:${hash}`;
+}
+
+/**
+ * Fetch the current cache generation for a workspace. Defaults to 1 if unset or Redis fails.
+ */
+export async function getWorkspaceMetricsGeneration(
+  workspaceId: string,
+  redis: NodeRedisClient | null = createNodeRedis(),
+): Promise<number> {
+  if (!redis) return 1;
+  try {
+    const raw = await redis.get<number | string>(`metrics:gen:${workspaceId}`);
+    if (raw === null || raw === undefined) return 1;
+    const val = Number(raw);
+    return Number.isFinite(val) && val > 0 ? val : 1;
+  } catch (error) {
+    console.error(`[Redis Cache Error] getWorkspaceMetricsGeneration failed for ${workspaceId}:`, error);
+    return 1;
+  }
+}
+
+/**
+ * Invalidate query cache for a single workspace in O(1) by atomically incrementing its generation.
+ * This avoids blocking KEYS scans, leaves other workspaces untouched, and allows prior keys
+ * to expire via normal TTL cleanup.
+ */
+export async function invalidateWorkspaceMetricsCache(
+  workspaceId: string,
+  redis: NodeRedisClient | null = createNodeRedis(),
+): Promise<void> {
+  if (!redis) return;
+  try {
+    if (typeof (redis as any).incr === "function") {
+      const next = await (redis as any).incr(`metrics:gen:${workspaceId}`);
+      if (next === 1) {
+        await (redis as any).incr(`metrics:gen:${workspaceId}`);
+      }
+    } else {
+      const current = await getWorkspaceMetricsGeneration(workspaceId, redis);
+      await redis.set(`metrics:gen:${workspaceId}`, current + 1);
+    }
+  } catch (error) {
+    console.error(`[Redis Cache Error] invalidateWorkspaceMetricsCache failed for ${workspaceId}:`, error);
+  }
+}
