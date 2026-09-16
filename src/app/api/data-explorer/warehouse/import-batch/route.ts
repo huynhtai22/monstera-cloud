@@ -476,6 +476,9 @@ export async function POST(req: Request) {
       plan,
       since,
       until,
+      requestedSince: rawSince,
+      requestedUntil: rawUntil,
+      clamped,
       items,
       idempotencyKey,
       priority: planLimits.priority,
@@ -500,6 +503,9 @@ export async function POST(req: Request) {
         jobId: jobState.id,
         status: jobState.status,
         totalJobs: items.length,
+        requestedRange: { since: rawSince, until: rawUntil },
+        effectiveRange: { since, until },
+        clamped,
         message: `Durable batch import job ${jobState.id} queued with ${items.length} task(s).`,
       },
       { status: 202 }
@@ -538,6 +544,9 @@ export async function POST(req: Request) {
     totalJobs: results.length,
     approximateRows: totalUpserts,
     results,
+    requestedRange: { since: rawSince, until: rawUntil },
+    effectiveRange: { since, until },
+    clamped,
     message:
       okCount === results.length
         ? `All ${results.length} import job(s) completed.`

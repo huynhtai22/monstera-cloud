@@ -1722,7 +1722,28 @@ export function WarehouseWorkbench() {
         isOpen={isRefreshOpen}
         onClose={() => setIsRefreshOpen(false)}
         workspaceId={activeWorkspaceId}
+        initialStartDate={startDate}
+        initialEndDate={endDate}
+        initialPlatform={selectedPlatform}
+        initialAccountId={accountFilterIds[0]}
+        onApplyViewFilters={({ startDate: newStart, endDate: newEnd, platform: newPlatform, accountId: newAccountId }) => {
+          const patch: Record<string, string | null> = {
+            startDate: newStart,
+            endDate: newEnd,
+          };
+          if (newPlatform !== undefined) {
+            patch.platform = newPlatform || null;
+          }
+          if (newAccountId) {
+            setAccountFilterIds([newAccountId]);
+          }
+          replaceUrlFilters(patch);
+          void mutate();
+        }}
         onRefreshStarted={() => {
+          void mutate();
+        }}
+        onRefreshCompleted={() => {
           void mutate();
         }}
       />

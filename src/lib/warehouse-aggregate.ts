@@ -8,6 +8,8 @@ import {
 } from "@/lib/ads-field-registry";
 import { aggregationNeedsCurrencyDimension } from "@/lib/currency-safe-aggregation";
 import { getUnassignedTupleExclusions, unassignedTupleFilter } from "@/lib/warehouse-query";
+import { getCanonicalDateRange } from "@/lib/warehouse-date-range";
+import { buildAccountFilterPredicate, appendWherePredicate } from "@/lib/warehouse-account-filter";
 
 export type WarehouseAggregateSpec = {
   workspaceId: string;
@@ -91,23 +93,25 @@ export async function queryMetricsAggregate(spec: WarehouseAggregateSpec): Promi
     }
   }
 
-  const startOfRange = new Date(spec.startDateStr);
-  if (!spec.startDateStr.includes("T")) startOfRange.setUTCHours(0, 0, 0, 0);
-  const endOfRange = new Date(spec.endDateStr);
-  if (!spec.endDateStr.includes("T")) endOfRange.setUTCHours(23, 59, 59, 999);
-  where.date = { gte: startOfRange, lte: endOfRange };
+  const canonical = getCanonicalDateRange(spec.startDateStr, spec.endDateStr);
+  where.date = canonical.dbWhereDate;
 
   if (spec.platforms?.length) {
     where.platform = spec.platforms.length === 1 ? spec.platforms[0] : { in: spec.platforms };
   } else if (spec.platform) {
     where.platform = spec.platform;
   }
-  if (spec.accountIds?.length) {
-    where.accountId = spec.accountIds.length === 1 ? spec.accountIds[0] : { in: spec.accountIds };
-  } else if (spec.accountId) {
-    where.accountId = spec.accountId;
-  }
+
+  const accountPredicate = buildAccountFilterPredicate({
+    accountIds: spec.accountIds,
+    accountId: spec.accountId,
+    platforms: spec.platforms,
+    platform: spec.platform,
+  });
+  appendWherePredicate(where, accountPredicate);
+
   if (spec.campaignId) where.campaignId = spec.campaignId;
+
 
   let dimensions = (spec.dimensions?.length ? spec.dimensions : ["date", "platform"]).filter((id) =>
     allowedDimIds.has(id),
