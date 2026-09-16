@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { getAuthSession } from "@/lib/auth-session";
 import prisma from "@/lib/prisma";
 import { syncGoogleAdsIntoWarehouse, syncTikTokIntoWarehouse } from "@/lib/ingestion/ad-platform-warehouse";
 import { syncConnectionData } from "@/lib/sync-connection";
 import { logger } from "@/lib/logger";
 import { decrypt } from "@/lib/encryption";
-import { requireWorkspaceAccess } from "@/lib/rbac";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { HistoricalBackfillPlanningError } from "@/lib/historical-backfill-plan";
+import {
+  assertExecutableWarehouseRange,
+  getOversizedExecutionDetails,
+  toOversizedExecutionResponse,
+} from "@/lib/warehouse-execution-guard";
 
 const WAREHOUSE_COLUMN_LIST = [
   "date",
@@ -32,7 +37,7 @@ const WAREHOUSE_COLUMN_LIST = [
  * fenced ad-day sync primitive used by scheduled and pipeline execution.
  */
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -67,7 +72,13 @@ export async function POST(req: Request) {
     );
   }
 
-  await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member", operation: "import_warehouse" });
+  try {
+    await requireWorkspaceAccess({ userId: session.user.id, workspaceId, minimumRole: "member", operation: "import_warehouse" });
+  } catch (err) {
+    const rbacRes = toRbacResponse(err);
+    if (rbacRes) return rbacRes;
+    return NextResponse.json({ error: "Access denied" }, { status: 403 });
+  }
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
     select: { plan: true },
@@ -84,6 +95,38 @@ export async function POST(req: Request) {
     }
 
     const provider = conn.provider;
+    // Shared raw-range guard: evaluates the original caller range before any
+    // plan clamp, job creation, worker dispatch, database write, or provider
+    // contact. Meta/Google ranges over 30 inclusive days fail closed here.
+    try {
+      assertExecutableWarehouseRange({ provider, since, until });
+    } catch (guardError) {
+      const oversized = getOversizedExecutionDetails(guardError);
+      if (oversized) {
+        return NextResponse.json(
+          toOversizedExecutionResponse(oversized.provider, oversized.requestedRange, oversized.maxExecutableDays),
+          { status: 422 },
+        );
+      }
+      if (guardError instanceof HistoricalBackfillPlanningError) {
+        const status = guardError.code === "INVALID_DATE_RANGE" ? 400 : 422;
+        // Preserve the canonical date-validation response for malformed or
+        // reversed dates; unavailable ingestion remains a visible rejection
+        // before any provider contact.
+        if (guardError.code === "WAREHOUSE_INGESTION_UNAVAILABLE") {
+          return NextResponse.json(
+            { error: guardError.message, code: guardError.code },
+            { status: 400 },
+          );
+        }
+        return NextResponse.json(
+          { error: guardError.message, code: guardError.code },
+          { status },
+        );
+      }
+      throw guardError;
+    }
+
     const credentials = JSON.parse(decrypt(conn.credentials));
 
     if (provider === "meta_ads") {

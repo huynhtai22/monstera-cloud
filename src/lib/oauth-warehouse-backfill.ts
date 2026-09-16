@@ -7,6 +7,11 @@ import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getAutomaticWarehouseBackfillDays } from "@/lib/historical-ingestion-capabilities";
 import { planHistoricalBackfill } from "@/lib/historical-backfill-plan";
+import {
+  WAREHOUSE_AUTOMATIC_SKIP_REASON,
+  isAutomaticWarehouseIngestionAvailable,
+  isChunkGuardedWarehouseProvider,
+} from "@/lib/warehouse-execution-guard";
 
 /** Legacy fallback only. Canonical provider records may opt into a longer automatic window. */
 export const INITIAL_OAUTH_BACKFILL_DAYS = 30;
@@ -80,7 +85,7 @@ function oauthBackfillItems(
   connectionId: string,
   window: { since: string; until: string },
 ): BatchImportItem[] {
-  if (provider !== "meta_ads" && provider !== "google_ads") {
+  if (!provider || !isChunkGuardedWarehouseProvider(provider)) {
     return [{ connectionId }];
   }
 
@@ -107,9 +112,39 @@ export async function enqueueOauthWarehouseBackfill(opts: {
   kind: OauthBackfillKind;
   lastSyncAt?: Date | null;
   plan?: string;
-}): Promise<{ job: BatchImportJobState; reused: boolean }> {
+}): Promise<
+  | { job: BatchImportJobState; reused: boolean; skipped?: false }
+  | {
+      job: null;
+      reused: false;
+      skipped: true;
+      reason: typeof WAREHOUSE_AUTOMATIC_SKIP_REASON;
+      provider?: string;
+    }
+> {
   if (opts.connectionWorkspaceId !== opts.workspaceId) {
     throw new WorkspaceBoundaryError();
+  }
+
+  // Capability is checked before any date arithmetic so unavailable ingestion
+  // (including zero-day automatic windows) never produces a reversed range,
+  // import item, job, worker dispatch, or provider contact. OAuth success
+  // remains independent from Warehouse availability.
+  if (!isAutomaticWarehouseIngestionAvailable(opts.provider)) {
+    logger.info("[oauth-warehouse-backfill] skip automatic enqueue", {
+      reason: WAREHOUSE_AUTOMATIC_SKIP_REASON,
+      provider: opts.provider ?? null,
+      connectionId: opts.connectionId,
+      workspaceId: opts.workspaceId,
+      kind: opts.kind,
+    });
+    return {
+      job: null,
+      reused: false,
+      skipped: true,
+      reason: WAREHOUSE_AUTOMATIC_SKIP_REASON,
+      provider: opts.provider,
+    };
   }
 
   const window =

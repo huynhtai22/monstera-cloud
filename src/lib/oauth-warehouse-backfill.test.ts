@@ -94,6 +94,7 @@ describe("oauth warehouse backfill", () => {
       kind: "initial",
     });
     assert.equal(reused, false);
+    assert.ok(job);
     assert.equal(job.workspaceId, "ws-a");
     assert.equal(job.items[0]?.connectionId, "conn-1");
     assert.equal(job.items.length, 3);
@@ -106,9 +107,10 @@ describe("oauth warehouse backfill", () => {
     }
     assert.equal(job.items[0]?.executionUntil, job.until);
     assert.equal(job.items[2]?.executionSince, job.since);
-    for (let index = 0; index < job.items.length - 1; index += 1) {
-      const newer = job.items[index];
-      const older = job.items[index + 1];
+    const items = job.items;
+    for (let index = 0; index < items.length - 1; index += 1) {
+      const newer = items[index]!;
+      const older = items[index + 1]!;
       assert.equal(
         Date.parse(`${newer.executionSince}T00:00:00Z`) - Date.parse(`${older.executionUntil}T00:00:00Z`),
         86400000,
@@ -134,6 +136,7 @@ describe("oauth warehouse backfill", () => {
       plan: "pro",
     });
 
+    assert.ok(job);
     assert.equal(job.plan, "pro");
     assert.equal(job.items.length, 3);
   });
@@ -156,6 +159,8 @@ describe("oauth warehouse backfill", () => {
       kind: "initial",
     });
     assert.equal(second.reused, true);
+    assert.ok(second.job);
+    assert.ok(first.job);
     assert.equal(second.job.id, first.job.id);
     assert.equal(jobs.size, 1);
   });

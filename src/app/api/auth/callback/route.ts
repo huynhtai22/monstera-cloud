@@ -321,7 +321,7 @@ export async function GET(request: NextRequest) {
             }
 
             try {
-                const { job } = await enqueueOauthWarehouseBackfill({
+                const backfill = await enqueueOauthWarehouseBackfill({
                     workspaceId,
                     userId,
                     connectionId: existing.id,
@@ -331,16 +331,26 @@ export async function GET(request: NextRequest) {
                     lastSyncAt: existing.lastSyncAt,
                     plan: workspacePlan,
                 });
-                after(async () => {
-                    try {
-                        const claim = await claimImportJob(job.id);
-                        if (claim.claimed && claim.leaseId) {
-                            await runDurableImportWorker(job.id, claim.leaseId);
+                if (backfill.skipped || !backfill.job) {
+                    logger.info("[OAuth Callback] warehouse backfill skipped", {
+                        reason: "historical_ingestion_unavailable",
+                        provider: providerId,
+                        connectionId: existing.id,
+                        workspaceId,
+                    });
+                } else {
+                    const job = backfill.job;
+                    after(async () => {
+                        try {
+                            const claim = await claimImportJob(job.id);
+                            if (claim.claimed && claim.leaseId) {
+                                await runDurableImportWorker(job.id, claim.leaseId);
+                            }
+                        } catch (err) {
+                            logger.error("[OAuth Callback] catch-up worker error", err);
                         }
-                    } catch (err) {
-                        logger.error("[OAuth Callback] catch-up worker error", err);
-                    }
-                });
+                    });
+                }
             } catch (err) {
                 logger.warn("[OAuth Callback] catch-up enqueue failed", err);
             }
@@ -444,7 +454,7 @@ export async function GET(request: NextRequest) {
 
         for (const createdConnection of connections) {
             try {
-                const { job } = await enqueueOauthWarehouseBackfill({
+                const backfill = await enqueueOauthWarehouseBackfill({
                     workspaceId,
                     userId,
                     connectionId: createdConnection.id,
@@ -454,6 +464,16 @@ export async function GET(request: NextRequest) {
                     lastSyncAt: createdConnection.lastSyncAt,
                     plan: workspacePlan,
                 });
+                if (backfill.skipped || !backfill.job) {
+                    logger.info("[OAuth Callback] warehouse backfill skipped", {
+                        reason: "historical_ingestion_unavailable",
+                        provider: createdConnection.provider,
+                        connectionId: createdConnection.id,
+                        workspaceId,
+                    });
+                    continue;
+                }
+                const job = backfill.job;
                 after(async () => {
                     try {
                         const claim = await claimImportJob(job.id);

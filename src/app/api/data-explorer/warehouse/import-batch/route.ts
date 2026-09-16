@@ -24,10 +24,12 @@ import {
 import { runPostWarehouseRefreshQualityChecks } from "@/lib/observability/data-quality";
 import { emitMonitor } from "@/lib/observability/monitors";
 import { notifyWarehouseJobIfNeeded } from "@/lib/ingestion/notify-run";
+import { HistoricalBackfillPlanningError } from "@/lib/historical-backfill-plan";
 import {
-  HistoricalBackfillPlanningError,
-  planHistoricalBackfill,
-} from "@/lib/historical-backfill-plan";
+  assertExecutableWarehouseRange,
+  getOversizedExecutionDetails,
+  toOversizedExecutionResponse,
+} from "@/lib/warehouse-execution-guard";
 
 const MAX_CONCURRENT_JOBS_PER_WORKSPACE = 5;
 const MAX_ITEMS_PER_REQUEST = 50;
@@ -37,6 +39,10 @@ const MAX_ITEMS_PER_REQUEST = 50;
  * OAuth is the sole current caller that can persist its approved 90-day Meta
  * and Google window as bounded item ranges; every other multi-chunk request
  * must fail closed until a general resumable chunk dispatcher exists.
+ *
+ * Delegates to the shared Warehouse execution guard so single-import and
+ * batch-import enforce the identical raw-range policy before plan clamping,
+ * job creation, worker dispatch, database writes, or provider contact.
  */
 export async function assertBatchHistoricalExecutionAllowed(opts: {
   workspaceId: string;
@@ -50,26 +56,12 @@ export async function assertBatchHistoricalExecutionAllowed(opts: {
     where: { id: { in: connectionIds }, workspaceId: opts.workspaceId },
     select: { provider: true },
   });
-  const asOf = new Date().toISOString().slice(0, 10);
 
   for (const provider of new Set(connections.map((connection) => connection.provider))) {
-    const plan = planHistoricalBackfill({
-      provider,
-      since: opts.since,
-      until: opts.until,
-      asOf,
-      // A plan projection may be smaller than a dangerous raw request. The
-      // guard intentionally evaluates raw provider execution first; the
-      // route performs visible product clamping only after this check passes.
-      execution: "execute",
-    });
-
-    if ((provider === "meta_ads" || provider === "google_ads") && plan.chunkCount > 1) {
-      throw new HistoricalBackfillPlanningError(
-        "REQUEST_CHUNKING_NOT_IMPLEMENTED",
-        `${provider} ranges over 30 days require the OAuth chunk dispatcher; general Warehouse execution is not enabled.`,
-      );
-    }
+    // A plan projection may be smaller than a dangerous raw request. The
+    // guard intentionally evaluates raw provider execution first; the
+    // route performs visible product clamping only after this check passes.
+    assertExecutableWarehouseRange({ provider, since: opts.since, until: opts.until });
   }
 }
 
@@ -499,7 +491,20 @@ export async function POST(req: Request) {
       items: rawItems,
     });
   } catch (error) {
+    const oversized = getOversizedExecutionDetails(error);
+    if (oversized) {
+      return NextResponse.json(
+        toOversizedExecutionResponse(oversized.provider, oversized.requestedRange, oversized.maxExecutableDays),
+        { status: 422 },
+      );
+    }
     if (error instanceof HistoricalBackfillPlanningError) {
+      if (error.code === "INVALID_DATE_RANGE") {
+        return NextResponse.json(
+          { error: error.message, code: error.code },
+          { status: 400 },
+        );
+      }
       return NextResponse.json(
         { error: error.message, code: error.code },
         { status: 422 },
