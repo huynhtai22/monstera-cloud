@@ -1,11 +1,23 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import useSWR from "swr";
 import { X, RefreshCw, CheckCircle2, AlertCircle, ArrowRight, TriangleAlert } from "lucide-react";
-import { deriveSessionKey, needsReinit, terminalStatusToUiStep, canViewImportedData } from "@/lib/refresh-modal-logic";
+import {
+  createInitialModalSelectionState,
+  resolveSelectionOnContextOrData,
+  userToggleSource,
+  userToggleMetaAcct,
+  userSetAllSources,
+  isTargetAccountResolving,
+  buildBatchImportItems,
+  terminalStatusToUiStep,
+  canViewImportedData,
+  terminalHeading,
+  type ModalSelectionState,
+} from "@/lib/refresh-modal-logic";
 import { cn } from "@/lib/utils";
 import { IntegrationMark } from "@/components/ui/IntegrationMark";
 import { INTEGRATION_LOGOS } from "@/lib/integration-logos";
@@ -67,8 +79,8 @@ export function RefreshWarehouseModal({
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [preset, setPreset] = useState<"7" | "30" | "90" | "custom">("30");
-  const [selectedConnIds, setSelectedConnIds] = useState<Set<string>>(new Set());
-  const [metaAcctPick, setMetaAcctPick] = useState<Record<string, Set<string>>>({});
+  const [selectionState, setSelectionState] = useState<ModalSelectionState>(createInitialModalSelectionState);
+  const { selectedConnIds, metaAcctPick, accountNotFoundNotice } = selectionState;
   const [metaAccountsByConn, setMetaAccountsByConn] = useState<Record<string, { id: string; name: string }[]>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -88,26 +100,13 @@ export function RefreshWarehouseModal({
     results?: any[];
     errorMsg?: string | null;
   } | null>(null);
-  /**
-   * Tracks the session-context key for which account selection was last
-   * initialized. Reset to null on every close so the next open always
-   * re-derives the correct context — even if the context is identical.
-   * This replaces the prior boolean ref that could never reset between sessions.
-   */
-  const initializedSessionKeyRef = useRef<string | null>(null);
-  const userModifiedSelectionRef = useRef(false);
-  const [accountNotFoundNotice, setAccountNotFoundNotice] = useState<string | null>(null);
 
   // Initialize date range from active Warehouse view or fallback to last 30 days
   // and reset transient state on open/close
   useEffect(() => {
     if (!isOpen) {
-      setSelectedConnIds(new Set());
-      setMetaAcctPick({});
+      setSelectionState(createInitialModalSelectionState());
       setMetaAccountsByConn({});
-      initializedSessionKeyRef.current = null;
-      userModifiedSelectionRef.current = false;
-      setAccountNotFoundNotice(null);
       setErrorMessage(null);
       setPollingJobId(null);
       setJobOutcome(null);
@@ -136,9 +135,7 @@ export function RefreshWarehouseModal({
     setErrorMessage(null);
     setPollingJobId(null);
     setJobOutcome(null);
-    initializedSessionKeyRef.current = null;
-    userModifiedSelectionRef.current = false;
-    setAccountNotFoundNotice(null);
+    setSelectionState(createInitialModalSelectionState());
   }, [isOpen, initialStartDate, initialEndDate]);
 
   const { data: connectionsData, isLoading: connectionsLoading } = useSWR(
@@ -179,67 +176,20 @@ export function RefreshWarehouseModal({
     }
   }, [isOpen, connections, initialAccountId, initialPlatform, metaAccountsByConn, fetchMetaAccounts]);
 
-  // Initialize selection based on current session context once connection data is available
+  // Canonical selection resolution when context or connection/account data updates
   useEffect(() => {
     if (!isOpen || connections.length === 0) return;
-
-    const currentSessionKey = deriveSessionKey({
-      workspaceId,
-      platform: initialPlatform ?? null,
-      accountId: initialAccountId ?? null,
-    });
-
-    if (!needsReinit(currentSessionKey, initializedSessionKeyRef.current) || userModifiedSelectionRef.current) {
-      return;
-    }
-
-    // Branch 1: initialAccountId is specified -> match targeted Meta ad account
-    if (initialAccountId) {
-      const normTarget = initialAccountId.replace(/^act_/, "").trim();
-      let matchFound = false;
-
-      for (const [connId, accounts] of Object.entries(metaAccountsByConn)) {
-        if (!Array.isArray(accounts) || accounts.length === 0) continue;
-        const match = accounts.find(
-          (a) => a.id === initialAccountId || a.id.replace(/^act_/, "").trim() === normTarget
-        );
-        if (match) {
-          matchFound = true;
-          initializedSessionKeyRef.current = currentSessionKey;
-          setSelectedConnIds(new Set([connId]));
-          setMetaAcctPick({ [connId]: new Set([match.id]) });
-          setAccountNotFoundNotice(null);
-          break;
-        }
-      }
-
-      if (matchFound) return;
-
-      const metaConns = connections.filter((c) => c.provider === "meta_ads");
-      const allLoaded = metaConns.length > 0 && metaConns.every((c) => Array.isArray(metaAccountsByConn[c.id]));
-
-      if (allLoaded) {
-        // All accounts loaded but no match found: fail closed (do NOT select random sources)
-        setAccountNotFoundNotice(
-          `Configured account ${initialAccountId} was not found in linked Meta connections. Please select an account manually.`
-        );
-        initializedSessionKeyRef.current = currentSessionKey;
-      }
-      return;
-    }
-
-    // Branch 2: initialPlatform is specified (e.g. google_ads, tiktok_business, etc.)
-    if (initialPlatform) {
-      const matching = connections.filter((c) => c.provider === initialPlatform);
-      if (matching.length > 0) {
-        setSelectedConnIds(new Set(matching.map((c) => c.id)));
-      }
-      initializedSessionKeyRef.current = currentSessionKey;
-      return;
-    }
-
-    // Branch 3: No initialPlatform or initialAccountId -> conservative explicit selection (empty)
-    initializedSessionKeyRef.current = currentSessionKey;
+    setSelectionState((prev) =>
+      resolveSelectionOnContextOrData({
+        state: prev,
+        isOpen,
+        workspaceId,
+        initialPlatform,
+        initialAccountId,
+        connections,
+        metaAccountsByConn,
+      })
+    );
   }, [
     isOpen,
     workspaceId,
@@ -259,41 +209,22 @@ export function RefreshWarehouseModal({
   };
 
   const toggleSource = (connId: string, provider: string) => {
-    userModifiedSelectionRef.current = true;
-    const next = new Set(selectedConnIds);
-    if (next.has(connId)) {
-      next.delete(connId);
-      setMetaAcctPick((p) => {
-        const cp = { ...p };
-        delete cp[connId];
-        return cp;
-      });
-    } else {
-      next.add(connId);
-      if (provider === "meta_ads" && !metaAccountsByConn[connId]) {
-        void fetchMetaAccounts(connId);
-      }
+    setSelectionState((prev) => userToggleSource(prev, connId));
+    if (provider === "meta_ads" && !metaAccountsByConn[connId]) {
+      void fetchMetaAccounts(connId);
     }
-    setSelectedConnIds(next);
   };
 
   const toggleMetaAcct = (connId: string, acctId: string) => {
-    userModifiedSelectionRef.current = true;
-    setMetaAcctPick((prev) => {
-      const base = new Set(prev[connId] ?? []);
-      if (base.has(acctId)) base.delete(acctId);
-      else base.add(acctId);
-      return { ...prev, [connId]: base };
-    });
+    setSelectionState((prev) => userToggleMetaAcct(prev, connId, acctId));
   };
 
-
-  const isTargetAccountResolving = Boolean(
-    initialAccountId &&
-    connections.some((c) => c.provider === "meta_ads" && !Array.isArray(metaAccountsByConn[c.id])) &&
-    Object.keys(metaAcctPick).length === 0 &&
-    !accountNotFoundNotice
-  );
+  const isTargetResolving = isTargetAccountResolving({
+    initialAccountId,
+    connections,
+    metaAccountsByConn,
+    selectionState,
+  });
 
   const handleRunRefresh = async () => {
     if (!workspaceId || !startDate || !endDate) {
@@ -308,28 +239,18 @@ export function RefreshWarehouseModal({
     setIsSubmitting(true);
     setErrorMessage(null);
 
-    const items: { connectionId: string; adAccountId?: string }[] = [];
-    for (const cid of selectedConnIds) {
-      const c = connections.find((x) => x.id === cid);
-      if (!c) continue;
-      if (c.provider !== "meta_ads") {
-        items.push({ connectionId: cid });
-        continue;
-      }
-      const picks = metaAcctPick[cid];
-      const loaded = metaAccountsByConn[cid] ?? [];
-      if (initialAccountId && (!loaded.length || picks == null || picks.size === 0)) {
-        setErrorMessage("Target ad account could not be resolved. Please select an ad account manually.");
-        setIsSubmitting(false);
-        return;
-      }
-      if (!loaded.length || picks == null || picks.size === 0) {
-        items.push({ connectionId: cid });
-        continue;
-      }
-      const wantAll = picks.size === loaded.length && loaded.every((a) => picks.has(a.id));
-      if (wantAll) items.push({ connectionId: cid });
-      else for (const id of picks) items.push({ connectionId: cid, adAccountId: id });
+    const { items, error: itemsError } = buildBatchImportItems({
+      selectedConnIds,
+      connections,
+      metaAcctPick,
+      metaAccountsByConn,
+      initialAccountId,
+    });
+
+    if (itemsError) {
+      setErrorMessage(itemsError);
+      setIsSubmitting(false);
+      return;
     }
 
     try {
@@ -592,12 +513,11 @@ export function RefreshWarehouseModal({
                     <button
                       type="button"
                       onClick={() => {
-                        userModifiedSelectionRef.current = true;
-                        if (selectedConnIds.size === connections.length) {
-                          setSelectedConnIds(new Set());
-                        } else {
-                          setSelectedConnIds(new Set(connections.map((c) => c.id)));
-                        }
+                        const nextIds =
+                          selectedConnIds.size === connections.length
+                            ? []
+                            : connections.map((c) => c.id);
+                        setSelectionState((prev) => userSetAllSources(prev, nextIds));
                       }}
                       className="text-[11px] text-ink-mute hover:text-ink"
                     >
@@ -731,6 +651,7 @@ export function RefreshWarehouseModal({
               jobOutcome?.approximateRows ??
               (jobOutcome?.results?.reduce((s: number, r: any) => s + (r.rowsIngested ?? r.upserted ?? 0), 0) || 0);
             const isClamped = Boolean(jobOutcome?.clamped);
+            const hasViewableData = canViewImportedData("completed", totalRows);
 
             const isOutsideView =
               Boolean(initialStartDate && initialEndDate) &&
@@ -749,7 +670,7 @@ export function RefreshWarehouseModal({
                 <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-950/40">
                   <CheckCircle2 className="h-6 w-6 text-emerald-400" strokeWidth={1.5} />
                 </div>
-                <h4 className="text-base font-semibold text-ink">Warehouse refresh complete</h4>
+                <h4 className="text-base font-semibold text-ink">{terminalHeading(step)}</h4>
                 <p className="mt-1 text-sm text-ink-mute">
                   {totalRows} row{totalRows === 1 ? "" : "s"} imported for <span className="font-mono text-ink">{effSince}</span> to <span className="font-mono text-ink">{effUntil}</span>.
                 </p>
@@ -779,7 +700,7 @@ export function RefreshWarehouseModal({
                 )}
 
                 <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-                  {onApplyViewFilters && (
+                  {onApplyViewFilters && hasViewableData && (
                     <button
                       type="button"
                       onClick={() => {
@@ -845,7 +766,7 @@ export function RefreshWarehouseModal({
                 <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-amber-500/30 bg-amber-950/40">
                   <TriangleAlert className="h-6 w-6 text-amber-400" strokeWidth={1.5} />
                 </div>
-                <h4 className="text-base font-semibold text-ink">Warehouse refresh completed with warnings</h4>
+                <h4 className="text-base font-semibold text-ink">{terminalHeading(step)}</h4>
                 <p className="mt-1 text-sm text-ink-mute">
                   Some requested data may be missing. {totalRows} row{totalRows === 1 ? "" : "s"} imported for <span className="font-mono text-ink">{effSince}</span> to <span className="font-mono text-ink">{effUntil}</span>.
                 </p>
@@ -944,7 +865,7 @@ export function RefreshWarehouseModal({
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-950/40 border border-red-500/30">
                 <AlertCircle className="h-6 w-6 text-red-400" strokeWidth={1.5} />
               </div>
-              <h4 className="text-base font-semibold text-ink">Refresh failed to start</h4>
+              <h4 className="text-base font-semibold text-ink">{terminalHeading(step)}</h4>
               <p className="mt-1 text-xs text-red-300">{errorMessage || "An unknown error occurred."}</p>
               <div className="mt-6 flex justify-center gap-2">
                 <button
@@ -980,7 +901,7 @@ export function RefreshWarehouseModal({
             <button
               type="button"
               onClick={handleRunRefresh}
-              disabled={isSubmitting || connections.length === 0 || selectedConnIds.size === 0 || isTargetAccountResolving}
+              disabled={isSubmitting || connections.length === 0 || selectedConnIds.size === 0 || isTargetResolving}
               className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-4 py-2 text-xs font-semibold text-neutral-900 transition-colors hover:bg-neutral-100 disabled:opacity-50"
             >
               {isSubmitting ? (
@@ -988,7 +909,7 @@ export function RefreshWarehouseModal({
                   <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                   Queueing refresh…
                 </>
-              ) : isTargetAccountResolving ? (
+              ) : isTargetResolving ? (
                 <>
                   <RefreshCw className="h-3.5 w-3.5 animate-spin" />
                   Resolving account…
