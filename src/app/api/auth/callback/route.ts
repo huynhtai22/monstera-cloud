@@ -129,6 +129,11 @@ export async function GET(request: NextRequest) {
             minimumRole: "member",
             operation: reconnectConnectionId ? "reconnect_source" : "connect_source",
         });
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { plan: true },
+        });
+        const workspacePlan = workspace?.plan ?? "pilot";
         try {
             await assertWorkspaceProviderEnabled({ workspaceId, provider: providerId });
         } catch (error) {
@@ -316,24 +321,36 @@ export async function GET(request: NextRequest) {
             }
 
             try {
-                const { job } = await enqueueOauthWarehouseBackfill({
+                const backfill = await enqueueOauthWarehouseBackfill({
                     workspaceId,
                     userId,
                     connectionId: existing.id,
                     connectionWorkspaceId: existing.workspaceId,
+                    provider: providerId,
                     kind: "catchup",
                     lastSyncAt: existing.lastSyncAt,
+                    plan: workspacePlan,
                 });
-                after(async () => {
-                    try {
-                        const claim = await claimImportJob(job.id);
-                        if (claim.claimed && claim.leaseId) {
-                            await runDurableImportWorker(job.id, claim.leaseId);
+                if (backfill.skipped || !backfill.job) {
+                    logger.info("[OAuth Callback] warehouse backfill skipped", {
+                        reason: "historical_ingestion_unavailable",
+                        provider: providerId,
+                        connectionId: existing.id,
+                        workspaceId,
+                    });
+                } else {
+                    const job = backfill.job;
+                    after(async () => {
+                        try {
+                            const claim = await claimImportJob(job.id);
+                            if (claim.claimed && claim.leaseId) {
+                                await runDurableImportWorker(job.id, claim.leaseId);
+                            }
+                        } catch (err) {
+                            logger.error("[OAuth Callback] catch-up worker error", err);
                         }
-                    } catch (err) {
-                        logger.error("[OAuth Callback] catch-up worker error", err);
-                    }
-                });
+                    });
+                }
             } catch (err) {
                 logger.warn("[OAuth Callback] catch-up enqueue failed", err);
             }
@@ -437,14 +454,26 @@ export async function GET(request: NextRequest) {
 
         for (const createdConnection of connections) {
             try {
-                const { job } = await enqueueOauthWarehouseBackfill({
+                const backfill = await enqueueOauthWarehouseBackfill({
                     workspaceId,
                     userId,
                     connectionId: createdConnection.id,
                     connectionWorkspaceId: createdConnection.workspaceId,
+                    provider: createdConnection.provider,
                     kind: createdConnection.created ? "initial" : "catchup",
                     lastSyncAt: createdConnection.lastSyncAt,
+                    plan: workspacePlan,
                 });
+                if (backfill.skipped || !backfill.job) {
+                    logger.info("[OAuth Callback] warehouse backfill skipped", {
+                        reason: "historical_ingestion_unavailable",
+                        provider: createdConnection.provider,
+                        connectionId: createdConnection.id,
+                        workspaceId,
+                    });
+                    continue;
+                }
+                const job = backfill.job;
                 after(async () => {
                     try {
                         const claim = await claimImportJob(job.id);

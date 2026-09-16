@@ -15,6 +15,9 @@ export interface BatchImportItem {
   adAccountId?: string;
   /** Internal continuation state. API request validation intentionally strips it. */
   providerState?: ProviderRetryState;
+  /** A durable internal chunk boundary, distinct from the job's display range. */
+  executionSince?: string;
+  executionUntil?: string;
   requestedSince?: string;
   requestedUntil?: string;
   clamped?: boolean;
@@ -26,6 +29,8 @@ export interface BatchImportJobResult {
   outcome?: "success" | "partial" | "failed";
   accountId?: string;
   adAccountId?: string;
+  executionSince?: string;
+  executionUntil?: string;
   ok: boolean;
   rowsIngested?: number;
   upserted?: number;

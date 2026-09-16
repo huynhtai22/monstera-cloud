@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it, beforeEach } from "node:test";
-import { processBatchItems, runDurableImportWorker } from "./route";
+import {
+  assertBatchHistoricalExecutionAllowed,
+  processBatchItems,
+  runDurableImportWorker,
+} from "./route";
 import prisma from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 
@@ -179,5 +183,42 @@ describe("Batch Import Worker & Post-Refresh Data Quality Gating", () => {
       accountId: providerState.advertiserId,
       providerState,
     }]);
+  });
+
+  it("executes a durable item only within its explicit chunk range", async () => {
+    const receivedRanges: Array<{ since: string; until: string }> = [];
+    const results = await processBatchItems({
+      workspaceId: mockWorkspaceId,
+      since: "2026-06-01",
+      until: "2026-08-29",
+      plan: "pro",
+      items: [{
+        connectionId: "conn-success-1",
+        executionSince: "2026-07-31",
+        executionUntil: "2026-08-29",
+      }],
+      syncFn: (async (options: { since: string; until: string }) => {
+        receivedRanges.push({ since: options.since, until: options.until });
+        return { success: true, rowsIngested: 1 };
+      }) as any,
+    });
+
+    assert.deepEqual(receivedRanges, [{ since: "2026-07-31", until: "2026-08-29" }]);
+    assert.equal(results[0]?.executionSince, "2026-07-31");
+    assert.equal(results[0]?.executionUntil, "2026-08-29");
+  });
+
+  it("fails closed before plan clamping can dispatch a generic 90-day Meta request", async () => {
+    await assert.rejects(
+      () => assertBatchHistoricalExecutionAllowed({
+        workspaceId: mockWorkspaceId,
+        since: "2026-06-01",
+        until: "2026-08-29",
+        planMaximumDays: 14,
+        items: [{ connectionId: "conn-success-1" }],
+      }),
+      (error: unknown) =>
+        error instanceof Error && error.message.includes("REQUEST_CHUNKING_NOT_IMPLEMENTED"),
+    );
   });
 });
