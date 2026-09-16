@@ -1,7 +1,14 @@
-import { createImportJob, type BatchImportJobState } from "@/lib/warehouse-import-job";
+import {
+  createImportJob,
+  type BatchImportItem,
+  type BatchImportJobState,
+} from "@/lib/warehouse-import-job";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { getAutomaticWarehouseBackfillDays } from "@/lib/historical-ingestion-capabilities";
+import { planHistoricalBackfill } from "@/lib/historical-backfill-plan";
 
+/** Legacy fallback only. Canonical provider records may opt into a longer automatic window. */
 export const INITIAL_OAUTH_BACKFILL_DAYS = 30;
 const CATCHUP_OVERLAP_DAYS = 2;
 
@@ -13,19 +20,29 @@ export function utcIsoDate(date = new Date()): string {
     .slice(0, 10);
 }
 
-export function initialOauthBackfillWindow(now = new Date()): { since: string; until: string } {
+export function initialOauthBackfillWindow(
+  providerOrNow?: string | Date,
+  maybeNow = new Date(),
+): { since: string; until: string } {
+  const provider = typeof providerOrNow === "string" ? providerOrNow : undefined;
+  const now = providerOrNow instanceof Date ? providerOrNow : maybeNow;
+  const initialBackfillDays = getAutomaticWarehouseBackfillDays(provider);
   const until = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const since = new Date(until);
-  since.setUTCDate(since.getUTCDate() - (INITIAL_OAUTH_BACKFILL_DAYS - 1));
+  since.setUTCDate(since.getUTCDate() - (initialBackfillDays - 1));
   return { since: utcIsoDate(since), until: utcIsoDate(until) };
 }
 
-export function catchupOauthWindow(lastSyncAt: Date | null | undefined, now = new Date()): { since: string; until: string } {
-  if (!lastSyncAt) return initialOauthBackfillWindow(now);
+export function catchupOauthWindow(
+  lastSyncAt: Date | null | undefined,
+  now = new Date(),
+  provider?: string,
+): { since: string; until: string } {
+  if (!lastSyncAt) return initialOauthBackfillWindow(provider, now);
   const until = utcIsoDate(now);
   const sinceDate = new Date(lastSyncAt);
   sinceDate.setUTCDate(sinceDate.getUTCDate() - CATCHUP_OVERLAP_DAYS);
-  const floor = initialOauthBackfillWindow(now).since;
+  const floor = initialOauthBackfillWindow(provider, now).since;
   let since = utcIsoDate(sinceDate);
   if (since < floor) since = floor;
   if (since > until) since = until;
@@ -52,11 +69,41 @@ export class WorkspaceBoundaryError extends Error {
   }
 }
 
+/**
+ * Meta and Google OAuth initial windows are durably queued as the same
+ * newest-first, 30-day-safe chunks declared by the canonical planner. This
+ * applies only to the approved automatic window; extended execution is still
+ * rejected by the planner and has no route.
+ */
+function oauthBackfillItems(
+  provider: string | undefined,
+  connectionId: string,
+  window: { since: string; until: string },
+): BatchImportItem[] {
+  if (provider !== "meta_ads" && provider !== "google_ads") {
+    return [{ connectionId }];
+  }
+
+  const plan = planHistoricalBackfill({
+    provider,
+    since: window.since,
+    until: window.until,
+    asOf: window.until,
+    execution: "plan",
+  });
+  return plan.chunks.map((chunk) => ({
+    connectionId,
+    executionSince: chunk.since,
+    executionUntil: chunk.until,
+  }));
+}
+
 export async function enqueueOauthWarehouseBackfill(opts: {
   workspaceId: string;
   userId: string;
   connectionId: string;
   connectionWorkspaceId: string;
+  provider?: string;
   kind: OauthBackfillKind;
   lastSyncAt?: Date | null;
   plan?: string;
@@ -67,8 +114,8 @@ export async function enqueueOauthWarehouseBackfill(opts: {
 
   const window =
     opts.kind === "initial"
-      ? initialOauthBackfillWindow()
-      : catchupOauthWindow(opts.lastSyncAt ?? null);
+      ? initialOauthBackfillWindow(opts.provider)
+      : catchupOauthWindow(opts.lastSyncAt ?? null, new Date(), opts.provider);
 
   let idempotencyKey = oauthBackfillIdempotencyKey(opts.kind, opts.connectionId, window.until);
 
@@ -96,7 +143,7 @@ export async function enqueueOauthWarehouseBackfill(opts: {
     plan: opts.plan,
     since: window.since,
     until: window.until,
-    items: [{ connectionId: opts.connectionId }],
+    items: oauthBackfillItems(opts.provider, opts.connectionId, window),
     idempotencyKey,
     priority: 5,
   });

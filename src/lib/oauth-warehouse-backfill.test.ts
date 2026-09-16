@@ -69,16 +69,19 @@ describe("oauth warehouse backfill", () => {
     };
   });
 
-  it("uses a 30-day inclusive lookback for new connections", () => {
+  it("uses the approved 90-day inclusive lookback for new Meta and Google connections", () => {
     const now = new Date(Date.UTC(2026, 7, 20));
-    const window = initialOauthBackfillWindow(now);
+    const window = initialOauthBackfillWindow("meta_ads", now);
     assert.equal(window.until, "2026-08-20");
-    assert.equal(window.since, "2026-07-22");
+    assert.equal(window.since, "2026-05-23");
     const days =
       (Date.parse(`${window.until}T00:00:00Z`) - Date.parse(`${window.since}T00:00:00Z`)) /
         86400000 +
       1;
-    assert.equal(days, INITIAL_OAUTH_BACKFILL_DAYS);
+    assert.equal(days, 90);
+    assert.equal(initialOauthBackfillWindow("google_ads", now).since, "2026-05-23");
+    assert.equal(initialOauthBackfillWindow("tiktok_business", now).since, "2026-07-22");
+    assert.equal(days > INITIAL_OAUTH_BACKFILL_DAYS, true);
   });
 
   it("enqueues an initial job with workspace and connection identity", async () => {
@@ -87,18 +90,52 @@ describe("oauth warehouse backfill", () => {
       userId: "user-a",
       connectionId: "conn-1",
       connectionWorkspaceId: "ws-a",
+      provider: "meta_ads",
       kind: "initial",
     });
     assert.equal(reused, false);
     assert.equal(job.workspaceId, "ws-a");
     assert.equal(job.items[0]?.connectionId, "conn-1");
+    assert.equal(job.items.length, 3);
+    for (const item of job.items) {
+      const spanDays =
+        (Date.parse(`${item.executionUntil}T00:00:00Z`) - Date.parse(`${item.executionSince}T00:00:00Z`)) /
+          86400000 +
+        1;
+      assert.ok(spanDays <= 30);
+    }
+    assert.equal(job.items[0]?.executionUntil, job.until);
+    assert.equal(job.items[2]?.executionSince, job.since);
+    for (let index = 0; index < job.items.length - 1; index += 1) {
+      const newer = job.items[index];
+      const older = job.items[index + 1];
+      assert.equal(
+        Date.parse(`${newer.executionSince}T00:00:00Z`) - Date.parse(`${older.executionUntil}T00:00:00Z`),
+        86400000,
+      );
+    }
     assert.equal(job.idempotencyKey, oauthBackfillIdempotencyKey("initial", "conn-1", job.until));
     assert.equal(job.status, "queued");
     const days =
       (Date.parse(`${job.until}T00:00:00Z`) - Date.parse(`${job.since}T00:00:00Z`)) / 86400000 + 1;
-    assert.equal(days, 30);
+    assert.equal(days, 90);
     assert.equal(audit[0]?.action, "warehouse.import_queued");
     assert.equal(audit[0]?.metadata.connectionId, "conn-1");
+  });
+
+  it("retains the actual workspace plan on an OAuth job", async () => {
+    const { job } = await enqueueOauthWarehouseBackfill({
+      workspaceId: "ws-a",
+      userId: "user-a",
+      connectionId: "conn-pro",
+      connectionWorkspaceId: "ws-a",
+      provider: "google_ads",
+      kind: "initial",
+      plan: "pro",
+    });
+
+    assert.equal(job.plan, "pro");
+    assert.equal(job.items.length, 3);
   });
 
   it("does not create a duplicate effective job on callback retry", async () => {
@@ -107,6 +144,7 @@ describe("oauth warehouse backfill", () => {
       userId: "user-a",
       connectionId: "conn-1",
       connectionWorkspaceId: "ws-a",
+      provider: "meta_ads",
       kind: "initial",
     });
     const second = await enqueueOauthWarehouseBackfill({
@@ -114,6 +152,7 @@ describe("oauth warehouse backfill", () => {
       userId: "user-a",
       connectionId: "conn-1",
       connectionWorkspaceId: "ws-a",
+      provider: "meta_ads",
       kind: "initial",
     });
     assert.equal(second.reused, true);
@@ -137,6 +176,7 @@ describe("oauth warehouse backfill", () => {
           userId: "user-a",
           connectionId: "conn-b",
           connectionWorkspaceId: "ws-b",
+          provider: "meta_ads",
           kind: "initial",
         }),
       WorkspaceBoundaryError

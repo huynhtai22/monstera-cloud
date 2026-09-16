@@ -129,6 +129,11 @@ export async function GET(request: NextRequest) {
             minimumRole: "member",
             operation: reconnectConnectionId ? "reconnect_source" : "connect_source",
         });
+        const workspace = await prisma.workspace.findUnique({
+            where: { id: workspaceId },
+            select: { plan: true },
+        });
+        const workspacePlan = workspace?.plan ?? "pilot";
         try {
             await assertWorkspaceProviderEnabled({ workspaceId, provider: providerId });
         } catch (error) {
@@ -321,8 +326,10 @@ export async function GET(request: NextRequest) {
                     userId,
                     connectionId: existing.id,
                     connectionWorkspaceId: existing.workspaceId,
+                    provider: providerId,
                     kind: "catchup",
                     lastSyncAt: existing.lastSyncAt,
+                    plan: workspacePlan,
                 });
                 after(async () => {
                     try {
@@ -442,8 +449,10 @@ export async function GET(request: NextRequest) {
                     userId,
                     connectionId: createdConnection.id,
                     connectionWorkspaceId: createdConnection.workspaceId,
+                    provider: createdConnection.provider,
                     kind: createdConnection.created ? "initial" : "catchup",
                     lastSyncAt: createdConnection.lastSyncAt,
+                    plan: workspacePlan,
                 });
                 after(async () => {
                     try {

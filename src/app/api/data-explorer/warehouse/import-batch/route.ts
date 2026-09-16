@@ -24,9 +24,54 @@ import {
 import { runPostWarehouseRefreshQualityChecks } from "@/lib/observability/data-quality";
 import { emitMonitor } from "@/lib/observability/monitors";
 import { notifyWarehouseJobIfNeeded } from "@/lib/ingestion/notify-run";
+import {
+  HistoricalBackfillPlanningError,
+  planHistoricalBackfill,
+} from "@/lib/historical-backfill-plan";
 
 const MAX_CONCURRENT_JOBS_PER_WORKSPACE = 5;
 const MAX_ITEMS_PER_REQUEST = 50;
+
+/**
+ * Keeps the generic import endpoint from bypassing the historical planner.
+ * OAuth is the sole current caller that can persist its approved 90-day Meta
+ * and Google window as bounded item ranges; every other multi-chunk request
+ * must fail closed until a general resumable chunk dispatcher exists.
+ */
+export async function assertBatchHistoricalExecutionAllowed(opts: {
+  workspaceId: string;
+  since: string;
+  until: string;
+  planMaximumDays?: number;
+  items: BatchImportItem[];
+}): Promise<void> {
+  const connectionIds = Array.from(new Set(opts.items.map((item) => item.connectionId)));
+  const connections = await prisma.connection.findMany({
+    where: { id: { in: connectionIds }, workspaceId: opts.workspaceId },
+    select: { provider: true },
+  });
+  const asOf = new Date().toISOString().slice(0, 10);
+
+  for (const provider of new Set(connections.map((connection) => connection.provider))) {
+    const plan = planHistoricalBackfill({
+      provider,
+      since: opts.since,
+      until: opts.until,
+      asOf,
+      // A plan projection may be smaller than a dangerous raw request. The
+      // guard intentionally evaluates raw provider execution first; the
+      // route performs visible product clamping only after this check passes.
+      execution: "execute",
+    });
+
+    if ((provider === "meta_ads" || provider === "google_ads") && plan.chunkCount > 1) {
+      throw new HistoricalBackfillPlanningError(
+        "REQUEST_CHUNKING_NOT_IMPLEMENTED",
+        `${provider} ranges over 30 days require the OAuth chunk dispatcher; general Warehouse execution is not enabled.`,
+      );
+    }
+  }
+}
 
 const ItemSchema = z.object({
   connectionId: z.string().min(1, "connectionId is required"),
@@ -99,12 +144,16 @@ export async function processBatchItems(opts: {
     }
 
     const item = items[i];
+    const executionSince = item.executionSince ?? since;
+    const executionUntil = item.executionUntil ?? until;
     const conn = connMap.get(item.connectionId);
     if (!conn) {
       results.push({
         connectionId: item.connectionId,
         provider: "unknown",
         adAccountId: item.adAccountId,
+        executionSince,
+        executionUntil,
         ok: false,
         error: "Connection not found or not connected",
       });
@@ -119,6 +168,8 @@ export async function processBatchItems(opts: {
         connectionId: conn.id,
         provider: conn.provider,
         adAccountId: item.adAccountId,
+        executionSince,
+        executionUntil,
         ok: false,
         error: "Provider is not enabled for this workspace",
       });
@@ -167,8 +218,8 @@ export async function processBatchItems(opts: {
         connectionId: conn.id,
         provider: conn.provider,
         credentials: itemCreds,
-        since,
-        until,
+        since: executionSince,
+        until: executionUntil,
         userPlan: plan,
         providerState: item.providerState,
       });
@@ -183,6 +234,8 @@ export async function processBatchItems(opts: {
         outcome: syncOutcome,
         accountId: targetAccountId,
         adAccountId: item.adAccountId,
+        executionSince,
+        executionUntil,
         ok: sync.success,
         rowsIngested: sync.rowsIngested,
         upserted: sync.rowsIngested,
@@ -194,6 +247,8 @@ export async function processBatchItems(opts: {
             connectionId: conn.id,
             ...(child.kind === "connection" ? {} : { accountId: child.id }),
             ...(child.retryState ? { providerState: child.retryState } : {}),
+            ...(item.executionSince ? { executionSince: item.executionSince } : {}),
+            ...(item.executionUntil ? { executionUntil: item.executionUntil } : {}),
           })),
       });
 
@@ -212,6 +267,8 @@ export async function processBatchItems(opts: {
         connectionId: conn.id,
         provider: conn.provider,
         adAccountId: item.adAccountId,
+        executionSince,
+        executionUntil,
         ok: false,
         error: msg,
       });
@@ -357,7 +414,7 @@ export async function runDurableImportWorker(
 function dedupeRetryItems(items: BatchImportItem[]): BatchImportItem[] {
   const seen = new Set<string>();
   return items.filter((item) => {
-    const key = `${item.connectionId}:${item.accountId ?? item.adAccountId ?? "connection"}`;
+    const key = `${item.connectionId}:${item.accountId ?? item.adAccountId ?? "connection"}:${item.executionSince ?? ""}:${item.executionUntil ?? ""}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -430,6 +487,27 @@ export async function POST(req: Request) {
 
   // Plan limits: clamp date span
   const planLimits = getPlanLimits(plan);
+  // Evaluate the caller's full request before a product limit can shrink it.
+  // Otherwise a 90-day generic Meta/Google request could be reduced to a
+  // smaller plan window and incorrectly reach the unchunked worker.
+  try {
+    await assertBatchHistoricalExecutionAllowed({
+      workspaceId,
+      since: rawSince,
+      until: rawUntil,
+      planMaximumDays: planLimits.maxHistoryDays,
+      items: rawItems,
+    });
+  } catch (error) {
+    if (error instanceof HistoricalBackfillPlanningError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: 422 },
+      );
+    }
+    throw error;
+  }
+
   const { since, until, clamped } = clampTimeRangeToPlanMaxDays(plan, {
     since: rawSince,
     until: rawUntil,
