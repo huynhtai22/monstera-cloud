@@ -13,13 +13,25 @@ import { getHistoricalIngestionCapability } from "./historical-ingestion-capabil
 
 describe("oauth automatic enqueue skips unavailable ingestion (production helper)", () => {
   const jobs = new Map<string, any>();
+  const chunks: any[] = [];
   const audit: any[] = [];
   let createCalls = 0;
 
   beforeEach(() => {
     jobs.clear();
+    chunks.length = 0;
     audit.length = 0;
     createCalls = 0;
+
+    (prisma as any).warehouseBackfillChunk = {
+      createMany: async ({ data }: any) => {
+        const rows = Array.isArray(data) ? data : [data];
+        chunks.push(...rows);
+        return { count: rows.length };
+      },
+    };
+    (prisma as any).$transaction = async (fn: any) =>
+      typeof fn === "function" ? fn(prisma) : fn;
 
     (prisma as any).warehouseImportJob = {
       findUnique: async ({ where }: any) => {

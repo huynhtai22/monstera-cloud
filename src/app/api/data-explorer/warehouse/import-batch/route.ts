@@ -30,6 +30,12 @@ import {
   getOversizedExecutionDetails,
   toOversizedExecutionResponse,
 } from "@/lib/warehouse-execution-guard";
+import {
+  chunkResultsForModal,
+  hasBackfillChunks,
+  listBackfillChunks,
+  runCheckpointedBackfillWorker,
+} from "@/lib/warehouse-backfill-chunks";
 
 const MAX_CONCURRENT_JOBS_PER_WORKSPACE = 5;
 const MAX_ITEMS_PER_REQUEST = 50;
@@ -275,6 +281,77 @@ export async function processBatchItems(opts: {
 }
 
 /**
+ * Executes relational checkpoint slices for a job when they exist. Returns
+ * modal-compatible results, or null when the job predates chunk
+ * materialization (legacy JSON replay applies). A lost parent lease aborts
+ * via LeaseLostError; a missing chunk model (older environments) falls back
+ * to legacy replay instead of failing the job.
+ */
+export async function runCheckpointedSlicesForJob(opts: {
+  jobId: string;
+  leaseId: string;
+  workspaceId: string;
+  plan: string;
+  syncFn?: typeof syncConnectionData;
+  isLeaseLost: () => boolean;
+}): Promise<BatchImportJobResult[] | null> {
+  const { jobId, leaseId } = opts;
+  // Missing-table (pre-migration) environments have no chunks: legacy replay
+  // applies. Real database errors propagate so the job fails loudly instead
+  // of silently replaying without checkpointing.
+  if (!(await hasBackfillChunks({ workspaceId: opts.workspaceId, jobId: opts.jobId }))) return null;
+
+  try {
+    await runCheckpointedBackfillWorker(jobId, {
+      workspaceId: opts.workspaceId,
+      executor: async ({ workspaceId, connectionId, provider, accountId, since, until }) => {
+        if (opts.isLeaseLost()) throw new LeaseLostError(jobId, leaseId);
+        const chunkResults = await processBatchItems({
+          workspaceId,
+          since,
+          until,
+          plan: opts.plan,
+          items: [
+            {
+              connectionId,
+              ...(accountId ? { accountId } : {}),
+              executionSince: since,
+              executionUntil: until,
+            },
+          ],
+          jobId,
+          leaseId,
+          syncFn: opts.syncFn,
+          isLeaseLost: opts.isLeaseLost,
+          onProgress: async ({ results: currentResults }) => {
+            if (opts.isLeaseLost()) throw new LeaseLostError(jobId, leaseId);
+            const approxRows = currentResults.reduce(
+              (s, r) => s + (r.upserted ?? r.rowsIngested ?? 0),
+              0
+            );
+            await updateImportJobProgress(jobId, leaseId, {
+              completedItems: currentResults.length,
+              approximateRows: approxRows,
+              results: currentResults,
+            });
+          },
+        });
+        const first = chunkResults[0];
+        if (!first?.ok) throw new Error(first?.error ?? `${provider} chunk did not complete`);
+        return { rows: first.upserted ?? first.rowsIngested ?? 0 };
+      },
+    });
+  } catch (err) {
+    if (err instanceof LeaseLostError || opts.isLeaseLost()) {
+      throw err instanceof Error ? err : new LeaseLostError(jobId, leaseId);
+    }
+    throw err;
+  }
+  const chunks = await listBackfillChunks({ workspaceId: opts.workspaceId, jobId });
+  return chunkResultsForModal(chunks);
+}
+
+/**
  * Runs a background import job with durable state updates, continuous heartbeat,
  * deduplicated post-refresh data-quality checks, and exponential backoff retry.
  */
@@ -304,7 +381,22 @@ export async function runDurableImportWorker(
     }, 10000);
 
     const items = (jobRecord.items as unknown as BatchImportItem[]) || [];
-    const results = await processBatchItems({
+
+    // Checkpointed path: jobs with relational chunks execute slice-by-slice
+    // with crash-resume instead of replaying JSON items from the beginning.
+    // Chunk retries are the retry mechanism here, so parent-level partial
+    // requeue is bypassed (chunk results carry no retryItems). Jobs without
+    // chunks (created before materialization) use the legacy replay below.
+    const checkpointedResults = await runCheckpointedSlicesForJob({
+      jobId,
+      leaseId,
+      workspaceId: jobRecord.workspaceId,
+      plan: jobRecord.plan,
+      syncFn,
+      isLeaseLost: () => isLeaseLost,
+    });
+
+    const results = checkpointedResults ?? (await processBatchItems({
       workspaceId: jobRecord.workspaceId,
       since: jobRecord.since,
       until: jobRecord.until,
@@ -326,7 +418,7 @@ export async function runDurableImportWorker(
           results: currentResults,
         });
       },
-    });
+    }));
 
     if (isLeaseLost) throw new LeaseLostError(jobId, leaseId);
 

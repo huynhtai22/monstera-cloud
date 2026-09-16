@@ -68,6 +68,8 @@ export const TENANT_GUARDED_MODELS = new Set([
   "ReportSnapshotApproval",
   // Client provider account assignment (2026-09): direct workspaceId owners
   "ClientProviderAccountAssignment",
+  // Checkpointed backfill slices (2026-09): direct workspaceId owners
+  "WarehouseBackfillChunk",
 ]);
 
 /**

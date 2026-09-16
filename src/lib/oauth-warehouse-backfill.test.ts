@@ -12,11 +12,30 @@ import {
 
 describe("oauth warehouse backfill", () => {
   const jobs = new Map<string, any>();
+  const chunks: any[] = [];
   const audit: any[] = [];
 
   beforeEach(() => {
     jobs.clear();
+    chunks.length = 0;
     audit.length = 0;
+
+    (prisma as any).warehouseBackfillChunk = {
+      createMany: async ({ data }: any) => {
+        const rows = Array.isArray(data) ? data : [data];
+        for (const row of rows) {
+          if (chunks.some((existing) => existing.id === row.id)) {
+            const err: any = new Error("Unique constraint failed");
+            err.code = "P2002";
+            throw err;
+          }
+        }
+        chunks.push(...rows);
+        return { count: rows.length };
+      },
+    };
+    (prisma as any).$transaction = async (fn: any) =>
+      typeof fn === "function" ? fn(prisma) : fn;
 
     (prisma as any).warehouseImportJob = {
       findUnique: async ({ where }: any) => {

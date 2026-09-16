@@ -136,6 +136,7 @@ model Workspace {
   // Looker Studio integration jobs
   lookerJobs               LookerJob[]
   warehouseImportJobs      WarehouseImportJob[]
+  warehouseBackfillChunks  WarehouseBackfillChunk[]
   providerAccess           WorkspaceProviderAccess[]
   invitations              WorkspaceInvitation[]
   oauthAttempts            OAuthAttempt[]
@@ -1063,11 +1064,59 @@ model WarehouseImportJob {
   updatedAt       DateTime  @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  chunks    WarehouseBackfillChunk[]
 
   @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId, status])
   @@index([status, scheduledAt])
   @@index([status, leaseExpiresAt])
+}
+
+// Durable executable slice of a warehouse backfill job (checkpoint-worker
+// foundation). Each row is one provider request of at most 30 inclusive days,
+// persisted newest-first (`ordinal` 0 = newest slice). Chunks are the
+// execution source of truth; the parent job's JSON `items`/`results` are kept
+// synchronized only for API/UI compatibility.
+//
+// `connectionId` is an intentional scalar reference (no FK): connection rows
+// have workspace-scoped composite identities and reconnect/delete flows, so a
+// hard FK would couple chunk retention to connection lifecycle. Ownership is
+// enforced through `workspaceId` (cascade) and `jobId` (cascade) instead.
+// Provider account IDs are always strings (`accountId`, never numeric).
+model WarehouseBackfillChunk {
+  id             String    @id
+  workspaceId    String
+  jobId          String
+  connectionId   String
+  provider       String
+  accountId      String    @default("")
+  since          String
+  until          String
+  ordinal        Int
+  status         String    @default("queued") // queued | running | completed | failed
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(3)
+  persistedRows  Int       @default(0)
+  leaseId        String?
+  leaseExpiresAt DateTime?
+  fencingToken   BigInt    @default(0)
+  lastErrorCode  String?
+  lastError      String?
+  heartbeatAt    DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  job       WarehouseImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, connectionId, accountId, since, until])
+  @@index([workspaceId, status, ordinal])
+  @@index([jobId, status])
+  @@index([jobId, ordinal])
+  @@index([status, leaseExpiresAt])
+  @@index([workspaceId, jobId])
 }
 
 model WorkspaceAiPolicy {
