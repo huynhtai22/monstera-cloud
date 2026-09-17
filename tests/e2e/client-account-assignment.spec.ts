@@ -526,8 +526,8 @@ test.describe("client account assignment journeys", () => {
       headers: { Authorization: `Bearer ${fixture.apiKeySecret}` },
     });
     expect(exportResponse.ok()).toBeTruthy();
-    const exported = await exportResponse.json() as { rows: Array<Array<string | number>> };
-    const exportText = exported.rows.flat().join(" ");
+    const exported = await exportResponse.json() as Array<Array<string | number>>;
+    const exportText = exported.flat().join(" ");
     expect(exportText).toContain("Tuple included bulk one");
     expect(exportText).toContain("Tuple included bulk two");
     expect(exportText).not.toContain("Tuple excluded wrong root");
