@@ -128,6 +128,42 @@ describe("export rows paginated route (production handler)", () => {
     }
   });
 
+  it("filters order windows by source order time, not warehouse insertion time", async () => {
+    let receivedWhere: any;
+    (prisma as any).connection.findMany = async () => [{ id: CONN_META, provider: "shopee" }];
+    (prisma as any).retailOrder = {
+      findMany: async ({ where }: any) => {
+        receivedWhere = where;
+        return [];
+      },
+    };
+
+    const res = await GET(req("/api/export/rows?sourceId=conn-export-meta&since=2026-05-01&until=2026-05-02"));
+
+    assert.equal(res.status, 200);
+    const scope = receivedWhere.AND[0];
+    assert.deepEqual(scope.createdAtIso, {
+      gte: "2026-05-01T00:00:00.000Z",
+      lt: "2026-05-03T00:00:00.000Z",
+    });
+    assert.equal(scope.createdAt.gte, undefined);
+    assert.ok(scope.createdAt.lte instanceof Date);
+  });
+
+  it("preserves the newest-source fallback for mixed record kinds", async () => {
+    (prisma as any).connection.findMany = async () => [
+      { id: CONN_META, provider: "shopee" },
+      { id: CONN_GOOGLE, provider: "google_ads" },
+    ];
+    (prisma as any).retailOrder = { findMany: async () => [] };
+    (prisma as any).campaignMetric = { findMany: async () => { throw new Error("mixed fallback selected metrics"); } };
+
+    const res = await GET(req("/api/export/rows"));
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), []);
+  });
+
   it("preserves JSON array default and exposes truthful headers", async () => {
     const res = await GET(req("/api/export/rows?since=2026-05-01&until=2026-05-05&limit=10"));
     assert.equal(res.status, 200);

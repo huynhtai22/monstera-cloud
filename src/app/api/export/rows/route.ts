@@ -220,7 +220,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const sourceConnections = await prisma.connection.findMany({
+    let sourceConnections = await prisma.connection.findMany({
       where: connectionQuery,
       orderBy: { createdAt: "desc" },
       select: { id: true, provider: true },
@@ -272,9 +272,14 @@ export async function GET(request: Request) {
     }
     const kinds = new Set(supportedKinds);
     if (kinds.size !== 1) {
-      return badRequest("A multi-connection export must contain one record kind; select a sourceId.");
+      if (sourceId) {
+        return badRequest("A multi-connection export must contain one record kind; select a sourceId.");
+      }
+      // Preserve the legacy unqualified-export behavior when the workspace
+      // contains incompatible row shapes: export its newest source only.
+      sourceConnections = [sourceConnections[0]!];
     }
-    const kind = supportedKinds[0]!;
+    const kind = sourceConnections[0]!.provider === "shopee" ? "orders" : "metrics";
     const providers = [...new Set(sourceConnections.map((connection) => connection.provider))].sort();
     const sourceConnectionIds = sourceConnections.map((connection) => connection.id);
     const assignmentFingerprintScope = isExplicit
@@ -371,13 +376,17 @@ export async function GET(request: Request) {
           {
             workspaceId,
             connectionId: { in: sourceConnectionIds },
-            createdAt: windowRange
+            // Order windows describe the source order time, not warehouse
+            // ingestion time. createdAt remains the membership snapshot key.
+            ...(windowRange
               ? {
-                  gte: new Date(`${windowRange.since}T00:00:00.000Z`),
-                  lt: new Date(new Date(`${windowRange.until}T00:00:00.000Z`).getTime() + 86_400_000),
-                  lte: new Date(effectiveSnapshotAt),
+                  createdAtIso: {
+                    gte: `${windowRange.since}T00:00:00.000Z`,
+                    lt: new Date(new Date(`${windowRange.until}T00:00:00.000Z`).getTime() + 86_400_000).toISOString(),
+                  },
                 }
-              : { lte: new Date(effectiveSnapshotAt) },
+              : {}),
+            createdAt: { lte: new Date(effectiveSnapshotAt) },
           },
           // Exact (createdAt, id) keyset: the cursor carries the full last-row
           // timestamp so same-millisecond ties still paginate without gaps.
