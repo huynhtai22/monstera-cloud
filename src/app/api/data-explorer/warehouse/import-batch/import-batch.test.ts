@@ -64,6 +64,11 @@ describe("Batch Import Worker & Post-Refresh Data Quality Gating", () => {
       updateMany: async () => ({ count: 1 }),
     };
 
+    // Legacy jobs predate chunk materialization: no relational chunks exist.
+    (prisma as any).warehouseBackfillChunk = {
+      count: async () => 0,
+    };
+
     // Mock connection in prisma
     (prisma as any).connection = {
       findMany: async () => [

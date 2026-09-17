@@ -5,6 +5,7 @@ import { logger } from "@/lib/logger";
 import { emitConnectorTelemetry } from "@/lib/observability/connector-telemetry";
 import type { ProviderRetryState } from "@/lib/sync-outcome";
 import { invalidateWorkspaceMetricsCache } from "@/lib/redis-cache";
+import { materializeChunksForJobTx } from "./warehouse-backfill-chunks";
 
 export { invalidateWorkspaceMetricsCache };
 
@@ -142,6 +143,12 @@ function toState(record: any): BatchImportJobState {
 
 /**
  * Creates and persists a new warehouse import job with scoped idempotency.
+ *
+ * When `chunks` specs are provided, the parent row and all relational
+ * `WarehouseBackfillChunk` rows are persisted in one transaction, so a
+ * failure leaves neither a partial parent nor orphaned chunks. Replay-safe:
+ * the idempotency lookup short-circuits before any write, and the chunk
+ * unique constraint converges retried creations instead of duplicating slices.
  */
 export async function createImportJob(params: {
   workspaceId: string;
@@ -156,6 +163,7 @@ export async function createImportJob(params: {
   idempotencyKey?: string;
   priority?: number;
   id?: string;
+  chunks?: { connectionId: string; accountId?: string; provider: string; since: string; until: string; ordinal?: number }[];
 }): Promise<BatchImportJobState> {
   const jobId = params.id || `wjob_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const now = new Date();
@@ -187,23 +195,40 @@ export async function createImportJob(params: {
   );
 
   try {
-    const created = await prisma.warehouseImportJob.create({
-      data: {
-        id: jobId,
-        workspaceId: params.workspaceId,
-        userId: params.userId,
-        plan: params.plan || "pilot",
-        since: params.since,
-        until: params.until,
-        items: persistedItems as any,
-        totalItems: params.items.length,
-        status: "queued",
-        priority: params.priority || 1,
-        idempotencyKey: params.idempotencyKey || null,
-        scheduledAt: now,
-        results: [],
-      },
-    });
+    const jobData = {
+      id: jobId,
+      workspaceId: params.workspaceId,
+      userId: params.userId,
+      plan: params.plan || "pilot",
+      since: params.since,
+      until: params.until,
+      items: persistedItems as any,
+      totalItems: params.items.length,
+      status: "queued",
+      priority: params.priority || 1,
+      idempotencyKey: params.idempotencyKey || null,
+      scheduledAt: now,
+      results: [],
+    };
+
+    const created = params.chunks && params.chunks.length > 0
+      ? await prisma.$transaction(async (tx: any) => {
+          const job = await tx.warehouseImportJob.create({ data: jobData });
+          await materializeChunksForJobTx(tx, {
+            workspaceId: params.workspaceId,
+            jobId,
+            specs: params.chunks!.map((chunk, index) => ({
+              connectionId: chunk.connectionId,
+              accountId: chunk.accountId ?? "",
+              provider: chunk.provider,
+              since: chunk.since,
+              until: chunk.until,
+              ordinal: chunk.ordinal ?? index,
+            })),
+          });
+          return job;
+        })
+      : await prisma.warehouseImportJob.create({ data: jobData });
 
     const state = toState(created);
 

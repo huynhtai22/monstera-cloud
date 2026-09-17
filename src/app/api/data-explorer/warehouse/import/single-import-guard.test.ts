@@ -156,6 +156,19 @@ describe("single-import route shared execution guard (production route)", () => 
     assert.equal(jobCreates, 0);
   });
 
+  it("rejects Meta/Google 365-day raw requests with 422 before provider contact", async () => {
+    for (const post of [postMeta, postGoogle] as const) {
+      const { res, body } = await post("2025-09-17", "2026-09-16");
+      assert.equal(res.status, 422);
+      assert.equal(body.code, "REQUEST_CHUNKING_NOT_IMPLEMENTED");
+      assert.equal(body.requestedRange.days, 365);
+      assert.equal(body.maxExecutableDays, 30);
+    }
+    assert.equal(providerCalls, 0);
+    assert.equal(jobCreates, 0);
+    assert.equal(metricWrites, 0);
+  });
+
   it("proves inclusive semantics: 30 days passes the guard, 31 days fails", async () => {
     // 30 inclusive days must not be rejected as oversized. It proceeds to
     // execution (which hits the forbidden-fetch stub and surfaces as 500),

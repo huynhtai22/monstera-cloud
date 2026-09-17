@@ -103,6 +103,38 @@ function oauthBackfillItems(
   }));
 }
 
+/**
+ * Relational executable slices mirroring `oauthBackfillItems`: one spec per
+ * planner chunk for Meta/Google (newest-first ordinals preserved), a single
+ * connection-level spec for other supported providers. Unavailable providers
+ * never reach here (the enqueue capability gate returns first).
+ */
+function oauthBackfillChunkSpecs(
+  provider: string | undefined,
+  connectionId: string,
+  window: { since: string; until: string },
+): { connectionId: string; accountId: string; provider: string; since: string; until: string; ordinal: number }[] {
+  if (!provider) return [];
+  if (!isChunkGuardedWarehouseProvider(provider)) {
+    return [{ connectionId, accountId: "", provider, since: window.since, until: window.until, ordinal: 0 }];
+  }
+  const plan = planHistoricalBackfill({
+    provider,
+    since: window.since,
+    until: window.until,
+    asOf: window.until,
+    execution: "plan",
+  });
+  return plan.chunks.map((chunk) => ({
+    connectionId,
+    accountId: "",
+    provider,
+    since: chunk.since,
+    until: chunk.until,
+    ordinal: chunk.ordinal,
+  }));
+}
+
 export async function enqueueOauthWarehouseBackfill(opts: {
   workspaceId: string;
   userId: string;
@@ -179,6 +211,9 @@ export async function enqueueOauthWarehouseBackfill(opts: {
     since: window.since,
     until: window.until,
     items: oauthBackfillItems(opts.provider, opts.connectionId, window),
+    // Relational checkpoint slices are materialized in the same transaction
+    // as the parent job; the checkpoint worker executes them newest-first.
+    chunks: oauthBackfillChunkSpecs(opts.provider, opts.connectionId, window),
     idempotencyKey,
     priority: 5,
   });
