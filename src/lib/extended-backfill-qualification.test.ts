@@ -7,6 +7,7 @@ import {
   recommendQualification,
   CAPACITY_SCENARIOS,
   MEASURED_INDEX_OVERHEAD_FRACTION,
+  REQUIRED_SERVING_QUERIES,
 } from "./extended-backfill-qualification";
 
 describe("storage gate (production code)", () => {
@@ -100,9 +101,11 @@ describe("release recommendation (production code)", () => {
   function base() {
     return {
       storage: evaluateStorageGate({ estimatedNewBytes: 100, provisionedBytes: 1000, usedBytes: 100 }),
-      serving: [
-        evaluateServingGate({ query: "q", p50Ms: 1, p95Ms: 10, rowCount: 1, sequentialScan: false, bounded: true }),
-      ],
+      serving: REQUIRED_SERVING_QUERIES.map((query) => ({
+        query,
+        status: "pass" as const,
+        reason: `${query} passes.`,
+      })),
       workerInvariantsHold: true as boolean | null,
       providerBudgetKnown: true,
       metaLiveCleared: false,
@@ -142,5 +145,152 @@ describe("release recommendation (production code)", () => {
     const { recommendation, reasons } = recommendQualification(base());
     assert.ok(recommendation !== ("production" as never));
     assert.ok(!reasons.join(" ").toLowerCase().includes("production activation"));
+  });
+});
+
+describe("serving-evidence completeness (production code)", () => {
+  const recommend = recommendQualification;
+
+  function passingSet() {
+    return REQUIRED_SERVING_QUERIES.map((query: string) => ({
+      query, status: "pass" as const, reason: `${query} passes.`,
+    }));
+  }
+
+  function baseWithServing(serving: { query: string; status: "pass" | "fail" | "unknown"; reason: string }[]) {
+    return {
+      storage: { status: "pass" as const, projectedBytes: 500, projectedFraction: 0.5, headroomFraction: 0.6, reason: "ok." },
+      serving,
+      workerInvariantsHold: true as boolean | null,
+      providerBudgetKnown: true,
+      metaLiveCleared: false,
+      missingOwnerInputs: [] as string[],
+    };
+  }
+
+  it("empty serving evidence cannot produce readiness", () => {
+    const { recommendation, reasons } = recommend(baseWithServing([]));
+    assert.notEqual(recommendation, "ready-for-staging");
+    assert.ok(reasons.join(" ").includes("SERVING_EVIDENCE_REQUIRED"));
+  });
+
+  it("missing serving evidence cannot produce readiness", () => {
+    const partial = passingSet().slice(0, REQUIRED_SERVING_QUERIES.length - 1);
+    const { recommendation, reasons } = recommend(baseWithServing(partial));
+    assert.notEqual(recommendation, "ready-for-staging");
+    assert.ok(reasons.join(" ").includes("SERVING_EVIDENCE_REQUIRED"));
+  });
+
+  it("a complete passing serving set may still become ready", () => {
+    const { recommendation } = recommend(baseWithServing(passingSet()));
+    assert.equal(recommendation, "ready-for-staging");
+  });
+
+  it("one failed required serving check remains rejected", () => {
+    const failing = passingSet().map((gate: { query: string; status: "pass"; reason: string }, index: number) =>
+      index === 0 ? { ...gate, status: "fail" as const, reason: "p95 over target." } : gate,
+    );
+    const { recommendation } = recommend(baseWithServing(failing));
+    assert.notEqual(recommendation, "ready-for-staging");
+  });
+
+  it("unknown serving evidence stays distinguishable from measured failure", () => {
+    const withUnknown = passingSet().map((gate: { query: string; status: "pass"; reason: string }, index: number) =>
+      index === 0 ? { ...gate, status: "unknown" as const, reason: "No measurement available." } : gate,
+    );
+    const unknownResult = recommend(baseWithServing(withUnknown));
+    const failedResult = recommend(baseWithServing(
+      passingSet().map((gate: { query: string; status: "pass"; reason: string }, index: number) =>
+        index === 0 ? { ...gate, status: "fail" as const, reason: "p95 over target." } : gate,
+      ),
+    ));
+    assert.notEqual(unknownResult.recommendation, "ready-for-staging");
+    assert.notEqual(failedResult.recommendation, "ready-for-staging");
+    assert.notDeepEqual(unknownResult.reasons, failedResult.reasons);
+  });
+});
+
+describe("provider call-rate demand (production code)", () => {
+  function scenario(rate: unknown) {
+    return modelCapacityScenario({
+      workspaces: 5, connectionsPerWorkspace: 3, entitiesPerConnectionPerDay: 20,
+      days: 731, bytesPerRow: 512, providerCallsPerConnectionPerDay: rate as number,
+    });
+  }
+
+  it("a positive rate changes calculated demand", () => {
+    const without = modelCapacityScenario({
+      workspaces: 5, connectionsPerWorkspace: 3, entitiesPerConnectionPerDay: 20, days: 731, bytesPerRow: 512,
+    });
+    assert.equal(without.expectedProviderCalls, 5 * 3 * Math.ceil(731 / 30));
+    const withRate = scenario(2);
+    assert.ok(withRate.expectedProviderCalls > without.expectedProviderCalls);
+  });
+
+  it("scales monotonically and doubles proportionally", () => {
+    assert.ok(scenario(2).expectedProviderCalls > scenario(1).expectedProviderCalls);
+    assert.ok(scenario(3).expectedProviderCalls > scenario(2).expectedProviderCalls);
+    const one = scenario(1).expectedProviderCalls;
+    const two = scenario(2).expectedProviderCalls;
+    const base = 5 * 3 * Math.ceil(731 / 30);
+    assert.equal(two - base, 2 * (one - base));
+  });
+
+  it("handles zero explicitly and rejects invalid rates", () => {
+    const zero = scenario(0);
+    assert.equal(zero.expectedProviderCalls, 5 * 3 * Math.ceil(731 / 30));
+    assert.equal(zero.rollingRefetchCalls, 0);
+    assert.ok(zero.assumptions.join(" ").includes("0"));
+    // Fractional rates express sub-daily cadence and are supported.
+    const half = scenario(0.5);
+    assert.equal(half.rollingRefetchCalls, Math.ceil(0.5 * 15 * 731));
+    for (const bad of [-1, NaN, Infinity, -Infinity, "2" as unknown as number, null as unknown as number]) {
+      assert.throws(() => scenario(bad), Error);
+    }
+  });
+
+  it("multiplies rate by connections and days exactly once", () => {
+    const result = scenario(2);
+    const backfillPass = 5 * 3 * Math.ceil(731 / 30);
+    const rollingRefetch = 2 * (5 * 3) * 731;
+    assert.equal(result.expectedProviderCalls, backfillPass + rollingRefetch);
+    assert.ok(result.assumptions.join(" ").includes(`${rollingRefetch}`));
+  });
+
+  it("overflow is rejected with checked arithmetic", () => {
+    assert.throws(
+      () =>
+        modelCapacityScenario({
+          workspaces: 1_000_000, connectionsPerWorkspace: 1000, entitiesPerConnectionPerDay: 20,
+          days: 731, bytesPerRow: 512, providerCallsPerConnectionPerDay: 1_000_000,
+        }),
+      Error,
+    );
+  });
+
+  it("demand beyond a known quota blocks readiness; unknown quota stays blocked", () => {
+    const over = recommendQualification({
+      storage: { status: "pass" as const, projectedBytes: 1, projectedFraction: 0.1, headroomFraction: 0.6, reason: "ok." },
+      serving: REQUIRED_SERVING_QUERIES.map((query: string) => ({ query, status: "pass" as const, reason: "ok." })),
+      workerInvariantsHold: true as boolean | null,
+      providerBudgetKnown: true,
+      metaLiveCleared: false,
+      missingOwnerInputs: [] as string[],
+      providerCallDemand: 1_000_000,
+      providerCallQuota: 100,
+    });
+    assert.notEqual(over.recommendation, "ready-for-staging");
+    assert.ok(over.reasons.join(" ").includes("PROVIDER_CALL_BUDGET_EXCEEDED"));
+    const unknownQuota = recommendQualification({
+      storage: { status: "pass" as const, projectedBytes: 1, projectedFraction: 0.1, headroomFraction: 0.6, reason: "ok." },
+      serving: REQUIRED_SERVING_QUERIES.map((query: string) => ({ query, status: "pass" as const, reason: "ok." })),
+      workerInvariantsHold: true as boolean | null,
+      providerBudgetKnown: true,
+      metaLiveCleared: false,
+      missingOwnerInputs: [] as string[],
+      providerCallDemand: 50,
+      providerCallQuota: null,
+    });
+    assert.notEqual(unknownQuota.recommendation, "ready-for-staging");
   });
 });

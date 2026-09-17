@@ -157,6 +157,10 @@ export interface CapacityScenarioResult {
   readonly withHeadroomBytes: number;
   readonly expectedConcurrentJobs: number;
   readonly expectedProviderCalls: number;
+  /** One-pass chunk-execution demand (workspaces x connections x chunks). */
+  readonly backfillPassCalls: number;
+  /** Rolling-refetch demand derived from the per-connection daily rate. */
+  readonly rollingRefetchCalls: number;
   readonly estimatedJobDurationRange: { minMinutes: number; maxMinutes: number };
   readonly assumptions: string[];
 }
@@ -183,6 +187,15 @@ function requirePositiveInt(value: number, name: string): void {
   }
 }
 
+/** Checked multiplication that rejects overflow instead of wrapping to Infinity. */
+function checkedMultiply(left: number, right: number, name: string): number {
+  const product = left * right;
+  if (!Number.isFinite(product) || Math.abs(product) > Number.MAX_SAFE_INTEGER) {
+    throw new Error(`Capacity scenario ${name} overflows safe integer arithmetic.`);
+  }
+  return product;
+}
+
 /**
  * Deterministic capacity model. All outputs are labeled estimates: row
  * counts are exact arithmetic, storage extrapolates a measured local
@@ -207,8 +220,23 @@ export function modelCapacityScenario(inputs: CapacityScenarioInputs): CapacityS
   const totalBytes = tableBytes + indexBytes;
   const withHeadroomBytes = Math.round(totalBytes / 0.6);
   const chunksPerConnection = inputs.chunksPerConnection ?? Math.ceil(inputs.days / 30);
-  const expectedProviderCalls =
-    inputs.workspaces * inputs.connectionsPerWorkspace * chunksPerConnection;
+  const connectionCount = checkedMultiply(inputs.workspaces, inputs.connectionsPerWorkspace, "connection count");
+  const backfillPassCalls = checkedMultiply(connectionCount, chunksPerConnection, "backfill pass calls");
+  // Rolling-refetch demand, additive to the one-pass chunk estimate: unit is
+  // provider calls per connection per day (fractional values express
+  // sub-daily cadence, e.g. 1/7 for weekly). Undefined means no rolling
+  // refetch is modeled; an explicit zero is equivalent. Never inferred.
+  const rate = inputs.providerCallsPerConnectionPerDay;
+  if (rate !== undefined) {
+    if (typeof rate !== "number" || !Number.isFinite(rate) || rate < 0 || rate > Number.MAX_SAFE_INTEGER) {
+      throw new Error("Capacity scenario providerCallsPerConnectionPerDay must be a finite number >= 0.");
+    }
+  }
+  const rollingRefetchCalls =
+    rate === undefined || rate === 0
+      ? 0
+      : Math.ceil(checkedMultiply(checkedMultiply(rate, connectionCount, "rolling refetch calls"), inputs.days, "rolling refetch calls"));
+  const expectedProviderCalls = backfillPassCalls + rollingRefetchCalls;
   const expectedConcurrentJobs = Math.min(inputs.workspaces, 25);
   // Observed local band: ~2-8s per 30-day slice end-to-end in synthetic
   // qualification (instant executors excluded); production provider latency
@@ -225,12 +253,15 @@ export function modelCapacityScenario(inputs: CapacityScenarioInputs): CapacityS
     withHeadroomBytes,
     expectedConcurrentJobs,
     expectedProviderCalls,
+    backfillPassCalls,
+    rollingRefetchCalls,
     estimatedJobDurationRange: {
       minMinutes: Math.round(chunksPerConnection * minutesPerChunkMin * 10) / 10,
       maxMinutes: Math.round(chunksPerConnection * minutesPerChunkMax * 10) / 10,
     },
     assumptions: [
       `Row counts are exact arithmetic over ${inputs.workspaces} workspaces x ${inputs.connectionsPerWorkspace} connections x ${inputs.entitiesPerConnectionPerDay} entities x ${inputs.days} days.`,
+      `Provider-call demand ${expectedProviderCalls} = one-pass ${backfillPassCalls} (workspaces x connections x ${chunksPerConnection} chunks) + rolling-refetch ${rollingRefetchCalls} (${rate ?? 0} calls/connection/day x ${connectionCount} connections x ${inputs.days} days).`,
       `Storage extrapolates a measured local ${inputs.bytesPerRow} bytes/row plus ${(MEASURED_INDEX_OVERHEAD_FRACTION * 100).toFixed(0)}% index overhead; production row widths differ.`,
       `Durations assume a local synthetic band per 30-day slice; live provider latency is unmeasured and strictly larger.`,
       `withHeadroomBytes inverts the 60% ceiling (total / 0.6) to size the provision, not to predict usage.`,
@@ -246,6 +277,23 @@ export const CAPACITY_SCENARIOS = {
 
 export type QualificationRecommendation = "ready-for-staging" | "not-ready" | "blocked-missing-inputs";
 
+/**
+ * Serving checks that must each be present and passing before staging
+ * readiness. "No failures observed" is never treated as evidence.
+ */
+export const REQUIRED_SERVING_QUERIES: readonly string[] = [
+  "30-day filtered query",
+  "365-day provider query",
+  "731-day provider query",
+  "731-day cross-provider aggregate",
+  "account-filtered aggregate",
+  "731-day interactive page (1000 rows)",
+  "count/pagination query",
+  "distinct platforms",
+  "range-endpoint aggregate",
+  "job-progress-polling",
+];
+
 export interface QualificationInputs {
   readonly storage: StorageGateResult;
   readonly serving: readonly ServingGateResult[];
@@ -253,6 +301,16 @@ export interface QualificationInputs {
   readonly providerBudgetKnown: boolean;
   readonly metaLiveCleared: boolean;
   readonly missingOwnerInputs: readonly string[];
+  /**
+   * Serving checks required for this decision. Defaults to
+   * REQUIRED_SERVING_QUERIES: every required check must be present and
+   * passing — a missing check blocks exactly like a missing owner input.
+   */
+  readonly requiredServingQueries?: readonly string[];
+  /** Calculated provider-call demand for the qualified scope, if known. */
+  readonly providerCallDemand?: number | null;
+  /** Configured provider-call quota for the qualified scope, if known. */
+  readonly providerCallQuota?: number | null;
 }
 
 /**
@@ -276,6 +334,25 @@ export function recommendQualification(inputs: QualificationInputs): {
       reasons.push(`Serving gate ${gate.query} is ${gate.status}: ${gate.reason}`);
     }
   }
+  const requiredServing = inputs.requiredServingQueries ?? REQUIRED_SERVING_QUERIES;
+  const presentServing = new Set(inputs.serving.map((gate) => gate.query));
+  const missingServing = [...requiredServing].filter((query) => !presentServing.has(query)).sort();
+  if (missingServing.length > 0) {
+    const shown = missingServing.slice(0, 5).join(", ");
+    const remainder = missingServing.length > 5 ? ` (+${missingServing.length - 5} more)` : "";
+    reasons.push(`SERVING_EVIDENCE_REQUIRED: missing serving checks: ${shown}${remainder}.`);
+  }
+  if (inputs.providerCallDemand !== undefined && inputs.providerCallDemand !== null) {
+    if (typeof inputs.providerCallDemand !== "number" || !Number.isFinite(inputs.providerCallDemand) || inputs.providerCallDemand < 0) {
+      reasons.push("PROVIDER_CALL_DEMAND_INVALID: demand must be a finite number >= 0.");
+    } else if (inputs.providerCallQuota === undefined || inputs.providerCallQuota === null) {
+      reasons.push("PROVIDER_CALL_QUOTA_UNKNOWN: provider-call demand is known but quota is not.");
+    } else if (inputs.providerCallQuota < inputs.providerCallDemand) {
+      reasons.push(
+        `PROVIDER_CALL_BUDGET_EXCEEDED: demand ${inputs.providerCallDemand} exceeds quota ${inputs.providerCallQuota}.`,
+      );
+    }
+  }
   if (inputs.workerInvariantsHold !== true) {
     reasons.push("Worker reliability invariants are not all verified.");
   }
@@ -286,7 +363,10 @@ export function recommendQualification(inputs: QualificationInputs): {
     reasons.push("Meta live qualification must remain synthetic-only; unexpected clearance flag.");
   }
   if (reasons.length > 0) {
-    const blocked = inputs.missingOwnerInputs.length > 0 || inputs.storage.status === "unknown";
+    const blocked =
+      inputs.missingOwnerInputs.length > 0 ||
+      inputs.storage.status === "unknown" ||
+      reasons.some((reason) => reason.startsWith("SERVING_EVIDENCE_REQUIRED") || reason.startsWith("PROVIDER_CALL_QUOTA_UNKNOWN"));
     return { recommendation: blocked ? "blocked-missing-inputs" : "not-ready", reasons };
   }
   return { recommendation: "ready-for-staging", reasons: ["All measured gates pass; staging remains operator-gated and reversible."] };

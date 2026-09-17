@@ -75,6 +75,17 @@ Per-connection 731-day job: 25 chunks, ~0.8–3.3 min of local synthetic
 slice time (live provider latency strictly larger and unmeasured).
 Extrapolations are estimates with stated uncertainty, not predictions.
 
+Provider-call demand unit: `providerCallsPerConnectionPerDay` means rolling-
+refetch provider calls per connection per day (fractional values express
+sub-daily cadence); total demand = one-pass chunk calls (workspaces ×
+connections × chunks) plus rolling demand (rate × connections × days),
+rounded up. The scenario table above models rate 0 (one pass only).
+Readiness compares known demand against a known quota
+(`PROVIDER_CALL_BUDGET_EXCEEDED`) and stays blocked on unknown quota; the
+serving set required for readiness is the explicit
+`REQUIRED_SERVING_QUERIES` list — an empty or partial set yields
+`SERVING_EVIDENCE_REQUIRED`, never readiness.
+
 ## 4. Local benchmark results (disposable PG16, 790,600 seeded rows)
 
 Serving latencies (11 samples, p50/p95):

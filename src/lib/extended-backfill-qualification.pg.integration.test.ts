@@ -117,10 +117,12 @@ describe("PostgreSQL Integration: extended-backfill staging qualification", () =
     }
   }
 
+  // Every supplied bind value corresponds to a referenced placeholder: the
+  // seeded row identity derives from workspace/platform/day/entity ($1-$5).
   async function seedMetrics(days: number, entitiesPerDay: number, workspaces: readonly string[]) {
     const db = prisma!;
-    for (const [wsIndex, ws] of workspaces.entries()) {
-      for (const [providerIndex, provider] of ["meta_ads", "google_ads"].entries()) {
+    for (const ws of workspaces) {
+      for (const provider of ["meta_ads", "google_ads"]) {
         const connectionId = `conn-${ws}-${provider}`;
         await db.$executeRawUnsafe(
           `INSERT INTO "CampaignMetric"
@@ -131,7 +133,7 @@ describe("PostgreSQL Integration: extended-backfill staging qualification", () =
                   100 + h.e, 10 + h.e, 5.5, 1, 11.0, 'USD', 'none', NOW(), NOW()
            FROM generate_series(0, $4 - 1) AS g(d) CROSS JOIN generate_series(1, $5) AS h(e)
            ON CONFLICT DO NOTHING`,
-          ws, connectionId, provider, days, entitiesPerDay, wsIndex, providerIndex,
+          ws, connectionId, provider, days, entitiesPerDay,
         );
       }
     }
@@ -159,6 +161,9 @@ describe("PostgreSQL Integration: extended-backfill staging qualification", () =
     const total = await db.campaignMetric.count({ where: { workspaceId: { startsWith: "ws_qual_" } } });
     console.log(`dataset total: ${total} rows`);
     assert.ok(total >= 750_000, `expected a large representative dataset, got ${total}`);
+    // Bind parity + idempotency: re-seeding is a stable no-op with identical counts.
+    await seedMetrics(30, 20, [WS[0]!]);
+    assert.equal(await db.campaignMetric.count({ where: { workspaceId: WS[0]! } }), small);
   });
 
   it("measures stored row size against schema expectations", async (t) => {
