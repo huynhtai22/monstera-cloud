@@ -30,7 +30,7 @@ export const CHECKPOINTED_CHUNK_MAX_ATTEMPTS = 3;
 export const CHUNK_LEASE_TTL_MS = 60_000;
 export const CHUNK_HEARTBEAT_INTERVAL_MS = 10_000;
 
-export type BackfillChunkStatus = "queued" | "running" | "completed" | "failed";
+export type BackfillChunkStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export interface BackfillChunkSpec {
   readonly connectionId: string;
@@ -107,11 +107,15 @@ export function chunkIdFor(
  * Validates executable chunk specs using the canonical strict date helper
  * (rejects timestamps and impossible dates). Chunk-guarded providers are
  * limited to 30 inclusive days per slice; totals beyond the approved
- * automatic window require the disabled-by-default extended flag.
+ * automatic window require the disabled-by-default extended flag, unless the
+ * caller passes an explicit pilot allowance — which only the pilot admission
+ * path may do, after its operator/allowlist/quota/capacity decision passes.
+ * The per-slice ceiling applies unconditionally in every path.
  */
 export function validateChunkSpecs(
   specs: readonly BackfillChunkSpec[],
   env: NodeJS.ProcessEnv = process.env,
+  opts?: { pilotTotalDaysAllowed?: number },
 ): void {
   for (const spec of specs) {
     if (typeof spec.connectionId !== "string" || spec.connectionId.length === 0) {
@@ -153,8 +157,9 @@ export function validateChunkSpecs(
     const latest = ranges.map((range) => range.until).sort().at(-1)!;
     const total = inclusiveDays(earliest, latest);
     const approved =
-      getHistoricalIngestionCapability(provider)?.defaultAutomaticBackfill.days ??
-      WAREHOUSE_GENERIC_EXECUTION_MAX_DAYS;
+      opts?.pilotTotalDaysAllowed ??
+      (getHistoricalIngestionCapability(provider)?.defaultAutomaticBackfill.days ??
+        WAREHOUSE_GENERIC_EXECUTION_MAX_DAYS);
     if (total > approved && !isExtendedBackfillExecutionEnabled(env)) {
       throw new HistoricalBackfillPlanningError(
         "EXTENDED_EXECUTION_NOT_ALLOWED",
@@ -180,9 +185,9 @@ function toRecord(row: any): BackfillChunkRecord {
  */
 export async function materializeChunksForJobTx(
   tx: { warehouseBackfillChunk: { createMany: (args: any) => Promise<unknown> } },
-  opts: { workspaceId: string; jobId: string; specs: readonly BackfillChunkSpec[] },
+  opts: { workspaceId: string; jobId: string; specs: readonly BackfillChunkSpec[]; pilotTotalDaysAllowed?: number },
 ): Promise<string[]> {
-  validateChunkSpecs(opts.specs);
+  validateChunkSpecs(opts.specs, process.env, opts.pilotTotalDaysAllowed !== undefined ? { pilotTotalDaysAllowed: opts.pilotTotalDaysAllowed } : undefined);
   const data = opts.specs.map((spec) => ({
     id: chunkIdFor(opts.jobId, spec),
     workspaceId: opts.workspaceId,
@@ -515,7 +520,7 @@ export async function failExhaustedQueuedChunks(opts: { workspaceId: string; job
 }
 
 export interface ParentBackfillAggregation {
-  readonly status: "queued" | "running" | "completed" | "partial" | "failed";
+  readonly status: "queued" | "running" | "completed" | "partial" | "failed" | "cancelled";
   readonly totalChunks: number;
   readonly completedChunks: number;
   readonly failedChunks: number;
@@ -523,6 +528,8 @@ export interface ParentBackfillAggregation {
   readonly queuedChunks: number;
   /** Completed chunks that carry a partial provider error. */
   readonly partialChunks: number;
+  /** Terminally cancelled chunks (operator action; never claimed again). */
+  readonly cancelledChunks: number;
   readonly approximateRows: number;
   readonly errors: readonly { chunkId: string; connectionId: string; accountId: string; code: string; error: string }[];
   /** Inclusive coverage across all chunks (null when no chunks exist). */
@@ -536,6 +543,7 @@ export function aggregateChunkStates(chunks: readonly BackfillChunkRecord[]): Pa
   const failed = chunks.filter((chunk) => chunk.status === "failed");
   const running = chunks.filter((chunk) => chunk.status === "running");
   const queued = chunks.filter((chunk) => chunk.status === "queued");
+  const cancelled = chunks.filter((chunk) => chunk.status === "cancelled");
   // A completed chunk with a recorded error means some provider accounts in
   // that slice failed while others committed rows: the slice is done (never
   // re-contacted) but the parent must report partial, never completed.
@@ -561,9 +569,16 @@ export function aggregateChunkStates(chunks: readonly BackfillChunkRecord[]): Pa
     status = "queued";
   } else if (running.length > 0 || (completed.length > 0 && queued.length > 0)) {
     status = "running";
-  } else if (completed.length === chunks.length && failed.length === 0 && partial.length === 0) {
+  } else if (cancelled.length === chunks.length) {
+    status = "cancelled";
+  } else if (
+    completed.length === chunks.length &&
+    failed.length === 0 &&
+    partial.length === 0 &&
+    cancelled.length === 0
+  ) {
     status = "completed";
-  } else if (completed.length > 0 && (failed.length > 0 || partial.length > 0)) {
+  } else if (completed.length > 0 && (failed.length > 0 || partial.length > 0 || cancelled.length > 0)) {
     status = "partial";
   } else if (failed.length > 0 && queued.length === 0) {
     status = "failed";
@@ -578,6 +593,7 @@ export function aggregateChunkStates(chunks: readonly BackfillChunkRecord[]): Pa
     runningChunks: running.length,
     queuedChunks: queued.length,
     partialChunks: partial.length,
+    cancelledChunks: cancelled.length,
     approximateRows,
     errors,
     coverage: spanOf(chunks),

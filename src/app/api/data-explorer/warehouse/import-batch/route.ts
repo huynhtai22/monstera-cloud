@@ -36,6 +36,7 @@ import {
   listBackfillChunks,
   runCheckpointedBackfillWorker,
 } from "@/lib/warehouse-backfill-chunks";
+import { isPilotJobKey } from "@/lib/extended-backfill-pilot";
 
 const MAX_CONCURRENT_JOBS_PER_WORKSPACE = 5;
 const MAX_ITEMS_PER_REQUEST = 50;
@@ -281,6 +282,80 @@ export async function processBatchItems(opts: {
 }
 
 /**
+ * Shared warehouse-sync chunk executor used by the checkpoint worker and the
+ * operator-gated pilot worker. Executes exactly one persisted slice through
+ * the production `processBatchItems` path (provider locks, tenant checks,
+ * idempotent upserts) and preserves partial connector outcomes.
+ */
+export function createWarehouseChunkExecutor(opts: {
+  jobId: string;
+  leaseId: string;
+  plan: string;
+  syncFn?: typeof syncConnectionData;
+  isLeaseLost: () => boolean;
+  onProgress?: (completedItems: number, approximateRows: number, results: BatchImportJobResult[]) => Promise<void>;
+}): (chunk: {
+  workspaceId: string;
+  connectionId: string;
+  provider: string;
+  accountId: string;
+  since: string;
+  until: string;
+}) => Promise<{ rows: number; partialError?: { code?: string; error?: unknown } }> {
+  const { jobId, leaseId } = opts;
+  return async ({ workspaceId, connectionId, provider, accountId, since, until }) => {
+    if (opts.isLeaseLost()) throw new LeaseLostError(jobId, leaseId);
+    const chunkResults = await processBatchItems({
+      workspaceId,
+      since,
+      until,
+      plan: opts.plan,
+      items: [
+        {
+          connectionId,
+          ...(accountId ? { accountId } : {}),
+          executionSince: since,
+          executionUntil: until,
+        },
+      ],
+      jobId,
+      leaseId,
+      syncFn: opts.syncFn,
+      isLeaseLost: opts.isLeaseLost,
+      onProgress: async ({ results: currentResults }) => {
+        if (opts.isLeaseLost()) throw new LeaseLostError(jobId, leaseId);
+        const approxRows = currentResults.reduce(
+          (s, r) => s + (r.upserted ?? r.rowsIngested ?? 0),
+          0
+        );
+        if (opts.onProgress) {
+          await opts.onProgress(currentResults.length, approxRows, currentResults);
+        } else {
+          await updateImportJobProgress(jobId, leaseId, {
+            completedItems: currentResults.length,
+            approximateRows: approxRows,
+            results: currentResults,
+          });
+        }
+      },
+    });
+    const first = chunkResults[0];
+    if (!first) throw new Error(`${provider} chunk produced no result`);
+    const rows = first.upserted ?? first.rowsIngested ?? 0;
+    // Preserve partial connector outcomes: committed rows count toward
+    // the slice (successful accounts are never re-contacted) while the
+    // recorded partial error keeps parent aggregation truthfully partial.
+    if (!first.ok && rows === 0) {
+      throw new Error(first.error ?? `${provider} chunk did not complete`);
+    }
+    return {
+      rows,
+      ...(first.ok ? {} : { partialError: { code: "PARTIAL_ACCOUNTS", error: first.error ?? "Some provider accounts failed" } }),
+    };
+  };
+}
+
+/**
  * Executes relational checkpoint slices for a job when they exist. Returns
  * modal-compatible results, or null when the job predates chunk
  * materialization (legacy JSON replay applies). A lost parent lease aborts
@@ -308,52 +383,13 @@ export async function runCheckpointedSlicesForJob(opts: {
   try {
     await runCheckpointedBackfillWorker(jobId, {
       workspaceId: opts.workspaceId,
-      executor: async ({ workspaceId, connectionId, provider, accountId, since, until }) => {
-        if (opts.isLeaseLost()) throw new LeaseLostError(jobId, leaseId);
-        const chunkResults = await processBatchItems({
-          workspaceId,
-          since,
-          until,
-          plan: opts.plan,
-          items: [
-            {
-              connectionId,
-              ...(accountId ? { accountId } : {}),
-              executionSince: since,
-              executionUntil: until,
-            },
-          ],
-          jobId,
-          leaseId,
-          syncFn: opts.syncFn,
-          isLeaseLost: opts.isLeaseLost,
-          onProgress: async ({ results: currentResults }) => {
-            if (opts.isLeaseLost()) throw new LeaseLostError(jobId, leaseId);
-            const approxRows = currentResults.reduce(
-              (s, r) => s + (r.upserted ?? r.rowsIngested ?? 0),
-              0
-            );
-            await updateImportJobProgress(jobId, leaseId, {
-              completedItems: currentResults.length,
-              approximateRows: approxRows,
-              results: currentResults,
-            });
-          },
-        });
-        const first = chunkResults[0];
-        if (!first) throw new Error(`${provider} chunk produced no result`);
-        const rows = first.upserted ?? first.rowsIngested ?? 0;
-        // Preserve partial connector outcomes: committed rows count toward
-        // the slice (successful accounts are never re-contacted) while the
-        // recorded partial error keeps parent aggregation truthfully partial.
-        if (!first.ok && rows === 0) {
-          throw new Error(first.error ?? `${provider} chunk did not complete`);
-        }
-        return {
-          rows,
-          ...(first.ok ? {} : { partialError: { code: "PARTIAL_ACCOUNTS", error: first.error ?? "Some provider accounts failed" } }),
-        };
-      },
+      executor: createWarehouseChunkExecutor({
+        jobId,
+        leaseId,
+        plan: opts.plan,
+        syncFn: opts.syncFn,
+        isLeaseLost: opts.isLeaseLost,
+      }),
     });
   } catch (err) {
     if (err instanceof LeaseLostError || opts.isLeaseLost()) {
@@ -389,6 +425,13 @@ export async function runDurableImportWorker(
       where: { id: jobId },
     });
     if (!jobRecord) return;
+
+    // Extended-pilot jobs are exclusively driven by the operator-gated pilot
+    // worker (pause/cancel aware). A stray generic dispatch is a safe no-op.
+    if (isPilotJobKey(jobRecord.idempotencyKey)) {
+      logger.warn(`[runDurableImportWorker] Refusing generic execution of pilot job ${jobId}`);
+      return;
+    }
 
     // Start continuous heartbeat while processing (every 10s)
     heartbeatTimer = setInterval(async () => {

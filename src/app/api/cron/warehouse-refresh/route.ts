@@ -109,7 +109,7 @@ export async function GET(request: Request) {
   let processedImportJobs = 0;
   for (let i = 0; i < 3; i++) {
     try {
-      const claim = await claimNextImportJob();
+      const claim = await claimNextImportJob(60000, { excludePilotJobs: true });
       if (claim.claimed && claim.job && claim.leaseId) {
         await runDurableImportWorker(claim.job.id, claim.leaseId);
         processedImportJobs++;

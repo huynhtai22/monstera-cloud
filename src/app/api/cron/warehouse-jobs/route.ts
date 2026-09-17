@@ -63,11 +63,12 @@ async function processWarehouseQueueUnsafe() {
     logger.error("[WAREHOUSE_JOBS_CRON] Failed to recover expired lease jobs:", err);
   }
 
-  // 2. Claim and execute up to BATCH_SIZE jobs
+  // 2. Claim and execute up to BATCH_SIZE jobs. Extended-pilot jobs are
+  // operator-driven only and never claimed by the generic scheduler.
   const executedJobs: string[] = [];
   for (let i = 0; i < BATCH_SIZE; i++) {
     try {
-      const claim = await claimNextImportJob();
+      const claim = await claimNextImportJob(60000, { excludePilotJobs: true });
       if (!claim.claimed || !claim.job || !claim.leaseId) {
         break;
       }

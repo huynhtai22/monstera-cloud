@@ -164,13 +164,29 @@ export async function createImportJob(params: {
   priority?: number;
   id?: string;
   chunks?: { connectionId: string; accountId?: string; provider: string; since: string; until: string; ordinal?: number }[];
+  /**
+   * Pilot-approved total window (inclusive days) for chunk-guarded providers.
+   * Only the pilot admission path may set this, after its full decision
+   * passes. The 30-day per-slice ceiling still applies unconditionally.
+   */
+  pilotTotalDaysAllowed?: number;
+  /**
+   * External transaction client (e.g. pilot admission holding an advisory
+   * lock). When provided, all reads/writes run on it with no nested
+   * `$transaction` (Prisma forbids nesting), P2002 races propagate to the
+   * outer handler, and telemetry/Redis stay best-effort afterwards.
+   */
+  client?: { warehouseImportJob: any; warehouseBackfillChunk: any };
+  /** Skip the internal P2002 return-existing path (outer transaction owns recovery). */
+  throwOnConflict?: boolean;
 }): Promise<BatchImportJobState> {
   const jobId = params.id || `wjob_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
   const now = new Date();
+  const db = params.client ?? prisma;
 
   // If idempotencyKey is provided, check if existing job exists for this workspace
   if (params.idempotencyKey) {
-    const existing = await prisma.warehouseImportJob.findUnique({
+    const existing = await db.warehouseImportJob.findUnique({
       where: {
         workspaceId_idempotencyKey: {
           workspaceId: params.workspaceId,
@@ -194,6 +210,15 @@ export async function createImportJob(params: {
       : item
   );
 
+  const chunkSpecs = (params.chunks ?? []).map((chunk, index) => ({
+    connectionId: chunk.connectionId,
+    accountId: chunk.accountId ?? "",
+    provider: chunk.provider,
+    since: chunk.since,
+    until: chunk.until,
+    ordinal: chunk.ordinal ?? index,
+  }));
+
   try {
     const jobData = {
       id: jobId,
@@ -212,23 +237,28 @@ export async function createImportJob(params: {
     };
 
     const created = params.chunks && params.chunks.length > 0
-      ? await prisma.$transaction(async (tx: any) => {
-          const job = await tx.warehouseImportJob.create({ data: jobData });
-          await materializeChunksForJobTx(tx, {
-            workspaceId: params.workspaceId,
-            jobId,
-            specs: params.chunks!.map((chunk, index) => ({
-              connectionId: chunk.connectionId,
-              accountId: chunk.accountId ?? "",
-              provider: chunk.provider,
-              since: chunk.since,
-              until: chunk.until,
-              ordinal: chunk.ordinal ?? index,
-            })),
-          });
-          return job;
-        })
-      : await prisma.warehouseImportJob.create({ data: jobData });
+      ? params.client
+        ? await (async () => {
+            const job = await params.client!.warehouseImportJob.create({ data: jobData });
+            await materializeChunksForJobTx(params.client!, {
+              workspaceId: params.workspaceId,
+              jobId,
+              specs: chunkSpecs,
+            ...(params.pilotTotalDaysAllowed !== undefined ? { pilotTotalDaysAllowed: params.pilotTotalDaysAllowed } : {}),
+            });
+            return job;
+          })()
+        : await prisma.$transaction(async (tx: any) => {
+            const job = await tx.warehouseImportJob.create({ data: jobData });
+            await materializeChunksForJobTx(tx, {
+              workspaceId: params.workspaceId,
+              jobId,
+              specs: chunkSpecs,
+            ...(params.pilotTotalDaysAllowed !== undefined ? { pilotTotalDaysAllowed: params.pilotTotalDaysAllowed } : {}),
+            });
+            return job;
+          })
+      : await db.warehouseImportJob.create({ data: jobData });
 
     const state = toState(created);
 
@@ -253,8 +283,10 @@ export async function createImportJob(params: {
 
     return state;
   } catch (err: any) {
-    // Handle concurrent creation race on (workspaceId, idempotencyKey)
-    if (err?.code === "P2002" && params.idempotencyKey) {
+    // Handle concurrent creation race on (workspaceId, idempotencyKey).
+    // With an external client the outer transaction owns recovery (its
+    // transaction is already aborted), so conflicts always propagate.
+    if (err?.code === "P2002" && params.idempotencyKey && !params.client && !params.throwOnConflict) {
       const existing = await prisma.warehouseImportJob.findUnique({
         where: {
           workspaceId_idempotencyKey: {
@@ -335,20 +367,34 @@ export async function claimImportJob(
  * Claims the next available queued or expired job from the PostgreSQL queue.
  * Orders by priority DESC, scheduledAt ASC.
  * Default lease duration is 60 seconds (60000ms).
+ *
+ * With `excludePilotJobs`, extended-pilot jobs (idempotency prefix
+ * `xbpilot:`, operator-driven only) are never claimed by generic schedulers;
+ * they execute exclusively through the pilot worker. NULL idempotency keys
+ * always remain eligible.
  */
 export async function claimNextImportJob(
-  leaseDurationMs = 60000
+  leaseDurationMs = 60000,
+  opts?: { excludePilotJobs?: boolean },
 ): Promise<{ claimed: boolean; leaseId?: string; job?: BatchImportJobState }> {
   const now = new Date();
   const leaseExpiresAt = new Date(now.getTime() + leaseDurationMs);
   const leaseId = randomUUID();
+  const pilotExclusion = opts?.excludePilotJobs
+    ? [{ OR: [{ idempotencyKey: null }, { NOT: { idempotencyKey: { startsWith: "xbpilot:" } } }] }]
+    : [];
 
   // Find next eligible candidate
   const candidate = await prisma.warehouseImportJob.findFirst({
     where: {
-      OR: [
-        { status: "queued", scheduledAt: { lte: now } },
-        { status: "running", leaseExpiresAt: { lt: now } },
+      AND: [
+        {
+          OR: [
+            { status: "queued", scheduledAt: { lte: now } },
+            { status: "running", leaseExpiresAt: { lt: now } },
+          ],
+        },
+        ...pilotExclusion,
       ],
     },
     orderBy: [{ priority: "desc" }, { scheduledAt: "asc" }],
