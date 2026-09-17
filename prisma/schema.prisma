@@ -1093,7 +1093,7 @@ model WarehouseBackfillChunk {
   since          String
   until          String
   ordinal        Int
-  status         String    @default("queued") // queued | running | completed | failed
+  status         String    @default("queued") // queued | running | completed | failed | cancelled
   attempts       Int       @default(0)
   maxAttempts    Int       @default(3)
   persistedRows  Int       @default(0)
@@ -1117,6 +1117,8 @@ model WarehouseBackfillChunk {
   @@index([jobId, ordinal])
   @@index([status, leaseExpiresAt])
   @@index([workspaceId, jobId])
+  // Provider-call budget aggregation per workspace/provider/day (pilot admission).
+  @@index([workspaceId, provider, completedAt])
 }
 
 model WorkspaceAiPolicy {

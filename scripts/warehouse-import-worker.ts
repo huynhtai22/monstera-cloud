@@ -7,7 +7,7 @@ function sleep(ms: number) {
 }
 
 export async function processNextJob(): Promise<boolean> {
-  const claim = await claimNextImportJob();
+  const claim = await claimNextImportJob(60000, { excludePilotJobs: true });
   if (!claim.claimed || !claim.job || !claim.leaseId) {
     return false;
   }
