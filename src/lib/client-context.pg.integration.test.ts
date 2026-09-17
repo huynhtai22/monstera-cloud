@@ -298,7 +298,7 @@ describe("PostgreSQL integration: client context isolation", () => {
         { headers: { Authorization: `Bearer ${testApiKeySecret}` } },
       )));
       assert.equal(exportOk.status, 200);
-      const exportRows = exportOk.body.rows as Array<Array<string | number>>;
+      const exportRows = exportOk.body as unknown as Array<Array<string | number>>;
       assert.equal(exportRows.length, 2);
       assert.equal(exportRows[1]?.[1], "Aurora Campaign");
 
@@ -314,7 +314,7 @@ describe("PostgreSQL integration: client context isolation", () => {
         { headers: { Authorization: `Bearer ${testApiKeySecret}` } },
       )));
       assert.equal(emptyExport.status, 200);
-      assert.deepEqual(emptyExport.body.rows, []);
+      assert.deepEqual(emptyExport.body, []);
 
       const platforms = await json(await getPlatforms(new Request(
         `http://localhost/api/metrics/platforms?workspaceId=${ids.workspaceA}&clientId=${ids.clientA}`,
