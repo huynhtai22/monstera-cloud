@@ -340,6 +340,158 @@ describe("PostgreSQL Integration: extended pilot lifecycle and synthetic qualifi
     return run(jobId, { workspaceId: WS_A, executor: syntheticExecutor(state) as any, finalizeParent: true });
   }
 
+  it("pause racing a parent claim converges without bulk post-pause work", async (t) => {
+    if (!requireDb(t)) return;
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    let calls = 0;
+    const admitted = await admit({ since: "2023-11-01", until: "2023-12-01", config: testConfig("synthetic") });
+    const { runPilotBackfillJob: run } = await import("./extended-backfill-pilot-lifecycle");
+    const running = run(admitted.job.id, {
+      workspaceId: WS_A,
+      executor: (async () => {
+        calls += 1;
+        await sleep(300);
+        return { rows: 1 };
+      }) as any,
+    });
+    await sleep(50);
+    const paused = await pausePilotJob({ workspaceId: WS_A, jobId: admitted.job.id, actorUserId: OPERATOR });
+    assert.ok(["paused", "pause_requested"].includes(paused.status));
+    const aggregation = await running;
+    assert.equal(calls, 1);
+    assert.ok(["paused", "running"].includes(aggregation.status) || aggregation.completedChunks <= 1);
+    const parent = await loadPilotJob({ workspaceId: WS_A, jobId: admitted.job.id });
+    assert.ok(["paused", "pause_requested"].includes(String(parent!.job.status)));
+    const settled = await listBackfillChunks({ workspaceId: WS_A, jobId: admitted.job.id });
+    assert.ok(settled.filter((c) => c.status === "completed").length <= 1);
+    await cancelPilotJob({ workspaceId: WS_A, jobId: admitted.job.id, actorUserId: OPERATOR });
+  });
+
+  it("cancel during execution preserves in-flight rows and stops new claims", async (t) => {
+    if (!requireDb(t)) return;
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    let calls = 0;
+    const admitted = await admit({ since: "2023-09-01", until: "2023-10-01", config: testConfig("synthetic") });
+    const { runPilotBackfillJob: run } = await import("./extended-backfill-pilot-lifecycle");
+    const running = run(admitted.job.id, {
+      workspaceId: WS_A,
+      executor: (async () => {
+        calls += 1;
+        await sleep(300);
+        return { rows: 4 };
+      }) as any,
+    });
+    await sleep(50);
+    const cancelled = await cancelPilotJob({ workspaceId: WS_A, jobId: admitted.job.id, actorUserId: OPERATOR });
+    assert.ok(["cancelled", "partial_cancelled"].includes(cancelled.status));
+    await running;
+    assert.equal(calls, 1);
+    const chunks = await listBackfillChunks({ workspaceId: WS_A, jobId: admitted.job.id });
+    assert.equal(chunks.filter((c) => c.status === "completed").length, 1);
+    assert.equal(chunks.find((c) => c.status === "completed")?.persistedRows, 4);
+    const parent = await loadPilotJob({ workspaceId: WS_A, jobId: admitted.job.id });
+    assert.ok(["cancelled", "partial_cancelled"].includes(String(parent!.job.status)));
+  });
+
+  it("concurrent pauses converge with exactly one applied transition", async (t) => {
+    if (!requireDb(t)) return;
+    const admitted = await admit({ since: "2023-07-01", until: "2023-07-10", config: testConfig("synthetic") });
+    const [first, second] = await Promise.all([
+      pausePilotJob({ workspaceId: WS_A, jobId: admitted.job.id, actorUserId: OPERATOR }),
+      pausePilotJob({ workspaceId: WS_A, jobId: admitted.job.id, actorUserId: OPERATOR }),
+    ]);
+    assert.equal([first.changed, second.changed].filter(Boolean).length, 1);
+    assert.equal(first.status, "paused");
+    assert.equal(second.status, "paused");
+    await cancelPilotJob({ workspaceId: WS_A, jobId: admitted.job.id, actorUserId: OPERATOR });
+  });
+
+  it("connection provider mismatch is refused with zero side effects", async (t) => {
+    if (!requireDb(t)) return;
+    const jobsBefore = await prisma!.warehouseImportJob.count({ where: { workspaceId: WS_A } });
+    const chunksBefore = await prisma!.warehouseBackfillChunk.count({ where: { workspaceId: WS_A } });
+    await assert.rejects(
+      admit({ provider: "google_ads", connectionId: META_CONN, since: "2026-06-01", until: "2026-06-10", config: testConfig("synthetic") }),
+      (error: unknown) => error instanceof PilotAdmissionError && error.reasonCode === "PROVIDER_CONNECTION_MISMATCH",
+    );
+    assert.equal(await prisma!.warehouseImportJob.count({ where: { workspaceId: WS_A } }), jobsBefore);
+    assert.equal(await prisma!.warehouseBackfillChunk.count({ where: { workspaceId: WS_A } }), chunksBefore);
+  });
+
+  it("concurrency caps are enforced atomically at claim time", async (t) => {
+    if (!requireDb(t)) return;
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const limits = { workspaceLimit: 1, accountLimit: 1 };
+    const first = await admit({ since: "2023-05-01", until: "2023-05-05", config: testConfig("synthetic") });
+    const second = await admit({ provider: "google_ads", connectionId: GOOGLE_CONN, since: "2023-06-01", until: "2023-06-05", config: testConfig("synthetic") });
+    const { runPilotBackfillJob: run } = await import("./extended-backfill-pilot-lifecycle");
+    let inFlight = 0;
+    let maxOverlap = 0;
+    const tracked = async () => {
+      inFlight += 1;
+      maxOverlap = Math.max(maxOverlap, inFlight);
+      await sleep(200);
+      inFlight -= 1;
+      return { rows: 1 };
+    };
+    const [a, b] = await Promise.all([
+      run(first.job.id, { workspaceId: WS_A, executor: tracked as any, concurrency: limits }),
+      run(second.job.id, { workspaceId: WS_A, executor: tracked as any, concurrency: limits }),
+    ]);
+    assert.equal(maxOverlap, 1);
+    const executed = [a, b].filter((agg) => agg.completedChunks > 0).length;
+    assert.equal(executed, 1);
+    const stalled = [first, second].find((job, index) => [a, b][index]!.completedChunks === 0)!;
+    const solo = await run(stalled.job.id, { workspaceId: WS_A, executor: tracked as any, concurrency: limits, finalizeParent: true });
+    assert.equal(solo.status, "completed");
+    await cancelPilotJob({ workspaceId: WS_A, jobId: first.job.id, actorUserId: OPERATOR }).catch(() => null);
+    await cancelPilotJob({ workspaceId: WS_A, jobId: second.job.id, actorUserId: OPERATOR }).catch(() => null);
+  });
+
+  it("parent heartbeat sustains slices longer than the parent lease", async (t) => {
+    if (!requireDb(t)) return;
+    const admitted = await admit({ since: "2023-04-01", until: "2023-04-05", config: testConfig("synthetic") });
+    const { runPilotBackfillJob: run } = await import("./extended-backfill-pilot-lifecycle");
+    const aggregation = await run(admitted.job.id, {
+      workspaceId: WS_A,
+      executor: (async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        return { rows: 2 };
+      }) as any,
+      parentLeaseTtlMs: 500,
+      heartbeatIntervalMs: 100,
+      finalizeParent: true,
+    });
+    assert.equal(aggregation.status, "completed");
+    const parent = await prisma!.warehouseImportJob.findUniqueOrThrow({ where: { id: admitted.job.id } });
+    assert.equal(parent.status, "completed");
+  });
+
+  it("failed attempts consume provider-call budget", async (t) => {
+    if (!requireDb(t)) return;
+    const config = testConfig("synthetic", [WS_B], { maxActiveJobsPerWorkspace: 10, maxProviderCallsPerDay: 1 });
+    const seeded = await admitAndCreatePilotJob({
+      actorUserId: OPERATOR, workspaceId: WS_B, provider: "google_ads", connectionId: "conn_pilot_b",
+      since: "2023-03-01", until: "2023-03-05", config, observedRowsPerDay: 10, bytesPerRow: 512,
+    } as any);
+    const [chunk] = await listBackfillChunks({ workspaceId: WS_B, jobId: seeded.job.id });
+    const claim = await claimBackfillChunk({ chunkId: chunk!.id, workspaceId: WS_B });
+    assert.equal(claim.claimed, true);
+    const { failBackfillChunk } = await import("./warehouse-backfill-chunks");
+    await failBackfillChunk({
+      chunkId: chunk!.id, workspaceId: WS_B, leaseId: (claim as any).leaseId,
+      fencingToken: (claim as any).chunk.fencingToken, error: "synthetic failure",
+    });
+    await assert.rejects(
+      admitAndCreatePilotJob({
+        actorUserId: OPERATOR, workspaceId: WS_B, provider: "google_ads", connectionId: "conn_pilot_b",
+        since: "2023-03-10", until: "2023-03-12", config, observedRowsPerDay: 10, bytesPerRow: 512,
+      } as any),
+      (error: unknown) => error instanceof PilotAdmissionError && error.reasonCode === "PROVIDER_BUDGET_EXCEEDED",
+    );
+    await cancelPilotJob({ workspaceId: WS_B, jobId: seeded.job.id, actorUserId: OPERATOR });
+  });
+
   it("pause while running, resume after pause, and cancel variants", async (t) => {
     if (!requireDb(t)) return;
     const calls: { chunkId: string; since: string; until: string }[] = [];
@@ -501,6 +653,11 @@ describe("PostgreSQL Integration: extended pilot lifecycle and synthetic qualifi
     }
 
     const plans: string[] = [];
+    // Fresh statistics so plans reflect indexed access rather than
+    // post-bulk-load staleness (benchmark hygiene, not production behavior).
+    await db.$executeRawUnsafe('ANALYZE "WarehouseBackfillChunk"');
+    await db.$executeRawUnsafe('ANALYZE "WarehouseImportJob"');
+    await db.$executeRawUnsafe('ANALYZE "CampaignMetric"');
     async function explain(label: string, sql: string, params: unknown[], opts?: { allowSeqScanOn?: string }) {
       const rows = (await db.$queryRawUnsafe(`EXPLAIN (ANALYZE, BUFFERS) ${sql}`, ...(params as any[]))) as any[];
       const planText = rows.map((row) => row["QUERY PLAN"]).join("\n");

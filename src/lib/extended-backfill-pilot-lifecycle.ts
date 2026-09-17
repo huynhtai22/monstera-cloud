@@ -37,7 +37,7 @@ import {
   type CheckpointChunkExecutor,
   type ParentBackfillAggregation,
 } from "./warehouse-backfill-chunks";
-import { createImportJob, claimImportJob, completeImportJob, type BatchImportJobState } from "./warehouse-import-job";
+import { createImportJob, claimImportJob, completeImportJob, heartbeatImportJob, LeaseLostError, type BatchImportJobState } from "./warehouse-import-job";
 import {
   auditPilotEvent,
   createPilotJobKey,
@@ -63,6 +63,29 @@ export const PILOT_EXECUTE_CHUNK_BUDGET = 25;
 
 function startOfUtcDay(date = new Date()): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+/**
+ * Provider-call budget basis: SUM(attempts) over chunks touched today, per
+ * workspace/provider. Every attempt precedes at most one provider call, so
+ * this counts failed and rate-limited attempts that a completions-only
+ * counter would miss (conservative direction for a ceiling). Crash-before-
+ * call attempts may overcount slightly; documented, never undercounts.
+ */
+export async function countProviderCallsToday(
+  client: { warehouseBackfillChunk: { aggregate: (args: any) => Promise<any> } },
+  opts: { workspaceId: string; provider: string; dayStart?: Date },
+): Promise<number> {
+  const result = await client.warehouseBackfillChunk.aggregate({
+    where: {
+      workspaceId: opts.workspaceId,
+      provider: opts.provider,
+      updatedAt: { gte: opts.dayStart ?? startOfUtcDay() },
+    },
+    _sum: { attempts: true },
+  });
+  const sum = result?._sum?.attempts;
+  return typeof sum === "number" ? sum : 0;
 }
 
 function inclusiveDays(since: string, until: string): number {
@@ -175,8 +198,25 @@ export async function admitAndCreatePilotJob(params: PilotAdmissionParams): Prom
     const workspace = await tx.workspace.findUnique({ where: { id: workspaceId }, select: { id: true } });
     const connection = await tx.connection.findFirst({
       where: { id: params.connectionId, workspaceId },
-      select: { id: true },
+      select: { id: true, provider: true },
     });
+    // The connection's actual provider must equal the requested provider:
+    // execution dispatches by the stored connection, so a mismatch would run
+    // a prohibited provider's extended window under another provider's grant.
+    if (connection && String(connection.provider ?? "") !== provider) {
+      const mismatch: ExtendedBackfillDecision = {
+        allowed: false,
+        reasonCode: "PROVIDER_CONNECTION_MISMATCH",
+        provider: provider!,
+        stage: config.stage,
+        requestedDays,
+        maximumDays: getProviderPilotEligibility(provider!)?.pilotMaxDays ?? 0,
+        workspaceAllowed: config.allowedWorkspaceIds.includes(workspaceId),
+        operatorAuthorized: true,
+        capacityAccepted: false,
+      };
+      throw new PilotAdmissionError("PROVIDER_CONNECTION_MISMATCH", mismatch);
+    }
     const facts = {
       workspaceExists: Boolean(workspace),
       connectionExists: Boolean(connection),
@@ -218,13 +258,9 @@ export async function admitAndCreatePilotJob(params: PilotAdmissionParams): Prom
     });
     facts.overlappingActiveJobs = overlapping.length;
 
-    const dayStart = startOfUtcDay();
-    facts.providerCallsToday = await tx.warehouseBackfillChunk.count({
-      where: {
-        workspaceId,
-        provider: provider!,
-        completedAt: { gte: dayStart },
-      },
+    facts.providerCallsToday = await countProviderCallsToday(tx, {
+      workspaceId,
+      provider: provider!,
     });
     facts.runningChunksWorkspace = await tx.warehouseBackfillChunk.count({
       where: { workspaceId, status: "running" },
@@ -411,42 +447,68 @@ async function providerOfJob(opts: { workspaceId: string; jobId: string }): Prom
  * Pauses a pilot job. New claims stop immediately; in-flight leased chunks
  * finish safely. Reports `paused` once nothing remains actively owned, else
  * `pause_requested` while draining. Idempotent.
+ *
+ * The transition retries against concurrent worker claims: a pause that
+ * loses its optimistic write re-reads and converges (including from
+ * `running`, which drains) instead of silently dropping pause intent. Every
+ * outcome — applied or idempotent no-op — is audited.
  */
 export async function pausePilotJob(opts: {
   workspaceId: string;
   jobId: string;
   actorUserId: string;
 }): Promise<{ status: string; changed: boolean }> {
-  const ctx = await loadPilotJob(opts);
-  if (!ctx) throw new PilotNotFoundError();
-  const current = String(ctx.job.status);
-  if (current === "paused" || current === "pause_requested") {
-    return { status: current, changed: false };
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const ctx = await loadPilotJob(opts);
+    if (!ctx) throw new PilotNotFoundError();
+    const current = String(ctx.job.status);
+    if (current === "paused" || current === "pause_requested") {
+      await auditTransition({
+        workspaceId: opts.workspaceId,
+        actorUserId: opts.actorUserId,
+        action: "pilot.extended_backfill.job_pause_noop",
+        jobId: opts.jobId,
+        provider: await providerOfJob(opts),
+        stage: "operator",
+        reasonCode: current.toUpperCase(),
+      });
+      return { status: current, changed: false };
+    }
+    if ((PILOT_TERMINAL_JOB_STATUSES as readonly string[]).includes(current)) {
+      await auditTransition({
+        workspaceId: opts.workspaceId,
+        actorUserId: opts.actorUserId,
+        action: "pilot.extended_backfill.job_pause_noop",
+        jobId: opts.jobId,
+        provider: await providerOfJob(opts),
+        stage: "operator",
+        reasonCode: "ALREADY_TERMINAL",
+      });
+      return { status: current, changed: false };
+    }
+    const runningOwned = ctx.chunks.filter(
+      (chunk) => chunk.status === "running" && chunk.leaseExpiresAt && chunk.leaseExpiresAt.getTime() >= Date.now(),
+    );
+    const next = runningOwned.length > 0 ? "pause_requested" : "paused";
+    // The parent lease is intentionally preserved: an in-flight chunk's
+    // fenced progress writes must keep succeeding so it can finish safely.
+    // The worker observes the status change at its next checkpoint.
+    const updated = await (prisma as any).warehouseImportJob.updateMany({
+      where: { id: opts.jobId, workspaceId: opts.workspaceId, status: current },
+      data: { status: next, updatedAt: new Date() },
+    });
+    if (updated.count === 0) continue;
+    await auditTransition({
+      workspaceId: opts.workspaceId,
+      actorUserId: opts.actorUserId,
+      action: "pilot.extended_backfill.job_paused",
+      jobId: opts.jobId,
+      provider: await providerOfJob(opts),
+      stage: "operator",
+    });
+    return { status: next, changed: true };
   }
-  if ((PILOT_TERMINAL_JOB_STATUSES as readonly string[]).includes(current)) {
-    return { status: current, changed: false };
-  }
-  const runningOwned = ctx.chunks.filter(
-    (chunk) => chunk.status === "running" && chunk.leaseExpiresAt && chunk.leaseExpiresAt.getTime() >= Date.now(),
-  );
-  const next = runningOwned.length > 0 ? "pause_requested" : "paused";
-  const updated = await (prisma as any).warehouseImportJob.updateMany({
-    where: { id: opts.jobId, workspaceId: opts.workspaceId, status: current },
-    data: { status: next, updatedAt: new Date() },
-  });
-  if (updated.count === 0) {
-    const latest = await loadPilotJob(opts);
-    return { status: String(latest?.job.status ?? current), changed: false };
-  }
-  await auditTransition({
-    workspaceId: opts.workspaceId,
-    actorUserId: opts.actorUserId,
-    action: "pilot.extended_backfill.job_paused",
-    jobId: opts.jobId,
-    provider: await providerOfJob(opts),
-    stage: "operator",
-  });
-  return { status: next, changed: true };
+  throw new PilotStateError("Pause conflicted with concurrent worker activity; retry the request.");
 }
 
 /**
@@ -474,13 +536,10 @@ export async function resumePilotJob(opts: {
   }
   const config = opts.config ?? loadExtendedBackfillPilotConfig(opts.env);
   const provider = await providerOfJob(opts);
-  const dayStart = startOfUtcDay();
   const connectionId = ctx.chunks[0]?.connectionId ?? "";
   const accountId = ctx.chunks[0]?.accountId ?? "";
   const [providerCallsToday, runningChunksWorkspace, runningChunksAccount] = await Promise.all([
-    prisma.warehouseBackfillChunk.count({
-      where: { workspaceId: opts.workspaceId, provider, completedAt: { gte: dayStart } },
-    }),
+    countProviderCallsToday(prisma as any, { workspaceId: opts.workspaceId, provider }),
     prisma.warehouseBackfillChunk.count({ where: { workspaceId: opts.workspaceId, status: "running" } }),
     prisma.warehouseBackfillChunk.count({
       where: { workspaceId: opts.workspaceId, status: "running", connectionId, accountId },
@@ -558,56 +617,75 @@ export async function resumePilotJob(opts: {
  * and can never be claimed again; running chunks keep their leases and may
  * finish (fenced) with metrics preserved. Completed metrics remain
  * available. Idempotent.
+ *
+ * Like pause, the parent transition retries against concurrent worker
+ * claims/finalization so cancel intent converges instead of silently
+ * dropping; every outcome is audited. The parent lease is preserved so
+ * in-flight chunks can still finish safely — terminal rows are never
+ * claimed, so a superseded lease reference on them is inert.
  */
 export async function cancelPilotJob(opts: {
   workspaceId: string;
   jobId: string;
   actorUserId: string;
 }): Promise<{ status: string; changed: boolean }> {
-  const ctx = await loadPilotJob(opts);
-  if (!ctx) throw new PilotNotFoundError();
-  const current = String(ctx.job.status);
-  if (current === "cancelled" || current === "partial_cancelled") {
-    return { status: current, changed: false };
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const ctx = await loadPilotJob(opts);
+    if (!ctx) throw new PilotNotFoundError();
+    const current = String(ctx.job.status);
+    if (current === "cancelled" || current === "partial_cancelled") {
+      await auditTransition({
+        workspaceId: opts.workspaceId,
+        actorUserId: opts.actorUserId,
+        action: "pilot.extended_backfill.job_cancel_noop",
+        jobId: opts.jobId,
+        provider: await providerOfJob(opts),
+        stage: "operator",
+        reasonCode: current.toUpperCase(),
+      });
+      return { status: current, changed: false };
+    }
+    if (current === "completed" || current === "partial" || current === "failed") {
+      await auditTransition({
+        workspaceId: opts.workspaceId,
+        actorUserId: opts.actorUserId,
+        action: "pilot.extended_backfill.job_cancel_noop",
+        jobId: opts.jobId,
+        provider: await providerOfJob(opts),
+        stage: "operator",
+        reasonCode: "ALREADY_TERMINAL",
+      });
+      return { status: current, changed: false };
+    }
+    await (prisma as any).warehouseBackfillChunk.updateMany({
+      where: { workspaceId: opts.workspaceId, jobId: opts.jobId, status: "queued" },
+      data: { status: "cancelled", leaseId: null, leaseExpiresAt: null, updatedAt: new Date() },
+    });
+    const after = await listBackfillChunks({ workspaceId: opts.workspaceId, jobId: opts.jobId });
+    const completedCount = after.filter((chunk) => chunk.status === "completed").length;
+    const next = completedCount > 0 ? "partial_cancelled" : "cancelled";
+    const updated = await (prisma as any).warehouseImportJob.updateMany({
+      where: { id: opts.jobId, workspaceId: opts.workspaceId, status: current },
+      data: {
+        status: next,
+        finishedAt: new Date(),
+        errorMsg: null,
+        updatedAt: new Date(),
+      },
+    });
+    if (updated.count === 0) continue;
+    await refreshParentJobFromChunks({ workspaceId: opts.workspaceId, jobId: opts.jobId });
+    await auditTransition({
+      workspaceId: opts.workspaceId,
+      actorUserId: opts.actorUserId,
+      action: "pilot.extended_backfill.job_cancelled",
+      jobId: opts.jobId,
+      provider: await providerOfJob(opts),
+      stage: "operator",
+    });
+    return { status: next, changed: true };
   }
-  if (current === "completed" || current === "partial" || current === "failed") {
-    return { status: current, changed: false };
-  }
-  const cancelled = await (prisma as any).warehouseBackfillChunk.updateMany({
-    where: { workspaceId: opts.workspaceId, jobId: opts.jobId, status: "queued" },
-    data: { status: "cancelled", leaseId: null, leaseExpiresAt: null, updatedAt: new Date() },
-  });
-  void cancelled;
-  const after = await listBackfillChunks({ workspaceId: opts.workspaceId, jobId: opts.jobId });
-  const completedCount = after.filter((chunk) => chunk.status === "completed").length;
-  const next = completedCount > 0 ? "partial_cancelled" : "cancelled";
-  const updated = await (prisma as any).warehouseImportJob.updateMany({
-    where: { id: opts.jobId, workspaceId: opts.workspaceId, status: current },
-    data: {
-      status: next,
-      finishedAt: new Date(),
-      errorMsg: null,
-      updatedAt: new Date(),
-    },
-  });
-  if (updated.count === 0) {
-    const latest = await loadPilotJob(opts);
-    return { status: String(latest?.job.status ?? current), changed: false };
-  }
-  await refreshParentJobFromChunks({ workspaceId: opts.workspaceId, jobId: opts.jobId });
-  await (prisma as any).warehouseImportJob.updateMany({
-    where: { id: opts.jobId, workspaceId: opts.workspaceId, status: { in: ["queued", "running", "paused", "pause_requested"] } },
-    data: { status: next, finishedAt: new Date(), updatedAt: new Date() },
-  });
-  await auditTransition({
-    workspaceId: opts.workspaceId,
-    actorUserId: opts.actorUserId,
-    action: "pilot.extended_backfill.job_cancelled",
-    jobId: opts.jobId,
-    provider: await providerOfJob(opts),
-    stage: "operator",
-  });
-  return { status: next, changed: true };
+  throw new PilotStateError("Cancel conflicted with concurrent worker activity; retry the request.");
 }
 
 export class PilotNotFoundError extends Error {
@@ -637,12 +715,15 @@ async function settleParentLease(opts: { jobId: string; workspaceId: string; lea
     data: { status: "queued", leaseId: null, leaseExpiresAt: null, updatedAt: new Date() },
   });
   if (reset.count === 0) {
+    // Operator-moved parents (paused, cancelled) only have a superseded
+    // lease reference dropped. Terminal rows are never claimed, so touching
+    // nothing else here is safe.
     await (prisma as any).warehouseImportJob.updateMany({
       where: {
         id: opts.jobId,
         workspaceId: opts.workspaceId,
         leaseId: opts.leaseId,
-        status: { in: ["paused", "pause_requested"] },
+        status: { in: ["paused", "pause_requested", "cancelled", "partial_cancelled"] },
       },
       data: { leaseId: null, leaseExpiresAt: null, updatedAt: new Date() },
     });
@@ -667,25 +748,48 @@ export async function runPilotBackfillJob(
     leaseTtlMs?: number;
     maxChunks?: number;
     finalizeParent?: boolean;
+    /** Concurrency caps enforced atomically with every chunk claim. */
+    concurrency?: { workspaceLimit: number; accountLimit: number };
+    /** Parent lease TTL (default 60s) and heartbeat cadence; shortened in tests. */
+    parentLeaseTtlMs?: number;
+    heartbeatIntervalMs?: number;
     onChunkSettled?: (aggregation: ParentBackfillAggregation) => Promise<void> | void;
   },
 ): Promise<ParentBackfillAggregation> {
   const budget = opts.maxChunks ?? PILOT_EXECUTE_CHUNK_BUDGET;
-  const parentClaim = await claimImportJob(jobId);
+  const parentClaim = await claimImportJob(jobId, opts.parentLeaseTtlMs ?? 60000);
   if (!parentClaim.claimed || !parentClaim.leaseId) {
     throw new PilotStateError("Pilot parent job is not claimable (already running or terminal).");
   }
   const parentLeaseId = parentClaim.leaseId;
   const executor = opts.createExecutor ? opts.createExecutor(parentLeaseId) : opts.executor;
   if (!executor) {
+    await settleParentLease({ jobId, workspaceId: opts.workspaceId, leaseId: parentLeaseId });
     throw new PilotStateError("Pilot execution requires an executor.");
   }
+  let parentLeaseHealthy = true;
+  let parentHeartbeat: NodeJS.Timeout | null = null;
+  const stopHeartbeat = () => {
+    if (parentHeartbeat) clearInterval(parentHeartbeat);
+    parentHeartbeat = null;
+  };
   let executed = 0;
   try {
     await sweepExhaustedChunks({ workspaceId: opts.workspaceId, jobId });
     await failExhaustedQueuedChunks({ workspaceId: opts.workspaceId, jobId });
+    // Parent heartbeat mirrors the generic durable worker: a slice running
+    // longer than the 60s parent lease must not silently outlive it, or the
+    // recovery loop would requeue the parent and duplicate provider contact.
+    parentHeartbeat = setInterval(() => {
+      heartbeatImportJob(jobId, parentLeaseId).catch(() => {
+        parentLeaseHealthy = false;
+      });
+    }, opts.heartbeatIntervalMs ?? CHUNK_HEARTBEAT_INTERVAL_MS);
     let aggregation = aggregateChunkStates(await listBackfillChunks({ workspaceId: opts.workspaceId, jobId }));
     for (;;) {
+      if (!parentLeaseHealthy) {
+        throw new LeaseLostError(jobId, parentLeaseId);
+      }
       const parent = await (prisma as any).warehouseImportJob.findFirst({
         where: { id: jobId, workspaceId: opts.workspaceId },
         select: { status: true },
@@ -695,7 +799,12 @@ export async function runPilotBackfillJob(
       // released at the end so the job stays resumable instead of wedged.
       if (parentStatus !== "running") break;
       if (executed >= budget) break;
-      const claim = await claimNextBackfillChunk({ workspaceId: opts.workspaceId, jobId, leaseTtlMs: opts.leaseTtlMs });
+      const claim = await claimNextBackfillChunk({
+        workspaceId: opts.workspaceId,
+        jobId,
+        leaseTtlMs: opts.leaseTtlMs,
+        ...(opts.concurrency ? { concurrency: opts.concurrency } : {}),
+      });
       if (!claim.claimed) {
         if (claim.reason === "attempts_exhausted") {
           await failExhaustedQueuedChunks({ workspaceId: opts.workspaceId, jobId });
@@ -704,6 +813,22 @@ export async function runPilotBackfillJob(
         break;
       }
       const chunk = claim.chunk;
+      // Post-claim re-verification: a pause/cancel that landed after the
+      // loop-top read must not lead to provider contact. The claimed slice is
+      // released unexecuted (its consumed attempt stays consumed: bounded and
+      // documented). The irreducible residual is an in-flight slice plus the
+      // sub-millisecond verify-to-call window — never bulk work.
+      const reverified = await (prisma as any).warehouseImportJob.findFirst({
+        where: { id: jobId, workspaceId: opts.workspaceId },
+        select: { status: true },
+      });
+      if (String(reverified?.status ?? "") !== "running" || !parentLeaseHealthy) {
+        await (prisma as any).warehouseBackfillChunk.updateMany({
+          where: { id: chunk.id, workspaceId: opts.workspaceId, leaseId: claim.leaseId, status: "running" },
+          data: { status: "queued", leaseId: null, leaseExpiresAt: null, updatedAt: new Date() },
+        });
+        break;
+      }
       const claimedRow = await (prisma as any).warehouseBackfillChunk.findFirst({
         where: { id: chunk.id, workspaceId: opts.workspaceId },
       });
@@ -783,9 +908,16 @@ export async function runPilotBackfillJob(
     // Finalize only when no unfinished work remains: a budget-capped stop
     // with queued/running chunks stays resumable instead of falsely
     // completing. Pause/cancel/terminal parents are never finalized here.
+    // Cancelled chunks present means an operator cancel flow owns the parent:
+    // never overwrite it via the generic completion path.
     const unfinished = aggregation.queuedChunks + aggregation.runningChunks;
     let finalized = false;
-    if (String(parentNow?.status) === "running" && opts.finalizeParent !== false && unfinished === 0) {
+    if (
+      String(parentNow?.status) === "running" &&
+      opts.finalizeParent !== false &&
+      unfinished === 0 &&
+      aggregation.cancelledChunks === 0
+    ) {
       try {
         const { chunkResultsForModal } = await import("./warehouse-backfill-chunks");
         const chunks = await listBackfillChunks({ workspaceId: opts.workspaceId, jobId });
@@ -816,8 +948,10 @@ export async function runPilotBackfillJob(
       // (no-op when already lost) so the job stays resumable.
       await settleParentLease({ jobId, workspaceId: opts.workspaceId, leaseId: parentLeaseId }).catch(() => {});
     }
+    stopHeartbeat();
     return aggregation;
   } catch (error) {
+    stopHeartbeat();
     if (error instanceof Error && error.name === "LeaseLostError") throw error;
     throw error;
   }

@@ -116,6 +116,14 @@ rows-per-day for pilot accounts.
   catchup windows; the slice itself is never re-contacted once completed.
 - A pause/cancel racing the final lease-fenced completion resolves
   last-writer-wins within microseconds; both outcomes are terminal and the
-  operator audit trail records the cancel request.
+  operator audit trail records the cancel request. Pause/cancel transitions
+  themselves retry against concurrent worker claims, so operator intent
+  converges instead of silently dropping; every outcome (applied or
+  idempotent no-op) is audited. A claimed slice is re-verified against parent
+  state before execution and released unexecuted on mismatch, bounding any
+  post-pause contact to in-flight slices plus a sub-millisecond window — bulk
+  post-pause work is impossible. Attempt-based provider-call budgets count
+  every claim (including failed attempts), and concurrency caps are enforced
+  atomically with claiming under tenant-scoped advisory locks.
 - Synthetic qualification does not prove live-provider eligibility.
 - Production Neon/Vercel capacity has not been measured.

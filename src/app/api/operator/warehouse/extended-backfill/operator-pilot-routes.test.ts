@@ -72,9 +72,9 @@ describe("operator pilot routes (production handlers)", () => {
     };
     (prisma as any).connection = {
       findFirst: async ({ where }: any) => {
-        if (where.id === CONN && where.workspaceId === WS) return { id: CONN };
-        if (where.id === "conn-meta" && where.workspaceId === WS) return { id: "conn-meta" };
-        if (where.id === "conn-other" && where.workspaceId === OTHER_WS) return { id: "conn-other" };
+        if (where.id === CONN && where.workspaceId === WS) return { id: CONN, provider: "google_ads" };
+        if (where.id === "conn-meta" && where.workspaceId === WS) return { id: "conn-meta", provider: "meta_ads" };
+        if (where.id === "conn-other" && where.workspaceId === OTHER_WS) return { id: "conn-other", provider: "google_ads" };
         return null;
       },
     };
@@ -148,6 +148,7 @@ describe("operator pilot routes (production handlers)", () => {
         return rows[0] ?? null;
       },
       count: async ({ where }: any) => (await (prisma as any).warehouseBackfillChunk.findMany({ where })).length,
+      aggregate: async () => ({ _sum: { attempts: 0 } }),
       createMany: async ({ data }: any) => {
         writes.chunks += (Array.isArray(data) ? data : [data]).length;
         chunks.push(...(Array.isArray(data) ? data : [data]).map((row: any) => ({
@@ -265,6 +266,14 @@ describe("operator pilot routes (production handlers)", () => {
     const { res, body } = await post(jobsPost, { ...range90, workspaceId: OTHER_WS, connectionId: "conn-other", observedRowsPerDay: 10, bytesPerRow: 100 });
     assert.equal(res.status, 422);
     assert.equal(body.code, "WORKSPACE_NOT_ALLOWLISTED");
+    assert.equal(writes.jobs, 0);
+    assert.equal(writes.chunks, 0);
+  });
+
+  it("rejects connection provider mismatch with zero side effects", async () => {
+    const { res, body } = await post(jobsPost, { ...range90, connectionId: "conn-meta", observedRowsPerDay: 10, bytesPerRow: 100 });
+    assert.equal(res.status, 400);
+    assert.equal(body.code, "PROVIDER_CONNECTION_MISMATCH");
     assert.equal(writes.jobs, 0);
     assert.equal(writes.chunks, 0);
   });

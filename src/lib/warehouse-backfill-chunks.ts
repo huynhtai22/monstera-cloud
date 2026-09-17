@@ -259,11 +259,14 @@ export async function claimBackfillChunk(opts: {
   chunkId: string;
   workspaceId: string;
   leaseTtlMs?: number;
+  /** External transaction client (runs all statements on it; no nested transaction). */
+  client?: any;
 }): Promise<{ claimed: true; chunk: BackfillChunkRecord; leaseId: string } | { claimed: false; reason: string }> {
+  const db = opts.client ?? prisma;
   const now = new Date();
   const leaseId = randomUUID();
   const leaseExpiresAt = new Date(now.getTime() + (opts.leaseTtlMs ?? CHUNK_LEASE_TTL_MS));
-  const current = await (prisma as any).warehouseBackfillChunk.findFirst({
+  const current = await db.warehouseBackfillChunk.findFirst({
     where: { id: opts.chunkId, workspaceId: opts.workspaceId },
   });
   if (!current) return { claimed: false, reason: "not_found" };
@@ -271,7 +274,7 @@ export async function claimBackfillChunk(opts: {
   if (seen.status === "completed") return { claimed: false, reason: "already_completed" };
   if (seen.status === "failed") return { claimed: false, reason: "terminally_failed" };
   if (seen.attempts >= seen.maxAttempts) return { claimed: false, reason: "attempts_exhausted" };
-  const updated = await (prisma as any).warehouseBackfillChunk.updateMany({
+  const updated = await db.warehouseBackfillChunk.updateMany({
     where: {
       id: opts.chunkId,
       workspaceId: opts.workspaceId,
@@ -289,7 +292,7 @@ export async function claimBackfillChunk(opts: {
     },
   });
   if (updated.count === 0) {
-    const latest = await (prisma as any).warehouseBackfillChunk.findFirst({
+    const latest = await db.warehouseBackfillChunk.findFirst({
       where: { id: opts.chunkId, workspaceId: opts.workspaceId },
     });
     if (!latest) return { claimed: false, reason: "not_found" };
@@ -298,12 +301,12 @@ export async function claimBackfillChunk(opts: {
     if (latest.status === "running") return { claimed: false, reason: "lease_active" };
     return { claimed: false, reason: "not_claimable" };
   }
-  const row = await (prisma as any).warehouseBackfillChunk.findFirst({
+  const row = await db.warehouseBackfillChunk.findFirst({
     where: { id: opts.chunkId, workspaceId: opts.workspaceId },
   });
   const chunk = toRecord(row);
   if (chunk.attempts > chunk.maxAttempts) {
-    await (prisma as any).warehouseBackfillChunk.updateMany({
+    await db.warehouseBackfillChunk.updateMany({
       where: { id: opts.chunkId, workspaceId: opts.workspaceId, leaseId },
       data: {
         status: "failed",
@@ -324,14 +327,54 @@ export async function claimNextBackfillChunk(opts: {
   workspaceId: string;
   jobId: string;
   leaseTtlMs?: number;
+  /**
+   * Concurrency caps enforced atomically with the claim: the candidate
+   * selection, running-count checks, and guarded update run inside one
+   * transaction serialized per scope, so two simultaneous workers cannot both
+   * slip past a final slot. Absent limits, the legacy lock-free path applies.
+   */
+  concurrency?: { workspaceLimit: number; accountLimit: number };
 }): Promise<{ claimed: true; chunk: BackfillChunkRecord; leaseId: string } | { claimed: false; reason: string }> {
-  const now = new Date();
-  const candidate = await (prisma as any).warehouseBackfillChunk.findFirst({
-    where: { workspaceId: opts.workspaceId, jobId: opts.jobId, ...claimGuard(now) },
-    orderBy: { ordinal: "asc" },
+  if (!opts.concurrency) {
+    const now = new Date();
+    const candidate = await (prisma as any).warehouseBackfillChunk.findFirst({
+      where: { workspaceId: opts.workspaceId, jobId: opts.jobId, ...claimGuard(now) },
+      orderBy: { ordinal: "asc" },
+    });
+    if (!candidate) return { claimed: false, reason: "no_claimable_chunk" };
+    return claimBackfillChunk({ chunkId: candidate.id, workspaceId: opts.workspaceId, leaseTtlMs: opts.leaseTtlMs });
+  }
+  const { workspaceLimit, accountLimit } = opts.concurrency;
+  return (prisma as any).$transaction(async (tx: any) => {
+    // Consistent lock order (workspace, then account) with a deterministic
+    // tenant-scoped key: concurrent claims serialize here.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"xbclaim:" + opts.workspaceId}))`;
+    const now = new Date();
+    const candidate = await tx.warehouseBackfillChunk.findFirst({
+      where: { workspaceId: opts.workspaceId, jobId: opts.jobId, ...claimGuard(now) },
+      orderBy: { ordinal: "asc" },
+    });
+    if (!candidate) return { claimed: false as const, reason: "no_claimable_chunk" };
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"xbclaim:" + opts.workspaceId + ":" + String(candidate.connectionId) + ":" + String(candidate.accountId ?? "")}))`;
+    const runningWorkspace = await tx.warehouseBackfillChunk.count({
+      where: { workspaceId: opts.workspaceId, status: "running" },
+    });
+    if (runningWorkspace >= workspaceLimit) {
+      return { claimed: false as const, reason: "workspace_concurrency_exceeded" };
+    }
+    const runningAccount = await tx.warehouseBackfillChunk.count({
+      where: {
+        workspaceId: opts.workspaceId,
+        status: "running",
+        connectionId: candidate.connectionId,
+        accountId: candidate.accountId ?? "",
+      },
+    });
+    if (runningAccount >= accountLimit) {
+      return { claimed: false as const, reason: "account_concurrency_exceeded" };
+    }
+    return claimBackfillChunk({ chunkId: candidate.id, workspaceId: opts.workspaceId, leaseTtlMs: opts.leaseTtlMs, client: tx });
   });
-  if (!candidate) return { claimed: false, reason: "no_claimable_chunk" };
-  return claimBackfillChunk({ chunkId: candidate.id, workspaceId: opts.workspaceId, leaseTtlMs: opts.leaseTtlMs });
 }
 
 function fencingGuard(opts: { chunkId: string; workspaceId: string; leaseId: string; fencingToken: bigint | number | string }) {

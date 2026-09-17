@@ -16,6 +16,7 @@ import {
 import {
   loadPilotJob,
   runPilotBackfillJob,
+  countProviderCallsToday,
   PILOT_ACTIVE_JOB_STATUSES,
   PilotStateError,
 } from "@/lib/extended-backfill-pilot-lifecycle";
@@ -84,15 +85,18 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
     );
   }
 
-  const dayStart = new Date();
-  dayStart.setUTCHours(0, 0, 0, 0);
   const connectionId = ctx.chunks[0]?.connectionId ?? "";
   const accountId = ctx.chunks[0]?.accountId ?? "";
   const [activeJobs, providerCallsToday, runningWs, runningAcct, existingScopeRows] = await Promise.all([
     prisma.warehouseImportJob.count({
-      where: { workspaceId, idempotencyKey: { startsWith: "xbpilot:" }, status: { in: [...PILOT_ACTIVE_JOB_STATUSES] } },
+      where: {
+        workspaceId,
+        idempotencyKey: { startsWith: "xbpilot:" },
+        status: { in: [...PILOT_ACTIVE_JOB_STATUSES] },
+        NOT: { id },
+      },
     }),
-    prisma.warehouseBackfillChunk.count({ where: { workspaceId, provider, completedAt: { gte: dayStart } } }),
+    countProviderCallsToday(prisma as any, { workspaceId, provider }),
     prisma.warehouseBackfillChunk.count({ where: { workspaceId, status: "running" } }),
     prisma.warehouseBackfillChunk.count({ where: { workspaceId, status: "running", connectionId, accountId } }),
     prisma.campaignMetric.count({ where: { workspaceId, connectionId } }),
@@ -150,6 +154,10 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
           plan: ctx.job.plan ?? "pilot",
           isLeaseLost: () => false,
         }),
+      concurrency: {
+        workspaceLimit: config.maxConcurrentChunksPerWorkspace,
+        accountLimit: config.maxConcurrentChunksPerAccount,
+      },
     });
     try {
       await auditPilotEvent(prisma as any, {
