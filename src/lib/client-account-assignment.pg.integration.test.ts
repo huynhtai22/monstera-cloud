@@ -1147,11 +1147,11 @@ describe("PostgreSQL integration: client provider account assignments", () => {
     const exportResA = await getExportRows(exportReqA);
     assert.equal(exportResA.status, 200);
     const exportDataA = await exportResA.json();
-    assert.equal(exportDataA.success, true);
+    assert.ok(Array.isArray(exportDataA));
     // Header + 1 row
-    assert.equal(exportDataA.rows.length, 2);
-    assert.equal(exportDataA.rows[1][1], "Camp A1");
-    assert.equal(exportDataA.rows[1][4], 100);
+    assert.equal(exportDataA.length, 2);
+    assert.equal(exportDataA[1][1], "Camp A1");
+    assert.equal(exportDataA[1][4], 100);
 
     const exportReqB = new Request(
       `http://localhost/api/export/rows?clientId=${clientCPB}`,
@@ -1160,9 +1160,9 @@ describe("PostgreSQL integration: client provider account assignments", () => {
     const exportResB = await getExportRows(exportReqB);
     assert.equal(exportResB.status, 200);
     const exportDataB = await exportResB.json();
-    assert.equal(exportDataB.rows.length, 2);
-    assert.equal(exportDataB.rows[1][1], "Camp B2");
-    assert.equal(exportDataB.rows[1][4], 400);
+    assert.equal(exportDataB.length, 2);
+    assert.equal(exportDataB[1][1], "Camp B2");
+    assert.equal(exportDataB[1][4], 400);
 
     // 4. Report delivery dataset isolation
     const window = { start: "2026-09-01", end: "2026-09-02" };
@@ -1310,7 +1310,7 @@ describe("PostgreSQL integration: client provider account assignments", () => {
       })
     );
     const emptyExportData = await emptyExport.json();
-    assert.equal(emptyExportData.rows.length, 0, "Explicit client with zero assignments must export zero rows");
+    assert.deepEqual(emptyExportData, [], "Explicit client with zero assignments must export zero rows");
   });
 
   it("shared MCC export: two clients sharing one MCC connection export only their own assigned accounts; rival client rejected with 404", async () => {
@@ -1383,9 +1383,9 @@ describe("PostgreSQL integration: client provider account assignments", () => {
     );
     assert.equal(res1.status, 200);
     const data1 = await res1.json();
-    assert.equal(data1.rows.length, 2); // Header + 1 row
-    assert.equal(data1.rows[1][1], "Client 1 Campaign");
-    assert.equal(data1.rows[1][4], 555);
+    assert.equal(data1.length, 2); // Header + 1 row
+    assert.equal(data1[1][1], "Client 1 Campaign");
+    assert.equal(data1[1][4], 555);
 
     // Export for Client 2
     const res2 = await getExportRows(
@@ -1395,9 +1395,9 @@ describe("PostgreSQL integration: client provider account assignments", () => {
     );
     assert.equal(res2.status, 200);
     const data2 = await res2.json();
-    assert.equal(data2.rows.length, 2); // Header + 1 row
-    assert.equal(data2.rows[1][1], "Client 2 Campaign");
-    assert.equal(data2.rows[1][4], 666);
+    assert.equal(data2.length, 2); // Header + 1 row
+    assert.equal(data2[1][1], "Client 2 Campaign");
+    assert.equal(data2[1][4], 666);
 
     // Cross-workspace rival client ID rejection
     const rivalRes = await getExportRows(
@@ -1414,5 +1414,87 @@ describe("PostgreSQL integration: client provider account assignments", () => {
       })
     );
     assert.equal(nonExistentRes.status, 404, "Non-existent client ID must return 404");
+  });
+
+  it("globally keyset-paginates authorized multi-connection exports with snapshot and CSV guarantees", async () => {
+    const clientId = `cl-export-pages-${suffix}`;
+    const emptyClientId = `cl-export-empty-${suffix}`;
+    const conn1 = `conn-export-pages-1-${suffix}`;
+    const conn2 = `conn-export-pages-2-${suffix}`;
+    const account1 = `export-a-${suffix}`;
+    const account2 = `export-b-${suffix}`;
+    await db.client.createMany({ data: [
+      { id: clientId, workspaceId: ids.workspaceA, name: "Paged export", accountAssignmentsConfiguredAt: new Date() },
+      { id: emptyClientId, workspaceId: ids.workspaceA, name: "Empty export", accountAssignmentsConfiguredAt: new Date() },
+    ] });
+    await db.connection.createMany({ data: [
+      { id: conn1, workspaceId: ids.workspaceA, name: "Paged 1", provider: "google_ads", type: "source", status: "connected", remoteAccountId: account1, credentials: "{}" },
+      { id: conn2, workspaceId: ids.workspaceA, name: "Paged 2", provider: "google_ads", type: "source", status: "connected", remoteAccountId: account2, credentials: "{}" },
+    ] });
+    await db.clientProviderAccountAssignment.createMany({ data: [
+      { workspaceId: ids.workspaceA, clientId, connectionId: conn1, provider: "google_ads", accountId: account1 },
+      { workspaceId: ids.workspaceA, clientId, connectionId: conn2, provider: "google_ads", accountId: account2 },
+    ] });
+    const rows = [
+      [conn1, account1, "p-01", "2026-09-10", "Page 01"],
+      [conn2, account2, "p-02", "2026-09-11", "Page 02"],
+      [conn1, account1, "p-03a", "2026-09-12", "Page 03a"],
+      [conn2, account2, "p-03b", "2026-09-12", "Page 03b"],
+      [conn1, account1, "p-04", "2026-09-13", "Page 04"],
+    ] as const;
+    await db.campaignMetric.createMany({ data: rows.map(([connectionId, accountId, entityId, date, campaignName]) => ({
+      id: entityId,
+      workspaceId: ids.workspaceA,
+      connectionId,
+      platform: "google_ads",
+      accountId,
+      entityId,
+      campaignId: entityId,
+      campaignName,
+      date: new Date(`${date}T00:00:00.000Z`),
+      currency: "USD",
+    })) });
+
+    const request = (query: string) => new Request(`http://localhost/api/export/rows?clientId=${clientId}&since=2026-09-10&until=2026-09-13&limit=2${query}`, {
+      headers: { Authorization: `Bearer ${testApiKeySecret}` },
+    });
+    const first = await getExportRows(request(""));
+    assert.equal(first.status, 200);
+    const firstBody: any = await first.json();
+    assert.ok(Array.isArray(firstBody));
+    assert.equal(firstBody.length, 3, "header plus globally bounded two rows");
+    assert.equal(first.headers.get("X-Export-Page-Rows"), "2");
+    assert.equal(first.headers.get("X-Export-Has-More"), "true");
+    const cursor1 = first.headers.get("X-Export-Next-Cursor")!;
+    const snapshotAt = first.headers.get("X-Export-Snapshot-At")!;
+
+    await db.campaignMetric.create({ data: {
+      workspaceId: ids.workspaceA, connectionId: conn2, platform: "google_ads", accountId: account2,
+      entityId: "p-late", campaignId: "p-late", campaignName: "Late row", date: new Date("2026-09-12T00:00:00.000Z"),
+      currency: "USD", createdAt: new Date(new Date(snapshotAt).getTime() + 60_000),
+    } });
+    const second = await getExportRows(request(`&cursor=${encodeURIComponent(cursor1)}`));
+    const secondBody: any = await second.json();
+    const cursor2 = second.headers.get("X-Export-Next-Cursor")!;
+    const third = await getExportRows(request(`&cursor=${encodeURIComponent(cursor2)}`));
+    const thirdBody: any = await third.json();
+    const all = [...firstBody.slice(1), ...secondBody.slice(1), ...thirdBody.slice(1)];
+    assert.deepEqual(all.map((row: any[]) => row[1]), ["Page 01", "Page 02", "Page 03a", "Page 03b", "Page 04"]);
+    assert.equal(new Set(all.map((row: any[]) => row[1])).size, 5, "no duplicates or omissions");
+    assert.ok(!all.some((row: any[]) => row[1] === "Late row"), "post-snapshot insert is excluded");
+    assert.equal(third.headers.get("X-Export-Complete"), "true");
+
+    const csv = await getExportRows(new Request(`http://localhost/api/export/rows?clientId=${clientId}&since=2026-09-10&until=2026-09-13&limit=2&format=csv`, {
+      headers: { Authorization: `Bearer ${testApiKeySecret}` },
+    }));
+    assert.equal(csv.headers.get("X-Export-Page-Rows"), "2");
+    assert.equal(csv.headers.get("X-Export-Has-More"), "true");
+    assert.ok(csv.headers.get("X-Export-Next-Cursor"));
+
+    const unauthorizedCursor = await getExportRows(new Request(`http://localhost/api/export/rows?clientId=${emptyClientId}&limit=2&cursor=${encodeURIComponent(cursor1)}`, {
+      headers: { Authorization: `Bearer ${testApiKeySecret}` },
+    }));
+    assert.equal(unauthorizedCursor.status, 400);
+    assert.equal((await unauthorizedCursor.json()).code, "FILTER_MISMATCH");
   });
 });
