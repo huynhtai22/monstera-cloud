@@ -4,7 +4,7 @@ import { getCanonicalDateRange } from "@/lib/warehouse-date-range";
 import { buildAccountFilterPredicate, appendWherePredicate } from "@/lib/warehouse-account-filter";
 
 const DEFAULT_LIMIT = 1_000;
-const HARD_LIMIT = 100_000;
+export const HARD_LIMIT = 100_000;
 const STALE_AFTER_MS = 26 * 60 * 60 * 1_000;
 /**
  * Interactive-transaction budget for one consistent warehouse snapshot read.
