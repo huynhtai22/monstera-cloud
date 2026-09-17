@@ -225,6 +225,25 @@ describe("parent aggregation from persisted chunk states (production code)", () 
     );
   });
 
+  it("reports partial when completed slices carry partial provider errors", () => {
+    const aggregation = aggregateChunkStates([
+      record({ id: "a", status: "completed", persistedRows: 7 }),
+      record({ id: "b", ordinal: 1, status: "completed", persistedRows: 5, lastErrorCode: "PARTIAL_ACCOUNTS", lastError: "acct bad failed" }),
+    ]);
+    assert.equal(aggregation.status, "partial");
+    assert.equal(aggregation.partialChunks, 1);
+    assert.equal(aggregation.approximateRows, 12);
+    assert.equal(aggregation.errors.length, 1);
+    // Clean completion still reports completed.
+    assert.equal(
+      aggregateChunkStates([
+        record({ id: "a", status: "completed", persistedRows: 7 }),
+        record({ id: "b", ordinal: 1, status: "completed", persistedRows: 5 }),
+      ]).status,
+      "completed",
+    );
+  });
+
   it("derives inclusive coverage across chunks", () => {
     const aggregation = aggregateChunkStates([
       record({ id: "a", since: "2026-08-15", until: "2026-08-29", ordinal: 0 }),
@@ -253,6 +272,11 @@ describe("parent aggregation from persisted chunk states (production code)", () 
     assert.equal(code, "CHUNK_FAILED");
     assert.ok(!message.includes("secret-value-123"));
     assert.ok(message.includes("access_token=[redacted]"));
+    const quoted = sanitizeChunkError('upstream error {"access_token":"quoted-secret-456"} rejected');
+    assert.ok(!quoted.message.includes("quoted-secret-456"), quoted.message);
+    assert.ok(quoted.message.includes("access_token=[redacted]"), quoted.message);
+    const single = sanitizeChunkError("detail 'refresh_token' : 'single-secret-789' end");
+    assert.ok(!single.message.includes("single-secret-789"), single.message);
     const long = sanitizeChunkError("x".repeat(2000));
     assert.ok(long.message.length <= 500);
   });

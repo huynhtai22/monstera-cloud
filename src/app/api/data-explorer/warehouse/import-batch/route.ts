@@ -285,7 +285,11 @@ export async function processBatchItems(opts: {
  * modal-compatible results, or null when the job predates chunk
  * materialization (legacy JSON replay applies). A lost parent lease aborts
  * via LeaseLostError; a missing chunk model (older environments) falls back
- * to legacy replay instead of failing the job.
+ * to legacy replay instead of failing the job. Progress mirroring here never
+ * writes a terminal parent status: the lease-fenced `completeImportJob` tail
+ * below owns the terminal transition. If unfinished chunks remain under
+ * another worker's active lease, this throws so the parent is requeued
+ * instead of falsely failed.
  */
 export async function runCheckpointedSlicesForJob(opts: {
   jobId: string;
@@ -337,8 +341,18 @@ export async function runCheckpointedSlicesForJob(opts: {
           },
         });
         const first = chunkResults[0];
-        if (!first?.ok) throw new Error(first?.error ?? `${provider} chunk did not complete`);
-        return { rows: first.upserted ?? first.rowsIngested ?? 0 };
+        if (!first) throw new Error(`${provider} chunk produced no result`);
+        const rows = first.upserted ?? first.rowsIngested ?? 0;
+        // Preserve partial connector outcomes: committed rows count toward
+        // the slice (successful accounts are never re-contacted) while the
+        // recorded partial error keeps parent aggregation truthfully partial.
+        if (!first.ok && rows === 0) {
+          throw new Error(first.error ?? `${provider} chunk did not complete`);
+        }
+        return {
+          rows,
+          ...(first.ok ? {} : { partialError: { code: "PARTIAL_ACCOUNTS", error: first.error ?? "Some provider accounts failed" } }),
+        };
       },
     });
   } catch (err) {
@@ -348,6 +362,13 @@ export async function runCheckpointedSlicesForJob(opts: {
     throw err;
   }
   const chunks = await listBackfillChunks({ workspaceId: opts.workspaceId, jobId });
+  if (chunks.some((chunk) => chunk.status === "running")) {
+    // Slices remain under another worker's active lease: requeue the parent
+    // via the standard retry path instead of reporting terminal results.
+    throw new Error(
+      `Checkpoint chunks for job ${jobId} remain running under another worker lease; parent requeued without terminal results.`,
+    );
+  }
   return chunkResultsForModal(chunks);
 }
 

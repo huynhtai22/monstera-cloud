@@ -276,7 +276,11 @@ describe("PostgreSQL Integration: checkpointed backfill worker foundation", () =
       contacted.push(opts.chunkId);
       return { rows: 5 };
     };
-    const first = await runCheckpointedBackfillWorker("chkpt-crash", { workspaceId: WS_A, executor: executor as any });
+    const first = await runCheckpointedBackfillWorker("chkpt-crash", {
+      workspaceId: WS_A,
+      executor: executor as any,
+      finalizeParent: true,
+    });
     assert.equal(first.status, "completed");
     assert.equal(contacted.length, 2);
     contacted.length = 0;
@@ -363,12 +367,112 @@ describe("PostgreSQL Integration: checkpointed backfill worker foundation", () =
       chunkId: second!.id, workspaceId: WS_A, leaseId: badClaim.leaseId,
       fencingToken: badClaim.chunk.fencingToken, code: "PROVIDER_DOWN", error: "provider unavailable",
     });
-    const aggregation = await refreshParentJobFromChunks({ workspaceId: WS_A, jobId: "chkpt-partial" });
+    const aggregation = await refreshParentJobFromChunks({ workspaceId: WS_A, jobId: "chkpt-partial", finalize: true });
     assert.equal(aggregation?.status, "partial");
     const parent = await prisma!.warehouseImportJob.findUniqueOrThrow({ where: { id: "chkpt-partial" } });
     assert.equal(parent.status, "partial");
     assert.equal((parent.results as any[]).length, 2);
     assert.ok(String(parent.errorMsg).includes("1/2"));
+  });
+
+  it("progress mirroring never pre-empts the lease-fenced terminal transition", async (t) => {
+    if (!requireDb(t)) return;
+    await makeJob("chkpt-nopreempt", [
+      { connectionId: META_CONN, provider: "meta_ads", since: "2026-08-01", until: "2026-08-30" },
+    ]);
+    // Without finalize, a terminal aggregation is mirrored as counts/results
+    // only: parent status stays queued so the fenced completeImportJob path
+    // can perform the terminal transition.
+    const running = await runCheckpointedBackfillWorker("chkpt-nopreempt", {
+      workspaceId: WS_A,
+      executor: async () => ({ rows: 6 }),
+    });
+    assert.equal(running.status, "completed");
+    let parent = await prisma!.warehouseImportJob.findUniqueOrThrow({ where: { id: "chkpt-nopreempt" } });
+    assert.equal(parent.status, "queued");
+    assert.equal(parent.approximateRows, 6);
+    // The finalizer then owns the terminal transition.
+    const finalized = await refreshParentJobFromChunks({ workspaceId: WS_A, jobId: "chkpt-nopreempt", finalize: true });
+    assert.equal(finalized?.status, "completed");
+    parent = await prisma!.warehouseImportJob.findUniqueOrThrow({ where: { id: "chkpt-nopreempt" } });
+    assert.equal(parent.status, "completed");
+  });
+
+  it("an active foreign chunk lease never becomes a false parent failure", async (t) => {
+    if (!requireDb(t)) return;
+    let calls = 0;
+    await makeJob("chkpt-active-lease", [
+      { connectionId: META_CONN, provider: "meta_ads", since: "2026-08-01", until: "2026-08-30" },
+    ]);
+    const [chunk] = await listBackfillChunks({ workspaceId: WS_A, jobId: "chkpt-active-lease" });
+    // Another worker holds this chunk lease long-term.
+    const foreign = await claimBackfillChunk({ chunkId: chunk!.id, workspaceId: WS_A, leaseTtlMs: 600_000 });
+    assert.equal(foreign.claimed, true);
+    const aggregation = await runCheckpointedBackfillWorker("chkpt-active-lease", {
+      workspaceId: WS_A,
+      executor: (async () => {
+        calls += 1;
+        return { rows: 1 };
+      }) as any,
+    });
+    assert.equal(calls, 0);
+    assert.equal(aggregation.status, "running");
+    assert.equal(aggregation.runningChunks, 1);
+    assert.equal(aggregation.failedChunks, 0);
+    const parent = await prisma!.warehouseImportJob.findUniqueOrThrow({ where: { id: "chkpt-active-lease" } });
+    assert.notEqual(parent.status, "failed");
+  });
+
+  it("exhausted queued chunks converge to failed instead of spinning", async (t) => {
+    if (!requireDb(t)) return;
+    let calls = 0;
+    await makeJob("chkpt-spin", [
+      { connectionId: META_CONN, provider: "meta_ads", since: "2026-08-01", until: "2026-08-30" },
+    ]);
+    const [chunk] = await listBackfillChunks({ workspaceId: WS_A, jobId: "chkpt-spin" });
+    await prisma!.warehouseBackfillChunk.update({
+      where: { id: chunk!.id },
+      data: { attempts: 3, maxAttempts: 3 },
+    });
+    const aggregation = await runCheckpointedBackfillWorker("chkpt-spin", {
+      workspaceId: WS_A,
+      finalizeParent: true,
+      executor: (async () => {
+        calls += 1;
+        return { rows: 1 };
+      }) as any,
+    });
+    assert.equal(calls, 0);
+    assert.equal(aggregation.status, "failed");
+    const row = await prisma!.warehouseBackfillChunk.findUniqueOrThrow({ where: { id: chunk!.id } });
+    assert.equal(row.status, "failed");
+  });
+
+  it("partial executor outcomes preserve rows without re-contacting successes", async (t) => {
+    if (!requireDb(t)) return;
+    let calls = 0;
+    await makeJob("chkpt-preserve", [
+      { connectionId: META_CONN, provider: "meta_ads", since: "2026-08-01", until: "2026-08-30" },
+    ]);
+    const aggregation = await runCheckpointedBackfillWorker("chkpt-preserve", {
+      workspaceId: WS_A,
+      finalizeParent: true,
+      executor: (async () => {
+        calls += 1;
+        return { rows: 7, partialError: { code: "PARTIAL_ACCOUNTS", error: "acct bad failed" } };
+      }) as any,
+    });
+    assert.equal(calls, 1);
+    assert.equal(aggregation.status, "partial");
+    assert.equal(aggregation.partialChunks, 1);
+    assert.equal(aggregation.approximateRows, 7);
+    const [chunk] = await listBackfillChunks({ workspaceId: WS_A, jobId: "chkpt-preserve" });
+    assert.equal(chunk!.status, "completed");
+    assert.equal(chunk!.persistedRows, 7);
+    assert.equal(chunk!.lastErrorCode, "PARTIAL_ACCOUNTS");
+    const parent = await prisma!.warehouseImportJob.findUniqueOrThrow({ where: { id: "chkpt-preserve" } });
+    assert.equal(parent.status, "partial");
+    assert.ok(String(parent.errorMsg).includes("partial"));
   });
 
   it("OAuth Meta 90-day enqueue materializes three executable chunks with exact ranges", async (t) => {
@@ -493,6 +597,95 @@ describe("PostgreSQL Integration: checkpointed backfill worker foundation", () =
     validateChunkSpecs([
       { connectionId: "c", accountId: "", provider: "meta_ads", since: "2026-08-01", until: "2026-08-30", ordinal: 0 },
     ]);
+  });
+
+  it("route checkpoint path preserves partial rows and requeues on foreign leases", async (t) => {
+    if (!requireDb(t)) return;
+    const { runCheckpointedSlicesForJob } = await import("@/app/api/data-explorer/warehouse/import-batch/route");
+    const { claimImportJob } = await import("./warehouse-import-job");
+    const { encrypt } = await import("./encryption");
+    const singleton = (await import("@/lib/prisma")).default;
+    process.env.ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const creds = encrypt(JSON.stringify({ accessToken: "synthetic-route", extraFields: {} }));
+    const db = prisma!;
+    // NB: production code uses the guarded singleton client, so the
+    // provider-access doubles must be installed on it (not on this file's
+    // raw PrismaClient) and restored afterwards.
+    const savedConnection = (singleton as any).connection;
+    const savedAccess = (singleton as any).workspaceProviderAccess;
+    (singleton as any).connection = {
+      findMany: async () => [
+        { id: META_CONN, workspaceId: WS_A, provider: "meta_ads", credentials: creds, status: "connected" },
+      ],
+    };
+    (singleton as any).workspaceProviderAccess = {
+      findMany: async () => [{ provider: "meta_ads", enabled: true }],
+    };
+    try {
+      // Partial provider outcome: committed rows preserved, slice completed
+      // with a recorded partial error (successful accounts not re-contacted).
+      await makeJob("chkpt-route-partial", [
+        { connectionId: META_CONN, provider: "meta_ads", since: "2026-08-01", until: "2026-08-30" },
+      ]);
+      const parentClaim = await claimImportJob("chkpt-route-partial");
+      assert.equal(parentClaim.claimed, true);
+      const partialSync = (async () => ({
+        success: false,
+        outcome: "partial",
+        rowsIngested: 7,
+        error: "acct bad denied",
+        children: [
+          { id: "good", kind: "ad_account", ok: true, rowsIngested: 7 },
+          { id: "bad", kind: "ad_account", ok: false, error: "denied", retryable: true },
+        ],
+      })) as any;
+      const results = await runCheckpointedSlicesForJob({
+        jobId: "chkpt-route-partial",
+        leaseId: parentClaim.leaseId!,
+        workspaceId: WS_A,
+        plan: "pilot",
+        syncFn: partialSync,
+        isLeaseLost: () => false,
+      });
+      assert.ok(results);
+      assert.equal(results!.length, 1);
+      assert.equal(results![0]!.ok, true);
+      assert.equal(results![0]!.upserted, 7);
+      assert.equal(results![0]!.error, "acct bad denied");
+      const [chunk] = await listBackfillChunks({ workspaceId: WS_A, jobId: "chkpt-route-partial" });
+      assert.equal(chunk!.status, "completed");
+      assert.equal(chunk!.persistedRows, 7);
+      assert.equal(chunk!.lastErrorCode, "PARTIAL_ACCOUNTS");
+      const parent = await db.warehouseImportJob.findUniqueOrThrow({ where: { id: "chkpt-route-partial" } });
+      assert.notEqual(parent.status, "failed");
+
+      // Foreign active lease: no terminal results; the caller requeues.
+      await makeJob("chkpt-route-leased", [
+        { connectionId: META_CONN, provider: "meta_ads", since: "2026-08-01", until: "2026-08-30" },
+      ]);
+      const [leased] = await listBackfillChunks({ workspaceId: WS_A, jobId: "chkpt-route-leased" });
+      const foreign = await claimBackfillChunk({ chunkId: leased!.id, workspaceId: WS_A, leaseTtlMs: 600_000 });
+      assert.equal(foreign.claimed, true);
+      await assert.rejects(
+        () =>
+          runCheckpointedSlicesForJob({
+            jobId: "chkpt-route-leased",
+            leaseId: "parent-lease-route",
+            workspaceId: WS_A,
+            plan: "pilot",
+            syncFn: (async () => {
+              throw new Error("must not contact providers while foreign lease is active");
+            }) as any,
+            isLeaseLost: () => false,
+          }),
+        /another worker lease/,
+      );
+      const leasedParent = await db.warehouseImportJob.findUniqueOrThrow({ where: { id: "chkpt-route-leased" } });
+      assert.notEqual(leasedParent.status, "failed");
+    } finally {
+      (singleton as any).connection = savedConnection;
+      (singleton as any).workspaceProviderAccess = savedAccess;
+    }
   });
 
   it("capacity: claim, aggregation, recovery, and polling queries use indexes", async (t) => {

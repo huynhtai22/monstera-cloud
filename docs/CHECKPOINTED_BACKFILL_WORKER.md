@@ -87,6 +87,17 @@ states so the modal is unchanged.
 - Claim = single-statement guarded `updateMany` (same proven strength as job
   claiming); fencing token increments per claim; completion/failure/heartbeat
   must match `(id, workspaceId, leaseId, fencingToken)`.
+- Progress mirroring never writes parent `status`: the worker owns `running`
+  from its claim and only the lease-fenced `completeImportJob` path (via
+  `finalize`) writes terminal transitions. Re-runs never regress parents.
+- No-claimable-chunk stops are non-terminal: chunks still running under
+  another lease keep the parent out of `failed`; the route layer requeues the
+  parent instead of reporting terminal results. Queued-but-exhausted chunks
+  are failed explicitly so the loop always converges.
+- Partial provider outcomes are preserved: committed rows complete the slice
+  (successful accounts are never re-contacted) with a recorded partial error
+  that keeps parent aggregation truthfully `partial`.
+- Error sanitizer covers bare, `=`-assigned, and quoted JSON credential forms.
 - Extended execution stays disabled: materialization refuses chunk-guarded
   totals beyond the approved 90-day automatic window and any per-slice span
   over 30 days; `EXTENDED_BACKFILL_EXECUTION_ENABLED` defaults off, reads env

@@ -365,19 +365,22 @@ export async function heartbeatBackfillChunk(opts: {
 }
 
 const SENSITIVE_VALUE_PATTERN =
-  /(access_token|refresh_token|client_secret|accessToken|refreshToken)\s*[:=]\s*\S+/gi;
+  /(["']?)(access_token|refresh_token|client_secret|accessToken|refreshToken)\1\s*[:=]\s*["']?[^\s"',;}\]]+["']?/gi;
 
 /** Truncates and redacts credential-like material from persisted errors. */
 export function sanitizeChunkError(error: unknown, code = "CHUNK_FAILED"): { code: string; message: string } {
   const raw = error instanceof Error ? error.message : typeof error === "string" ? error : "Chunk failed";
-  const redacted = String(raw).replace(SENSITIVE_VALUE_PATTERN, "$1=[redacted]");
+  const redacted = String(raw).replace(SENSITIVE_VALUE_PATTERN, "$2=[redacted]");
   return { code, message: redacted.slice(0, 500) };
 }
 
 /**
  * Records durable success. Callers must invoke this only after metric
  * publication commits; `persistedRows` is the committed count, never a
- * pre-call estimate.
+ * pre-call estimate. `partialError` preserves a partial provider outcome
+ * (some accounts committed rows while others failed) without re-contacting
+ * the successful accounts: the slice stays completed, but the recorded error
+ * keeps the parent aggregation truthfully partial.
  */
 export async function completeBackfillChunk(opts: {
   chunkId: string;
@@ -385,8 +388,12 @@ export async function completeBackfillChunk(opts: {
   leaseId: string;
   fencingToken: bigint | number | string;
   persistedRows: number;
+  partialError?: { code?: string; error?: unknown };
 }): Promise<BackfillChunkRecord> {
   const now = new Date();
+  const partial = opts.partialError
+    ? sanitizeChunkError(opts.partialError.error, opts.partialError.code ?? "PARTIAL_ACCOUNTS")
+    : null;
   const updated = await (prisma as any).warehouseBackfillChunk.updateMany({
     where: fencingGuard(opts),
     data: {
@@ -394,8 +401,8 @@ export async function completeBackfillChunk(opts: {
       persistedRows: Math.max(0, Math.floor(opts.persistedRows)),
       leaseId: null,
       leaseExpiresAt: null,
-      lastErrorCode: null,
-      lastError: null,
+      lastErrorCode: partial?.code ?? null,
+      lastError: partial?.message ?? null,
       completedAt: now,
       updatedAt: now,
     },
@@ -480,6 +487,33 @@ export async function sweepExhaustedChunks(opts: { workspaceId: string; jobId: s
   return swept;
 }
 
+/**
+ * Marks queued chunks with no attempts left as terminally failed. The claim
+ * path refuses them, so without this step a worker loop would spin on an
+ * unclaimable queued chunk instead of converging to a terminal parent.
+ */
+export async function failExhaustedQueuedChunks(opts: { workspaceId: string; jobId: string }): Promise<number> {
+  const queued = await (prisma as any).warehouseBackfillChunk.findMany({
+    where: { workspaceId: opts.workspaceId, jobId: opts.jobId, status: "queued" },
+  });
+  let failed = 0;
+  for (const row of queued) {
+    const record = toRecord(row);
+    if (record.attempts < record.maxAttempts) continue;
+    const updated = await (prisma as any).warehouseBackfillChunk.updateMany({
+      where: { id: record.id, workspaceId: opts.workspaceId, status: "queued" },
+      data: {
+        status: "failed",
+        lastErrorCode: record.lastErrorCode ?? "ATTEMPTS_EXHAUSTED",
+        lastError: record.lastError ?? "Chunk attempts exhausted.",
+        updatedAt: new Date(),
+      },
+    });
+    failed += updated.count;
+  }
+  return failed;
+}
+
 export interface ParentBackfillAggregation {
   readonly status: "queued" | "running" | "completed" | "partial" | "failed";
   readonly totalChunks: number;
@@ -487,6 +521,8 @@ export interface ParentBackfillAggregation {
   readonly failedChunks: number;
   readonly runningChunks: number;
   readonly queuedChunks: number;
+  /** Completed chunks that carry a partial provider error. */
+  readonly partialChunks: number;
   readonly approximateRows: number;
   readonly errors: readonly { chunkId: string; connectionId: string; accountId: string; code: string; error: string }[];
   /** Inclusive coverage across all chunks (null when no chunks exist). */
@@ -500,6 +536,10 @@ export function aggregateChunkStates(chunks: readonly BackfillChunkRecord[]): Pa
   const failed = chunks.filter((chunk) => chunk.status === "failed");
   const running = chunks.filter((chunk) => chunk.status === "running");
   const queued = chunks.filter((chunk) => chunk.status === "queued");
+  // A completed chunk with a recorded error means some provider accounts in
+  // that slice failed while others committed rows: the slice is done (never
+  // re-contacted) but the parent must report partial, never completed.
+  const partial = completed.filter((chunk) => chunk.lastError);
   const approximateRows = chunks.reduce((sum, chunk) => sum + (chunk.persistedRows ?? 0), 0);
   const errors = chunks
     .filter((chunk) => chunk.lastError)
@@ -521,10 +561,10 @@ export function aggregateChunkStates(chunks: readonly BackfillChunkRecord[]): Pa
     status = "queued";
   } else if (running.length > 0 || (completed.length > 0 && queued.length > 0)) {
     status = "running";
-  } else if (completed.length > 0 && failed.length > 0) {
-    status = "partial";
-  } else if (completed.length === chunks.length) {
+  } else if (completed.length === chunks.length && failed.length === 0 && partial.length === 0) {
     status = "completed";
+  } else if (completed.length > 0 && (failed.length > 0 || partial.length > 0)) {
+    status = "partial";
   } else if (failed.length > 0 && queued.length === 0) {
     status = "failed";
   } else {
@@ -537,6 +577,7 @@ export function aggregateChunkStates(chunks: readonly BackfillChunkRecord[]): Pa
     failedChunks: failed.length,
     runningChunks: running.length,
     queuedChunks: queued.length,
+    partialChunks: partial.length,
     approximateRows,
     errors,
     coverage: spanOf(chunks),
@@ -562,24 +603,36 @@ export function chunkResultsForModal(chunks: readonly BackfillChunkRecord[]): Ba
 }
 
 /**
- * Recomputes parent progress from chunks and mirrors it into the legacy JSON
- * contract (`completedItems`, `approximateRows`, `results`, `status`,
- * `errorMsg`) so `RefreshWarehouseModal` polling is unchanged. Jobs without
- * chunks are left untouched for the legacy worker.
+ * Recomputes parent progress from chunks and mirrors counts/results into the
+ * legacy JSON contract so `RefreshWarehouseModal` polling is unchanged.
+ * Progress mirroring never writes parent `status`: the worker owns `running`
+ * from its claim, and only the lease-fenced `completeImportJob` path (via
+ * `finalize`) may write a terminal transition (telemetry, cache invalidation,
+ * lease release). Writing any other status here would break the owner's
+ * lease and make fenced writes misfire as lost leases. Jobs without chunks
+ * are left untouched for the legacy worker.
  */
 export async function refreshParentJobFromChunks(opts: {
   workspaceId: string;
   jobId: string;
+  finalize?: boolean;
 }): Promise<ParentBackfillAggregation | null> {
   const chunks = await listBackfillChunks(opts);
   if (chunks.length === 0) return null;
   const aggregation = aggregateChunkStates(chunks);
   const results = chunkResultsForModal(chunks);
   const failedMessages = aggregation.errors.map((entry) => entry.error).filter(Boolean).slice(0, 2);
-  const outcomeToJobStatus =
-    aggregation.status === "completed" || aggregation.status === "partial" || aggregation.status === "failed"
-      ? aggregation.status
-      : undefined;
+  const aggregationTerminal =
+    aggregation.status === "completed" || aggregation.status === "partial" || aggregation.status === "failed";
+  const outcomeToJobStatus = opts.finalize && aggregationTerminal ? aggregation.status : undefined;
+  const scopeSummary = [
+    ...(aggregation.failedChunks > 0
+      ? [`${aggregation.failedChunks}/${aggregation.totalChunks} chunk(s) failed`]
+      : []),
+    ...(aggregation.partialChunks > 0
+      ? [`${aggregation.partialChunks}/${aggregation.totalChunks} chunk(s) partial`]
+      : []),
+  ].join("; ");
   await (prisma as any).warehouseImportJob.updateMany({
     where: { id: opts.jobId, workspaceId: opts.workspaceId },
     data: {
@@ -592,13 +645,10 @@ export async function refreshParentJobFromChunks(opts: {
             finishedAt: new Date(),
             errorMsg:
               failedMessages.length > 0
-                ? `${outcomeToJobStatus === "failed" ? "Import failed" : "Partial import"}: ${aggregation.failedChunks}/${aggregation.totalChunks} chunk(s) failed. ${failedMessages.join(" | ")}`
+                ? `${outcomeToJobStatus === "failed" ? "Import failed" : "Partial import"}${scopeSummary ? `: ${scopeSummary}` : ""}. ${failedMessages.join(" | ")}`
                 : null,
           }
-        : {
-            status: aggregation.status,
-            errorMsg: null,
-          }),
+        : {}),
       updatedAt: new Date(),
     },
   });
@@ -623,14 +673,21 @@ export type CheckpointChunkExecutor = (opts: {
   since: string;
   until: string;
   chunkId: string;
-}) => Promise<{ rows: number }>;
+}) => Promise<{ rows: number; partialError?: { code?: string; error?: unknown } }>;
 
 /**
  * Executes every claimable chunk newest-first with per-chunk heartbeats.
  * Completed chunks are never contacted again on retry; failed chunks retry
  * within their bounded attempts; expired running chunks are reclaimed. The
  * executor publishes metrics (idempotent via the `CampaignMetric` unique
- * key); completion is recorded only afterwards with the committed row count.
+ * key); completion is recorded only afterwards with the committed row count,
+ * preserving partial provider outcomes instead of discarding them.
+ *
+ * When no chunk is claimable but unfinished work remains under another
+ * worker's active lease, the loop stops without finalizing: the returned
+ * aggregation stays `running` so callers must not report terminal results.
+ * Parent terminal transitions belong to the caller (`finalizeParent`), which
+ * keeps the lease-fenced `completeImportJob` path authoritative.
  */
 export async function runCheckpointedBackfillWorker(
   jobId: string,
@@ -638,14 +695,25 @@ export async function runCheckpointedBackfillWorker(
     workspaceId: string;
     executor: CheckpointChunkExecutor;
     leaseTtlMs?: number;
+    finalizeParent?: boolean;
     onChunkSettled?: (aggregation: ParentBackfillAggregation) => Promise<void> | void;
   },
 ): Promise<ParentBackfillAggregation> {
   await sweepExhaustedChunks({ workspaceId: opts.workspaceId, jobId });
+  await failExhaustedQueuedChunks({ workspaceId: opts.workspaceId, jobId });
   let aggregation = aggregateChunkStates(await listBackfillChunks({ workspaceId: opts.workspaceId, jobId }));
   for (;;) {
     const claim = await claimNextBackfillChunk({ workspaceId: opts.workspaceId, jobId, leaseTtlMs: opts.leaseTtlMs });
-    if (!claim.claimed) break;
+    if (!claim.claimed) {
+      if (claim.reason === "attempts_exhausted") {
+        await failExhaustedQueuedChunks({ workspaceId: opts.workspaceId, jobId });
+        aggregation =
+          (await refreshParentJobFromChunks({ workspaceId: opts.workspaceId, jobId, finalize: opts.finalizeParent })) ??
+          aggregation;
+        continue;
+      }
+      break;
+    }
     const chunk = claim.chunk;
     // The claim already incremented the fencing token; re-read the authoritative value.
     const claimedRow = await (prisma as any).warehouseBackfillChunk.findFirst({
@@ -674,6 +742,7 @@ export async function runCheckpointedBackfillWorker(
         leaseId: claim.leaseId,
         fencingToken,
         persistedRows: outcome.rows,
+        ...(outcome.partialError ? { partialError: outcome.partialError } : {}),
       });
     } catch (error) {
       if (error instanceof ChunkAttemptsExhaustedError) {
@@ -702,9 +771,13 @@ export async function runCheckpointedBackfillWorker(
     } finally {
       if (heartbeatTimer) clearInterval(heartbeatTimer);
     }
-    aggregation = (await refreshParentJobFromChunks({ workspaceId: opts.workspaceId, jobId })) ?? aggregation;
+    aggregation =
+      (await refreshParentJobFromChunks({ workspaceId: opts.workspaceId, jobId, finalize: opts.finalizeParent })) ??
+      aggregation;
     if (opts.onChunkSettled) await opts.onChunkSettled(aggregation);
   }
-  aggregation = (await refreshParentJobFromChunks({ workspaceId: opts.workspaceId, jobId })) ?? aggregation;
+  aggregation =
+    (await refreshParentJobFromChunks({ workspaceId: opts.workspaceId, jobId, finalize: opts.finalizeParent })) ??
+    aggregation;
   return aggregation;
 }
