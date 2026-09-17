@@ -593,6 +593,10 @@ model CampaignMetric {
   @@index([connectionId, date])
   @@index([workspaceId, accountId, date])
   @@index([workspaceId, platform, accountId, date])
+  // Default explorer view: workspace-wide date-bounded recency paging with no
+  // platform/account equality. Measured 60ms/58k-buffer seq-scan+sort at 790k
+  // rows without it; narrow two-column shape keeps write amplification minimal.
+  @@index([workspaceId, date])
 }
 
 /// Provider-discovered Shopee campaign identity. This is intentionally separate
