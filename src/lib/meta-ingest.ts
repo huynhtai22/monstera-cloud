@@ -15,6 +15,7 @@ import { logger } from '@/lib/logger';
 import {
   upsertMetaMetric,
   heartbeatMetaSyncLock,
+  normalizeMetaAdName,
   type MetaMetricPayload,
 } from '@/lib/meta-sync-lock';
 import type { MetaInsightsRow, MetaAction } from '@/lib/meta-ads';
@@ -154,6 +155,7 @@ async function processChunk(
         const adsetId     = String(row.adset_id ?? '');
         const adsetName   = String(row.adset_name ?? '');
         const adId        = String(row.ad_id ?? '');
+        const adName      = normalizeMetaAdName(row.ad_name);
         const breakdownHash = buildBreakdownHash(row, opts.breakdowns ?? []);
 
         const metrics: MetaMetricPayload = {
@@ -182,6 +184,7 @@ async function processChunk(
           adsetId,
           adsetName,
           adId,
+          adName,
           date,
           breakdownHash,
           metrics,

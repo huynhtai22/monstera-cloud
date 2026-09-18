@@ -40,6 +40,14 @@ export interface CampaignMetricPayload {
   roas?: number;
   currency?: string;
   rawData?: unknown;
+  /** Promoted Shopee Ads broad/direct/keyword display values. Null = unknown (legacy fallback applies). */
+  shopeeBroadOrders?: number | null;
+  shopeeBroadUnits?: number | null;
+  shopeeBroadGmv?: number | null;
+  shopeeDirectOrders?: number | null;
+  shopeeDirectUnits?: number | null;
+  shopeeDirectGmv?: number | null;
+  shopeeKeywordSettingsCount?: number | null;
   syncJobId?: string;
   /** When present, the row is stamped with lease evidence and ingestion is fenced. */
   lease?: ConnectionLease;
@@ -80,6 +88,13 @@ export async function upsertCampaignMetric(
     roas = 0,
     currency,
     rawData,
+    shopeeBroadOrders,
+    shopeeBroadUnits,
+    shopeeBroadGmv,
+    shopeeDirectOrders,
+    shopeeDirectUnits,
+    shopeeDirectGmv,
+    shopeeKeywordSettingsCount,
     syncJobId,
     lease,
   } = payload;
@@ -102,6 +117,26 @@ export async function upsertCampaignMetric(
   const safeRoas = Number.isFinite(roas) ? Math.max(0, roas) : 0;
   const safeCpc = Number.isFinite(cpc) ? Math.max(0, cpc) : safeClicks > 0 ? safeSpend / safeClicks : 0;
   const safeCtr = Number.isFinite(ctr) ? Math.max(0, ctr) : safeImpressions > 0 ? (safeClicks / safeImpressions) * 100 : 0;
+  // Promoted Shopee display values use the same finite/non-negative
+  // normalization as the normalized conversions/revenue fields. Zero is
+  // a valid value and must never be coerced to null — hence ??, never ||.
+  // Non-finite garbage becomes NULL so the legacy sanitized fallback applies
+  // instead of poisoning totals with NaN/Infinity.
+  const sanitizePromoted = (v: number | null | undefined): number | null => {
+    if (v == null) return null;
+    if (!Number.isFinite(v)) return null;
+    return Math.max(0, v);
+  };
+  const safeShopee = {
+    shopeeBroadOrders: sanitizePromoted(shopeeBroadOrders),
+    shopeeBroadUnits: sanitizePromoted(shopeeBroadUnits),
+    shopeeBroadGmv: sanitizePromoted(shopeeBroadGmv),
+    shopeeDirectOrders: sanitizePromoted(shopeeDirectOrders),
+    shopeeDirectUnits: sanitizePromoted(shopeeDirectUnits),
+    shopeeDirectGmv: sanitizePromoted(shopeeDirectGmv),
+    shopeeKeywordSettingsCount:
+      shopeeKeywordSettingsCount == null ? null : Math.max(0, Math.round(shopeeKeywordSettingsCount)),
+  };
 
   await (prisma as any).campaignMetric.upsert({
     where: {
@@ -140,6 +175,7 @@ export async function upsertCampaignMetric(
       roas: safeRoas,
       currency: safeCurrency,
       rawData: rawData ? JSON.stringify(rawData) : null,
+      ...safeShopee,
       syncJobId: syncJobId ?? null,
       pulledAt: new Date(),
       lockScope: lease?.scope ?? null,
@@ -163,6 +199,7 @@ export async function upsertCampaignMetric(
       roas: safeRoas,
       currency: safeCurrency,
       rawData: rawData ? JSON.stringify(rawData) : null,
+      ...safeShopee,
       syncJobId: syncJobId ?? null,
       pulledAt: new Date(),
       lockScope: lease?.scope ?? null,
