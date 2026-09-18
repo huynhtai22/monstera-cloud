@@ -233,4 +233,23 @@ describe("PostgreSQL integration: warehouse bulk upsert", () => {
       await releaseMetaSyncLock({ scope: lease.scope, leaseId: lease.leaseId, success: true }).catch(() => undefined);
     }
   });
+
+  it("bulk generic writes stamp lease evidence", async (t) => {
+    if (!isDbAvailable) return t.skip("PostgreSQL database not reachable");
+    const outcome = await flushGenericPayloadBatches(
+      [{
+        workspaceId: ws, connectionId: connGeneric.id, platform: "google_ads",
+        accountId: "act_lease", level: "campaign", entityId: "leased", campaignId: "leased",
+        date: new Date("2026-03-06T00:00:00.000Z"),
+        impressions: 1, clicks: 1, spend: 1, cpc: 1, ctr: 1, conversions: 0,
+        lease: { scope: "scope-test", leaseId: "lease-test", fencingToken: BigInt(99) },
+      }],
+      { fallbackRow: (p) => upsertCampaignMetric(p) },
+    );
+    assert.equal(outcome.failed, 0);
+    assert.equal(outcome.fallbacks, 0, "happy path stays on the bulk statement");
+    const row = await prisma.campaignMetric.findFirstOrThrow({ where: { workspaceId: ws, entityId: "leased" } });
+    assert.equal((row as any).lockScope, "scope-test");
+    assert.equal(BigInt((row as any).fencingToken).toString(), "99");
+  });
 });

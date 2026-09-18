@@ -329,4 +329,29 @@ describe("bulk flush helpers (unit)", () => {
     assert.deepEqual(fallbackSeen, ["poison"], "poison row attributed per-row");
     assert.deepEqual(outcome, { upserted: 1, failed: 1, fallbacks: 1 });
   });
+
+  it("lost lease aborts remaining batches without writing", async () => {
+    const written: string[] = [];
+    let heartbeats = 0;
+    const outcome = await flushGenericPayloadBatches(
+      [1, 2, 3, 4].map((n) => ({
+        workspaceId: "ws", connectionId: "c", platform: "google_ads", accountId: "a",
+        level: "campaign", entityId: `e${n}`, campaignId: `e${n}`,
+        date: new Date("2026-03-01T00:00:00.000Z"),
+        impressions: 1, clicks: 1, spend: 1, cpc: 1, ctr: 1, conversions: 0,
+      })),
+      {
+        fallbackRow: async (p) => { written.push(p.entityId); },
+        onHeartbeat: async () => {
+          heartbeats++;
+          if (heartbeats > 1) throw new Error("lease stolen");
+        },
+        maxRows: 2,
+        executor: { executeBulk: async () => 2 },
+      },
+    );
+    assert.equal(outcome.upserted, 2, "completed batch keeps its writes");
+    assert.equal(outcome.failed, 2, "remaining batches counted failed without writing");
+    assert.deepEqual(written, [], "no per-row fallback writes after a lost lease");
+  });
 });

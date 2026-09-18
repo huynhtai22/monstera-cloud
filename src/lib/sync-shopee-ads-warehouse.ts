@@ -76,10 +76,20 @@ async function upsertPayloadsInChunks(
   // Bulk path (disabled by default): batched UNNEST upsert with per-row
   // fallback. The per-row loop below is unchanged.
   if (isWarehouseBulkUpsertEnabled()) {
-    const result = await flushGenericPayloadBatches(valid as CampaignMetricPayload[], {
-      fallbackRow: (payload) => upsertCampaignMetric({ ...payload, lease }),
+    // Attach the lease before sanitization so bulk writes stamp the same
+    // lockScope/fencingToken evidence as the per-row path.
+    const leased = valid.map((payload) => ({ ...payload, lease }) as CampaignMetricPayload);
+    const result = await flushGenericPayloadBatches(leased, {
+      fallbackRow: (payload) => upsertCampaignMetric(payload),
       onHeartbeat: lease ? () => heartbeatConnectionSyncLease(lease) : undefined,
     });
+    // Preserve the previous failure semantics: the per-row Promise.all path
+    // rejected on the first row failure and produced a failed sync result.
+    if (result.failed > 0) {
+      throw new Error(
+        `[syncShopeeAdsWarehouse] Bulk upsert wrote ${result.upserted} rows with ${result.failed} failures`,
+      );
+    }
     return result.upserted;
   }
   let upserted = 0;

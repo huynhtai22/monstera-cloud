@@ -687,11 +687,12 @@ export async function flushGenericPayloadBatches(
       try {
         await opts.onHeartbeat();
       } catch (error) {
-        logger.warn("[BULK_UPSERT] Lease heartbeat lost; routing remaining batches per-row", error);
-        const remaining = batches.slice(batches.indexOf(batch)).flatMap((b) => b.rows.map(({ owner }) => owner));
-        const result = await runPerRowFallback(remaining, (row) => opts.fallbackRow(row));
-        upserted += result.upserted;
-        failed += result.failed;
+        // A lost lease must stop writes: the per-row fallback does not assert
+        // ownership, so remaining rows are counted failed without writing —
+        // exactly like the per-row loops abort on a failed heartbeat.
+        logger.warn("[BULK_UPSERT] Lease heartbeat lost; aborting remaining batches without writing", error);
+        const remaining = batches.slice(batches.indexOf(batch)).reduce((sum, b) => sum + b.rows.length, 0);
+        failed += remaining;
         fallbacks += 1;
         break;
       }
