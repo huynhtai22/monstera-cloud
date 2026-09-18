@@ -4,8 +4,11 @@
  * Disabled by default behind `WAREHOUSE_BULK_UPSERT_ENABLED=1`. When disabled,
  * every caller uses the existing per-row Prisma path; this module is inert.
  *
- * Design (Tab 2 approved):
- * - One `$executeRaw` statement per batch with typed parallel arrays + UNNEST.
+ * Design (Tab 2 approved, UNNEST adapted to a single JSONB bind):
+ * - One `$executeRaw` statement per batch with the whole batch bound as one
+ *   JSONB value expanded by `jsonb_to_recordset`. A single text bind keeps
+ *   parameter encoding deterministic across executions (parallel-array binds
+ *   proved order-dependent under Prisma's per-statement type inference).
  * - Same conflict key as the per-row path:
  *   (connectionId, accountId, level, entityId, date, breakdownHash).
  * - Meta batches carry fencing inside the same statement via a `lease_ok` CTE
@@ -228,7 +231,9 @@ export function sanitizeBulkRow(input: BulkRowInput): BulkMetricRow {
 
 /** Rough payload-byte estimate: variable strings + fixed numeric overhead. */
 export function estimateBulkRowBytes(row: BulkMetricRow): number {
-  let bytes = 256;
+  // 1024 bytes of fixed overhead covers the JSON field-name envelope (~37
+  // keys) plus numeric serialization when the batch binds as one JSONB value.
+  let bytes = 1024;
   const strings = [
     row.workspaceId, row.connectionId, row.platform, row.accountId,
     row.level, row.entityId, row.campaignId, row.campaignName,
@@ -354,92 +359,83 @@ const META_UPDATE_SET = [
 const CONFLICT_TARGET =
   '("connectionId", "accountId", "level", "entityId", "date", "breakdownHash")';
 
-function columnArrays(rows: BulkMetricRow[]): Record<string, unknown[]> {
-  const col = <T>(pick: (row: BulkMetricRow) => T): T[] => rows.map(pick);
-  // Numbers bind as decimal strings, never raw JS numbers: Prisma caches
-  // raw-SQL parameter type inference per statement, and mixing
-  // integer-valued with fractional doubles across executions corrupts later
-  // binds ("improper binary format in array element 1"). Strings take one
-  // deterministic path; the SQL casts parse them server-side. String(4.5)
-  // round-trips exactly; NaN/Infinity never reach here (sanitized to 0/null).
-  const str = (pick: (row: BulkMetricRow) => number | null): (string | null)[] =>
-    rows.map((row) => {
-      const value = pick(row);
-      return value == null ? null : String(value);
-    });
+/**
+ * Recordset column definition for jsonb_to_recordset. The whole batch binds
+ * as ONE jsonb text parameter, so there is no per-array parameter type
+ * inference to go stale across executions (previously: mixing integer-valued
+ * with fractional doubles, or null with non-null lease columns, corrupted
+ * later binds with "improper binary format in array element 1" /
+ * "insufficient data left in message"). JSON numbers/strings/nulls coerce to
+ * the listed column types server-side; the fencing token travels as a decimal
+ * string because JSON has no BigInt (verified coercion: string -> bigint).
+ */
+const RECORDSET_COLUMNS = [
+  '"id" text', '"workspaceId" text', '"connectionId" text', '"platform" text',
+  '"accountId" text', '"accountName" text', '"level" text', '"entityId" text',
+  '"campaignId" text', '"campaignName" text', '"adsetId" text', '"adsetName" text',
+  '"adId" text', '"date" timestamptz', '"breakdownHash" text',
+  '"impressions" integer', '"clicks" integer', '"spend" double precision',
+  '"reach" integer', '"cpc" double precision', '"ctr" double precision',
+  '"conversions" double precision', '"revenue" double precision', '"roas" double precision',
+  '"currency" text', '"rawData" text', '"adName" text',
+  '"shopeeBroadOrders" double precision', '"shopeeBroadUnits" double precision',
+  '"shopeeBroadGmv" double precision', '"shopeeDirectOrders" double precision',
+  '"shopeeDirectUnits" double precision', '"shopeeDirectGmv" double precision',
+  '"shopeeKeywordSettingsCount" integer', '"syncJobId" text', '"lockScope" text',
+  '"fencingToken" bigint',
+].join(", ");
+
+function toJsonRow(row: BulkMetricRow): Record<string, unknown> {
   return {
-    id: col((r) => r.id),
-    workspaceId: col((r) => r.workspaceId),
-    connectionId: col((r) => r.connectionId),
-    platform: col((r) => r.platform),
-    accountId: col((r) => r.accountId),
-    accountName: col((r) => r.accountName),
-    level: col((r) => r.level),
-    entityId: col((r) => r.entityId),
-    campaignId: col((r) => r.campaignId),
-    campaignName: col((r) => r.campaignName),
-    adsetId: col((r) => r.adsetId),
-    adsetName: col((r) => r.adsetName),
-    adId: col((r) => r.adId),
-    date: col((r) => r.date.toISOString()),
-    breakdownHash: col((r) => r.breakdownHash),
-    impressions: str((r) => r.impressions),
-    clicks: str((r) => r.clicks),
-    spend: str((r) => r.spend),
-    reach: str((r) => r.reach),
-    cpc: str((r) => r.cpc),
-    ctr: str((r) => r.ctr),
-    conversions: str((r) => r.conversions),
-    revenue: str((r) => r.revenue),
-    roas: str((r) => r.roas),
-    currency: col((r) => r.currency),
-    rawData: col((r) => r.rawData),
-    adName: col((r) => r.adName),
-    shopeeBroadOrders: str((r) => r.shopeeBroadOrders),
-    shopeeBroadUnits: str((r) => r.shopeeBroadUnits),
-    shopeeBroadGmv: str((r) => r.shopeeBroadGmv),
-    shopeeDirectOrders: str((r) => r.shopeeDirectOrders),
-    shopeeDirectUnits: str((r) => r.shopeeDirectUnits),
-    shopeeDirectGmv: str((r) => r.shopeeDirectGmv),
-    shopeeKeywordSettingsCount: str((r) => r.shopeeKeywordSettingsCount),
-    syncJobId: col((r) => r.syncJobId),
-    lockScope: col((r) => r.lockScope),
-    fencingToken: col((r) => r.fencingToken),
+    id: row.id,
+    workspaceId: row.workspaceId,
+    connectionId: row.connectionId,
+    platform: row.platform,
+    accountId: row.accountId,
+    accountName: row.accountName,
+    level: row.level,
+    entityId: row.entityId,
+    campaignId: row.campaignId,
+    campaignName: row.campaignName,
+    adsetId: row.adsetId,
+    adsetName: row.adsetName,
+    adId: row.adId,
+    date: row.date.toISOString(),
+    breakdownHash: row.breakdownHash,
+    impressions: row.impressions,
+    clicks: row.clicks,
+    spend: row.spend,
+    reach: row.reach,
+    cpc: row.cpc,
+    ctr: row.ctr,
+    conversions: row.conversions,
+    revenue: row.revenue,
+    roas: row.roas,
+    currency: row.currency,
+    rawData: row.rawData,
+    adName: row.adName,
+    shopeeBroadOrders: row.shopeeBroadOrders,
+    shopeeBroadUnits: row.shopeeBroadUnits,
+    shopeeBroadGmv: row.shopeeBroadGmv,
+    shopeeDirectOrders: row.shopeeDirectOrders,
+    shopeeDirectUnits: row.shopeeDirectUnits,
+    shopeeDirectGmv: row.shopeeDirectGmv,
+    shopeeKeywordSettingsCount: row.shopeeKeywordSettingsCount,
+    syncJobId: row.syncJobId,
+    lockScope: row.lockScope,
+    fencingToken: row.fencingToken,
   };
 }
 
-const UNNEST_SELECT = [
-  "$1::text[]", "$2::text[]", "$3::text[]", "$4::text[]", "$5::text[]",
-  "$6::text[]", "$7::text[]", "$8::text[]", "$9::text[]", "$10::text[]",
-  "$11::text[]", "$12::text[]", "$13::text[]", "$14::timestamptz[]", "$15::text[]",
-  "$16::integer[]", "$17::integer[]", "$18::double precision[]",
-  "$19::integer[]", "$20::double precision[]", "$21::double precision[]",
-  "$22::double precision[]", "$23::double precision[]", "$24::double precision[]",
-  "$25::text[]", "$26::text[]", "$27::text[]",
-  "$28::double precision[]", "$29::double precision[]", "$30::double precision[]",
-  "$31::double precision[]", "$32::double precision[]", "$33::double precision[]",
-  "$34::integer[]", "$35::text[]", "$36::text[]", "$37::bigint[]",
-].join(", ");
-
 /** Build the generic (unfenced) bulk upsert statement + bind params. */
 export function buildGenericBulkUpsert(rows: BulkMetricRow[]): { sql: string; params: unknown[] } {
-  const arrays = columnArrays(rows);
-  const order = [
-    "id", "workspaceId", "connectionId", "platform", "accountId", "accountName",
-    "level", "entityId", "campaignId", "campaignName", "adsetId", "adsetName",
-    "adId", "date", "breakdownHash", "impressions", "clicks", "spend",
-    "reach", "cpc", "ctr", "conversions", "revenue", "roas", "currency",
-    "rawData", "adName", "shopeeBroadOrders", "shopeeBroadUnits", "shopeeBroadGmv",
-    "shopeeDirectOrders", "shopeeDirectUnits", "shopeeDirectGmv",
-    "shopeeKeywordSettingsCount", "syncJobId", "lockScope", "fencingToken",
-  ];
   const sql = [
     `INSERT INTO "CampaignMetric" (${BULK_COLUMNS.join(", ")}, "pulledAt")`,
-    `SELECT ${BULK_COLUMNS.join(", ")}, NOW() FROM UNNEST(${UNNEST_SELECT})`,
-    `AS src(${BULK_COLUMNS.join(", ")})`,
+    `SELECT ${BULK_COLUMNS.join(", ")}, NOW() FROM jsonb_to_recordset($1::jsonb)`,
+    `AS src(${RECORDSET_COLUMNS})`,
     `ON CONFLICT ${CONFLICT_TARGET} DO UPDATE SET ${GENERIC_UPDATE_SET}`,
   ].join(" ");
-  return { sql, params: order.map((key) => arrays[key]) };
+  return { sql, params: [JSON.stringify(rows.map(toJsonRow))] };
 }
 
 export interface MetaBulkLease {
@@ -458,17 +454,6 @@ export function buildMetaBulkUpsert(
   rows: BulkMetricRow[],
   lease: MetaBulkLease,
 ): { sql: string; params: unknown[] } {
-  const arrays = columnArrays(rows);
-  const order = [
-    "id", "workspaceId", "connectionId", "platform", "accountId", "accountName",
-    "level", "entityId", "campaignId", "campaignName", "adsetId", "adsetName",
-    "adId", "date", "breakdownHash", "impressions", "clicks", "spend",
-    "reach", "cpc", "ctr", "conversions", "revenue", "roas", "currency",
-    "rawData", "adName", "shopeeBroadOrders", "shopeeBroadUnits", "shopeeBroadGmv",
-    "shopeeDirectOrders", "shopeeDirectUnits", "shopeeDirectGmv",
-    "shopeeKeywordSettingsCount", "syncJobId", "lockScope", "fencingToken",
-  ];
-  const placeholders = order.map((_, index) => `$${index + 4}::${unnestType(index)}`);
   const sql = [
     `WITH lease_ok AS (`,
     `SELECT 1 AS ok WHERE EXISTS (`,
@@ -478,31 +463,15 @@ export function buildMetaBulkUpsert(
     `)`,
     `)`,
     `INSERT INTO "CampaignMetric" (${BULK_COLUMNS.join(", ")}, "pulledAt")`,
-    `SELECT ${BULK_COLUMNS.join(", ")}, NOW() FROM UNNEST(${placeholders.join(", ")})`,
-    `AS src(${BULK_COLUMNS.join(", ")}) CROSS JOIN lease_ok`,
+    `SELECT ${BULK_COLUMNS.join(", ")}, NOW() FROM jsonb_to_recordset($4::jsonb)`,
+    `AS src(${RECORDSET_COLUMNS}) CROSS JOIN lease_ok`,
     `ON CONFLICT ${CONFLICT_TARGET} DO UPDATE SET ${META_UPDATE_SET}`,
     `WHERE EXISTS (SELECT 1 FROM lease_ok)`,
   ].join(" ");
   return {
     sql,
-    params: [lease.scope, lease.leaseId, lease.fencingToken.toString(), ...order.map((key) => arrays[key])],
+    params: [lease.scope, lease.leaseId, lease.fencingToken.toString(), JSON.stringify(rows.map(toJsonRow))],
   };
-}
-
-function unnestType(index: number): string {
-  const types = [
-    "text[]", "text[]", "text[]", "text[]", "text[]",
-    "text[]", "text[]", "text[]", "text[]", "text[]",
-    "text[]", "text[]", "text[]", "timestamptz[]", "text[]",
-    "integer[]", "integer[]", "double precision[]",
-    "integer[]", "double precision[]", "double precision[]",
-    "double precision[]", "double precision[]", "double precision[]",
-    "text[]", "text[]", "text[]",
-    "double precision[]", "double precision[]", "double precision[]",
-    "double precision[]", "double precision[]", "double precision[]",
-    "integer[]", "text[]", "text[]", "bigint[]",
-  ];
-  return types[index]!;
 }
 
 export interface BulkUpsertOutcome {

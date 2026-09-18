@@ -178,15 +178,16 @@ describe("bulk batching (unit)", () => {
 });
 
 describe("bulk SQL shape (unit)", () => {
-  it("generic statement uses UNNEST with the per-row conflict key and no lease gate", () => {
+  it("generic statement uses a single JSONB bind with the per-row conflict key", () => {
     const { sql, params } = buildGenericBulkUpsert([bulkRow(), bulkRow()]);
-    assert.ok(sql.includes("UNNEST("), "parallel arrays via UNNEST");
+    assert.ok(sql.includes("jsonb_to_recordset($1::jsonb)"), "whole batch binds as one JSON value");
+    assert.ok(!sql.includes("UNNEST("), "no parallel-array binds");
     assert.ok(
       sql.includes('ON CONFLICT ("connectionId", "accountId", "level", "entityId", "date", "breakdownHash")'),
       "conflict key matches the per-row upsert",
     );
     assert.ok(!sql.includes("lease_ok"), "generic path has no lease gate, like the per-row path");
-    assert.equal(params.length, 37, "one bind array per column");
+    assert.equal(params.length, 1, "single bind parameter");
   });
 
   it("meta statement fences in-statement with scope, lease, token, status, and expiry", () => {
@@ -201,7 +202,9 @@ describe("bulk SQL shape (unit)", () => {
     assert.ok(sql.includes('"leaseExpiresAt" > NOW()'), "unexpired lease required");
     assert.ok(sql.includes("CROSS JOIN lease_ok"), "inserts gated on the lease");
     assert.ok(sql.includes("WHERE EXISTS (SELECT 1 FROM lease_ok)"), "updates gated on the lease");
+    assert.ok(sql.includes("jsonb_to_recordset($4::jsonb)"), "batch binds as one JSON value");
     assert.deepEqual(params.slice(0, 3), ["s", "l", "7"]);
+    assert.equal(params.length, 4);
   });
 });
 
