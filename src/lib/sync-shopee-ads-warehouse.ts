@@ -8,8 +8,12 @@
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getValidShopeeCreds, shopeeAdsClient, shopeeDataClient, type ShopeeProductCampaignSetting } from "@/lib/shopee";
-import { upsertCampaignMetric } from "@/lib/ad-platform-ingest";
+import { upsertCampaignMetric, type CampaignMetricPayload } from "@/lib/ad-platform-ingest";
 import { heartbeatConnectionSyncLease, type ConnectionLease } from "@/lib/connection-sync-lease";
+import {
+  flushGenericPayloadBatches,
+  isWarehouseBulkUpsertEnabled,
+} from "@/lib/warehouse-bulk-upsert";
 import {
   mapShopeeProductDailyToCampaignMetricPayload,
   mapShopeeRowToCampaignMetricPayload,
@@ -69,6 +73,25 @@ async function upsertPayloadsInChunks(
   lease?: ConnectionLease
 ): Promise<number> {
   const valid = payloads.filter((p): p is NonNullable<typeof p> => p != null);
+  // Bulk path (disabled by default): batched UNNEST upsert with per-row
+  // fallback. The per-row loop below is unchanged.
+  if (isWarehouseBulkUpsertEnabled()) {
+    // Attach the lease before sanitization so bulk writes stamp the same
+    // lockScope/fencingToken evidence as the per-row path.
+    const leased = valid.map((payload) => ({ ...payload, lease }) as CampaignMetricPayload);
+    const result = await flushGenericPayloadBatches(leased, {
+      fallbackRow: (payload) => upsertCampaignMetric(payload),
+      onHeartbeat: lease ? () => heartbeatConnectionSyncLease(lease) : undefined,
+    });
+    // Preserve the previous failure semantics: the per-row Promise.all path
+    // rejected on the first row failure and produced a failed sync result.
+    if (result.failed > 0) {
+      throw new Error(
+        `[syncShopeeAdsWarehouse] Bulk upsert wrote ${result.upserted} rows with ${result.failed} failures`,
+      );
+    }
+    return result.upserted;
+  }
   let upserted = 0;
   for (let i = 0; i < valid.length; i += UPSERT_CHUNK_SIZE) {
     if (lease) {

@@ -20,6 +20,11 @@ import {
 } from '@/lib/meta-sync-lock';
 import type { MetaInsightsRow, MetaAction } from '@/lib/meta-ads';
 import { recordPayloadSchemaDiscovery } from '@/lib/payload-schema-discovery';
+import {
+  flushMetaPayloadBatches,
+  isWarehouseBulkUpsertEnabled,
+  type MetaFlushRow,
+} from '@/lib/warehouse-bulk-upsert';
 
 const CHUNK_SIZE = 100;
 /** Canonical Meta CampaignMetric fact grain used by every active sync path. */
@@ -136,6 +141,12 @@ async function processChunk(
   // Heartbeat before each chunk — extends the lease and detects stolen locks early
   await heartbeatMetaSyncLock({ scope: opts.lockScope, leaseId: opts.leaseId });
 
+  // Bulk path (disabled by default): same validation, fenced UNNEST upsert
+  // with per-row fallback. The per-row loop below is unchanged.
+  if (isWarehouseBulkUpsertEnabled()) {
+    return processChunkBulk(opts, chunk);
+  }
+
   let upserted = 0;
   let failed = 0;
 
@@ -203,6 +214,84 @@ async function processChunk(
   );
 
   return { upserted, failed };
+}
+
+/**
+ * Bulk variant of processChunk. Validation mirrors the per-row loop exactly;
+ * validated rows flush through the fenced UNNEST path. A lost lease throws
+ * (zero writes by construction); callers treat it as a fatal sync error like
+ * the per-row lease assertion.
+ */
+async function processChunkBulk(
+  opts: Omit<IngestMetaRowsOpts, 'rows'>,
+  chunk: MetaInsightsRow[],
+): Promise<{ upserted: number; failed: number }> {
+  const rows: MetaFlushRow[] = [];
+  let failed = 0;
+  for (const row of chunk) {
+    const date = new Date(row.date_start ?? '');
+    if (isNaN(date.getTime())) {
+      logger.warn('[META_INGEST] Skipping row — invalid date_start', { row });
+      failed++;
+      continue;
+    }
+    rows.push({
+      workspaceId: opts.workspaceId,
+      connectionId: opts.connectionId,
+      accountId: opts.accountId,
+      accountName: opts.accountName,
+      level: opts.level,
+      entityId: resolveEntityId(row, opts.level, opts.accountId),
+      campaignId: String(row.campaign_id ?? ''),
+      campaignName: String(row.campaign_name ?? ''),
+      adsetId: String(row.adset_id ?? ''),
+      adsetName: String(row.adset_name ?? ''),
+      adId: String(row.ad_id ?? ''),
+      adName: normalizeMetaAdName(row.ad_name),
+      date,
+      breakdownHash: buildBreakdownHash(row, opts.breakdowns ?? []),
+      metrics: {
+        impressions: parseIntSafe(row.impressions),
+        clicks: parseIntSafe(row.clicks),
+        spend: parseFloatSafe(row.spend),
+        reach: parseIntSafe(row.reach),
+        cpc: parseFloatSafe(row.cpc),
+        ctr: parseFloatSafe(row.ctr),
+        conversions: extractConversions(row),
+        revenue: extractRevenue(row),
+        roas: extractPurchaseRoas(row),
+        currency: opts.currency,
+        rawData: row,
+      },
+      syncJobId: opts.syncJobId,
+    });
+  }
+  const result = await flushMetaPayloadBatches(rows, {
+    lease: { scope: opts.lockScope, leaseId: opts.leaseId, fencingToken: opts.fencingToken },
+    fallbackRow: (flushRow) =>
+      upsertMetaMetric({
+        workspaceId: flushRow.workspaceId,
+        connectionId: flushRow.connectionId,
+        accountId: flushRow.accountId,
+        accountName: flushRow.accountName,
+        level: flushRow.level,
+        entityId: flushRow.entityId,
+        campaignId: flushRow.campaignId,
+        campaignName: flushRow.campaignName,
+        adsetId: flushRow.adsetId,
+        adsetName: flushRow.adsetName,
+        adId: flushRow.adId,
+        adName: flushRow.adName,
+        date: flushRow.date,
+        breakdownHash: flushRow.breakdownHash,
+        metrics: flushRow.metrics,
+        syncJobId: flushRow.syncJobId,
+        lockScope: opts.lockScope,
+        leaseId: opts.leaseId,
+        fencingToken: opts.fencingToken,
+      }),
+  });
+  return { upserted: result.upserted, failed: failed + result.failed };
 }
 
 /**

@@ -13,6 +13,10 @@ import {
   type ConnectionLease,
 } from '@/lib/connection-sync-lease';
 import { recordPayloadSchemaDiscovery } from '@/lib/payload-schema-discovery';
+import {
+  flushGenericPayloadBatches,
+  isWarehouseBulkUpsertEnabled,
+} from '@/lib/warehouse-bulk-upsert';
 
 export interface CampaignMetricPayload {
   workspaceId: string;
@@ -279,6 +283,12 @@ export async function ingestGoogleAdsRows(
     });
   }
 
+  // Bulk path (disabled by default): same validation, batched UNNEST upsert
+  // with per-row fallback. The per-row loop below is unchanged.
+  if (isWarehouseBulkUpsertEnabled()) {
+    return ingestGoogleAdsRowsBulk(rows, opts);
+  }
+
   for (const row of rows) {
     if (!(await fencedHeartbeat(opts.lease, upserted + failed))) {
       failed += rows.length - upserted - failed;
@@ -334,6 +344,89 @@ export async function ingestGoogleAdsRows(
 }
 
 /**
+ * Bulk variant of the Google Ads loop. Validation mirrors the per-row loop
+ * exactly; validated payloads flush through the batched UNNEST path.
+ */
+async function ingestGoogleAdsRowsBulk(
+  rows: Array<{
+    campaign_id?: string;
+    campaign_name?: string;
+    ad_group_id?: string;
+    ad_group_name?: string;
+    date?: string;
+    impressions?: number;
+    clicks?: number;
+    cost?: number;
+    cpc?: number;
+    ctr?: number;
+    conversions?: number;
+    conversion_value?: number;
+    currency?: string;
+    raw?: unknown;
+  }>,
+  opts: {
+    workspaceId: string;
+    connectionId: string;
+    accountId: string;
+    accountName?: string;
+    syncJobId: string;
+    lease?: ConnectionLease;
+  },
+): Promise<{ upserted: number; failed: number }> {
+  if (opts.lease) {
+    try {
+      await heartbeatConnectionSyncLease(opts.lease);
+    } catch {
+      return { upserted: 0, failed: rows.length };
+    }
+  }
+  const payloads: CampaignMetricPayload[] = [];
+  let failed = 0;
+  for (const row of rows) {
+    if (!row.date || !row.campaign_id) {
+      failed++;
+      continue;
+    }
+    const date = new Date(row.date);
+    if (isNaN(date.getTime())) {
+      logger.warn('[GOOGLE_ADS_INGEST] Invalid date:', row.date);
+      failed++;
+      continue;
+    }
+    payloads.push({
+      workspaceId: opts.workspaceId,
+      connectionId: opts.connectionId,
+      platform: 'google_ads',
+      accountId: opts.accountId,
+      accountName: opts.accountName,
+      level: 'campaign',
+      entityId: row.campaign_id,
+      campaignId: row.campaign_id,
+      campaignName: row.campaign_name ?? '',
+      adsetId: row.ad_group_id ?? '',
+      adsetName: row.ad_group_name ?? '',
+      date,
+      impressions: row.impressions ?? 0,
+      clicks: row.clicks ?? 0,
+      spend: row.cost ?? 0,
+      cpc: row.cpc ?? 0,
+      ctr: row.ctr ?? 0,
+      conversions: row.conversions ?? 0,
+      revenue: row.conversion_value ?? 0,
+      currency: row.currency,
+      rawData: row.raw,
+      syncJobId: opts.syncJobId,
+      lease: opts.lease,
+    });
+  }
+  const result = await flushGenericPayloadBatches(payloads, {
+    fallbackRow: (payload) => upsertCampaignMetric(payload),
+    onHeartbeat: opts.lease ? () => heartbeatConnectionSyncLease(opts.lease!) : undefined,
+  });
+  return { upserted: result.upserted, failed: failed + result.failed };
+}
+
+/**
  * Ingest TikTok campaign rows to CampaignMetric.
  */
 export async function ingestTiktokRows(
@@ -371,6 +464,12 @@ export async function ingestTiktokRows(
       provider: "tiktok_business",
       sample: rows[0],
     });
+  }
+
+  // Bulk path (disabled by default): same validation, batched UNNEST upsert
+  // with per-row fallback. The per-row loop below is unchanged.
+  if (isWarehouseBulkUpsertEnabled()) {
+    return ingestTiktokRowsBulk(rows, opts);
   }
 
   for (const row of rows) {
@@ -448,4 +547,94 @@ export async function ingestTiktokRows(
   }
 
   return { upserted, failed };
+}
+
+/**
+ * Bulk variant of the TikTok loop. Validation mirrors the per-row loop
+ * exactly; validated payloads flush through the batched UNNEST path.
+ */
+async function ingestTiktokRowsBulk(
+  rows: Array<{
+    dimensions?: Record<string, string | number>;
+    metrics?: Record<string, string | number>;
+    raw?: unknown;
+  }>,
+  opts: {
+    workspaceId: string;
+    connectionId: string;
+    accountId: string;
+    accountName?: string;
+    providerCurrency?: string;
+    syncJobId: string;
+    lease?: ConnectionLease;
+  },
+): Promise<{ upserted: number; failed: number }> {
+  if (opts.lease) {
+    try {
+      await heartbeatConnectionSyncLease(opts.lease);
+    } catch {
+      return { upserted: 0, failed: rows.length };
+    }
+  }
+  const payloads: CampaignMetricPayload[] = [];
+  let failed = 0;
+  for (const row of rows) {
+    const dims = row.dimensions || {};
+    const metrics = row.metrics || {};
+    const campaignId = String(dims.campaign_id ?? '');
+    const campaignName = String(dims.campaign_name ?? metrics.campaign_name ?? '');
+    const adgroupId = String(dims.adgroup_id ?? '');
+    const adgroupName = String(dims.adgroup_name ?? '');
+    const dateStr = String(dims.stat_time_day ?? dims.date ?? '');
+    if (!dateStr || !campaignId) {
+      failed++;
+      continue;
+    }
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) {
+      logger.warn('[TIKTOK_INGEST] Invalid date:', dateStr);
+      failed++;
+      continue;
+    }
+    const impressions = parseInt(String(metrics.impression ?? metrics.impressions ?? 0), 10);
+    const clicks = parseInt(String(metrics.click ?? metrics.clicks ?? 0), 10);
+    const spend = parseFloat(String(metrics.spend ?? metrics.cost ?? 0));
+    const cpc = parseFloat(String(metrics.cpc ?? 0));
+    const ctr = parseFloat(String(metrics.ctr ?? 0)) / 100;
+    const conversions = parseFloat(String(metrics.conversion ?? metrics.conversions ?? 0));
+    const revenue = parseFloat(String(metrics.revenue ?? metrics.conversion_value ?? 0));
+    const roas = parseFloat(String(metrics.roas ?? 0));
+    const currency = typeof metrics.currency === 'string' ? metrics.currency : opts.providerCurrency;
+    payloads.push({
+      workspaceId: opts.workspaceId,
+      connectionId: opts.connectionId,
+      platform: 'tiktok_business',
+      accountId: opts.accountId,
+      accountName: opts.accountName,
+      level: 'campaign',
+      entityId: campaignId,
+      campaignId,
+      campaignName,
+      adsetId: adgroupId,
+      adsetName: adgroupName,
+      date,
+      impressions,
+      clicks,
+      spend,
+      cpc,
+      ctr,
+      conversions,
+      revenue,
+      roas,
+      currency,
+      rawData: row.raw ?? { dimensions: dims, metrics },
+      syncJobId: opts.syncJobId,
+      lease: opts.lease,
+    });
+  }
+  const result = await flushGenericPayloadBatches(payloads, {
+    fallbackRow: (payload) => upsertCampaignMetric(payload),
+    onHeartbeat: opts.lease ? () => heartbeatConnectionSyncLease(opts.lease!) : undefined,
+  });
+  return { upserted: result.upserted, failed: failed + result.failed };
 }
