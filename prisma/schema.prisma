@@ -578,6 +578,18 @@ model CampaignMetric {
   currency    String?
   rawData     String?
 
+  // Raw-dependency promotion (dual-write foundation). Nullable so historical
+  // rows stay compatible and render through the legacy rawData fallback.
+  // adName is written by Meta ingestion only; shopee* by Shopee Ads ingestion.
+  adName                      String?
+  shopeeBroadOrders           Float?
+  shopeeBroadUnits            Float?
+  shopeeBroadGmv              Float?
+  shopeeDirectOrders          Float?
+  shopeeDirectUnits           Float?
+  shopeeDirectGmv             Float?
+  shopeeKeywordSettingsCount  Int?
+
   syncJobId    String? // which SyncJob wrote this row
   lockScope    String? // SyncLock.scope at write time
   fencingToken BigInt? // SyncLock.fencingToken at write time — stale writes are rejected

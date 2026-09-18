@@ -322,3 +322,87 @@ export async function measureCampaignMetricRawRetention(
     throw error;
   }
 }
+
+export interface RawDependencyReadiness {
+  workspaceId: string;
+  measuredAt: string;
+  meta: { rawDependent: number; promoted: number };
+  shopee: { rawDependent: number; fullyPromoted: number; partiallyPromoted: number };
+  totals: { rawDependent: number; fullyPromoted: number; partiallyPromoted: number };
+}
+
+const SHOPEE_PROMOTED_COLUMNS = [
+  "shopeeBroadOrders",
+  "shopeeBroadUnits",
+  "shopeeBroadGmv",
+  "shopeeDirectOrders",
+  "shopeeDirectUnits",
+  "shopeeDirectGmv",
+  "shopeeKeywordSettingsCount",
+] as const;
+
+/**
+ * Read-only retention-readiness evidence for the next bounded backfill phase.
+ * Classifies rows by promoted-column coverage without returning raw payload
+ * values — counts only. No execution route, no mutation.
+ *
+ * A row is raw-dependent when its promoted column is NULL while its rawData
+ * still carries the corresponding marker. Rows with neither marker nor
+ * promoted value need no backfill and stay unclassified.
+ */
+export async function classifyRawDependencyReadiness(
+  workspaceId: string,
+  db: Pick<typeof prisma, "campaignMetric"> = prisma,
+): Promise<RawDependencyReadiness> {
+  const metric = (db as any).campaignMetric;
+  const scoped = (where: Record<string, unknown>) =>
+    scopeCampaignMetricWhere(workspaceId, where as any);
+
+  const [metaDependent, metaPromoted, shopeeDependent, shopeeFull, shopeePartial] = await Promise.all([
+    metric.count({ where: scoped({ platform: "meta_ads", adName: null, rawData: { contains: '"ad_name"' } }) }),
+    metric.count({ where: scoped({ platform: "meta_ads", adName: { not: null } }) }),
+    metric.count({
+      where: scoped({
+        platform: "shopee",
+        rawData: { not: null },
+        OR: [
+          { AND: [{ rawData: { contains: '"broad_metrics"' } }, { shopeeBroadOrders: null }] },
+          { AND: [{ rawData: { contains: '"direct_metrics"' } }, { shopeeDirectOrders: null }] },
+          {
+            AND: [
+              { OR: [{ rawData: { contains: '"keyword_settings_count"' } }, { rawData: { contains: '"keyword_settings"' } }] },
+              { shopeeKeywordSettingsCount: null },
+            ],
+          },
+        ],
+      }),
+    }),
+    metric.count({
+      where: scoped({
+        platform: "shopee",
+        ...Object.fromEntries(SHOPEE_PROMOTED_COLUMNS.map((column) => [column, { not: null }])),
+      }),
+    }),
+    metric.count({
+      where: scoped({
+        platform: "shopee",
+        OR: SHOPEE_PROMOTED_COLUMNS.map((column) => ({ [column]: { not: null } })),
+        NOT: {
+          AND: SHOPEE_PROMOTED_COLUMNS.map((column) => ({ [column]: { not: null } })),
+        },
+      }),
+    }),
+  ]);
+
+  return {
+    workspaceId,
+    measuredAt: new Date().toISOString(),
+    meta: { rawDependent: metaDependent, promoted: metaPromoted },
+    shopee: { rawDependent: shopeeDependent, fullyPromoted: shopeeFull, partiallyPromoted: shopeePartial },
+    totals: {
+      rawDependent: metaDependent + shopeeDependent,
+      fullyPromoted: metaPromoted + shopeeFull,
+      partiallyPromoted: shopeePartial,
+    },
+  };
+}

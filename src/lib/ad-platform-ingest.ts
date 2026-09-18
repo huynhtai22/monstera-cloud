@@ -40,6 +40,14 @@ export interface CampaignMetricPayload {
   roas?: number;
   currency?: string;
   rawData?: unknown;
+  /** Promoted Shopee Ads broad/direct/keyword display values. Null = unknown (legacy fallback applies). */
+  shopeeBroadOrders?: number | null;
+  shopeeBroadUnits?: number | null;
+  shopeeBroadGmv?: number | null;
+  shopeeDirectOrders?: number | null;
+  shopeeDirectUnits?: number | null;
+  shopeeDirectGmv?: number | null;
+  shopeeKeywordSettingsCount?: number | null;
   syncJobId?: string;
   /** When present, the row is stamped with lease evidence and ingestion is fenced. */
   lease?: ConnectionLease;
@@ -80,6 +88,13 @@ export async function upsertCampaignMetric(
     roas = 0,
     currency,
     rawData,
+    shopeeBroadOrders,
+    shopeeBroadUnits,
+    shopeeBroadGmv,
+    shopeeDirectOrders,
+    shopeeDirectUnits,
+    shopeeDirectGmv,
+    shopeeKeywordSettingsCount,
     syncJobId,
     lease,
   } = payload;
@@ -102,6 +117,19 @@ export async function upsertCampaignMetric(
   const safeRoas = Number.isFinite(roas) ? Math.max(0, roas) : 0;
   const safeCpc = Number.isFinite(cpc) ? Math.max(0, cpc) : safeClicks > 0 ? safeSpend / safeClicks : 0;
   const safeCtr = Number.isFinite(ctr) ? Math.max(0, ctr) : safeImpressions > 0 ? (safeClicks / safeImpressions) * 100 : 0;
+  // Promoted Shopee display values pass through verbatim (finite numbers) or
+  // stay NULL so the legacy rawData/normalized fallback chain applies. Zero is
+  // a valid value and must never be coerced to null — hence ??, never ||.
+  const safeShopee = {
+    shopeeBroadOrders: shopeeBroadOrders ?? null,
+    shopeeBroadUnits: shopeeBroadUnits ?? null,
+    shopeeBroadGmv: shopeeBroadGmv ?? null,
+    shopeeDirectOrders: shopeeDirectOrders ?? null,
+    shopeeDirectUnits: shopeeDirectUnits ?? null,
+    shopeeDirectGmv: shopeeDirectGmv ?? null,
+    shopeeKeywordSettingsCount:
+      shopeeKeywordSettingsCount == null ? null : Math.max(0, Math.round(shopeeKeywordSettingsCount)),
+  };
 
   await (prisma as any).campaignMetric.upsert({
     where: {
@@ -140,6 +168,7 @@ export async function upsertCampaignMetric(
       roas: safeRoas,
       currency: safeCurrency,
       rawData: rawData ? JSON.stringify(rawData) : null,
+      ...safeShopee,
       syncJobId: syncJobId ?? null,
       pulledAt: new Date(),
       lockScope: lease?.scope ?? null,
@@ -163,6 +192,7 @@ export async function upsertCampaignMetric(
       roas: safeRoas,
       currency: safeCurrency,
       rawData: rawData ? JSON.stringify(rawData) : null,
+      ...safeShopee,
       syncJobId: syncJobId ?? null,
       pulledAt: new Date(),
       lockScope: lease?.scope ?? null,

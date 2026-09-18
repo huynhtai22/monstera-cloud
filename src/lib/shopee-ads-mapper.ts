@@ -52,6 +52,19 @@ function num(v: unknown): number {
   return 0;
 }
 
+/**
+ * Null-preserving numeric extraction for promoted columns. Absent sources stay
+ * NULL so the legacy rawData/normalized fallback chain reproduces legacy
+ * output exactly; non-finite inputs also become NULL instead of poisoning
+ * totals with NaN (the only documented deviation, for garbage input that the
+ * legacy reader would otherwise propagate as NaN).
+ */
+function numOrNull(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 function pickCampaignId(row: Record<string, unknown>): string | null {
   const id = row.campaign_id ?? row.campaignId;
   if (id == null || id === "") return null;
@@ -173,6 +186,17 @@ export function mapShopeeRowToCampaignMetricPayload(
     roas,
     currency:
       typeof row.currency === "string" && row.currency ? row.currency : "VND",
+    // Display-canonical broad values mirror the legacy route fallbacks
+    // (broad orders/units/GMV resolve to conversions/revenue); direct and
+    // keyword signals are unknown for v2 CPC rows, so they stay NULL and the
+    // legacy zero fallback applies.
+    shopeeBroadOrders: conversions,
+    shopeeBroadUnits: conversions,
+    shopeeBroadGmv: revenue,
+    shopeeDirectOrders: null,
+    shopeeDirectUnits: null,
+    shopeeDirectGmv: null,
+    shopeeKeywordSettingsCount: null,
     rawData: {
       source: "shopee_ads_v2",
       metric: "get_all_cpc_ads_daily_performance",
@@ -280,6 +304,13 @@ export function mapShopeeProductDailyToCampaignMetricPayload(
     revenue,
     roas,
     currency: "VND",
+    shopeeBroadOrders: numOrNull(metric.broad_order),
+    shopeeBroadUnits: numOrNull(metric.broad_order_amount),
+    shopeeBroadGmv: numOrNull(metric.broad_gmv),
+    shopeeDirectOrders: numOrNull(metric.direct_order),
+    shopeeDirectUnits: numOrNull(metric.direct_order_amount),
+    shopeeDirectGmv: numOrNull(metric.direct_gmv),
+    shopeeKeywordSettingsCount: keywordSettings.length,
     rawData: {
       source: "shopee_product_campaign_daily",
       region: "VN",
