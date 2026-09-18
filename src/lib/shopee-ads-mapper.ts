@@ -160,6 +160,13 @@ export function mapShopeeRowToCampaignMetricPayload(
         ? row.campaignName
         : `Campaign ${campaignId}`;
 
+  // v2 display-canonical values must match the sanitized normalized fields
+  // the legacy reader fell back to (raw carries no broad/direct objects).
+  // Unsanitized negatives/non-finite values would otherwise bypass the
+  // normalized sanitization through the promoted-first reader.
+  const safeV2Orders = Number.isFinite(conversions) ? Math.max(0, conversions) : 0;
+  const safeV2Gmv = Number.isFinite(revenue) ? Math.max(0, revenue) : 0;
+
   return {
     workspaceId,
     connectionId,
@@ -190,9 +197,9 @@ export function mapShopeeRowToCampaignMetricPayload(
     // (broad orders/units/GMV resolve to conversions/revenue); direct and
     // keyword signals are unknown for v2 CPC rows, so they stay NULL and the
     // legacy zero fallback applies.
-    shopeeBroadOrders: conversions,
-    shopeeBroadUnits: conversions,
-    shopeeBroadGmv: revenue,
+    shopeeBroadOrders: safeV2Orders,
+    shopeeBroadUnits: safeV2Orders,
+    shopeeBroadGmv: safeV2Gmv,
     shopeeDirectOrders: null,
     shopeeDirectUnits: null,
     shopeeDirectGmv: null,

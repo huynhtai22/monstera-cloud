@@ -366,8 +366,18 @@ export async function classifyRawDependencyReadiness(
         platform: "shopee",
         rawData: { not: null },
         OR: [
-          { AND: [{ rawData: { contains: '"broad_metrics"' } }, { shopeeBroadOrders: null }] },
-          { AND: [{ rawData: { contains: '"direct_metrics"' } }, { shopeeDirectOrders: null }] },
+          {
+            AND: [
+              { rawData: { contains: '"broad_metrics"' } },
+              { OR: [{ shopeeBroadOrders: null }, { shopeeBroadUnits: null }, { shopeeBroadGmv: null }] },
+            ],
+          },
+          {
+            AND: [
+              { rawData: { contains: '"direct_metrics"' } },
+              { OR: [{ shopeeDirectOrders: null }, { shopeeDirectUnits: null }, { shopeeDirectGmv: null }] },
+            ],
+          },
           {
             AND: [
               { OR: [{ rawData: { contains: '"keyword_settings_count"' } }, { rawData: { contains: '"keyword_settings"' } }] },

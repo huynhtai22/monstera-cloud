@@ -117,16 +117,23 @@ export async function upsertCampaignMetric(
   const safeRoas = Number.isFinite(roas) ? Math.max(0, roas) : 0;
   const safeCpc = Number.isFinite(cpc) ? Math.max(0, cpc) : safeClicks > 0 ? safeSpend / safeClicks : 0;
   const safeCtr = Number.isFinite(ctr) ? Math.max(0, ctr) : safeImpressions > 0 ? (safeClicks / safeImpressions) * 100 : 0;
-  // Promoted Shopee display values pass through verbatim (finite numbers) or
-  // stay NULL so the legacy rawData/normalized fallback chain applies. Zero is
+  // Promoted Shopee display values use the same finite/non-negative
+  // normalization as the normalized conversions/revenue fields. Zero is
   // a valid value and must never be coerced to null — hence ??, never ||.
+  // Non-finite garbage becomes NULL so the legacy sanitized fallback applies
+  // instead of poisoning totals with NaN/Infinity.
+  const sanitizePromoted = (v: number | null | undefined): number | null => {
+    if (v == null) return null;
+    if (!Number.isFinite(v)) return null;
+    return Math.max(0, v);
+  };
   const safeShopee = {
-    shopeeBroadOrders: shopeeBroadOrders ?? null,
-    shopeeBroadUnits: shopeeBroadUnits ?? null,
-    shopeeBroadGmv: shopeeBroadGmv ?? null,
-    shopeeDirectOrders: shopeeDirectOrders ?? null,
-    shopeeDirectUnits: shopeeDirectUnits ?? null,
-    shopeeDirectGmv: shopeeDirectGmv ?? null,
+    shopeeBroadOrders: sanitizePromoted(shopeeBroadOrders),
+    shopeeBroadUnits: sanitizePromoted(shopeeBroadUnits),
+    shopeeBroadGmv: sanitizePromoted(shopeeBroadGmv),
+    shopeeDirectOrders: sanitizePromoted(shopeeDirectOrders),
+    shopeeDirectUnits: sanitizePromoted(shopeeDirectUnits),
+    shopeeDirectGmv: sanitizePromoted(shopeeDirectGmv),
     shopeeKeywordSettingsCount:
       shopeeKeywordSettingsCount == null ? null : Math.max(0, Math.round(shopeeKeywordSettingsCount)),
   };

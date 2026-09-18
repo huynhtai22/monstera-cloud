@@ -165,6 +165,43 @@ describe("Shopee promoted columns (unit)", () => {
     assert.equal(resolved.directOrders, 1, "missing promoted field falls back to raw");
   });
 
+  it("sanitizes v2 display values like the normalized fields", () => {
+    const negative = mapShopeeRowToCampaignMetricPayload({
+      ...BASE_PARAMS,
+      row: { date: "2026-02-01", campaign_id: 42, impression: 5, click: 1, expense: 2, broad_order: -4, broad_gmv: -9 },
+    })!;
+    assert.equal(negative.shopeeBroadOrders, 0, "negative v2 orders match sanitized normalized fallback");
+    assert.equal(negative.shopeeBroadUnits, 0);
+    assert.equal(negative.shopeeBroadGmv, 0);
+    assert.equal(negative.conversions, -4, "normalized value is sanitized later at upsert; promoted is sanitized at the mapper");
+
+    const nonFinite = mapShopeeRowToCampaignMetricPayload({
+      ...BASE_PARAMS,
+      row: { date: "2026-02-01", campaign_id: 42, impression: 5, click: 1, expense: 2, broad_order: Infinity, broad_gmv: Infinity },
+    })!;
+    assert.equal(nonFinite.shopeeBroadOrders, 0, "non-finite v2 orders match sanitized normalized fallback");
+    assert.equal(nonFinite.shopeeBroadGmv, 0);
+  });
+
+  it("counts partial Shopee promotion as raw-dependent per field", async () => {
+    const { classifyRawDependencyReadiness } = await import("./warehouse-raw-retention");
+    const seen: any[] = [];
+    const fakeDb = {
+      campaignMetric: {
+        count: async ({ where }: any) => {
+          seen.push(where);
+          return 0;
+        },
+      },
+    } as any;
+    await classifyRawDependencyReadiness("ws_test", fakeDb);
+    const shopeeDependent = seen[2];
+    const dump = JSON.stringify(shopeeDependent);
+    for (const column of ["shopeeBroadUnits", "shopeeBroadGmv", "shopeeDirectUnits", "shopeeDirectGmv"]) {
+      assert.ok(dump.includes(column), `${column} must gate readiness, not just the order column`);
+    }
+  });
+
   it("keeps zero valid and null raw working with rawData absent", () => {
     const resolved = resolveShopeeRowPerformance(
       {
