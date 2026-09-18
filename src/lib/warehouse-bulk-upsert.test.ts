@@ -20,6 +20,7 @@ import {
 
 function bulkRow(overrides: Partial<BulkMetricRow> = {}): BulkMetricRow {
   return {
+    id: "test-id-1",
     workspaceId: "ws",
     connectionId: "conn",
     platform: "google_ads",
@@ -185,7 +186,7 @@ describe("bulk SQL shape (unit)", () => {
       "conflict key matches the per-row upsert",
     );
     assert.ok(!sql.includes("lease_ok"), "generic path has no lease gate, like the per-row path");
-    assert.equal(params.length, 36, "one bind array per column");
+    assert.equal(params.length, 37, "one bind array per column");
   });
 
   it("meta statement fences in-statement with scope, lease, token, status, and expiry", () => {

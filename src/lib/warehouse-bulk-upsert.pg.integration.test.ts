@@ -79,6 +79,7 @@ describe("PostgreSQL integration: warehouse bulk upsert", () => {
       await assert.rejects(
         executeBulkBatch(
           [{
+            id: "bulk-stolen-1",
             workspaceId: ws, connectionId: connMeta.id, platform: "meta_ads", accountId: "act_bulk",
             accountName: null, level: "campaign", entityId: "stolen", campaignId: "stolen",
             campaignName: "Stolen", adsetId: "", adsetName: null, adId: "",
@@ -93,7 +94,17 @@ describe("PostgreSQL integration: warehouse bulk upsert", () => {
           (rows) => buildMetaBulkUpsert(rows, { scope, leaseId: stolen.leaseId, fencingToken: stolen.fencingToken }),
           async () => {},
           ["stolen"],
-          undefined,
+          {
+            executeBulk: (sql: string, params: unknown[]) =>
+              (prisma as any).$executeRawUnsafe(sql, ...params) as Promise<number>,
+            findLease: async () => {
+              const lock = await (prisma as any).syncLock.findUnique({
+                where: { scope },
+                select: { leaseId: true, fencingToken: true, status: true, leaseExpiresAt: true },
+              });
+              return lock;
+            },
+          },
           "meta",
           { leaseId: stolen.leaseId, fencingToken: stolen.fencingToken.toString() },
         ),

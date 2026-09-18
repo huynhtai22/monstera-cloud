@@ -22,6 +22,7 @@
  * pruning, cron, or connector behavior changes.
  */
 
+import { randomUUID } from "node:crypto";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import type { CampaignMetricPayload } from "@/lib/ad-platform-ingest";
@@ -59,6 +60,8 @@ export function bulkUpsertMaxBytes(): number {
 
 /** Sanitized bulk row. Mirrors the per-row upsert sanitization exactly. */
 export interface BulkMetricRow {
+  /** Client-generated PK: raw SQL bypasses Prisma's client-side cuid() default. */
+  id: string;
   workspaceId: string;
   connectionId: string;
   platform: string;
@@ -178,6 +181,7 @@ export function sanitizeBulkRow(input: BulkRowInput): BulkMetricRow {
   const safeImpressions = num(input.impressions, true);
   const safeSpend = num(input.spend);
   return {
+    id: randomUUID(),
     workspaceId: input.workspaceId,
     connectionId: input.connectionId,
     platform: input.platform,
@@ -277,8 +281,10 @@ export function splitBulkBatches<T>(
 }
 
 // Column order shared by both bulk statements (INSERT column list).
+// "id" is first: raw SQL bypasses Prisma's client-side cuid() default, so
+// each row carries a generated PK. Updates never touch "id".
 const BULK_COLUMNS = [
-  '"workspaceId"', '"connectionId"', '"platform"', '"accountId"', '"accountName"',
+  '"id"', '"workspaceId"', '"connectionId"', '"platform"', '"accountId"', '"accountName"',
   '"level"', '"entityId"', '"campaignId"', '"campaignName"', '"adsetId"', '"adsetName"',
   '"adId"', '"date"', '"breakdownHash"', '"impressions"', '"clicks"', '"spend"',
   '"reach"', '"cpc"', '"ctr"', '"conversions"', '"revenue"', '"roas"', '"currency"',
@@ -351,6 +357,7 @@ const CONFLICT_TARGET =
 function columnArrays(rows: BulkMetricRow[]): Record<string, unknown[]> {
   const col = <T>(pick: (row: BulkMetricRow) => T): T[] => rows.map(pick);
   return {
+    id: col((r) => r.id),
     workspaceId: col((r) => r.workspaceId),
     connectionId: col((r) => r.connectionId),
     platform: col((r) => r.platform),
@@ -393,21 +400,21 @@ function columnArrays(rows: BulkMetricRow[]): Record<string, unknown[]> {
 const UNNEST_SELECT = [
   "$1::text[]", "$2::text[]", "$3::text[]", "$4::text[]", "$5::text[]",
   "$6::text[]", "$7::text[]", "$8::text[]", "$9::text[]", "$10::text[]",
-  "$11::text[]", "$12::text[]", "$13::timestamptz[]", "$14::text[]",
-  "$15::integer[]", "$16::integer[]", "$17::double precision[]",
-  "$18::integer[]", "$19::double precision[]", "$20::double precision[]",
-  "$21::double precision[]", "$22::double precision[]", "$23::double precision[]",
-  "$24::text[]", "$25::text[]", "$26::text[]",
-  "$27::double precision[]", "$28::double precision[]", "$29::double precision[]",
-  "$30::double precision[]", "$31::double precision[]", "$32::double precision[]",
-  "$33::integer[]", "$34::text[]", "$35::text[]", "$36::bigint[]",
+  "$11::text[]", "$12::text[]", "$13::text[]", "$14::timestamptz[]", "$15::text[]",
+  "$16::integer[]", "$17::integer[]", "$18::double precision[]",
+  "$19::integer[]", "$20::double precision[]", "$21::double precision[]",
+  "$22::double precision[]", "$23::double precision[]", "$24::double precision[]",
+  "$25::text[]", "$26::text[]", "$27::text[]",
+  "$28::double precision[]", "$29::double precision[]", "$30::double precision[]",
+  "$31::double precision[]", "$32::double precision[]", "$33::double precision[]",
+  "$34::integer[]", "$35::text[]", "$36::text[]", "$37::bigint[]",
 ].join(", ");
 
 /** Build the generic (unfenced) bulk upsert statement + bind params. */
 export function buildGenericBulkUpsert(rows: BulkMetricRow[]): { sql: string; params: unknown[] } {
   const arrays = columnArrays(rows);
   const order = [
-    "workspaceId", "connectionId", "platform", "accountId", "accountName",
+    "id", "workspaceId", "connectionId", "platform", "accountId", "accountName",
     "level", "entityId", "campaignId", "campaignName", "adsetId", "adsetName",
     "adId", "date", "breakdownHash", "impressions", "clicks", "spend",
     "reach", "cpc", "ctr", "conversions", "revenue", "roas", "currency",
@@ -442,7 +449,7 @@ export function buildMetaBulkUpsert(
 ): { sql: string; params: unknown[] } {
   const arrays = columnArrays(rows);
   const order = [
-    "workspaceId", "connectionId", "platform", "accountId", "accountName",
+    "id", "workspaceId", "connectionId", "platform", "accountId", "accountName",
     "level", "entityId", "campaignId", "campaignName", "adsetId", "adsetName",
     "adId", "date", "breakdownHash", "impressions", "clicks", "spend",
     "reach", "cpc", "ctr", "conversions", "revenue", "roas", "currency",
@@ -475,7 +482,7 @@ function unnestType(index: number): string {
   const types = [
     "text[]", "text[]", "text[]", "text[]", "text[]",
     "text[]", "text[]", "text[]", "text[]", "text[]",
-    "text[]", "text[]", "timestamptz[]", "text[]",
+    "text[]", "text[]", "text[]", "timestamptz[]", "text[]",
     "integer[]", "integer[]", "double precision[]",
     "integer[]", "double precision[]", "double precision[]",
     "double precision[]", "double precision[]", "double precision[]",
