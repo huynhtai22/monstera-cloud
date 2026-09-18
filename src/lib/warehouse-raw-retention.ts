@@ -7,6 +7,18 @@ export type RawRetentionDays = (typeof RAW_RETENTION_POLICIES)[number];
 export const RAW_RETENTION_STATEMENT_TIMEOUT_MS = 1_500;
 export const DEFAULT_RAW_RETENTION_SAMPLE_SIZE = 200;
 export const MAX_RAW_RETENTION_SAMPLE_SIZE = 1_000;
+/** Maximum timed measurement statements per invocation: summary, per-platform, sample. */
+export const RAW_RETENTION_MAX_TIMED_STATEMENTS = 3;
+/** Orchestration buffer covering the instant set_config roundtrip and commit. */
+export const RAW_RETENTION_TRANSACTION_BUFFER_MS = 1_000;
+/**
+ * Transaction budget derived from the statement budget so the interactive
+ * transaction can never self-expire before PostgreSQL statement timeouts fire:
+ * timeout >= maxTimedStatements * statementTimeout + buffer.
+ */
+export const RAW_RETENTION_TRANSACTION_TIMEOUT_MS =
+  RAW_RETENTION_MAX_TIMED_STATEMENTS * RAW_RETENTION_STATEMENT_TIMEOUT_MS + RAW_RETENTION_TRANSACTION_BUFFER_MS;
+export const RAW_RETENTION_TRANSACTION_MAX_WAIT_MS = 500;
 /**
  * Fixed physical page-sample percentage. Deliberately not caller-controlled:
  * callers may only narrow the row cap (`sampleSize`). Small eligible sets are
@@ -19,6 +31,16 @@ type ReadTx = { $queryRaw<T = unknown>(query: Prisma.Sql): Promise<T> };
 
 export class RawRetentionInputError extends Error {}
 export class RawRetentionTimeoutError extends Error {}
+
+/**
+ * Internal test-coordination seam only. The route never populates it and no
+ * request input can activate it: the route forwards exactly the four validated
+ * fields and the Zod schema is strict.
+ */
+export type RawRetentionMeasurementHooks = {
+  /** Runs inside the measurement transaction after the summary query resolves. */
+  afterSummary?: () => Promise<void> | void;
+};
 
 export type RawRetentionDryRunInput = {
   workspaceId: string;
@@ -85,9 +107,18 @@ function assertInput(input: RawRetentionDryRunInput): Required<Omit<RawRetention
 }
 
 function isTimeout(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (
-    (error as { code?: string }).code === "57014" || /statement timeout/i.test(String((error as { message?: string }).message ?? ""))
-  );
+  if (typeof error !== "object" || error === null) return false;
+  const code = (error as { code?: unknown }).code;
+  if (code === "57014") return true;
+  const message = String((error as { message?: unknown }).message ?? "");
+  if (/statement timeout|query timed out/i.test(message)) return true;
+  if (/transaction expired|transaction[^.]{0,80}timed?\s*out/i.test(message)) return true;
+  // P2028 is Prisma's transaction-API failure. Isolation here is a hardcoded
+  // valid constant, so any other P2028 in this read-only flow is a transaction
+  // budget/closure failure — except an explicit invalid-isolation programming
+  // error, which must stay loud instead of mapping to 408.
+  if (code === "P2028" && !/invalid isolation/i.test(message)) return true;
+  return false;
 }
 
 /**
@@ -103,10 +134,19 @@ function isTimeout(error: unknown): boolean {
  * `unknown`, never a false zero-byte estimate. `octet_length("rawData")` is
  * the only payload-derived value read; raw payload contents never leave
  * PostgreSQL.
+ *
+ * Every measurement query runs inside one RepeatableRead transaction, so the
+ * response is internally snapshot-consistent as of that transaction snapshot —
+ * not a long-lived historical database snapshot. A later invocation takes a
+ * fresh snapshot and observes subsequently committed imports. The transaction
+ * performs plain SELECTs only (no locking reads, no provider/network work),
+ * so concurrent ingestion is never blocked. Read-only transactions cannot hit
+ * serialization failures, so no retry loop is needed.
  */
 export async function measureCampaignMetricRawRetention(
   input: RawRetentionDryRunInput,
   db: ReadDb = prisma,
+  hooks?: RawRetentionMeasurementHooks,
 ) {
   const safe = assertInput(input);
   // Reuse the mandatory tenant-scope helper before constructing parameterized SQL.
@@ -140,6 +180,7 @@ export async function measureCampaignMetricRawRetention(
         FROM "CampaignMetric"
         WHERE "workspaceId" = ${scope.workspaceId}
       `);
+      await hooks?.afterSummary?.();
       const platformExact = await tx.$queryRaw<PlatformExactRow[]>(Prisma.sql`
         SELECT "platform", COUNT(*) AS "eligibleRows",
           MIN("date") AS "oldestDate", MAX("date") AS "newestDate",
@@ -175,7 +216,11 @@ export async function measureCampaignMetricRawRetention(
         }
       }
       return { summary: summary ?? null, platformExact, sampleRows, sampleMethod };
-    }, { timeout: RAW_RETENTION_STATEMENT_TIMEOUT_MS + 500, maxWait: 500 });
+    }, {
+      isolationLevel: "RepeatableRead",
+      timeout: RAW_RETENTION_TRANSACTION_TIMEOUT_MS,
+      maxWait: RAW_RETENTION_TRANSACTION_MAX_WAIT_MS,
+    });
 
     const summary = result.summary;
     if (!summary) throw new RawRetentionInputError("Workspace scope could not be measured.");

@@ -39,3 +39,15 @@ payload values never leave PostgreSQL and malformed JSON is opaque text.
 No migration or index is added here. Exact `pulledAt` aggregates scan scoped rows
 and remain statement-timeout bounded without a supporting index; if that scan
 proves too expensive, capture measured plans before proposing an index later.
+
+## Snapshot and timeout behavior
+
+All measurement queries run in one RepeatableRead transaction, so the response
+is internally snapshot-consistent: concurrent imports cannot make sections
+disagree, and a later invocation observes subsequently committed rows. The
+transaction budget is derived from the statement budget (3 timed statements ×
+1.5 s + 1 s buffer = 5.5 s) so it cannot self-expire before PostgreSQL
+statement timeouts fire. Both PostgreSQL cancellation (57014 / statement
+timeout) and Prisma transaction expiry (P2028) map to HTTP 408; unrelated
+errors keep their existing classification and error bodies never carry SQL,
+payload, credential, or transaction-internals content.

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
+import { PrismaClient } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { withSystemScope } from "@/lib/tenant-guard";
 import { measureCampaignMetricRawRetention } from "./warehouse-raw-retention";
@@ -8,9 +9,15 @@ const now = new Date("2026-09-18T12:00:00.000Z");
 const wsA = "raw-retention-ws-a";
 const wsB = "raw-retention-ws-b";
 const wsC = "raw-retention-ws-c";
+const wsD = "raw-retention-ws-d";
 const connA = "raw-retention-conn-a";
 const connB = "raw-retention-conn-b";
 const connC = "raw-retention-conn-c";
+const connD = "raw-retention-conn-d";
+
+// Second client modeling a concurrent warehouse import: it commits through a
+// different connection while the dry-run measurement transaction is open.
+const writerDb = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
 
 function metric(input: Partial<any> & { id: string; workspaceId: string; connectionId: string }) {
   return {
@@ -24,20 +31,22 @@ function metric(input: Partial<any> & { id: string; workspaceId: string; connect
 describe("PostgreSQL: raw retention dry-run", () => {
   before(async () => {
     await withSystemScope(async () => {
-      await prisma.campaignMetric.deleteMany({ where: { workspaceId: { in: [wsA, wsB, wsC] } } });
-      await prisma.retailOrder.deleteMany({ where: { workspaceId: { in: [wsA, wsB, wsC] } } });
-      await prisma.connection.deleteMany({ where: { id: { in: [connA, connB, connC] } } });
-      await prisma.workspace.deleteMany({ where: { id: { in: [wsA, wsB, wsC] } } });
+      await prisma.campaignMetric.deleteMany({ where: { workspaceId: { in: [wsA, wsB, wsC, wsD] } } });
+      await prisma.retailOrder.deleteMany({ where: { workspaceId: { in: [wsA, wsB, wsC, wsD] } } });
+      await prisma.connection.deleteMany({ where: { id: { in: [connA, connB, connC, connD] } } });
+      await prisma.workspace.deleteMany({ where: { id: { in: [wsA, wsB, wsC, wsD] } } });
     });
     await prisma.workspace.createMany({ data: [
       { id: wsA, slug: wsA, name: "A", ownerId: "raw-retention-owner" },
       { id: wsB, slug: wsB, name: "B", ownerId: "raw-retention-owner" },
       { id: wsC, slug: wsC, name: "C", ownerId: "raw-retention-owner" },
+      { id: wsD, slug: wsD, name: "D", ownerId: "raw-retention-owner" },
     ] });
     await prisma.connection.createMany({ data: [
       { id: connA, workspaceId: wsA, name: "A", type: "source", provider: "meta_ads", credentials: "synthetic", remoteAccountId: "a" },
       { id: connB, workspaceId: wsB, name: "B", type: "source", provider: "google_ads", credentials: "synthetic", remoteAccountId: "b" },
       { id: connC, workspaceId: wsC, name: "C", type: "source", provider: "meta_ads", credentials: "synthetic", remoteAccountId: "c" },
+      { id: connD, workspaceId: wsD, name: "D", type: "source", provider: "meta_ads", credentials: "synthetic", remoteAccountId: "d" },
     ] });
     await prisma.campaignMetric.createMany({ data: [
       metric({ id: "a-before", workspaceId: wsA, connectionId: connA, pulledAt: new Date("2026-08-19T11:59:59.999Z") }),
@@ -49,6 +58,10 @@ describe("PostgreSQL: raw retention dry-run", () => {
       metric({ id: "a-shopee", workspaceId: wsA, connectionId: connA, platform: "shopee", rawData: '{"broad_metrics":{},"direct_metrics":{},"keyword_settings_count":2}', pulledAt: new Date("2026-08-01T00:00:00.000Z") }),
       metric({ id: "b-old", workspaceId: wsB, connectionId: connB, platform: "google_ads", pulledAt: new Date("2026-01-01T00:00:00.000Z") }),
     ] });
+    await prisma.campaignMetric.createMany({ data: [
+      metric({ id: "d-base-0", workspaceId: wsD, connectionId: connD, rawData: '{"ad_name":"CONCURRENT_SECRET_D0"}' }),
+      metric({ id: "d-base-1", workspaceId: wsD, connectionId: connD, platform: "google_ads", rawData: '{"impressions":7}' }),
+    ] });
     const bulk = Array.from({ length: 500 }, (_, index) => metric({
       id: `c-bulk-${index}`, workspaceId: wsC, connectionId: connC,
       entityId: `c-bulk-${index}`, campaignId: `c-bulk-${index}`, campaignName: `c-bulk-${index}`,
@@ -58,7 +71,38 @@ describe("PostgreSQL: raw retention dry-run", () => {
     await prisma.retailOrder.create({ data: { workspaceId: wsA, connectionId: connA, platform: "shopee", orderId: "raw-retention-order", createdAtIso: "2026-01-01", currency: "VND", grossRevenue: 1, rawData: "RETAIL_SECRET" } });
   });
 
-  after(async () => { await prisma.$disconnect(); });
+  after(async () => { await writerDb.$disconnect(); await prisma.$disconnect(); });
+
+  it("holds one snapshot when an import commits mid-measurement", async () => {
+    let hookCalls = 0;
+    // Ordered by awaits, not sleeps: the hook runs inside the measurement
+    // transaction after the summary query, commits the writer row through the
+    // second client, and only then lets measurement continue.
+    const result = await (measureCampaignMetricRawRetention as any)(
+      { workspaceId: wsD, retentionDays: 30, sampleSize: 10, now },
+      prisma,
+      {
+        afterSummary: async () => {
+          hookCalls++;
+          await writerDb.campaignMetric.create({
+            data: metric({ id: "d-concurrent-1", workspaceId: wsD, connectionId: connD, rawData: '{"late":true}' }),
+          });
+        },
+      },
+    );
+    assert.equal(hookCalls, 1, "the hook must run once inside the measurement transaction");
+    assert.equal(result.exactEligibleRowCount, 2, "summary must not see the mid-measurement commit");
+    const perPlatformSum = result.perPlatform.reduce((sum: number, row: any) => sum + row.exactEligibleRowCount, 0);
+    assert.equal(perPlatformSum, result.exactEligibleRowCount, "sections must agree within one snapshot");
+    assert.equal(result.eligibleByteEstimate.evidence, "exact", "exact bytes must describe the snapshot population");
+    assert.equal(result.eligibleByteEstimate.sampleRows, 2);
+    assert.equal(JSON.stringify(result).includes("CONCURRENT_SECRET_D0"), false, "no raw payload values leak");
+
+    const next = await measureCampaignMetricRawRetention({ workspaceId: wsD, retentionDays: 30, sampleSize: 10, now });
+    assert.equal(next.exactEligibleRowCount, 3, "a new invocation observes the committed import");
+    const nextSum = next.perPlatform.reduce((sum: number, row: any) => sum + row.exactEligibleRowCount, 0);
+    assert.equal(nextSum, 3);
+  });
 
   it("uses pulledAt strictly, isolates tenants, classifies readers, and makes zero writes", async () => {
     const before = await Promise.all([
