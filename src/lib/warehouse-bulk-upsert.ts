@@ -356,6 +356,17 @@ const CONFLICT_TARGET =
 
 function columnArrays(rows: BulkMetricRow[]): Record<string, unknown[]> {
   const col = <T>(pick: (row: BulkMetricRow) => T): T[] => rows.map(pick);
+  // Numbers bind as decimal strings, never raw JS numbers: Prisma caches
+  // raw-SQL parameter type inference per statement, and mixing
+  // integer-valued with fractional doubles across executions corrupts later
+  // binds ("improper binary format in array element 1"). Strings take one
+  // deterministic path; the SQL casts parse them server-side. String(4.5)
+  // round-trips exactly; NaN/Infinity never reach here (sanitized to 0/null).
+  const str = (pick: (row: BulkMetricRow) => number | null): (string | null)[] =>
+    rows.map((row) => {
+      const value = pick(row);
+      return value == null ? null : String(value);
+    });
   return {
     id: col((r) => r.id),
     workspaceId: col((r) => r.workspaceId),
@@ -372,25 +383,25 @@ function columnArrays(rows: BulkMetricRow[]): Record<string, unknown[]> {
     adId: col((r) => r.adId),
     date: col((r) => r.date.toISOString()),
     breakdownHash: col((r) => r.breakdownHash),
-    impressions: col((r) => r.impressions),
-    clicks: col((r) => r.clicks),
-    spend: col((r) => r.spend),
-    reach: col((r) => r.reach),
-    cpc: col((r) => r.cpc),
-    ctr: col((r) => r.ctr),
-    conversions: col((r) => r.conversions),
-    revenue: col((r) => r.revenue),
-    roas: col((r) => r.roas),
+    impressions: str((r) => r.impressions),
+    clicks: str((r) => r.clicks),
+    spend: str((r) => r.spend),
+    reach: str((r) => r.reach),
+    cpc: str((r) => r.cpc),
+    ctr: str((r) => r.ctr),
+    conversions: str((r) => r.conversions),
+    revenue: str((r) => r.revenue),
+    roas: str((r) => r.roas),
     currency: col((r) => r.currency),
     rawData: col((r) => r.rawData),
     adName: col((r) => r.adName),
-    shopeeBroadOrders: col((r) => r.shopeeBroadOrders),
-    shopeeBroadUnits: col((r) => r.shopeeBroadUnits),
-    shopeeBroadGmv: col((r) => r.shopeeBroadGmv),
-    shopeeDirectOrders: col((r) => r.shopeeDirectOrders),
-    shopeeDirectUnits: col((r) => r.shopeeDirectUnits),
-    shopeeDirectGmv: col((r) => r.shopeeDirectGmv),
-    shopeeKeywordSettingsCount: col((r) => r.shopeeKeywordSettingsCount),
+    shopeeBroadOrders: str((r) => r.shopeeBroadOrders),
+    shopeeBroadUnits: str((r) => r.shopeeBroadUnits),
+    shopeeBroadGmv: str((r) => r.shopeeBroadGmv),
+    shopeeDirectOrders: str((r) => r.shopeeDirectOrders),
+    shopeeDirectUnits: str((r) => r.shopeeDirectUnits),
+    shopeeDirectGmv: str((r) => r.shopeeDirectGmv),
+    shopeeKeywordSettingsCount: str((r) => r.shopeeKeywordSettingsCount),
     syncJobId: col((r) => r.syncJobId),
     lockScope: col((r) => r.lockScope),
     fencingToken: col((r) => r.fencingToken),

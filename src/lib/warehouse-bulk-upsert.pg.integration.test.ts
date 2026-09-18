@@ -234,8 +234,40 @@ describe("PostgreSQL integration: warehouse bulk upsert", () => {
     }
   });
 
-  it("bulk generic writes stamp lease evidence", async (t) => {
+  it("bulk binds integer and fractional doubles deterministically in any order", async (t) => {
     if (!isDbAvailable) return t.skip("PostgreSQL database not reachable");
+    // Regression: Prisma caches raw-SQL parameter type inference per
+    // statement, so integer-valued doubles bound first corrupted later
+    // fractional binds ("improper binary format in array element 1").
+    // Numbers bind as decimal strings; verify int-then-fractional ordering
+    // with exact stored values.
+    const payload = (entity: string, extra: Record<string, number>) => ({
+      workspaceId: ws, connectionId: connGeneric.id, platform: "google_ads",
+      accountId: "act_mixed", level: "campaign", entityId: entity, campaignId: entity,
+      date: new Date("2026-03-07T00:00:00.000Z"),
+      impressions: 0, clicks: 0, spend: 0, cpc: 0, ctr: 0, conversions: 0,
+      ...extra,
+    });
+    for (const [entity, extra] of [
+      ["mix_int", { impressions: 7 }],
+      ["mix_frac", { cpc: 4.5, roas: 0.6 }],
+      ["mix_frac2", { spend: 9.99, ctr: 40 }],
+    ] as Array<[string, Record<string, number>]>) {
+      const outcome = await flushGenericPayloadBatches([payload(entity, extra)], {
+        fallbackRow: (p) => upsertCampaignMetric(p),
+      });
+      assert.equal(outcome.failed, 0);
+      assert.equal(outcome.fallbacks, 0, `${entity} stays on the bulk statement`);
+    }
+    const rows = await prisma.campaignMetric.findMany({ where: { workspaceId: ws, entityId: { in: ["mix_int", "mix_frac", "mix_frac2"] } } });
+    const byEntity = new Map(rows.map((row: any) => [row.entityId, row]));
+    assert.equal((byEntity.get("mix_frac") as any).cpc, 4.5);
+    assert.equal((byEntity.get("mix_frac") as any).roas, 0.6);
+    assert.equal((byEntity.get("mix_frac2") as any).spend, 9.99);
+    assert.equal((byEntity.get("mix_frac2") as any).ctr, 40);
+  });
+
+  it("bulk generic writes stamp lease evidence", async (t) => {    if (!isDbAvailable) return t.skip("PostgreSQL database not reachable");
     const outcome = await flushGenericPayloadBatches(
       [{
         workspaceId: ws, connectionId: connGeneric.id, platform: "google_ads",
