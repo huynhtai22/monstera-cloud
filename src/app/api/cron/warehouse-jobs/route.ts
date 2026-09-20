@@ -4,7 +4,8 @@ import { logger } from "@/lib/logger";
 import { requireCronSecret } from "@/lib/request-auth";
 import { withSystemScope } from "@/lib/tenant-guard";
 import { claimNextImportJob } from "@/lib/warehouse-import-job";
-import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
+import { runDurableImportWorker } from "@/lib/warehouse-import-worker";
+import { warehouseUsesDedicatedWorker } from "@/lib/warehouse-dispatch";
 
 const BATCH_SIZE = 5;
 
@@ -19,14 +20,14 @@ const BATCH_SIZE = 5;
  * 3. Executes each job with durable progress tracking, heartbeats, and retry management.
  */
 export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
+  const denied = requireCronSecret(req, "warehouse_jobs");
   if (denied) return denied;
 
   return await processWarehouseQueue();
 }
 
 export async function POST(req: Request) {
-  const denied = requireCronSecret(req);
+  const denied = requireCronSecret(req, "warehouse_jobs");
   if (denied) return denied;
 
   return await processWarehouseQueue();
@@ -37,6 +38,9 @@ async function processWarehouseQueue() {
 }
 
 async function processWarehouseQueueUnsafe() {
+  if (warehouseUsesDedicatedWorker()) {
+    return NextResponse.json({ executionMode: "worker", executedJobs: [], processed: 0 });
+  }
   const now = new Date();
 
   // 1. Recover jobs whose worker lease expired (worker crashed/aborted).

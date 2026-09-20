@@ -80,10 +80,10 @@ export class LeaseLostError extends Error {
 
 const JOB_KEY_PREFIX = "warehouse_job:";
 const JOB_CACHE_TTL_SECONDS = 86400; // 24 hours
-const MANUAL_TIKTOK_IDEMPOTENCY_PREFIX = "manual-tiktok:";
+const MANUAL_SYNC_IDEMPOTENCY_PATTERN = /^manual-[a-z][a-z0-9_]*:/;
 
 function releaseTerminalIdempotencyKey(idempotencyKey: string | null | undefined): null | undefined {
-  return idempotencyKey?.startsWith(MANUAL_TIKTOK_IDEMPOTENCY_PREFIX) ? null : undefined;
+  return idempotencyKey && MANUAL_SYNC_IDEMPOTENCY_PATTERN.test(idempotencyKey) ? null : undefined;
 }
 
 /**

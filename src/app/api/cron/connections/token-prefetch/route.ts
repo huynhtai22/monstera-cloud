@@ -9,7 +9,7 @@ import { withSystemScope } from "@/lib/tenant-guard";
 
 export async function GET(request: Request) {
   try {
-    const denied = requireCronSecret(request);
+    const denied = requireCronSecret(request, "token_prefetch");
     if (denied) return denied;
 
     logger.info("[CRON: TOKEN PRE-FETCH] Proactive token refresh & cache warming...");

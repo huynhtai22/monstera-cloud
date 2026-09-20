@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { withDatabaseTenantContext } from "./database-tenant-context";
 import { normalizeMetaAdName } from "@/lib/meta-sync-lock";
 import { getCanonicalDateRange } from "@/lib/warehouse-date-range";
 import { buildAccountFilterPredicate, appendWherePredicate } from "@/lib/warehouse-account-filter";
@@ -366,7 +367,7 @@ async function queryWarehouseInSnapshot(input: WarehouseQueryInput, db: ScopedTr
  */
 export async function queryWarehouse(input: WarehouseQueryInput, db?: ScopedTransaction) {
   if (db) return queryWarehouseInSnapshot(input, db);
-  return prisma.$transaction(
+  return withDatabaseTenantContext(prisma, input.workspaceId,
     (tx) => queryWarehouseInSnapshot(input, tx as ScopedTransaction),
     {
       isolationLevel: "RepeatableRead",

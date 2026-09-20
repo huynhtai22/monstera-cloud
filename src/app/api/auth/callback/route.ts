@@ -22,7 +22,8 @@ import { emitMonitor } from "@/lib/observability/monitors";
 import { enqueueOauthWarehouseBackfill } from "@/lib/oauth-warehouse-backfill";
 import { after } from "next/server";
 import { claimImportJob } from "@/lib/warehouse-import-job";
-import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
+import { runDurableImportWorker } from "@/lib/warehouse-import-worker";
+import { warehouseUsesDedicatedWorker } from "@/lib/warehouse-dispatch";
 import { resetConnectionAccountHealth } from "@/lib/provider-account-health";
 
 export const dynamic = "force-dynamic";
@@ -340,7 +341,7 @@ export async function GET(request: NextRequest) {
                     });
                 } else {
                     const job = backfill.job;
-                    after(async () => {
+                    if (!warehouseUsesDedicatedWorker()) after(async () => {
                         try {
                             const claim = await claimImportJob(job.id);
                             if (claim.claimed && claim.leaseId) {
@@ -474,7 +475,7 @@ export async function GET(request: NextRequest) {
                     continue;
                 }
                 const job = backfill.job;
-                after(async () => {
+                if (!warehouseUsesDedicatedWorker()) after(async () => {
                     try {
                         const claim = await claimImportJob(job.id);
                         if (claim.claimed && claim.leaseId) {

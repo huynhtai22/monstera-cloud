@@ -20,7 +20,7 @@ import {
   PILOT_ACTIVE_JOB_STATUSES,
   PilotStateError,
 } from "@/lib/extended-backfill-pilot-lifecycle";
-import { createWarehouseChunkExecutor } from "@/app/api/data-explorer/warehouse/import-batch/route";
+import { createWarehouseChunkExecutor } from "@/lib/warehouse-import-worker";
 import { LeaseLostError } from "@/lib/warehouse-import-job";
 import { PilotExecuteSchema, invalidBody, pilotRejectionResponse } from "../../../_shared";
 

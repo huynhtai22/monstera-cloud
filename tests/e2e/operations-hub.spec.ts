@@ -211,6 +211,13 @@ test.describe("operations hub", () => {
     await expect(page.getByTestId("operations-page")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Operations Hub" })).toBeVisible();
     await expect(page.getByTestId("client-context-bar")).toBeVisible();
+    const journey = page.getByTestId("freshness-journey");
+    await expect(journey).toBeVisible();
+    await expect(journey).toContainText("End-to-end data freshness");
+    await expect(journey).toContainText("Operations Healthy Brand");
+    await expect(journey).toContainText("Background check");
+    await expect(journey.getByRole("link").first()).toHaveAttribute("href", /clientId=/);
+    expect(await journey.evaluate(el => el.scrollWidth <= el.clientWidth)).toBeTruthy();
 
     for (const key of ["connectorHealth", "freshness", "ingestion", "readiness", "delivery", "anomalies"]) {
       await expect(page.getByTestId(`operations-section-${key}`)).toBeVisible();
@@ -230,12 +237,13 @@ test.describe("operations hub", () => {
     await expect(page.locator("body")).not.toContainText("8550008555");
 
     // The card lists one action per non-ready section, so this fixture yields
-    // five: connector health, freshness and readiness need attention, ingestion
-    // and anomalies are empty, and delivery is ready (no action). The
+    // six: connector health, freshness and readiness need attention, ingestion
+    // and anomalies are empty, and the synthetic receipt fingerprint is stale. The
     // assertions below then narrow to the high-priority connector-health action
     // specifically.
     await expect(page.getByTestId("operations-actions")).toBeVisible();
-    await expect(page.getByTestId("operations-actions-count")).toHaveText("5");
+    await expect(page.getByTestId("operations-actions-count")).toHaveText("6");
+    await expect(page.getByTestId("operations-action-delivery")).toBeVisible();
 
     const connectorAction = page.getByTestId("operations-action-connectorHealth");
     await expect(connectorAction).toBeVisible();

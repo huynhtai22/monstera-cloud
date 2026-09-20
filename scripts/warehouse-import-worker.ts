@@ -1,13 +1,15 @@
 import { logger } from "@/lib/logger";
 import { claimNextImportJob } from "@/lib/warehouse-import-job";
-import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
+import { runDurableImportWorker } from "@/lib/warehouse-import-worker";
+import { withSystemScope } from "@/lib/tenant-guard";
+import { pathToFileURL } from "node:url";
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function processNextJob(): Promise<boolean> {
-  const claim = await claimNextImportJob(60000, { excludePilotJobs: true });
+  const claim = await withSystemScope(() => claimNextImportJob(60000, { excludePilotJobs: true }));
   if (!claim.claimed || !claim.job || !claim.leaseId) {
     return false;
   }
@@ -18,8 +20,14 @@ export async function processNextJob(): Promise<boolean> {
 }
 
 async function main() {
+  let stopping = false;
+  // Finish the current lease-fenced job before exiting; a forced kill remains
+  // recoverable through the existing expired-lease claim path.
+  const stop = () => { stopping = true; };
+  process.once("SIGTERM", stop);
+  process.once("SIGINT", stop);
   logger.info("[Import Worker] Starting background warehouse import worker loop...");
-  while (true) {
+  while (!stopping) {
     try {
       const processed = await processNextJob();
       if (!processed) {
@@ -32,7 +40,7 @@ async function main() {
   }
 }
 
-if (process.env.NODE_ENV !== "test" && !process.env.VITEST) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((err) => {
     logger.error("[Import Worker] Fatal worker error:", err);
     process.exit(1);

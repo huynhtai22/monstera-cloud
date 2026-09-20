@@ -7,7 +7,7 @@ import {
   getImportJob,
   type BatchImportItem,
 } from "@/lib/warehouse-import-job";
-import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
+import { runDurableImportWorker } from "@/lib/warehouse-import-worker";
 import { ingestMetaRows, META_CANONICAL_METRIC_GRAIN } from "@/lib/meta-ingest";
 import { acquireMetaSyncLock, releaseMetaSyncLock } from "@/lib/meta-sync-lock";
 import { queryWarehouse } from "@/lib/warehouse-query";

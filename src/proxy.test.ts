@@ -333,6 +333,36 @@ describe("proxy API pipeline", () => {
     assert.equal(res.headers.get("retry-after"), null);
   });
 
+  it("isolates 30 office users across all session self-service routes by verified JWT identity", async () => {
+    const counts = new Map<string, number>();
+    const limiter: SharedLimiter = { limit: async key => {
+      const count = (counts.get(key) ?? 0) + 1;
+      counts.set(key, count);
+      return { success: count <= 4, limit: 4, remaining: Math.max(0, 4 - count), reset: Math.ceil(Date.now() / 1000) + 60 };
+    } };
+    for (let user = 0; user < 30; user++) {
+      const proxy = __createProxyForTests({
+        getSessionToken: async () => ({ sub: `verified-${user}` }),
+        enforceOptions: { limiters: { "internal-api": limiter, credential: denyLimiter() }, isProduction: true },
+      });
+      for (const path of ["/api/auth/heartbeat", "/api/auth/sessions", "/api/auth/sessions/revoke", "/api/auth/login-events"]) {
+        const res = await proxy(apiRequest(path, { headers: { "x-forwarded-for": "192.0.2.44", "x-user-id": "forged-same-user" } }));
+        assert.equal(res.status, 200, `${path} user ${user}`);
+      }
+      assert.equal((await proxy(apiRequest("/api/auth/heartbeat"))).status, 429, "one user still cannot exceed their budget");
+    }
+    assert.equal(counts.size, 30);
+  });
+
+  it("keeps anonymous session calls IP-limited and valid users fail-open during limiter outages", async () => {
+    const anonymous = __createProxyForTests({ getSessionToken: async () => null,
+      enforceOptions: { limiters: { "internal-api": denyLimiter() }, isProduction: true } });
+    assert.equal((await anonymous(apiRequest("/api/auth/heartbeat", { headers: { "x-user-id": "forged" } }))).status, 429);
+    const valid = __createProxyForTests({ getSessionToken: async () => ({ sub: "verified" }),
+      enforceOptions: { limiters: { "internal-api": throwingLimiter() }, isProduction: true } });
+    assert.equal((await valid(apiRequest("/api/auth/sessions/revoke"))).status, 200);
+  });
+
   it("applies the credential class to password/reset endpoints", async () => {
     const proxy = __createProxyForTests({
       enforceOptions: { limiters: { credential: denyLimiter() }, isProduction: true },
@@ -368,17 +398,21 @@ describe("matcher contract", () => {
     assert.doesNotMatch("/api/auth/callback/google", rx);
     assert.doesNotMatch("/api/auth/session", rx);
 
-    const credentialPatterns = config.matcher.slice(1, 6);
+    const credentialPatterns = config.matcher.slice(1, -1);
     for (const endpoint of [
       "/api/auth/forgot-password",
       "/api/auth/register",
       "/api/auth/resend-otp",
       "/api/auth/reset-password",
       "/api/auth/verify",
+      "/api/auth/sessions",
+      "/api/auth/sessions/revoke",
+      "/api/auth/login-events",
+      "/api/auth/heartbeat",
     ]) {
       assert.ok(
         credentialPatterns.some((pattern) => asMatcherRegex(pattern).test(endpoint)),
-        `${endpoint} must be matched for credential limiting`,
+        `${endpoint} must be matched for rate limiting`,
       );
     }
   });

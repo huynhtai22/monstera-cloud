@@ -15,6 +15,7 @@ import { queryWarehouse } from "@/lib/warehouse-query";
 import { aggregateCurrencySafe } from "@/lib/currency-safe-aggregation";
 import { queryMetricsAggregate } from "@/lib/warehouse-aggregate";
 import { clientContextCacheParams } from "@/lib/client-context";
+import { recordUsage } from "@/lib/usage-meter";
 
 import {
   assertQueryableClientContext,
@@ -84,6 +85,8 @@ export async function GET(req: Request) {
     if (rbac) return rbac;
     throw err;
   }
+
+  void recordUsage(workspaceId, "query");
 
   let scopedClientId: string | undefined;
   try {

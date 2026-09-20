@@ -20,6 +20,9 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 
 import prisma from "@/lib/prisma";
+import { withDatabaseTenantContext } from "./database-tenant-context";
+import { buildFreshnessJourney, type FreshnessJourney } from "./freshness-journey";
+import { reportingDataset } from "@/lib/report-delivery";
 import {
   assertQueryableClientContext,
   resolveClientDataScope,
@@ -199,6 +202,8 @@ export type IngestionData = {
 };
 
 export type ReadinessClient = {
+  journey?: FreshnessJourney;
+  monitor?: { checkedAt: string; status: string } | null;
   clientId: string;
   clientName: string;
   status: ReportReadinessStatus;
@@ -540,6 +545,7 @@ export function summarizeIngestion(
 }
 
 export type ReadinessEvaluationRow = {
+  journey?: FreshnessJourney;
   clientId: string;
   status: ReportReadinessStatus;
   blockers: ReadonlyArray<{ code: ReadinessCode }>;
@@ -564,6 +570,7 @@ export function summarizeReadiness(
     .sort((a, b) => a.clientId.localeCompare(b.clientId))
     .slice(0, limit)
     .map((evaluation) => ({
+      ...(evaluation.journey ? { journey: evaluation.journey } : {}),
       clientId: evaluation.clientId,
       clientName: options.clientNames?.get(evaluation.clientId) ?? evaluation.clientId,
       status: evaluation.status,
@@ -588,6 +595,8 @@ export type DeliveryReceiptRow = {
   dataThroughDate: string;
   rowCount: number;
   retrievedAt: Date;
+  /** False when canonical current dataset evidence no longer matches. */
+  evidenceCurrent?: boolean;
 };
 
 export function summarizeDelivery(
@@ -624,14 +633,14 @@ export function summarizeDelivery(
     dataThroughDate: receipt.dataThroughDate,
     rowCount: receipt.rowCount,
     retrievedAt: receipt.retrievedAt.toISOString(),
-    stale: receipt.retrievedAt.getTime() < cutoff,
+    stale: receipt.evidenceCurrent === false || receipt.retrievedAt.getTime() < cutoff,
   }));
 
   return {
     recencyHours: OPERATIONS_DELIVERY_RECENCY_MS / (60 * 60 * 1000),
     totals: {
       receipts: all.length,
-      stale: all.filter((receipt) => receipt.retrievedAt.getTime() < cutoff).length,
+      stale: all.filter((receipt) => receipt.evidenceCurrent === false || receipt.retrievedAt.getTime() < cutoff).length,
       clients: new Set(all.map((receipt) => receipt.clientId)).size,
     },
     latest,
@@ -1048,20 +1057,25 @@ async function loadReadiness(
     const result = await loadReportReadiness(workspaceId, window, {
       clientId: scope.mode === "explicit" || scope.mode === "legacy" ? scope.clientId ?? undefined : undefined,
       limit: OPERATIONS_READINESS_EVAL_LIMIT,
+      now,
     });
     const evaluations = result.evaluations;
     const clientIds = [...new Set(evaluations.map((evaluation) => evaluation.clientId))].sort();
     const clients = clientIds.length
       ? await prisma.client.findMany({
           where: { workspaceId, id: { in: clientIds } },
-          select: { id: true, name: true },
+          select: { id: true, name: true, freshnessState: { select: { checkedAt: true, status: true } } },
         })
       : [];
-    const data = summarizeReadiness(evaluations, {
+    const data = summarizeReadiness(evaluations.map(evaluation => ({ ...evaluation, journey: buildFreshnessJourney(evaluation) })), {
       window,
       clientNames: new Map(clients.map((client) => [client.id, client.name])),
       limit: OPERATIONS_READINESS_CLIENT_LIMIT,
     });
+    for (const client of data.clients) {
+      const state = clients.find(c => c.id === client.clientId)?.freshnessState;
+      client.monitor = state ? { checkedAt: state.checkedAt.toISOString(), status: state.status } : null;
+    }
     const exhaustive = !result.nextCursor;
     return operationsSection(data, {
       attention: data.totals.notReady > 0 || data.totals.warning > 0 || data.totals.unknown > 0,
@@ -1091,57 +1105,84 @@ async function loadDelivery(
     ...(scope.clientId ? { clientId: scope.clientId } : scope.mode === "workspace" ? {} : { id: { in: [] } }),
   };
   try {
-    // Authoritative per-(client, destination) recency over the WHOLE population.
-    // The bounded receipt scan is ordered `retrievedAt desc`, so it
-    // systematically drops the OLDEST receipts - exactly the stale ones - and
-    // therefore cannot certify staleness on its own.
-    const [pairs, receipts] = await Promise.all([
-      prisma.destinationDeliveryReceipt.groupBy({
-        by: ["clientId", "destination"],
-        where: scopeWhere,
-        _max: { retrievedAt: true },
-      }),
-      prisma.destinationDeliveryReceipt.findMany({
-        where: scopeWhere,
-        orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
-        take: OPERATIONS_DELIVERY_RECEIPT_LIMIT + 1,
-        select: {
-          id: true,
-          clientId: true,
-          destination: true,
-          windowStart: true,
-          windowEnd: true,
-          dataThroughDate: true,
-          rowCount: true,
-          retrievedAt: true,
-        },
-      }),
-    ]);
+    return await withDatabaseTenantContext(prisma, workspaceId, async (tx) => {
+      // Authoritative per-(client, destination) recency over the WHOLE population.
+      // The bounded receipt scan is ordered `retrievedAt desc`, so it
+      // systematically drops the OLDEST receipts - exactly the stale ones - and
+      // therefore cannot certify staleness on its own.
+      const [pairs, receipts] = await Promise.all([
+        tx.destinationDeliveryReceipt.groupBy({
+          by: ["clientId", "destination"],
+          where: scopeWhere,
+          orderBy: [{ clientId: "asc" }, { destination: "asc" }],
+          take: OPERATIONS_DELIVERY_RECEIPT_LIMIT + 1,
+          _max: { retrievedAt: true },
+        }),
+        tx.destinationDeliveryReceipt.findMany({
+          where: scopeWhere,
+          orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
+          take: OPERATIONS_DELIVERY_RECEIPT_LIMIT + 1,
+          select: {
+            id: true,
+            clientId: true,
+            destination: true,
+            windowStart: true,
+            windowEnd: true,
+            dataThroughDate: true,
+            rowCount: true,
+            retrievedAt: true,
+            datasetFingerprint: true,
+          },
+        }),
+      ]);
 
-    const cutoff = now.getTime() - OPERATIONS_DELIVERY_RECENCY_MS;
-    const stalePairs = pairs.filter((pair) => (pair._max.retrievedAt?.getTime() ?? 0) < cutoff).length;
-    // Display-only disclosure: both the receipt scan and the pair list are capped.
-    const truncated =
-      receipts.length > OPERATIONS_DELIVERY_RECEIPT_LIMIT || pairs.length > OPERATIONS_LIST_LIMIT;
+      // A bounded scan must never certify unseen pairs as current.
+      if (pairs.length > OPERATIONS_DELIVERY_RECEIPT_LIMIT) {
+        return operationsUnavailableSection<DeliveryData>(href);
+      }
+      const verified: DeliveryReceiptRow[] = [];
+      for (const pair of pairs) {
+        const receipt = receipts.find((r) => r.clientId === pair.clientId && r.destination === pair.destination)
+          ?? await tx.destinationDeliveryReceipt.findFirst({
+            where: { ...scopeWhere, clientId: pair.clientId, destination: pair.destination },
+            orderBy: [{ retrievedAt: "desc" }, { id: "desc" }],
+          });
+        if (!receipt) continue;
+        const client = await tx.client.findFirst({
+          where: { workspaceId, id: receipt.clientId },
+          select: { requiredProviders: true, requirementsConfiguredAt: true },
+        });
+        const providerScope = client?.requirementsConfiguredAt && client.requiredProviders.length
+          ? client.requiredProviders : undefined;
+        const dataset = await reportingDataset(tx, workspaceId, receipt.clientId,
+          { start: receipt.windowStart, end: receipt.windowEnd }, providerScope);
+        verified.push({ ...receipt, evidenceCurrent: !dataset.limited && dataset.rowCount > 0 &&
+          receipt.datasetFingerprint === dataset.fingerprint && receipt.rowCount === dataset.rowCount &&
+          receipt.dataThroughDate === dataset.dataThroughDate });
+      }
+      // Display-only disclosure: both the receipt scan and the pair list are capped.
+      const truncated =
+        receipts.length > OPERATIONS_DELIVERY_RECEIPT_LIMIT || pairs.length > OPERATIONS_LIST_LIMIT;
 
-    const data = summarizeDelivery(receipts.slice(0, OPERATIONS_DELIVERY_RECEIPT_LIMIT), {
-      now,
-      limit: OPERATIONS_LIST_LIMIT,
-    });
-    // Totals describe the whole population, not the bounded display scan.
-    data.totals = {
-      receipts: pairs.length,
-      stale: stalePairs,
-      clients: new Set(pairs.map((pair) => pair.clientId)).size,
-    };
-    return operationsSection(data, {
-      attention: stalePairs > 0,
-      empty: pairs.length === 0,
-      truncated,
-      limit: OPERATIONS_LIST_LIMIT,
-      href,
-      stateAuthoritative: true,
-    });
+      const data = summarizeDelivery(verified, {
+        now,
+        limit: OPERATIONS_LIST_LIMIT,
+      });
+      // Totals describe the whole population, not the bounded display scan.
+      data.totals = {
+        receipts: pairs.length,
+        stale: data.totals.stale,
+        clients: new Set(pairs.map((pair) => pair.clientId)).size,
+      };
+      return operationsSection(data, {
+        attention: data.totals.stale > 0,
+        empty: pairs.length === 0,
+        truncated,
+        limit: OPERATIONS_LIST_LIMIT,
+        href,
+        stateAuthoritative: true,
+      });
+    }, { isolationLevel: "RepeatableRead", timeout: 20_000 });
   } catch {
     return operationsUnavailableSection<DeliveryData>(href);
   }

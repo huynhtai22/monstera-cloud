@@ -6,8 +6,9 @@ import { parseConnectionCredentialsJson } from "@/lib/parse-connection-credentia
 import { requireCronSecret } from "@/lib/request-auth";
 import { syncConnectionData } from "@/lib/sync-connection";
 import { runPostWarehouseRefreshQualityChecks } from "@/lib/observability/data-quality";
-import { claimNextImportJob } from "@/lib/warehouse-import-job";
-import { runDurableImportWorker } from "@/app/api/data-explorer/warehouse/import-batch/route";
+import { claimNextImportJob, createImportJob } from "@/lib/warehouse-import-job";
+import { warehouseUsesDedicatedWorker } from "@/lib/warehouse-dispatch";
+import { runDurableImportWorker } from "@/lib/warehouse-import-worker";
 import { workspaceAllowsScheduledRefresh } from "@/lib/plan-config";
 import { withSystemScope } from "@/lib/tenant-guard";
 
@@ -25,7 +26,7 @@ function isoDate(offsetDays = 0) {
  * Supports lookbackDays (e.g. lookbackDays=3 for frequent 4h cron runs).
  */
 export async function GET(request: Request) {
-  const denied = requireCronSecret(request);
+  const denied = requireCronSecret(request, "warehouse_refresh");
   if (denied) return denied;
 
   const startTime = Date.now();
@@ -39,6 +40,7 @@ export async function GET(request: Request) {
     where: { status: { in: ["PILOT", "ACTIVE"] } },
     select: {
       id: true,
+      ownerId: true,
       plan: true,
       providerAccess: { where: { enabled: true }, select: { provider: true } },
       connections: {
@@ -57,6 +59,22 @@ export async function GET(request: Request) {
   });
 
   const results: Array<{ workspaceId: string; connectionId: string; provider: string; ok: boolean; rows: number; error?: string }> = [];
+  if (warehouseUsesDedicatedWorker()) {
+    const queuedJobs: string[] = [];
+    for (const { workspace, connection } of jobs) {
+      const job = await createImportJob({
+        workspaceId: workspace.id,
+        userId: workspace.ownerId,
+        plan: workspace.plan,
+        since: sinceDate,
+        until: untilDate,
+        items: [{ connectionId: connection.id }],
+        idempotencyKey: `scheduled:${connection.id}:${sinceDate}:${untilDate}`,
+      });
+      queuedJobs.push(job.id);
+    }
+    return NextResponse.json({ executionMode: "worker", queuedJobs });
+  }
   for (let index = 0; index < jobs.length; index += 3) {
     const batch = jobs.slice(index, index + 3);
     const settled = await Promise.all(batch.map(async ({ workspace, connection }) => {

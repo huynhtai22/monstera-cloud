@@ -3,7 +3,9 @@
  * Do not add a second billing system. Meter source connections and refresh, never destinations.
  */
 
+import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
+import { logger } from "@/lib/logger";
 import { canonicalizeRemoteAccountId } from "@/lib/connection-upsert";
 import {
   getPlanLimits,
@@ -19,6 +21,7 @@ export const PLAN_LIMIT_CODES = {
   SEAT: "PLAN_SEAT_LIMIT",
   LOOKER: "PLAN_LOOKER_BLOCKED",
   API_KEY: "PLAN_API_KEY_BLOCKED",
+  KEY_LIMIT: "PLAN_API_KEY_LIMIT",
   CSV: "PLAN_CSV_BLOCKED",
   DESTINATION: "PLAN_DESTINATION_BLOCKED",
 } as const;
@@ -127,6 +130,25 @@ export function evaluateLookerAccess(plan: string, auth: "jwt-sheets" | "api-key
 
 export function evaluateApiKeyCreate(plan: string): boolean {
   return getPlanLimits(plan).allowApiKeys;
+}
+
+/**
+ * P2: pure key-count gate. `keyCount` is the number of non-revoked keys,
+ * optionally excluding the key being rotated.
+ */
+export function evaluateApiKeyCount(opts: {
+  plan: string;
+  keyCount: number;
+}): SourceConnectDecision {
+  const limits = getPlanLimits(opts.plan);
+  if (limits.maxApiKeys !== Infinity && opts.keyCount >= limits.maxApiKeys) {
+    return {
+      ok: false,
+      code: PLAN_LIMIT_CODES.KEY_LIMIT,
+      message: `This workspace has reached the ${limits.displayName} API key limit (${limits.maxApiKeys}). Revoke an unused key to create another.`,
+    };
+  }
+  return { ok: true, reason: "within_limit" };
 }
 
 export function evaluateCsvExport(plan: string): boolean {
@@ -271,8 +293,12 @@ export async function assertLookerAllowed(opts: {
   );
 }
 
-export async function assertCanCreateApiKey(workspaceId: string): Promise<void> {
-  const workspace = await prisma.workspace.findUnique({
+export async function assertCanCreateApiKeyWithClient(
+  client: Pick<Prisma.TransactionClient, "workspace" | "apiKey">,
+  workspaceId: string,
+  opts?: { excludingKeyId?: string },
+): Promise<void> {
+  const workspace = await client.workspace.findUnique({
     where: { id: workspaceId },
     select: { plan: true },
   });
@@ -284,6 +310,26 @@ export async function assertCanCreateApiKey(workspaceId: string): Promise<void> 
       plan,
     );
   }
+  const keyCount = await client.apiKey.count({
+    where: {
+      workspaceId,
+      revokedAt: null,
+      ...(opts?.excludingKeyId ? { NOT: { id: opts.excludingKeyId } } : {}),
+    },
+  });
+  const decision = evaluateApiKeyCount({ plan, keyCount });
+  if (!decision.ok) {
+    logger.warn(`[API_KEYS] key cap hit: workspaceId=${workspaceId} plan=${plan} keys=${keyCount}`);
+    throw new PlanLimitError(decision.code, decision.message, plan);
+  }
+}
+
+export async function assertCanCreateApiKey(workspaceId: string, opts?: { excludingKeyId?: string }): Promise<void> {
+  return assertCanCreateApiKeyWithClient(
+    prisma as unknown as Pick<Prisma.TransactionClient, "workspace" | "apiKey">,
+    workspaceId,
+    opts,
+  );
 }
 
 export async function assertCsvExportAllowed(plan: string): Promise<void> {

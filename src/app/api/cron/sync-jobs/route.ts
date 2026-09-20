@@ -25,7 +25,7 @@ const LEASE_MS = 5 * 60 * 1000;
 
 export async function GET(req: Request) {
   // Verify this was called by Vercel Cron and not a public caller
-  const denied = requireCronSecret(req);
+  const denied = requireCronSecret(req, "sync_jobs");
   if (denied) return denied;
   if (isPilotMode()) {
     return NextResponse.json({ error: "Scheduled destination pipelines are disabled during the agency pilot." }, { status: 410 });

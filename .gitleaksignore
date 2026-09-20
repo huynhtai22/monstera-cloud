@@ -1,0 +1,6 @@
+# Synthetic Playwright credential removed in 36c5222; retained only in this
+# branch's immutable history so the scanner needs an exact fingerprint waiver.
+d8c752dc349413c756985ffe816957d6766a3ac5:tests/e2e/seat-sharing-revocation.spec.ts:generic-api-key:12
+
+# Empty documented environment variable; no credential value is present.
+36c522219726cbd2050136039af3dda3faa4a429:.env.example:generic-api-key:15

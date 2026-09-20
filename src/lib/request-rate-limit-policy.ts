@@ -113,6 +113,8 @@ const CREDENTIAL_PATHS = new Set([
   "/api/auth/reset-password",
   "/api/auth/verify",
 ]);
+// Authenticated session self-service routes deliberately fall through to
+// internal-api: the proxy keys that budget by verified JWT user, not office IP.
 
 /** Classify an API pathname. Returns null for non-API paths. */
 export function classifyApiRoute(pathname: string): RateLimitRouteClass | null {

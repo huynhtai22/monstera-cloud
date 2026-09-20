@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Settings2, Building2, Users, CreditCard, KeyRound, Briefcase, Bell } from "lucide-react";
+import { Settings2, Building2, Users, CreditCard, KeyRound, Briefcase, Bell, MonitorSmartphone } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspace";
 import useSWR from "swr";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ import { ClientsTab } from "@/components/settings/ClientsTab";
 import { TeamTab } from "@/components/settings/TeamTab";
 import { BillingTab } from "@/components/settings/BillingTab";
 import { ApiKeysTab } from "@/components/settings/ApiKeysTab";
+import { SessionsTab } from "@/components/settings/SessionsTab";
 import { DataQualityTab } from "@/components/settings/DataQualityTab";
 
 const fetcher = async (url: string) => {
@@ -22,7 +23,7 @@ const fetcher = async (url: string) => {
 };
 
 export default function SettingsPage() {
-    const [activeTab, setActiveTab] = useState<'workspace' | 'clients' | 'team' | 'alerts' | 'billing' | 'api'>('workspace');
+    const [activeTab, setActiveTab] = useState<'workspace' | 'clients' | 'team' | 'alerts' | 'billing' | 'api' | 'sessions'>('workspace');
     const { activeWorkspaceId } = useWorkspaceStore();
     const { data: workspaces } = useSWR("/api/workspaces", fetcher);
     const activeWorkspace = Array.isArray(workspaces) ? workspaces.find((w: any) => w.id === activeWorkspaceId) || workspaces[0] : null;
@@ -55,7 +56,7 @@ export default function SettingsPage() {
         if (typeof window === "undefined") return;
         const params = new URLSearchParams(window.location.search);
         const tab = params.get("tab") as any;
-        if (['workspace', 'clients', 'team', 'alerts', 'billing', 'api'].includes(tab)) {
+        if (['workspace', 'clients', 'team', 'alerts', 'billing', 'api', 'sessions'].includes(tab)) {
             setActiveTab(tab);
         }
     }, []);
@@ -173,10 +174,14 @@ export default function SettingsPage() {
     const handleGenerateKey = async () => {
         setIsGenerating(true);
         try {
-            const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Pilot API key" }) });
+            const storageKey = `monstera:api-key:create:${activeWorkspaceId}`;
+            const idempotencyKey = sessionStorage.getItem(storageKey) || crypto.randomUUID();
+            sessionStorage.setItem(storageKey, idempotencyKey);
+            const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Pilot API key" }) });
             if (res.ok) {
                 const data = await res.json();
                 setNewlyGeneratedKey(data.key);
+                sessionStorage.removeItem(storageKey);
                 fetchApiKeys();
                 toast.success("API Key generated");
             }
@@ -189,6 +194,39 @@ export default function SettingsPage() {
             const res = await fetch(`/api/settings/api-keys?id=${encodeURIComponent(id)}&workspaceId=${encodeURIComponent(activeWorkspaceId!)}`, { method: "DELETE" });
             if (res.ok) { fetchApiKeys(); toast.success("API Key deleted"); }
         } catch { toast.error("Failed to delete key"); }
+    };
+
+    const handleRotateKey = async (id: string) => {
+        if (!confirm("Rotate this API key? The old secret stops working immediately — update Looker/Sheets configs right away.")) return;
+        try {
+            const storageKey = `monstera:api-key:rotate:${activeWorkspaceId}:${id}`;
+            const idempotencyKey = sessionStorage.getItem(storageKey) || crypto.randomUUID();
+            sessionStorage.setItem(storageKey, idempotencyKey);
+            const res = await fetch("/api/settings/api-keys/rotate", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ workspaceId: activeWorkspaceId, id }) });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                setNewlyGeneratedKey(data.key);
+                sessionStorage.removeItem(storageKey);
+                fetchApiKeys();
+                toast.success("API Key rotated — copy the new secret now");
+            } else {
+                toast.error(data.error || "Failed to rotate key");
+            }
+        } catch { toast.error("Failed to rotate key"); }
+    };
+
+    const handlePinKey = async (id: string, enabled: boolean) => {
+        if (enabled && !confirm("Pin this key to your current network? It will stop working everywhere else — only use this for static office IPs, never for Looker scheduled refresh.")) return;
+        try {
+            const res = await fetch("/api/settings/api-keys/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: activeWorkspaceId, id, enabled }) });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                fetchApiKeys();
+                toast.success(enabled ? "Key pinned to this network" : "Pin removed");
+            } else {
+                toast.error(data.error || "Failed to update pin");
+            }
+        } catch { toast.error("Failed to update pin"); }
     };
 
     return (
@@ -214,6 +252,7 @@ export default function SettingsPage() {
                                 { id: 'alerts', label: 'Alerts & Quality', icon: Bell },
                                 { id: 'billing', label: 'Billing', icon: CreditCard },
                                 { id: 'api', label: 'API Keys', icon: KeyRound },
+                                { id: 'sessions', label: 'Sessions', icon: MonitorSmartphone },
                             ].map((tab) => (
                                 <button
                                     key={tab.id}
@@ -270,6 +309,7 @@ export default function SettingsPage() {
                         />
                     )}
                     {activeTab === 'billing' && <BillingTab workspacePlan={workspacePlan} workspaceStatus={activeWorkspace?.status} workspaceId={activeWorkspace?.id} subscriptionEndsAt={activeWorkspace?.subscriptionEndsAt} isOwner={activeWorkspace?.role === 'owner'} />}
+                    {activeTab === 'sessions' && <SessionsTab />}
                     {activeTab === 'api' && (
                         <ApiKeysTab
                             apiKeys={apiKeys}
@@ -278,6 +318,8 @@ export default function SettingsPage() {
                             canManage={canManage}
                             handleGenerateKey={handleGenerateKey}
                             handleDeleteKey={handleDeleteKey}
+                            handleRotateKey={handleRotateKey}
+                            handlePinKey={handlePinKey}
                         />
                     )}
                     </div>{/* end content panel */}

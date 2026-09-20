@@ -4,7 +4,7 @@ import { requireCronSecret } from "@/lib/request-auth";
 
 /** Downgrade dated domestic-transfer terms and seven-day free trials. Legacy PayOS workspaces are excluded. */
 export async function GET(request: Request) {
-  const denied = requireCronSecret(request);
+  const denied = requireCronSecret(request, "billing_expiry");
   if (denied) return denied;
 
   const result = await prisma.workspace.updateMany({

@@ -70,6 +70,11 @@ export const TENANT_GUARDED_MODELS = new Set([
   "ClientProviderAccountAssignment",
   // Checkpointed backfill slices (2026-09): direct workspaceId owners
   "WarehouseBackfillChunk",
+  // Seat-sharing measurement counter (direct workspace owner)
+  "WorkspaceDailyUsage",
+  "ClientFreshnessState",
+  "WorkspaceSessionEvidence",
+  "ApiKeyMutationReceipt",
 ]);
 
 /**

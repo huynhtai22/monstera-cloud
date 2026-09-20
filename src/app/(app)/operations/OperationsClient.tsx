@@ -36,6 +36,7 @@ import {
 // Type-only import: the summary loader is server-only and must never be pulled
 // into the client bundle (enforced by the client-boundary guard).
 import type { OperationsSummary } from "@/lib/operations-summary";
+import { READINESS_MESSAGES } from "@/lib/report-readiness";
 
 type Summary = OperationsSummary;
 type ConnectorHealthSection = Summary["sections"]["connectorHealth"];
@@ -563,6 +564,39 @@ function renderAnomalies(section: AnomaliesSection): React.ReactNode {
     );
 }
 
+function FreshnessJourneyCard({ section, hrefFor }: { section: ReadinessSection; hrefFor: (path: string, clientId?: string | null) => string }) {
+    return (
+        <section data-testid="freshness-journey" aria-labelledby="freshness-journey-title" className="mb-6 rounded-lg border border-line bg-panel p-5">
+            <h2 id="freshness-journey-title" className="text-sm font-semibold text-ink">End-to-end data freshness</h2>
+            <p className="mt-1 text-xs text-ink-mute">Source → Warehouse → Report → Delivery. Evidence for the reporting window—not a guarantee of live data.</p>
+            {!section.data ? <SectionNotice reason={section.reason} /> : section.data.clients.length === 0 ? <Quiet>No client reporting evidence yet. Configure a client and its required sources.</Quiet> : (
+                <div className="mt-4 space-y-4">
+                    {section.data.clients.map(client => (
+                        <div key={client.clientId} className="rounded-md border border-line p-3">
+                            <div className="text-sm font-semibold text-ink">{client.clientName} · {humanize(client.status)}</div>
+                            <p className="mt-1 text-xs text-ink-mute">Background check: {client.monitor ? `${formatEvidenceTimestamp(client.monitor.checkedAt)} · ${humanize(client.monitor.status)}` : "Not recorded"}</p>
+                            {!client.journey ? <Quiet>Freshness evidence unavailable. Refresh to recheck.</Quiet> : <>
+                                <p className="mt-1 text-xs text-ink-mute">Window {client.journey.window.start} – {client.journey.window.end} · Checked {formatEvidenceTimestamp(client.journey.evaluatedAt)}</p>
+                                <ol className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                    {client.journey.stages.map(stage => (
+                                        <li key={stage.key} className="min-w-0 rounded-md border border-line bg-canvas p-3">
+                                            <div className="text-xs font-semibold text-ink">{humanize(stage.key)} · {stage.state === "waiting" ? "Waiting upstream" : humanize(stage.state)}</div>
+                                            {stage.codes.map(code => <p key={code} className="mt-1 text-xs text-ink-mute">{READINESS_MESSAGES[code]}</p>)}
+                                            {stage.state !== "passed" && <Link className="mt-2 inline-block text-xs underline" href={hrefFor(stage.href, client.clientId)}>Review {stage.key}</Link>}
+                                        </li>
+                                    ))}
+                                </ol>
+                                <p className="mt-2 text-xs text-ink-mute">Latest successful sync: {formatEvidenceTimestamp(client.journey.lastSuccessfulSyncAt)} · Latest data date: {formatEvidenceDay(client.journey.dataThroughDate)} · Current delivery: {formatEvidenceTimestamp(client.journey.deliveredAt)}</p>
+                            </>}
+                        </div>
+                    ))}
+                </div>
+            )}
+            {section.truncated && <Quiet>Evidence is capped. This view must not be read as an all-client health certification.</Quiet>}
+        </section>
+    );
+}
+
 function LoadingGrid() {
     return (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2" aria-hidden>
@@ -583,7 +617,10 @@ export function OperationsClient() {
     const key = activeWorkspaceId ? `/api/operations/summary?${query.toString()}` : null;
 
     const { data, error, isLoading, isValidating, mutate } = useSWR<Summary>(key, fetcher, {
-        revalidateOnFocus: false,
+        revalidateOnFocus: true,
+        refreshInterval: 60_000,
+        refreshWhenHidden: false,
+        refreshWhenOffline: false,
     });
 
     const scopeLabel = (() => {
@@ -651,6 +688,7 @@ export function OperationsClient() {
                 ) : (
                     <>
                         <NextActionsCard actions={actions} hrefFor={hrefFor} />
+                        <FreshnessJourneyCard section={data.sections.readiness} hrefFor={hrefFor} />
                         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                         <SectionCard
                             sectionKey="connectorHealth"

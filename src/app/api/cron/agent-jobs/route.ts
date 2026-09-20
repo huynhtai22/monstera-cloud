@@ -13,13 +13,13 @@ import { logger } from "@/lib/logger";
  * typed warehouse tools (no LLM). Queue age expected ≈ 24h on Hobby.
  */
 export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
+  const denied = requireCronSecret(req, "agent_jobs");
   if (denied) return denied;
   return processAgentQueue();
 }
 
 export async function POST(req: Request) {
-  const denied = requireCronSecret(req);
+  const denied = requireCronSecret(req, "agent_jobs");
   if (denied) return denied;
   return processAgentQueue();
 }

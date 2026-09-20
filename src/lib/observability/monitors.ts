@@ -7,7 +7,13 @@ export function emitMonitor(
     | "time_to_first_row"
     | "queued_job_age"
     | "warehouse_freshness"
+    | "report_freshness_changed"
+    | "report_freshness_unavailable"
     | "tenant_authz_denied"
+    | "auth_failure_spike"
+    | "api_key_pin_rejection_spike"
+    | "cron_failure"
+    | "retention_lag"
     | "ai_worker_failed"
     | "ai_budget_warning",
   fields: Record<string, unknown>,
