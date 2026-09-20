@@ -175,6 +175,20 @@ export function deviceLabelFromRequest(request?: RequestLike | null): string | n
   return `${browser} on ${platform}`;
 }
 
+function allowanceFromPlans(plans: string[]): SessionAllowance {
+  const plan = plans.reduce((best, candidate) => (
+    maxConcurrentSessionsForPlan(candidate) > maxConcurrentSessionsForPlan(best)
+      ? candidate
+      : best
+  ), "free");
+  return {
+    plan,
+    activeLimit: maxConcurrentSessionsForPlan(plan),
+    graceSlots: SESSION_GRACE_SLOTS,
+    graceDurationHours: 24,
+  };
+}
+
 export async function getUserSessionAllowance(userId: string): Promise<SessionAllowance | null> {
   try {
     const row = await prismaBase.user.findUnique({
@@ -182,17 +196,7 @@ export async function getUserSessionAllowance(userId: string): Promise<SessionAl
       select: { workspaces: { select: { workspace: { select: { plan: true } } } } },
     });
     const plans = row?.workspaces.map((membership) => membership.workspace.plan) ?? [];
-    const plan = plans.reduce((best, candidate) => (
-      maxConcurrentSessionsForPlan(candidate) > maxConcurrentSessionsForPlan(best)
-        ? candidate
-        : best
-    ), "free");
-    return {
-      plan,
-      activeLimit: maxConcurrentSessionsForPlan(plan),
-      graceSlots: SESSION_GRACE_SLOTS,
-      graceDurationHours: 24,
-    };
+    return allowanceFromPlans(plans);
   } catch (error) {
     logger.warn("[SESSION] plan lookup failed (fail-open, skipping cap):", error);
     return null;
@@ -216,48 +220,57 @@ export async function registerSession(opts: {
 }): Promise<{ revokedCount: number; graceEndsAt: Date | null }> {
   if (!opts.userId || !opts.jti) return { revokedCount: 0, graceEndsAt: null };
   try {
-    const allowance = await getUserSessionAllowance(opts.userId);
     const { ipHash, uaHash } = telemetryHashesFromRequest(opts.request ?? null);
     const deviceLabel = deviceLabelFromRequest(opts.request);
 
-    let revokedCount = 0;
-    let graceEndsAt: Date | null = null;
-    if (allowance) {
-      const active = await prismaBase.userSession.findMany({
+    // The cap decision and insert must be one serialized publication. Without
+    // this per-user lock, concurrent logins can all observe the same active
+    // count and exceed the advertised hard ceiling.
+    const result = await prismaBase.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`monstera:user-session:${opts.userId}`}))`;
+      const user = await tx.user.findUnique({
+        where: { id: opts.userId },
+        select: { workspaces: { select: { workspace: { select: { plan: true } } } } },
+      });
+      const allowance = allowanceFromPlans(
+        user?.workspaces.map((membership) => membership.workspace.plan) ?? [],
+      );
+      const active = await tx.userSession.findMany({
         where: { userId: opts.userId, revokedAt: null },
         select: { id: true, jti: true, lastSeenAt: true, graceEndsAt: true },
         orderBy: { lastSeenAt: "asc" },
       });
       const policy = sessionRegistrationPolicy(active, allowance.activeLimit);
       const toRevoke = policy.revokeIds;
-      graceEndsAt = policy.graceEndsAt;
       if (toRevoke.length > 0) {
-        await prismaBase.userSession.updateMany({
-          where: { id: { in: toRevoke } },
+        await tx.userSession.updateMany({
+          where: { userId: opts.userId, id: { in: toRevoke }, revokedAt: null },
           data: { revokedAt: new Date(), revokedReason: "allowance_exceeded" },
         });
-        revokedCount = toRevoke.length;
-        const redis = createNodeRedis();
-        for (const row of active) {
-          if (toRevoke.includes(row.id)) {
-            cacheSet(row.jti, true);
-            if (redis) {
-              try {
-                await redis.set(redisKey(row.jti), "1", { ex: 60 });
-              } catch {
-                /* fail-open */
-              }
-            }
-          }
-        }
-        logger.info(`[SESSION] revoked ${revokedCount} oldest session(s) for user ${opts.userId} (allowance ${allowance.activeLimit} + ${allowance.graceSlots} grace)`);
       }
-    }
-
-    await prismaBase.userSession.create({
-      data: { userId: opts.userId, jti: opts.jti, ipHash, uaHash, deviceLabel, graceEndsAt },
+      await tx.userSession.create({
+        data: {
+          userId: opts.userId,
+          jti: opts.jti,
+          ipHash,
+          uaHash,
+          deviceLabel,
+          graceEndsAt: policy.graceEndsAt,
+        },
+      });
+      return {
+        revokedRows: active.filter((row) => toRevoke.includes(row.id)),
+        revokedCount: toRevoke.length,
+        graceEndsAt: policy.graceEndsAt,
+        allowance,
+      };
     });
+
+    await cacheRevokedSessions(result.revokedRows);
     cacheSet(opts.jti, false);
+    if (result.revokedCount > 0) {
+      logger.info(`[SESSION] revoked ${result.revokedCount} oldest session(s) for user ${opts.userId} (allowance ${result.allowance.activeLimit} + ${result.allowance.graceSlots} grace)`);
+    }
 
     // Bounded hygiene: prune long-revoked rows for this user only.
     try {
@@ -271,7 +284,7 @@ export async function registerSession(opts: {
       /* best-effort */
     }
 
-    return { revokedCount, graceEndsAt };
+    return { revokedCount: result.revokedCount, graceEndsAt: result.graceEndsAt };
   } catch (error) {
     logger.warn("[SESSION] registerSession failed (fail-open):", error);
     return { revokedCount: 0, graceEndsAt: null };
@@ -340,28 +353,41 @@ export async function enforceExpiredSessionGrace(
 ): Promise<number> {
   if (!userId) return 0;
   try {
-    const allowance = await getUserSessionAllowance(userId);
-    if (!allowance) return 0;
-    const active = await prismaBase.userSession.findMany({
-      where: { userId, revokedAt: null },
-      select: { id: true, jti: true, lastSeenAt: true, graceEndsAt: true },
-      orderBy: { lastSeenAt: "asc" },
+    const outcome = await prismaBase.$transaction(async (tx) => {
+      // Share the registration lock so cleanup cannot make its decision from
+      // a stale active-session set while a new login is being admitted.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`monstera:user-session:${userId}`}))`;
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { workspaces: { select: { workspace: { select: { plan: true } } } } },
+      });
+      const allowance = allowanceFromPlans(
+        user?.workspaces.map((membership) => membership.workspace.plan) ?? [],
+      );
+      const active = await tx.userSession.findMany({
+        where: { userId, revokedAt: null },
+        select: { id: true, jti: true, lastSeenAt: true, graceEndsAt: true },
+        orderBy: { lastSeenAt: "asc" },
+      });
+      const revokeIds = selectExpiredGraceSessionsToRevoke(
+        active,
+        allowance.activeLimit,
+        new Date(),
+        currentJti,
+      );
+      if (revokeIds.length === 0) return { count: 0, revokedRows: [] as Array<{ jti: string }> };
+      const revokedRows = active.filter((row) => revokeIds.includes(row.id));
+      const updated = await tx.userSession.updateMany({
+        where: { userId, id: { in: revokeIds }, revokedAt: null },
+        data: { revokedAt: new Date(), revokedReason: "grace_expired" },
+      });
+      return { count: updated.count, revokedRows };
     });
-    const revokeIds = selectExpiredGraceSessionsToRevoke(
-      active,
-      allowance.activeLimit,
-      new Date(),
-      currentJti,
-    );
-    if (revokeIds.length === 0) return 0;
-    const revokedRows = active.filter((row) => revokeIds.includes(row.id));
-    const result = await prismaBase.userSession.updateMany({
-      where: { userId, id: { in: revokeIds }, revokedAt: null },
-      data: { revokedAt: new Date(), revokedReason: "grace_expired" },
-    });
-    await cacheRevokedSessions(revokedRows);
-    logger.info(`[SESSION] expired grace cleanup revoked ${result.count} session(s) for user ${userId}`);
-    return result.count;
+    await cacheRevokedSessions(outcome.revokedRows);
+    if (outcome.count > 0) {
+      logger.info(`[SESSION] expired grace cleanup revoked ${outcome.count} session(s) for user ${userId}`);
+    }
+    return outcome.count;
   } catch (error) {
     logger.warn("[SESSION] grace cleanup failed (fail-open):", error);
     return 0;
@@ -522,19 +548,24 @@ export async function maybeNotifyNewDevice(opts: {
   userId: string;
   email?: string | null;
   ipHash: string | null;
+  currentLoginEventId?: string | null;
   method: string;
   notify: (email: string, method: string) => Promise<unknown>;
 }): Promise<void> {
   if (!opts.ipHash || !opts.email) return;
   try {
     const recent = await prismaBase.loginEvent.findMany({
-      where: { userId: opts.userId },
+      where: {
+        userId: opts.userId,
+        ...(opts.currentLoginEventId ? { NOT: { id: opts.currentLoginEventId } } : {}),
+      },
       select: { ipHash: true },
       orderBy: { createdAt: "desc" },
       take: 200,
     });
-    // Exclude the event just written for this login (newest row).
-    const prior = recent.slice(1).map((row) => row.ipHash).filter(Boolean) as string[];
+    // Exclude by immutable id rather than assuming timestamp order: concurrent
+    // logins may share the same createdAt precision.
+    const prior = recent.map((row) => row.ipHash).filter(Boolean) as string[];
     if (prior.length === 0) return;
     if (prior.includes(opts.ipHash)) return;
     const throttleKey = `${opts.userId}:${opts.ipHash}`;

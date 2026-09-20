@@ -6,6 +6,7 @@ import { assertAllowedTestDatabase } from "./pg-test-discipline";
 import {
   enforceExpiredSessionGrace,
   isSessionRevoked,
+  maybeNotifyNewDevice,
   registerSession,
   revokeOtherUserSessions,
   revokeUserSession,
@@ -14,10 +15,18 @@ import {
 import {
   isApiKeyIpAllowed,
   auditApiKeyPinRejection,
+  generateApiKey,
   pinHashForRequest,
+  resolveApiKeyForRequest,
+  withApiKeyMutationLock,
 } from "./api-key-security";
-import { recordLoginEvent, touchApiKeyUsage } from "./login-telemetry";
-import { assertCanCreateApiKey, PLAN_LIMIT_CODES, PlanLimitError } from "./plan-entitlements";
+import { recordLoginEvent, telemetryHashesFromRequest, touchApiKeyUsage } from "./login-telemetry";
+import {
+  assertCanCreateApiKey,
+  assertCanCreateApiKeyWithClient,
+  PLAN_LIMIT_CODES,
+  PlanLimitError,
+} from "./plan-entitlements";
 
 /**
  * PostgreSQL integration: seat-sharing P0–P2 flows against real tables.
@@ -89,6 +98,22 @@ describe("PostgreSQL integration: seat-sharing telemetry, sessions, keys", () =>
     assert.ok(row.uaHash && !row.uaHash.includes("SeatAgent"), "raw UA must never be stored");
   });
 
+  it("new-device detection excludes the current event by id", async () => {
+    const request = authedRequest("203.0.113.222", "NewDeviceAgent/1.0");
+    const currentLoginEventId = await recordLoginEvent({ userId, method: "credentials", request });
+    assert.ok(currentLoginEventId);
+    let notifications = 0;
+    await maybeNotifyNewDevice({
+      userId,
+      email,
+      ipHash: telemetryHashesFromRequest(request).ipHash,
+      currentLoginEventId,
+      method: "test",
+      notify: async () => { notifications += 1; },
+    });
+    assert.equal(notifications, 1, "current event must not hide a genuinely new device");
+  });
+
   it("registerSession allows one temporary overflow, then revokes oldest at the hard ceiling", async () => {
     await registerSession({ userId, jti: jtiA });
     await registerSession({ userId, jti: jtiB });
@@ -132,13 +157,11 @@ describe("PostgreSQL integration: seat-sharing telemetry, sessions, keys", () =>
     assert.ok(expired, "cleanup records a user-visible revocation reason");
   });
 
-  it("concurrent registrations never throw and stay bounded", async () => {
+  it("serializes concurrent registrations at the advertised hard ceiling", async () => {
     const jtis = [0, 1, 2].map((n) => `seat-race-${n}-${uid}`);
     await Promise.all(jtis.map((jti) => registerSession({ userId, jti })));
     const active = await prismaBase.userSession.count({ where: { userId, revokedAt: null } });
-    // Hard ceiling is 4; a 3-way race may overshoot by at most the race width
-    // minus the one guaranteed overlapping revoke.
-    assert.ok(active <= 6, `active sessions bounded after race (got ${active})`);
+    assert.equal(active, 4, "per-user advisory lock must preserve the free hard ceiling");
   });
 
   it("revoke helpers sign out one or all-other sessions", async () => {
@@ -203,6 +226,27 @@ describe("PostgreSQL integration: seat-sharing telemetry, sessions, keys", () =>
     assert.equal(isApiKeyIpAllowed({ allowedIpHash: pin }, null), false);
   });
 
+  it("canonical key resolution enforces IP pins for every bearer-key surface", async () => {
+    const office = authedRequest("203.0.113.51", "OfficeAgent/2.0");
+    const away = authedRequest("198.51.100.100", "CafeAgent/2.0");
+    const generated = generateApiKey();
+    const key = await prisma.apiKey.create({
+      data: {
+        keyHash: generated.keyHash,
+        keyPrefix: generated.keyPrefix,
+        keyLastFour: generated.keyLastFour,
+        name: "Pinned key",
+        workspaceId: wsFree,
+        allowedIpHash: pinHashForRequest(office),
+      },
+    });
+    const allowed = await resolveApiKeyForRequest(generated.secret, office);
+    assert.equal(allowed.ok, true);
+    const denied = await resolveApiKeyForRequest(generated.secret, away);
+    assert.deepEqual(denied, { ok: false, reason: "ip_pinned" });
+    await prisma.apiKey.update({ where: { id: key.id }, data: { revokedAt: new Date() } });
+  });
+
   it("pin rejections write one throttled workspace audit event", async () => {
     const beforeCount = await prisma.auditEvent.count({
       where: { workspaceId: wsFree, action: "api_key.pin_rejected" },
@@ -216,9 +260,9 @@ describe("PostgreSQL integration: seat-sharing telemetry, sessions, keys", () =>
     assert.equal(afterCount - beforeCount, 1);
   });
 
-  it("Starter key-count gate blocks the 4th key but allows rotation", async () => {
+  it("serializes concurrent key creation at the cap and still allows rotation", async () => {
     const ids: string[] = [];
-    for (let n = 0; n < 3; n++) {
+    for (let n = 0; n < 2; n++) {
       const row = await prisma.apiKey.create({
         data: {
           keyHash: `seat-cap-${n}-${uid}`,
@@ -230,6 +274,28 @@ describe("PostgreSQL integration: seat-sharing telemetry, sessions, keys", () =>
       });
       ids.push(row.id);
     }
+
+    const contenders = await Promise.allSettled([0, 1].map((n) =>
+      withApiKeyMutationLock(wsStarter, async (tx) => {
+        await assertCanCreateApiKeyWithClient(tx, wsStarter);
+        return tx.apiKey.create({
+          data: {
+            keyHash: `seat-cap-race-${n}-${uid}`,
+            keyPrefix: "mc_live_",
+            keyLastFour: "2222",
+            name: `Cap race ${n}`,
+            workspaceId: wsStarter,
+          },
+        });
+      }),
+    ));
+    assert.equal(contenders.filter((result) => result.status === "fulfilled").length, 1);
+    assert.equal(contenders.filter((result) => result.status === "rejected").length, 1);
+    assert.equal(
+      await prisma.apiKey.count({ where: { workspaceId: wsStarter, revokedAt: null } }),
+      3,
+      "workspace advisory lock must preserve the Starter compatibility cap",
+    );
     await assert.rejects(assertCanCreateApiKey(wsStarter), (error: unknown) => {
       assert.ok(error instanceof PlanLimitError);
       assert.equal((error as PlanLimitError).code, PLAN_LIMIT_CODES.KEY_LIMIT);

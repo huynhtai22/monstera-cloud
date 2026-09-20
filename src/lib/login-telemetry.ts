@@ -81,8 +81,8 @@ export async function recordLoginEvent(opts: {
   request?: RequestLike | null;
   ipHash?: string | null;
   uaHash?: string | null;
-}): Promise<void> {
-  if (!opts.userId) return;
+}): Promise<string | null> {
+  if (!opts.userId) return null;
   try {
     let { ipHash = null, uaHash = null } = opts;
     if ((ipHash == null || uaHash == null) && opts.request) {
@@ -90,16 +90,19 @@ export async function recordLoginEvent(opts: {
       ipHash = ipHash ?? derived.ipHash;
       uaHash = uaHash ?? derived.uaHash;
     }
-    await prismaBase.loginEvent.create({
+    const created = await prismaBase.loginEvent.create({
       data: {
         userId: opts.userId,
         method: opts.method,
         ipHash,
         uaHash,
       },
+      select: { id: true },
     });
+    return created.id;
   } catch (error) {
     logger.warn("[TELEMETRY] recordLoginEvent failed (fail-open):", error);
+    return null;
   }
 }
 
@@ -149,7 +152,9 @@ export type LoginEventSignal = {
 };
 
 /**
- * Pure aggregation for the sharing-signals endpoint (unit-tested).
+ * Pure aggregation for operator-only measurement and synthetic validation.
+ * Do not expose these user-global signals through a tenant-admin endpoint;
+ * LoginEvent intentionally has no workspace attribution.
  */
 export function aggregateLoginSignals(events: LoginEventSignal[]): Array<{
   userId: string;

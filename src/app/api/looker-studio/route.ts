@@ -4,7 +4,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { logger } from "@/lib/logger";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
 import { getCachedQuery, setCachedQuery, generateCacheKey } from "@/lib/redis-cache";
-import { hashApiKey, auditApiKeyPinRejection, isApiKeyIpAllowed, resolveApiKey } from "@/lib/api-key-security";
+import { hashApiKey, resolveApiKeyForRequest } from "@/lib/api-key-security";
 import { touchApiKeyUsage } from "@/lib/login-telemetry";
 import { recordUsage } from "@/lib/usage-meter";
 import { queryWarehouse } from "@/lib/warehouse-query";
@@ -176,18 +176,17 @@ export async function GET(req: NextRequest) {
     }
     else {
       // Looker Studio connector: API key auth
-      const keyRecord = await resolveApiKey(apiKey);
-      if (!keyRecord) {
+      const keyResolution = await resolveApiKeyForRequest(apiKey, req);
+      if (!keyResolution.ok && keyResolution.reason === "invalid") {
         return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
       }
-      // P2: opt-in office-IP pin (fail-closed only when a pin is set).
-      if (!isApiKeyIpAllowed(keyRecord, req)) {
-        await auditApiKeyPinRejection({ workspaceId: keyRecord.workspaceId, keyId: keyRecord.id });
+      if (!keyResolution.ok) {
         return NextResponse.json(
           { error: "API key is pinned to a different network.", code: "API_KEY_IP_PINNED" },
           { status: 403 },
         );
       }
+      const keyRecord = keyResolution.key;
 
       workspaceId = keyRecord.workspaceId;
       deliveryActor = `api-key:${keyRecord.id}`;

@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import {
@@ -29,13 +30,45 @@ export function generateApiKey(): {
   };
 }
 
-export async function resolveApiKey(secret: string) {
+async function resolveApiKey(secret: string) {
   const keyHash = hashApiKey(secret);
   const current = await prisma.apiKey.findFirst({
     where: { keyHash, revokedAt: null },
     include: { workspace: true },
   });
   return current;
+}
+
+export type ApiKeyRequestResolution =
+  | { ok: true; key: NonNullable<Awaited<ReturnType<typeof resolveApiKey>>> }
+  | { ok: false; reason: "invalid" | "ip_pinned" };
+
+/**
+ * Canonical API-key authentication path. Every bearer-key route must use this
+ * helper so optional IP pins cannot be bypassed through secondary endpoints.
+ */
+export async function resolveApiKeyForRequest(
+  secret: string,
+  request: RequestLike | null | undefined,
+): Promise<ApiKeyRequestResolution> {
+  const key = await resolveApiKey(secret);
+  if (!key) return { ok: false, reason: "invalid" };
+  if (!isApiKeyIpAllowed(key, request)) {
+    await auditApiKeyPinRejection({ workspaceId: key.workspaceId, keyId: key.id });
+    return { ok: false, reason: "ip_pinned" };
+  }
+  return { ok: true, key };
+}
+
+/** Serialize cap decisions and key lifecycle writes for one workspace. */
+export async function withApiKeyMutationLock<T>(
+  workspaceId: string,
+  operation: (tx: Prisma.TransactionClient) => Promise<T>,
+): Promise<T> {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`monstera:api-key:${workspaceId}`}))`;
+    return operation(tx as Prisma.TransactionClient);
+  });
 }
 
 /**

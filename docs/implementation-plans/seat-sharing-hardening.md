@@ -14,6 +14,10 @@
 > Self-service device review/revocation remains the default. Deferred: OTP
 > step-up, workspace-owner revocation of member sessions, and a console
 > over-seat banner.
+> Follow-up audit: per-user advisory transaction locks now make session caps
+> exact under concurrent login; per-workspace advisory locks make API-key cap
+> decisions and lifecycle audits atomic; every bearer-key route uses the same
+> IP-pin resolver. Tenant admins no longer receive user-global login history.
 
 Base inspected: workspace `monstera-cloud` at `src/lib/auth.ts`, `src/proxy.ts`, `src/lib/plan-entitlements.ts`, `src/lib/plan-config.ts`, `src/lib/api-key-security.ts`, `prisma/schema.prisma`. Do not deploy, charge, or contact providers from this plan. Follow `AGENTS.md` (Node >= 22, Postgres + `npx prisma db push` for local verify, `npm run lint` scoped to `src/`).
 
@@ -112,7 +116,7 @@ Non-goals: no second billing system (Paddle + Workspace.plan stays source of tru
 
 ## 5. Verification
 
-- `npx prisma db push` on local Postgres, `npm run create-smoke-user:pro`, `npm run seed-demo-metrics`.
+- `npx prisma migrate deploy` on disposable local Postgres, `npm run create-smoke-user:pro`, `npm run seed-demo-metrics`.
 - `npm run lint`, `npm run typecheck`, `npm test` (run-test-suite.mjs), targeted pg-integration, `next build --webpack`.
 - Manual: login 2 browsers → Sessions lists 2 → revoke one → revoked browser 401s to `/login`; 4th login on `free` receives 24-hour grace; 5th login revokes the oldest while preserving the deadline; Redis down → logins still succeed (fail-open).
 - No CSP change needed (no new third-party). No new env required except optional `LOGIN_IP_SALT` (fallback `NEXTAUTH_SECRET`); document in `.env.example`.

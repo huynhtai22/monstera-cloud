@@ -176,14 +176,19 @@ reason/connection/tag per workspace), so auto-filing is bounded and safe:
 - Machine: `reason='auth'` already isolates the family; pin rejections flow
   to `AuditEvent`, not tickets, to avoid ticket spam from hammered keys.
 
-## 7. Open items (notin'scope creep — each one blocks a row above)
+## 7. Remaining operational items
 
-1. `LoginEvent` retention: 90d rolling delete (cron or pg `PARTITION`) —
-   else the table that powers baselines becomes a cost line itself.
+1. **Done in this branch:** `LoginEvent` and `WorkspaceDailyUsage` use a
+   bounded 90-day rolling cleanup invoked by the authenticated master cron.
 2. Free-plan grandfathering date: record the P1 deploy date as T0′ for the
    report footnotes (explains weeks-1–4 conservative bias).
 3. Refresh the stale `UNIT_ECONOMICS.md` prices (299k/699k) to the live
    Agency Pro 1.49M₫ before citing breakeven anywhere in readouts.
+4. Run the four synthetic scenarios against the preview database and record
+   their event-based outcomes before merge. Local disposable-Postgres coverage
+   is necessary but is not preview certification.
+5. Have qualified counsel review the credential-sharing clause before using it
+   as the basis for suspension or a customer dispute.
 
 ## 8. Cadence and owners
 

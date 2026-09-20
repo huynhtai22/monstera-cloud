@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { pinHashForRequest } from "@/lib/api-key-security";
+import { pinHashForRequest, withApiKeyMutationLock } from "@/lib/api-key-security";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 
 /**
@@ -41,21 +40,25 @@ export async function POST(request: Request) {
       }
     }
 
-    const updated = await prisma.apiKey.updateMany({
-      where: { id, workspaceId, revokedAt: null },
-      data: { allowedIpHash },
+    const updated = await withApiKeyMutationLock(workspaceId, async (tx) => {
+      const changed = await tx.apiKey.updateMany({
+        where: { id, workspaceId, revokedAt: null },
+        data: { allowedIpHash },
+      });
+      if (changed.count === 1) {
+        await tx.auditEvent.create({
+          data: {
+            workspaceId,
+            actorUserId: session.user.id,
+            action: enabled ? "api_key.pinned" : "api_key.unpinned",
+            resource: "api_key",
+            resourceId: id,
+          },
+        });
+      }
+      return changed;
     });
     if (updated.count !== 1) return NextResponse.json({ error: "API key not found" }, { status: 404 });
-
-    await prisma.auditEvent.create({
-      data: {
-        workspaceId,
-        actorUserId: session.user.id,
-        action: enabled ? "api_key.pinned" : "api_key.unpinned",
-        resource: "api_key",
-        resourceId: id,
-      },
-    });
 
     return NextResponse.json({ success: true, ipPinned: enabled });
   } catch (error) {

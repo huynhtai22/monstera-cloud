@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import prisma, { prismaBase } from "@/lib/prisma";
+import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { getPlanLimits } from "@/lib/plan-config";
-import { aggregateLoginSignals } from "@/lib/login-telemetry";
 
 /**
  * GET /api/workspaces/[id]/sharing-signals?days=7
  *
  * P0 seat-sharing telemetry — read-only, no enforcement.
- * Admin+ only. Returns per-member login counts + distinct hashed-device
- * counts and per-key usage counters so owners can spot shared seats.
- * Raw IPs / user-agents are never returned (only salted-hash counts).
+ * Admin+ only. Returns workspace-scoped membership and key signals.
+ * LoginEvent is deliberately user-scoped rather than workspace-scoped, so a
+ * workspace admin must never receive a member's global login history (which
+ * could include activity in unrelated tenants). Per-member device activity is
+ * reported as unavailable until heartbeat evidence is workspace-attributed.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -49,21 +50,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!workspace) return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     const limits = getPlanLimits(workspace.plan);
 
-    const memberIds = members.map((member) => member.userId);
-    const events =
-      memberIds.length === 0
-        ? []
-        : await prismaBase.loginEvent.findMany({
-            where: { userId: { in: memberIds }, createdAt: { gte: since } },
-            select: { userId: true, ipHash: true, uaHash: true },
-            orderBy: { createdAt: "desc" },
-            take: 5000,
-          });
-
-    const signalsByUser = new Map(
-      aggregateLoginSignals(events).map((row) => [row.userId, row]),
-    );
-
     const keys = await prisma.apiKey.findMany({
       where: { workspaceId, revokedAt: null },
       select: {
@@ -78,20 +64,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       orderBy: { createdAt: "desc" },
     });
 
-    const users = members.map((member) => {
-      const signals = signalsByUser.get(member.userId);
-      return {
-        userId: member.userId,
-        email: member.user.email,
-        loginCount: signals?.loginCount ?? 0,
-        distinctIps: signals?.distinctIps ?? 0,
-        distinctUas: signals?.distinctUas ?? 0,
-      };
-    });
-
-    // P3: upgrade nudge input for the console. A single seat seen from 3+
-    // networks in the window is worth a human review, not an auto-block.
-    const maxDistinctIps = users.reduce((max, user) => Math.max(max, user.distinctIps), 0);
+    const users = members.map((member) => ({
+      userId: member.userId,
+      email: member.user.email,
+      loginActivity: {
+        status: "unavailable" as const,
+        code: "WORKSPACE_SCOPED_LOGIN_EVIDENCE_UNAVAILABLE",
+      },
+    }));
 
     return NextResponse.json({
       workspaceId,
@@ -113,14 +93,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         seenIp: key.lastUsedIpHash != null,
         ipPinned: key.allowedIpHash != null,
       })),
-      suggestedAction:
-        maxDistinctIps >= 3
-          ? {
-              type: "review_sharing",
-              message: `One seat signed in from ${maxDistinctIps} networks in ${windowDays} days. If a team shares this login, invite them instead — shared seats get rate-limited first when busy.`,
-            }
-          : null,
-      note: "Telemetry + session caps active. IP/UA hashes are salted and never returned raw.",
+      suggestedAction: null,
+      note: "Session caps are active. Global user login telemetry is never exposed to workspace administrators; workspace-scoped device evidence requires a future attributed heartbeat model.",
     });
   } catch (error) {
     return toRbacResponse(error) ?? NextResponse.json({ error: "Could not load sharing signals" }, { status: 500 });

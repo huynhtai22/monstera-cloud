@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { resolveApiKey } from "@/lib/api-key-security";
+import { resolveApiKeyForRequest } from "@/lib/api-key-security";
+import { touchApiKeyUsage } from "@/lib/login-telemetry";
 import { logger } from "@/lib/logger";
 
 export async function GET(
@@ -12,8 +13,18 @@ export async function GET(
     const secret = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
     if (!secret) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const key = await resolveApiKey(secret);
-    if (!key) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const keyResolution = await resolveApiKeyForRequest(secret, req);
+    if (!keyResolution.ok && keyResolution.reason === "invalid") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!keyResolution.ok) {
+      return NextResponse.json(
+        { error: "API key is pinned to a different network.", code: "API_KEY_IP_PINNED" },
+        { status: 403 },
+      );
+    }
+    const key = keyResolution.key;
+    await touchApiKeyUsage({ apiKeyId: key.id, request: req });
 
     const { id } = await params;
     const job = await prisma.lookerJob.findFirst({

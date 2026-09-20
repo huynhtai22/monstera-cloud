@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { auditApiKeyPinRejection, isApiKeyIpAllowed, resolveApiKey } from "@/lib/api-key-security";
+import { resolveApiKeyForRequest } from "@/lib/api-key-security";
 import { touchApiKeyUsage } from "@/lib/login-telemetry";
 import { recordUsage } from "@/lib/usage-meter";
 import {
@@ -99,20 +99,17 @@ export async function GET(request: Request) {
     const apiKeyString = authHeader.split(" ")[1];
 
     // 1. Authenticate API Key
-    const apiKey = await resolveApiKey(apiKeyString);
-
-    if (!apiKey) {
+    const keyResolution = await resolveApiKeyForRequest(apiKeyString, request);
+    if (!keyResolution.ok && keyResolution.reason === "invalid") {
       return NextResponse.json({ error: "Invalid API Key" }, { status: 401 });
     }
-
-    // P2: opt-in office-IP pin (fail-closed only when a pin is set).
-    if (!isApiKeyIpAllowed(apiKey, request)) {
-      await auditApiKeyPinRejection({ workspaceId: apiKey.workspaceId, keyId: apiKey.id });
+    if (!keyResolution.ok) {
       return NextResponse.json(
         { error: "API key is pinned to a different network.", code: "API_KEY_IP_PINNED" },
         { status: 403 },
       );
     }
+    const apiKey = keyResolution.key;
 
     const workspaceId = apiKey.workspaceId;
     try {

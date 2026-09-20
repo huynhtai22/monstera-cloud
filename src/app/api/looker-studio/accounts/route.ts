@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getGoogleIdTokenAudienceAllowlist, verifyGoogleIdToken } from "@/lib/google-id-token";
-import { resolveApiKey } from "@/lib/api-key-security";
+import { resolveApiKeyForRequest } from "@/lib/api-key-security";
+import { touchApiKeyUsage } from "@/lib/login-telemetry";
 import { assertLookerAllowed, toPlanLimitResponse } from "@/lib/plan-entitlements";
 
 /**
@@ -82,13 +83,20 @@ export async function GET(req: NextRequest) {
       await assertLookerAllowed({ plan: workspace.plan, auth: "jwt-sheets" });
     } else {
       // Legacy connector: API key auth
-      const keyRecord = await resolveApiKey(apiKey);
-
-      if (!keyRecord) {
+      const keyResolution = await resolveApiKeyForRequest(apiKey, req);
+      if (!keyResolution.ok && keyResolution.reason === "invalid") {
         return NextResponse.json({ error: "Invalid API key" }, { status: 401 });
       }
+      if (!keyResolution.ok) {
+        return NextResponse.json(
+          { error: "API key is pinned to a different network.", code: "API_KEY_IP_PINNED" },
+          { status: 403 },
+        );
+      }
+      const keyRecord = keyResolution.key;
       workspaceId = keyRecord.workspaceId;
       await assertLookerAllowed({ plan: keyRecord.workspace.plan, auth: "api-key-looker" });
+      await touchApiKeyUsage({ apiKeyId: keyRecord.id, request: req });
     }
 
     // Fetch all unique accounts in workspace, ordered by account name

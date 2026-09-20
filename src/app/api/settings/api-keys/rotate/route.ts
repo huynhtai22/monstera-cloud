@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { generateApiKey } from "@/lib/api-key-security";
+import { generateApiKey, withApiKeyMutationLock } from "@/lib/api-key-security";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
-import { assertCanCreateApiKey, toPlanLimitResponse } from "@/lib/plan-entitlements";
+import { assertCanCreateApiKeyWithClient, toPlanLimitResponse } from "@/lib/plan-entitlements";
 
 /**
  * POST /api/settings/api-keys/rotate — P2 key rotation.
@@ -30,18 +29,16 @@ export async function POST(request: Request) {
       minimumRole: "admin",
       operation: "rotate_api_key",
     });
-    // Rotation is net-zero on key count: exclude the key being replaced so
-    // workspaces already at cap can still rotate.
-    await assertCanCreateApiKey(workspaceId, { excludingKeyId: id });
-
-    const existing = await prisma.apiKey.findFirst({
-      where: { id, workspaceId, revokedAt: null },
-      select: { id: true, name: true },
-    });
-    if (!existing) return NextResponse.json({ error: "API key not found" }, { status: 404 });
-
     const generated = generateApiKey();
-    const rotated = await prisma.$transaction(async (tx) => {
+    const rotated = await withApiKeyMutationLock(workspaceId, async (tx) => {
+      const existing = await tx.apiKey.findFirst({
+        where: { id, workspaceId, revokedAt: null },
+        select: { id: true, name: true },
+      });
+      if (!existing) return null;
+      // Rotation is net-zero on key count: exclude the key being replaced so
+      // workspaces already at cap can still rotate.
+      await assertCanCreateApiKeyWithClient(tx, workspaceId, { excludingKeyId: id });
       const created = await tx.apiKey.create({
         data: {
           keyHash: generated.keyHash,
@@ -56,19 +53,19 @@ export async function POST(request: Request) {
         where: { id: existing.id },
         data: { revokedAt: new Date() },
       });
+      await tx.auditEvent.create({
+        data: {
+          workspaceId,
+          actorUserId: session.user.id,
+          action: "api_key.rotated",
+          resource: "api_key",
+          resourceId: created.id,
+          metadata: { fromKeyId: existing.id },
+        },
+      });
       return created;
     });
-
-    await prisma.auditEvent.create({
-      data: {
-        workspaceId,
-        actorUserId: session.user.id,
-        action: "api_key.rotated",
-        resource: "api_key",
-        resourceId: rotated.id,
-        metadata: { fromKeyId: existing.id },
-      },
-    });
+    if (!rotated) return NextResponse.json({ error: "API key not found" }, { status: 404 });
 
     return NextResponse.json(
       {

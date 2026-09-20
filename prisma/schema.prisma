@@ -209,7 +209,7 @@ model WorkspaceDailyUsage {
   updatedAt   DateTime @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  @@unique([workspaceId, date])
+  @@id([workspaceId, date])
   @@index([date])
 }
 

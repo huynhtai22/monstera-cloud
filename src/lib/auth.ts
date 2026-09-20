@@ -169,8 +169,8 @@ export const authOptions: NextAuthOptions = {
                 const rememberMe = credentials.rememberMe !== "false";
 
                 // P0 telemetry (fail-open): login visibility without enforcement.
-                await recordLoginEvent({
-                    userId: dbUser.id,
+                const loginEventId = await recordLoginEvent({
+                  userId: dbUser.id,
                     method: "credentials",
                     request: req as unknown as Request,
                 });
@@ -182,6 +182,7 @@ export const authOptions: NextAuthOptions = {
                         userId: dbUser.id,
                         email: dbUser.email,
                         ipHash,
+                        currentLoginEventId: loginEventId,
                         method: "email + password",
                         notify: (email, method) => sendNewDeviceEmail(email, { method }),
                     });
