@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { describe, it } from "node:test";
 import {
   aggregateLoginSignals,
@@ -21,6 +22,10 @@ describe("login telemetry hashing (P0)", () => {
     assert.notEqual(a, hashTelemetryValue("192.0.2.1", "salt-2"));
     assert.ok(!a.includes("192.0.2"));
     assert.equal(a.length, 64);
+    assert.equal(
+      a,
+      crypto.createHmac("sha256", "salt-1").update("192.0.2.1").digest("hex"),
+    );
   });
 
   it("prefers LOGIN_IP_SALT over NEXTAUTH_SECRET with local fallback", () => {

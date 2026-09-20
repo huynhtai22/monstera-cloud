@@ -5,8 +5,8 @@ import { logger } from "@/lib/logger";
 /**
  * P0 seat-sharing telemetry — read-only observability, zero enforcement.
  *
- * Privacy: raw IPs / user-agents are never persisted. Only SHA-256 hashes
- * with a server-side salt are stored (`ipHash`, `uaHash`).
+ * Privacy: raw IPs / user-agents are never persisted. Only HMAC-SHA-256
+ * pseudonyms with a server-side key are stored (`ipHash`, `uaHash`).
  */
 
 export type LoginMethod = "credentials" | "google" | "google-sheets";
@@ -56,6 +56,16 @@ export function extractUserAgent(request: RequestLike | null | undefined): strin
 }
 
 export function hashTelemetryValue(value: string, salt: string): string {
+  return crypto.createHmac("sha256", salt).update(value, "utf8").digest("hex");
+}
+
+/**
+ * Compatibility only for pin hashes issued before the HMAC cutover. The
+ * input is a high-entropy network identifier pseudonym, not a password, and
+ * new observations/pins never use this construction.
+ */
+export function hashLegacyTelemetryValue(value: string, salt: string): string {
+  // codeql[js/insufficient-password-hash]
   return crypto.createHash("sha256").update(`${salt}:${value}`, "utf8").digest("hex");
 }
 

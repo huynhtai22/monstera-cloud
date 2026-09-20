@@ -23,6 +23,7 @@ export const EXPORT_CURSOR_VERSION = 1;
 export const EXPORT_CURSOR_ORDERING = "date-asc-id-asc";
 export const EXPORT_ORDERS_CURSOR_ORDERING = "createdAt-asc-id-asc";
 const SUPPORTED_ORDERINGS = new Set([EXPORT_CURSOR_ORDERING, EXPORT_ORDERS_CURSOR_ORDERING]);
+const EXPORT_FINGERPRINT_DOMAIN_KEY = "monstera/export-query-fingerprint/v1";
 /** Raw (pre-encoding) cursor budget; encoded form stays well under header limits. */
 export const EXPORT_CURSOR_MAX_LENGTH = 1024;
 
@@ -153,7 +154,9 @@ export function fingerprintExportQuery(fields: {
     responseMode: fields.responseMode,
   };
   return crypto
-    .createHash("sha256")
+    // This is canonicalization, not authentication. The complete cursor is
+    // independently signed below with ENCRYPTION_KEY.
+    .createHmac("sha256", EXPORT_FINGERPRINT_DOMAIN_KEY)
     .update(JSON.stringify(canonical))
     .digest("hex");
 }

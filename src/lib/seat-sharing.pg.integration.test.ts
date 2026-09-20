@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import prisma, { prismaBase } from "@/lib/prisma";
 import { assertAllowedTestDatabase } from "./pg-test-discipline";
 import {
@@ -262,6 +262,26 @@ describe("PostgreSQL integration: seat-sharing telemetry, sessions, keys", () =>
     const denied = await resolveApiKeyForRequest(generated.secret, away);
     assert.deepEqual(denied, { ok: false, reason: "ip_pinned" });
     await prisma.apiKey.update({ where: { id: key.id }, data: { revokedAt: new Date() } });
+  });
+
+  it("accepts a legacy verifier once and upgrades it to the current HMAC", async () => {
+    const legacySecret = `mc_live_legacy_${uid}`;
+    // Test fixture for the pre-HMAC verifier format.
+    const legacyHash = createHash("sha256").update(legacySecret, "utf8").digest("hex");
+    const key = await prisma.apiKey.create({
+      data: {
+        keyHash: legacyHash,
+        keyPrefix: "mc_live_",
+        keyLastFour: legacySecret.slice(-4),
+        name: "Legacy verifier key",
+        workspaceId: wsFree,
+      },
+    });
+
+    const resolved = await resolveApiKeyForRequest(legacySecret, null);
+    assert.equal(resolved.ok, true);
+    const upgraded = await prisma.apiKey.findUniqueOrThrow({ where: { id: key.id } });
+    assert.match(upgraded.keyHash ?? "", /^h2:[0-9a-f]{64}$/);
   });
 
   it("pin rejections write one throttled workspace audit event", async () => {

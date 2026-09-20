@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import {
   extractIp,
+  hashLegacyTelemetryValue,
   hashTelemetryValue,
   resolveTelemetrySalt,
   type RequestLike,
@@ -11,9 +12,49 @@ import {
 import { recordSecurityControlEvent } from "@/lib/security-control-events";
 
 const KEY_PREFIX = "mc_live_";
+const API_KEY_HASH_VERSION = "h2";
+const API_KEY_HASH_DOMAIN = "monstera/api-key-hash/v2";
+
+function uniqueNonEmpty(values: Array<string | undefined>): string[] {
+  return [...new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)))];
+}
+
+/**
+ * API-key verification uses a domain-separated pepper. An explicit pepper is
+ * preferred, while ENCRYPTION_KEY provides a deployment-compatible fallback.
+ * The fallback stays in the candidate set after an explicit pepper is added,
+ * allowing online migration without invalidating customer keys.
+ */
+function apiKeyHashPeppers(env: NodeJS.ProcessEnv = process.env): string[] {
+  const configured = uniqueNonEmpty([
+    env.API_KEY_HASH_PEPPER,
+    env.API_KEY_HASH_PEPPER_PREVIOUS,
+    env.ENCRYPTION_KEY,
+    env.NEXTAUTH_SECRET,
+  ]);
+  return configured.length > 0 ? configured : ["local-dev-api-key-pepper"];
+}
+
+function pepperedApiKeyHash(secret: string, pepper: string): string {
+  const domainKey = crypto.createHmac("sha256", pepper).update(API_KEY_HASH_DOMAIN, "utf8").digest();
+  return `${API_KEY_HASH_VERSION}:${crypto.createHmac("sha256", domainKey).update(secret, "utf8").digest("hex")}`;
+}
+
+/** Legacy compatibility for pre-HMAC 256-bit random API keys. */
+function legacyApiKeyHash(secret: string): string {
+  // codeql[js/insufficient-password-hash]
+  return crypto.createHash("sha256").update(secret, "utf8").digest("hex");
+}
 
 export function hashApiKey(secret: string): string {
-  return crypto.createHash("sha256").update(secret, "utf8").digest("hex");
+  return pepperedApiKeyHash(secret, apiKeyHashPeppers()[0]);
+}
+
+function apiKeyHashCandidates(secret: string): string[] {
+  return [
+    ...apiKeyHashPeppers().map((pepper) => pepperedApiKeyHash(secret, pepper)),
+    legacyApiKeyHash(secret),
+  ];
 }
 
 export function generateApiKey(): {
@@ -32,11 +73,23 @@ export function generateApiKey(): {
 }
 
 async function resolveApiKey(secret: string) {
-  const keyHash = hashApiKey(secret);
+  const candidates = apiKeyHashCandidates(secret);
+  const currentHash = candidates[0];
   const current = await prisma.apiKey.findFirst({
-    where: { keyHash, revokedAt: null },
+    where: { keyHash: { in: candidates }, revokedAt: null },
     include: { workspace: true },
   });
+  if (current?.keyHash && current.keyHash !== currentHash) {
+    try {
+      await prisma.apiKey.updateMany({
+        where: { id: current.id, keyHash: current.keyHash },
+        data: { keyHash: currentHash },
+      });
+    } catch (error) {
+      // Hash migration is maintenance, never an authentication dependency.
+      logger.warn("[API_KEYS] key-hash upgrade failed (fail-open):", error);
+    }
+  }
   return current;
 }
 
@@ -123,14 +176,17 @@ function pinHashCandidates(ip: string, env: NodeJS.ProcessEnv = process.env): st
   const current = currentPinSalt(env);
   const previous = previousPinSalt(env);
   const versioned = [current, ...(previous ? [previous] : [])]
-    .map((entry) => `${entry.version}:${hashTelemetryValue(ip, entry.salt)}`);
+    .flatMap((entry) => [
+      `${entry.version}:${hashTelemetryValue(ip, entry.salt)}`,
+      `${entry.version}:${hashLegacyTelemetryValue(ip, entry.salt)}`,
+    ]);
 
   // Pre-versioning pins were hashed with LOGIN_IP_SALT/NEXTAUTH_SECRET.
   // Keep them valid through the rollout; admins can unpin/re-pin to migrate.
   const legacy = [
-    hashTelemetryValue(ip, resolveTelemetrySalt(env)),
+    hashLegacyTelemetryValue(ip, resolveTelemetrySalt(env)),
     ...(env.LOGIN_IP_SALT_PREVIOUS?.trim()
-      ? [hashTelemetryValue(ip, env.LOGIN_IP_SALT_PREVIOUS.trim())]
+      ? [hashLegacyTelemetryValue(ip, env.LOGIN_IP_SALT_PREVIOUS.trim())]
       : []),
   ];
   return [...new Set([...versioned, ...legacy])];

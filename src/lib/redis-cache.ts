@@ -1,12 +1,20 @@
 import crypto from "crypto";
 import { createNodeRedis, type NodeRedisClient } from "./node-redis";
 
-/**
- * Generate a deterministic SHA-256 cache key from a prefix and any serializable parameters.
- */
+function cacheHmacKey(): string {
+  return process.env.ENCRYPTION_KEY?.trim()
+    || process.env.NEXTAUTH_SECRET?.trim()
+    || "local-dev-cache-key";
+}
+
+function cacheFingerprint(serialized: string): string {
+  return crypto.createHmac("sha256", cacheHmacKey()).update(serialized).digest("hex");
+}
+
+/** Generate a deterministic keyed cache fingerprint. */
 export function generateCacheKey(prefix: string, params: Record<string, any>): string {
   const serialized = JSON.stringify(params, Object.keys(params).sort());
-  const hash = crypto.createHash("sha256").update(serialized).digest("hex");
+  const hash = cacheFingerprint(serialized);
   return `${prefix}:${hash}`;
 }
 
@@ -71,7 +79,7 @@ export function generateMetricsQueryCacheKey(
   params: Record<string, any>,
 ): string {
   const serialized = JSON.stringify(params, Object.keys(params).sort());
-  const hash = crypto.createHash("sha256").update(serialized).digest("hex");
+  const hash = cacheFingerprint(serialized);
   return `metrics:query:${workspaceId}:v${generation}:${hash}`;
 }
 
