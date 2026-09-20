@@ -17,14 +17,14 @@ jobs:
     steps:
       - name: Hit warehouse jobs, token prefetch, Shopee refresh, health tick
         env:
-          CRON_SECRET_WAREHOUSE_JOBS: ${{ secrets.CRON_SECRET_WAREHOUSE_JOBS }}
-          CRON_SECRET_TOKEN_PREFETCH: ${{ secrets.CRON_SECRET_TOKEN_PREFETCH }}
-          CRON_SECRET_SHOPEE_REFRESH: ${{ secrets.CRON_SECRET_SHOPEE_REFRESH }}
-          CRON_SECRET_HEALTH_TICK: ${{ secrets.CRON_SECRET_HEALTH_TICK }}
-          CRON_SECRET_CONNECTOR_ARTIFACTS_CLEANUP: ${{ secrets.CRON_SECRET_CONNECTOR_ARTIFACTS_CLEANUP }}
-          CRON_SECRET_REPORT_SCHEDULES: ${{ secrets.CRON_SECRET_REPORT_SCHEDULES }}
-          CRON_SECRET_SEAT_SHARING_RETENTION: ${{ secrets.CRON_SECRET_SEAT_SHARING_RETENTION }}
-          CRON_SECRET_SECURITY_POSTURE: ${{ secrets.CRON_SECRET_SECURITY_POSTURE }}
+          CRON_SECRET_WAREHOUSE_JOBS: ${{ secrets.CRON_SECRET_WAREHOUSE_JOBS || secrets.CRON_SECRET }}
+          CRON_SECRET_TOKEN_PREFETCH: ${{ secrets.CRON_SECRET_TOKEN_PREFETCH || secrets.CRON_SECRET }}
+          CRON_SECRET_SHOPEE_REFRESH: ${{ secrets.CRON_SECRET_SHOPEE_REFRESH || secrets.CRON_SECRET }}
+          CRON_SECRET_HEALTH_TICK: ${{ secrets.CRON_SECRET_HEALTH_TICK || secrets.CRON_SECRET }}
+          CRON_SECRET_CONNECTOR_ARTIFACTS_CLEANUP: ${{ secrets.CRON_SECRET_CONNECTOR_ARTIFACTS_CLEANUP || secrets.CRON_SECRET }}
+          CRON_SECRET_REPORT_SCHEDULES: ${{ secrets.CRON_SECRET_REPORT_SCHEDULES || secrets.CRON_SECRET }}
+          CRON_SECRET_SEAT_SHARING_RETENTION: ${{ secrets.CRON_SECRET_SEAT_SHARING_RETENTION || secrets.CRON_SECRET }}
+          CRON_SECRET_SECURITY_POSTURE: ${{ secrets.CRON_SECRET_SECURITY_POSTURE || secrets.CRON_SECRET }}
           CRON_BASE_URL: ${{ vars.CRON_BASE_URL }}
         run: |
           set -euo pipefail
@@ -36,7 +36,7 @@ jobs:
             secret="$2"
             echo "::group::${path}"
             if [ -z "${secret:-}" ]; then
-              echo "::error::Missing scoped GitHub Actions secret for ${path}"
+              echo "::error::Missing scoped and legacy GitHub Actions secret for ${path}"
               echo "::endgroup::"
               fail=1
               return

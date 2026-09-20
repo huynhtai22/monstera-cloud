@@ -37,7 +37,7 @@
 | P1 | Recoverable/idempotent key lifecycle | Done locally | Client retry replays one encrypted 24-hour receipt instead of creating another key |
 | P1 | Dedicated telemetry/pin salt rotation | Code + runbook done | Production must set independent salts and record the active versions |
 | P1 | Disaster-recovery proof | Passed locally | Disposable encrypted backup/restore passed with a canary and zero schema drift; production-derived restore still needs named authority/approver |
-| P1 | Scoped scheduler credentials | Code done; configuration pending | Configure every production/GitHub scoped secret and keep legacy fallback disabled |
+| P1 | Scoped scheduler credentials | Code done; configuration pending | Shared-secret compatibility remains until matching app/GitHub scoped secrets are installed and verified; then explicitly set CRON_ALLOW_LEGACY_SHARED_SECRET=0 |
 | P2 | Security observability/SLOs | Code done; delivery pending | Security-posture cron fails on auth/pin/cron/retention breach; verify notification delivery |
 | P2 | CI supply-chain policy | Workflow done; protection pending | Security workflow passes and its checks are required by branch protection |
 

@@ -41,10 +41,10 @@ export function resolveCronSecret(
 ): string | undefined {
   const scoped = env[cronSecretEnvName(scope)]?.trim();
   if (scoped) return scoped;
-  // Local tests and preview development retain the old single-secret path.
-  // Production must opt into the temporary fallback explicitly; otherwise a
-  // missing scoped secret fails closed and cannot widen another job token.
-  if (scope !== "master" && (env.NODE_ENV !== "production" || env.CRON_ALLOW_LEGACY_SHARED_SECRET === "1")) {
+  // Transitional compatibility for deployments with only CRON_SECRET installed.
+  // Explicitly disable fallback after matching scoped secrets are provisioned
+  // in BOTH the application and scheduler. A configured scope never falls back.
+  if (scope !== "master" && env.CRON_ALLOW_LEGACY_SHARED_SECRET !== "0") {
     return env.CRON_SECRET?.trim();
   }
   return undefined;

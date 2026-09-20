@@ -112,14 +112,9 @@ const CREDENTIAL_PATHS = new Set([
   "/api/auth/resend-otp",
   "/api/auth/reset-password",
   "/api/auth/verify",
-  // P1/P3 seat-sharing self-service: session list/revoke, login history,
-  // presence heartbeat. Custom routes (not NextAuth internals), so the edge
-  // may classify them without breaking OAuth callbacks.
-  "/api/auth/sessions",
-  "/api/auth/sessions/revoke",
-  "/api/auth/login-events",
-  "/api/auth/heartbeat",
 ]);
+// Authenticated session self-service routes deliberately fall through to
+// internal-api: the proxy keys that budget by verified JWT user, not office IP.
 
 /** Classify an API pathname. Returns null for non-API paths. */
 export function classifyApiRoute(pathname: string): RateLimitRouteClass | null {
