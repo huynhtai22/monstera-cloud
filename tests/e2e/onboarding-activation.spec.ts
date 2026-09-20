@@ -121,6 +121,7 @@ test.describe("Onboarding & activation journey", () => {
     });
 
     const created = await page.request.post("/api/settings/api-keys", {
+      headers: { "Idempotency-Key": `onboarding-api-key-${workspaceId}` },
       data: { workspaceId, name: "activation-walkthrough" },
     });
     expect(created.status()).toBe(403);
