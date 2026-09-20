@@ -292,6 +292,102 @@ describe("provider HTTP failures preserve sync correctness", () => {
   });
 });
 
+describe("legitimate empty Meta reporting windows", () => {
+  it("records a successful zero-row sync, releases the lock, and never fabricates metrics", async () => {
+    let insightsCalls = 0;
+    await withSyncHarness((async (input) => {
+      const url = String(input);
+      if (url.includes("/insights")) {
+        insightsCalls++;
+        assert.match(url, /(?:\?|&)level=ad(?:&|$)/, "empty-window sync still requests the canonical ad grain");
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    }) as typeof fetch, async (updates) => {
+      const originalHealth = (prisma as any).providerAccountHealth;
+      const originalCampaignMetric = (prisma as any).campaignMetric;
+      const harnessTransaction = (prisma as any).$transaction;
+      const healthUpserts: Array<any> = [];
+      const campaignMetricCalls: string[] = [];
+      const lockReleases: Array<{ where: any; data: any }> = [];
+      (prisma as any).providerAccountHealth = {
+        findMany: async () => [],
+        findUnique: async () => null,
+        upsert: async (args: any) => {
+          healthUpserts.push(args);
+          return args;
+        },
+      };
+      (prisma as any).campaignMetric = new Proxy({}, {
+        get: (_target, prop) => {
+          campaignMetricCalls.push(String(prop));
+          return async () => ({ count: 0 });
+        },
+      });
+      (prisma as any).$transaction = async (fn: any) => harnessTransaction((tx: any) => {
+        const originalUpdateMany = tx.syncLock.updateMany;
+        tx.syncLock = {
+          ...tx.syncLock,
+          updateMany: async (args: any) => {
+            lockReleases.push(args);
+            return originalUpdateMany(args);
+          },
+        };
+        return fn(tx);
+      });
+      try {
+        const result = await syncConnectionData({
+          connectionId: "meta-empty-window-connection",
+          provider: "meta_ads",
+          credentials: { ...freshCredentials, adAccounts: [{ id: "act_555", name: "Quiet Account" }] },
+          workspaceId: "workspace-empty-window",
+          userPlan: "pilot",
+        });
+
+        assert.equal(result.outcome, "success", "an empty reporting window is a successful zero-row sync");
+        assert.equal(result.success, true);
+        assert.equal(result.rowsIngested, 0);
+        assert.equal(result.children.length, 1);
+        const child = result.children[0];
+        assert.equal(child.id, "act_555");
+        assert.equal(child.kind, "ad_account");
+        assert.equal(child.ok, true);
+        assert.equal(child.rowsIngested, 0);
+        assert.equal(child.error, undefined);
+        assert.notEqual(child.retryable, true, "an empty window must not be classified as retryable");
+
+        assert.equal(insightsCalls, 1, "an empty result must not trigger provider retries");
+
+        // Both the account-level Meta lock and the connection-level lease are
+        // released through this path; neither may record a failure for an
+        // empty window, and the Meta lock must be released with success: true.
+        assert.equal(lockReleases.filter((r) => r.data.status !== "released").length, 0);
+        assert.ok(
+          lockReleases.some((r) => r.data.status === "released" && r.where.leaseId === "test-lease"),
+          "the Meta sync lock must be released with success: true",
+        );
+
+        assert.equal(healthUpserts.length, 1);
+        const upsert = healthUpserts[0];
+        assert.equal(upsert.create.workspaceId, "workspace-empty-window");
+        assert.equal(upsert.create.connectionId, "meta-empty-window-connection");
+        assert.equal(upsert.create.accountId, "act_555");
+        assert.equal(upsert.create.status, "healthy");
+        assert.equal(upsert.create.errorCategory, null);
+
+        assert.deepEqual(campaignMetricCalls, [], "no campaign metrics may be fabricated for an empty window");
+
+        const freshness = updates.find((u) => "lastSyncAt" in u.data);
+        assert.ok(freshness, "a successful zero-row refresh still records connection freshness");
+      } finally {
+        (prisma as any).providerAccountHealth = originalHealth;
+        (prisma as any).campaignMetric = originalCampaignMetric;
+        (prisma as any).$transaction = harnessTransaction;
+      }
+    });
+  });
+});
+
 describe("google runtime configuration fail-closed", () => {
   for (const mode of ["shado", "SHADOW", ""]) {
     it(`rejects invalid mode ${JSON.stringify(mode)} before any provider contact or writes`, async () => {
