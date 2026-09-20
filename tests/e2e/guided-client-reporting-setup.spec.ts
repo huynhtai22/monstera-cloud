@@ -332,7 +332,14 @@ test.describe("guided client reporting setup", () => {
     const { page } = await sharedSession(browser, "alice@alpha-agency.test", "Pilot_Alpha_2026!", adminSession);
     const mutating: string[] = [];
     await page.route("**/api/**", async (route) => {
-      if (route.request().method() !== "GET") mutating.push(`${route.request().method()} ${route.request().url()}`);
+      const request = route.request();
+      const pathname = new URL(request.url()).pathname;
+      // Session liveness is an expected background write and is unrelated to
+      // reporting discovery. Keep this assertion focused on discovery/config
+      // mutations instead of treating the heartbeat as product state drift.
+      if (request.method() !== "GET" && pathname !== "/api/auth/heartbeat") {
+        mutating.push(`${request.method()} ${request.url()}`);
+      }
       await route.continue();
     });
     let mode: "slow" | "fail" | "live" = "slow";
