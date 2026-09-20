@@ -34,6 +34,7 @@ export async function GET(request: Request) {
     executeTask("alerts", "/api/cron/performance-alerts"),
     executeTask("reportSchedules", "/api/cron/report-schedules"),
     executeTask("billingExpiry", "/api/cron/billing-expiry"),
+    executeTask("seatSharingRetention", "/api/cron/seat-sharing-retention"),
   ]);
 
   const settled = [...p1, ...p2, ...p3];

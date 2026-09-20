@@ -17,6 +17,8 @@ declare module "next-auth" {
             hasPassword?: boolean;
             /** True when the user is authorized as the platform admin */
             isAdmin?: boolean;
+            /** P1: stable browser-session id (JWT `sessionJti`) — used for revoke-self/others UI */
+            sessionId?: string;
         };
     }
 }
@@ -25,5 +27,7 @@ declare module "next-auth/jwt" {
     interface JWT {
         rememberMe?: boolean;
         id?: string;
+        /** P1: app-owned stable browser-session id; avoids NextAuth's reserved `jti`. */
+        sessionJti?: string;
     }
 }

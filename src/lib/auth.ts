@@ -8,6 +8,15 @@ import bcrypt from "bcryptjs"
 import { logger } from "@/lib/logger";
 import { isPilotMode } from "@/lib/pilot-mode";
 import { allowAuthAttempt } from "@/lib/auth-rate-limit";
+import { recordLoginEvent, telemetryHashesFromRequest } from "@/lib/login-telemetry";
+import {
+  isSessionRevoked,
+  maybeNotifyNewDevice,
+  newSessionId,
+  registerSession,
+  touchSession,
+} from "@/lib/session-limits";
+import { sendNewDeviceEmail } from "@/lib/mail";
 import { isPlatformAdminEmail } from "@/lib/admin-auth";
 import { isWhitelistedProEmail } from "@/lib/plan-config";
 import { freePilotEndsAt } from "@/lib/free-pilot";
@@ -159,6 +168,25 @@ export const authOptions: NextAuthOptions = {
 
                 const rememberMe = credentials.rememberMe !== "false";
 
+                // P0 telemetry (fail-open): login visibility without enforcement.
+                await recordLoginEvent({
+                    userId: dbUser.id,
+                    method: "credentials",
+                    request: req as unknown as Request,
+                });
+
+                // P3: new-device nudge (fail-open, fire-and-forget).
+                {
+                    const { ipHash } = telemetryHashesFromRequest(req as unknown as Request);
+                    void maybeNotifyNewDevice({
+                        userId: dbUser.id,
+                        email: dbUser.email,
+                        ipHash,
+                        method: "email + password",
+                        notify: (email, method) => sendNewDeviceEmail(email, { method }),
+                    });
+                }
+
                 return {
                     id: dbUser.id,
                     name: dbUser.name,
@@ -212,7 +240,9 @@ export const authOptions: NextAuthOptions = {
             });
 
             if (!existingUser) {
-                // Truly new user — PrismaAdapter will create the row normally
+                // Truly new user — PrismaAdapter will create the row normally.
+                // P0 skips the first-signup event here (no stable userId yet);
+                // subsequent Google logins are recorded below.
                 return true;
             }
 
@@ -230,6 +260,10 @@ export const authOptions: NextAuthOptions = {
 
             if (existingAccount) {
                 // Already linked — nothing to do; allow sign-in
+                // P0 telemetry (fail-open, no request IP in this callback).
+                if (existingUser?.id) {
+                    await recordLoginEvent({ userId: existingUser.id, method: "google" });
+                }
                 return true;
             }
 
@@ -253,6 +287,8 @@ export const authOptions: NextAuthOptions = {
             // Mutate user.id so the JWT callback gets the existing user's ID
             user.id = existingUser.id;
             logger.info(`[AUTH] Linked Google account to existing user: ${email}`);
+            // P0 telemetry (fail-open, no request IP in this callback).
+            await recordLoginEvent({ userId: existingUser.id, method: "google" });
             return true;
         },
 
@@ -264,6 +300,14 @@ export const authOptions: NextAuthOptions = {
                 } else {
                     token.rememberMe = true
                 }
+                // P1: stable browser-session id, registered server-side for
+                // revocation + concurrent-session caps. No request IP is
+                // available here; the heartbeat enriches hashes later.
+                // Do not use the reserved JWT `jti` claim here. NextAuth's
+                // encoder owns and replaces it after this callback, which
+                // would make the registered row impossible to match later.
+                if (!token.sessionJti) token.sessionJti = newSessionId();
+                await registerSession({ userId: user.id, jti: token.sessionJti as string });
             }
             if (account?.provider === "google") {
                 token.rememberMe = true
@@ -277,6 +321,19 @@ export const authOptions: NextAuthOptions = {
             if (!session.user) return session
 
             session.user.isAdmin = isPlatformAdminEmail(session.user.email);
+
+            // P1: revoked browser sessions lose their identity, so every
+            // `!session?.user?.id` guard below returns 401. Legacy pre-P1
+            // JWTs carry no sessionJti and are grandfathered until re-login.
+            const jti = token.sessionJti as string | undefined;
+            if (jti) {
+                session.user.sessionId = jti;
+                if (await isSessionRevoked(jti)) {
+                    session.user.id = "";
+                    return session;
+                }
+                void touchSession(jti);
+            }
 
             let userId = token.id as string | undefined
             if (!userId && session.user.email) {

@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { logger } from "@/lib/logger";
-import { resolveApiKey } from "@/lib/api-key-security";
+import { auditApiKeyPinRejection, isApiKeyIpAllowed, resolveApiKey } from "@/lib/api-key-security";
+import { touchApiKeyUsage } from "@/lib/login-telemetry";
+import { recordUsage } from "@/lib/usage-meter";
 import {
   warehouseAdsCsvRows,
   warehouseRetailOrdersCsvRows,
@@ -52,6 +54,15 @@ function sanitizeFilename(value: string): string {
 }
 
 /**
+ * P3 traceability watermark: identifies which workspace + key produced an
+ * export (header only — body shapes stay backward compatible). Short id
+ * prefixes only; never the key secret.
+ */
+function exportWatermark(workspaceId: string, keyId: string): string {
+  return `${workspaceId.slice(0, 8)}:${keyId.slice(0, 8)}:${new Date().toISOString()}`;
+}
+
+/**
  * GET /api/export/rows
  *
  * Headers:
@@ -94,6 +105,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Invalid API Key" }, { status: 401 });
     }
 
+    // P2: opt-in office-IP pin (fail-closed only when a pin is set).
+    if (!isApiKeyIpAllowed(apiKey, request)) {
+      await auditApiKeyPinRejection({ workspaceId: apiKey.workspaceId, keyId: apiKey.id });
+      return NextResponse.json(
+        { error: "API key is pinned to a different network.", code: "API_KEY_IP_PINNED" },
+        { status: 403 },
+      );
+    }
+
     const workspaceId = apiKey.workspaceId;
     try {
       await assertCsvExportAllowed(apiKey.workspace.plan);
@@ -102,6 +122,8 @@ export async function GET(request: Request) {
       if (planLimit) return planLimit;
       throw error;
     }
+
+    void recordUsage(workspaceId, "keyHit");
 
     // 2. Find a Source Connection to pull from (with optional clientId scoping)
     const { searchParams } = new URL(request.url);
@@ -356,10 +378,7 @@ export async function GET(request: Request) {
       fingerprint = payload.fp;
     }
 
-    await prisma.apiKey.update({
-      where: { id: apiKey.id },
-      data: { lastUsedAt: new Date() },
-    });
+    await touchApiKeyUsage({ apiKeyId: apiKey.id, request });
 
     // 5. Build predicates. Tenant/client predicates are re-applied on every
     // page and composed with cursor/date predicates through AND; cursor
@@ -597,6 +616,7 @@ export async function GET(request: Request) {
       "X-Export-Limit": String(limit),
       "X-Export-Snapshot-At": effectiveSnapshotAt,
       "X-Export-Fingerprint": fingerprint,
+      "X-Monstera-Watermark": exportWatermark(workspaceId, apiKey.id),
       ...(nextCursor ? { "X-Export-Next-Cursor": nextCursor } : {}),
     };
     let response: Response;
@@ -622,6 +642,7 @@ export async function GET(request: Request) {
             snapshotAt: effectiveSnapshotAt,
             fingerprint,
           },
+          watermark: { workspaceId, exportedAt: new Date().toISOString() },
           complete,
         },
         { status: 200 },

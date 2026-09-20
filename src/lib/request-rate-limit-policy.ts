@@ -112,6 +112,13 @@ const CREDENTIAL_PATHS = new Set([
   "/api/auth/resend-otp",
   "/api/auth/reset-password",
   "/api/auth/verify",
+  // P1/P3 seat-sharing self-service: session list/revoke, login history,
+  // presence heartbeat. Custom routes (not NextAuth internals), so the edge
+  // may classify them without breaking OAuth callbacks.
+  "/api/auth/sessions",
+  "/api/auth/sessions/revoke",
+  "/api/auth/login-events",
+  "/api/auth/heartbeat",
 ]);
 
 /** Classify an API pathname. Returns null for non-API paths. */

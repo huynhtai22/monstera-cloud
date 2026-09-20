@@ -57,6 +57,9 @@ export default function TermsOfServicePage() {
           <p className="mb-4 text-slate-600 dark:text-slate-400">
             You may be required to register with the Site. You agree to keep your password confidential and will be responsible for all use of your account and password. We reserve the right to remove, reclaim, or change a username you select if we determine, in our sole discretion, that such username is inappropriate, obscene, or otherwise objectionable.
           </p>
+          <p className="text-slate-600 dark:text-slate-400">
+            Each individual user must use their own Monstera Cloud account and must not transfer login credentials or personal access tokens to another person. Workspace owners may authorize team members, shared data-source connections, service accounts, and integrations within the limits of their subscription. You are responsible for keeping credentials secure and promptly revoking access that is no longer required. Where credible evidence indicates unauthorized credential sharing, circumvention of plan limits, or access by unrelated third parties, we may restrict that access; where reasonably possible, we will provide notice and an opportunity to correct the issue before suspension.
+          </p>
         </section>
 
         <section className="mb-10">

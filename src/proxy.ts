@@ -197,8 +197,9 @@ export function __createProxyForTests(deps: ProxyDeps): (request: NextRequest) =
 // Matcher notes:
 // - `/api/*` except `/api/auth/*`: NextAuth internals (OAuth callbacks, session,
 //   CSRF) must NOT be intercepted — doing so breaks Google sign-in.
-// - The five credential endpoints under /api/auth/* ARE matched explicitly so
-//   they get the dedicated `credential` limiter class.
+// - The nine credential endpoints under /api/auth/* ARE matched explicitly so
+//   they get the dedicated `credential` limiter class (password flows plus the
+//   seat-sharing session self-service routes, which are custom handlers).
 // - Pages use a deny-by-default catch-all (minus _next assets and common
 //   top-level metadata files). Remaining static files are passed through in
 //   code via looksLikeStaticAsset(). New application routes therefore require
@@ -211,6 +212,10 @@ export const config = {
     "/api/auth/resend-otp",
     "/api/auth/reset-password",
     "/api/auth/verify",
+    "/api/auth/sessions",
+    "/api/auth/sessions/revoke",
+    "/api/auth/login-events",
+    "/api/auth/heartbeat",
     "/((?!api/|_next/|favicon.ico|robots.txt|sitemap.xml|manifest.json).*)",
   ],
 };

@@ -368,13 +368,17 @@ describe("matcher contract", () => {
     assert.doesNotMatch("/api/auth/callback/google", rx);
     assert.doesNotMatch("/api/auth/session", rx);
 
-    const credentialPatterns = config.matcher.slice(1, 6);
+    const credentialPatterns = config.matcher.slice(1, -1);
     for (const endpoint of [
       "/api/auth/forgot-password",
       "/api/auth/register",
       "/api/auth/resend-otp",
       "/api/auth/reset-password",
       "/api/auth/verify",
+      "/api/auth/sessions",
+      "/api/auth/sessions/revoke",
+      "/api/auth/login-events",
+      "/api/auth/heartbeat",
     ]) {
       assert.ok(
         credentialPatterns.some((pattern) => asMatcherRegex(pattern).test(endpoint)),

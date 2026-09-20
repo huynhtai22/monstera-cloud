@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react';
 import { Sidebar } from './Sidebar';
 import { GlobeLoader } from './GlobeLoader';
 import { WorkspaceSessionSync } from './WorkspaceSessionSync';
+import { SessionHeartbeat } from './SessionHeartbeat';
 import { DemoModeBanner } from './DemoModeBanner';
 import { KeyboardShortcutsProvider } from './KeyboardShortcutsProvider';
 import { NotificationCenter } from './NotificationCenter';
@@ -108,6 +109,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <KeyboardShortcutsProvider>
         <PendingNavigationProvider>
         <WorkspaceSessionSync />
+        <SessionHeartbeat />
         {/* Mount only while auth is resolving — keeps a fixed z-[9999] layer out of the DOM after load (avoids blocking clicks). */}
         {loading ? <GlobeLoader visible /> : null}
         <div className="flex min-h-screen bg-canvas font-sans text-ink">

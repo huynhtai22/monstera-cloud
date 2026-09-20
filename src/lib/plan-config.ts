@@ -56,6 +56,11 @@ export interface PlanLimits {
    */
   maxSeats: number;
   /**
+   * Normal concurrent browser sessions per named user. One additional browser
+   * receives a temporary 24-hour grace window before oldest-session cleanup.
+   */
+  maxConcurrentSessions: number;
+  /**
    * Maximum source Connection rows per workspace (ad accounts / shops).
    * Destinations (Sheets) are not counted. Unit is workspace-total, not accounts-per-source.
    */
@@ -88,17 +93,25 @@ export interface PlanLimits {
   allowApiKeys: boolean;
   /** CSV / REST row export (`/api/export/rows`). Agency+ only. */
   allowCsvExport: boolean;
+  /** Maximum non-revoked workspace API keys (Looker/REST bearer credentials). */
+  maxApiKeys: number;
   /** Data Explorer: max date range in days per query */
   explorerMaxDateRangeDays: number;
   /** Data Explorer: max rows returned per query (pagination enforced) */
   explorerMaxRowsPerQuery: number;
 }
 
+// Public commercial offers are Agency Pro and Enterprise. The PlanName values
+// also include lifecycle and backwards-compatibility states: `pilot` is the
+// seven-day Agency Pro trial, `free` is the expiry fallback, `starter` is
+// legacy-only, and `professional` is Agency Pro's internal identifier.
+
 export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
   free: {
     displayName: "Start",
     maxPipelines: 2,
     maxSeats: 1,
+    maxConcurrentSessions: 3,
     maxConnections: 1,
     maxSourceProviders: 1,
     maxWorkspaces: 1,
@@ -115,6 +128,7 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     allowLooker: false,
     allowApiKeys: false,
     allowCsvExport: false,
+    maxApiKeys: 0,
     explorerMaxDateRangeDays: 30,                 // 30 days max per query
     explorerMaxRowsPerQuery: 500,                 // 500 rows per query
   },
@@ -122,6 +136,7 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     displayName: "Pilot",
     maxPipelines: 25,
     maxSeats: 5,
+    maxConcurrentSessions: 8,
     maxConnections: 25,
     maxSourceProviders: 4,
     maxWorkspaces: 5,
@@ -136,6 +151,7 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     allowLooker: true,
     allowApiKeys: true,
     allowCsvExport: true,
+    maxApiKeys: 10,
     explorerMaxDateRangeDays: 730,
     explorerMaxRowsPerQuery: 10_000,
   },
@@ -143,6 +159,7 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     displayName: "Studio",
     maxPipelines: 5,
     maxSeats: 50,
+    maxConcurrentSessions: 4,
     maxConnections: 6,
     maxSourceProviders: 2,
     maxWorkspaces: 1,
@@ -157,6 +174,7 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     allowLooker: true,
     allowApiKeys: true,
     allowCsvExport: false,
+    maxApiKeys: 3,
     explorerMaxDateRangeDays: 90,                 // 90 days max per query
     explorerMaxRowsPerQuery: 1000,                 // 1000 rows per query
   },
@@ -164,6 +182,7 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     displayName: "Agency",
     maxPipelines: 15,
     maxSeats: 50,
+    maxConcurrentSessions: 8,
     maxConnections: 15,
     maxSourceProviders: 4,
     maxWorkspaces: 3,
@@ -178,6 +197,7 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     allowLooker: true,
     allowApiKeys: true,
     allowCsvExport: true,
+    maxApiKeys: 10,
     explorerMaxDateRangeDays: 365,                // 1 year max per query
     explorerMaxRowsPerQuery: 5000,               // 5000 rows per query
   },
@@ -185,6 +205,7 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     displayName: "Enterprise",
     maxPipelines: Infinity,
     maxSeats: 50,
+    maxConcurrentSessions: 15,
     maxConnections: 100,
     maxSourceProviders: 10,
     maxWorkspaces: 20,
@@ -199,6 +220,7 @@ export const PLAN_LIMITS: Record<PlanName, PlanLimits> = {
     allowLooker: true,
     allowApiKeys: true,
     allowCsvExport: true,
+    maxApiKeys: 25,
     explorerMaxDateRangeDays: 730,                // 2 years max per query
     explorerMaxRowsPerQuery: 10000,              // 10000 rows per query
   },

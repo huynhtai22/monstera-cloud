@@ -26,6 +26,7 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const isRegistered = searchParams.get("registered") === "true";
+  const wasRevoked = searchParams.get("reason") === "session-revoked";
 
   if (status === "loading") {
     return (
@@ -160,6 +161,11 @@ function LoginContent() {
           {isRegistered && (
             <div className="mt-4 p-3 border border-[#222] bg-[#0c0c0c] text-white rounded-lg text-xs font-medium w-full text-center">
               ✓ Account created successfully. Sign in below.
+            </div>
+          )}
+          {wasRevoked && (
+            <div className="mt-4 w-full rounded-lg border border-amber-900/60 bg-amber-950/40 p-3 text-center text-xs font-medium text-amber-200">
+              This browser was signed out because the active-device allowance was exceeded or its temporary grace window ended. Sign in again, then review Settings → Sessions if you do not recognize another device.
             </div>
           )}
         </div>

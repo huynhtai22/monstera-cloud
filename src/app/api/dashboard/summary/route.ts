@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { getWorkspaceDashboardOverview } from "@/lib/dashboard-overview";
+import { recordUsage } from "@/lib/usage-meter";
 
 /**
  * GET /api/dashboard/summary?workspaceId=...
@@ -35,6 +36,8 @@ export async function GET(req: Request) {
     } catch (error) {
         return toRbacResponse(error) ?? NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+
+    void recordUsage(workspaceId, "query");
 
     try {
         const overview = await getWorkspaceDashboardOverview(workspaceId);

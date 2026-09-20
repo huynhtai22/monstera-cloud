@@ -69,7 +69,8 @@ export async function POST(request: Request) {
                 keyPrefix: generated.keyPrefix,
                 keyLastFour: generated.keyLastFour,
                 name: name || "Default Extension Key",
-                workspaceId: workspaceId
+                workspaceId: workspaceId,
+                createdByUserId: session.user.id,
             }
         });
         await prisma.auditEvent.create({ data: { workspaceId, actorUserId: session.user.id, action: "api_key.created", resource: "api_key", resourceId: newKey.id } });
