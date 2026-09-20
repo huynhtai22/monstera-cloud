@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { signOut, useSession } from "next-auth/react";
+import { useWorkspaceStore } from "@/store/workspace";
 
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -12,13 +13,18 @@ const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
  */
 export function SessionHeartbeat() {
     const { status } = useSession();
+    const activeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspaceId);
 
     useEffect(() => {
         if (status !== "authenticated") return;
         let cancelled = false;
         const ping = async () => {
             try {
-                const response = await fetch("/api/auth/heartbeat", { method: "POST" });
+                const response = await fetch("/api/auth/heartbeat", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ workspaceId: activeWorkspaceId }),
+                });
                 if (response.status !== 401) return;
                 const body = await response.json().catch(() => ({}));
                 if (body?.code === "SESSION_REVOKED") {
@@ -36,7 +42,7 @@ export function SessionHeartbeat() {
             cancelled = true;
             clearInterval(timer);
         };
-    }, [status]);
+    }, [status, activeWorkspaceId]);
 
     return null;
 }

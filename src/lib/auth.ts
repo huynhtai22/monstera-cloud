@@ -9,6 +9,7 @@ import { logger } from "@/lib/logger";
 import { isPilotMode } from "@/lib/pilot-mode";
 import { allowAuthAttempt } from "@/lib/auth-rate-limit";
 import { recordLoginEvent, telemetryHashesFromRequest } from "@/lib/login-telemetry";
+import { recordSecurityControlEvent, securityActorHash } from "@/lib/security-control-events";
 import {
   isSessionRevoked,
   maybeNotifyNewDevice,
@@ -136,7 +137,16 @@ export const authOptions: NextAuthOptions = {
                     identity: email,
                     limit: 10,
                     windowSeconds: 15 * 60,
-                }))) return null;
+                }))) {
+                    await recordSecurityControlEvent({
+                        eventType: "auth_failure",
+                        outcome: "rejected",
+                        scope: "credentials",
+                        actorHash: securityActorHash(email),
+                        metadata: { reason: "rate_limited" },
+                    });
+                    return null;
+                }
 
                 // Case-insensitive match (Postgres) — avoids login failures when casing differs from DB
                 const dbUser = (await prisma.user.findFirst({
@@ -144,14 +154,26 @@ export const authOptions: NextAuthOptions = {
                 })) as any;
 
                 if (!dbUser) {
+                    await recordSecurityControlEvent({
+                        eventType: "auth_failure", outcome: "failure", scope: "credentials",
+                        actorHash: securityActorHash(email), metadata: { reason: "unknown_user" },
+                    });
                     return null;
                 }
 
                 if (!dbUser.hashedPassword) {
+                    await recordSecurityControlEvent({
+                        eventType: "auth_failure", outcome: "failure", scope: "credentials",
+                        actorHash: securityActorHash(email), metadata: { reason: "password_unavailable" },
+                    });
                     return null;
                 }
 
                 if (!dbUser.emailVerified) {
+                    await recordSecurityControlEvent({
+                        eventType: "auth_failure", outcome: "failure", scope: "credentials",
+                        actorHash: securityActorHash(email), metadata: { reason: "email_unverified" },
+                    });
                     return null;
                 }
 
@@ -159,10 +181,18 @@ export const authOptions: NextAuthOptions = {
                     const isPasswordValid = await bcrypt.compare(credentials.password, dbUser.hashedPassword);
 
                     if (!isPasswordValid) {
+                        await recordSecurityControlEvent({
+                            eventType: "auth_failure", outcome: "failure", scope: "credentials",
+                            actorHash: securityActorHash(email), metadata: { reason: "invalid_password" },
+                        });
                         return null;
                     }
                 } catch (err: any) {
                     logger.error("[LOGIN_CRASH] bcrypt failed:", err);
+                    await recordSecurityControlEvent({
+                        eventType: "auth_failure", outcome: "failure", scope: "credentials",
+                        actorHash: securityActorHash(email), metadata: { reason: "password_check_error" },
+                    });
                     return null;
                 }
 

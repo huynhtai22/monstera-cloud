@@ -19,14 +19,14 @@ const BATCH_SIZE = 5;
  * 3. Executes each job with durable progress tracking, heartbeats, and retry management.
  */
 export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
+  const denied = requireCronSecret(req, "warehouse_jobs");
   if (denied) return denied;
 
   return await processWarehouseQueue();
 }
 
 export async function POST(req: Request) {
-  const denied = requireCronSecret(req);
+  const denied = requireCronSecret(req, "warehouse_jobs");
   if (denied) return denied;
 
   return await processWarehouseQueue();

@@ -8,6 +8,7 @@ import {
   resolveTelemetrySalt,
   type RequestLike,
 } from "@/lib/login-telemetry";
+import { recordSecurityControlEvent } from "@/lib/security-control-events";
 
 const KEY_PREFIX = "mc_live_";
 
@@ -84,16 +85,61 @@ export function isApiKeyIpAllowed(
   if (!key.allowedIpHash) return true;
   const ip = extractIp(request);
   if (!ip) return false;
-  const candidate = hashTelemetryValue(ip, resolveTelemetrySalt());
-  const pinned = Buffer.from(key.allowedIpHash, "utf8");
-  const probe = Buffer.from(candidate, "utf8");
-  return pinned.length === probe.length && crypto.timingSafeEqual(pinned, probe);
+  return pinHashCandidates(ip).some((candidate) => constantTimeHashEqual(key.allowedIpHash!, candidate));
 }
 
 /** Salted hash of the caller's current IP, for setting a pin. Null when unknown. */
 export function pinHashForRequest(request: RequestLike | null | undefined): string | null {
   const ip = extractIp(request);
-  return ip ? hashTelemetryValue(ip, resolveTelemetrySalt()) : null;
+  if (!ip) return null;
+  const current = currentPinSalt();
+  return `${current.version}:${hashTelemetryValue(ip, current.salt)}`;
+}
+
+type VersionedSalt = { version: string; salt: string };
+
+function normalizedSaltVersion(value: string | undefined, fallback: string): string {
+  const candidate = value?.trim() || fallback;
+  return /^v[1-9][0-9]*$/.test(candidate) ? candidate : fallback;
+}
+
+function currentPinSalt(env: NodeJS.ProcessEnv = process.env): VersionedSalt {
+  return {
+    version: normalizedSaltVersion(env.API_KEY_PIN_SALT_VERSION, "v1"),
+    salt: env.API_KEY_PIN_SALT?.trim() || resolveTelemetrySalt(env),
+  };
+}
+
+function previousPinSalt(env: NodeJS.ProcessEnv = process.env): VersionedSalt | null {
+  const salt = env.API_KEY_PIN_SALT_PREVIOUS?.trim();
+  if (!salt) return null;
+  return {
+    version: normalizedSaltVersion(env.API_KEY_PIN_SALT_PREVIOUS_VERSION, "v0"),
+    salt,
+  };
+}
+
+function pinHashCandidates(ip: string, env: NodeJS.ProcessEnv = process.env): string[] {
+  const current = currentPinSalt(env);
+  const previous = previousPinSalt(env);
+  const versioned = [current, ...(previous ? [previous] : [])]
+    .map((entry) => `${entry.version}:${hashTelemetryValue(ip, entry.salt)}`);
+
+  // Pre-versioning pins were hashed with LOGIN_IP_SALT/NEXTAUTH_SECRET.
+  // Keep them valid through the rollout; admins can unpin/re-pin to migrate.
+  const legacy = [
+    hashTelemetryValue(ip, resolveTelemetrySalt(env)),
+    ...(env.LOGIN_IP_SALT_PREVIOUS?.trim()
+      ? [hashTelemetryValue(ip, env.LOGIN_IP_SALT_PREVIOUS.trim())]
+      : []),
+  ];
+  return [...new Set([...versioned, ...legacy])];
+}
+
+function constantTimeHashEqual(actual: string, candidate: string): boolean {
+  const left = Buffer.from(actual, "utf8");
+  const right = Buffer.from(candidate, "utf8");
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
 const pinRejectionThrottle = new Map<string, number>();
@@ -117,6 +163,13 @@ export async function auditApiKeyPinRejection(opts: {
         resource: "api_key",
         resourceId: opts.keyId,
       },
+    });
+    await recordSecurityControlEvent({
+      eventType: "api_key_pin_rejection",
+      outcome: "rejected",
+      scope: "api_key",
+      workspaceId: opts.workspaceId,
+      metadata: { keyIdHash: hashApiKey(opts.keyId) },
     });
   } catch (error) {
     logger.warn("[API_KEYS] pin rejection audit failed (fail-open):", error);

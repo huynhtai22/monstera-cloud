@@ -72,26 +72,27 @@ model PasswordResetToken {
 }
 
 model User {
-  id             String            @id @default(cuid())
-  name           String?
-  email          String?           @unique
-  hashedPassword String?
-  emailVerified  DateTime?
-  image          String?
-  otp            String?
-  otpExpires     DateTime?
-  otpAttempts    Int               @default(0)
-  otpLockedUntil DateTime?
-  plan           String            @default("free")
-  subscriptionId String?           @unique
-  platformRole   PlatformRole      @default(USER)
-  accounts       Account[]
-  sessions       Session[]
-  loginEvents    LoginEvent[]
-  userSessions   UserSession[]
-  workspaces              WorkspaceMember[]
-  paymentOrders           PaymentOrder[]
-  reportSnapshotApprovals ReportSnapshotApproval[]
+  id                       String                     @id @default(cuid())
+  name                     String?
+  email                    String?                    @unique
+  hashedPassword           String?
+  emailVerified            DateTime?
+  image                    String?
+  otp                      String?
+  otpExpires               DateTime?
+  otpAttempts              Int                        @default(0)
+  otpLockedUntil           DateTime?
+  plan                     String                     @default("free")
+  subscriptionId           String?                    @unique
+  platformRole             PlatformRole               @default(USER)
+  accounts                 Account[]
+  sessions                 Session[]
+  loginEvents              LoginEvent[]
+  userSessions             UserSession[]
+  workspaceSessionEvidence WorkspaceSessionEvidence[]
+  workspaces               WorkspaceMember[]
+  paymentOrders            PaymentOrder[]
+  reportSnapshotApprovals  ReportSnapshotApproval[]
 }
 
 model LoginEvent {
@@ -104,6 +105,24 @@ model LoginEvent {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+/// Global, sanitized control-plane events used for security SLO evaluation.
+/// No raw IP, user-agent, email, token, secret, or request body is allowed.
+model SecurityControlEvent {
+  id          String   @id @default(cuid())
+  eventType   String
+  outcome     String
+  scope       String
+  workspaceId String?
+  actorHash   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([eventType, createdAt])
+  @@index([scope, createdAt])
+  @@index([workspaceId, createdAt])
   @@index([createdAt])
 }
 
@@ -192,10 +211,12 @@ model Workspace {
   reportSnapshots          ReportSnapshot[]
   reportSnapshotApprovals  ReportSnapshotApproval[]
   clientAccountAssignments ClientProviderAccountAssignment[]
-  dailyUsage              WorkspaceDailyUsage[]
+  dailyUsage               WorkspaceDailyUsage[]
+  sessionEvidence          WorkspaceSessionEvidence[]
+  apiKeyMutationReceipts   ApiKeyMutationReceipt[]
+  dispatchAttempts         ReportScheduleDispatchAttempt[]
 
   @@index([subscriptionProvider, subscriptionEndsAt])
-  dispatchAttempts ReportScheduleDispatchAttempt[]
 }
 
 /// UTC-day usage counters for the seat-sharing measurement framework.
@@ -203,14 +224,56 @@ model Workspace {
 model WorkspaceDailyUsage {
   workspaceId String
   date        DateTime
-  queryCount  Int      @default(0)
-  importCount Int      @default(0)
-  keyHitCount Int      @default(0)
-  updatedAt   DateTime @updatedAt
+  queryCount  Int       @default(0)
+  importCount Int       @default(0)
+  keyHitCount Int       @default(0)
+  updatedAt   DateTime  @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@id([workspaceId, date])
   @@index([date])
+}
+
+/// Workspace-authorized browser presence. Unlike LoginEvent/UserSession this
+/// evidence is safe for a workspace administrator to inspect because every
+/// write is preceded by a membership check for this exact workspace.
+model WorkspaceSessionEvidence {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  userId         String
+  sessionJti     String
+  ipHash         String?
+  uaHash         String?
+  firstSeenAt    DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  heartbeatCount Int       @default(1)
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, sessionJti])
+  @@index([workspaceId, userId, lastSeenAt])
+  @@index([lastSeenAt])
+}
+
+/// Short-lived encrypted replay receipt for one-time API-key secrets. The
+/// idempotency tuple prevents a lost HTTP response from creating another key.
+model ApiKeyMutationReceipt {
+  id                 String    @id @default(cuid())
+  workspaceId        String
+  actorUserId        String
+  operation          String
+  idempotencyKeyHash String
+  requestHash        String
+  responseCiphertext String
+  statusCode         Int
+  apiKeyId           String?
+  expiresAt          DateTime
+  createdAt          DateTime  @default(now())
+  workspace          Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, actorUserId, operation, idempotencyKeyHash], map: "ApiKeyMutationReceipt_idempotency_key")
+  @@index([workspaceId, expiresAt])
+  @@index([expiresAt])
 }
 
 model Client {
@@ -281,10 +344,10 @@ model ReportSnapshot {
   result                 Json
   generatedAt            DateTime  @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   /// Composite FK mirrors PR #152's tenant pattern: the client MUST belong to
   /// the same workspace, enforced by the database, not application code.
-  client    Client    @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  client    Client                   @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
   approvals ReportSnapshotApproval[]
 
   @@unique([generationKey, sequence])
@@ -298,17 +361,17 @@ model ReportSnapshot {
 /// A snapshot can only be approved once per workspace (idempotent); newer snapshots
 /// for the same generationKey leave historical approvals intact but non-current.
 model ReportSnapshotApproval {
-  id               String         @id @default(cuid())
+  id               String   @id @default(cuid())
   workspaceId      String
   clientId         String
   snapshotId       String
   approvedByUserId String
-  approvedAt       DateTime       @default(now())
+  approvedAt       DateTime @default(now())
 
-  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  client           Client         @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
-  snapshot         ReportSnapshot @relation(fields: [workspaceId, clientId, snapshotId], references: [workspaceId, clientId, id], onDelete: Cascade)
-  approvedByUser   User           @relation(fields: [approvedByUserId], references: [id], onDelete: Restrict)
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client         Client         @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+  snapshot       ReportSnapshot @relation(fields: [workspaceId, clientId, snapshotId], references: [workspaceId, clientId, id], onDelete: Cascade)
+  approvedByUser User           @relation(fields: [approvedByUserId], references: [id], onDelete: Restrict)
 
   @@unique([workspaceId, snapshotId])
   @@index([workspaceId, clientId, approvedAt])
@@ -559,15 +622,15 @@ model TransformationRule {
 }
 
 model ApiKey {
-  id          String    @id @default(cuid())
-  legacyKey   String?   @unique @map("key")
-  keyHash     String?   @unique
-  keyPrefix   String?
-  keyLastFour String?
-  name        String    @default("Default Key")
-  workspaceId String
-  createdAt   DateTime  @default(now())
-  lastUsedAt  DateTime?
+  id              String    @id @default(cuid())
+  legacyKey       String?   @unique @map("key")
+  keyHash         String?   @unique
+  keyPrefix       String?
+  keyLastFour     String?
+  name            String    @default("Default Key")
+  workspaceId     String
+  createdAt       DateTime  @default(now())
+  lastUsedAt      DateTime?
   /// P0 seat-sharing telemetry: hashed request identity + hit counter.
   /// Raw IPs / user-agents are never stored; see src/lib/login-telemetry.ts.
   useCount        Int       @default(0)
@@ -814,22 +877,22 @@ model AttributionTouch {
 
 /// Per-client weekly report schedule. Agencies configure who receives the recap email.
 model ReportSchedule {
-  id          String    @id @default(cuid())
-  workspaceId String
-  clientId    String?
-  cron        String    @default("0 9 * * 1")
-  recipients  String // comma-separated email list
-  enabled     Boolean   @default(true)
-  lastSentAt  DateTime?
+  id                     String                          @id @default(cuid())
+  workspaceId            String
+  clientId               String?
+  cron                   String                          @default("0 9 * * 1")
+  recipients             String // comma-separated email list
+  enabled                Boolean                         @default(true)
+  lastSentAt             DateTime?
   // Durable dispatch claim. Set atomically by the cron sweep before provider
   // delivery; null (or expired) means unclaimed. Cleared by the lease owner on
   // completion or handled failure; a crashed owner's lease simply expires, so
   // no manual recovery is needed. TTL: 5 minutes.
-  dispatchLeaseToken      String?
-  dispatchLeaseExpiresAt  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  attempts    ReportScheduleDispatchAttempt[]
+  dispatchLeaseToken     String?
+  dispatchLeaseExpiresAt DateTime?
+  createdAt              DateTime                        @default(now())
+  updatedAt              DateTime                        @updatedAt
+  attempts               ReportScheduleDispatchAttempt[]
 
   @@index([workspaceId])
   @@index([clientId])
@@ -843,7 +906,7 @@ model ReportSchedule {
 /// AMBIGUOUS suppresses automatic retries for that occurrence and is surfaced
 /// for operator review.
 model ReportScheduleDispatchAttempt {
-  id                String    @id @default(cuid())
+  id                String         @id @default(cuid())
   scheduleId        String
   workspaceId       String
   occurrenceDate    String
@@ -852,8 +915,8 @@ model ReportScheduleDispatchAttempt {
   providerStartedAt DateTime?
   finishedAt        DateTime?
   channelOutcomes   Json?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
   schedule          ReportSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   workspace         Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -1133,7 +1196,7 @@ model WarehouseImportJob {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   chunks    WarehouseBackfillChunk[]
 
   @@unique([workspaceId, idempotencyKey])

@@ -28,7 +28,7 @@ import { withSystemScope } from "@/lib/tenant-guard";
  * scope and no database transaction is held across provider delivery.
  */
 export async function GET(request: Request) {
-  const denied = requireCronSecret(request);
+  const denied = requireCronSecret(request, "report_schedules");
   if (denied) return denied;
 
   try {

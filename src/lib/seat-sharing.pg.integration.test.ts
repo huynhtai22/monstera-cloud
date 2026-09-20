@@ -27,6 +27,8 @@ import {
   PLAN_LIMIT_CODES,
   PlanLimitError,
 } from "./plan-entitlements";
+import { recordWorkspaceSessionEvidence } from "./workspace-session-evidence";
+import { apiKeyMutationRequestHash, runIdempotentApiKeyMutation } from "./api-key-idempotency";
 
 /**
  * PostgreSQL integration: seat-sharing P0–P2 flows against real tables.
@@ -196,6 +198,21 @@ describe("PostgreSQL integration: seat-sharing telemetry, sessions, keys", () =>
     assert.ok(row.ipHash, "heartbeat enriches the IP hash");
   });
 
+  it("persists workspace-attributed heartbeat evidence under the exact tenant", async () => {
+    const sessionJti = `seat-evidence-${uid}`;
+    await recordWorkspaceSessionEvidence({
+      workspaceId: wsFree,
+      userId,
+      sessionJti,
+      request: authedRequest("198.51.100.17", "EvidenceAgent/1.0"),
+    });
+    const own = await prisma.workspaceSessionEvidence.findMany({ where: { workspaceId: wsFree } });
+    const other = await prisma.workspaceSessionEvidence.findMany({ where: { workspaceId: wsStarter } });
+    assert.equal(own.some((row) => row.sessionJti === sessionJti && row.userId === userId), true);
+    assert.equal(other.some((row) => row.sessionJti === sessionJti), false);
+    assert.equal(JSON.stringify(own).includes("198.51.100.17"), false);
+  });
+
   it("touchApiKeyUsage counts hits and hashes identity", async () => {
     const created = await prisma.apiKey.create({
       data: {
@@ -303,5 +320,45 @@ describe("PostgreSQL integration: seat-sharing telemetry, sessions, keys", () =>
     });
     // Rotation excludes the key being replaced, so capped workspaces recover.
     await assertCanCreateApiKey(wsStarter, { excludingKeyId: ids[0] });
+  });
+
+  it("replays the same encrypted one-time key after a lost create response", async () => {
+    const idempotencyKey = `seat-idempotency-${uid}`;
+    const requestHash = apiKeyMutationRequestHash({ workspaceId: wsFree, name: "Recovery key" });
+    let mutationCalls = 0;
+    const execute = () => withApiKeyMutationLock(wsFree, async (tx) =>
+      runIdempotentApiKeyMutation({
+        tx,
+        workspaceId: wsFree,
+        actorUserId: userId,
+        operation: "create",
+        idempotencyKey,
+        requestHash,
+        create: async () => {
+          mutationCalls += 1;
+          const generated = generateApiKey();
+          const key = await tx.apiKey.create({
+            data: {
+              workspaceId: wsFree,
+              name: "Recovery key",
+              keyHash: generated.keyHash,
+              keyPrefix: generated.keyPrefix,
+              keyLastFour: generated.keyLastFour,
+              createdByUserId: userId,
+            },
+          });
+          return { response: { id: key.id, key: generated.secret }, statusCode: 201, apiKeyId: key.id };
+        },
+      }),
+    );
+    const first = await execute();
+    const retry = await execute();
+    assert.equal(mutationCalls, 1);
+    assert.equal(retry.created, false);
+    assert.deepEqual(retry.response, first.response);
+    const receipt = await prisma.apiKeyMutationReceipt.findFirstOrThrow({
+      where: { workspaceId: wsFree, actorUserId: userId, operation: "create" },
+    });
+    assert.equal(receipt.responseCiphertext.includes(String(first.response.key)), false);
   });
 });

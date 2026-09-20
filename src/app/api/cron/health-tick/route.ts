@@ -23,13 +23,13 @@ async function runHealthTick() {
 }
 
 export async function GET(request: Request) {
-  const denied = requireCronSecret(request);
+  const denied = requireCronSecret(request, "health_tick");
   if (denied) return denied;
   return runHealthTick();
 }
 
 export async function POST(request: Request) {
-  const denied = requireCronSecret(request);
+  const denied = requireCronSecret(request, "health_tick");
   if (denied) return denied;
   return runHealthTick();
 }

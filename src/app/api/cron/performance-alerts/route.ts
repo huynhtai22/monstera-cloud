@@ -9,7 +9,7 @@ import { requireCronSecret } from '@/lib/request-auth';
  * Daily alerting for data freshness and Net ROAS anomalies.
  */
 export async function GET(req: Request) {
-  const denied = requireCronSecret(req);
+    const denied = requireCronSecret(req, "performance_alerts");
   if (denied) return denied;
 
   const workspaces = await prisma.workspace.findMany({

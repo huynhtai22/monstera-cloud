@@ -13,6 +13,10 @@ Telemetry reality (documented so nobody hunts for ghosts): this app runs on Verc
 | 5 | Sync freshness | Every connected workspace's newest `lastSyncAt` within plan interval × 2 | `health-tick` staleness marking + console UI | Stale connections surface in console; escalate per connector-readiness docs |
 | 6 | Data durability | Restore drill executed at least quarterly; backups restorable into app-compatible state | Drill evidence in LAUNCH_READINESS_AUDIT.md | Calendar reminder (owner); first completed 2026-08-23 |
 | 7 | AI worker freshness | Nightly `/api/cron/master` task `agentJobs` succeeds and drains up to 3 due `analyst_turn` jobs; remaining queue age ≈ 24h | Sentry + `emitMonitor("ai_worker_failed")` on `/api/cron/agent-jobs` | Not SLO #4 (`pilot-cron.yml`). Optional `pilot-ai-cron.yml` is a later, separate Actions alert |
+| 8 | Credential attack signal | Fewer than 20 failed credential logins in any 15m window | `SecurityControlEvent` + `/api/cron/security-posture` | Non-200 scheduled run + `auth_failure_spike` monitor |
+| 9 | Pinned-key rejection signal | Fewer than 5 rejected pinned-key calls in any 15m window | `SecurityControlEvent` + `/api/cron/security-posture` | Non-200 scheduled run + `api_key_pin_rejection_spike` monitor |
+| 10 | Security cron health | No recorded child-cron failure in the last 30m | master cron control events + security-posture evaluator | Non-200 scheduled run + `cron_failure` monitor |
+| 11 | Security retention freshness | Last successful bounded cleanup is no older than 26h | retention control event | Non-200 scheduled run + `retention_lag` monitor |
 
 ## One manual step remaining (#3 alert rule)
 
@@ -22,3 +26,12 @@ In **sentry.io** → project **Settings → Alerts → Create Alert**: type *"a 
 
 - **New Relic policies**: account is empty and the serverless runtime cannot host its agent. Creating conditions against absent data would be false assurance. Key retained in `.env.newrelic` (gitignored) for the post-HA/replatform decision.
 - **Latency percentiles**: no APM spans exist; synthetic probe durations serve as the coarse proxy until a real decision is made.
+
+## Security-posture rollout
+
+`pilot-cron.yml` invokes retention before `/api/cron/security-posture`. Each
+route has its own credential. A breach returns 503 so GitHub Actions supplies
+the first alert route; Vercel logs also receive a named `[MONITOR]` event. This
+is code-complete but not operationally accepted until the owner proves a
+scheduled failure reaches the named recipient and records the evidence under
+`docs/OPERATIONS_ACCEPTANCE.md`.

@@ -8,13 +8,12 @@ import { cleanupExpiredArtifacts } from "@/lib/connector-runtime/retention";
  *
  * Deletes expired ConnectorRunArtifact rows (retainedUntil < cutoff) in
  * bounded batches. Never touches certification evidence, warehouse metrics,
- * or unexpired artifacts. Authenticated with the shared CRON_SECRET like
- * the other internal cron routes.
+ * or unexpired artifacts. Authenticated with its dedicated scheduler secret.
  *
  * Optional JSON body: { "before": "<ISO date, defaults to now>", "limit": <1..1000, defaults to 500> }.
  */
 export async function POST(req: Request) {
-  const denied = requireCronSecret(req);
+  const denied = requireCronSecret(req, "connector_artifacts_cleanup");
   if (denied) return denied;
 
   let body: Record<string, unknown> = {};

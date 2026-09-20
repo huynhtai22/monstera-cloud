@@ -6,6 +6,12 @@ import { logger } from "@/lib/logger";
 import { generateApiKey, publicApiKeyRow, withApiKeyMutationLock } from "@/lib/api-key-security";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { assertCanCreateApiKeyWithClient, toPlanLimitResponse } from "@/lib/plan-entitlements";
+import {
+    apiKeyMutationRequestHash,
+    requireIdempotencyKey,
+    runIdempotentApiKeyMutation,
+    toApiKeyIdempotencyResponse,
+} from "@/lib/api-key-idempotency";
 
 export async function GET(request: Request) {
     try {
@@ -58,50 +64,66 @@ export async function POST(request: Request) {
             minimumRole: "admin",
             operation: "create_api_key",
         });
-        // Generate a secure API Key
-        const generated = generateApiKey();
-        const newKey = await withApiKeyMutationLock(workspaceId, async (tx) => {
+        const idempotencyKey = requireIdempotencyKey(request);
+        const normalizedName = typeof name === "string" && name.trim() ? name.trim().slice(0, 120) : "Default Extension Key";
+        const result = await withApiKeyMutationLock(workspaceId, async (tx) => {
             // Count, insert, and audit share one serialized transaction so two
             // concurrent creates cannot both consume the final key slot.
-            await assertCanCreateApiKeyWithClient(tx, workspaceId);
-            const created = await tx.apiKey.create({
-                data: {
-                    keyHash: generated.keyHash,
-                    keyPrefix: generated.keyPrefix,
-                    keyLastFour: generated.keyLastFour,
-                    name: name || "Default Extension Key",
-                    workspaceId: workspaceId,
-                    createdByUserId: session.user.id,
+            return runIdempotentApiKeyMutation({
+                tx,
+                workspaceId,
+                actorUserId: session.user.id,
+                operation: "create",
+                idempotencyKey,
+                requestHash: apiKeyMutationRequestHash({ workspaceId, name: normalizedName }),
+                create: async () => {
+                    await assertCanCreateApiKeyWithClient(tx, workspaceId);
+                    const generated = generateApiKey();
+                    const created = await tx.apiKey.create({
+                        data: {
+                            keyHash: generated.keyHash,
+                            keyPrefix: generated.keyPrefix,
+                            keyLastFour: generated.keyLastFour,
+                            name: normalizedName,
+                            workspaceId,
+                            createdByUserId: session.user.id,
+                        },
+                    });
+                    await tx.auditEvent.create({
+                        data: {
+                            workspaceId,
+                            actorUserId: session.user.id,
+                            action: "api_key.created",
+                            resource: "api_key",
+                            resourceId: created.id,
+                        },
+                    });
+                    return {
+                        response: {
+                            id: created.id,
+                            name: created.name,
+                            workspaceId: created.workspaceId,
+                            createdAt: created.createdAt,
+                            key: generated.secret,
+                        },
+                        statusCode: 201,
+                        apiKeyId: created.id,
+                    };
                 },
             });
-            await tx.auditEvent.create({
-                data: {
-                    workspaceId,
-                    actorUserId: session.user.id,
-                    action: "api_key.created",
-                    resource: "api_key",
-                    resourceId: created.id,
-                },
-            });
-            return created;
         });
 
-        // Full key only on create; list endpoints use keyMasked.
-        return NextResponse.json(
-            {
-                id: newKey.id,
-                name: newKey.name,
-                workspaceId: newKey.workspaceId,
-                createdAt: newKey.createdAt,
-                key: generated.secret,
-            },
-            { status: 201 }
-        );
+        return NextResponse.json(result.response, {
+            status: result.statusCode,
+            headers: { "Idempotent-Replayed": result.created ? "false" : "true" },
+        });
     } catch (error) {
         const rbac = toRbacResponse(error);
         if (rbac) return rbac;
         const planLimit = toPlanLimitResponse(error);
         if (planLimit) return planLimit;
+        const idempotency = toApiKeyIdempotencyResponse(error);
+        if (idempotency) return idempotency;
         logger.error("Error creating API key:", error);
         return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
     }

@@ -174,10 +174,14 @@ export default function SettingsPage() {
     const handleGenerateKey = async () => {
         setIsGenerating(true);
         try {
-            const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Pilot API key" }) });
+            const storageKey = `monstera:api-key:create:${activeWorkspaceId}`;
+            const idempotencyKey = sessionStorage.getItem(storageKey) || crypto.randomUUID();
+            sessionStorage.setItem(storageKey, idempotencyKey);
+            const res = await fetch("/api/settings/api-keys", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ workspaceId: activeWorkspaceId, name: "Pilot API key" }) });
             if (res.ok) {
                 const data = await res.json();
                 setNewlyGeneratedKey(data.key);
+                sessionStorage.removeItem(storageKey);
                 fetchApiKeys();
                 toast.success("API Key generated");
             }
@@ -195,10 +199,14 @@ export default function SettingsPage() {
     const handleRotateKey = async (id: string) => {
         if (!confirm("Rotate this API key? The old secret stops working immediately — update Looker/Sheets configs right away.")) return;
         try {
-            const res = await fetch("/api/settings/api-keys/rotate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workspaceId: activeWorkspaceId, id }) });
+            const storageKey = `monstera:api-key:rotate:${activeWorkspaceId}:${id}`;
+            const idempotencyKey = sessionStorage.getItem(storageKey) || crypto.randomUUID();
+            sessionStorage.setItem(storageKey, idempotencyKey);
+            const res = await fetch("/api/settings/api-keys/rotate", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ workspaceId: activeWorkspaceId, id }) });
             const data = await res.json().catch(() => ({}));
             if (res.ok) {
                 setNewlyGeneratedKey(data.key);
+                sessionStorage.removeItem(storageKey);
                 fetchApiKeys();
                 toast.success("API Key rotated — copy the new secret now");
             } else {

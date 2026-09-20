@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { allowAuthAttempt } from "@/lib/auth-rate-limit";
 import { touchSession } from "@/lib/session-limits";
+import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
+import { recordWorkspaceSessionEvidence } from "@/lib/workspace-session-evidence";
 
 /**
  * POST /api/auth/heartbeat — P3 presence ping (called every ~5 minutes by
@@ -30,5 +32,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Rate limit exceeded. Try again shortly." }, { status: 429 });
   }
   await touchSession(session.user.sessionId ?? null, request);
-  return NextResponse.json({ ok: true });
+
+  const body = await request.json().catch(() => ({})) as { workspaceId?: unknown };
+  const workspaceId = typeof body.workspaceId === "string" ? body.workspaceId.trim() : "";
+  if (!workspaceId) return NextResponse.json({ ok: true, attributed: false });
+
+  try {
+    await requireWorkspaceAccess({
+      userId: session.user.id,
+      workspaceId,
+      minimumRole: "viewer",
+      operation: "record_workspace_session_evidence",
+    });
+  } catch (error) {
+    return toRbacResponse(error) ?? NextResponse.json({ error: "Could not authorize workspace" }, { status: 500 });
+  }
+
+  await recordWorkspaceSessionEvidence({
+    workspaceId,
+    userId: session.user.id,
+    sessionJti: session.user.sessionId,
+    request,
+  });
+  return NextResponse.json({ ok: true, attributed: true });
 }

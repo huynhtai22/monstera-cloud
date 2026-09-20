@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { requireWorkspaceAccess, toRbacResponse } from "@/lib/rbac";
 import { getPlanLimits } from "@/lib/plan-config";
+import { aggregateWorkspaceDeviceSignals } from "@/lib/workspace-session-evidence";
 
 /**
  * GET /api/workspaces/[id]/sharing-signals?days=7
@@ -33,7 +34,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const windowDays = Number.isFinite(rawDays) ? Math.min(30, Math.max(1, Math.floor(rawDays))) : 7;
     const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
 
-    const [workspace, members, pendingInvitations] = await Promise.all([
+    const [workspace, members, pendingInvitations, evidence] = await Promise.all([
       prisma.workspace.findUnique({
         where: { id: workspaceId },
         select: { id: true, plan: true },
@@ -44,6 +45,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       }),
       prisma.workspaceInvitation.count({
         where: { workspaceId, acceptedAt: null, expiresAt: { gt: new Date() } },
+      }),
+      prisma.workspaceSessionEvidence.findMany({
+        where: { workspaceId, lastSeenAt: { gte: since } },
+        select: { userId: true, sessionJti: true, ipHash: true, uaHash: true, lastSeenAt: true },
       }),
     ]);
 
@@ -64,14 +69,27 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       orderBy: { createdAt: "desc" },
     });
 
-    const users = members.map((member) => ({
-      userId: member.userId,
-      email: member.user.email,
-      loginActivity: {
-        status: "unavailable" as const,
-        code: "WORKSPACE_SCOPED_LOGIN_EVIDENCE_UNAVAILABLE",
-      },
-    }));
+    const deviceSignals = aggregateWorkspaceDeviceSignals(evidence);
+    const users = members.map((member) => {
+      const signal = deviceSignals.get(member.userId);
+      return {
+        userId: member.userId,
+        email: member.user.email,
+        loginActivity: signal ? {
+          status: "available" as const,
+          activeDevices: signal.activeDevices,
+          distinctIps: signal.distinctIps,
+          distinctBrowsers: signal.distinctBrowsers,
+          lastSeenAt: signal.lastSeenAt,
+        } : {
+          status: "no_recent_evidence" as const,
+          activeDevices: 0,
+          distinctIps: 0,
+          distinctBrowsers: 0,
+          lastSeenAt: null,
+        },
+      };
+    });
 
     return NextResponse.json({
       workspaceId,
@@ -94,7 +112,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         ipPinned: key.allowedIpHash != null,
       })),
       suggestedAction: null,
-      note: "Session caps are active. Global user login telemetry is never exposed to workspace administrators; workspace-scoped device evidence requires a future attributed heartbeat model.",
+      note: "Session caps are active. Device counts come only from membership-authorized heartbeats for this workspace; global login telemetry is never exposed to workspace administrators.",
     });
   } catch (error) {
     return toRbacResponse(error) ?? NextResponse.json({ error: "Could not load sharing signals" }, { status: 500 });

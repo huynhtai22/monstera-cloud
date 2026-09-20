@@ -9,7 +9,7 @@ test.describe("Seat-sharing session revocation", () => {
   const userId = `revoke-user-${suffix}`;
   const workspaceId = `revoke-ws-${suffix}`;
   const email = `${userId}@e2e.test`;
-  const password = "RevokeJourney2026pw";
+  const password = "test-revoke-password-".padEnd(24, "x");
 
   test.beforeAll(async () => {
     await prisma.user.create({

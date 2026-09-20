@@ -25,7 +25,7 @@ function isoDate(offsetDays = 0) {
  * Supports lookbackDays (e.g. lookbackDays=3 for frequent 4h cron runs).
  */
 export async function GET(request: Request) {
-  const denied = requireCronSecret(request);
+  const denied = requireCronSecret(request, "warehouse_refresh");
   if (denied) return denied;
 
   const startTime = Date.now();
