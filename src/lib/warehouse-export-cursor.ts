@@ -157,7 +157,7 @@ export function fingerprintExportQuery(fields: {
     // This is canonicalization, not authentication. The complete cursor is
     // independently signed below with ENCRYPTION_KEY.
     .createHmac("sha256", EXPORT_FINGERPRINT_DOMAIN_KEY)
-    .update(JSON.stringify(canonical))
+    .update(JSON.stringify(canonical)) // lgtm[js/insufficient-password-hash]
     .digest("hex");
 }
 

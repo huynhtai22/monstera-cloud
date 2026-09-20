@@ -37,13 +37,14 @@ function apiKeyHashPeppers(env: NodeJS.ProcessEnv = process.env): string[] {
 
 function pepperedApiKeyHash(secret: string, pepper: string): string {
   const domainKey = crypto.createHmac("sha256", pepper).update(API_KEY_HASH_DOMAIN, "utf8").digest();
-  return `${API_KEY_HASH_VERSION}:${crypto.createHmac("sha256", domainKey).update(secret, "utf8").digest("hex")}`;
+  // API keys contain 256 random bits; keyed HMAC is the verifier, not a human-password KDF.
+  return `${API_KEY_HASH_VERSION}:${crypto.createHmac("sha256", domainKey).update(secret, "utf8").digest("hex")}`; // lgtm[js/insufficient-password-hash]
 }
 
 /** Legacy compatibility for pre-HMAC 256-bit random API keys. */
 function legacyApiKeyHash(secret: string): string {
   // codeql[js/insufficient-password-hash]
-  return crypto.createHash("sha256").update(secret, "utf8").digest("hex");
+  return crypto.createHash("sha256").update(secret, "utf8").digest("hex"); // lgtm[js/insufficient-password-hash]
 }
 
 export function hashApiKey(secret: string): string {

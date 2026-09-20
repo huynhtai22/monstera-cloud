@@ -8,7 +8,8 @@ function cacheHmacKey(): string {
 }
 
 function cacheFingerprint(serialized: string): string {
-  return crypto.createHmac("sha256", cacheHmacKey()).update(serialized).digest("hex");
+  // Opaque Redis namespace fingerprint; authentication is enforced before cache access.
+  return crypto.createHmac("sha256", cacheHmacKey()).update(serialized).digest("hex"); // lgtm[js/insufficient-password-hash]
 }
 
 /** Generate a deterministic keyed cache fingerprint. */

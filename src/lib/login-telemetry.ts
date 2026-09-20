@@ -56,7 +56,8 @@ export function extractUserAgent(request: RequestLike | null | undefined): strin
 }
 
 export function hashTelemetryValue(value: string, salt: string): string {
-  return crypto.createHmac("sha256", salt).update(value, "utf8").digest("hex");
+  // Pseudonymization of request metadata; this is not password verification.
+  return crypto.createHmac("sha256", salt).update(value, "utf8").digest("hex"); // lgtm[js/insufficient-password-hash]
 }
 
 /**
@@ -66,7 +67,7 @@ export function hashTelemetryValue(value: string, salt: string): string {
  */
 export function hashLegacyTelemetryValue(value: string, salt: string): string {
   // codeql[js/insufficient-password-hash]
-  return crypto.createHash("sha256").update(`${salt}:${value}`, "utf8").digest("hex");
+  return crypto.createHash("sha256").update(`${salt}:${value}`, "utf8").digest("hex"); // lgtm[js/insufficient-password-hash]
 }
 
 export function telemetryHashesFromRequest(
