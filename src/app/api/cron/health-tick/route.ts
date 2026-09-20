@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { evaluateStaleHealth } from "@/lib/ingestion/stale-health";
 import { emitHealthMonitorsAndStaleAlerts } from "@/lib/ingestion/health-monitors";
 import { requireCronSecret } from "@/lib/request-auth";
+import { monitorReportFreshness } from "@/lib/ingestion/report-freshness-monitor";
 
 /**
  * GET/POST /api/cron/health-tick
@@ -14,11 +15,13 @@ import { requireCronSecret } from "@/lib/request-auth";
 async function runHealthTick() {
   const report = await evaluateStaleHealth();
   const monitors = await emitHealthMonitorsAndStaleAlerts();
+  const reportFreshness = await monitorReportFreshness();
   return NextResponse.json({
     ok: true,
     timestamp: new Date().toISOString(),
     ...report,
     monitors,
+    reportFreshness,
   });
 }
 

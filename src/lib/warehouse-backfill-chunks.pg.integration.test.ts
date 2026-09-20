@@ -601,7 +601,7 @@ describe("PostgreSQL Integration: checkpointed backfill worker foundation", () =
 
   it("route checkpoint path preserves partial rows and requeues on foreign leases", async (t) => {
     if (!requireDb(t)) return;
-    const { runCheckpointedSlicesForJob } = await import("@/app/api/data-explorer/warehouse/import-batch/route");
+    const { runCheckpointedSlicesForJob } = await import("@/lib/warehouse-import-worker");
     const { claimImportJob } = await import("./warehouse-import-job");
     const { encrypt } = await import("./encryption");
     const singleton = (await import("@/lib/prisma")).default;

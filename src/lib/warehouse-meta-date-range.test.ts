@@ -10,7 +10,7 @@ import {
   type BatchImportItem,
   type BatchImportJobResult,
 } from "./warehouse-import-job";
-import { processBatchItems } from "@/app/api/data-explorer/warehouse/import-batch/route";
+import { processBatchItems } from "@/lib/warehouse-import-worker";
 import { setCachedQuery, getCachedQuery, generateCacheKey } from "./redis-cache";
 import prisma from "@/lib/prisma";
 import { encrypt } from "./encryption";

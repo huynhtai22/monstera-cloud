@@ -215,6 +215,7 @@ model Workspace {
   sessionEvidence          WorkspaceSessionEvidence[]
   apiKeyMutationReceipts   ApiKeyMutationReceipt[]
   dispatchAttempts         ReportScheduleDispatchAttempt[]
+  clientFreshnessStates    ClientFreshnessState[]
 
   @@index([subscriptionProvider, subscriptionEndsAt])
 }
@@ -295,9 +296,25 @@ model Client {
   reportSnapshots                ReportSnapshot[]
   reportSnapshotApprovals        ReportSnapshotApproval[]
   accountAssignments             ClientProviderAccountAssignment[]
+  freshnessState                 ClientFreshnessState?
 
   @@unique([workspaceId, id])
   @@index([workspaceId])
+}
+
+/// Latest monitor observation; not a reporting verification authority.
+model ClientFreshnessState {
+  workspaceId String
+  clientId String
+  status String
+  incidentKey String
+  checkedAt DateTime
+  changedAt DateTime
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  client Client @relation(fields: [workspaceId, clientId], references: [workspaceId, id], onDelete: Cascade)
+
+  @@id([workspaceId, clientId])
+  @@index([workspaceId, checkedAt])
 }
 
 /// Immutable, reproducible snapshot of a verified report blueprint run.

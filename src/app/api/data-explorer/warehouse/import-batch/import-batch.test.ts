@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it, beforeEach } from "node:test";
 import {
   assertBatchHistoricalExecutionAllowed,
+} from "./route";
+import {
   processBatchItems,
   runDurableImportWorker,
-} from "./route";
+} from "@/lib/warehouse-import-worker";
 import prisma from "@/lib/prisma";
 import { encrypt } from "@/lib/encryption";
 
@@ -14,6 +16,16 @@ describe("Batch Import Worker & Post-Refresh Data Quality Gating", () => {
   const mockLeaseId = "lease-valid-123";
 
   let checkedConnections: string[] = [];
+
+  it("never calls a provider with a stale initial worker lease", async () => {
+    let calls = 0;
+    (prisma as any).warehouseImportJob.updateMany = async () => ({ count: 0 });
+    await runDurableImportWorker(mockJobId, "stale-lease", (async () => {
+      calls++;
+      return { success: true, rowsIngested: 0 };
+    }) as any);
+    assert.equal(calls, 0);
+  });
 
   beforeEach(() => {
     process.env.ENCRYPTION_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

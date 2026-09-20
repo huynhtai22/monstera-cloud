@@ -72,6 +72,7 @@ export const TENANT_GUARDED_MODELS = new Set([
   "WarehouseBackfillChunk",
   // Seat-sharing measurement counter (direct workspace owner)
   "WorkspaceDailyUsage",
+  "ClientFreshnessState",
   "WorkspaceSessionEvidence",
   "ApiKeyMutationReceipt",
 ]);
