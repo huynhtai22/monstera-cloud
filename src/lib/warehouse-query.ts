@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { withDatabaseTenantContext } from "./database-tenant-context";
+import { normalizeMetaAdName } from "@/lib/meta-sync-lock";
 import { getCanonicalDateRange } from "@/lib/warehouse-date-range";
 import { buildAccountFilterPredicate, appendWherePredicate } from "@/lib/warehouse-account-filter";
 
@@ -120,11 +121,23 @@ function adNameFromRawData(rawData: string | null): string | null {
   try {
     const parsed: unknown = JSON.parse(rawData);
     if (!parsed || typeof parsed !== "object") return null;
-    const adName = (parsed as Record<string, unknown>).ad_name;
-    return typeof adName === "string" && adName.trim() ? adName : null;
+    return normalizeMetaAdName((parsed as Record<string, unknown>).ad_name);
   } catch {
     return null;
   }
+}
+
+/**
+ * Promoted-first ad name resolution. The writer normalizes empty values to
+ * NULL, so an empty-string promoted value also falls back (it can never be a
+ * valid legacy output). Explicit nullish checks — never truthiness.
+ */
+export function resolveWarehouseAdName(
+  promotedAdName: string | null | undefined,
+  rawData: string | null | undefined,
+): string | null {
+  if (promotedAdName != null && promotedAdName !== "") return promotedAdName;
+  return adNameFromRawData(rawData ?? null);
 }
 
 /**
@@ -305,10 +318,10 @@ async function queryWarehouseInSnapshot(input: WarehouseQueryInput, db: ScopedTr
   const rows = visibleRows.map((row) => {
     const { fencingToken, ...visibleRow } = row;
     void fencingToken;
-    // `ad_name` is a Meta source field retained in rawData. Deriving it here
-    // keeps existing production schema compatible while exposing the ad
-    // dimension alongside the normalized ad set fields.
-    return { ...visibleRow, adName: adNameFromRawData(visibleRow.rawData) };
+    // `ad_name` is a Meta source field promoted to the `adName` column by new
+    // ingestion. Prefer it; legacy rows (adName NULL) still derive it from
+    // rawData, and rows with neither render null.
+    return { ...visibleRow, adName: resolveWarehouseAdName(visibleRow.adName, visibleRow.rawData) };
   });
   const last = rows.at(-1);
   const lastSyncAt = lastSyncAggregate._max.lastSyncAt;
