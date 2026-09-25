@@ -304,6 +304,7 @@ export function AnalystPane({
           onKeyDown={(e) => {
             if (e.key === "Enter") void ask();
           }}
+          aria-label="Ask warehouse analyst"
           placeholder="Ask a warehouse question (e.g. spend, conversions, health)..."
           className="min-w-0 flex-1 rounded-md border border-line bg-canvas px-3 py-2 text-xs text-ink placeholder:text-ink-mute focus:outline-hidden focus:border-accent"
         />

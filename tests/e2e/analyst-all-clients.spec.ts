@@ -106,7 +106,7 @@ test.describe("analyst all-clients scope", () => {
         /* ignore unparsable bodies */
       }
     });
-    await page.getByPlaceholder("Why did Meta ROAS drop last week?").fill(FLAGSHIP_REFUSAL_QUESTION);
+    await page.getByRole("textbox", { name: "Ask warehouse analyst" }).fill(FLAGSHIP_REFUSAL_QUESTION);
     await page.getByRole("button", { name: "Ask", exact: true }).click();
     await expect(page.getByText("Blockers:")).toBeVisible();
     return seen.length > 0 ? seen[seen.length - 1]! : null;
