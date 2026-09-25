@@ -159,12 +159,19 @@ export async function queryMetricsAggregate(spec: WarehouseAggregateSpec): Promi
     sumFields.impressions = true;
   }
 
+  const orderBy = by.includes("date")
+    ? [
+        { date: "desc" as const },
+        ...by.filter((f) => f !== "date").map((f) => ({ [f]: "asc" as const })),
+      ]
+    : by.map((f) => ({ [f]: "asc" as const }));
+
   const rows = await prisma.campaignMetric.groupBy({
     where,
     by: by as ["date"],
     ...(Object.keys(sumFields).length ? { _sum: sumFields } : {}),
     take: limits.explorerMaxRowsPerQuery,
-    orderBy: [{ date: "desc" }],
+    orderBy: orderBy as unknown as { date?: "asc" | "desc" }[],
   });
 
   const truncated = rows.length >= limits.explorerMaxRowsPerQuery;

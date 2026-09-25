@@ -146,6 +146,9 @@ export async function runAnalystTurn(opts: {
       endDate: window.endDate,
       clientId: opts.clientId,
       dimensions: classified.intent === "campaign_contribution" ? ["campaignName", "platform"] : undefined,
+      metrics: classified.intent === "campaign_contribution"
+        ? ["revenue", "spend", "conversions"]
+        : ["spend", "impressions", "clicks", "conversions", "revenue"],
     };
     let result: AiToolResult;
     try {
@@ -217,6 +220,7 @@ export async function runAnalystTurn(opts: {
             startDate: priorWindow.startDate,
             endDate: priorWindow.endDate,
             clientId: opts.clientId,
+            metrics: ["spend", "impressions", "clicks", "conversions", "revenue"],
           });
           const priorRaw = priorRes.data as { rows?: Array<Record<string, unknown>> } | undefined;
           const priorRows = priorRaw?.rows ?? [];
@@ -312,6 +316,12 @@ export async function runAnalystTurn(opts: {
         changePercentage: convPct,
       });
     } else if (isCampaignContribution) {
+      if (metricsResult.truncated) {
+        observations.push({
+          text: "Row limit reached for campaign-level breakdown. Results reflect an alphabetically capped sample and cannot be treated as an exhaustive or definitive ranking of top contributing campaigns.",
+          metric: "revenue",
+        });
+      }
       const campaignMap = new Map<string, { revenue: number; spend: number; conversions: number; platform: string }>();
       for (const r of metricsResult.rows) {
         const cName = (r.campaignName as string) || (r.campaignId as string) || "Campaign";
@@ -326,7 +336,7 @@ export async function runAnalystTurn(opts: {
       for (const [cName, cData] of sorted.slice(0, 5)) {
         const revShare = metricsResult.totalConversionValue > 0 ? (cData.revenue / metricsResult.totalConversionValue) * 100 : null;
         observations.push({
-          text: `Campaign "${cName}" (${cData.platform}) contributed ${cData.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${curr} revenue${revShare != null ? ` (${revShare.toFixed(1)}% of total)` : ""} with ${cData.spend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} spend.`,
+          text: `${metricsResult.truncated ? "Sampled campaign" : "Campaign"} "${cName}" (${cData.platform}) contributed ${cData.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${curr} revenue${revShare != null ? ` (${revShare.toFixed(1)}% of total)` : ""} with ${cData.spend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} spend.`,
           metric: "revenue",
           sources: [cData.platform],
         });
@@ -385,6 +395,9 @@ export async function runAnalystTurn(opts: {
     limitations.push("Currencies: Disparate currencies are tracked separately; no implicit FX blending.");
   }
   limitations.push(`Reporting window: ${window.startDate} to ${window.endDate} (completed UTC days).`);
+  if (metricsResult?.truncated) {
+    limitations.push("Row limit reached: Query results were capped by plan limits. Campaign-level rankings may not include all campaigns outside the query limit.");
+  }
   if (readiness?.blockers?.length) {
     limitations.push(`Readiness blockers: ${readiness.blockers.join(", ")}.`);
   }
