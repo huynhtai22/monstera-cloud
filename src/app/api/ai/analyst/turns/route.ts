@@ -31,7 +31,7 @@ export async function GET(req: Request) {
     take: 30,
     select: { id: true, status: true, result: true, refusalCode: true, createdAt: true },
   });
-  return NextResponse.json({ turns });
+  return NextResponse.json({ turns }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function POST(req: Request) {
@@ -90,6 +90,7 @@ export async function POST(req: Request) {
     result: {
       status: turn.status,
       answer: turn.answer,
+      structured: turn.structured,
       blockers: turn.blockers,
       evidence: turn.evidence,
       queuedCopy: turn.queuedCopy,
@@ -97,12 +98,20 @@ export async function POST(req: Request) {
     refusalCode: turn.refusalCode,
   });
 
-  return NextResponse.json({
-    turnId: job.id,
-    status: turn.status,
-    answer: turn.answer,
-    evidence: turn.evidence,
-    blockers: turn.blockers,
-    queuedCopy: turn.queuedCopy,
-  });
+  return NextResponse.json(
+    {
+      turnId: job.id,
+      status: turn.status,
+      answer: turn.answer,
+      structured: turn.structured,
+      evidence: turn.evidence,
+      blockers: turn.blockers,
+      queuedCopy: turn.queuedCopy,
+    },
+    {
+      headers: {
+        "Cache-Control": "private, no-store",
+      },
+    },
+  );
 }

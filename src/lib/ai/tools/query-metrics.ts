@@ -1,5 +1,6 @@
 import { queryMetricsAggregate } from "@/lib/warehouse-aggregate";
 import { sanitizeToolResult } from "@/lib/ai/sanitize";
+import prisma from "@/lib/prisma";
 import type { AiTool, AiToolContext, AiToolResult } from "./types";
 
 export const queryMetricsTool: AiTool = {
@@ -15,6 +16,12 @@ export const queryMetricsTool: AiTool = {
     if (!startDateStr || !endDateStr) {
       return { ok: false, evidenceRefs: [], error: { code: "bad_args", message: "startDate and endDate required" } };
     }
+    const plan = typeof args.plan === "string" ? args.plan : (
+      await prisma.workspace.findUnique({
+        where: { id: workspaceId },
+        select: { plan: true },
+      })
+    )?.plan ?? "free";
     const result = await queryMetricsAggregate({
       workspaceId,
       clientId: ctx.clientId,
@@ -24,6 +31,8 @@ export const queryMetricsTool: AiTool = {
       campaignId: typeof args.campaignId === "string" ? args.campaignId : null,
       dimensions: Array.isArray(args.dimensions) ? args.dimensions.map(String) : undefined,
       metrics: Array.isArray(args.metrics) ? args.metrics.map(String) : undefined,
+      plan,
+      strictReporting: args.strictReporting === true,
     });
     return {
       ok: true,

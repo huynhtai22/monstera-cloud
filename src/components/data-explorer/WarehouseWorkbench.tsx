@@ -1121,7 +1121,12 @@ export function WarehouseWorkbench() {
       </div>
 
       <Suspense fallback={null}>
-        <AnalystPane />
+        <AnalystPane
+          selectedClientId={selectedClientId}
+          selectedClientName={selectedClientName}
+          startDate={startDate}
+          endDate={endDate}
+        />
       </Suspense>
 
       {/* ─── 2. FILTERS ─── */}
