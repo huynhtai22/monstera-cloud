@@ -81,17 +81,31 @@ export async function POST(request: Request) {
   const commitSha = resolveRuntimeCommitSha();
   const schemaVersion = resolveRuntimeSchemaVersion();
   const workingTreeDirty = resolveWorkingTreeDirty();
-  if (!/^[a-f0-9]{40}$/i.test(commitSha) || schemaVersion !== CURRENT_SCHEMA_VERSION || workingTreeDirty) {
+  let appliedSchemaVersion: string | undefined;
+  try {
+    const appliedMigrations = await prisma.$queryRaw<Array<{ migration_name: string }>>`
+      SELECT migration_name
+      FROM "_prisma_migrations"
+      WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+      ORDER BY migration_name DESC
+      LIMIT 1
+    `;
+    appliedSchemaVersion = appliedMigrations[0]?.migration_name;
+  } catch {
+    return NextResponse.json({ error: "Live certification requires verifiable database migration metadata" }, { status: 503 });
+  }
+  if (!/^[a-f0-9]{40}$/i.test(commitSha) || schemaVersion !== CURRENT_SCHEMA_VERSION || appliedSchemaVersion !== CURRENT_SCHEMA_VERSION || workingTreeDirty) {
     return NextResponse.json({ error: "Live certification requires a clean deployed build with matching immutable commit and schema metadata" }, { status: 409 });
   }
 
+  const canonicalAccountId = input.accountId.replace(/\D/g, "");
   const harness = new CertificationHarness();
   try {
     const result = await harness.execute({
       workspaceId: input.workspaceId,
       connectionId: input.connectionId,
       provider: "google_ads",
-      accountId: input.accountId,
+      accountId: canonicalAccountId,
       startDate: input.startDate,
       endDate: input.endDate,
       destination: input.destination,

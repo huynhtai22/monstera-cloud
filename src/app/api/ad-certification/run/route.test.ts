@@ -9,6 +9,7 @@ const savedPrisma = {
   user: (prisma as any).user,
   evidencePackRecord: (prisma as any).evidencePackRecord,
   auditEvent: (prisma as any).auditEvent,
+  $queryRaw: (prisma as any).$queryRaw,
 };
 const envKeys = ["AD_CERTIFICATION_LIVE_RUNS_ENABLED", "RUNTIME_COMMIT_SHA", "RUNTIME_SCHEMA_VERSION", "BUILD_WORKING_TREE_DIRTY"] as const;
 const savedEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
@@ -16,6 +17,8 @@ const originalExecute = CertificationHarness.prototype.execute;
 let userRole = "OPERATOR";
 let executionInput: any;
 let durable = true;
+let appliedSchemaVersion: string | undefined = CURRENT_SCHEMA_VERSION;
+let migrationQueryFails = false;
 
 const evidencePack = {
   runId: "cert_google_ads_test",
@@ -51,6 +54,8 @@ describe("POST /api/ad-certification/run", () => {
     userRole = "OPERATOR";
     executionInput = undefined;
     durable = true;
+    appliedSchemaVersion = CURRENT_SCHEMA_VERSION;
+    migrationQueryFails = false;
     process.env.AD_CERTIFICATION_LIVE_RUNS_ENABLED = "true";
     process.env.RUNTIME_COMMIT_SHA = "b3058dad3cfd45eab1697dac307d94f598edcbe7";
     process.env.RUNTIME_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION;
@@ -62,6 +67,10 @@ describe("POST /api/ad-certification/run", () => {
     (prisma as any).user = { findUnique: async () => ({ id: "operator-1", platformRole: userRole }) };
     (prisma as any).evidencePackRecord = { findFirst: async () => durable ? { id: "evidence-1" } : null };
     (prisma as any).auditEvent = { findFirst: async () => durable ? { id: "audit-1" } : null };
+    (prisma as any).$queryRaw = async () => {
+      if (migrationQueryFails) throw new Error("migration table unavailable");
+      return appliedSchemaVersion ? [{ migration_name: appliedSchemaVersion }] : [];
+    };
     CertificationHarness.prototype.execute = async function (input: any) {
       executionInput = input;
       return { evidencePack, markdownReport: "sanitized report", evidenceJsonPath: "", evidenceMdPath: "" } as any;
@@ -88,7 +97,22 @@ describe("POST /api/ad-certification/run", () => {
     assert.equal(executionInput.buildId, process.env.RUNTIME_COMMIT_SHA);
     assert.equal(executionInput.trustedRuntimeMetadata.commitSha, process.env.RUNTIME_COMMIT_SHA);
     assert.equal(executionInput.trustedRuntimeMetadata.schemaVersion, CURRENT_SCHEMA_VERSION);
+    assert.equal(executionInput.accountId, "1234567890");
     assert.equal("trustedRuntimeMetadata" in validBody, false);
+  });
+
+  it("rejects runs when the database migration state differs from the deployed schema", async () => {
+    appliedSchemaVersion = "20260901000000_stale_database";
+    const response = await POST(request(validBody));
+    assert.equal(response.status, 409);
+    assert.equal(executionInput, undefined);
+  });
+
+  it("fails closed when applied migration metadata cannot be read", async () => {
+    migrationQueryFails = true;
+    const response = await POST(request(validBody));
+    assert.equal(response.status, 503);
+    assert.equal(executionInput, undefined);
   });
 
   it("rejects non-operators and caller-supplied simulation controls", async () => {

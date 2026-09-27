@@ -28,7 +28,8 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: "Invalid Google Ads portal confirmation", issues: parsed.error.issues }, { status: 400 });
 
   const { workspaceId, connectionId, accountId, facts } = parsed.data;
-  if (normalizeCustomerId(accountId).length !== 10) {
+  const canonicalAccountId = normalizeCustomerId(accountId);
+  if (canonicalAccountId.length !== 10) {
     return NextResponse.json({ error: "accountId must be a 10-digit Google Ads customer ID" }, { status: 400 });
   }
 
@@ -47,12 +48,12 @@ export async function POST(request: Request) {
   if (workspace.ownerId !== user.id && membership?.role !== "owner") {
     return NextResponse.json({ error: "Forbidden: only a workspace owner can confirm provider portal facts" }, { status: 403 });
   }
-  let accountBelongsToConnection = Boolean(connection && normalizeCustomerId(connection.remoteAccountId) === normalizeCustomerId(accountId));
+  let accountBelongsToConnection = Boolean(connection && normalizeCustomerId(connection.remoteAccountId) === canonicalAccountId);
   if (connection && !accountBelongsToConnection) {
     try {
       const credentials = JSON.parse(decrypt(connection.credentials)) as Record<string, unknown>;
       const discoveredIds = Array.isArray(credentials.discoveredCustomerIds) ? credentials.discoveredCustomerIds : [];
-      accountBelongsToConnection = discoveredIds.some((id) => normalizeCustomerId(String(id)) === normalizeCustomerId(accountId));
+      accountBelongsToConnection = discoveredIds.some((id) => normalizeCustomerId(String(id)) === canonicalAccountId);
     } catch {
       accountBelongsToConnection = false;
     }
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
       actorUserId: user.id,
       action: "PORTAL_ACCESS_CONFIRMED",
       resource: "provider_access_facts",
-      resourceId: accountId,
+      resourceId: canonicalAccountId,
       metadata: {
         provider: "google_ads",
         connectionId: connection.id,

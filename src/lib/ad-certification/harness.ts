@@ -883,6 +883,7 @@ export class CertificationHarness {
             action: "PORTAL_ACCESS_CONFIRMED",
             resource: "provider_access_facts",
             resourceId: accountId,
+            ...(connectionId ? { metadata: { path: ["connectionId"], equals: connectionId } } : {}),
           },
           orderBy: { createdAt: "desc" },
         })
@@ -890,7 +891,6 @@ export class CertificationHarness {
       if (!confirmation || !confirmation.metadata || typeof confirmation.metadata !== "object" || Array.isArray(confirmation.metadata)) return null;
       const metadata = confirmation.metadata as Record<string, unknown>;
       if (metadata.provider !== "google_ads" || metadata.verificationSource !== "portal_owner_confirmed") return null;
-      if (connectionId && metadata.connectionId !== connectionId) return null;
       return parsePersistedGoogleAdsPortalFacts({
         ...(metadata.facts && typeof metadata.facts === "object" && !Array.isArray(metadata.facts) ? metadata.facts : {}),
         verificationSource: metadata.verificationSource,

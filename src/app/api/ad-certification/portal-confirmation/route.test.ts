@@ -67,7 +67,7 @@ describe("POST /api/ad-certification/portal-confirmation", () => {
     assert.equal(result.ok, true);
     assert.equal(createdAudit.actorUserId, "owner-1");
     assert.equal(createdAudit.action, "PORTAL_ACCESS_CONFIRMED");
-    assert.equal(createdAudit.resourceId, body.accountId);
+    assert.equal(createdAudit.resourceId, "1234567890");
     assert.equal(createdAudit.metadata.connectionId, body.connectionId);
     assert.equal(createdAudit.metadata.facts.accessLevelStatus, "basic");
     assert.equal(createdAudit.metadata.verificationSource, "portal_owner_confirmed");
