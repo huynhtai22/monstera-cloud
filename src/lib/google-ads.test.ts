@@ -4,6 +4,7 @@ import {
   GoogleAdsProviderError,
   GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED,
   GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED,
+  isGoogleAdsAccessBlocked,
   isGoogleAdsDeveloperTokenBlocked,
   isGoogleAdsCustomerUnavailable,
   isGoogleAdsRetryableFailure,
@@ -501,6 +502,23 @@ describe("google ads connector", () => {
       assert.deepEqual(await googleAdsOAuthClient.listAccessibleCustomers("t"), ["1234567890"]);
       const headers = captured[0].init.headers as Record<string, string>;
       assert.equal(headers["developer-token"], undefined);
+    } finally {
+      restore();
+    }
+  });
+
+  it("does not turn Cloud project access denial into a standalone account fallback", async () => {
+    const restore = stubFetch([
+      {
+        __status: 403,
+        __body: JSON.stringify({ error: { message: "CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION" } }),
+      },
+    ]);
+    try {
+      await assert.rejects(
+        () => googleAdsReportClient.listCustomerClients("t", "1234567890"),
+        (error: unknown) => error instanceof GoogleAdsProviderError && isGoogleAdsAccessBlocked(error),
+      );
     } finally {
       restore();
     }

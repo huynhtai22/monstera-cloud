@@ -448,6 +448,11 @@ export class GoogleAdsReportClient {
       }
       );
     } catch (error) {
+      // Project-level API access denials are not the expected standalone
+      // account rejection. Preserve them so sync can report the configuration
+      // blocker without quarantining the customer's account for reconnect.
+      if (isGoogleAdsAccessBlocked(error)) throw error;
+
       // A disabled customer also rejects customer_client with a 4xx. Do not
       // fabricate a standalone leaf for it: reporting would fail later with
       // CUSTOMER_NOT_ENABLED and leave the customer with a confusing error.

@@ -802,7 +802,11 @@ async function syncGoogleAds(opts: {
   }
 
   logger.info(`[syncGoogleAds] Total leaf accounts to query: ${leafAccounts.length}`);
-  const skippedCustomers = await getSkippedAccountIds(connectionId, workspaceId);
+  const skippedCustomers = await getSkippedAccountIds(connectionId, workspaceId, {
+    // Old builds incorrectly quarantined accounts when project-level API access
+    // failed. Let Google retry those rows after the project configuration changes.
+    recoverableErrorPattern: /CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION|DEVELOPER_TOKEN_NOT_APPROVED|Google Ads API access is not enabled for the Google Cloud project/i,
+  });
 
   // ── Step 2: Query each leaf account ────────────────────────────────────────
   for (const { customerId, mccId, descriptiveName } of leafAccounts) {
@@ -952,8 +956,10 @@ async function syncGoogleAds(opts: {
         accountId: customerId,
         accountName: descriptiveName,
         ok: false,
-        retryable: gRetryable,
-        authFailure: isAuth,
+        retryable: isAccessBlocked || gRetryable,
+        // Cloud-project access is application configuration, not a revoked
+        // customer authorization. Keep it retryable after project access is fixed.
+        authFailure: isAuth && !isAccessBlocked,
         error: msg,
       });
 
