@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it, beforeEach, afterEach } from "node:test";
 import {
   GoogleAdsProviderError,
+  GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED,
   GOOGLE_ADS_DEVELOPER_TOKEN_NOT_APPROVED,
   isGoogleAdsDeveloperTokenBlocked,
   isGoogleAdsCustomerUnavailable,
@@ -22,7 +23,6 @@ import { captureTelemetryForTest } from "./observability/connector-telemetry";
 const TOKEN_ENV = {
   GOOGLE_ADS_CLIENT_ID: "test-client-id.apps.googleusercontent.com",
   GOOGLE_ADS_CLIENT_SECRET: "test-client-secret",
-  GOOGLE_ADS_DEVELOPER_TOKEN: "test-developer-token-VALUE",
 };
 
 let captured: { url: string; init: RequestInit }[] = [];
@@ -93,7 +93,7 @@ describe("google ads connector", () => {
 
   // ── searchStream: headers, ids, pagination batches ────────────────────────
 
-  it("strips dashes from customer id, injects developer token, and sets login-customer-id for MCC", async () => {
+  it("strips dashes from customer id and sets login-customer-id for MCC without a developer-token header", async () => {
     const restore = stubFetch([{ results: [] }]);
     try {
       await googleAdsReportClient.searchStream("access-token", "123-456-7890", "SELECT campaign.id FROM campaign", "999-999-9999");
@@ -103,7 +103,7 @@ describe("google ads connector", () => {
     const { url, init } = captured[0];
     assert.ok(url.includes("/customers/1234567890/googleAds:searchStream"), url);
     const headers = init.headers as Record<string, string>;
-    assert.equal(headers["developer-token"], "test-developer-token-VALUE");
+    assert.equal(headers["developer-token"], undefined);
     assert.equal(headers["login-customer-id"], "9999999999");
     assert.equal(headers.Authorization, "Bearer access-token");
     assert.ok(!url.includes("999"));
@@ -191,6 +191,12 @@ describe("google ads connector", () => {
     const legacy = new Error("wrapped: DEVELOPER_TOKEN_NOT_APPROVED somewhere");
     assert.equal(isGoogleAdsDeveloperTokenBlocked(legacy), true);
     assert.equal(isGoogleAdsDeveloperTokenBlocked(new Error("unrelated")), false);
+  });
+
+  it("classifies current Cloud project access denial as an application-level blocker", () => {
+    const structured = new GoogleAdsProviderError("project access denied", false, 403, GOOGLE_ADS_CLOUD_PROJECT_NOT_APPROVED);
+    assert.equal(isGoogleAdsDeveloperTokenBlocked(structured), true);
+    assert.equal(isGoogleAdsDeveloperTokenBlocked(new Error("CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION")), true);
   });
 
   it("retry matrix: 429/5xx/quota retryable, 400 permission permanent", () => {
@@ -330,19 +336,19 @@ describe("google ads connector", () => {
     }
   });
 
-  it("never leaks the developer-token value through thrown error text", async () => {
+  it("ignores the retired developer-token setting and never sends it", async () => {
+    process.env.GOOGLE_ADS_DEVELOPER_TOKEN = "retired-token-must-not-be-sent";
     const original = globalThis.fetch;
     globalThis.fetch = (async (_url: string, init?: RequestInit) => {
-      const sent = (init?.headers as Record<string, string>)?.["developer-token"] ?? "";
-      // Simulate a hostile echo of whatever was sent.
-      return new Response(JSON.stringify({ error: { message: `Rejected request ${sent}` } }), { status: 400 });
+      assert.equal((init?.headers as Record<string, string>)?.["developer-token"], undefined);
+      return new Response(JSON.stringify({ error: { message: "Rejected request" } }), { status: 400 });
     }) as typeof fetch;
     try {
       await assert.rejects(() => googleAdsOAuthClient.listAccessibleCustomers("t"));
       try {
         await googleAdsOAuthClient.listAccessibleCustomers("t");
       } catch (e: any) {
-        assert.ok(!String(e.message).includes("test-developer-token-VALUE"), "token leaked in error text");
+        assert.ok(!String(e.message).includes("retired-token-must-not-be-sent"), "retired token leaked in error text");
       }
     } finally {
       globalThis.fetch = original;
@@ -488,17 +494,14 @@ describe("google ads connector", () => {
     }
   });
 
-  it("requires the developer token for discovery (missing config is loud)", async () => {
-    const saved = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+  it("discovers accounts without a developer-token setting", async () => {
     delete process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
-    const restore = stubFetch([]);
+    const restore = stubFetch([{ resourceNames: ["customers/1234567890"] }]);
     try {
-      await assert.rejects(
-        () => googleAdsOAuthClient.listAccessibleCustomers("t"),
-        /GOOGLE_ADS_DEVELOPER_TOKEN not configured/,
-      );
+      assert.deepEqual(await googleAdsOAuthClient.listAccessibleCustomers("t"), ["1234567890"]);
+      const headers = captured[0].init.headers as Record<string, string>;
+      assert.equal(headers["developer-token"], undefined);
     } finally {
-      process.env.GOOGLE_ADS_DEVELOPER_TOKEN = saved;
       restore();
     }
   });
