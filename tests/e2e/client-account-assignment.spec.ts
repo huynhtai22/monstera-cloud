@@ -353,8 +353,9 @@ test.describe("client account assignment journeys", () => {
   test("Manage sources deep-link selects the accounts tab and preserves five-client identity", async ({ authenticatedFixturePage: page }) => {
     await page.goto("/clients", { waitUntil: "domcontentloaded" });
 
-    const manage = page.locator(`a[href="/sources?clientId=${fixture.clients.one.id}&tab=accounts"]`);
+    const manage = page.getByRole("link", { name: "Manage sources", exact: true });
     await expect(manage).toBeVisible();
+    await expect(manage).toHaveAttribute("href", `/sources?clientId=${fixture.clients.one.id}&tab=accounts`);
     await expect(manage).toHaveAccessibleName("Manage sources");
     await manage.click();
 

@@ -276,7 +276,7 @@ test.describe("guided client reporting setup", () => {
     await page.goto(`/reports?clientId=${clientAId}`, { waitUntil: "domcontentloaded" });
 
     await expect(page.getByText("Check prerequisites for this client")).toBeVisible();
-    const requirementsLink = page.getByRole("link", { name: "Requirements" });
+    const requirementsLink = page.getByRole("link", { name: "Requirements", exact: true });
     await expect(requirementsLink).toHaveAttribute("href", `/clients?clientId=${clientAId}#reporting-setup`);
 
     await page.getByText("Check prerequisites for this client").click();

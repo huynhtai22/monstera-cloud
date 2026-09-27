@@ -48,7 +48,9 @@ export function ReportReadinessPanel({ evaluation, loading, error, onRetry, comp
       <div><dt className="text-[11px] text-ink-mute">Reporting window coverage</dt><dd className="mt-1 text-xs text-ink">{evaluation.dataStatus === "READY" ? "Data checks passed" : labels[evaluation.dataStatus] ?? "Unknown"}</dd></div>
     </dl>
     <p className="mt-2 text-[11px] text-ink-mute">A recent import or data date alone does not establish complete coverage. Readiness also checks required accounts, dates, reporting context, and delivery evidence.</p>
-    {[...evaluation.blockers, ...evaluation.warnings].length > 0 && <ul className="mt-4 space-y-2" aria-label="Report recovery actions">
+    {[...evaluation.blockers, ...evaluation.warnings].length > 0 && <details className="mt-4 rounded-lg border border-line p-3 text-xs">
+      <summary className="cursor-pointer font-medium text-ink">Recovery actions ({evaluation.blockers.length + evaluation.warnings.length})</summary>
+      <ul className="mt-3 space-y-2" aria-label="Report recovery actions">
       {[...evaluation.blockers, ...evaluation.warnings].map((item, index) => {
         const action = readinessRecovery(item, evaluation.clientId, evaluation.window);
         return <li key={`${item.code}-${item.connectionId}-${index}`} className="rounded-lg border border-line p-3 text-xs">
@@ -58,7 +60,8 @@ export function ReportReadinessPanel({ evaluation, loading, error, onRetry, comp
           {action.href ? <Link className="mt-2 inline-block font-medium text-ink underline underline-offset-4" href={action.href}>{action.label}</Link> : <button type="button" disabled={action.recheck && !onRetry} className="mt-2 font-medium text-ink underline underline-offset-4 disabled:opacity-50" onClick={() => action.configure ? setConfigurationRequest(v => v + 1) : onRetry?.()}>{action.label}</button>}
         </li>;
       })}
-    </ul>}
+      </ul>
+    </details>}
     <details className="mt-3 text-xs text-ink-mute">
       <summary className="cursor-pointer font-medium text-ink">Inspect evidence{evaluation.providers.length ? ` (${evaluation.providers.length} sources)` : ""}</summary>
       <div className="mt-3 space-y-3 break-words">
