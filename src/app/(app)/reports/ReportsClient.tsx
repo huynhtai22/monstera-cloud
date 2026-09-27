@@ -18,6 +18,7 @@ import { ALL_CLIENTS_TOKEN } from "@/lib/client-context";
 import { mergePendingUrlState } from "@/lib/pending-query";
 import { usePendingNavigation } from "@/components/client-context/PendingNavigationProvider";
 import { useClientContextNavigation } from "@/components/client-context/useClientContextNavigation";
+import { SavedViews } from "@/components/ui/SavedViews";
 
 const REPORTS_VIEW_STORAGE = "monstera_reports_view_v1";
 
@@ -272,6 +273,8 @@ export function ReportsClient() {
                                 : `Destination pipeline run history and row counts for ${activeWorkspace?.name ?? "the active workspace"}.`}
                         </p>
                     </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                    <SavedViews href={`${pathname}${observedSearchString ? `?${observedSearchString}` : ""}`} />
                     <div className="flex items-center rounded-lg border border-line bg-panel p-1">
                         <button
                             type="button"
@@ -299,6 +302,7 @@ export function ReportsClient() {
                             <Activity className="h-3.5 w-3.5" />
                             Sync Activity & Logs
                         </button>
+                    </div>
                     </div>
                 </div>
             </div>

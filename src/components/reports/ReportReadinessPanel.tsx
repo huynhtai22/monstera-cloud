@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { readinessRecovery, sourceRecoveryHref } from "@/lib/console-recovery";
 import useSWR from "swr";
 import { ReportingConfiguration } from "./ReportingConfiguration";
 import { cn } from "@/lib/utils";
@@ -23,7 +25,8 @@ const time = (value: string | null) => value ? new Date(value).toLocaleString() 
 export function ReportReadinessPanel({ evaluation, loading, error, onRetry, compact = false }: {
   evaluation?: ReportReadinessEvaluation; loading?: boolean; error?: boolean; onRetry?: () => void; compact?: boolean;
 }) {
-  const configuration = evaluation ? <ReportingConfiguration key={`${evaluation.workspaceId}:${evaluation.clientId}`} workspaceId={evaluation.workspaceId} clientId={evaluation.clientId} onSaved={onRetry} /> : null;
+  const [configurationRequest, setConfigurationRequest] = useState(0);
+  const configuration = evaluation ? <ReportingConfiguration key={`${evaluation.workspaceId}:${evaluation.clientId}:${configurationRequest}`} defaultOpen={configurationRequest > 0} workspaceId={evaluation.workspaceId} clientId={evaluation.clientId} onSaved={onRetry} /> : null;
   if (error) return <section aria-label="Report readiness" className="my-3 rounded-lg border border-line bg-canvas p-3 text-xs text-ink-mute">
     <p role="alert">Readiness unavailable. Do not rely on an earlier result.</p>
     {onRetry ? <button type="button" onClick={onRetry} className="mt-2 underline">Retry readiness</button> : null}
@@ -32,13 +35,30 @@ export function ReportReadinessPanel({ evaluation, loading, error, onRetry, comp
   if (loading) return <section aria-label="Report readiness" aria-busy="true" className="my-3 rounded-lg border border-line p-3 text-xs text-ink-mute">Checking report readiness…{configuration}</section>;
   if (!evaluation) return <section aria-label="Report readiness" className="my-3 rounded-lg border border-line p-3 text-xs text-ink-mute">Readiness unknown. Open this client’s report to evaluate its data.</section>;
   const issue = evaluation.blockers[0] ?? evaluation.warnings[0];
-  return <section aria-label="Report readiness" className="my-3 min-w-0 rounded-xl border border-line bg-canvas/50 p-3 sm:p-4" data-readiness={evaluation.status}>
+  return <section id="report-readiness" aria-label="Report readiness" className="scroll-mt-24 my-3 min-w-0 rounded-xl border border-line bg-canvas/50 p-3 sm:p-4" data-readiness={evaluation.status}>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h4 className="text-xs font-semibold text-ink">Report readiness</h4>
       <span className={cn("rounded-md border px-2 py-1 text-xs font-medium", styles[evaluation.status])}>{labels[evaluation.status]}</span>
     </div>
     <p className="mt-2 text-xs leading-relaxed text-ink-mute">{issue ? READINESS_MESSAGES[issue.code] : "Saved evidence meets all readiness checks for this window."}</p>
     <p className="mt-2 text-[11px] text-ink-mute">{evaluation.window.start} — {evaluation.window.end} · Evaluated {time(evaluation.evaluatedAt)}</p>
+    <dl className="mt-4 grid gap-3 rounded-lg border border-line p-3 sm:grid-cols-3" aria-label="Reporting data checks">
+      <div><dt className="text-[11px] text-ink-mute">Latest recorded successful import</dt><dd className="mt-1 text-xs text-ink">{time(evaluation.latestSuccessfulSyncAt)}</dd></div>
+      <div><dt className="text-[11px] text-ink-mute">Latest data date</dt><dd className="mt-1 text-xs text-ink">{evaluation.latestDataDate ?? "Not confirmed"}</dd></div>
+      <div><dt className="text-[11px] text-ink-mute">Reporting window coverage</dt><dd className="mt-1 text-xs text-ink">{evaluation.dataStatus === "READY" ? "Data checks passed" : labels[evaluation.dataStatus] ?? "Unknown"}</dd></div>
+    </dl>
+    <p className="mt-2 text-[11px] text-ink-mute">A recent import or data date alone does not establish complete coverage. Readiness also checks required accounts, dates, reporting context, and delivery evidence.</p>
+    {[...evaluation.blockers, ...evaluation.warnings].length > 0 && <ul className="mt-4 space-y-2" aria-label="Report recovery actions">
+      {[...evaluation.blockers, ...evaluation.warnings].map((item, index) => {
+        const action = readinessRecovery(item, evaluation.clientId, evaluation.window);
+        return <li key={`${item.code}-${item.connectionId}-${index}`} className="rounded-lg border border-line p-3 text-xs">
+          <p className="font-medium text-ink">{evaluation.blockers.includes(item) ? "Blocks readiness" : "Review needed"}{item.provider ? ` · ${item.provider.replaceAll("_", " ")}` : ""}</p>
+          <p className="mt-1 leading-relaxed text-ink-mute">{READINESS_MESSAGES[item.code]}</p>
+          {item.connectionId && <p className="mt-1 break-all text-[11px] text-ink-mute">Source {item.connectionId}</p>}
+          {action.href ? <Link className="mt-2 inline-block font-medium text-ink underline underline-offset-4" href={action.href}>{action.label}</Link> : <button type="button" disabled={action.recheck && !onRetry} className="mt-2 font-medium text-ink underline underline-offset-4 disabled:opacity-50" onClick={() => action.configure ? setConfigurationRequest(v => v + 1) : onRetry?.()}>{action.label}</button>}
+        </li>;
+      })}
+    </ul>}
     <details className="mt-3 text-xs text-ink-mute">
       <summary className="cursor-pointer font-medium text-ink">Inspect evidence{evaluation.providers.length ? ` (${evaluation.providers.length} sources)` : ""}</summary>
       <div className="mt-3 space-y-3 break-words">
@@ -63,7 +83,7 @@ export function ReportReadinessPanel({ evaluation, loading, error, onRetry, comp
             {account.missingDates.length ? ` Missing: ${account.missingDates.join(", ")}.` : ""}
           </p>)}
           {provider.evidence.syncs.map((sync,index) => <p className="mt-2" key={`${sync.id}-${index}`}>{sync.kind} · {sync.target} · {sync.status} · {time(sync.at)}</p>)}
-          <Link className="mt-2 inline-block underline text-ink" href={`/sources/${encodeURIComponent(provider.connectionId)}`}>Review source</Link>
+          <Link className="mt-2 inline-block underline text-ink" href={sourceRecoveryHref(provider.connectionId, evaluation.clientId, evaluation.window)}>Review source</Link>
         </details>)}
         <p>Advisory check only. Retrieval receipts are not live provider certification, reconciliation, or proof of a rendered report.</p>
       </div>

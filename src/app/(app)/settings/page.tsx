@@ -230,7 +230,7 @@ export default function SettingsPage() {
     };
 
     return (
-        <div className="w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
+        <div className="console-page w-full px-6 py-8 sm:px-10 sm:py-10 lg:px-12">
             <div className="mb-6 flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-md border border-line bg-panel">
                     <Settings2 className="w-4 h-4 text-ink" strokeWidth={1.5} />

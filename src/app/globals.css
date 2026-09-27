@@ -27,6 +27,7 @@
 :root {
     --background: #050505;
     --foreground: #ededed;
+    --console-motion-accent: #86c99b;
 }
 
 /* Design tokens and animation durations (moved from UI system modules) */
@@ -536,7 +537,7 @@ html.disable-transitions *::after {
     width: 3px;
     height: 3px;
     border-radius: 1px;
-    background: #d6a55f;
+    background: var(--console-motion-accent);
     opacity: 0.3;
     animation: consoleDotWave 1.45s ease-in-out infinite;
 }

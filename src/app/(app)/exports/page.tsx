@@ -35,7 +35,7 @@ export default function ExportsPage() {
     const hasApiKey = Boolean(firstKey);
 
     return (
-        <div className="relative w-full max-w-5xl mx-auto px-6 py-8 sm:px-10 sm:py-10 animate-in fade-in duration-300">
+        <div className="console-page relative w-full max-w-5xl mx-auto px-6 py-8 sm:px-10 sm:py-10 animate-in fade-in duration-300">
 
             {/* Header */}
             <div className="relative z-10 mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center border-b border-line pb-6">

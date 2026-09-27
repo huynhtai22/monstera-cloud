@@ -38,8 +38,23 @@
 | P1 | Dedicated telemetry/pin salt rotation | Code + runbook done | Production must set independent salts and record the active versions |
 | P1 | Disaster-recovery proof | Passed locally | Disposable encrypted backup/restore passed with a canary and zero schema drift; production-derived restore still needs named authority/approver |
 | P1 | Scoped scheduler credentials | Code done; configuration pending | Shared-secret compatibility remains until matching app/GitHub scoped secrets are installed and verified; then explicitly set CRON_ALLOW_LEGACY_SHARED_SECRET=0 |
-| P2 | Security observability/SLOs | Code done; delivery pending | Security-posture cron fails on auth/pin/cron/retention breach; verify notification delivery |
-| P2 | CI supply-chain policy | Workflow done; protection pending | Security workflow passes and its checks are required by branch protection |
+| P2 | Security observability/SLOs | Code and scheduled route active; delivery proof pending | Security-posture cron returns non-200 on auth/pin/cron/retention breach; a named owner verifies and records alert delivery |
+| P2 | CI supply-chain policy | Workflow passes; required-check protection pending | Gitleaks, dependency-integrity, SBOM/audit, and CodeQL checks pass and are required by branch protection |
+
+### P2 verification — 2026-09-28
+
+- The latest `main` Pilot cron run observed during this pass completed
+  successfully at `2026-09-27 19:35 UTC`; the workflow fails if any scoped cron
+  endpoint returns a non-200 response. This verifies the healthy path only,
+  not delivery of a breach alert.
+- The Security policy workflow passed on `main` commit `b23c72c` with all four
+  jobs green. Branch protection currently requires only `verify`; a write to
+  add the four security contexts was rejected by GitHub, so those checks are
+  still advisory until a repository administrator applies the rule.
+- The acceptance record still has monitoring owner, backup owner, and evidence
+  location unassigned. Do not mark the alert-delivery control complete until a
+  named owner performs the non-sensitive production exercise and records its
+  same-day evidence under `docs/OPERATIONS_ACCEPTANCE.md`.
 
 ## Today versus later
 

@@ -36,6 +36,7 @@ import {
 // Type-only import: the summary loader is server-only and must never be pulled
 // into the client bundle (enforced by the client-boundary guard).
 import type { OperationsSummary } from "@/lib/operations-summary";
+import { sourceRecoveryHref, reportRecoveryHref } from "@/lib/console-recovery";
 import { READINESS_MESSAGES } from "@/lib/report-readiness";
 
 type Summary = OperationsSummary;
@@ -260,9 +261,10 @@ function SectionCard({
     const tone = operationsStateTone(state);
     return (
         <section
+            id={`operations-${sectionKey}`}
             data-testid={`operations-section-${sectionKey}`}
             data-state={state}
-            className="flex flex-col rounded-lg border border-line bg-panel shadow-xs"
+            className="console-scorecard scroll-mt-24 flex flex-col rounded-lg border border-line bg-panel shadow-xs"
         >
             <header className="flex items-start gap-3 border-b border-line px-5 py-4">
                 <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-line bg-canvas text-ink [&>svg]:h-4 [&>svg]:w-4">
@@ -301,7 +303,7 @@ function SectionCard({
     );
 }
 
-function renderConnectorHealth(section: ConnectorHealthSection): React.ReactNode {
+function renderConnectorHealth(section: ConnectorHealthSection, hrefFor: (path: string, clientId?: string | null) => string): React.ReactNode {
     if (section.data === null) {
         return <SectionNotice reason={section.reason} />;
     }
@@ -322,6 +324,7 @@ function renderConnectorHealth(section: ConnectorHealthSection): React.ReactNode
                 <EvidenceList>
                     {attention.map((account) => (
                         <EvidenceRow key={`${account.connectionId}:${account.accountId}`}>
+                            <Link className="float-right ml-3 font-medium text-ink underline" href={hrefFor(sourceRecoveryHref(account.connectionId))}>Review account source →</Link>
                             <span className="font-semibold text-ink">
                                 {account.accountName ?? account.accountId}
                             </span>{" "}
@@ -345,7 +348,7 @@ function renderConnectorHealth(section: ConnectorHealthSection): React.ReactNode
     );
 }
 
-function renderFreshness(section: FreshnessSection): React.ReactNode {
+function renderFreshness(section: FreshnessSection, hrefFor: (path: string, clientId?: string | null) => string): React.ReactNode {
     if (section.data === null) {
         return <SectionNotice reason={section.reason} />;
     }
@@ -368,6 +371,7 @@ function renderFreshness(section: FreshnessSection): React.ReactNode {
                 <EvidenceList>
                     {attention.map((source) => (
                         <EvidenceRow key={source.connectionId}>
+                            <Link className="float-right ml-3 font-medium text-ink underline" href={hrefFor(sourceRecoveryHref(source.connectionId))}>Review source →</Link>
                             <span className="font-semibold text-ink">{source.name}</span>{" "}
                             <span className="text-ink-mute">· {humanize(source.provider)}</span>{" "}
                             <span className="font-medium text-amber-600 dark:text-amber-400">
@@ -385,7 +389,7 @@ function renderFreshness(section: FreshnessSection): React.ReactNode {
     );
 }
 
-function renderIngestion(section: IngestionSection): React.ReactNode {
+function renderIngestion(section: IngestionSection, hrefFor: (path: string, clientId?: string | null) => string): React.ReactNode {
     if (section.data === null) {
         return <SectionNotice reason={section.reason} />;
     }
@@ -406,6 +410,7 @@ function renderIngestion(section: IngestionSection): React.ReactNode {
                 <EvidenceList>
                     {recentFailures.map((failure) => (
                         <EvidenceRow key={failure.id}>
+                            <Link className="float-right ml-3 font-medium text-ink underline" href={hrefFor(`/explorer?startDate=${formatEvidenceDay(failure.since)}&endDate=${formatEvidenceDay(failure.until)}#warehouse-refresh`, ALL_CLIENTS_TOKEN)}>Review failed import window →</Link>
                             <span className="font-semibold text-ink">Import job</span>{" "}
                             <span className="font-medium text-amber-600 dark:text-amber-400">
                                 {humanize(failure.status)}
@@ -423,6 +428,7 @@ function renderIngestion(section: IngestionSection): React.ReactNode {
                     ))}
                     {syncLogErrors.map((entry) => (
                         <EvidenceRow key={entry.id}>
+                            <Link className="float-right ml-3 font-medium text-ink underline" href={hrefFor("/reports?view=sync&status=error")}>Inspect sync errors →</Link>
                             <span className="font-semibold text-ink">Sync log</span>{" "}
                             <span className="font-medium text-amber-600 dark:text-amber-400">
                                 {humanize(entry.status)}
@@ -441,7 +447,7 @@ function renderIngestion(section: IngestionSection): React.ReactNode {
     );
 }
 
-function renderReadiness(section: ReadinessSection): React.ReactNode {
+function renderReadiness(section: ReadinessSection, hrefFor: (path: string, clientId?: string | null) => string): React.ReactNode {
     if (section.data === null) {
         return <SectionNotice reason={section.reason} />;
     }
@@ -461,6 +467,7 @@ function renderReadiness(section: ReadinessSection): React.ReactNode {
                 <EvidenceList>
                     {clients.map((client) => (
                         <EvidenceRow key={client.clientId}>
+                            <Link className="float-right ml-3 font-medium text-ink underline" href={hrefFor(reportRecoveryHref(client.clientId, section.data.window), client.clientId)}>Resolve report blockers →</Link>
                             <span className="font-semibold text-ink">{client.clientName}</span>{" "}
                             <span
                                 className={cn(
@@ -490,7 +497,7 @@ function renderReadiness(section: ReadinessSection): React.ReactNode {
     );
 }
 
-function renderDelivery(section: DeliverySection): React.ReactNode {
+function renderDelivery(section: DeliverySection, hrefFor: (path: string, clientId?: string | null) => string): React.ReactNode {
     if (section.data === null) {
         return <SectionNotice reason={section.reason} />;
     }
@@ -509,6 +516,7 @@ function renderDelivery(section: DeliverySection): React.ReactNode {
                 <EvidenceList>
                     {latest.map((entry) => (
                         <EvidenceRow key={`${entry.clientId}:${entry.destination}:${entry.windowStart}`}>
+                            <Link className="float-right ml-3 font-medium text-ink underline" href={hrefFor(`/exports?startDate=${entry.windowStart}&endDate=${entry.windowEnd}`, entry.clientId)}>Review client delivery →</Link>
                             <span className="font-semibold text-ink">{humanize(entry.destination)}</span>{" "}
                             <span
                                 className={cn(
@@ -701,7 +709,7 @@ export function OperationsClient() {
                             unit="accounts"
                             cta={{ label: "Open sources", href: hrefFor(data.navigation.sources) }}
                         >
-                            {renderConnectorHealth(data.sections.connectorHealth)}
+                            {renderConnectorHealth(data.sections.connectorHealth, hrefFor)}
                         </SectionCard>
 
                         <SectionCard
@@ -715,7 +723,7 @@ export function OperationsClient() {
                             unit="sources"
                             cta={{ label: "Open sources", href: hrefFor(data.navigation.sources) }}
                         >
-                            {renderFreshness(data.sections.freshness)}
+                            {renderFreshness(data.sections.freshness, hrefFor)}
                         </SectionCard>
 
                         <SectionCard
@@ -729,7 +737,7 @@ export function OperationsClient() {
                             unit="entries"
                             cta={{ label: "Open reports", href: hrefFor(data.navigation.reports) }}
                         >
-                            {renderIngestion(data.sections.ingestion)}
+                            {renderIngestion(data.sections.ingestion, hrefFor)}
                         </SectionCard>
 
                         <SectionCard
@@ -743,7 +751,7 @@ export function OperationsClient() {
                             unit="clients"
                             cta={{ label: "Open reports", href: hrefFor(data.navigation.reports) }}
                         >
-                            {renderReadiness(data.sections.readiness)}
+                            {renderReadiness(data.sections.readiness, hrefFor)}
                         </SectionCard>
 
                         <SectionCard
@@ -757,7 +765,7 @@ export function OperationsClient() {
                             unit="destinations"
                             cta={{ label: "Open exports", href: hrefFor(data.navigation.exports) }}
                         >
-                            {renderDelivery(data.sections.delivery)}
+                            {renderDelivery(data.sections.delivery, hrefFor)}
                         </SectionCard>
 
                         <SectionCard

@@ -166,7 +166,7 @@ export function canonicalHref(pathname: string, params: URLSearchParams): string
 }
 
 export function surfaceForPathname(pathname: string): ClientContextSurface | null {
-  const path = (pathname.split("?")[0] ?? pathname).replace(/\/+$/, "") || "/";
+  const path = (pathname.split(/[?#]/)[0] ?? pathname).replace(/\/+$/, "") || "/";
   if (path === "/clients" || path.startsWith("/clients/")) return "clients";
   if (path === "/sources" || path.startsWith("/sources/")) return "sources";
   if (path === "/reports" || path.startsWith("/reports/")) return "reports";

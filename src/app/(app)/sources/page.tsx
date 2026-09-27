@@ -27,6 +27,7 @@ import { SourceOutcomeBanner, type SourceOutcomeNotice } from "@/components/sour
 import { countSourceHealthStatuses } from "@/lib/source-health";
 import { displayConnectionName, shopeeShopIdFrom, sourceManagerBadge } from "@/lib/source-list-display";
 import { ClientAccountsSection } from "@/components/sources/ClientAccountsSection";
+import { SavedViews } from "@/components/ui/SavedViews";
 
 const fetcher = async (url: string) => {
     const res = await fetch(url, { credentials: "same-origin", cache: "no-store" });
@@ -79,8 +80,8 @@ export default function SourcesPage() {
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
     const [selectedIntegration, setSelectedIntegration] = useState<any>(null);
     const [disconnectTarget, setDisconnectTarget] = useState<{ id: string; name: string } | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [activeFilter, setActiveFilter] = useState('connected');
+    const [searchQuery, setSearchQuery] = useState(() => searchParams.get("search") ?? "");
+    const [activeFilter, setActiveFilter] = useState(() => searchParams.get("tab") ?? "connected");
     const [initialClientId, setInitialClientId] = useState<string | null>(null);
     const [addSourceMenuOpen, setAddSourceMenuOpen] = useState(false);
     const addSourceMenuRef = useRef<HTMLDivElement>(null);
@@ -474,16 +475,30 @@ export default function SourcesPage() {
         const tab = searchParams.get("tab");
         const cId = urlClientId && urlClientId !== ALL_CLIENTS_TOKEN ? urlClientId : null;
         setInitialClientId(cId);
-        if (cId || tab === "accounts") {
-            setActiveFilter("accounts");
-        }
+        setSearchQuery(searchParams.get("search") ?? "");
+        const validTabs = ["connected", "accounts", "available", "attention"];
+        setActiveFilter(validTabs.includes(tab ?? "") ? tab! : cId ? "accounts" : "connected");
     }, [searchParams, urlClientId]);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            const params = new URLSearchParams(window.location.search);
+            if (activeFilter === "connected" && !params.has("clientId")) params.delete("tab");
+            else params.set("tab", activeFilter);
+            if (searchQuery.trim()) params.set("search", searchQuery.trim());
+            else params.delete("search");
+            const next = params.toString();
+            const current = window.location.search.replace(/^\?/, "");
+            if (next !== current) router.replace(next ? `/sources?${next}` : "/sources", { scroll: false });
+        }, 120);
+        return () => window.clearTimeout(timer);
+    }, [activeFilter, router, searchQuery]);
 
     useEffect(() => {
         if (isLoading || !Array.isArray(workspaces) || !activeWorkspaceId) return;
         if (firstRunFilterAppliedRef.current) return;
         if (connectedSourceCount !== 0) return;
-        if (activeFilter === 'accounts') return;
+        if (activeFilter === 'accounts' || activeFilter === 'attention') return;
         setActiveFilter('available');
         firstRunFilterAppliedRef.current = true;
     }, [isLoading, workspaces, activeWorkspaceId, connectedSourceCount, activeFilter]);
@@ -779,6 +794,7 @@ export default function SourcesPage() {
 
             if (activeFilter === 'connected') return integration.status !== 'available';
             if (activeFilter === 'available') return integration.status === 'available';
+            if (activeFilter === 'attention') return ["error", "stale", "disconnected", "unknown", "partial"].includes(integration.status);
             return integration.status !== 'available';
         });
     }, [searchQuery, activeFilter, sourceConnections, pipelines, activeWorkspaceId, catalogIntegrations]);
@@ -798,6 +814,15 @@ export default function SourcesPage() {
     const filterStats = useMemo(() => {
         return countSourceHealthStatuses(filteredIntegrations as Array<{ status: string }>);
     }, [filteredIntegrations]);
+    const needsAttentionCount = useMemo(() => {
+        const connections = Array.isArray(sourceConnections) ? sourceConnections : [];
+        const deduped = new Map<string, string>();
+        for (const connection of connections) {
+            const key = `${connection.provider ?? ""}:${connection.remoteAccountId ?? connection.id}`;
+            if (!deduped.has(key)) deduped.set(key, String(connection.healthState ?? connection.status ?? "unknown"));
+        }
+        return Array.from(deduped.values()).filter((status) => ["error", "stale", "disconnected", "unknown", "partial"].includes(status)).length;
+    }, [sourceConnections]);
 
     // Error State (only block the screen when the failing endpoint has NO cached data)
     const hasCachedWorkspaces = Array.isArray(workspaces) && workspaces.length > 0;
@@ -917,6 +942,7 @@ export default function SourcesPage() {
                     <RefreshedAt
                         onRefresh={() => mutate((key) => typeof key === "string" && key.startsWith("/api/") && !key.startsWith("/api/auth/"), undefined, { revalidate: true })}
                     />
+                    <SavedViews href={`/sources${searchParams.toString() ? `?${searchParams.toString()}` : ""}`} />
                     <div className="relative" ref={addSourceMenuRef}>
                         <button
                             type="button"
@@ -1098,12 +1124,22 @@ export default function SourcesPage() {
                     >
                         <span>Catalog</span>
                     </button>
-                    {!isLoading && filterStats.needsAttention > 0 && (
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/30 bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium text-rose-300">
-                            <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
-                            {filterStats.needsAttention} need attention
+                    <button
+                        role="tab"
+                        aria-selected={activeFilter === 'attention'}
+                        onClick={() => setActiveFilter('attention')}
+                        className={cn(
+                            "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all",
+                            activeFilter === 'attention'
+                                ? "border border-rose-500/30 bg-rose-500/10 text-rose-200"
+                                : "text-ink-mute hover:bg-white/[0.03] hover:text-ink"
+                        )}
+                    >
+                        <span>Needs attention</span>
+                        <span className="rounded border border-rose-500/20 bg-rose-500/10 px-1.5 py-0.5 font-mono text-[10px] text-rose-200">
+                            {isLoading ? "…" : needsAttentionCount}
                         </span>
-                    )}
+                    </button>
                     {!isLoading && filterStats.partial > 0 && (
                         <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-300">
                             <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
@@ -1138,14 +1174,14 @@ export default function SourcesPage() {
             ) : activeFilter !== 'accounts' && connectedRows.length === 0 && availableCards.length === 0 ? (
                 <div className="flex w-full flex-col items-center justify-center rounded-lg border border-dashed border-line bg-panel py-20 text-center" role="tabpanel" aria-live="polite">
                     <Database className="w-10 h-10 text-ink-mute mb-4" />
-                    <h3 className="text-sm font-semibold text-ink mb-1">No integrations found</h3>
+                    <h3 className="text-sm font-semibold text-ink mb-1">{activeFilter === "attention" ? "No sources need attention" : "No integrations found"}</h3>
                     <p className="text-xs text-ink-mute max-w-sm mb-6">
-                        No data sources match &quot;{searchQuery}&quot;.
+                        {activeFilter === "attention" && !searchQuery ? "All connected sources are currently clear." : `No data sources match “${searchQuery}”.`}
                     </p>
                     {searchQuery && (
                         <button
                             type="button"
-                            onClick={() => { setSearchQuery(""); setActiveFilter("all"); }}
+                            onClick={() => { setSearchQuery(""); setActiveFilter("connected"); }}
                             className="inline-flex items-center gap-1.5 rounded-md border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-ink hover:bg-white/[0.06] transition-colors"
                         >
                             <X className="h-4 w-4" />
@@ -1164,7 +1200,7 @@ export default function SourcesPage() {
                             />
                         </section>
                     )}
-                    {activeFilter === 'connected' && connectedRows.length > 0 && (
+                    {(activeFilter === 'connected' || activeFilter === 'attention') && connectedRows.length > 0 && (
                         <section id="connected-sources" aria-labelledby="sources-connected-heading" className="scroll-mt-6">
                             <h2 id="sources-connected-heading" className="sr-only">Connected</h2>
                             <ConnectedSourceList
